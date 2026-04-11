@@ -50,12 +50,16 @@ class TransitionEdgeItem(QGraphicsPathItem):
         tgt_pt = QPointF(tgt_rect.left(), tgt_rect.center().y())
 
         if tgt_rect.center().x() < src_rect.center().x():
+            # 역방향: 소스 왼쪽 → 타겟 오른쪽
             src_pt = QPointF(src_rect.left(), src_rect.center().y())
             tgt_pt = QPointF(tgt_rect.right(), tgt_rect.center().y())
-
-        dx = abs(tgt_pt.x() - src_pt.x()) * 0.5
-        ctrl1 = QPointF(src_pt.x() + dx, src_pt.y())
-        ctrl2 = QPointF(tgt_pt.x() - dx, tgt_pt.y())
+            dx = abs(tgt_pt.x() - src_pt.x()) * 0.5
+            ctrl1 = QPointF(src_pt.x() - dx, src_pt.y())
+            ctrl2 = QPointF(tgt_pt.x() + dx, tgt_pt.y())
+        else:
+            dx = abs(tgt_pt.x() - src_pt.x()) * 0.5
+            ctrl1 = QPointF(src_pt.x() + dx, src_pt.y())
+            ctrl2 = QPointF(tgt_pt.x() - dx, tgt_pt.y())
 
         path = QPainterPath(src_pt)
         path.cubicTo(ctrl1, ctrl2, tgt_pt)
