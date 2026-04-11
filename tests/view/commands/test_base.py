@@ -18,7 +18,7 @@ class AppendCmd(Command):
         self._target.append(self._value)
 
     def undo(self) -> None:
-        self._target.remove(self._value)
+        self._target.pop()
 
 
 class TestCommandStack:
@@ -109,6 +109,15 @@ class TestCommandStack:
         stack.execute(AppendCmd([], 1))
         stack.add_listener(lambda: calls.append("changed"))
         stack.undo()
+        assert calls == ["changed"]
+
+    def test_listener_notified_on_redo(self):
+        calls: list[str] = []
+        stack = CommandStack()
+        stack.execute(AppendCmd([], 1))
+        stack.undo()
+        stack.add_listener(lambda: calls.append("changed"))
+        stack.redo()
         assert calls == ["changed"]
 
 
