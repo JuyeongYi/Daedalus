@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 from daedalus.model.plugin.config import (
+    ComponentConfig,
     SkillConfig,
     ProceduralSkillConfig,
     DeclarativeSkillConfig,
@@ -19,6 +20,11 @@ from daedalus.model.plugin.enums import (
 )
 
 
+def test_component_config_is_abstract():
+    with pytest.raises(TypeError):
+        ComponentConfig()
+
+
 def test_skill_config_is_abstract():
     with pytest.raises(TypeError):
         SkillConfig()
@@ -26,10 +32,12 @@ def test_skill_config_is_abstract():
 
 def test_procedural_skill_config_defaults():
     c = ProceduralSkillConfig()
-    assert c.argument_hint is None
-    assert c.allowed_tools == []
     assert c.model == ModelType.INHERIT
     assert c.effort is None
+    assert c.hooks is None
+    assert c.argument_hint is None
+    assert c.allowed_tools == []
+    assert c.paths is None
     assert c.disable_model_invocation is False
     assert c.user_invocable is True
     assert c.context == SkillContext.INLINE
@@ -60,14 +68,15 @@ def test_declarative_skill_config():
 
 def test_agent_config_defaults():
     c = AgentConfig()
+    assert c.model == ModelType.INHERIT
+    assert c.effort is None
+    assert c.hooks is None
     assert c.tools is None
     assert c.disallowed_tools is None
-    assert c.model == ModelType.INHERIT
     assert c.permission_mode == PermissionMode.DEFAULT
     assert c.max_turns is None
     assert c.skills == []
     assert c.mcp_servers is None
-    assert c.hooks is None
     assert c.memory is None
     assert c.background is False
     assert c.isolation == AgentIsolation.NONE
@@ -87,3 +96,11 @@ def test_agent_config_custom():
     assert c.model == ModelType.HAIKU
     assert c.memory == MemoryScope.PROJECT
     assert c.color == AgentColor.BLUE
+
+
+def test_component_config_shared_fields():
+    """ComponentConfig 공통 필드가 모든 서브클래스에서 동작하는지 확인."""
+    proc = ProceduralSkillConfig(model=ModelType.OPUS, effort=EffortLevel.MAX)
+    agent = AgentConfig(model=ModelType.OPUS, effort=EffortLevel.MAX)
+    assert proc.model == agent.model
+    assert proc.effort == agent.effort
