@@ -2,9 +2,13 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 from daedalus.model.fsm.action import Action
 from daedalus.model.fsm.variable import Variable
+
+if TYPE_CHECKING:
+    from daedalus.model.fsm.machine import StateMachine
 
 
 @dataclass
@@ -44,18 +48,13 @@ class SimpleState(State):
 class Region:
     """ParallelState 내 독립 실행 단위."""
     name: str
-    states: list[State] = field(default_factory=list)
-    initial_state: State | None = None
+    sub_machine: StateMachine
 
 
 @dataclass
 class CompositeState(State):
-    """계층형. 내부에 하위 FSM 보유."""
-    children: list[State] = field(default_factory=list)
-    initial_state: State | None = None
-    final_states: list[State] = field(default_factory=list)
-    on_child_enter: list[Action] = field(default_factory=list)
-    on_child_exit: list[Action] = field(default_factory=list)
+    """별도 컨텍스트의 상태 기계. 내부에 완전한 sub FSM 보유."""
+    sub_machine: StateMachine = None
 
     @property
     def kind(self) -> str:
