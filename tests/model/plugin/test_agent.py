@@ -1,0 +1,61 @@
+from __future__ import annotations
+
+from daedalus.model.plugin.agent import AgentDefinition
+from daedalus.model.plugin.base import PluginComponent, WorkflowComponent
+from daedalus.model.plugin.config import AgentConfig
+from daedalus.model.plugin.enums import ModelType, AgentColor
+from daedalus.model.plugin.policy import ExecutionPolicy, JoinStrategy
+from daedalus.model.fsm.machine import StateMachine
+from daedalus.model.fsm.state import SimpleState
+
+
+def test_agent_definition():
+    s1 = SimpleState(name="analyze")
+    s2 = SimpleState(name="report")
+    sm = StateMachine(name="review_flow", initial_state=s1, states=[s1, s2])
+    agent = AgentDefinition(
+        name="code-reviewer",
+        description="코드 리뷰 에이전트",
+        fsm=sm,
+        config=AgentConfig(
+            tools=["Read", "Grep"],
+            model=ModelType.SONNET,
+            color=AgentColor.BLUE,
+        ),
+    )
+    assert agent.name == "code-reviewer"
+    assert agent.fsm is sm
+    assert agent.config.tools == ["Read", "Grep"]
+    assert isinstance(agent, PluginComponent)
+    assert isinstance(agent, WorkflowComponent)
+
+
+def test_agent_execution_policy_default():
+    s1 = SimpleState(name="s")
+    sm = StateMachine(name="f", initial_state=s1)
+    agent = AgentDefinition(
+        name="worker",
+        description="작업자",
+        fsm=sm,
+        config=AgentConfig(),
+    )
+    assert agent.execution_policy.mode == "fixed"
+    assert agent.execution_policy.count == 1
+
+
+def test_agent_execution_policy_parallel():
+    s1 = SimpleState(name="s")
+    sm = StateMachine(name="f", initial_state=s1)
+    agent = AgentDefinition(
+        name="researcher",
+        description="연구 에이전트",
+        fsm=sm,
+        config=AgentConfig(),
+        execution_policy=ExecutionPolicy(
+            mode="fixed",
+            count=3,
+            join=JoinStrategy.ANY,
+        ),
+    )
+    assert agent.execution_policy.count == 3
+    assert agent.execution_policy.join == JoinStrategy.ANY
