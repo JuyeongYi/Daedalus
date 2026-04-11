@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
@@ -10,8 +10,10 @@ class VariableScope(Enum):
     BLACKBOARD = "blackboard"
 
 
-class VariableType(Enum):
+class FieldType(Enum):
     STRING = "string"
+    INT = "int"
+    FLOAT = "float"
     NUMBER = "number"
     BOOL = "bool"
     LIST = "list"
@@ -31,7 +33,7 @@ class Variable:
     name: str
     description: str
     scope: VariableScope = VariableScope.LOCAL
-    var_type: VariableType = VariableType.ANY
+    field_type: FieldType = FieldType.ANY
     required: bool = False
     default: Any | None = None
     conflict_resolution: ConflictResolution = ConflictResolution.LAST_WRITE

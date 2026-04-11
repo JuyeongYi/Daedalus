@@ -4,14 +4,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
-from daedalus.model.fsm.variable import Variable
-
-
-class DynamicFieldType(Enum):
-    STRING = "string"
-    INT = "int"
-    FLOAT = "float"
-    BOOL = "bool"
+from daedalus.model.fsm.variable import FieldType, Variable
 
 
 class CollectionType(Enum):
@@ -23,7 +16,7 @@ class CollectionType(Enum):
 @dataclass
 class DynamicField:
     name: str
-    field_type: DynamicFieldType
+    field_type: FieldType
     collection: CollectionType = CollectionType.NONE
     default: Any | None = None
     required: bool = False

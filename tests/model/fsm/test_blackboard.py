@@ -4,17 +4,9 @@ from daedalus.model.fsm.blackboard import (
     Blackboard,
     DynamicClass,
     DynamicField,
-    DynamicFieldType,
     CollectionType,
 )
-from daedalus.model.fsm.variable import Variable, VariableScope
-
-
-def test_dynamic_field_type_enum():
-    assert DynamicFieldType.STRING.value == "string"
-    assert DynamicFieldType.INT.value == "int"
-    assert DynamicFieldType.FLOAT.value == "float"
-    assert DynamicFieldType.BOOL.value == "bool"
+from daedalus.model.fsm.variable import Variable, VariableScope, FieldType
 
 
 def test_collection_type_enum():
@@ -24,7 +16,7 @@ def test_collection_type_enum():
 
 
 def test_dynamic_field():
-    f = DynamicField(name="status", field_type=DynamicFieldType.STRING)
+    f = DynamicField(name="status", field_type=FieldType.STRING)
     assert f.name == "status"
     assert f.collection == CollectionType.NONE
     assert f.required is False
@@ -33,9 +25,9 @@ def test_dynamic_field():
 
 def test_dynamic_class():
     fields = [
-        DynamicField(name="status", field_type=DynamicFieldType.STRING, required=True),
-        DynamicField(name="errors", field_type=DynamicFieldType.STRING, collection=CollectionType.LIST),
-        DynamicField(name="count", field_type=DynamicFieldType.INT, default=0),
+        DynamicField(name="status", field_type=FieldType.STRING, required=True),
+        DynamicField(name="errors", field_type=FieldType.STRING, collection=CollectionType.LIST),
+        DynamicField(name="count", field_type=FieldType.INT, default=0),
     ]
     dc = DynamicClass(name="BuildResult", description="빌드 결과", fields=fields)
     assert dc.name == "BuildResult"
@@ -69,7 +61,7 @@ def test_blackboard_with_dynamic_class():
     dc = DynamicClass(
         name="DeployLog",
         description="배포 로그",
-        fields=[DynamicField(name="timestamp", field_type=DynamicFieldType.STRING)],
+        fields=[DynamicField(name="timestamp", field_type=FieldType.STRING)],
     )
     bb = Blackboard(class_definitions=[dc])
     assert len(bb.class_definitions) == 1
