@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QPainter
+from PyQt6.QtGui import QMouseEvent, QPainter, QWheelEvent
 from PyQt6.QtWidgets import QGraphicsView
 
 from daedalus.view.canvas.scene import FsmScene
@@ -19,11 +19,15 @@ class FsmCanvasView(QGraphicsView):
         self._panning = False
         self._pan_start = None
 
-    def wheelEvent(self, event) -> None:
+    def wheelEvent(self, event: QWheelEvent | None) -> None:
+        if event is None:
+            return
         factor = 1.15 if event.angleDelta().y() > 0 else 1 / 1.15
         self.scale(factor, factor)
 
-    def mousePressEvent(self, event) -> None:
+    def mousePressEvent(self, event: QMouseEvent | None) -> None:
+        if event is None:
+            return
         if event.button() == Qt.MouseButton.MiddleButton or (
             event.button() == Qt.MouseButton.LeftButton
             and event.modifiers() & Qt.KeyboardModifier.AltModifier
@@ -34,20 +38,24 @@ class FsmCanvasView(QGraphicsView):
             return
         super().mousePressEvent(event)
 
-    def mouseMoveEvent(self, event) -> None:
+    def mouseMoveEvent(self, event: QMouseEvent | None) -> None:
+        if event is None:
+            return
         if self._panning and self._pan_start is not None:
             delta = event.position() - self._pan_start
             self._pan_start = event.position()
-            self.horizontalScrollBar().setValue(
-                self.horizontalScrollBar().value() - int(delta.x())
-            )
-            self.verticalScrollBar().setValue(
-                self.verticalScrollBar().value() - int(delta.y())
-            )
+            h_bar = self.horizontalScrollBar()
+            v_bar = self.verticalScrollBar()
+            if h_bar is not None:
+                h_bar.setValue(h_bar.value() - int(delta.x()))
+            if v_bar is not None:
+                v_bar.setValue(v_bar.value() - int(delta.y()))
             return
         super().mouseMoveEvent(event)
 
-    def mouseReleaseEvent(self, event) -> None:
+    def mouseReleaseEvent(self, event: QMouseEvent | None) -> None:
+        if event is None:
+            return
         if self._panning:
             self._panning = False
             self._pan_start = None

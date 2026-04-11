@@ -3,8 +3,13 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from PyQt6.QtCore import QPointF, Qt
-from PyQt6.QtGui import QColor
-from PyQt6.QtWidgets import QGraphicsScene, QMenu
+from PyQt6.QtGui import QColor, QKeyEvent
+from PyQt6.QtWidgets import (
+    QGraphicsScene,
+    QGraphicsSceneContextMenuEvent,
+    QGraphicsSceneMouseEvent,
+    QMenu,
+)
 
 from daedalus.model.fsm.state import SimpleState
 from daedalus.model.fsm.transition import Transition
@@ -81,7 +86,9 @@ class FsmScene(QGraphicsScene):
 
     # --- 컨텍스트 메뉴 ---
 
-    def contextMenuEvent(self, event) -> None:
+    def contextMenuEvent(self, event: QGraphicsSceneContextMenuEvent | None) -> None:
+        if event is None:
+            return
         pos = event.scenePos()
         item = self.itemAt(pos, self.views()[0].transform()) if self.views() else None
         menu = QMenu()
@@ -123,14 +130,18 @@ class FsmScene(QGraphicsScene):
 
     # --- 전이 생성 (클릭 모드) ---
 
-    def mousePressEvent(self, event) -> None:
+    def mousePressEvent(self, event: QGraphicsSceneMouseEvent | None) -> None:
+        if event is None:
+            return
         if self._connecting and event.button() == Qt.MouseButton.RightButton:
             self._connecting = False
             self._connect_source = None
             return
         super().mousePressEvent(event)
 
-    def mouseReleaseEvent(self, event) -> None:
+    def mouseReleaseEvent(self, event: QGraphicsSceneMouseEvent | None) -> None:
+        if event is None:
+            return
         if self._connecting and self._connect_source:
             target = (
                 self.itemAt(event.scenePos(), self.views()[0].transform())
@@ -150,7 +161,9 @@ class FsmScene(QGraphicsScene):
 
     # --- 키보드 ---
 
-    def keyPressEvent(self, event) -> None:
+    def keyPressEvent(self, event: QKeyEvent | None) -> None:
+        if event is None:
+            return
         if event.key() == Qt.Key.Key_Delete:
             for item in list(self.selectedItems()):
                 if isinstance(item, StateNodeItem):
