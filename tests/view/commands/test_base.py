@@ -120,6 +120,45 @@ class TestCommandStack:
         stack.redo()
         assert calls == ["changed"]
 
+    def test_remove_listener_stops_notifications(self):
+        calls: list[str] = []
+        stack = CommandStack()
+        listener = lambda: calls.append("changed")
+        stack.add_listener(listener)
+        stack.execute(AppendCmd([], 1))
+        assert calls == ["changed"]
+        stack.remove_listener(listener)
+        stack.undo()
+        assert calls == ["changed"]  # no new call after removal
+
+    def test_remove_listener_missing_does_not_raise(self):
+        stack = CommandStack()
+        stack.remove_listener(lambda: None)  # should not raise
+
+    def test_redo_history_empty(self):
+        stack = CommandStack()
+        assert stack.redo_history == []
+
+    def test_redo_history_order(self):
+        data: list[int] = []
+        stack = CommandStack()
+        cmd1 = AppendCmd(data, 1)
+        cmd2 = AppendCmd(data, 2)
+        stack.execute(cmd1)
+        stack.execute(cmd2)
+        stack.undo()
+        stack.undo()
+        # redo_history[0] is the next redo target (cmd1), then cmd2
+        assert stack.redo_history == [cmd1, cmd2]
+
+    def test_redo_history_cleared_after_execute(self):
+        data: list[int] = []
+        stack = CommandStack()
+        stack.execute(AppendCmd(data, 1))
+        stack.undo()
+        stack.execute(AppendCmd(data, 2))
+        assert stack.redo_history == []
+
 
 class TestMacroCommand:
     def test_execute_runs_all_children(self):

@@ -54,6 +54,13 @@ class CommandStack:
     def add_listener(self, listener: Callable[[], None]) -> None:
         self._listeners.append(listener)
 
+    def remove_listener(self, listener: Callable[[], None]) -> None:
+        """등록된 리스너를 제거. 없으면 무시."""
+        try:
+            self._listeners.remove(listener)
+        except ValueError:
+            pass
+
     def _notify(self) -> None:
         for listener in self._listeners:
             listener()
@@ -91,6 +98,11 @@ class CommandStack:
     @property
     def history(self) -> list[Command]:
         return list(self._undo_stack)
+
+    @property
+    def redo_history(self) -> list[Command]:
+        """Redo 가능한 커맨드 목록 (다음 redo 대상이 [0])."""
+        return list(reversed(self._redo_stack))
 
     @property
     def current_index(self) -> int:

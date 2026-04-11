@@ -77,6 +77,21 @@ class TestProjectViewModel:
         pvm.notify()
         assert calls == ["changed"]
 
+    def test_remove_listener_stops_notifications(self):
+        calls: list[str] = []
+        pvm = ProjectViewModel()
+        listener = lambda: calls.append("changed")
+        pvm.add_listener(listener)
+        pvm.notify()
+        assert calls == ["changed"]
+        pvm.remove_listener(listener)
+        pvm.notify()
+        assert calls == ["changed"]  # no new call after removal
+
+    def test_remove_listener_missing_does_not_raise(self):
+        pvm = ProjectViewModel()
+        pvm.remove_listener(lambda: None)  # should not raise
+
     def test_execute_delegates_to_command_stack(self):
         from daedalus.view.commands.base import Command
 

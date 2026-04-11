@@ -60,6 +60,13 @@ class ProjectViewModel:
     def add_listener(self, listener: Callable[[], None]) -> None:
         self._listeners.append(listener)
 
+    def remove_listener(self, listener: Callable[[], None]) -> None:
+        """등록된 리스너를 제거. 없으면 무시."""
+        try:
+            self._listeners.remove(listener)
+        except ValueError:
+            pass
+
     def notify(self) -> None:
         for listener in self._listeners:
             listener()

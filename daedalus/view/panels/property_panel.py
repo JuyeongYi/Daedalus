@@ -1,14 +1,10 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 from PyQt6.QtWidgets import QFormLayout, QLabel, QLineEdit, QVBoxLayout, QWidget
 
 from daedalus.view.viewmodel.state_vm import StateViewModel, TransitionViewModel
 from daedalus.view.commands.state_commands import RenameStateCmd
-
-if TYPE_CHECKING:
-    from daedalus.view.viewmodel.project_vm import ProjectViewModel
+from daedalus.view.viewmodel.project_vm import ProjectViewModel
 
 
 class PropertyPanel(QWidget):
@@ -49,6 +45,10 @@ class PropertyPanel(QWidget):
         self._form.addRow("Source", QLabel(transition_vm.source_vm.model.name))
         self._form.addRow("Target", QLabel(transition_vm.target_vm.model.name))
         self._form.addRow("Type", QLabel(transition_vm.model.type.value))
+
+    def set_project_vm(self, project_vm: ProjectViewModel) -> None:
+        """활성 탭이 바뀔 때 커맨드 실행 대상 VM을 교체."""
+        self._project_vm = project_vm
 
     def clear(self) -> None:
         self._clear_form()

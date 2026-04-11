@@ -24,6 +24,13 @@ class HistoryPanel(QWidget):
         self._list.itemClicked.connect(self._on_item_clicked)
         layout.addWidget(self._list)
 
+    def set_stack(self, stack: CommandStack) -> None:
+        """활성 탭이 바뀔 때 추적할 CommandStack을 교체."""
+        self._stack.remove_listener(self._rebuild)
+        self._stack = stack
+        self._stack.add_listener(self._rebuild)
+        self._rebuild()
+
     def _rebuild(self) -> None:
         self._list.clear()
         current = self._stack.current_index

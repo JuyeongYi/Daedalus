@@ -32,7 +32,8 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Daedalus — FSM Plugin Designer")
         self.resize(1200, 800)
 
-        self._project_vm = ProjectViewModel()
+        self._project_vm = ProjectViewModel()  # shared VM for global state
+        self._tab_vms: dict[int, ProjectViewModel] = {}  # per-canvas-tab VMs
         self._open_tabs: dict[str, int] = {}
 
         self._setup_central()
@@ -105,13 +106,21 @@ class MainWindow(QMainWindow):
         self._project_vm.command_stack.add_listener(self._update_undo_redo)
 
     def _update_undo_redo(self) -> None:
-        stack = self._project_vm.command_stack
+        index = self._tabs.currentIndex()
+        if index >= 0 and index in self._tab_vms:
+            stack = self._tab_vms[index].command_stack
+        else:
+            stack = self._project_vm.command_stack
         self._undo_action.setEnabled(stack.can_undo)
         self._redo_action.setEnabled(stack.can_redo)
         if stack.can_undo:
             self._undo_action.setText(f"Undo: {stack.history[-1].description}")
         else:
             self._undo_action.setText("Undo")
+        if stack.can_redo:
+            self._redo_action.setText(f"Redo: {stack.redo_history[0].description}")
+        else:
+            self._redo_action.setText("Redo")
 
     def _open_component(self, component: object) -> None:
         name = getattr(component, "name", None)
@@ -121,10 +130,12 @@ class MainWindow(QMainWindow):
             self._tabs.setCurrentIndex(self._open_tabs[name])
             return
         if isinstance(component, (ProceduralSkill, AgentDefinition)):
-            scene = FsmScene(self._project_vm)
+            tab_vm = ProjectViewModel()
+            scene = FsmScene(tab_vm)
             view = FsmCanvasView(scene)
             scene.selectionChanged.connect(lambda s=scene: self._on_scene_selection(s))
             idx = self._tabs.addTab(view, name)
+            self._tab_vms[idx] = tab_vm
         elif isinstance(component, DeclarativeSkill):
             idx = self._tabs.addTab(DeclSkillEditor(component), name)
         else:
@@ -136,14 +147,25 @@ class MainWindow(QMainWindow):
         name = next((n for n, i in self._open_tabs.items() if i == index), None)
         if name:
             del self._open_tabs[name]
+        # Remove tab VM
+        self._tab_vms.pop(index, None)
         self._tabs.removeTab(index)
+        # Shift indices
         self._open_tabs = {
             n: (i if i < index else i - 1) for n, i in self._open_tabs.items()
         }
+        self._tab_vms = {
+            (i if i < index else i - 1): vm for i, vm in self._tab_vms.items()
+            if i != index
+        }
 
     def _on_tab_changed(self, index: int) -> None:
-        if index < 0:
-            self._property_panel.clear()
+        self._property_panel.clear()
+        if index >= 0 and index in self._tab_vms:
+            active_vm = self._tab_vms[index]
+            self._history_panel.set_stack(active_vm.command_stack)
+            self._property_panel.set_project_vm(active_vm)
+        self._update_undo_redo()
 
     def _on_scene_selection(self, scene: FsmScene) -> None:
         selected = scene.selectedItems()
@@ -157,12 +179,24 @@ class MainWindow(QMainWindow):
             self._property_panel.clear()
 
     def _undo(self) -> None:
-        self._project_vm.command_stack.undo()
-        self._project_vm.notify()
+        index = self._tabs.currentIndex()
+        if index >= 0 and index in self._tab_vms:
+            vm = self._tab_vms[index]
+            vm.command_stack.undo()
+            vm.notify()
+        else:
+            self._project_vm.command_stack.undo()
+            self._project_vm.notify()
 
     def _redo(self) -> None:
-        self._project_vm.command_stack.redo()
-        self._project_vm.notify()
+        index = self._tabs.currentIndex()
+        if index >= 0 and index in self._tab_vms:
+            vm = self._tab_vms[index]
+            vm.command_stack.redo()
+            vm.notify()
+        else:
+            self._project_vm.command_stack.redo()
+            self._project_vm.notify()
 
     def set_project(self, project: PluginProject) -> None:
         self._tree_panel.set_project(project)
