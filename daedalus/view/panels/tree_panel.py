@@ -60,6 +60,8 @@ class ProjectTreePanel(QWidget):
         if not self._project:
             return
         root = self._model.invisibleRootItem()
+        if root is None:
+            return
 
         proj_item = QStandardItem(self._project.name)
         proj_item.setForeground(_COLOR_FOLDER)
