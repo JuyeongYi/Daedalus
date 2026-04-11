@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 from daedalus.model.validation import ValidationError, Validator
-from daedalus.model.fsm.state import SimpleState, CompositeState
+from daedalus.model.fsm.state import SimpleState, CompositeState, ParallelState, Region
+from daedalus.model.fsm.pseudo import ChoiceState, HistoryState, EntryPoint, ExitPoint, TerminateState
 from daedalus.model.fsm.transition import Transition
 from daedalus.model.fsm.machine import StateMachine
 from daedalus.model.fsm.variable import Variable, VariableScope
+from daedalus.model.fsm.action import Action
+from daedalus.model.fsm.strategy import LLMExecution
+from daedalus.model.fsm.event import CompletionEvent
 
 
 def _make_sm(states, transitions):
@@ -86,3 +90,112 @@ def test_required_input_satisfied():
     sm = _make_sm([s1, s2], [t])
     errors = Validator.validate(sm)
     assert not any(e.rule == "missing_required_input" for e in errors)
+
+
+# -- initial_state_in_states --
+
+def test_initial_state_not_in_states():
+    s1 = SimpleState(name="A")
+    s2 = SimpleState(name="B")
+    sm = StateMachine(name="test", states=[s1], initial_state=s2)
+    errors = Validator.validate(sm)
+    assert any(e.rule == "initial_state_in_states" for e in errors)
+
+
+def test_initial_state_in_states_ok():
+    s1 = SimpleState(name="A")
+    sm = StateMachine(name="test", states=[s1], initial_state=s1)
+    errors = Validator.validate(sm)
+    assert not any(e.rule == "initial_state_in_states" for e in errors)
+
+
+# -- final_states_in_states --
+
+def test_final_state_not_in_states():
+    s1 = SimpleState(name="A")
+    s2 = SimpleState(name="B")
+    sm = StateMachine(name="test", states=[s1], initial_state=s1, final_states=[s2])
+    errors = Validator.validate(sm)
+    assert any(e.rule == "final_states_in_states" for e in errors)
+
+
+# -- pseudo_state_hooks --
+
+def test_choice_state_with_hooks_warns():
+    action = Action(name="a", execution=LLMExecution(prompt="x"))
+    choice = ChoiceState(name="c", on_entry=[action])
+    sm = StateMachine(name="test", states=[choice], initial_state=choice)
+    errors = Validator.validate(sm)
+    assert any(e.rule == "pseudo_state_hooks" for e in errors)
+
+
+def test_history_state_with_hooks_no_warning():
+    """HistoryState는 on_entry 훅 허용."""
+    action = Action(name="a", execution=LLMExecution(prompt="x"))
+    h = HistoryState(name="H", on_entry=[action])
+    sm = StateMachine(name="test", states=[h], initial_state=h)
+    errors = Validator.validate(sm)
+    assert not any(e.rule == "pseudo_state_hooks" for e in errors)
+
+
+def test_terminate_state_with_hooks_warns():
+    action = Action(name="a", execution=LLMExecution(prompt="x"))
+    t = TerminateState(name="t", on_exit=[action])
+    sm = StateMachine(name="test", states=[t], initial_state=t)
+    errors = Validator.validate(sm)
+    assert any(e.rule == "pseudo_state_hooks" for e in errors)
+
+
+# -- completion_event_on_composite --
+
+def test_composite_without_completion_trigger_warns():
+    agent = _make_agent("agent1", ["s1"])
+    s2 = SimpleState(name="next")
+    t = Transition(source=agent, target=s2)  # trigger=None
+    sm = _make_sm([agent, s2], [t])
+    errors = Validator.validate(sm)
+    assert any(e.rule == "completion_event_on_composite" for e in errors)
+
+
+def test_composite_with_completion_trigger_ok():
+    agent = _make_agent("agent1", ["s1"])
+    s2 = SimpleState(name="next")
+    t = Transition(source=agent, target=s2, trigger=CompletionEvent(name="done"))
+    sm = _make_sm([agent, s2], [t])
+    errors = Validator.validate(sm)
+    assert not any(e.rule == "completion_event_on_composite" for e in errors)
+
+
+# -- 재귀 검증 --
+
+def test_recursive_validation_in_composite():
+    """CompositeState 내부의 sub_machine도 검증."""
+    inner_s1 = SimpleState(name="inner1")
+    inner_s2 = SimpleState(name="inner2")
+    inner_sm = StateMachine(
+        name="inner",
+        states=[inner_s1],
+        initial_state=inner_s1,
+        final_states=[inner_s2],  # inner_s2가 states에 없음
+    )
+    agent = CompositeState(name="agent", sub_machine=inner_sm)
+    sm = _make_sm([agent], [])
+    errors = Validator.validate(sm)
+    assert any(e.rule == "final_states_in_states" for e in errors)
+
+
+def test_recursive_validation_in_region():
+    """Region 내부의 sub_machine도 검증."""
+    s1 = SimpleState(name="r_s1")
+    s2 = SimpleState(name="r_s2")
+    region_sm = StateMachine(
+        name="region_flow",
+        states=[s1],
+        initial_state=s1,
+        final_states=[s2],  # s2가 states에 없음
+    )
+    r = Region(name="r1", sub_machine=region_sm)
+    ps = ParallelState(name="par", regions=[r])
+    sm = _make_sm([ps], [])
+    errors = Validator.validate(sm)
+    assert any(e.rule == "final_states_in_states" for e in errors)
