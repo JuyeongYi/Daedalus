@@ -63,10 +63,12 @@ class TransitionEdgeItem(QGraphicsPathItem):
 
     def paint(
         self,
-        painter: QPainter,
-        option: QStyleOptionGraphicsItem,
+        painter: QPainter | None,
+        option: QStyleOptionGraphicsItem | None,
         widget: QWidget | None = None,
     ) -> None:
+        if painter is None:
+            return
         color = _EDGE_SELECTED if self.isSelected() else _EDGE_COLOR
         painter.setPen(QPen(color, 2))
         painter.drawPath(self.path())

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 from PyQt6.QtCore import QRectF, Qt
 from PyQt6.QtGui import QBrush, QColor, QFont, QPainter, QPen
 from PyQt6.QtWidgets import QGraphicsItem, QStyleOptionGraphicsItem, QWidget
@@ -38,10 +40,12 @@ class StateNodeItem(QGraphicsItem):
 
     def paint(
         self,
-        painter: QPainter,
-        option: QStyleOptionGraphicsItem,
+        painter: QPainter | None,
+        option: QStyleOptionGraphicsItem | None,
         widget: QWidget | None = None,
     ) -> None:
+        if painter is None:
+            return
         rect = self.boundingRect()
         selected = self.isSelected()
         border = _BORDER_SELECTED if selected else _BORDER_NORMAL
@@ -83,7 +87,7 @@ class StateNodeItem(QGraphicsItem):
     def mouseReleaseEvent(self, event) -> None:
         super().mouseReleaseEvent(event)
         if self._drag_start_pos is not None and self._drag_start_pos != self.pos():
-            scene = self.scene()
-            if hasattr(scene, "handle_node_moved"):
+            scene: Any = self.scene()
+            if scene is not None and hasattr(scene, "handle_node_moved"):
                 scene.handle_node_moved(self, self._drag_start_pos, self.pos())
         self._drag_start_pos = None
