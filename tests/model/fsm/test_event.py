@@ -4,10 +4,9 @@ import pytest
 from daedalus.model.fsm.event import (
     Event,
     StateEvent,
-    TransitionEvent,
-    CompositeStateEvent,
     BlackboardEvent,
     BlackboardTrigger,
+    CompletionEvent,
 )
 
 
@@ -21,19 +20,15 @@ def test_state_event_is_abstract():
         StateEvent(name="e")
 
 
-def test_transition_event_is_abstract():
-    with pytest.raises(TypeError):
-        TransitionEvent(name="e")
-
-
-def test_composite_state_event_is_abstract():
-    with pytest.raises(TypeError):
-        CompositeStateEvent(name="e")
-
-
 def test_blackboard_event_is_abstract():
     with pytest.raises(TypeError):
         BlackboardEvent(name="e")
+
+
+def test_completion_event():
+    ev = CompletionEvent(name="done")
+    assert ev.name == "done"
+    assert ev.kind == "completion"
 
 
 def test_blackboard_trigger_instantiation():

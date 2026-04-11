@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -24,13 +24,16 @@ class StateEvent(Event, ABC):
 
 
 @dataclass
-class TransitionEvent(Event, ABC):
-    """전이 관련 이벤트 베이스."""
+class CompletionEvent(StateEvent):
+    """상태 완료 시 발생하는 이벤트.
 
+    SimpleState 작업 완료, CompositeState sub_machine 종료,
+    ParallelState 전 Region 완료 시 발생.
+    """
 
-@dataclass
-class CompositeStateEvent(StateEvent, ABC):
-    """CompositeState 전용 이벤트."""
+    @property
+    def kind(self) -> str:
+        return "completion"
 
 
 @dataclass
