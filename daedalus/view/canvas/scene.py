@@ -43,6 +43,10 @@ class FsmScene(QGraphicsScene):
 
         self._project_vm.add_listener(self._rebuild)
 
+    def close(self) -> None:
+        """씬 종료 시 ProjectViewModel 리스너를 해제."""
+        self._project_vm.remove_listener(self._rebuild)
+
     def _rebuild(self) -> None:
         """ProjectViewModel과 씬 아이템을 동기화."""
         # 제거된 상태

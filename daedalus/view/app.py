@@ -35,6 +35,7 @@ class MainWindow(QMainWindow):
         self._project_vm = ProjectViewModel()  # shared VM for global state
         self._tab_vms: dict[int, ProjectViewModel] = {}  # per-canvas-tab VMs
         self._open_tabs: dict[str, int] = {}
+        self._active_stack = self._project_vm.command_stack
 
         self._setup_central()
         self._setup_docks()
@@ -55,7 +56,10 @@ class MainWindow(QMainWindow):
         tree_dock.setWidget(self._tree_panel)
         self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, tree_dock)
 
-        self._history_panel = HistoryPanel(self._project_vm.command_stack)
+        self._history_panel = HistoryPanel(
+            self._project_vm.command_stack,
+            on_goto=self._project_vm.notify,
+        )
         history_dock = QDockWidget("History")
         history_dock.setWidget(self._history_panel)
         self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, history_dock)
@@ -103,7 +107,7 @@ class MainWindow(QMainWindow):
 
     def _connect_signals(self) -> None:
         self._tree_panel.component_double_clicked.connect(self._open_component)
-        self._project_vm.command_stack.add_listener(self._update_undo_redo)
+        self._active_stack.add_listener(self._update_undo_redo)
 
     def _update_undo_redo(self) -> None:
         index = self._tabs.currentIndex()
@@ -147,6 +151,12 @@ class MainWindow(QMainWindow):
         name = next((n for n, i in self._open_tabs.items() if i == index), None)
         if name:
             del self._open_tabs[name]
+        # Deregister scene listener to break reference cycle
+        widget = self._tabs.widget(index)
+        if isinstance(widget, FsmCanvasView):
+            scene = widget.scene()
+            if isinstance(scene, FsmScene):
+                scene.close()
         # Remove tab VM
         self._tab_vms.pop(index, None)
         self._tabs.removeTab(index)
@@ -161,10 +171,17 @@ class MainWindow(QMainWindow):
 
     def _on_tab_changed(self, index: int) -> None:
         self._property_panel.clear()
+        self._active_stack.remove_listener(self._update_undo_redo)
         if index >= 0 and index in self._tab_vms:
             active_vm = self._tab_vms[index]
-            self._history_panel.set_stack(active_vm.command_stack)
+            self._active_stack = active_vm.command_stack
+            self._history_panel.set_stack(
+                active_vm.command_stack, on_goto=active_vm.notify
+            )
             self._property_panel.set_project_vm(active_vm)
+        else:
+            self._active_stack = self._project_vm.command_stack
+        self._active_stack.add_listener(self._update_undo_redo)
         self._update_undo_redo()
 
     def _on_scene_selection(self, scene: FsmScene) -> None:
