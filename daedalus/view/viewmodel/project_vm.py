@@ -45,13 +45,15 @@ class ProjectViewModel:
         self.state_vms.append(vm)
 
     def remove_state_vm(self, vm: StateViewModel) -> None:
-        self.state_vms.remove(vm)
+        if vm in self.state_vms:
+            self.state_vms.remove(vm)
 
     def add_transition_vm(self, vm: TransitionViewModel) -> None:
         self.transition_vms.append(vm)
 
     def remove_transition_vm(self, vm: TransitionViewModel) -> None:
-        self.transition_vms.remove(vm)
+        if vm in self.transition_vms:
+            self.transition_vms.remove(vm)
 
     # --- 옵저버 ---
 

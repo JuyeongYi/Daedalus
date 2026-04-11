@@ -81,20 +81,24 @@ class TestProjectViewModel:
         from daedalus.view.commands.base import Command
 
         class NoopCmd(Command):
-            executed = False
+            def __init__(self) -> None:
+                self.executed = False
 
             @property
             def description(self) -> str:
                 return "noop"
 
             def execute(self) -> None:
-                NoopCmd.executed = True
+                self.executed = True
 
             def undo(self) -> None:
-                NoopCmd.executed = False
+                self.executed = False
 
         pvm = ProjectViewModel()
+        calls: list[str] = []
+        pvm.add_listener(lambda: calls.append("fired"))
         cmd = NoopCmd()
         pvm.execute(cmd)
-        assert NoopCmd.executed
+        assert cmd.executed
         assert pvm.command_stack.current_index == 0
+        assert calls == ["fired"]
