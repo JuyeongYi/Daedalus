@@ -4,7 +4,7 @@ from daedalus.model.validation import ValidationError, Validator
 from daedalus.model.fsm.state import SimpleState, CompositeState
 from daedalus.model.fsm.transition import Transition
 from daedalus.model.fsm.machine import StateMachine
-from daedalus.model.fsm.variable import Variable, VariableScope, VariableType
+from daedalus.model.fsm.variable import Variable, VariableScope
 
 
 def _make_sm(states, transitions):
@@ -16,14 +16,26 @@ def _make_sm(states, transitions):
     )
 
 
+def _make_agent(name, child_names):
+    """헬퍼: SimpleState 자식을 가진 CompositeState 생성."""
+    children = [SimpleState(name=n) for n in child_names]
+    sub = StateMachine(
+        name=f"{name}_flow",
+        states=children,
+        initial_state=children[0],
+    )
+    return CompositeState(name=name, sub_machine=sub)
+
+
 def test_no_agent_inside_agent():
     """CompositeState 내부에 CompositeState 불가."""
-    inner_agent = CompositeState(name="inner_agent", children=[SimpleState(name="x")])
-    outer_agent = CompositeState(
-        name="outer_agent",
-        children=[inner_agent],
+    inner_agent = _make_agent("inner_agent", ["x"])
+    outer_sub = StateMachine(
+        name="outer_flow",
+        states=[inner_agent],
         initial_state=inner_agent,
     )
+    outer_agent = CompositeState(name="outer_agent", sub_machine=outer_sub)
     sm = _make_sm([outer_agent], [])
     errors = Validator.validate(sm)
     assert any(e.rule == "no_nested_agent" for e in errors)
@@ -31,8 +43,8 @@ def test_no_agent_inside_agent():
 
 def test_no_agent_to_agent_direct():
     """Agent→Agent 직접 엣지 불가."""
-    a1 = CompositeState(name="agent1", children=[SimpleState(name="x")])
-    a2 = CompositeState(name="agent2", children=[SimpleState(name="y")])
+    a1 = _make_agent("agent1", ["x"])
+    a2 = _make_agent("agent2", ["y"])
     t = Transition(source=a1, target=a2)
     sm = _make_sm([a1, a2], [t])
     errors = Validator.validate(sm)
@@ -42,7 +54,7 @@ def test_no_agent_to_agent_direct():
 def test_valid_skill_to_agent():
     """Skill→Agent 엣지는 허용."""
     skill = SimpleState(name="skill_a")
-    agent = CompositeState(name="agent_x", children=[SimpleState(name="s1")])
+    agent = _make_agent("agent_x", ["s1"])
     t = Transition(source=skill, target=agent)
     sm = _make_sm([skill, agent], [t])
     errors = Validator.validate(sm)

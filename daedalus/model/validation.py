@@ -29,7 +29,7 @@ class Validator:
         errors: list[ValidationError] = []
         for state in states:
             if isinstance(state, CompositeState):
-                for child in state.children:
+                for child in state.sub_machine.states:
                     if isinstance(child, CompositeState):
                         errors.append(
                             ValidationError(
