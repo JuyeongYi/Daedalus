@@ -477,7 +477,7 @@ class _EventCard(QFrame):
     ) -> None:
         super().__init__(parent)
         self._event = event_def
-        self._popup = _ColorPickerPopup()
+        self._popup = _ColorPickerPopup(parent=self)
         self._popup.color_selected.connect(self._on_color_picked)
 
         self.setFrameShape(QFrame.Shape.StyledPanel)
@@ -608,8 +608,10 @@ class _TransferOnPanel(QWidget):
     def _rebuild_cards(self) -> None:
         while self._cards_layout.count():
             child = self._cards_layout.takeAt(0)
-            if child.widget():
-                child.widget().deleteLater()
+            if child is not None:
+                w = child.widget()
+                if w is not None:
+                    w.deleteLater()
         for event_def in self._transfer_on:
             can_delete = len(self._transfer_on) > 1
             card = _EventCard(event_def, can_delete=can_delete)
