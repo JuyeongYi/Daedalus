@@ -38,7 +38,7 @@ _DARK_BG = "#111120"
 
 # QTreeWidgetItem 커스텀 데이터 롤
 _ROLE_SECTION = Qt.ItemDataRole.UserRole
-_ROLE_IS_TRANSFER_ON = Qt.ItemDataRole.UserRole + 1
+_ROLE_IS_TRANSFER_ON = Qt.ItemDataRole.UserRole + 1  # reserved — TransferOn is a QPushButton, not a tree item
 
 _COLOR_PRESETS = [
     "#4488ff", "#cc3333", "#cc8800", "#44aa44",

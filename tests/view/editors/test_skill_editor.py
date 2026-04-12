@@ -67,13 +67,7 @@ def test_tree_sidebar_procedural(qapp):
 
 def test_tree_sidebar_declarative_no_transfer_on(qapp):
     from daedalus.view.editors.skill_editor import _TreeSidebar
-    from PyQt6.QtCore import Qt
     comp = _make_declarative()
     sidebar = _TreeSidebar(comp)
-    # DeclarativeSkill은 TransferOn 없음
-    has_transfer_on = False
-    for i in range(sidebar.tree_widget().topLevelItemCount()):
-        item = sidebar.tree_widget().topLevelItem(i)
-        if item and item.data(0, Qt.ItemDataRole.UserRole + 1):
-            has_transfer_on = True
-    assert not has_transfer_on
+    # DeclarativeSkill은 TransferOn QPushButton 없음
+    assert not hasattr(sidebar, "_transfer_on_btn")
