@@ -6,7 +6,7 @@ from daedalus.model.fsm.state import SimpleState
 from daedalus.model.fsm.transition import Transition
 
 
-@dataclass
+@dataclass(eq=False)
 class StateViewModel:
     """SimpleState + UI 전용 상태."""
 
@@ -18,7 +18,7 @@ class StateViewModel:
     selected: bool = False
 
 
-@dataclass
+@dataclass(eq=False)
 class TransitionViewModel:
     """Transition + UI 전용 상태."""
 
