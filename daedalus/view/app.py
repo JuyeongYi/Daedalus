@@ -41,11 +41,13 @@ class MainWindow(QMainWindow):
         self._fsm_scene: FsmScene | None = None
         self._open_tabs: dict[str, int] = {}  # SkillEditor 탭만 관리
         self._active_stack = self._project_vm.command_stack
+        self._initialized = False  # setup 완료 전 시그널 발화 방어용
 
         self._setup_central()
         self._setup_docks()
         self._setup_menus()
         self._setup_statusbar()
+        self._initialized = True
         self._connect_signals()
 
     # --- 초기화 ---
@@ -54,7 +56,7 @@ class MainWindow(QMainWindow):
         self._tabs = QTabWidget()
         self._tabs.setTabsClosable(True)
         self._tabs.tabCloseRequested.connect(self._close_tab)
-        self._tabs.currentChanged.connect(self._on_tab_changed)
+        # currentChanged는 _setup_docks() 완료 후 _connect_signals()에서 연결
         self.setCentralWidget(self._tabs)
 
         # 프로젝트 FSM 캔버스 — 항상 탭 0, 닫을 수 없음
@@ -129,6 +131,8 @@ class MainWindow(QMainWindow):
         self._status_label.setText(f"States: {s} | Transitions: {t}")
 
     def _connect_signals(self) -> None:
+        # 모든 dock/panel이 초기화된 후 연결해야 _on_tab_changed에서 safe
+        self._tabs.currentChanged.connect(self._on_tab_changed)
         self._registry_panel.component_double_clicked.connect(self._open_component)
         self._registry_panel.new_skill_requested.connect(self._on_new_skill_requested)
         self._active_stack.add_listener(self._update_undo_redo)
@@ -203,6 +207,9 @@ class MainWindow(QMainWindow):
         }
 
     def _on_tab_changed(self, index: int) -> None:
+        if not self._initialized:
+            return
+
         self._active_stack.remove_listener(self._update_undo_redo)
 
         if index == _FSM_TAB_INDEX:
