@@ -62,6 +62,12 @@ def _make_fsm():
     return _SM(name="f", states=[s], initial_state=s)
 
 
+def test_procedural_skill_output_events_default():
+    fsm = _make_fsm()
+    skill = ProceduralSkill(fsm=fsm, name="S", description="d")
+    assert skill.output_events == ["done"]
+
+
 def test_procedural_skill_sections_default():
     fsm = _make_fsm()
     skill = ProceduralSkill(fsm=fsm, name="S", description="d")
