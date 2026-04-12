@@ -32,6 +32,7 @@ class Validator:
         errors.extend(Validator._check_required_inputs(sm.transitions))
         errors.extend(Validator._check_pseudo_state_hooks(sm.states))
         errors.extend(Validator._check_completion_events(sm))
+        errors.extend(Validator._check_duplicate_skill_ref(sm.states))
         # 재귀
         for state in sm.states:
             if isinstance(state, CompositeState):
@@ -154,4 +155,29 @@ class Validator:
                     ),
                     source=cs.name,
                 ))
+        return errors
+
+    @staticmethod
+    def _check_duplicate_skill_ref(states: list) -> list[ValidationError]:
+        from daedalus.model.fsm.state import SimpleState
+        seen: set[int] = set()
+        errors: list[ValidationError] = []
+        for state in states:
+            if not isinstance(state, SimpleState):
+                continue
+            ref = state.skill_ref
+            if ref is None:
+                continue
+            ref_id = id(ref)
+            if ref_id in seen:
+                errors.append(ValidationError(
+                    rule="no_duplicate_skill_ref",
+                    message=(
+                        f"'{ref.name}' 스킬/에이전트가 동일 StateMachine에 "
+                        f"두 번 이상 배치되었습니다."
+                    ),
+                    source=state.name,
+                ))
+            else:
+                seen.add(ref_id)
         return errors

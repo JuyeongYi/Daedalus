@@ -199,3 +199,45 @@ def test_recursive_validation_in_region():
     sm = _make_sm([ps], [])
     errors = Validator.validate(sm)
     assert any(e.rule == "final_states_in_states" for e in errors)
+
+
+# -- no_duplicate_skill_ref --
+
+from daedalus.model.plugin.skill import ProceduralSkill
+
+
+def _make_procedural(name: str) -> ProceduralSkill:
+    s = SimpleState(name="s")
+    fsm = StateMachine(name=f"{name}_fsm", states=[s], initial_state=s)
+    return ProceduralSkill(fsm=fsm, name=name, description="d")
+
+
+def test_no_duplicate_skill_ref_passes_when_unique():
+    skill_a = _make_procedural("SkillA")
+    skill_b = _make_procedural("SkillB")
+    s1 = SimpleState(name="n1", skill_ref=skill_a)
+    s2 = SimpleState(name="n2", skill_ref=skill_b)
+    sm = _make_sm([s1, s2], [])
+    errors = Validator.validate(sm)
+    dup = [e for e in errors if e.rule == "no_duplicate_skill_ref"]
+    assert dup == []
+
+
+def test_no_duplicate_skill_ref_fails_when_same_skill_placed_twice():
+    skill = _make_procedural("SkillA")
+    s1 = SimpleState(name="n1", skill_ref=skill)
+    s2 = SimpleState(name="n2", skill_ref=skill)
+    sm = _make_sm([s1, s2], [])
+    errors = Validator.validate(sm)
+    dup = [e for e in errors if e.rule == "no_duplicate_skill_ref"]
+    assert len(dup) == 1
+    assert "SkillA" in dup[0].message
+
+
+def test_no_duplicate_skill_ref_allows_multiple_none():
+    s1 = SimpleState(name="n1")
+    s2 = SimpleState(name="n2")
+    sm = _make_sm([s1, s2], [])
+    errors = Validator.validate(sm)
+    dup = [e for e in errors if e.rule == "no_duplicate_skill_ref"]
+    assert dup == []
