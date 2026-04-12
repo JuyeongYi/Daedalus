@@ -432,3 +432,306 @@ class _TreeSidebar(QWidget):
         """현재 선택 아이템의 깊이 (없으면 -1)."""
         item = self._tree.currentItem()
         return _section_depth(item) if item is not None else -1
+
+
+class _ColorPickerPopup(QFrame):
+    """8색 프리셋 팔레트 팝업 (모달 아님)."""
+
+    color_selected = pyqtSignal(str)
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setFrameShape(QFrame.Shape.StyledPanel)
+        self.setStyleSheet(
+            "QFrame { background: #1a1a2e; border: 1px solid #3a4a6a; border-radius: 5px; }"
+        )
+        self.setWindowFlags(Qt.WindowType.Popup)
+        lay = QHBoxLayout(self)
+        lay.setContentsMargins(6, 6, 6, 6)
+        lay.setSpacing(4)
+        for hex_color in _COLOR_PRESETS:
+            btn = QPushButton()
+            btn.setFixedSize(18, 18)
+            btn.setStyleSheet(
+                f"background: {hex_color}; border: 2px solid #333; border-radius: 9px;"
+            )
+            btn.clicked.connect(lambda _checked, c=hex_color: self._emit(c))
+            lay.addWidget(btn)
+
+    def _emit(self, color: str) -> None:
+        self.color_selected.emit(color)
+        self.hide()
+
+
+class _EventCard(QFrame):
+    """TransferOn 패널의 이벤트 한 항목 카드."""
+
+    delete_requested = pyqtSignal(object)   # EventDef
+    changed = pyqtSignal()
+
+    def __init__(
+        self,
+        event_def: EventDef,
+        can_delete: bool = True,
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self._event = event_def
+        self._popup = _ColorPickerPopup()
+        self._popup.color_selected.connect(self._on_color_picked)
+
+        self.setFrameShape(QFrame.Shape.StyledPanel)
+        self._update_border()
+
+        lay = QHBoxLayout(self)
+        lay.setContentsMargins(8, 8, 8, 8)
+        lay.setSpacing(8)
+
+        # 색상 원 버튼
+        self._color_btn = QPushButton()
+        self._color_btn.setFixedSize(14, 14)
+        self._color_btn.setStyleSheet(
+            f"background: {event_def.color}; border: 2px solid #335; border-radius: 7px;"
+        )
+        self._color_btn.clicked.connect(self._show_color_popup)
+        lay.addWidget(self._color_btn)
+
+        # 이름 + 설명 컬럼
+        col = QVBoxLayout()
+        col.setSpacing(3)
+
+        name_row = QHBoxLayout()
+        self._w_name = QLineEdit(event_def.name)
+        self._w_name.setStyleSheet(
+            "background: transparent; border: none; border-bottom: 1px solid #335; "
+            "color: #88aaff; font-size: 11px; font-weight: bold;"
+        )
+        self._w_name.setFixedWidth(100)
+        self._w_name.editingFinished.connect(self._on_name_changed)
+        name_row.addWidget(self._w_name)
+        name_lbl = QLabel("이벤트 이름")
+        name_lbl.setStyleSheet("font-size: 8px; color: #335;")
+        name_row.addWidget(name_lbl)
+        name_row.addStretch()
+        col.addLayout(name_row)
+
+        self._w_desc = QLineEdit(event_def.description)
+        self._w_desc.setPlaceholderText("간략한 설명 (선택)")
+        self._w_desc.setStyleSheet(_INPUT_STYLE)
+        self._w_desc.editingFinished.connect(self._on_desc_changed)
+        col.addWidget(self._w_desc)
+
+        lay.addLayout(col, 1)
+
+        # 삭제 버튼
+        self._del_btn = QPushButton("✕")
+        self._del_btn.setFixedSize(20, 20)
+        self._del_btn.setEnabled(can_delete)
+        self._del_btn.setStyleSheet(
+            "color: #335; background: transparent; border: none; font-size: 11px;"
+        )
+        self._del_btn.clicked.connect(lambda: self.delete_requested.emit(self._event))
+        lay.addWidget(self._del_btn)
+
+    def _update_border(self) -> None:
+        c = QColor(self._event.color)
+        border = c.name()
+        bg = c.darker(300).name()
+        self.setStyleSheet(
+            f"QFrame {{ background: {bg}; border: 1px solid {border}; border-radius: 5px; }}"
+        )
+
+    def _show_color_popup(self) -> None:
+        pos = self._color_btn.mapToGlobal(self._color_btn.rect().bottomLeft())
+        self._popup.move(pos)
+        self._popup.show()
+
+    def _on_color_picked(self, color: str) -> None:
+        self._event.color = color
+        self._color_btn.setStyleSheet(
+            f"background: {color}; border: 2px solid #335; border-radius: 7px;"
+        )
+        self._update_border()
+        self.changed.emit()
+
+    def _on_name_changed(self) -> None:
+        self._event.name = self._w_name.text().strip() or self._event.name
+        self._w_name.setText(self._event.name)
+        self.changed.emit()
+
+    def _on_desc_changed(self) -> None:
+        self._event.description = self._w_desc.text()
+        self.changed.emit()
+
+
+class _TransferOnPanel(QWidget):
+    """TransferOn 선택 시 우측에 표시되는 이벤트 카드 목록."""
+
+    transfer_on_changed = pyqtSignal()
+
+    def __init__(
+        self,
+        transfer_on: list[EventDef],
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self._transfer_on = transfer_on
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(12, 12, 12, 12)
+        lay.setSpacing(8)
+
+        hdr = QLabel("출력 이벤트 정의 — 노드 포트로 자동 반영")
+        hdr.setStyleSheet("font-size: 9px; color: #446; margin-bottom: 4px;")
+        lay.addWidget(hdr)
+
+        self._cards_widget = QWidget()
+        self._cards_layout = QVBoxLayout(self._cards_widget)
+        self._cards_layout.setContentsMargins(0, 0, 0, 0)
+        self._cards_layout.setSpacing(6)
+        lay.addWidget(self._cards_widget)
+
+        btn_add = QPushButton("＋ 이벤트 추가")
+        btn_add.setStyleSheet(
+            "border: 1px dashed #2a4a2a; border-radius: 5px; color: #446; "
+            "font-size: 9px; padding: 7px; background: transparent;"
+        )
+        btn_add.clicked.connect(self._on_add_event)
+        lay.addWidget(btn_add)
+
+        hint = QLabel("색상 원 클릭 → 색상 팔레트 선택. 변경 즉시 캔버스 노드에 반영.")
+        hint.setStyleSheet("font-size: 8px; color: #335;")
+        lay.addWidget(hint)
+
+        lay.addStretch()
+        self._rebuild_cards()
+
+    def _rebuild_cards(self) -> None:
+        while self._cards_layout.count():
+            child = self._cards_layout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
+        for event_def in self._transfer_on:
+            can_delete = len(self._transfer_on) > 1
+            card = _EventCard(event_def, can_delete=can_delete)
+            card.changed.connect(self.transfer_on_changed)
+            card.delete_requested.connect(self._on_delete_event)
+            self._cards_layout.addWidget(card)
+
+    def _on_add_event(self) -> None:
+        self._transfer_on.append(EventDef("new_event"))
+        self._rebuild_cards()
+        self.transfer_on_changed.emit()
+
+    def _on_delete_event(self, event_def: EventDef) -> None:
+        if len(self._transfer_on) <= 1:
+            return
+        self._transfer_on.remove(event_def)
+        self._rebuild_cards()
+        self.transfer_on_changed.emit()
+
+
+class _ContentPanel(QWidget):
+    """우측 패널 — 브레드크럼 툴바 + 타이틀 인라인 편집 + QTextEdit."""
+
+    add_child_requested = pyqtSignal()
+    delete_requested = pyqtSignal()
+    variable_insert_requested = pyqtSignal()
+    content_changed = pyqtSignal()
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._section: Section | None = None
+
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(0)
+
+        # --- 툴바 ---
+        toolbar = QWidget()
+        toolbar.setStyleSheet("background: #111120; border-bottom: 1px solid #1a1a33;")
+        tb_lay = QHBoxLayout(toolbar)
+        tb_lay.setContentsMargins(10, 5, 10, 5)
+        tb_lay.setSpacing(6)
+
+        self._breadcrumb = QLabel("")
+        self._breadcrumb.setStyleSheet("font-size: 9px; color: #446;")
+        tb_lay.addWidget(self._breadcrumb)
+        tb_lay.addStretch()
+
+        self._btn_variable = QPushButton("{ } 변수 삽입")
+        self._btn_variable.setStyleSheet(
+            "background: #1a2a1a; border: 1px solid #3a7a3a; border-radius: 3px; "
+            "padding: 2px 8px; font-size: 9px; color: #88cc88;"
+        )
+        self._btn_variable.clicked.connect(self.variable_insert_requested)
+        tb_lay.addWidget(self._btn_variable)
+
+        self._btn_add_child = QPushButton("＋ 하위 섹션")
+        self._btn_add_child.setStyleSheet(
+            "background: #1a1a2e; border: 1px solid #333; border-radius: 3px; "
+            "padding: 2px 7px; font-size: 9px; color: #668;"
+        )
+        self._btn_add_child.clicked.connect(self.add_child_requested)
+        tb_lay.addWidget(self._btn_add_child)
+
+        self._btn_delete = QPushButton("삭제")
+        self._btn_delete.setStyleSheet(
+            "background: #2a1a1a; border: 1px solid #443; border-radius: 3px; "
+            "padding: 2px 7px; font-size: 9px; color: #885;"
+        )
+        self._btn_delete.clicked.connect(self.delete_requested)
+        tb_lay.addWidget(self._btn_delete)
+
+        lay.addWidget(toolbar)
+
+        # --- 타이틀 인라인 편집 ---
+        title_area = QWidget()
+        title_area.setStyleSheet(f"background: {_DARK_BG};")
+        ta_lay = QVBoxLayout(title_area)
+        ta_lay.setContentsMargins(12, 8, 12, 4)
+        self._w_title = QLineEdit()
+        self._w_title.setPlaceholderText("섹션 타이틀")
+        self._w_title.setStyleSheet(
+            "background: transparent; border: none; border-bottom: 1px solid #333; "
+            "color: #ccc; font-size: 14px; font-weight: bold;"
+        )
+        self._w_title.editingFinished.connect(self._save_title)
+        ta_lay.addWidget(self._w_title)
+        lay.addWidget(title_area)
+
+        # --- 본문 텍스트 ---
+        self._w_content = QTextEdit()
+        self._w_content.setStyleSheet(
+            f"background: {_DARK_BG}; color: #aaa; border: none; "
+            "font-family: Consolas, monospace; font-size: 10px; padding: 4px 12px;"
+        )
+        self._w_content.textChanged.connect(self._save_content)
+        lay.addWidget(self._w_content, 1)
+
+    def current_section(self) -> Section | None:
+        return self._section
+
+    def show_section(self, section: Section, path: list[str]) -> None:
+        self._section = section
+        crumb = " › ".join(path)
+        self._breadcrumb.setText(crumb)
+        self._w_title.setText(section.title)
+        self._w_content.blockSignals(True)
+        self._w_content.setPlainText(section.content)
+        self._w_content.blockSignals(False)
+
+    def set_add_child_enabled(self, enabled: bool) -> None:
+        self._btn_add_child.setEnabled(enabled)
+
+    def insert_variable(self, var_name: str) -> None:
+        self._w_content.insertPlainText(var_name)
+
+    def _save_title(self) -> None:
+        if self._section is not None:
+            self._section.title = self._w_title.text().strip() or self._section.title
+            self.content_changed.emit()
+
+    def _save_content(self) -> None:
+        if self._section is not None:
+            self._section.content = self._w_content.toPlainText()
+            self.content_changed.emit()

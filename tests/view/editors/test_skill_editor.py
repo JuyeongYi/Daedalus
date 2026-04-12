@@ -71,3 +71,30 @@ def test_tree_sidebar_declarative_no_transfer_on(qapp):
     sidebar = _TreeSidebar(comp)
     # DeclarativeSkill은 TransferOn QPushButton 없음
     assert not hasattr(sidebar, "_transfer_on_btn")
+
+
+def test_content_panel_show_section(qapp):
+    from daedalus.model.fsm.section import Section
+    from daedalus.view.editors.skill_editor import _ContentPanel
+    panel = _ContentPanel()
+    section = Section(title="Role", content="You are a writer.")
+    panel.show_section(section, ["Persona", "Role"])
+    assert panel.current_section() is section
+
+
+def test_transfer_on_panel_procedural(qapp):
+    from daedalus.view.editors.skill_editor import _TransferOnPanel
+    from daedalus.model.fsm.section import EventDef
+    from PyQt6.QtWidgets import QWidget
+    events = [EventDef("done"), EventDef("error", color="#cc3333")]
+    panel = _TransferOnPanel(events)
+    assert isinstance(panel, QWidget)
+
+
+def test_event_card_renders(qapp):
+    from daedalus.view.editors.skill_editor import _EventCard
+    from daedalus.model.fsm.section import EventDef
+    from PyQt6.QtWidgets import QFrame
+    e = EventDef("done", color="#4488ff")
+    card = _EventCard(e, can_delete=False)
+    assert isinstance(card, QFrame)
