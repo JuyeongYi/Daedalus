@@ -139,3 +139,31 @@ def test_skill_editor_changed_signal_exists(qapp):
     editor = SkillEditor(comp)
     # skill_changed 시그널이 존재하는지 확인 (기존 API 호환)
     assert hasattr(editor, "skill_changed")
+
+
+def test_node_item_port_color_from_event_def(qapp):
+    """EventDef.color가 StateNodeItem 포트 색상에 반영되는지 확인."""
+    from PyQt6.QtGui import QColor
+    from daedalus.model.fsm.section import EventDef
+    from daedalus.model.fsm.state import SimpleState
+    from daedalus.model.fsm.machine import StateMachine
+    from daedalus.model.plugin.skill import ProceduralSkill
+    from daedalus.view.viewmodel.state_vm import StateViewModel
+    from daedalus.view.canvas.node_item import StateNodeItem
+
+    s = SimpleState(name="s")
+    fsm = StateMachine(name="f", states=[s], initial_state=s)
+    skill = ProceduralSkill(
+        fsm=fsm, name="ColorSkill", description="d",
+        transfer_on=[EventDef("done", color="#aa44cc"), EventDef("error", color="#cc3333")],
+    )
+    state = SimpleState(name="node", skill_ref=skill)
+    vm = StateViewModel(model=state)
+    item = StateNodeItem(vm)
+
+    defs = item._event_defs()
+    assert len(defs) == 2
+    assert defs[0].color == "#aa44cc"
+    assert defs[1].color == "#cc3333"
+    # _output_events() 프로퍼티도 호환 확인
+    assert item._output_events() == ["done", "error"]

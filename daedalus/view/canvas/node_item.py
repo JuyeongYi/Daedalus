@@ -7,28 +7,22 @@ from PyQt6.QtCore import QPointF, QRectF, Qt
 from PyQt6.QtGui import QBrush, QColor, QFont, QPainter, QPen
 from PyQt6.QtWidgets import QGraphicsItem, QStyleOptionGraphicsItem, QWidget
 
+from daedalus.model.fsm.section import EventDef
 from daedalus.view.viewmodel.state_vm import StateViewModel
 
-_W = 160.0          # 노드 본체 너비
-_HEADER_H = 20.0    # 헤더 높이
-_PORT_R = 6.0       # 포트 원 반지름
-_PORT_SPACING = 22.0  # 출력 포트 간 수직 간격
-_PORT_PAD = 12.0    # 포트 영역 상하 패딩
-_LABEL_W = 44.0     # 출력 포트 레이블 너비
+_W = 160.0
+_HEADER_H = 20.0
+_PORT_R = 6.0
+_PORT_SPACING = 22.0
+_PORT_PAD = 12.0
+_LABEL_W = 44.0
 
-# skill kind → (배경, 테두리, 헤더 텍스트, 아이콘)
 _TYPE_STYLE: dict[str | None, tuple[str, str, str, str]] = {
     "procedural_skill": ("#1a2a1a", "#4a8a4a", "PROCEDURAL", "⚙"),
     "declarative_skill": ("#2a2a1a", "#8a8a4a", "DECLARATIVE", "📄"),
     "agent":             ("#2a1a1a", "#8a4a4a", "AGENT",       "🤖"),
     None:                ("#1a1a2a", "#334466", "STATE",        ""),
 }
-
-_PORT_COLORS: dict[str, QColor] = {
-    "done":  QColor("#4488ff"),
-    "error": QColor("#cc3333"),
-}
-_PORT_DEFAULT_COLOR = QColor("#cc8800")
 
 
 class StateNodeItem(QGraphicsItem):
@@ -52,9 +46,15 @@ class StateNodeItem(QGraphicsItem):
     def state_vm(self) -> StateViewModel:
         return self._state_vm
 
-    # --- 치수 ---
+    def _event_defs(self) -> list[EventDef]:
+        """skill_ref.transfer_on에서 EventDef 목록 반환."""
+        ref = self._state_vm.model.skill_ref
+        if ref is not None and hasattr(ref, "transfer_on"):
+            return list(ref.transfer_on)
+        return []
 
     def _output_events(self) -> list[str]:
+        """하위 호환용 — 이벤트 이름 목록만 반환."""
         ref = self._state_vm.model.skill_ref
         if ref is not None and hasattr(ref, "output_events"):
             return list(ref.output_events)
@@ -77,11 +77,8 @@ class StateNodeItem(QGraphicsItem):
             self._state_vm.height = new_h
 
     def update_from_model(self) -> None:
-        """output_events 변경 후 호출 — 높이/포트 재계산."""
         self._sync_height()
         self.update()
-
-    # --- QGraphicsItem ---
 
     def boundingRect(self) -> QRectF:
         h = self._height()
@@ -154,19 +151,21 @@ class StateNodeItem(QGraphicsItem):
         painter.setBrush(QBrush(QColor("#888")))
         painter.drawEllipse(QPointF(0.0, h / 2), _PORT_R, _PORT_R)
 
-        # 출력 포트 (우측, 이벤트별)
-        for i, event_name in enumerate(events):
-            y = self._output_port_y(i, n)
-            port_color = _PORT_COLORS.get(event_name, _PORT_DEFAULT_COLOR)
+        # 출력 포트 — EventDef.color 직접 사용
+        event_defs = self._event_defs()
+        if not event_defs:
+            event_defs = [EventDef("done", color="#4488ff")]
+        n_defs = len(event_defs)
+        for i, edef in enumerate(event_defs):
+            y = self._output_port_y(i, n_defs)
+            port_color = QColor(edef.color)
             painter.setPen(QPen(QColor("#111"), 1))
             painter.setBrush(QBrush(port_color))
             painter.drawEllipse(QPointF(_W, y), _PORT_R, _PORT_R)
             lbl_rect = QRectF(_W + _PORT_R + 2, y - 7, _LABEL_W - 4, 14)
             painter.setPen(QPen(port_color.lighter(140)))
             painter.setFont(QFont("Segoe UI", 7))
-            painter.drawText(lbl_rect, Qt.AlignmentFlag.AlignVCenter, event_name)
-
-    # --- 포트 씬 좌표 ---
+            painter.drawText(lbl_rect, Qt.AlignmentFlag.AlignVCenter, edef.name)
 
     def output_port_scene_pos(self, event_name: str) -> QPointF:
         events = self._output_events() or ["done"]
@@ -179,8 +178,6 @@ class StateNodeItem(QGraphicsItem):
 
     def input_port_scene_pos(self) -> QPointF:
         return self.mapToScene(QPointF(0.0, self._height() / 2))
-
-    # --- 히트 테스트 ---
 
     def _get_output_port_event(self, local_pos: QPointF) -> str | None:
         events = self._output_events() or ["done"]
@@ -198,8 +195,6 @@ class StateNodeItem(QGraphicsItem):
         h = self._height()
         dy = local_pos.y() - h / 2
         return local_pos.x() <= _PORT_R * 2 and abs(dy) <= _PORT_R * 2
-
-    # --- 마우스 이벤트 ---
 
     def mousePressEvent(self, event) -> None:
         if event.button() == Qt.MouseButton.LeftButton:
