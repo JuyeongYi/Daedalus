@@ -76,14 +76,14 @@ class _OptionalRow(QWidget):
         widget.setStyleSheet(_INPUT_STYLE)
         layout.addWidget(widget, 1)
 
+        self._opacity = QGraphicsOpacityEffect(self)
+        self.setGraphicsEffect(self._opacity)
         self._cb.toggled.connect(self._update_state)
         self._update_state(initially_enabled)
 
     def _update_state(self, checked: bool) -> None:
         self._widget.setEnabled(checked)
-        effect = QGraphicsOpacityEffect(self)
-        effect.setOpacity(1.0 if checked else 0.4)
-        self.setGraphicsEffect(effect)
+        self._opacity.setOpacity(1.0 if checked else 0.4)
         self.toggled.emit(checked)
 
     def is_checked(self) -> bool:
@@ -151,73 +151,70 @@ class _FrontmatterPanel(QScrollArea):
         config = getattr(component, "config", None)
 
         # model
-        w_model = QComboBox()
+        self._w_model = QComboBox()
         for e in ModelType:
-            w_model.addItem(e.value)
+            self._w_model.addItem(e.value)
         if config is not None:
             mv = config.model.value if isinstance(config.model, ModelType) else str(config.model)
-            idx = w_model.findText(mv)
+            idx = self._w_model.findText(mv)
             if idx >= 0:
-                w_model.setCurrentIndex(idx)
-        lay.addWidget(
-            _OptionalRow(
-                "model", w_model,
-                initially_enabled=(config is not None and config.model != ModelType.INHERIT),
-            )
+                self._w_model.setCurrentIndex(idx)
+        self._row_model = _OptionalRow(
+            "model", self._w_model,
+            initially_enabled=(config is not None and config.model != ModelType.INHERIT),
         )
+        lay.addWidget(self._row_model)
 
         # effort
-        w_effort = QComboBox()
+        self._w_effort = QComboBox()
         for e in EffortLevel:
-            w_effort.addItem(e.value)
+            self._w_effort.addItem(e.value)
         if config is not None and config.effort is not None:
-            idx = w_effort.findText(config.effort.value)
+            idx = self._w_effort.findText(config.effort.value)
             if idx >= 0:
-                w_effort.setCurrentIndex(idx)
-        lay.addWidget(
-            _OptionalRow(
-                "effort", w_effort,
-                initially_enabled=(config is not None and config.effort is not None),
-            )
+                self._w_effort.setCurrentIndex(idx)
+        self._row_effort = _OptionalRow(
+            "effort", self._w_effort,
+            initially_enabled=(config is not None and config.effort is not None),
         )
+        lay.addWidget(self._row_effort)
 
         # allowed-tools (SkillConfig 계열)
         if config is not None and hasattr(config, "allowed_tools"):
-            w_tools = QLineEdit(" ".join(config.allowed_tools))
-            w_tools.setPlaceholderText("Read Grep WebSearch")
-            lay.addWidget(
-                _OptionalRow(
-                    "allowed-tools", w_tools,
-                    initially_enabled=bool(config.allowed_tools),
-                )
+            self._w_tools = QLineEdit(" ".join(config.allowed_tools))
+            self._w_tools.setPlaceholderText("Read Grep WebSearch")
+            self._row_tools = _OptionalRow(
+                "allowed-tools", self._w_tools,
+                initially_enabled=bool(config.allowed_tools),
             )
+            lay.addWidget(self._row_tools)
 
         # ProceduralSkill 전용 필드
         if isinstance(config, ProceduralSkillConfig):
-            w_ctx = QComboBox()
+            self._w_context = QComboBox()
             for e in SkillContext:
-                w_ctx.addItem(e.value)
-            idx = w_ctx.findText(config.context.value)
+                self._w_context.addItem(e.value)
+            idx = self._w_context.findText(config.context.value)
             if idx >= 0:
-                w_ctx.setCurrentIndex(idx)
-            lay.addWidget(_OptionalRow("context", w_ctx, initially_enabled=True))
+                self._w_context.setCurrentIndex(idx)
+            lay.addWidget(_OptionalRow("context", self._w_context, initially_enabled=True))
 
-            w_paths = QLineEdit(" ".join(config.paths) if config.paths else "")
-            w_paths.setPlaceholderText("src/**/*.py")
+            self._w_paths = QLineEdit(" ".join(config.paths) if config.paths else "")
+            self._w_paths.setPlaceholderText("src/**/*.py")
             lay.addWidget(
                 _OptionalRow(
-                    "paths", w_paths,
+                    "paths", self._w_paths,
                     initially_enabled=bool(config.paths),
                 )
             )
 
-            w_shell = QComboBox()
+            self._w_shell = QComboBox()
             for e in SkillShell:
-                w_shell.addItem(e.value)
-            idx = w_shell.findText(config.shell.value)
+                self._w_shell.addItem(e.value)
+            idx = self._w_shell.findText(config.shell.value)
             if idx >= 0:
-                w_shell.setCurrentIndex(idx)
-            lay.addWidget(_OptionalRow("shell", w_shell, initially_enabled=True))
+                self._w_shell.setCurrentIndex(idx)
+            lay.addWidget(_OptionalRow("shell", self._w_shell, initially_enabled=True))
 
             self._w_disable_model = QCheckBox("disable-model-invocation")
             self._w_disable_model.setChecked(config.disable_model_invocation)
@@ -231,14 +228,13 @@ class _FrontmatterPanel(QScrollArea):
 
         # argument-hint (ProceduralSkill + DeclarativeSkill)
         if config is not None and hasattr(config, "argument_hint"):
-            w_hint = QLineEdit(config.argument_hint or "")
-            w_hint.setPlaceholderText("[topic]")
-            lay.addWidget(
-                _OptionalRow(
-                    "argument-hint", w_hint,
-                    initially_enabled=bool(config.argument_hint),
-                )
+            self._w_hint = QLineEdit(config.argument_hint or "")
+            self._w_hint.setPlaceholderText("[topic]")
+            self._row_hint = _OptionalRow(
+                "argument-hint", self._w_hint,
+                initially_enabled=bool(config.argument_hint),
             )
+            lay.addWidget(self._row_hint)
 
         lay.addStretch()
         self.setWidget(inner)
