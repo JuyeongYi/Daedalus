@@ -33,6 +33,7 @@ class Validator:
         errors.extend(Validator._check_pseudo_state_hooks(sm.states))
         errors.extend(Validator._check_completion_events(sm))
         errors.extend(Validator._check_duplicate_skill_ref(sm.states))
+        errors.extend(Validator._check_transfer_on_not_empty(sm.states))
         # 재귀
         for state in sm.states:
             if isinstance(state, CompositeState):
@@ -180,4 +181,28 @@ class Validator:
                 ))
             else:
                 seen.add(ref_id)
+        return errors
+
+    @staticmethod
+    def _check_transfer_on_not_empty(states: list) -> list[ValidationError]:
+        from daedalus.model.fsm.state import SimpleState
+        from daedalus.model.plugin.skill import ProceduralSkill
+        from daedalus.model.plugin.agent import AgentDefinition
+        errors: list[ValidationError] = []
+        for state in states:
+            if not isinstance(state, SimpleState):
+                continue
+            ref = state.skill_ref
+            if ref is None:
+                continue
+            if isinstance(ref, (ProceduralSkill, AgentDefinition)):
+                if not ref.transfer_on:
+                    errors.append(ValidationError(
+                        rule="transfer_on_not_empty",
+                        message=(
+                            f"'{ref.name}' 스킬/에이전트의 transfer_on이 비어 있습니다. "
+                            f"최소 하나의 이벤트가 필요합니다."
+                        ),
+                        source=ref.name,
+                    ))
         return errors

@@ -241,3 +241,40 @@ def test_no_duplicate_skill_ref_allows_multiple_none():
     errors = Validator.validate(sm)
     dup = [e for e in errors if e.rule == "no_duplicate_skill_ref"]
     assert dup == []
+
+
+# -- transfer_on_not_empty --
+
+from daedalus.model.fsm.section import EventDef
+
+
+def _make_procedural_with_transfer_on(transfer_on: list) -> ProceduralSkill:
+    s = SimpleState(name="s")
+    fsm = StateMachine(name="f", states=[s], initial_state=s)
+    return ProceduralSkill(fsm=fsm, name="MySkill", description="d", transfer_on=transfer_on)
+
+
+def test_transfer_on_not_empty_fails_when_empty():
+    skill = _make_procedural_with_transfer_on([])
+    state = SimpleState(name="node", skill_ref=skill)
+    sm = _make_sm([state], [])
+    errors = Validator.validate(sm)
+    assert any(e.rule == "transfer_on_not_empty" for e in errors)
+
+
+def test_transfer_on_not_empty_passes_when_has_events():
+    skill = _make_procedural_with_transfer_on([EventDef("done")])
+    state = SimpleState(name="node", skill_ref=skill)
+    sm = _make_sm([state], [])
+    errors = Validator.validate(sm)
+    assert not any(e.rule == "transfer_on_not_empty" for e in errors)
+
+
+def test_transfer_on_not_empty_ignores_declarative_skill():
+    """DeclarativeSkill은 transfer_on 없음 → 규칙 적용 안 됨."""
+    from daedalus.model.plugin.skill import DeclarativeSkill
+    skill = DeclarativeSkill(name="knowledge", description="d")
+    state = SimpleState(name="node", skill_ref=skill)
+    sm = _make_sm([state], [])
+    errors = Validator.validate(sm)
+    assert not any(e.rule == "transfer_on_not_empty" for e in errors)
