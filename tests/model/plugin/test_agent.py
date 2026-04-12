@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from daedalus.model.fsm.section import EventDef, Section
 from daedalus.model.plugin.agent import AgentDefinition
 from daedalus.model.plugin.base import PluginComponent, WorkflowComponent
 from daedalus.model.plugin.config import AgentConfig
@@ -66,16 +67,30 @@ def test_agent_execution_policy_parallel():
     assert agent.execution_policy.join == JoinStrategy.ANY
 
 
+def test_agent_sections_default():
+    fsm = _make_fsm()
+    agent = AgentDefinition(fsm=fsm, name="A", description="d")
+    assert agent.sections == []
+
+
+def test_agent_transfer_on_default():
+    fsm = _make_fsm()
+    agent = AgentDefinition(fsm=fsm, name="A", description="d")
+    assert len(agent.transfer_on) == 1
+    assert agent.transfer_on[0].name == "done"
+
+
 def test_agent_output_events_default():
     fsm = _make_fsm()
     agent = AgentDefinition(fsm=fsm, name="A", description="d")
     assert agent.output_events == ["done"]
 
 
-def test_agent_output_events_custom():
+def test_agent_output_events_via_property():
+    """output_events는 transfer_on에서 파생된 읽기 전용 프로퍼티."""
     fsm = _make_fsm()
     agent = AgentDefinition(
         fsm=fsm, name="A", description="d",
-        output_events=["done", "failed"],
+        transfer_on=[EventDef("done"), EventDef("failed")],
     )
     assert agent.output_events == ["done", "failed"]
