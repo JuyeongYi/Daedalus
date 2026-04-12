@@ -1,16 +1,19 @@
 from __future__ import annotations
 
-from enum import Enum
+from dataclasses import dataclass, field
 
 
-class SkillSection(Enum):
-    """스킬 본문 섹션 열거형.
+@dataclass
+class Section:
+    """자유 콘텐츠 섹션 (H1–H6 계층)."""
+    title: str
+    content: str = ""
+    children: list[Section] = field(default_factory=list)
 
-    항목 추가 시 SkillEditor UI가 자동으로 섹션 카드를 추가한다.
-    """
-    INSTRUCTIONS  = "instructions"   # 항상 활성, 항상 표시
-    WHEN_ENTER    = "when_enter"     # on_entry hook
-    WHEN_FINISHED = "when_finished"  # on_exit hook
-    WHEN_ACTIVE   = "when_active"    # on_active hook
-    WHEN_ERROR    = "when_error"     # custom_event hook
-    CONTEXT       = "context"        # declarative 배경지식
+
+@dataclass
+class EventDef:
+    """TransferOn 출력 이벤트 정의."""
+    name: str
+    color: str = "#4488ff"   # 노드 출력 포트 색상 (CSS hex)
+    description: str = ""
