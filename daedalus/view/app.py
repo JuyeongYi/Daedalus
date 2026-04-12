@@ -20,6 +20,7 @@ from daedalus.view.canvas.scene import FsmScene
 from daedalus.view.editors.decl_skill_editor import DeclSkillEditor
 from daedalus.view.panels.history_panel import HistoryPanel
 from daedalus.view.panels.property_panel import PropertyPanel
+from daedalus.view.panels.script_listener import ScriptListenerPanel
 from daedalus.view.panels.tree_panel import ProjectTreePanel
 from daedalus.view.viewmodel.project_vm import ProjectViewModel
 
@@ -68,6 +69,11 @@ class MainWindow(QMainWindow):
         prop_dock = QDockWidget("Properties")
         prop_dock.setWidget(self._property_panel)
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, prop_dock)
+
+        self._script_panel = ScriptListenerPanel()
+        script_dock = QDockWidget("Script Listener")
+        script_dock.setWidget(self._script_panel)
+        self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, script_dock)
 
     def _setup_menus(self) -> None:
         menubar = self.menuBar()
@@ -179,6 +185,7 @@ class MainWindow(QMainWindow):
                 active_vm.command_stack, on_goto=active_vm.notify
             )
             self._property_panel.set_project_vm(active_vm)
+            self._script_panel.set_stack(active_vm.command_stack)
         else:
             self._active_stack = self._project_vm.command_stack
         self._active_stack.add_listener(self._update_undo_redo)

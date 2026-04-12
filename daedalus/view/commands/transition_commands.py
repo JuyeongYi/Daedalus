@@ -22,6 +22,12 @@ class CreateTransitionCmd(Command):
         tgt = self._transition_vm.target_vm.model.name
         return f"전이 '{src}→{tgt}' 생성"
 
+    @property
+    def script_repr(self) -> str:
+        src = self._transition_vm.source_vm.model.name
+        tgt = self._transition_vm.target_vm.model.name
+        return f'create_transition("{src}", "{tgt}")'
+
     def execute(self) -> None:
         self._project_vm.add_transition_vm(self._transition_vm)
 
@@ -41,6 +47,12 @@ class DeleteTransitionCmd(Command):
         src = self._transition_vm.source_vm.model.name
         tgt = self._transition_vm.target_vm.model.name
         return f"전이 '{src}→{tgt}' 삭제"
+
+    @property
+    def script_repr(self) -> str:
+        src = self._transition_vm.source_vm.model.name
+        tgt = self._transition_vm.target_vm.model.name
+        return f'delete_transition("{src}", "{tgt}")'
 
     def execute(self) -> None:
         self._project_vm.remove_transition_vm(self._transition_vm)

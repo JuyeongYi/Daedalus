@@ -12,6 +12,11 @@ class Command(ABC):
     def description(self) -> str:
         """Undo/Redo 메뉴 및 히스토리 패널에 표시될 설명."""
 
+    @property
+    def script_repr(self) -> str:
+        """스크립트 리스너에 출력할 Python 표현. 서브클래스에서 오버라이드."""
+        return f"# {self.description}"
+
     @abstractmethod
     def execute(self) -> None: ...
 
@@ -29,6 +34,12 @@ class MacroCommand(Command):
     @property
     def description(self) -> str:
         return self._description
+
+    @property
+    def script_repr(self) -> str:
+        lines = [f"# {self._description}"]
+        lines.extend(f"  {c.script_repr}" for c in self._children)
+        return "\n".join(lines)
 
     @property
     def children(self) -> list[Command]:
@@ -50,6 +61,7 @@ class CommandStack:
         self._undo_stack: list[Command] = []
         self._redo_stack: list[Command] = []
         self._listeners: list[Callable[[], None]] = []
+        self._execute_listeners: list[Callable[[Command], None]] = []
 
     def add_listener(self, listener: Callable[[], None]) -> None:
         self._listeners.append(listener)
@@ -61,6 +73,17 @@ class CommandStack:
         except ValueError:
             pass
 
+    def add_execute_listener(self, listener: Callable[[Command], None]) -> None:
+        """커맨드 실행 시 해당 커맨드를 인수로 받는 리스너 등록."""
+        self._execute_listeners.append(listener)
+
+    def remove_execute_listener(self, listener: Callable[[Command], None]) -> None:
+        """execute 리스너를 제거. 없으면 무시."""
+        try:
+            self._execute_listeners.remove(listener)
+        except ValueError:
+            pass
+
     def _notify(self) -> None:
         for listener in self._listeners:
             listener()
@@ -69,6 +92,8 @@ class CommandStack:
         cmd.execute()
         self._undo_stack.append(cmd)
         self._redo_stack.clear()
+        for listener in self._execute_listeners:
+            listener(cmd)
         self._notify()
 
     def undo(self) -> None:

@@ -18,6 +18,11 @@ class CreateStateCmd(Command):
     def description(self) -> str:
         return f"상태 '{self._state_vm.model.name}' 생성"
 
+    @property
+    def script_repr(self) -> str:
+        vm = self._state_vm
+        return f'create_state("{vm.model.name}", x={vm.x:.0f}, y={vm.y:.0f})'
+
     def execute(self) -> None:
         self._project_vm.add_state_vm(self._state_vm)
 
@@ -33,6 +38,10 @@ class DeleteStateCmd(Command):
     @property
     def description(self) -> str:
         return f"상태 '{self._state_vm.model.name}' 삭제"
+
+    @property
+    def script_repr(self) -> str:
+        return f'delete_state("{self._state_vm.model.name}")'
 
     def execute(self) -> None:
         self._project_vm.remove_state_vm(self._state_vm)
@@ -60,6 +69,10 @@ class MoveStateCmd(Command):
     def description(self) -> str:
         return f"상태 '{self._state_vm.model.name}' 이동"
 
+    @property
+    def script_repr(self) -> str:
+        return f'move_state("{self._state_vm.model.name}", x={self._new_x:.0f}, y={self._new_y:.0f})'
+
     def execute(self) -> None:
         self._state_vm.x = self._new_x
         self._state_vm.y = self._new_y
@@ -80,6 +93,10 @@ class RenameStateCmd(Command):
     @property
     def description(self) -> str:
         return f"상태 이름 변경: '{self._old_name}' → '{self._new_name}'"
+
+    @property
+    def script_repr(self) -> str:
+        return f'rename_state("{self._old_name}", "{self._new_name}")'
 
     def execute(self) -> None:
         self._state_vm.model.name = self._new_name
