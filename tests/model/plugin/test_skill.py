@@ -52,3 +52,25 @@ def test_declarative_skill():
     assert skill.content == "RESTful 패턴을 사용하라."
     assert isinstance(skill, Skill)
     assert not isinstance(skill, WorkflowComponent)
+
+
+def _make_fsm():
+    from daedalus.model.fsm.state import SimpleState as _SS
+    from daedalus.model.fsm.machine import StateMachine as _SM
+    s = _SS(name="s")
+    return _SM(name="f", states=[s], initial_state=s)
+
+
+def test_procedural_skill_output_events_default():
+    fsm = _make_fsm()
+    skill = ProceduralSkill(fsm=fsm, name="S", description="d")
+    assert skill.output_events == ["done"]
+
+
+def test_procedural_skill_output_events_custom():
+    fsm = _make_fsm()
+    skill = ProceduralSkill(
+        fsm=fsm, name="S", description="d",
+        output_events=["done", "error", "retry"],
+    )
+    assert skill.output_events == ["done", "error", "retry"]

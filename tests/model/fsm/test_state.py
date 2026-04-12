@@ -99,3 +99,40 @@ def test_parallel_state():
     assert len(ps.regions) == 2
     assert ps.regions[0].sub_machine.initial_state is s1
     assert ps.regions[1].sub_machine.initial_state is s2
+
+
+from daedalus.model.plugin.skill import ProceduralSkill, DeclarativeSkill
+from daedalus.model.plugin.agent import AgentDefinition
+from daedalus.model.fsm.machine import StateMachine as _SM
+
+
+def _make_fsm_for_skill():
+    s = SimpleState(name="s")
+    return _SM(name="f", states=[s], initial_state=s)
+
+
+def test_simple_state_skill_ref_default():
+    s = SimpleState(name="s")
+    assert s.skill_ref is None
+
+
+def test_simple_state_with_procedural_skill_ref():
+    fsm = _make_fsm_for_skill()
+    skill = ProceduralSkill(fsm=fsm, name="WriteSkill", description="쓰기")
+    s = SimpleState(name="write", skill_ref=skill)
+    assert s.skill_ref is skill
+    assert s.skill_ref.name == "WriteSkill"
+
+
+def test_simple_state_with_agent_ref():
+    fsm = _make_fsm_for_skill()
+    agent = AgentDefinition(fsm=fsm, name="WriterAgent", description="에이전트")
+    s = SimpleState(name="node", skill_ref=agent)
+    assert s.skill_ref is agent
+
+
+def test_simple_state_skill_ref_can_be_cleared():
+    skill = DeclarativeSkill(name="Guide", description="가이드")
+    s = SimpleState(name="ctx", skill_ref=skill)
+    s.skill_ref = None
+    assert s.skill_ref is None

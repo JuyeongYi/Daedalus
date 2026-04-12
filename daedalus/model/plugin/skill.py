@@ -9,7 +9,7 @@ from daedalus.model.plugin.config import DeclarativeSkillConfig, ProceduralSkill
 
 @dataclass
 class Skill(PluginComponent, ABC):
-    """스킬 베이스. kind는 여전히 추상."""
+    """스킬 베이스."""
 
 
 @dataclass
@@ -19,9 +19,10 @@ class ProceduralSkill(Skill, WorkflowComponent):
     필드 순서 (dataclass MRO):
       fsm (required, WorkflowComponent)
       name, description (required, PluginComponent)
-      config (default)
+      config, output_events (default)
     """
     config: ProceduralSkillConfig = field(default_factory=ProceduralSkillConfig)
+    output_events: list[str] = field(default_factory=lambda: ["done"])
 
     @property
     def kind(self) -> str:

@@ -14,10 +14,11 @@ class AgentDefinition(PluginComponent, WorkflowComponent):
     필드 순서 (dataclass MRO):
       fsm (required, WorkflowComponent)
       name, description (required, PluginComponent)
-      config, execution_policy (default)
+      config, execution_policy, output_events (default)
     """
     config: AgentConfig = field(default_factory=AgentConfig)
     execution_policy: ExecutionPolicy = field(default_factory=ExecutionPolicy)
+    output_events: list[str] = field(default_factory=lambda: ["done"])
 
     @property
     def kind(self) -> str:

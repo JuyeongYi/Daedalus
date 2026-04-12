@@ -9,6 +9,11 @@ from daedalus.model.fsm.machine import StateMachine
 from daedalus.model.fsm.state import SimpleState
 
 
+def _make_fsm():
+    s = SimpleState(name="s")
+    return StateMachine(name="f", states=[s], initial_state=s)
+
+
 def test_agent_definition():
     s1 = SimpleState(name="analyze")
     s2 = SimpleState(name="report")
@@ -59,3 +64,18 @@ def test_agent_execution_policy_parallel():
     )
     assert agent.execution_policy.count == 3
     assert agent.execution_policy.join == JoinStrategy.ANY
+
+
+def test_agent_output_events_default():
+    fsm = _make_fsm()
+    agent = AgentDefinition(fsm=fsm, name="A", description="d")
+    assert agent.output_events == ["done"]
+
+
+def test_agent_output_events_custom():
+    fsm = _make_fsm()
+    agent = AgentDefinition(
+        fsm=fsm, name="A", description="d",
+        output_events=["done", "failed"],
+    )
+    assert agent.output_events == ["done", "failed"]

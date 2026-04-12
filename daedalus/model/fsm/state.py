@@ -9,23 +9,21 @@ from daedalus.model.fsm.variable import Variable
 
 if TYPE_CHECKING:
     from daedalus.model.fsm.machine import StateMachine
+    from daedalus.model.plugin.agent import AgentDefinition
+    from daedalus.model.plugin.skill import DeclarativeSkill, ProceduralSkill
 
 
 @dataclass
 class State(ABC):
     name: str
-    # 진입 이벤트
     on_entry_start: list[Action] = field(default_factory=list)
     on_entry: list[Action] = field(default_factory=list)
     on_entry_end: list[Action] = field(default_factory=list)
-    # 탈출 이벤트
     on_exit_start: list[Action] = field(default_factory=list)
     on_exit: list[Action] = field(default_factory=list)
     on_exit_end: list[Action] = field(default_factory=list)
-    # 활동
     on_active: list[Action] = field(default_factory=list)
     custom_events: dict[str, list[Action]] = field(default_factory=dict)
-    # 데이터
     inputs: list[Variable] = field(default_factory=list)
     outputs: list[Variable] = field(default_factory=list)
 
@@ -38,6 +36,7 @@ class State(ABC):
 @dataclass
 class SimpleState(State):
     """리프 상태. 하위 상태 없음."""
+    skill_ref: ProceduralSkill | DeclarativeSkill | AgentDefinition | None = None
 
     @property
     def kind(self) -> str:
@@ -53,7 +52,7 @@ class Region:
 
 @dataclass
 class CompositeState(State):
-    """별도 컨텍스트의 상태 기계. 내부에 완전한 sub FSM 보유."""
+    """별도 컨텍스트의 상태 기계."""
     sub_machine: StateMachine = None
 
     @property
