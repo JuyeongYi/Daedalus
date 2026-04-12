@@ -201,12 +201,7 @@ class SkillEditor(QWidget):
             lay.addRow(self._lbl("output_events"), self._w_output_events)
 
     def _on_output_events_changed(self) -> None:
-        if not hasattr(self, "_w_output_events"):
-            return
-        raw = self._w_output_events.text().strip()
-        events = [e for e in raw.split() if e] or ["done"]
-        if hasattr(self._component, "output_events"):
-            self._component.output_events = events
+        # [STUB — output_events is now a read-only property; full fix in Task 6 rewrite]
         self.skill_changed.emit()
         if self._on_notify_fn is not None:
             self._on_notify_fn()
