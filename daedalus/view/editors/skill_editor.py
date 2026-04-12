@@ -4,244 +4,255 @@ from __future__ import annotations
 from typing import Callable
 
 from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
-    QFormLayout,
     QFrame,
+    QGraphicsOpacityEffect,
     QHBoxLayout,
     QLabel,
     QLineEdit,
     QPushButton,
     QScrollArea,
     QSizePolicy,
+    QStackedWidget,
     QTextEdit,
+    QTreeWidget,
+    QTreeWidgetItem,
     QVBoxLayout,
     QWidget,
 )
 
+from daedalus.model.fsm.section import EventDef, Section
+from daedalus.model.plugin.agent import AgentDefinition
 from daedalus.model.plugin.config import ProceduralSkillConfig
 from daedalus.model.plugin.enums import EffortLevel, ModelType, SkillContext, SkillShell
 from daedalus.model.plugin.skill import DeclarativeSkill, ProceduralSkill
-from daedalus.model.plugin.agent import AgentDefinition
 
 _INPUT_STYLE = (
     "background: #1a1a2e; border: 1px solid #446; color: #aac; "
-    "padding: 3px 5px; border-radius: 3px;"
+    "padding: 3px 5px; border-radius: 3px; font-size: 9px;"
 )
-_DARK_BG = "background: #13132a; color: #aac;"
+_DARK_BG = "#111120"
+
+# QTreeWidgetItem 커스텀 데이터 롤
+_ROLE_SECTION = Qt.ItemDataRole.UserRole
+_ROLE_IS_TRANSFER_ON = Qt.ItemDataRole.UserRole + 1
+
+_COLOR_PRESETS = [
+    "#4488ff", "#cc3333", "#cc8800", "#44aa44",
+    "#aa44cc", "#ccaa00", "#44aacc", "#888888",
+]
 
 
-class _SectionCard(QFrame):
-    """[STUB — will be replaced in Task 6 rewrite]"""
+class _OptionalRow(QWidget):
+    """체크박스 ON/OFF로 선택적 프론트매터 필드를 표시/비활성화."""
 
-    def __init__(self, parent=None):
+    toggled = pyqtSignal(bool)
+
+    def __init__(
+        self,
+        label: str,
+        widget: QWidget,
+        initially_enabled: bool = False,
+        parent: QWidget | None = None,
+    ) -> None:
         super().__init__(parent)
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 1, 0, 1)
+        layout.setSpacing(3)
 
-    def is_active(self) -> bool:
-        return False
+        self._cb = QCheckBox()
+        self._cb.setChecked(initially_enabled)
+        self._cb.setStyleSheet("QCheckBox::indicator { width: 10px; height: 10px; }")
+        layout.addWidget(self._cb)
 
-    def get_text(self) -> str:
-        return ""
+        lbl = QLabel(label)
+        lbl.setStyleSheet("font-size: 8px; color: #88aaff; min-width: 58px;")
+        layout.addWidget(lbl)
 
-    def set_text(self, text: str) -> None:
-        pass
+        self._widget = widget
+        widget.setStyleSheet(_INPUT_STYLE)
+        layout.addWidget(widget, 1)
 
-    def set_active(self, active: bool) -> None:
-        pass
+        self._cb.toggled.connect(self._update_state)
+        self._update_state(initially_enabled)
+
+    def _update_state(self, checked: bool) -> None:
+        self._widget.setEnabled(checked)
+        effect = QGraphicsOpacityEffect(self)
+        effect.setOpacity(1.0 if checked else 0.4)
+        self.setGraphicsEffect(effect)
+        self.toggled.emit(checked)
+
+    def is_checked(self) -> bool:
+        return self._cb.isChecked()
+
+    def set_checked(self, checked: bool) -> None:
+        self._cb.setChecked(checked)
 
 
-class SkillEditor(QWidget):
-    """ProceduralSkill / DeclarativeSkill / AgentDefinition 편집기."""
+class _FrontmatterPanel(QScrollArea):
+    """좌측 170px 고정 패널 — name/description(필수) + 선택 필드 체크박스."""
 
-    skill_changed = pyqtSignal()
+    changed = pyqtSignal()
 
     def __init__(
         self,
         component: ProceduralSkill | DeclarativeSkill | AgentDefinition,
-        on_notify_fn: Callable[[], None] | None = None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self._component = component
-        self._on_notify_fn = on_notify_fn
-        self._section_cards: list[_SectionCard] = []
+        self.setFixedWidth(170)
+        self.setWidgetResizable(True)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setStyleSheet(
+            f"QScrollArea {{ background: {_DARK_BG}; border: none; "
+            f"border-right: 1px solid #1a1a33; }}"
+        )
 
-        main_layout = QHBoxLayout(self)
-        main_layout.setContentsMargins(0, 0, 0, 0)
-        main_layout.setSpacing(0)
+        inner = QWidget()
+        inner.setStyleSheet(f"background: {_DARK_BG};")
+        lay = QVBoxLayout(inner)
+        lay.setContentsMargins(8, 8, 8, 8)
+        lay.setSpacing(3)
 
-        # 좌측: Frontmatter
-        fm_scroll = QScrollArea()
-        fm_scroll.setWidgetResizable(True)
-        fm_scroll.setFixedWidth(285)
-        fm_scroll.setStyleSheet(_DARK_BG)
-        fm_inner = QWidget()
-        fm_inner.setStyleSheet(_DARK_BG)
-        self._fm_layout = QFormLayout(fm_inner)
-        self._fm_layout.setContentsMargins(8, 8, 8, 8)
-        self._fm_layout.setSpacing(6)
-        fm_scroll.setWidget(fm_inner)
-        main_layout.addWidget(fm_scroll)
+        hdr = QLabel("Frontmatter")
+        hdr.setStyleSheet(
+            "font-size: 8px; color: #446; text-transform: uppercase; "
+            "letter-spacing: 1px; margin-bottom: 4px;"
+        )
+        lay.addWidget(hdr)
 
-        sep = QFrame()
-        sep.setFrameShape(QFrame.Shape.VLine)
-        sep.setStyleSheet("color: #333;")
-        main_layout.addWidget(sep)
+        # --- 필수 필드 ---
+        lay.addWidget(self._lbl("name *"))
+        self._w_name = QLineEdit(component.name)
+        self._w_name.setStyleSheet(_INPUT_STYLE)
+        self._w_name.editingFinished.connect(self._save_name)
+        lay.addWidget(self._w_name)
 
-        # 우측: Body sections
-        body_scroll = QScrollArea()
-        body_scroll.setWidgetResizable(True)
-        body_scroll.setStyleSheet(_DARK_BG)
-        body_inner = QWidget()
-        body_inner.setStyleSheet(_DARK_BG)
-        self._body_layout = QVBoxLayout(body_inner)
-        self._body_layout.setContentsMargins(8, 8, 8, 8)
-        self._body_layout.setSpacing(8)
-        body_scroll.setWidget(body_inner)
-        main_layout.addWidget(body_scroll, 1)
-
-        self._build_frontmatter()
-        self._build_sections()
-        self._build_buttons()
-
-    def _lbl(self, text: str) -> QLabel:
-        lbl = QLabel(text)
-        lbl.setStyleSheet("color: #666; font-size: 10px;")
-        return lbl
-
-    def _input(self) -> QLineEdit:
-        w = QLineEdit()
-        w.setStyleSheet(_INPUT_STYLE)
-        return w
-
-    def _combo(self, values: list[str]) -> QComboBox:
-        w = QComboBox()
-        w.setStyleSheet(_INPUT_STYLE)
-        for v in values:
-            w.addItem(v)
-        return w
-
-    def _build_frontmatter(self) -> None:
-        lay = self._fm_layout
-        comp = self._component
-        config = getattr(comp, "config", None)
-
-        self._w_name = self._input()
-        self._w_name.setText(comp.name)
-        lay.addRow(self._lbl("name"), self._w_name)
-
+        lay.addWidget(self._lbl("description *"))
         self._w_desc = QTextEdit()
+        self._w_desc.setPlainText(component.description)
         self._w_desc.setStyleSheet(_INPUT_STYLE)
-        self._w_desc.setFixedHeight(48)
-        self._w_desc.setPlainText(comp.description)
-        lay.addRow(self._lbl("description *"), self._w_desc)
+        self._w_desc.setFixedHeight(44)
+        self._w_desc.textChanged.connect(self._save_desc)
+        lay.addWidget(self._w_desc)
 
-        if config is not None and hasattr(config, "argument_hint"):
-            self._w_arg_hint = self._input()
-            self._w_arg_hint.setPlaceholderText("[topic]")
-            if config.argument_hint:
-                self._w_arg_hint.setText(config.argument_hint)
-            lay.addRow(self._lbl("argument-hint"), self._w_arg_hint)
+        # --- 선택 필드 구분선 ---
+        sep = QLabel("선택 필드")
+        sep.setStyleSheet(
+            "font-size: 8px; color: #446; margin-top: 6px; margin-bottom: 2px;"
+        )
+        lay.addWidget(sep)
 
-        self._w_model = self._combo([e.value for e in ModelType])
+        config = getattr(component, "config", None)
+
+        # model
+        w_model = QComboBox()
+        for e in ModelType:
+            w_model.addItem(e.value)
         if config is not None:
             mv = config.model.value if isinstance(config.model, ModelType) else str(config.model)
-            idx = self._w_model.findText(mv)
+            idx = w_model.findText(mv)
             if idx >= 0:
-                self._w_model.setCurrentIndex(idx)
-        lay.addRow(self._lbl("model"), self._w_model)
+                w_model.setCurrentIndex(idx)
+        lay.addWidget(
+            _OptionalRow(
+                "model", w_model,
+                initially_enabled=(config is not None and config.model != ModelType.INHERIT),
+            )
+        )
 
-        self._w_effort = self._combo(["(inherit)"] + [e.value for e in EffortLevel])
+        # effort
+        w_effort = QComboBox()
+        for e in EffortLevel:
+            w_effort.addItem(e.value)
         if config is not None and config.effort is not None:
-            idx = self._w_effort.findText(config.effort.value)
+            idx = w_effort.findText(config.effort.value)
             if idx >= 0:
-                self._w_effort.setCurrentIndex(idx)
-        lay.addRow(self._lbl("effort"), self._w_effort)
+                w_effort.setCurrentIndex(idx)
+        lay.addWidget(
+            _OptionalRow(
+                "effort", w_effort,
+                initially_enabled=(config is not None and config.effort is not None),
+            )
+        )
 
+        # allowed-tools (SkillConfig 계열)
         if config is not None and hasattr(config, "allowed_tools"):
-            self._w_tools = self._input()
-            self._w_tools.setPlaceholderText("Read Grep WebSearch")
-            self._w_tools.setText(" ".join(config.allowed_tools))
-            lay.addRow(self._lbl("allowed-tools"), self._w_tools)
+            w_tools = QLineEdit(" ".join(config.allowed_tools))
+            w_tools.setPlaceholderText("Read Grep WebSearch")
+            lay.addWidget(
+                _OptionalRow(
+                    "allowed-tools", w_tools,
+                    initially_enabled=bool(config.allowed_tools),
+                )
+            )
 
+        # ProceduralSkill 전용 필드
         if isinstance(config, ProceduralSkillConfig):
-            self._w_context = self._combo([e.value for e in SkillContext])
-            idx = self._w_context.findText(config.context.value)
+            w_ctx = QComboBox()
+            for e in SkillContext:
+                w_ctx.addItem(e.value)
+            idx = w_ctx.findText(config.context.value)
             if idx >= 0:
-                self._w_context.setCurrentIndex(idx)
-            lay.addRow(self._lbl("context"), self._w_context)
+                w_ctx.setCurrentIndex(idx)
+            lay.addWidget(_OptionalRow("context", w_ctx, initially_enabled=True))
 
-            self._w_disable_model = QCheckBox()
+            w_paths = QLineEdit(" ".join(config.paths) if config.paths else "")
+            w_paths.setPlaceholderText("src/**/*.py")
+            lay.addWidget(
+                _OptionalRow(
+                    "paths", w_paths,
+                    initially_enabled=bool(config.paths),
+                )
+            )
+
+            w_shell = QComboBox()
+            for e in SkillShell:
+                w_shell.addItem(e.value)
+            idx = w_shell.findText(config.shell.value)
+            if idx >= 0:
+                w_shell.setCurrentIndex(idx)
+            lay.addWidget(_OptionalRow("shell", w_shell, initially_enabled=True))
+
+            self._w_disable_model = QCheckBox("disable-model-invocation")
             self._w_disable_model.setChecked(config.disable_model_invocation)
-            lay.addRow(self._lbl("disable-model-invocation"), self._w_disable_model)
+            self._w_disable_model.setStyleSheet("color: #88aaff; font-size: 8px;")
+            lay.addWidget(self._w_disable_model)
 
-            self._w_user_invocable = QCheckBox()
+            self._w_user_invocable = QCheckBox("user-invocable")
             self._w_user_invocable.setChecked(config.user_invocable)
-            lay.addRow(self._lbl("user-invocable"), self._w_user_invocable)
+            self._w_user_invocable.setStyleSheet("color: #88aaff; font-size: 8px;")
+            lay.addWidget(self._w_user_invocable)
 
-            self._w_paths = self._input()
-            self._w_paths.setPlaceholderText("src/**/*.py")
-            if config.paths:
-                self._w_paths.setText(" ".join(config.paths))
-            lay.addRow(self._lbl("paths (glob)"), self._w_paths)
+        # argument-hint (ProceduralSkill + DeclarativeSkill)
+        if config is not None and hasattr(config, "argument_hint"):
+            w_hint = QLineEdit(config.argument_hint or "")
+            w_hint.setPlaceholderText("[topic]")
+            lay.addWidget(
+                _OptionalRow(
+                    "argument-hint", w_hint,
+                    initially_enabled=bool(config.argument_hint),
+                )
+            )
 
-            self._w_shell = self._combo([e.value for e in SkillShell])
-            idx = self._w_shell.findText(config.shell.value)
-            if idx >= 0:
-                self._w_shell.setCurrentIndex(idx)
-            lay.addRow(self._lbl("shell"), self._w_shell)
+        lay.addStretch()
+        self.setWidget(inner)
 
-        # output_events (ProceduralSkill / AgentDefinition)
-        if hasattr(comp, "output_events"):
-            self._w_output_events = self._input()
-            self._w_output_events.setPlaceholderText("done error")
-            self._w_output_events.setText(" ".join(comp.output_events))
-            self._w_output_events.editingFinished.connect(self._on_output_events_changed)
-            lay.addRow(self._lbl("output_events"), self._w_output_events)
+    @staticmethod
+    def _lbl(text: str) -> QLabel:
+        lbl = QLabel(text)
+        lbl.setStyleSheet("font-size: 8px; color: #88aaff;")
+        return lbl
 
-    def _on_output_events_changed(self) -> None:
-        # [STUB — output_events is now a read-only property; full fix in Task 6 rewrite]
-        self.skill_changed.emit()
-        if self._on_notify_fn is not None:
-            self._on_notify_fn()
-
-    def _build_sections(self) -> None:
-        # [STUB — replaced in Task 6 rewrite]
-        stub = QLabel("섹션 편집기 (Task 6에서 재구현 예정)")
-        stub.setStyleSheet("color: #446; font-size: 10px; padding: 8px;")
-        self._body_layout.addWidget(stub)
-        self._body_layout.addStretch()
-
-    def _build_buttons(self) -> None:
-        btn_row = QWidget()
-        btn_layout = QHBoxLayout(btn_row)
-        btn_layout.setContentsMargins(0, 0, 0, 0)
-        btn_layout.addStretch()
-
-        save_btn = QPushButton("저장")
-        save_btn.setStyleSheet(
-            "background: #1a3a1a; border: 1px solid #4a8a4a; color: #88cc88; padding: 5px 14px;"
-        )
-        save_btn.clicked.connect(self._on_save)
-        btn_layout.addWidget(save_btn)
-
-        preview_btn = QPushButton("SKILL.md 미리보기")
-        preview_btn.setStyleSheet(
-            "background: #2a1a2a; border: 1px solid #6a4a8a; color: #aa88cc; padding: 5px 14px;"
-        )
-        preview_btn.clicked.connect(self._on_preview)
-        btn_layout.addWidget(preview_btn)
-
-        self._body_layout.insertWidget(self._body_layout.count() - 1, btn_row)
-
-    def _on_save(self) -> None:
+    def _save_name(self) -> None:
         self._component.name = self._w_name.text().strip()
-        self._component.description = self._w_desc.toPlainText().strip()
-        self.skill_changed.emit()
+        self.changed.emit()
 
-    def _on_preview(self) -> None:
-        from PyQt6.QtWidgets import QMessageBox
-        QMessageBox.information(
-            self, "SKILL.md 미리보기", "컴파일러 미구현 (B-stage 스코프 외)"
-        )
+    def _save_desc(self) -> None:
+        self._component.description = self._w_desc.toPlainText().strip()
+        self.changed.emit()
