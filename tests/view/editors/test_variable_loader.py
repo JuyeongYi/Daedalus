@@ -54,3 +54,19 @@ def test_variable_entry_dataclass():
     e = VariableEntry(name="$X", description="설명", source="builtin")
     assert e.name == "$X"
     assert e.source == "builtin"
+
+
+def test_global_yaml_loaded(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        "daedalus.view.editors.variable_loader.Path.home",
+        lambda: tmp_path,
+    )
+    (tmp_path / ".daedalus").mkdir()
+    (tmp_path / ".daedalus" / "variables.yaml").write_text(
+        '- name: "$GLOBAL"\n  description: "global var"\n',
+        encoding="utf-8",
+    )
+    entries = load_variables()
+    global_entries = [e for e in entries if e.source == "global"]
+    assert len(global_entries) == 1
+    assert global_entries[0].name == "$GLOBAL"
