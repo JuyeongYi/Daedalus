@@ -99,6 +99,7 @@ def output_events(self) -> list[str]:
 - **하위 섹션 추가**: 콘텐츠 패널 툴바의 `+ 하위 섹션` 버튼 → 현재 선택 섹션의 직계 자식 추가 (현재 레벨이 H6이면 버튼 비활성화)
 - **삭제**: 콘텐츠 패널 툴바의 `삭제` 버튼
 - **TransferOn**: 항상 트리 최하단 고정, 삭제 불가. 선택 시 Content Panel 대신 TransferOn 패널 표시. `DeclarativeSkill`은 TransferOn 없음
+- **DeclarativeSkill 배치 제한**: `DeclarativeSkill`은 그래프 노드로 배치 불가. RegistryPanel에서 항상 드래그 비활성화(시각적으로 구분). FsmScene.drop_skill()에서도 타입 가드로 차단.
 
 ### 2-4. Content Panel (일반 섹션)
 

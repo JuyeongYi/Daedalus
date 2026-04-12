@@ -24,6 +24,7 @@ _COLOR_PROCEDURAL = QColor("#88cc88")
 _COLOR_DECLARATIVE = QColor("#cccc88")
 _COLOR_AGENT = QColor("#cc8888")
 _COLOR_PLACED = QColor("#445544")
+_COLOR_NO_PLACE = QColor("#666644")  # DeclarativeSkill: 배치 불가 표시
 
 _ICON = {
     "procedural_skill": "⚙",
@@ -119,7 +120,8 @@ class RegistryPanel(QWidget):
             if isinstance(skill, ProceduralSkill):
                 self._add_item(self._proc_list, skill, _COLOR_PROCEDURAL, placed)
             elif isinstance(skill, DeclarativeSkill):
-                self._add_item(self._decl_list, skill, _COLOR_DECLARATIVE, placed)
+                # DeclarativeSkill은 항상 드래그 불가 (graph 배치 대상 아님)
+                self._add_item(self._decl_list, skill, _COLOR_DECLARATIVE, placed=False, no_place=True)
         for agent in self._project.agents:
             placed = id(agent) in self._placed_ids
             self._add_item(self._agent_list, agent, _COLOR_AGENT, placed)
@@ -130,14 +132,25 @@ class RegistryPanel(QWidget):
         component: object,
         color: QColor,
         placed: bool,
+        no_place: bool = False,
     ) -> None:
         kind = getattr(component, "kind", "")
         icon = _ICON.get(kind, "")
         name = getattr(component, "name", str(component))
-        item = QListWidgetItem(f"{icon} {name}")
+        if no_place:
+            label = f"{icon} {name}  (배치 불가)"
+        else:
+            label = f"{icon} {name}"
+        item = QListWidgetItem(label)
         item.setData(_ROLE_COMPONENT, component)
         item.setData(_ROLE_PLACED, placed)
-        if placed:
+        if no_place:
+            item.setForeground(_COLOR_NO_PLACE)
+            item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsDragEnabled)
+            font = item.font()
+            font.setItalic(True)
+            item.setFont(font)
+        elif placed:
             item.setForeground(_COLOR_PLACED)
             item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsDragEnabled)
             font = item.font()

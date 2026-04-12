@@ -158,6 +158,10 @@ class FsmScene(QGraphicsScene):
         skill = self._skill_lookup(skill_name)
         if skill is None:
             return
+        # DeclarativeSkill은 FSM 노드로 배치 불가
+        from daedalus.model.plugin.skill import DeclarativeSkill
+        if isinstance(skill, DeclarativeSkill):
+            return
         for svm in self._project_vm.state_vms:
             if svm.model.skill_ref is skill:
                 return  # 이미 배치됨
