@@ -20,7 +20,6 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from daedalus.model.fsm.section import SkillSection
 from daedalus.model.plugin.config import ProceduralSkillConfig
 from daedalus.model.plugin.enums import EffortLevel, ModelType, SkillContext, SkillShell
 from daedalus.model.plugin.skill import DeclarativeSkill, ProceduralSkill
@@ -34,80 +33,22 @@ _DARK_BG = "background: #13132a; color: #aac;"
 
 
 class _SectionCard(QFrame):
-    """SkillSection 하나를 표현하는 카드."""
+    """[STUB — will be replaced in Task 6 rewrite]"""
 
-    def __init__(
-        self,
-        section: SkillSection,
-        always_active: bool = False,
-        parent: QWidget | None = None,
-    ) -> None:
+    def __init__(self, parent=None):
         super().__init__(parent)
-        self._section = section
-        self.setFrameShape(QFrame.Shape.StyledPanel)
-        self.setStyleSheet(
-            "QFrame { background: #13132a; border: 1px solid #336; border-radius: 5px; }"
-        )
-
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
-
-        header = QWidget()
-        header.setStyleSheet("background: #1a1a3a; border-radius: 4px 4px 0 0;")
-        h_layout = QHBoxLayout(header)
-        h_layout.setContentsMargins(8, 4, 8, 4)
-
-        if always_active:
-            lbl = QLabel(section.name)
-            lbl.setStyleSheet("color: #88aaff; font-weight: bold; font-size: 11px;")
-            h_layout.addWidget(lbl)
-            self._checkbox: QCheckBox | None = None
-        else:
-            self._checkbox = QCheckBox(section.name)
-            self._checkbox.setStyleSheet("color: #88cc88; font-weight: bold; font-size: 11px;")
-            self._checkbox.toggled.connect(self._on_toggled)
-            h_layout.addWidget(self._checkbox)
-
-        h_layout.addStretch()
-        key_lbl = QLabel(section.value)
-        key_lbl.setStyleSheet("color: #446; font-size: 9px; font-family: Consolas;")
-        h_layout.addWidget(key_lbl)
-        layout.addWidget(header)
-
-        self._body = QTextEdit()
-        self._body.setStyleSheet(
-            "background: #0d0d1f; color: #ccc; border: 1px solid #335; "
-            "font-family: Consolas; font-size: 10px; padding: 4px;"
-        )
-        self._body.setMinimumHeight(50)
-        self._body.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
-        layout.addWidget(self._body)
-
-        if not always_active:
-            self._body.hide()
-
-    @property
-    def section(self) -> SkillSection:
-        return self._section
 
     def is_active(self) -> bool:
-        if self._checkbox is None:
-            return True
-        return self._checkbox.isChecked()
+        return False
 
     def get_text(self) -> str:
-        return self._body.toPlainText()
+        return ""
 
     def set_text(self, text: str) -> None:
-        self._body.setPlainText(text)
+        pass
 
     def set_active(self, active: bool) -> None:
-        if self._checkbox is not None:
-            self._checkbox.setChecked(active)
-
-    def _on_toggled(self, checked: bool) -> None:
-        self._body.setVisible(checked)
+        pass
 
 
 class SkillEditor(QWidget):
@@ -271,11 +212,10 @@ class SkillEditor(QWidget):
             self._on_notify_fn()
 
     def _build_sections(self) -> None:
-        for section in SkillSection:
-            always = section == SkillSection.INSTRUCTIONS
-            card = _SectionCard(section, always_active=always)
-            self._section_cards.append(card)
-            self._body_layout.addWidget(card)
+        # [STUB — replaced in Task 6 rewrite]
+        stub = QLabel("섹션 편집기 (Task 6에서 재구현 예정)")
+        stub.setStyleSheet("color: #446; font-size: 10px; padding: 8px;")
+        self._body_layout.addWidget(stub)
         self._body_layout.addStretch()
 
     def _build_buttons(self) -> None:
