@@ -98,3 +98,44 @@ def test_event_card_renders(qapp):
     e = EventDef("done", color="#4488ff")
     card = _EventCard(e, can_delete=False)
     assert isinstance(card, QFrame)
+
+
+def test_variable_popup_shows_builtins(qapp):
+    from daedalus.view.editors.skill_editor import _VariablePopup
+    from daedalus.view.editors.variable_loader import load_variables
+    from PyQt6.QtWidgets import QFrame
+    entries = load_variables()
+    popup = _VariablePopup(entries)
+    assert isinstance(popup, QFrame)
+
+
+def test_skill_editor_procedural_smoke(qapp):
+    from daedalus.view.editors.skill_editor import SkillEditor
+    from PyQt6.QtWidgets import QWidget
+    comp = _make_procedural()
+    editor = SkillEditor(comp)
+    assert isinstance(editor, QWidget)
+
+
+def test_skill_editor_declarative_smoke(qapp):
+    from daedalus.view.editors.skill_editor import SkillEditor
+    from PyQt6.QtWidgets import QWidget
+    comp = _make_declarative()
+    editor = SkillEditor(comp)
+    assert isinstance(editor, QWidget)
+
+
+def test_skill_editor_agent_smoke(qapp):
+    from daedalus.view.editors.skill_editor import SkillEditor
+    from PyQt6.QtWidgets import QWidget
+    comp = _make_agent()
+    editor = SkillEditor(comp)
+    assert isinstance(editor, QWidget)
+
+
+def test_skill_editor_changed_signal_exists(qapp):
+    from daedalus.view.editors.skill_editor import SkillEditor
+    comp = _make_procedural()
+    editor = SkillEditor(comp)
+    # skill_changed 시그널이 존재하는지 확인 (기존 API 호환)
+    assert hasattr(editor, "skill_changed")

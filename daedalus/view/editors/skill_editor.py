@@ -737,3 +737,179 @@ class _ContentPanel(QWidget):
         if self._section is not None:
             self._section.content = self._w_content.toPlainText()
             self.content_changed.emit()
+
+
+class _VariablePopup(QFrame):
+    """변수 선택 팝업 — 클릭 시 variable_selected 시그널 방출."""
+
+    variable_selected = pyqtSignal(str)
+
+    def __init__(
+        self,
+        entries: list,        # list[VariableEntry]
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self.setFrameShape(QFrame.Shape.StyledPanel)
+        self.setStyleSheet(
+            "QFrame { background: #1a1a2e; border: 1px solid #3a4a6a; border-radius: 5px; }"
+        )
+        self.setWindowFlags(Qt.WindowType.Popup)
+        self.setFixedWidth(300)
+
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(0)
+
+        hdr_row = QHBoxLayout()
+        hdr_row.setContentsMargins(8, 5, 8, 5)
+        hdr_lbl = QLabel("변수 선택 — 클릭 시 커서 위치에 삽입")
+        hdr_lbl.setStyleSheet("font-size: 8px; color: #446;")
+        hdr_row.addWidget(hdr_lbl)
+        hdr_row.addStretch()
+        close_btn = QPushButton("✕")
+        close_btn.setFixedSize(16, 16)
+        close_btn.setStyleSheet("background: transparent; border: none; color: #335; font-size: 9px;")
+        close_btn.clicked.connect(self.hide)
+        hdr_row.addWidget(close_btn)
+        hdr_widget = QWidget()
+        hdr_widget.setStyleSheet("border-bottom: 1px solid #252540;")
+        hdr_widget.setLayout(hdr_row)
+        lay.addWidget(hdr_widget)
+
+        # 소스별 그룹화
+        _SOURCE_LABELS = {
+            "builtin": ("기본 제공", "#4477aa"),
+            "global":  ("글로벌 (~/.daedalus/variables.yaml)", "#4a7a4a"),
+            "project": ("프로젝트 (.daedalus/variables.yaml)", "#7a7a4a"),
+        }
+        current_source: str | None = None
+        for entry in entries:
+            if entry.source != current_source:
+                current_source = entry.source
+                label_text, label_color = _SOURCE_LABELS.get(
+                    entry.source, (entry.source, "#446")
+                )
+                grp = QLabel(label_text)
+                grp.setStyleSheet(
+                    f"font-size: 8px; color: {label_color}; "
+                    "text-transform: uppercase; letter-spacing: 0.5px; "
+                    "padding: 4px 8px 2px 8px;"
+                )
+                lay.addWidget(grp)
+            row = QPushButton()
+            row.setStyleSheet(
+                "background: transparent; border: none; text-align: left; "
+                "padding: 3px 8px; font-size: 9px; color: #aaa;"
+                "QPushButton:hover { background: #252540; }"
+            )
+            row.setText(f"{entry.name}   {entry.description}")
+            row.clicked.connect(lambda _c, n=entry.name: self._emit(n))
+            lay.addWidget(row)
+
+    def _emit(self, name: str) -> None:
+        self.variable_selected.emit(name)
+        self.hide()
+
+
+class SkillEditor(QWidget):
+    """ProceduralSkill / DeclarativeSkill / AgentDefinition 3-패널 편집기.
+
+    레이아웃:
+      _FrontmatterPanel (170px) | _TreeSidebar (145px) | QStackedWidget (나머지)
+        stack[0] = _ContentPanel  (섹션 선택 시)
+        stack[1] = _TransferOnPanel  (TransferOn 선택 시)
+    """
+
+    skill_changed = pyqtSignal()  # 기존 API 호환
+
+    def __init__(
+        self,
+        component: ProceduralSkill | DeclarativeSkill | AgentDefinition,
+        on_notify_fn: Callable[[], None] | None = None,
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self._component = component
+        self._on_notify_fn = on_notify_fn
+
+        from daedalus.view.editors.variable_loader import load_variables
+        self._variables = load_variables()
+
+        lay = QHBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(0)
+
+        # 좌측: Frontmatter
+        self._fm = _FrontmatterPanel(component)
+        self._fm.changed.connect(self._on_model_changed)
+        lay.addWidget(self._fm)
+
+        # 중앙: Tree Sidebar
+        self._sidebar = _TreeSidebar(component)
+        self._sidebar.section_selected.connect(self._on_section_selected)
+        self._sidebar.transfer_on_selected.connect(self._on_transfer_on_selected)
+        self._sidebar.structure_changed.connect(self._on_model_changed)
+        lay.addWidget(self._sidebar)
+
+        # 우측: Stack (ContentPanel | TransferOnPanel)
+        self._stack = QStackedWidget()
+
+        self._content_panel = _ContentPanel()
+        self._content_panel.add_child_requested.connect(self._on_add_child)
+        self._content_panel.delete_requested.connect(self._on_delete_section)
+        self._content_panel.variable_insert_requested.connect(self._on_variable_insert)
+        self._content_panel.content_changed.connect(self._on_model_changed)
+        self._stack.addWidget(self._content_panel)  # index 0
+
+        if not isinstance(component, DeclarativeSkill):
+            transfer_on = component.transfer_on
+        else:
+            transfer_on = []
+        self._transfer_on_panel = _TransferOnPanel(transfer_on)
+        self._transfer_on_panel.transfer_on_changed.connect(self._on_model_changed)
+        self._stack.addWidget(self._transfer_on_panel)  # index 1
+
+        lay.addWidget(self._stack, 1)
+
+        # 변수 팝업 (ContentPanel 위에 플로팅)
+        self._var_popup = _VariablePopup(self._variables, parent=self._content_panel)
+        self._var_popup.variable_selected.connect(self._content_panel.insert_variable)
+        self._var_popup.hide()
+
+        # 초기 상태: 첫 번째 섹션 선택 또는 빈 화면
+        if component.sections:
+            first = component.sections[0]
+            self._content_panel.show_section(first, [first.title])
+            self._stack.setCurrentIndex(0)
+
+    def _on_section_selected(self, section: Section, path: list[str]) -> None:
+        self._content_panel.show_section(section, path)
+        depth = self._sidebar.current_depth()
+        self._content_panel.set_add_child_enabled(depth < 5)
+        self._stack.setCurrentIndex(0)
+
+    def _on_transfer_on_selected(self) -> None:
+        self._stack.setCurrentIndex(1)
+
+    def _on_add_child(self) -> None:
+        self._sidebar.add_child_to_current()
+
+    def _on_delete_section(self) -> None:
+        self._sidebar.delete_current()
+
+    def _on_variable_insert(self) -> None:
+        if self._var_popup.isVisible():
+            self._var_popup.hide()
+            return
+        from PyQt6.QtCore import QPoint
+        btn = self._content_panel._btn_variable
+        pos = btn.mapTo(self._content_panel, QPoint(0, btn.height()))
+        self._var_popup.move(pos)
+        self._var_popup.show()
+        self._var_popup.raise_()
+
+    def _on_model_changed(self) -> None:
+        self.skill_changed.emit()
+        if self._on_notify_fn is not None:
+            self._on_notify_fn()
