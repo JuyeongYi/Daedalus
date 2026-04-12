@@ -1,6 +1,7 @@
+# daedalus/view/canvas/scene.py
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable
 
 from PyQt6.QtCore import QPointF, Qt
 from PyQt6.QtGui import QColor, QKeyEvent, QPen
@@ -12,6 +13,7 @@ from PyQt6.QtWidgets import (
     QMenu,
 )
 
+from daedalus.model.fsm.event import CompletionEvent
 from daedalus.model.fsm.state import SimpleState
 from daedalus.model.fsm.transition import Transition
 from daedalus.view.canvas.edge_item import TransitionEdgeItem
@@ -31,9 +33,14 @@ _DRAG_LINE_COLOR = QColor("#4488ff")
 class FsmScene(QGraphicsScene):
     """FSM 노드 편집 씬."""
 
-    def __init__(self, project_vm: ProjectViewModel) -> None:
+    def __init__(
+        self,
+        project_vm: ProjectViewModel,
+        skill_lookup: Callable[[str], object] | None = None,
+    ) -> None:
         super().__init__()
         self._project_vm = project_vm
+        self._skill_lookup = skill_lookup
         self._node_items: dict[StateViewModel, StateNodeItem] = {}
         self._edge_items: dict[TransitionViewModel, TransitionEdgeItem] = {}
         self._state_counter = 0
@@ -42,22 +49,18 @@ class FsmScene(QGraphicsScene):
 
         self._connecting = False
         self._connect_source: StateNodeItem | None = None
-        self._connect_event_name: str | None = None
+        self._connect_event: str | None = None
         self._drag_line: QGraphicsLineItem | None = None
 
         self._project_vm.add_listener(self._rebuild)
 
     def close(self) -> None:
-        """씬 종료 시 ProjectViewModel 리스너를 해제."""
         self._project_vm.remove_listener(self._rebuild)
 
     def _rebuild(self) -> None:
-        """ProjectViewModel과 씬 아이템을 동기화."""
-        # 제거된 상태
         for vm in list(self._node_items):
             if vm not in self._project_vm.state_vms:
                 self.removeItem(self._node_items.pop(vm))
-        # 추가된 상태
         for vm in self._project_vm.state_vms:
             if vm not in self._node_items:
                 item = StateNodeItem(vm)
@@ -66,11 +69,9 @@ class FsmScene(QGraphicsScene):
             else:
                 self._node_items[vm].setPos(vm.x, vm.y)
                 self._node_items[vm].update_from_model()
-        # 제거된 전이
         for tvm in list(self._edge_items):
             if tvm not in self._project_vm.transition_vms:
                 self.removeItem(self._edge_items.pop(tvm))
-        # 추가된 전이
         for tvm in self._project_vm.transition_vms:
             if tvm not in self._edge_items:
                 src = self._node_items.get(tvm.source_vm)
@@ -79,7 +80,6 @@ class FsmScene(QGraphicsScene):
                     edge = TransitionEdgeItem(tvm, src, tgt)
                     self.addItem(edge)
                     self._edge_items[tvm] = edge
-        # 경로 업데이트
         for edge in self._edge_items.values():
             edge.update_path()
 
@@ -93,13 +93,12 @@ class FsmScene(QGraphicsScene):
         )
         self._project_vm.execute(cmd)
 
-    # --- 전이 드래그 앤 드롭 ---
+    # --- 전이 드래그 ---
 
-    def begin_transition_drag(self, source: StateNodeItem, event_name: str = "done") -> None:
-        """노드 포트 드래그 시작 — 소스 설정 + rubber-band 선 생성."""
+    def begin_transition_drag(self, source: StateNodeItem, event_name: str) -> None:
         self._connecting = True
         self._connect_source = source
-        self._connect_event_name = event_name
+        self._connect_event = event_name
         line = QGraphicsLineItem()
         pen = QPen(_DRAG_LINE_COLOR, 2, Qt.PenStyle.DashLine)
         line.setPen(pen)
@@ -107,9 +106,8 @@ class FsmScene(QGraphicsScene):
         self._drag_line = line
 
     def update_transition_drag(self, scene_pos: QPointF) -> None:
-        """마우스 이동 시 rubber-band 선 끝점 갱신."""
         if self._drag_line is not None and self._connect_source is not None:
-            event_name = self._connect_event_name or "done"
+            event_name = self._connect_event or "done"
             src_pt = self._connect_source.output_port_scene_pos(event_name)
             self._drag_line.setLine(
                 src_pt.x(), src_pt.y(),
@@ -117,28 +115,56 @@ class FsmScene(QGraphicsScene):
             )
 
     def end_transition_drag(self, scene_pos: QPointF) -> None:
-        """드래그 종료 — 유효한 타깃이면 전이 생성, 아니면 취소."""
         if self._drag_line is not None:
             self.removeItem(self._drag_line)
             self._drag_line = None
 
         if self._connecting and self._connect_source is not None:
-            view_transform = self.views()[0].transform() if self.views() else None
-            target = (
-                self.itemAt(scene_pos, view_transform)
-                if view_transform is not None
-                else None
-            )
-            if isinstance(target, StateNodeItem) and target is not self._connect_source:
+            target = self._item_at_input_port(scene_pos)
+            if target is not None and target is not self._connect_source:
                 src_vm = self._connect_source.state_vm
                 tgt_vm = target.state_vm
-                model = Transition(source=src_vm.model, target=tgt_vm.model)
-                tvm = TransitionViewModel(model=model, source_vm=src_vm, target_vm=tgt_vm)
+                model = Transition(
+                    source=src_vm.model,
+                    target=tgt_vm.model,
+                    trigger=CompletionEvent(name=self._connect_event or "done"),
+                )
+                tvm = TransitionViewModel(
+                    model=model, source_vm=src_vm, target_vm=tgt_vm
+                )
                 self._project_vm.execute(CreateTransitionCmd(self._project_vm, tvm))
 
         self._connecting = False
         self._connect_source = None
-        self._connect_event_name = None
+        self._connect_event = None
+
+    def _item_at_input_port(self, scene_pos: QPointF) -> StateNodeItem | None:
+        view_transform = self.views()[0].transform() if self.views() else None
+        item = (
+            self.itemAt(scene_pos, view_transform)
+            if view_transform is not None else None
+        )
+        if isinstance(item, StateNodeItem):
+            local = item.mapFromScene(scene_pos)
+            if item.is_input_port(local):
+                return item
+        return None
+
+    # --- Registry 드롭 ---
+
+    def drop_skill(self, skill_name: str, scene_pos: QPointF) -> None:
+        if self._skill_lookup is None:
+            return
+        skill = self._skill_lookup(skill_name)
+        if skill is None:
+            return
+        for svm in self._project_vm.state_vms:
+            if svm.model.skill_ref is skill:
+                return  # 이미 배치됨
+        self._state_counter += 1
+        model = SimpleState(name=skill.name, skill_ref=skill)
+        vm = StateViewModel(model=model, x=scene_pos.x(), y=scene_pos.y())
+        self._project_vm.execute(CreateStateCmd(self._project_vm, vm))
 
     # --- 컨텍스트 메뉴 ---
 
@@ -148,18 +174,16 @@ class FsmScene(QGraphicsScene):
         pos = event.scenePos()
         item = self.itemAt(pos, self.views()[0].transform()) if self.views() else None
         menu = QMenu()
-
         if isinstance(item, StateNodeItem):
             delete_act = menu.addAction(f"'{item.state_vm.model.name}' 삭제")
-            chosen = menu.exec(event.screenPos())
-            if chosen == delete_act:
+            if menu.exec(event.screenPos()) == delete_act:
                 self._delete_state(item.state_vm)
         elif isinstance(item, TransitionEdgeItem):
             delete_act = menu.addAction("전이 삭제")
             if menu.exec(event.screenPos()) == delete_act:
                 self._delete_transition(item.transition_vm)
         else:
-            add_act = menu.addAction("상태 추가")
+            add_act = menu.addAction("빈 상태 추가")
             if menu.exec(event.screenPos()) == add_act:
                 self._create_state(pos)
 
@@ -194,8 +218,6 @@ class FsmScene(QGraphicsScene):
             return
         super().keyPressEvent(event)
 
-    # --- 드래그 중 우클릭으로 취소 ---
-
     def mousePressEvent(self, event: QGraphicsSceneMouseEvent | None) -> None:
         if event is None:
             return
@@ -205,6 +227,6 @@ class FsmScene(QGraphicsScene):
                 self._drag_line = None
             self._connecting = False
             self._connect_source = None
-            self._connect_event_name = None
+            self._connect_event = None
             return
         super().mousePressEvent(event)
