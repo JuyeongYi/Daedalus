@@ -252,3 +252,183 @@ class _FrontmatterPanel(QScrollArea):
     def _save_desc(self) -> None:
         self._component.description = self._w_desc.toPlainText().strip()
         self.changed.emit()
+
+
+def _section_depth(item: QTreeWidgetItem) -> int:
+    """QTreeWidgetItem의 트리 깊이 (루트=0)."""
+    depth = 0
+    parent = item.parent()
+    while parent is not None:
+        depth += 1
+        parent = parent.parent()
+    return depth
+
+
+def _build_path(item: QTreeWidgetItem) -> list[str]:
+    """루트 → 현재 아이템까지 타이틀 경로."""
+    path: list[str] = []
+    current: QTreeWidgetItem | None = item
+    while current is not None:
+        path.insert(0, current.text(0))
+        current = current.parent()
+    return path
+
+
+class _TreeSidebar(QWidget):
+    """중앙 145px 패널 — 섹션 트리 + TransferOn 고정 항목."""
+
+    section_selected = pyqtSignal(object, list)   # (Section, path: list[str])
+    transfer_on_selected = pyqtSignal()
+    structure_changed = pyqtSignal()              # 섹션 추가/삭제 시
+
+    def __init__(
+        self,
+        component: ProceduralSkill | DeclarativeSkill | AgentDefinition,
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self._component = component
+        self.setFixedWidth(145)
+        self.setStyleSheet(
+            "background: #0f0f22; border-right: 1px solid #1a1a33;"
+        )
+
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(6, 8, 6, 6)
+        lay.setSpacing(4)
+
+        hdr = QLabel("Sections")
+        hdr.setStyleSheet(
+            "font-size: 8px; color: #446; text-transform: uppercase; letter-spacing: 1px;"
+        )
+        lay.addWidget(hdr)
+
+        self._tree = QTreeWidget()
+        self._tree.setHeaderHidden(True)
+        self._tree.setRootIsDecorated(True)
+        self._tree.setStyleSheet(
+            "QTreeWidget { background: #0f0f22; border: none; color: #aaa; font-size: 9px; }"
+            "QTreeWidget::item:selected { background: #1a1a3a; color: #88aaff; }"
+            "QTreeWidget::item { padding: 2px 0; }"
+        )
+        self._tree.itemClicked.connect(self._on_item_clicked)
+        lay.addWidget(self._tree, 1)
+
+        btn_add = QPushButton("＋ 섹션 추가")
+        btn_add.setStyleSheet(
+            "border: 1px dashed #2a2a44; border-radius: 3px; color: #446; "
+            "font-size: 9px; padding: 3px; background: transparent;"
+        )
+        btn_add.clicked.connect(self._on_add_section)
+        lay.addWidget(btn_add)
+
+        # TransferOn — ProceduralSkill / AgentDefinition 전용 고정 하단 항목
+        self._has_transfer_on = not isinstance(component, DeclarativeSkill)
+        if self._has_transfer_on:
+            sep = QFrame()
+            sep.setFrameShape(QFrame.Shape.HLine)
+            sep.setStyleSheet("color: #2a4a2a;")
+            lay.addWidget(sep)
+            self._transfer_on_btn = QPushButton("⇄ TransferOn")
+            self._transfer_on_btn.setStyleSheet(
+                "background: #132013; border: 1px solid #2a4a2a; border-radius: 3px; "
+                "color: #88cc88; font-size: 9px; padding: 3px 6px; text-align: left;"
+            )
+            self._transfer_on_btn.clicked.connect(self.transfer_on_selected)
+            lay.addWidget(self._transfer_on_btn)
+
+        self._rebuild()
+
+    def tree_widget(self) -> QTreeWidget:
+        return self._tree
+
+    def _rebuild(self) -> None:
+        self._tree.clear()
+        for section in self._component.sections:
+            item = self._make_item(section)
+            self._tree.addTopLevelItem(item)
+            self._populate_children(item, section)
+        self._tree.expandAll()
+
+    def _make_item(self, section: Section) -> QTreeWidgetItem:
+        item = QTreeWidgetItem()
+        item.setText(0, section.title)
+        item.setData(0, _ROLE_SECTION, section)
+        return item
+
+    def _populate_children(self, parent_item: QTreeWidgetItem, section: Section) -> None:
+        for child in section.children:
+            child_item = self._make_item(child)
+            parent_item.addChild(child_item)
+            self._populate_children(child_item, child)
+
+    def _on_item_clicked(self, item: QTreeWidgetItem, _column: int) -> None:
+        section: Section | None = item.data(0, _ROLE_SECTION)
+        if section is None:
+            return
+        path = _build_path(item)
+        self.section_selected.emit(section, path)
+
+    def _on_add_section(self) -> None:
+        selected = self._tree.currentItem()
+        new_section = Section(title="새 섹션")
+        if selected is None:
+            # 최상위 H1 추가
+            self._component.sections.append(new_section)
+        else:
+            section = selected.data(0, _ROLE_SECTION)
+            if section is None:
+                self._component.sections.append(new_section)
+            else:
+                # 선택 항목과 같은 레벨 (형제) 추가
+                parent_item = selected.parent()
+                if parent_item is None:
+                    # 루트 레벨
+                    idx = self._component.sections.index(section)
+                    self._component.sections.insert(idx + 1, new_section)
+                else:
+                    parent_section: Section = parent_item.data(0, _ROLE_SECTION)
+                    idx = parent_section.children.index(section)
+                    parent_section.children.insert(idx + 1, new_section)
+        self._rebuild()
+        self.structure_changed.emit()
+
+    def add_child_to_current(self) -> None:
+        """ContentPanel의 '+ 하위 섹션' 버튼이 호출."""
+        selected = self._tree.currentItem()
+        if selected is None:
+            return
+        depth = _section_depth(selected)
+        if depth >= 5:  # H6 이상 불가
+            return
+        section: Section = selected.data(0, _ROLE_SECTION)
+        if section is None:
+            return
+        child = Section(title="새 하위 섹션")
+        section.children.append(child)
+        self._rebuild()
+        self.structure_changed.emit()
+
+    def delete_current(self) -> None:
+        """ContentPanel의 '삭제' 버튼이 호출."""
+        selected = self._tree.currentItem()
+        if selected is None:
+            return
+        section: Section = selected.data(0, _ROLE_SECTION)
+        if section is None:
+            return
+        parent_item = selected.parent()
+        if parent_item is None:
+            if section in self._component.sections:
+                self._component.sections.remove(section)
+        else:
+            parent_section: Section = parent_item.data(0, _ROLE_SECTION)
+            if section in parent_section.children:
+                parent_section.children.remove(section)
+        self._rebuild()
+        self.structure_changed.emit()
+
+    def current_depth(self) -> int:
+        """현재 선택 아이템의 깊이 (없으면 -1)."""
+        item = self._tree.currentItem()
+        return _section_depth(item) if item is not None else -1

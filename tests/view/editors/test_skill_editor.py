@@ -50,3 +50,30 @@ def test_frontmatter_panel_agent(qapp):
     comp = _make_agent()
     panel = _FrontmatterPanel(comp)
     assert isinstance(panel, QScrollArea)
+
+
+def test_tree_sidebar_procedural(qapp):
+    from daedalus.view.editors.skill_editor import _TreeSidebar
+    from daedalus.model.fsm.section import Section
+    from PyQt6.QtCore import Qt
+    comp = _make_procedural()
+    comp.sections = [
+        Section("Persona", children=[Section("Role"), Section("Background")]),
+        Section("Style"),
+    ]
+    sidebar = _TreeSidebar(comp)
+    assert sidebar.tree_widget().topLevelItemCount() >= 2  # 2 sections (Persona, Style)
+
+
+def test_tree_sidebar_declarative_no_transfer_on(qapp):
+    from daedalus.view.editors.skill_editor import _TreeSidebar
+    from PyQt6.QtCore import Qt
+    comp = _make_declarative()
+    sidebar = _TreeSidebar(comp)
+    # DeclarativeSkill은 TransferOn 없음
+    has_transfer_on = False
+    for i in range(sidebar.tree_widget().topLevelItemCount()):
+        item = sidebar.tree_widget().topLevelItem(i)
+        if item and item.data(0, Qt.ItemDataRole.UserRole + 1):
+            has_transfer_on = True
+    assert not has_transfer_on
