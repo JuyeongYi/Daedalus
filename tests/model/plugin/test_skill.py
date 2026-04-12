@@ -6,6 +6,7 @@ from daedalus.model.plugin.skill import Skill, ProceduralSkill, DeclarativeSkill
 from daedalus.model.plugin.config import ProceduralSkillConfig, DeclarativeSkillConfig
 from daedalus.model.fsm.machine import StateMachine
 from daedalus.model.fsm.state import SimpleState
+from daedalus.model.fsm.section import Section, EventDef
 
 
 def test_plugin_component_is_abstract():
@@ -61,16 +62,29 @@ def _make_fsm():
     return _SM(name="f", states=[s], initial_state=s)
 
 
-def test_procedural_skill_output_events_default():
+def test_procedural_skill_sections_default():
     fsm = _make_fsm()
     skill = ProceduralSkill(fsm=fsm, name="S", description="d")
-    assert skill.output_events == ["done"]
+    assert skill.sections == []
 
 
-def test_procedural_skill_output_events_custom():
+def test_procedural_skill_transfer_on_default():
+    fsm = _make_fsm()
+    skill = ProceduralSkill(fsm=fsm, name="S", description="d")
+    assert len(skill.transfer_on) == 1
+    assert skill.transfer_on[0].name == "done"
+
+
+def test_procedural_skill_output_events_via_property():
+    """output_events는 transfer_on에서 파생된 읽기 전용 프로퍼티."""
     fsm = _make_fsm()
     skill = ProceduralSkill(
         fsm=fsm, name="S", description="d",
-        output_events=["done", "error", "retry"],
+        transfer_on=[EventDef("done"), EventDef("error"), EventDef("retry")],
     )
     assert skill.output_events == ["done", "error", "retry"]
+
+
+def test_declarative_skill_sections_default():
+    skill = DeclarativeSkill(name="api-conventions", description="API 컨벤션")
+    assert skill.sections == []
