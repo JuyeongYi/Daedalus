@@ -42,20 +42,18 @@ class TransitionEdgeItem(QGraphicsPathItem):
         return self._target_node
 
     def update_path(self) -> None:
-        """소스/타겟 노드 위치 기반으로 베지어 경로 재계산."""
-        src_rect = self._source_node.sceneBoundingRect()
-        tgt_rect = self._target_node.sceneBoundingRect()
+        """출력/입력 포트 위치 기반 베지어 경로."""
+        trigger = self._transition_vm.model.trigger
+        event_name = trigger.name if trigger is not None else "done"
 
-        src_pt = QPointF(src_rect.right(), src_rect.center().y())
-        tgt_pt = QPointF(tgt_rect.left(), tgt_rect.center().y())
+        src_pt = self._source_node.output_port_scene_pos(event_name)
+        tgt_pt = self._target_node.input_port_scene_pos()
 
-        if tgt_rect.center().x() < src_rect.center().x():
-            # 역방향: 소스 왼쪽 → 타겟 오른쪽
-            src_pt = QPointF(src_rect.left(), src_rect.center().y())
-            tgt_pt = QPointF(tgt_rect.right(), tgt_rect.center().y())
-            dx = abs(tgt_pt.x() - src_pt.x()) * 0.5
-            ctrl1 = QPointF(src_pt.x() - dx, src_pt.y())
-            ctrl2 = QPointF(tgt_pt.x() + dx, tgt_pt.y())
+        if tgt_pt.x() < src_pt.x():
+            # 역방향 — 더 크게 휘어짐
+            dx = abs(tgt_pt.x() - src_pt.x()) * 0.8 + 80
+            ctrl1 = QPointF(src_pt.x() + dx, src_pt.y())
+            ctrl2 = QPointF(tgt_pt.x() - dx, tgt_pt.y())
         else:
             dx = abs(tgt_pt.x() - src_pt.x()) * 0.5
             ctrl1 = QPointF(src_pt.x() + dx, src_pt.y())

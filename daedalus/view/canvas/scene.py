@@ -42,6 +42,7 @@ class FsmScene(QGraphicsScene):
 
         self._connecting = False
         self._connect_source: StateNodeItem | None = None
+        self._connect_event_name: str | None = None
         self._drag_line: QGraphicsLineItem | None = None
 
         self._project_vm.add_listener(self._rebuild)
@@ -64,6 +65,7 @@ class FsmScene(QGraphicsScene):
                 self._node_items[vm] = item
             else:
                 self._node_items[vm].setPos(vm.x, vm.y)
+                self._node_items[vm].update_from_model()
         # 제거된 전이
         for tvm in list(self._edge_items):
             if tvm not in self._project_vm.transition_vms:
@@ -93,10 +95,11 @@ class FsmScene(QGraphicsScene):
 
     # --- 전이 드래그 앤 드롭 ---
 
-    def begin_transition_drag(self, source: StateNodeItem) -> None:
+    def begin_transition_drag(self, source: StateNodeItem, event_name: str = "done") -> None:
         """노드 포트 드래그 시작 — 소스 설정 + rubber-band 선 생성."""
         self._connecting = True
         self._connect_source = source
+        self._connect_event_name = event_name
         line = QGraphicsLineItem()
         pen = QPen(_DRAG_LINE_COLOR, 2, Qt.PenStyle.DashLine)
         line.setPen(pen)
@@ -106,9 +109,10 @@ class FsmScene(QGraphicsScene):
     def update_transition_drag(self, scene_pos: QPointF) -> None:
         """마우스 이동 시 rubber-band 선 끝점 갱신."""
         if self._drag_line is not None and self._connect_source is not None:
-            src_center = self._connect_source.sceneBoundingRect().center()
+            event_name = self._connect_event_name or "done"
+            src_pt = self._connect_source.output_port_scene_pos(event_name)
             self._drag_line.setLine(
-                src_center.x(), src_center.y(),
+                src_pt.x(), src_pt.y(),
                 scene_pos.x(), scene_pos.y(),
             )
 
@@ -134,6 +138,7 @@ class FsmScene(QGraphicsScene):
 
         self._connecting = False
         self._connect_source = None
+        self._connect_event_name = None
 
     # --- 컨텍스트 메뉴 ---
 
@@ -200,5 +205,6 @@ class FsmScene(QGraphicsScene):
                 self._drag_line = None
             self._connecting = False
             self._connect_source = None
+            self._connect_event_name = None
             return
         super().mousePressEvent(event)
