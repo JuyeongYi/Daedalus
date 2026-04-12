@@ -165,5 +165,8 @@ def test_node_item_port_color_from_event_def(qapp):
     assert len(defs) == 2
     assert defs[0].color == "#aa44cc"
     assert defs[1].color == "#cc3333"
+    # color 문자열이 Qt가 파싱 가능한 유효한 hex인지 확인
+    assert QColor(defs[0].color).isValid()
+    assert QColor(defs[1].color).isValid()
     # _output_events() 프로퍼티도 호환 확인
     assert item._output_events() == ["done", "error"]
