@@ -216,7 +216,7 @@ class AgentEditor(QWidget):
         self._content_panel.show_section(section, path)
         self._stack.setCurrentIndex(0)
 
-    def _on_breadcrumb_add(self, parent: Section | None, depth: int) -> None:
+    def _on_breadcrumb_add(self, parent: Section | None, _depth: int = 0) -> None:
         siblings = self._agent.sections if parent is None else parent.children
         existing_names = {s.title for s in siblings}
 
