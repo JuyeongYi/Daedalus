@@ -62,15 +62,16 @@ def test_agent_editor_graph_loads_fsm_states(qapp):
     assert len(editor._graph_vm.state_vms) == 2
 
 
-def test_agent_editor_mini_registry_is_left(qapp):
+def test_agent_editor_skill_registry_is_left(qapp):
     from PyQt6.QtWidgets import QSplitter
-    from daedalus.view.editors.agent_editor import AgentEditor, _MiniRegistry
+    from daedalus.view.editors.agent_editor import AgentEditor
+    from daedalus.view.panels.registry_panel import _RegistrySection
     from daedalus.view.canvas.canvas_view import FsmCanvasView
     editor = AgentEditor(_make_agent())
     graph_tab = editor._tabs.widget(0)
     splitter = graph_tab.findChild(QSplitter)
     assert splitter is not None
-    assert isinstance(splitter.widget(0), _MiniRegistry)
+    assert isinstance(splitter.widget(0), _RegistrySection)
     assert isinstance(splitter.widget(1), FsmCanvasView)
 
 

@@ -4,14 +4,11 @@ from __future__ import annotations
 from typing import Callable
 
 from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QCloseEvent
+from PyQt6.QtGui import QCloseEvent, QColor
 from PyQt6.QtWidgets import (
     QHBoxLayout,
     QInputDialog,
-    QLabel,
-    QListWidget,
     QMessageBox,
-    QPushButton,
     QSplitter,
     QTabWidget,
     QVBoxLayout,
@@ -30,53 +27,7 @@ from daedalus.view.editors.body_editor import (
 )
 from daedalus.view.editors.skill_editor import _FrontmatterPanel
 from daedalus.view.editors.variable_loader import load_variables
-
-
-class _MiniRegistry(QWidget):
-    """에이전트 로컬 스킬 목록 + '＋ 새 스킬' 버튼."""
-
-    def __init__(
-        self,
-        agent: AgentDefinition,
-        parent: QWidget | None = None,
-    ) -> None:
-        super().__init__(parent)
-        self._agent = agent
-        self.setMinimumWidth(120)
-        self.setMaximumWidth(200)
-
-        lay = QVBoxLayout(self)
-        lay.setContentsMargins(4, 4, 4, 4)
-        lay.setSpacing(4)
-
-        lay.addWidget(QLabel("Local Skills"))
-
-        self._list = QListWidget()
-        lay.addWidget(self._list, 1)
-
-        btn = QPushButton("＋ 새 스킬")
-        btn.clicked.connect(self._on_add_skill)
-        lay.addWidget(btn)
-
-        self._rebuild()
-
-    def _rebuild(self) -> None:
-        self._list.clear()
-        for skill in self._agent.skills:
-            self._list.addItem(f"⚙ {skill.name}")
-
-    def _on_add_skill(self) -> None:
-        name, ok = QInputDialog.getText(self, "새 로컬 스킬", "이름:")
-        if not ok or not name.strip():
-            return
-        from daedalus.model.fsm.machine import StateMachine
-        from daedalus.model.fsm.state import SimpleState
-        from daedalus.model.plugin.skill import ProceduralSkill
-        s = SimpleState(name="start")
-        fsm = StateMachine(name=f"{name}_fsm", states=[s], initial_state=s)
-        skill = ProceduralSkill(fsm=fsm, name=name.strip(), description="")
-        self._agent.skills.append(skill)
-        self._rebuild()
+from daedalus.view.panels.registry_panel import _RegistrySection
 
 
 class AgentEditor(QWidget):
@@ -130,9 +81,13 @@ class AgentEditor(QWidget):
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
 
-        # 미니 레지스트리 (좌측 사이드바)
-        self._mini_registry = _MiniRegistry(self._agent)
-        splitter.addWidget(self._mini_registry)
+        # 로컬 스킬 레지스트리 (좌측 사이드바)
+        self._skill_section = _RegistrySection("Local Skills", QColor("#4a8a4a"))
+        self._skill_section.add_requested.connect(self._on_add_local_skill)
+        self._skill_section.item_double_clicked.connect(self._open_local_skill)
+        self._skill_section.setMinimumWidth(120)
+        self._skill_section.setMaximumWidth(200)
+        splitter.addWidget(self._skill_section)
 
         # 캔버스 (우측)
         self._graph_vm = ProjectViewModel()
@@ -145,8 +100,10 @@ class AgentEditor(QWidget):
         splitter.setStretchFactor(1, 1)  # canvas: 확장
 
         lay.addWidget(splitter)
+        self._open_skill_tabs: dict[str, int] = {}
         self._migrate_fsm()
         self._load_agent_fsm()
+        self._refresh_skill_list()
         return container
 
     def _migrate_fsm(self) -> None:
@@ -198,6 +155,62 @@ class AgentEditor(QWidget):
                 tvm = TransitionViewModel(model=trans, source_vm=src_vm, target_vm=tgt_vm)
                 self._graph_vm.transition_vms.append(tvm)
         self._graph_vm.notify()
+
+    def _refresh_skill_list(self) -> None:
+        self._skill_section.clear()
+        placed_ids: set[int] = set()
+        for svm in self._graph_vm.state_vms:
+            if hasattr(svm.model, "skill_ref") and svm.model.skill_ref is not None:
+                placed_ids.add(id(svm.model.skill_ref))  # type: ignore[union-attr]
+        for skill in self._agent.skills:
+            self._skill_section.add_item(skill, id(skill) in placed_ids)
+
+    def _on_add_local_skill(self) -> None:
+        from PyQt6.QtWidgets import QMenu
+        menu = QMenu(self)
+        act_proc = menu.addAction("Procedural Skill")
+        act_trans = menu.addAction("Transfer Skill")
+        cursor_pos = self._skill_section.mapToGlobal(
+            self._skill_section.rect().bottomLeft()
+        )
+        chosen = menu.exec(cursor_pos)
+        if chosen is None:
+            return
+        kind = "procedural" if chosen == act_proc else "transfer" if chosen == act_trans else None
+        if kind is None:
+            return
+        name, ok = QInputDialog.getText(self, "New local skill", "Name:")
+        if not ok or not name.strip():
+            return
+        name = name.strip()
+        if any(s.name == name for s in self._agent.skills):
+            QMessageBox.warning(self, "Name conflict", f"'{name}' already exists.")
+            return
+        from daedalus.model.fsm.machine import StateMachine
+        from daedalus.model.fsm.state import SimpleState
+        from daedalus.model.plugin.skill import ProceduralSkill, TransferSkill
+        s = SimpleState(name="start")
+        fsm = StateMachine(name=f"{name}_fsm", states=[s], initial_state=s)
+        if kind == "procedural":
+            skill = ProceduralSkill(fsm=fsm, name=name, description="")
+        else:
+            skill = TransferSkill(fsm=fsm, name=name, description="")
+        self._agent.skills.append(skill)
+        self._refresh_skill_list()
+        self._on_model_changed()
+
+    def _open_local_skill(self, component: object) -> None:
+        from daedalus.view.editors.skill_editor import SkillEditor
+        name = getattr(component, "name", None)
+        if name is None:
+            return
+        if name in self._open_skill_tabs:
+            self._tabs.setCurrentIndex(self._open_skill_tabs[name])
+            return
+        editor = SkillEditor(component, on_notify_fn=self._on_model_changed)  # type: ignore[arg-type]
+        idx = self._tabs.addTab(editor, f"⚙ {name}")
+        self._open_skill_tabs[name] = idx
+        self._tabs.setCurrentIndex(idx)
 
     def _build_content_tab(self) -> QWidget:
         """Content 탭: FrontmatterPanel(좌) + SectionTree(중) + ContentPanel(우).
@@ -327,6 +340,8 @@ class AgentEditor(QWidget):
         self._var_popup.raise_()
 
     def _on_model_changed(self) -> None:
+        if hasattr(self, "_skill_section"):
+            self._refresh_skill_list()
         self.agent_changed.emit()
         if self._on_notify_fn is not None:
             self._on_notify_fn()
