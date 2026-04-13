@@ -48,9 +48,17 @@ class StateNodeItem(QGraphicsItem):
         return self._state_vm
 
     def _event_defs(self) -> list[EventDef]:
-        """skill_ref.transfer_on에서 EventDef 목록 반환."""
+        """skill_ref에서 EventDef 목록 반환.
+
+        AgentDefinition은 output_event_defs 프로퍼티를,
+        ProceduralSkill은 transfer_on 필드를 사용한다.
+        """
         ref = self._state_vm.model.skill_ref
-        if ref is not None and hasattr(ref, "transfer_on"):
+        if ref is None:
+            return []
+        if hasattr(ref, "output_event_defs"):
+            return list(ref.output_event_defs)
+        if hasattr(ref, "transfer_on"):
             return list(ref.transfer_on)
         return []
 

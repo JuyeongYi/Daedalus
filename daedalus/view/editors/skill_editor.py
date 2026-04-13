@@ -415,7 +415,7 @@ class SkillEditor(QWidget):
         )
         tree_lay.addWidget(self._section_tree, 1)
 
-        if not isinstance(component, (DeclarativeSkill, TransferSkill)):
+        if isinstance(component, ProceduralSkill):
             sep = QFrame()
             sep.setFrameShape(QFrame.Shape.HLine)
             tree_lay.addWidget(sep)
@@ -443,7 +443,7 @@ class SkillEditor(QWidget):
         self._content_panel.content_changed.connect(self._on_content_changed)
         self._stack.addWidget(self._content_panel)  # index 0
 
-        if not isinstance(component, (DeclarativeSkill, TransferSkill)):
+        if isinstance(component, ProceduralSkill):
             transfer_on = component.transfer_on
         else:
             transfer_on = []

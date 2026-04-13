@@ -195,13 +195,23 @@ class Validator:
             ref = state.skill_ref
             if ref is None:
                 continue
-            if isinstance(ref, (ProceduralSkill, AgentDefinition)):
+            if isinstance(ref, ProceduralSkill):
                 if not ref.transfer_on:
                     errors.append(ValidationError(
                         rule="transfer_on_not_empty",
                         message=(
-                            f"'{ref.name}' 스킬/에이전트의 transfer_on이 비어 있습니다. "
+                            f"'{ref.name}' 스킬의 transfer_on이 비어 있습니다. "
                             f"최소 하나의 이벤트가 필요합니다."
+                        ),
+                        source=ref.name,
+                    ))
+            elif isinstance(ref, AgentDefinition):
+                if not ref.output_events:
+                    errors.append(ValidationError(
+                        rule="transfer_on_not_empty",
+                        message=(
+                            f"'{ref.name}' 에이전트의 ExitPoint가 없습니다. "
+                            f"최소 하나의 ExitPoint가 필요합니다."
                         ),
                         source=ref.name,
                     ))
