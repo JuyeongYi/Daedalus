@@ -27,6 +27,7 @@ _COLOR_NO_PLACE = QColor("#666644")
 _ICON = {
     "procedural_skill": "⚙",
     "declarative_skill": "📄",
+    "transfer_skill": "⚡",
     "agent": "🤖",
 }
 
@@ -125,7 +126,7 @@ class RegistryPanel(QWidget):
     """스킬/에이전트 레지스트리 팔레트."""
 
     component_double_clicked = pyqtSignal(object)
-    new_component_requested = pyqtSignal(str)  # kind: "procedural"|"declarative"|"agent"
+    new_component_requested = pyqtSignal(str)  # kind: "procedural"|"declarative"|"transfer"|"agent"
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
