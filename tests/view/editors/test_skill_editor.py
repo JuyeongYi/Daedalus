@@ -136,6 +136,19 @@ def test_frontmatter_panel_transfer(qapp):
     assert isinstance(panel, QScrollArea)
 
 
+def test_skill_editor_transfer_smoke(qapp):
+    from daedalus.view.editors.skill_editor import SkillEditor
+    from daedalus.model.fsm.state import SimpleState
+    from daedalus.model.fsm.machine import StateMachine
+    from daedalus.model.plugin.skill import TransferSkill
+    s = SimpleState(name="s")
+    fsm = StateMachine(name="f", states=[s], initial_state=s)
+    comp = TransferSkill(fsm=fsm, name="Validate", description="검증")
+    editor = SkillEditor(comp)  # must not raise
+    from PyQt6.QtWidgets import QWidget
+    assert isinstance(editor, QWidget)
+
+
 def test_node_item_port_color_from_event_def(qapp):
     """EventDef.color가 StateNodeItem 포트 색상에 반영되는지 확인."""
     from PyQt6.QtGui import QColor
