@@ -122,3 +122,39 @@ def test_section_tree_select_by_section(qapp):
     sel = tree.tree_widget().currentItem()
     assert sel is not None
     assert sel.text(0) == "Requirements"
+
+
+def test_section_content_panel_show(qapp):
+    from daedalus.view.editors.body_editor import SectionContentPanel
+    panel = SectionContentPanel()
+    section = Section("Title", content="Body text")
+    panel.show_section(section, ["Root", "Title"])
+    assert panel.current_section() is section
+
+
+def test_section_content_panel_saves_title(qapp):
+    from daedalus.view.editors.body_editor import SectionContentPanel
+    panel = SectionContentPanel()
+    section = Section("Old")
+    panel.show_section(section, ["Old"])
+    panel._w_title.setText("New")
+    panel._save_title()
+    assert section.title == "New"
+
+
+def test_section_content_panel_saves_content(qapp):
+    from daedalus.view.editors.body_editor import SectionContentPanel
+    panel = SectionContentPanel()
+    section = Section("T", content="old")
+    panel.show_section(section, ["T"])
+    panel._w_content.setPlainText("new")
+    assert section.content == "new"
+
+
+def test_variable_popup_has_entries(qapp):
+    from daedalus.view.editors.body_editor import VariablePopup
+    from daedalus.view.editors.variable_loader import load_variables
+    from PyQt6.QtWidgets import QFrame
+    entries = load_variables()
+    popup = VariablePopup(entries)
+    assert isinstance(popup, QFrame)
