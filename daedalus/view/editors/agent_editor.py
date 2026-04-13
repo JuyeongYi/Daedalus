@@ -113,7 +113,7 @@ class AgentEditor(QWidget):
     # ------------------------------------------------------------------ #
 
     def _build_graph_tab(self) -> QWidget:
-        """Graph 탭: FsmCanvasView + MiniRegistry 사이드바."""
+        """Graph 탭: 미니 레지스트리(좌) + FsmCanvasView(우)."""
         from daedalus.view.canvas.canvas_view import FsmCanvasView
         from daedalus.view.canvas.scene import FsmScene
         from daedalus.view.viewmodel.project_vm import ProjectViewModel
@@ -125,21 +125,41 @@ class AgentEditor(QWidget):
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
 
-        # Canvas
+        # 미니 레지스트리 (좌측 사이드바)
+        self._mini_registry = _MiniRegistry(self._agent)
+        splitter.addWidget(self._mini_registry)
+
+        # 캔버스 (우측)
         self._graph_vm = ProjectViewModel()
+        self._graph_vm.add_listener(self._on_model_changed)
         self._graph_scene = FsmScene(self._graph_vm)
         self._canvas_view = FsmCanvasView(self._graph_scene)
         splitter.addWidget(self._canvas_view)
 
-        # MiniRegistry sidebar
-        self._mini_registry = _MiniRegistry(self._agent)
-        splitter.addWidget(self._mini_registry)
-
-        splitter.setStretchFactor(0, 1)
-        splitter.setStretchFactor(1, 0)
+        splitter.setStretchFactor(0, 0)  # registry: 고정폭
+        splitter.setStretchFactor(1, 1)  # canvas: 확장
 
         lay.addWidget(splitter)
+        self._load_agent_fsm()
         return container
+
+    def _load_agent_fsm(self) -> None:
+        """에이전트 FSM 상태를 Graph VM에 로드."""
+        from daedalus.view.viewmodel.state_vm import StateViewModel, TransitionViewModel
+        x_offset = 0.0
+        vm_map: dict[str, StateViewModel] = {}
+        for state in self._agent.fsm.states:
+            vm = StateViewModel(model=state, x=x_offset, y=100.0)
+            self._graph_vm.state_vms.append(vm)
+            vm_map[state.name] = vm
+            x_offset += 220.0
+        for trans in self._agent.fsm.transitions:
+            src_vm = vm_map.get(trans.source.name)
+            tgt_vm = vm_map.get(trans.target.name)
+            if src_vm and tgt_vm:
+                tvm = TransitionViewModel(model=trans, source_vm=src_vm, target_vm=tgt_vm)
+                self._graph_vm.transition_vms.append(tvm)
+        self._graph_vm.notify()
 
     def _build_content_tab(self) -> QWidget:
         """Content 탭: SectionTree + BreadcrumbNav + SectionContentPanel."""
