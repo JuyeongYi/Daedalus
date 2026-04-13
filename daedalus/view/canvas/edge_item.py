@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from PyQt6.QtCore import QPointF
-from PyQt6.QtGui import QColor, QPainter, QPainterPath, QPen, QPolygonF
+from PyQt6.QtCore import QPointF, QRectF
+from PyQt6.QtGui import QColor, QFont, QPainter, QPainterPath, QPen, QPolygonF
 from PyQt6.QtWidgets import QGraphicsPathItem, QStyleOptionGraphicsItem, QWidget
 
 from daedalus.view.canvas.node_item import StateNodeItem
@@ -63,6 +63,14 @@ class TransitionEdgeItem(QGraphicsPathItem):
         path.cubicTo(ctrl1, ctrl2, tgt_pt)
         self.setPath(path)
 
+    def boundingRect(self) -> QRectF:
+        rect = super().boundingRect()
+        skill_ref = self._transition_vm.model.skill_ref
+        if skill_ref is not None:
+            # 라벨이 경로 바운딩 박스를 벗어날 수 있으므로 여유 확장
+            rect = rect.adjusted(-10, -20, 100, 10)
+        return rect
+
     def paint(
         self,
         painter: QPainter | None,
@@ -99,3 +107,12 @@ class TransitionEdgeItem(QGraphicsPathItem):
             painter.setBrush(color)
             painter.setPen(QPen(color))
             painter.drawPolygon(arrow)
+
+        # Transfer Skill 라벨
+        skill_ref = self._transition_vm.model.skill_ref
+        if skill_ref is not None:
+            mid = path.pointAtPercent(0.5)
+            label = f"⚡ {skill_ref.name}"
+            painter.setPen(QPen(QColor("#88aacc")))
+            painter.setFont(QFont("Segoe UI", 8))
+            painter.drawText(mid.x() + 4, mid.y() - 4, label)
