@@ -13,7 +13,6 @@ from PyQt6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QSplitter,
-    QStackedWidget,
     QTabWidget,
     QVBoxLayout,
     QWidget,
@@ -36,8 +35,6 @@ from daedalus.view.editors.variable_loader import load_variables
 class _MiniRegistry(QWidget):
     """에이전트 로컬 스킬 목록 + '＋ 새 스킬' 버튼."""
 
-    skill_added = pyqtSignal(str)
-
     def __init__(
         self,
         agent: AgentDefinition,
@@ -45,33 +42,45 @@ class _MiniRegistry(QWidget):
     ) -> None:
         super().__init__(parent)
         self._agent = agent
+        self.setMinimumWidth(120)
+        self.setMaximumWidth(200)
 
         lay = QVBoxLayout(self)
-        lay.setContentsMargins(6, 6, 6, 6)
+        lay.setContentsMargins(4, 4, 4, 4)
         lay.setSpacing(4)
 
-        hdr = QLabel("로컬 스킬")
-        lay.addWidget(hdr)
+        lay.addWidget(QLabel("Local Skills"))
 
         self._list = QListWidget()
-        self._rebuild()
         lay.addWidget(self._list, 1)
 
-        add_btn = QPushButton("＋ 새 스킬")
-        add_btn.clicked.connect(self._on_add_skill)
-        lay.addWidget(add_btn)
+        btn = QPushButton("＋ 새 스킬")
+        btn.clicked.connect(self._on_add_skill)
+        lay.addWidget(btn)
+
+        self._rebuild()
 
     def _rebuild(self) -> None:
         self._list.clear()
         for skill in self._agent.skills:
-            self._list.addItem(skill.name)
+            self._list.addItem(f"⚙ {skill.name}")
 
     def _on_add_skill(self) -> None:
-        self.skill_added.emit("")
+        name, ok = QInputDialog.getText(self, "새 로컬 스킬", "이름:")
+        if not ok or not name.strip():
+            return
+        from daedalus.model.fsm.machine import StateMachine
+        from daedalus.model.fsm.state import SimpleState
+        from daedalus.model.plugin.skill import ProceduralSkill
+        s = SimpleState(name="start")
+        fsm = StateMachine(name=f"{name}_fsm", states=[s], initial_state=s)
+        skill = ProceduralSkill(fsm=fsm, name=name.strip(), description="")
+        self._agent.skills.append(skill)
+        self._rebuild()
 
 
 class AgentEditor(QWidget):
-    """AgentDefinition 편집기 — Graph / Content / Config 탭."""
+    """AgentDefinition 편집기 — Graph / Content(+Config) 탭."""
 
     agent_changed = pyqtSignal()
 
@@ -96,14 +105,9 @@ class AgentEditor(QWidget):
         graph_tab = self._build_graph_tab()
         self._tabs.addTab(graph_tab, "📐 Graph")
 
-        # Tab 1: Content
+        # Tab 1: Content + Config (SkillEditor와 동일한 UX)
         content_tab = self._build_content_tab()
         self._tabs.addTab(content_tab, "📝 Content")
-
-        # Tab 2: Config
-        config_tab = _FrontmatterPanel(agent)
-        config_tab.changed.connect(self._on_model_changed)
-        self._tabs.addTab(config_tab, "⚙ Config")
 
         # Initial section selection
         if agent.sections:
@@ -163,7 +167,10 @@ class AgentEditor(QWidget):
         self._graph_vm.notify()
 
     def _build_content_tab(self) -> QWidget:
-        """Content 탭: SectionTree + BreadcrumbNav + SectionContentPanel."""
+        """Content 탭: FrontmatterPanel(좌) + SectionTree(중) + ContentPanel(우).
+
+        SkillEditor와 동일한 3-column QSplitter 레이아웃.
+        """
         container = QWidget()
         lay = QHBoxLayout(container)
         lay.setContentsMargins(0, 0, 0, 0)
@@ -171,7 +178,12 @@ class AgentEditor(QWidget):
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
 
-        # Left: SectionTree
+        # Left: FrontmatterPanel (name / description / config 필드)
+        self._fm_panel = _FrontmatterPanel(self._agent)
+        self._fm_panel.changed.connect(self._on_model_changed)
+        splitter.addWidget(self._fm_panel)
+
+        # Center: SectionTree
         self._section_tree = SectionTree(self._agent.sections)
         self._section_tree.section_selected.connect(self._on_tree_selected)
         self._section_tree.structure_changed.connect(self._on_structure_changed)
@@ -191,18 +203,16 @@ class AgentEditor(QWidget):
         self._breadcrumb.section_add_requested.connect(self._on_breadcrumb_add)
         right_lay.addWidget(self._breadcrumb)
 
-        self._stack = QStackedWidget()
-
         self._content_panel = SectionContentPanel()
         self._content_panel.variable_insert_requested.connect(self._on_variable_insert)
         self._content_panel.content_changed.connect(self._on_content_changed)
-        self._stack.addWidget(self._content_panel)
+        right_lay.addWidget(self._content_panel, 1)
 
-        right_lay.addWidget(self._stack, 1)
         splitter.addWidget(right_area)
 
-        splitter.setStretchFactor(0, 0)
-        splitter.setStretchFactor(1, 1)
+        splitter.setStretchFactor(0, 0)  # frontmatter: 고정폭
+        splitter.setStretchFactor(1, 0)  # tree: 고정폭
+        splitter.setStretchFactor(2, 1)  # content: 확장
 
         lay.addWidget(splitter)
 
@@ -212,6 +222,15 @@ class AgentEditor(QWidget):
         self._var_popup.hide()
 
         return container
+
+    # ------------------------------------------------------------------ #
+    # Lifecycle                                                             #
+    # ------------------------------------------------------------------ #
+
+    def closeEvent(self, event: QCloseEvent | None) -> None:
+        """탭 닫힘 시 씬 리스너를 해제해 메모리 누수 방지."""
+        self._graph_scene.close()
+        super().closeEvent(event)  # type: ignore[arg-type]
 
     # ------------------------------------------------------------------ #
     # Bidirectional sync (Content tab)                                     #
@@ -225,17 +244,14 @@ class AgentEditor(QWidget):
         self._section_tree.select_section(section)
         self._breadcrumb.set_current(section)
         self._content_panel.show_section(section, path_titles)
-        self._stack.setCurrentIndex(0)
 
     def _on_tree_selected(self, section: Section, path: list[str]) -> None:
         self._breadcrumb.set_current(section)
         self._content_panel.show_section(section, path)
-        self._stack.setCurrentIndex(0)
 
     def _on_breadcrumb_selected(self, section: Section, path: list[str]) -> None:
         self._section_tree.select_section(section)
         self._content_panel.show_section(section, path)
-        self._stack.setCurrentIndex(0)
 
     def _on_breadcrumb_add(self, parent: Section | None, _depth: int = 0) -> None:
         siblings = self._agent.sections if parent is None else parent.children
@@ -276,11 +292,6 @@ class AgentEditor(QWidget):
         self._var_popup.move(pos)
         self._var_popup.show()
         self._var_popup.raise_()
-
-    def closeEvent(self, event: QCloseEvent | None) -> None:
-        """탭 닫힘 시 씬 리스너를 해제해 메모리 누수 방지."""
-        self._graph_scene.close()
-        super().closeEvent(event)  # type: ignore[arg-type]
 
     def _on_model_changed(self) -> None:
         self.agent_changed.emit()

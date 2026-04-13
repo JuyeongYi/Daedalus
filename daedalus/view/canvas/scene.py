@@ -489,6 +489,13 @@ class AgentFsmScene(FsmScene):
             description=f"ExitPoint '{model.name}' 삭제",
         ))
 
+    def _delete_state(self, state_vm: StateViewModel) -> None:
+        """EntryPoint는 삭제 불가 — 모든 코드 경로에서 방어."""
+        from daedalus.model.fsm.pseudo import EntryPoint as _EP
+        if isinstance(state_vm.model, _EP):
+            return
+        super()._delete_state(state_vm)
+
     def keyPressEvent(self, event: QKeyEvent | None) -> None:
         if event is None:
             return

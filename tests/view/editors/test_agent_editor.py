@@ -22,12 +22,12 @@ def test_agent_editor_smoke(qapp):
     editor = AgentEditor(_make_agent())
 
 
-def test_agent_editor_has_three_tabs(qapp):
+def test_agent_editor_has_two_tabs(qapp):
     from daedalus.view.editors.agent_editor import AgentEditor
     editor = AgentEditor(_make_agent())
     tabs = editor.findChild(QTabWidget)
     assert tabs is not None
-    assert tabs.count() == 3
+    assert tabs.count() == 2
 
 
 def test_agent_editor_tab_names(qapp):
@@ -37,7 +37,6 @@ def test_agent_editor_tab_names(qapp):
     assert tabs is not None
     assert "Graph" in tabs.tabText(0)
     assert "Content" in tabs.tabText(1)
-    assert "Config" in tabs.tabText(2)
 
 
 def test_agent_editor_changed_signal(qapp):
@@ -89,6 +88,45 @@ def test_agent_editor_uses_agent_fsm_scene(qapp):
     from daedalus.view.editors.agent_editor import AgentEditor
     editor = AgentEditor(_make_agent())
     assert isinstance(editor._graph_scene, AgentFsmScene)
+
+
+def test_agent_editor_content_tab_has_frontmatter_panel(qapp):
+    """Content 탭에 FrontmatterPanel이 포함되어 있어야 한다 (SkillEditor UX 일치)."""
+    from daedalus.view.editors.agent_editor import AgentEditor
+    from daedalus.view.editors.skill_editor import _FrontmatterPanel
+    editor = AgentEditor(_make_agent())
+    content_tab = editor._tabs.widget(1)
+    panel = content_tab.findChild(_FrontmatterPanel)
+    assert panel is not None
+
+
+def test_agent_fsm_scene_delete_state_guard_blocks_entry_point(qapp):
+    """AgentFsmScene._delete_state를 직접 호출해도 EntryPoint는 삭제되지 않아야 한다."""
+    from daedalus.model.fsm.pseudo import EntryPoint
+    from daedalus.model.fsm.machine import StateMachine
+    from daedalus.view.canvas.scene import AgentFsmScene
+    from daedalus.view.viewmodel.project_vm import ProjectViewModel
+    from daedalus.view.viewmodel.state_vm import StateViewModel
+
+    entry = EntryPoint(name="entry")
+    exit_done = ExitPoint(name="done")
+    fsm = StateMachine(
+        name="f", states=[entry, exit_done],
+        initial_state=entry, final_states=[exit_done],
+    )
+
+    vm = ProjectViewModel()
+    entry_vm = StateViewModel(model=entry, x=0.0, y=0.0)
+    vm.state_vms.append(entry_vm)
+    exit_vm = StateViewModel(model=exit_done, x=200.0, y=0.0)
+    vm.state_vms.append(exit_vm)
+
+    scene = AgentFsmScene(vm, agent_fsm=fsm)
+
+    # 직접 _delete_state 호출 — guard가 막아야 함
+    scene._delete_state(entry_vm)
+
+    assert entry_vm in vm.state_vms  # 삭제되지 않아야 함
 
 
 def test_agent_fsm_scene_delete_key_does_not_remove_entry_point(qapp):
