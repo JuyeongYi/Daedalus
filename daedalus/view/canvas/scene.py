@@ -23,7 +23,12 @@ from daedalus.view.canvas.edge_item import TransitionEdgeItem
 from daedalus.view.canvas.node_item import StateNodeItem
 from daedalus.view.commands.base import Command, MacroCommand
 from daedalus.view.commands.state_commands import CreateStateCmd, DeleteStateCmd, MoveStateCmd
-from daedalus.view.commands.transition_commands import CreateTransitionCmd, DeleteTransitionCmd
+from daedalus.view.commands.transition_commands import (
+    AddSkillToProjectCmd,
+    CreateTransitionCmd,
+    DeleteTransitionCmd,
+    SetTransitionSkillRefCmd,
+)
 from daedalus.view.viewmodel.state_vm import StateViewModel, TransitionViewModel
 
 from daedalus.model.project import PluginProject
@@ -222,15 +227,13 @@ class FsmScene(QGraphicsScene):
             if chosen == delete_act:
                 self._delete_transition(tvm)
             elif chosen == new_act:
-                self._create_and_assign_transfer_skill(transition)
+                self._create_and_assign_transfer_skill(tvm)
             elif chosen == unset_act:
-                # Note: not undoable — see _create_and_assign_transfer_skill comment
-                transition.skill_ref = None
-                self._project_vm.notify()
+                self._project_vm.execute(SetTransitionSkillRefCmd(tvm, None))
             elif chosen in skill_actions:
-                # Note: not undoable — see _create_and_assign_transfer_skill comment
-                transition.skill_ref = skill_actions[chosen]
-                self._project_vm.notify()
+                self._project_vm.execute(
+                    SetTransitionSkillRefCmd(tvm, skill_actions[chosen])
+                )
         else:
             add_act = menu.addAction("빈 상태 추가")
             if menu.exec(event.screenPos()) == add_act:
@@ -262,8 +265,8 @@ class FsmScene(QGraphicsScene):
             return []
         return [s for s in self._project.skills if isinstance(s, TransferSkill)]
 
-    def _create_and_assign_transfer_skill(self, transition: object) -> None:
-        """새 TransferSkill을 생성하고 transition에 할당."""
+    def _create_and_assign_transfer_skill(self, tvm: TransitionViewModel) -> None:
+        """새 TransferSkill을 생성하고 transition에 할당 (undo 가능)."""
         from daedalus.model.fsm.machine import StateMachine
         if self._project is None:
             return
@@ -281,11 +284,13 @@ class FsmScene(QGraphicsScene):
         s = SimpleState(name="start")
         fsm = StateMachine(name=f"{name}_fsm", states=[s], initial_state=s)
         skill = TransferSkill(fsm=fsm, name=name, description="")
-        # Note: does not go through command stack — Transfer Skill assignment
-        # is not undoable in the current implementation.
-        self._project.skills.append(skill)
-        transition.skill_ref = skill
-        self._project_vm.notify()
+        self._project_vm.execute(MacroCommand(
+            children=[
+                AddSkillToProjectCmd(self._project, skill),
+                SetTransitionSkillRefCmd(tvm, skill),
+            ],
+            description=f"Transfer Skill '{name}' 생성 및 설정",
+        ))
 
     # --- 키보드 ---
 
