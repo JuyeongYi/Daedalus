@@ -167,6 +167,7 @@ class FsmScene(QGraphicsScene):
                 duplicate = any(
                     t.source_vm is src_vm
                     and t.target_vm is tgt_vm
+                    and t.model.trigger is not None
                     and t.model.trigger.name == event_name
                     for t in self._project_vm.transition_vms
                 )
