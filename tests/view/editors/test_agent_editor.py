@@ -89,3 +89,44 @@ def test_agent_editor_uses_agent_fsm_scene(qapp):
     from daedalus.view.editors.agent_editor import AgentEditor
     editor = AgentEditor(_make_agent())
     assert isinstance(editor._graph_scene, AgentFsmScene)
+
+
+def test_agent_fsm_scene_delete_key_does_not_remove_entry_point(qapp):
+    """Delete 키를 눌러도 EntryPoint는 삭제되지 않아야 한다."""
+    from PyQt6.QtCore import Qt
+    from PyQt6.QtGui import QKeyEvent
+    from PyQt6.QtWidgets import QApplication
+    from daedalus.model.fsm.pseudo import EntryPoint
+    from daedalus.view.canvas.scene import AgentFsmScene
+    from daedalus.view.viewmodel.project_vm import ProjectViewModel
+    from daedalus.view.viewmodel.state_vm import StateViewModel
+    from daedalus.view.canvas.node_item import StateNodeItem
+
+    entry = EntryPoint(name="entry")
+    exit_done = ExitPoint(name="done")
+    from daedalus.model.fsm.machine import StateMachine
+    fsm = StateMachine(name="f", states=[entry, exit_done], initial_state=entry, final_states=[exit_done])
+
+    vm = ProjectViewModel()
+    entry_vm = StateViewModel(model=entry, x=0.0, y=0.0)
+    exit_vm = StateViewModel(model=exit_done, x=200.0, y=0.0)
+    vm.state_vms.extend([entry_vm, exit_vm])
+
+    scene = AgentFsmScene(vm, agent_fsm=fsm)
+    vm.notify()  # 씬 등록 후 notify해야 아이템이 씬에 추가됨
+
+    # EntryPoint 노드를 찾아 선택
+    entry_item = next(
+        item for item in scene.items()
+        if isinstance(item, StateNodeItem) and isinstance(item.state_vm.model, EntryPoint)
+    )
+    entry_item.setSelected(True)
+    before_count = len(fsm.states)
+
+    # Delete 키 이벤트 생성 및 전달
+    key_event = QKeyEvent(QKeyEvent.Type.KeyPress, Qt.Key.Key_Delete, Qt.KeyboardModifier.NoModifier)
+    scene.keyPressEvent(key_event)
+
+    # EntryPoint는 삭제되지 않아야 함
+    assert len(fsm.states) == before_count
+    assert entry in fsm.states

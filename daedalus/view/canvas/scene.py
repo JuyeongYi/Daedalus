@@ -484,3 +484,27 @@ class AgentFsmScene(FsmScene):
             children=children,
             description=f"ExitPoint '{model.name}' 삭제",
         ))
+
+    def keyPressEvent(self, event: QKeyEvent | None) -> None:
+        if event is None:
+            return
+        if event.key() == Qt.Key.Key_Delete:
+            from daedalus.model.fsm.pseudo import EntryPoint as _EP, ExitPoint as _XP
+            exit_count = sum(
+                1 for s in self._agent_fsm.states if isinstance(s, _XP)
+            )
+            for item in list(self.selectedItems()):
+                if isinstance(item, StateNodeItem):
+                    model = item.state_vm.model
+                    if isinstance(model, _EP):
+                        continue  # EntryPoint 삭제 불가
+                    if isinstance(model, _XP) and exit_count <= 1:
+                        continue  # 마지막 ExitPoint 삭제 불가
+                    if isinstance(model, _XP):
+                        self._delete_exit_point(item.state_vm, model)
+                    else:
+                        self._delete_state(item.state_vm)
+                elif isinstance(item, TransitionEdgeItem):
+                    self._delete_transition(item.transition_vm)
+            return
+        super().keyPressEvent(event)
