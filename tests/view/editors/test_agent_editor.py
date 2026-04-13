@@ -130,3 +130,45 @@ def test_agent_fsm_scene_delete_key_does_not_remove_entry_point(qapp):
     # EntryPoint는 삭제되지 않아야 함
     assert len(fsm.states) == before_count
     assert entry in fsm.states
+
+
+def test_agent_fsm_scene_delete_key_preserves_last_exit_point_in_multi_select(qapp):
+    """두 개 ExitPoint를 모두 선택해 Delete해도 마지막 하나는 살아남아야 한다."""
+    from PyQt6.QtCore import Qt
+    from PyQt6.QtGui import QKeyEvent
+    from daedalus.model.fsm.pseudo import EntryPoint
+    from daedalus.model.fsm.machine import StateMachine
+    from daedalus.view.canvas.scene import AgentFsmScene
+    from daedalus.view.viewmodel.project_vm import ProjectViewModel
+    from daedalus.view.viewmodel.state_vm import StateViewModel
+    from daedalus.view.canvas.node_item import StateNodeItem
+
+    entry = EntryPoint(name="entry")
+    exit_a = ExitPoint(name="done")
+    exit_b = ExitPoint(name="error")
+    fsm = StateMachine(
+        name="f", states=[entry, exit_a, exit_b],
+        initial_state=entry, final_states=[exit_a, exit_b],
+    )
+
+    vm = ProjectViewModel()
+    vm.state_vms.extend([
+        StateViewModel(model=entry, x=0.0, y=0.0),
+        StateViewModel(model=exit_a, x=200.0, y=0.0),
+        StateViewModel(model=exit_b, x=400.0, y=0.0),
+    ])
+
+    scene = AgentFsmScene(vm, agent_fsm=fsm)
+    vm.notify()
+
+    # 두 ExitPoint 노드를 모두 선택
+    for item in scene.items():
+        if isinstance(item, StateNodeItem) and isinstance(item.state_vm.model, ExitPoint):
+            item.setSelected(True)
+
+    key_event = QKeyEvent(QKeyEvent.Type.KeyPress, Qt.Key.Key_Delete, Qt.KeyboardModifier.NoModifier)
+    scene.keyPressEvent(key_event)
+
+    # 적어도 하나의 ExitPoint는 남아있어야 함
+    remaining_exits = [s for s in fsm.states if isinstance(s, ExitPoint)]
+    assert len(remaining_exits) >= 1

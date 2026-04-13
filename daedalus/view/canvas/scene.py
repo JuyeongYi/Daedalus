@@ -490,17 +490,18 @@ class AgentFsmScene(FsmScene):
             return
         if event.key() == Qt.Key.Key_Delete:
             from daedalus.model.fsm.pseudo import EntryPoint as _EP, ExitPoint as _XP
-            exit_count = sum(
-                1 for s in self._agent_fsm.states if isinstance(s, _XP)
-            )
             for item in list(self.selectedItems()):
                 if isinstance(item, StateNodeItem):
                     model = item.state_vm.model
                     if isinstance(model, _EP):
                         continue  # EntryPoint 삭제 불가
-                    if isinstance(model, _XP) and exit_count <= 1:
-                        continue  # 마지막 ExitPoint 삭제 불가
                     if isinstance(model, _XP):
+                        # 매 반복마다 재계산 — 다중 선택 시 마지막 ExitPoint 보호
+                        exit_count = sum(
+                            1 for s in self._agent_fsm.states if isinstance(s, _XP)
+                        )
+                        if exit_count <= 1:
+                            continue  # 마지막 ExitPoint 삭제 불가
                         self._delete_exit_point(item.state_vm, model)
                     else:
                         self._delete_state(item.state_vm)
