@@ -19,6 +19,7 @@ _EDGE_COLOR = QColor("#6674cc")
 _EDGE_SELECTED = QColor("#88aaff")
 _EDGE_TRANSFER = QColor("#88aacc")   # Transfer Skill 할당 엣지
 _ARROW_SIZE = 8.0
+_ARROW_SPACING = 80.0    # 화살표 간격 (px)
 _EDGE_WIDTH = 4.0        # 기본 두께
 _EDGE_WIDTH_TRANSFER = 5.0  # Transfer Skill 할당 시 두께
 _HIT_WIDTH = 12.0        # 마우스 클릭 히트 영역
@@ -116,30 +117,24 @@ class TransitionEdgeItem(QGraphicsPathItem):
         painter.setPen(QPen(color, width))
         painter.drawPath(self.path())
 
-        # 화살표 머리
+        # 화살표 — 경로 중간 구간에 일정 간격으로 배치 (시작/끝점 제외)
         path = self.path()
         if path.isEmpty():
             return
-        end_pt = path.pointAtPercent(1.0)
-        tangent_pt = path.pointAtPercent(0.95)
-        dx = end_pt.x() - tangent_pt.x()
-        dy = end_pt.y() - tangent_pt.y()
-        length = (dx * dx + dy * dy) ** 0.5
-        if length > 0:
-            dx /= length
-            dy /= length
-            left = QPointF(
-                end_pt.x() - _ARROW_SIZE * dx + _ARROW_SIZE * 0.5 * dy,
-                end_pt.y() - _ARROW_SIZE * dy - _ARROW_SIZE * 0.5 * dx,
-            )
-            right = QPointF(
-                end_pt.x() - _ARROW_SIZE * dx - _ARROW_SIZE * 0.5 * dy,
-                end_pt.y() - _ARROW_SIZE * dy + _ARROW_SIZE * 0.5 * dx,
-            )
-            arrow = QPolygonF([end_pt, left, right])
-            painter.setBrush(color)
-            painter.setPen(QPen(color))
-            painter.drawPolygon(arrow)
+        total = path.length()
+        if total < _ARROW_SPACING:
+            return
+        painter.setBrush(color)
+        painter.setPen(QPen(color))
+        margin = _ARROW_SIZE * 2  # 시작/끝 포트와 겹침 방지
+        dist = _ARROW_SPACING
+        while dist < total - margin:
+            t = path.percentAtLength(dist)
+            t_back = path.percentAtLength(max(0.0, dist - _ARROW_SIZE))
+            pt = path.pointAtPercent(t)
+            pt_back = path.pointAtPercent(t_back)
+            self._draw_arrow(painter, pt_back, pt)
+            dist += _ARROW_SPACING
 
         # Transfer Skill 라벨
         if has_skill:
@@ -148,3 +143,22 @@ class TransitionEdgeItem(QGraphicsPathItem):
             painter.setPen(QPen(QColor("#88aacc")))
             painter.setFont(QFont("Segoe UI", 8))
             painter.drawText(QPointF(mid.x() + 4, mid.y() - 4), label)
+
+    @staticmethod
+    def _draw_arrow(painter: QPainter, from_pt: QPointF, to_pt: QPointF) -> None:
+        dx = to_pt.x() - from_pt.x()
+        dy = to_pt.y() - from_pt.y()
+        length = (dx * dx + dy * dy) ** 0.5
+        if length < 1e-6:
+            return
+        dx /= length
+        dy /= length
+        left = QPointF(
+            to_pt.x() - _ARROW_SIZE * dx + _ARROW_SIZE * 0.5 * dy,
+            to_pt.y() - _ARROW_SIZE * dy - _ARROW_SIZE * 0.5 * dx,
+        )
+        right = QPointF(
+            to_pt.x() - _ARROW_SIZE * dx - _ARROW_SIZE * 0.5 * dy,
+            to_pt.y() - _ARROW_SIZE * dy + _ARROW_SIZE * 0.5 * dx,
+        )
+        painter.drawPolygon(QPolygonF([to_pt, left, right]))
