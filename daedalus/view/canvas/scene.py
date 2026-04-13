@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Callable
 from PyQt6.QtCore import QPointF, Qt, pyqtSignal
 from PyQt6.QtGui import QAction, QColor, QKeyEvent, QPen
 from PyQt6.QtWidgets import (
+    QColorDialog,
     QGraphicsLineItem,
     QGraphicsScene,
     QGraphicsSceneContextMenuEvent,
@@ -17,6 +18,7 @@ from PyQt6.QtWidgets import (
 )
 
 from daedalus.model.fsm.event import CompletionEvent
+from daedalus.model.fsm.machine import StateMachine
 from daedalus.model.fsm.state import SimpleState
 from daedalus.model.fsm.transition import Transition
 from daedalus.model.plugin.skill import DeclarativeSkill, TransferSkill
@@ -304,7 +306,6 @@ class FsmScene(QGraphicsScene):
 
     def _create_and_assign_transfer_skill(self, tvm: TransitionViewModel) -> None:
         """새 TransferSkill을 생성하고 transition에 할당 (undo 가능)."""
-        from daedalus.model.fsm.machine import StateMachine
         if self._project is None:
             return
         existing = {s.name for s in self._project.skills} | {a.name for a in self._project.agents}
@@ -355,3 +356,130 @@ class FsmScene(QGraphicsScene):
             self._connect_event = None
             return
         super().mousePressEvent(event)
+
+
+class AgentFsmScene(FsmScene):
+    """에이전트 서브그래프 전용 씬.
+
+    - EntryPoint: 삭제 불가, 컨텍스트 메뉴 비활성
+    - ExitPoint: 이름변경/색상변경/삭제(마지막 1개 제외) 가능
+    - 빈 공간: 빈 상태 추가 / ExitPoint 추가
+    """
+
+    def __init__(
+        self,
+        project_vm: ProjectViewModel,
+        agent_fsm: StateMachine,
+        skill_lookup: Callable[[str], object] | None = None,
+    ) -> None:
+        super().__init__(project_vm, skill_lookup=skill_lookup)
+        self._agent_fsm = agent_fsm
+
+    def contextMenuEvent(self, event: QGraphicsSceneContextMenuEvent | None) -> None:
+        if event is None:
+            return
+        pos = event.scenePos()
+        item = self.itemAt(pos, self.views()[0].transform()) if self.views() else None
+        menu = QMenu()
+
+        if isinstance(item, StateNodeItem):
+            from daedalus.model.fsm.pseudo import EntryPoint as _EP, ExitPoint as _XP
+            model = item.state_vm.model
+
+            if isinstance(model, _EP):
+                act = menu.addAction("삭제 불가 (EntryPoint)")
+                if act is not None:
+                    act.setEnabled(False)
+                menu.exec(event.screenPos())
+
+            elif isinstance(model, _XP):
+                rename_act = menu.addAction(f"'{model.name}' 이름 변경")
+                color_act = menu.addAction("색상 변경")
+                exit_count = sum(
+                    1 for s in self._agent_fsm.states
+                    if isinstance(s, _XP)
+                )
+                del_act = menu.addAction(f"'{model.name}' 삭제")
+                if del_act is not None and exit_count <= 1:
+                    del_act.setEnabled(False)
+                chosen = menu.exec(event.screenPos())
+                if chosen is None:
+                    return
+                if chosen == rename_act:
+                    self._rename_exit_point(model)
+                elif chosen == color_act:
+                    self._change_exit_point_color(model)
+                elif chosen == del_act and exit_count > 1:
+                    self._delete_exit_point(item.state_vm, model)
+
+            else:
+                delete_act = menu.addAction(f"'{model.name}' 삭제")
+                if menu.exec(event.screenPos()) == delete_act:
+                    self._delete_state(item.state_vm)
+
+        elif isinstance(item, TransitionEdgeItem):
+            delete_act = menu.addAction("전이 삭제")
+            if menu.exec(event.screenPos()) == delete_act:
+                self._delete_transition(item.transition_vm)
+
+        else:
+            add_state_act = menu.addAction("빈 상태 추가")
+            add_exit_act = menu.addAction("ExitPoint 추가")
+            chosen = menu.exec(event.screenPos())
+            if chosen == add_state_act:
+                self._create_state(pos)
+            elif chosen == add_exit_act:
+                self._create_exit_point(pos)
+
+    def _create_exit_point(self, pos: QPointF) -> None:
+        from daedalus.model.fsm.pseudo import ExitPoint as _XP
+        from daedalus.view.commands.exit_point_commands import AddExitPointCmd
+        # 중복 이름 방지
+        existing = {s.name for s in self._agent_fsm.states}
+        name = "exit"
+        counter = 1
+        while name in existing:
+            name = f"exit_{counter}"
+            counter += 1
+        ep = _XP(name=name)
+        vm = StateViewModel(model=ep, x=pos.x(), y=pos.y())
+        self._project_vm.execute(MacroCommand(
+            children=[
+                AddExitPointCmd(self._agent_fsm, ep),
+                CreateStateCmd(self._project_vm, vm),
+            ],
+            description=f"ExitPoint '{name}' 추가",
+        ))
+
+    def _rename_exit_point(self, model) -> None:
+        from daedalus.view.commands.exit_point_commands import RenameExitPointCmd
+        view = self.views()[0] if self.views() else None
+        new_name, ok = QInputDialog.getText(
+            view, "ExitPoint 이름 변경", "이름:", text=model.name
+        )
+        if ok and new_name.strip() and new_name.strip() != model.name:
+            self._project_vm.execute(
+                RenameExitPointCmd(model, model.name, new_name.strip())
+            )
+
+    def _change_exit_point_color(self, model) -> None:
+        from daedalus.view.commands.exit_point_commands import ChangeExitPointColorCmd
+        view = self.views()[0] if self.views() else None
+        color = QColorDialog.getColor(QColor(model.color), view, "ExitPoint 색상")
+        if color.isValid() and color.name() != model.color:
+            self._project_vm.execute(
+                ChangeExitPointColorCmd(model, model.color, color.name())
+            )
+
+    def _delete_exit_point(self, state_vm: StateViewModel, model) -> None:
+        from daedalus.view.commands.exit_point_commands import DeleteExitPointCmd
+        transitions = self._project_vm.get_transitions_for(state_vm)
+        children: list[Command] = [
+            DeleteTransitionCmd(self._project_vm, t) for t in transitions
+        ]
+        children.append(DeleteExitPointCmd(self._agent_fsm, model))
+        children.append(DeleteStateCmd(self._project_vm, state_vm))
+        self._project_vm.execute(MacroCommand(
+            children=children,
+            description=f"ExitPoint '{model.name}' 삭제",
+        ))

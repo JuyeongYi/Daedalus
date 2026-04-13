@@ -73,3 +73,19 @@ def test_agent_editor_mini_registry_is_left(qapp):
     assert splitter is not None
     assert isinstance(splitter.widget(0), _MiniRegistry)
     assert isinstance(splitter.widget(1), FsmCanvasView)
+
+
+def test_agent_editor_graph_tab_has_canvas(qapp):
+    from daedalus.view.canvas.canvas_view import FsmCanvasView
+    from daedalus.view.editors.agent_editor import AgentEditor
+    editor = AgentEditor(_make_agent())
+    graph_tab = editor._tabs.widget(0)
+    canvas = graph_tab.findChild(FsmCanvasView)
+    assert canvas is not None
+
+
+def test_agent_editor_uses_agent_fsm_scene(qapp):
+    from daedalus.view.canvas.scene import AgentFsmScene
+    from daedalus.view.editors.agent_editor import AgentEditor
+    editor = AgentEditor(_make_agent())
+    assert isinstance(editor._graph_scene, AgentFsmScene)

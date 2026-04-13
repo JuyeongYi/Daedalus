@@ -115,7 +115,7 @@ class AgentEditor(QWidget):
     def _build_graph_tab(self) -> QWidget:
         """Graph 탭: 미니 레지스트리(좌) + FsmCanvasView(우)."""
         from daedalus.view.canvas.canvas_view import FsmCanvasView
-        from daedalus.view.canvas.scene import FsmScene
+        from daedalus.view.canvas.scene import AgentFsmScene
         from daedalus.view.viewmodel.project_vm import ProjectViewModel
 
         container = QWidget()
@@ -132,7 +132,7 @@ class AgentEditor(QWidget):
         # 캔버스 (우측)
         self._graph_vm = ProjectViewModel()
         self._graph_vm.add_listener(self._on_model_changed)
-        self._graph_scene = FsmScene(self._graph_vm)
+        self._graph_scene = AgentFsmScene(self._graph_vm, agent_fsm=self._agent.fsm)
         self._canvas_view = FsmCanvasView(self._graph_scene)
         splitter.addWidget(self._canvas_view)
 
