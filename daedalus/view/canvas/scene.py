@@ -10,12 +10,15 @@ from PyQt6.QtWidgets import (
     QGraphicsScene,
     QGraphicsSceneContextMenuEvent,
     QGraphicsSceneMouseEvent,
+    QInputDialog,
     QMenu,
+    QMessageBox,
 )
 
 from daedalus.model.fsm.event import CompletionEvent
 from daedalus.model.fsm.state import SimpleState
 from daedalus.model.fsm.transition import Transition
+from daedalus.model.plugin.skill import TransferSkill
 from daedalus.view.canvas.edge_item import TransitionEdgeItem
 from daedalus.view.canvas.node_item import StateNodeItem
 from daedalus.view.commands.base import Command, MacroCommand
@@ -222,9 +225,11 @@ class FsmScene(QGraphicsScene):
             elif chosen == new_act:
                 self._create_and_assign_transfer_skill(transition)
             elif chosen == unset_act:
+                # Note: not undoable — see _create_and_assign_transfer_skill comment
                 transition.skill_ref = None
                 self._project_vm.notify()
             elif chosen in skill_actions:
+                # Note: not undoable — see _create_and_assign_transfer_skill comment
                 transition.skill_ref = skill_actions[chosen]
                 self._project_vm.notify()
         else:
@@ -254,17 +259,13 @@ class FsmScene(QGraphicsScene):
 
     def _get_transfer_skills(self) -> list:
         """프로젝트에서 TransferSkill 목록을 반환."""
-        from daedalus.model.plugin.skill import TransferSkill
         if self._project is None:
             return []
         return [s for s in self._project.skills if isinstance(s, TransferSkill)]
 
     def _create_and_assign_transfer_skill(self, transition: object) -> None:
         """새 TransferSkill을 생성하고 transition에 할당."""
-        from PyQt6.QtWidgets import QInputDialog, QMessageBox
-        from daedalus.model.plugin.skill import TransferSkill
         from daedalus.model.fsm.machine import StateMachine
-        from daedalus.model.fsm.state import SimpleState
         if self._project is None:
             return
         existing = {s.name for s in self._project.skills} | {a.name for a in self._project.agents}
@@ -281,6 +282,8 @@ class FsmScene(QGraphicsScene):
         s = SimpleState(name="start")
         fsm = StateMachine(name=f"{name}_fsm", states=[s], initial_state=s)
         skill = TransferSkill(fsm=fsm, name=name, description="")
+        # Note: does not go through command stack — Transfer Skill assignment
+        # is not undoable in the current implementation.
         self._project.skills.append(skill)
         transition.skill_ref = skill
         self._project_vm.notify()
