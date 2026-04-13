@@ -369,7 +369,7 @@ class _TransferOnPanel(QWidget):
 
 
 class SkillEditor(QWidget):
-    """ProceduralSkill / DeclarativeSkill / AgentDefinition 편집기.
+    """ProceduralSkill / DeclarativeSkill / TransferSkill / AgentDefinition 편집기.
 
     레이아웃 (QSplitter):
       _FrontmatterPanel | SectionTree + TransferOn | BreadcrumbNav + ContentPanel / TransferOnPanel

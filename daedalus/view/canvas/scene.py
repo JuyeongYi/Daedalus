@@ -18,7 +18,7 @@ from PyQt6.QtWidgets import (
 from daedalus.model.fsm.event import CompletionEvent
 from daedalus.model.fsm.state import SimpleState
 from daedalus.model.fsm.transition import Transition
-from daedalus.model.plugin.skill import TransferSkill
+from daedalus.model.plugin.skill import DeclarativeSkill, TransferSkill
 from daedalus.view.canvas.edge_item import TransitionEdgeItem
 from daedalus.view.canvas.node_item import StateNodeItem
 from daedalus.view.commands.base import Command, MacroCommand
@@ -171,9 +171,8 @@ class FsmScene(QGraphicsScene):
         skill = self._skill_lookup(skill_name)
         if skill is None:
             return
-        # DeclarativeSkill은 FSM 노드로 배치 불가
-        from daedalus.model.plugin.skill import DeclarativeSkill
-        if isinstance(skill, DeclarativeSkill):
+        # DeclarativeSkill / TransferSkill은 FSM 노드로 배치 불가 (edge-only)
+        if isinstance(skill, (DeclarativeSkill, TransferSkill)):
             return
         for svm in self._project_vm.state_vms:
             if svm.model.skill_ref is skill:
