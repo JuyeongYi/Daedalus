@@ -2,9 +2,9 @@
 from __future__ import annotations
 
 import pytest
-from PyQt6.QtWidgets import QScrollArea, QWidget
+from PyQt6.QtWidgets import QFrame, QScrollArea, QWidget
 
-# qapp 픽스처는 tests/view/conftest.py에서 상속됨
+from daedalus.model.fsm.section import Section
 
 
 def _make_procedural():
@@ -52,40 +52,9 @@ def test_frontmatter_panel_agent(qapp):
     assert isinstance(panel, QScrollArea)
 
 
-def test_tree_sidebar_procedural(qapp):
-    from daedalus.view.editors.skill_editor import _TreeSidebar
-    from daedalus.model.fsm.section import Section
-    from PyQt6.QtCore import Qt
-    comp = _make_procedural()
-    comp.sections = [
-        Section("Persona", children=[Section("Role"), Section("Background")]),
-        Section("Style"),
-    ]
-    sidebar = _TreeSidebar(comp)
-    assert sidebar.tree_widget().topLevelItemCount() >= 2  # 2 sections (Persona, Style)
-
-
-def test_tree_sidebar_declarative_no_transfer_on(qapp):
-    from daedalus.view.editors.skill_editor import _TreeSidebar
-    comp = _make_declarative()
-    sidebar = _TreeSidebar(comp)
-    # DeclarativeSkill은 TransferOn QPushButton 없음
-    assert not hasattr(sidebar, "_transfer_on_btn")
-
-
-def test_content_panel_show_section(qapp):
-    from daedalus.model.fsm.section import Section
-    from daedalus.view.editors.skill_editor import _ContentPanel
-    panel = _ContentPanel()
-    section = Section(title="Role", content="You are a writer.")
-    panel.show_section(section, ["Persona", "Role"])
-    assert panel.current_section() is section
-
-
 def test_transfer_on_panel_procedural(qapp):
     from daedalus.view.editors.skill_editor import _TransferOnPanel
     from daedalus.model.fsm.section import EventDef
-    from PyQt6.QtWidgets import QWidget
     events = [EventDef("done"), EventDef("error", color="#cc3333")]
     panel = _TransferOnPanel(events)
     assert isinstance(panel, QWidget)
@@ -94,24 +63,13 @@ def test_transfer_on_panel_procedural(qapp):
 def test_event_card_renders(qapp):
     from daedalus.view.editors.skill_editor import _EventCard
     from daedalus.model.fsm.section import EventDef
-    from PyQt6.QtWidgets import QFrame
     e = EventDef("done", color="#4488ff")
     card = _EventCard(e, can_delete=False)
     assert isinstance(card, QFrame)
 
 
-def test_variable_popup_shows_builtins(qapp):
-    from daedalus.view.editors.skill_editor import _VariablePopup
-    from daedalus.view.editors.variable_loader import load_variables
-    from PyQt6.QtWidgets import QFrame
-    entries = load_variables()
-    popup = _VariablePopup(entries)
-    assert isinstance(popup, QFrame)
-
-
 def test_skill_editor_procedural_smoke(qapp):
     from daedalus.view.editors.skill_editor import SkillEditor
-    from PyQt6.QtWidgets import QWidget
     comp = _make_procedural()
     editor = SkillEditor(comp)
     assert isinstance(editor, QWidget)
@@ -119,7 +77,6 @@ def test_skill_editor_procedural_smoke(qapp):
 
 def test_skill_editor_declarative_smoke(qapp):
     from daedalus.view.editors.skill_editor import SkillEditor
-    from PyQt6.QtWidgets import QWidget
     comp = _make_declarative()
     editor = SkillEditor(comp)
     assert isinstance(editor, QWidget)
@@ -127,7 +84,6 @@ def test_skill_editor_declarative_smoke(qapp):
 
 def test_skill_editor_agent_smoke(qapp):
     from daedalus.view.editors.skill_editor import SkillEditor
-    from PyQt6.QtWidgets import QWidget
     comp = _make_agent()
     editor = SkillEditor(comp)
     assert isinstance(editor, QWidget)
@@ -137,8 +93,35 @@ def test_skill_editor_changed_signal_exists(qapp):
     from daedalus.view.editors.skill_editor import SkillEditor
     comp = _make_procedural()
     editor = SkillEditor(comp)
-    # skill_changed 시그널이 존재하는지 확인 (기존 API 호환)
     assert hasattr(editor, "skill_changed")
+
+
+def test_skill_editor_has_splitter(qapp):
+    from daedalus.view.editors.skill_editor import SkillEditor
+    from PyQt6.QtWidgets import QSplitter
+    comp = _make_procedural()
+    editor = SkillEditor(comp)
+    splitter = editor.findChild(QSplitter)
+    assert splitter is not None
+
+
+def test_skill_editor_has_breadcrumb(qapp):
+    from daedalus.view.editors.skill_editor import SkillEditor
+    from daedalus.view.editors.body_editor import BreadcrumbNav
+    comp = _make_procedural()
+    comp.sections = [Section("S1"), Section("S2")]
+    editor = SkillEditor(comp)
+    nav = editor.findChild(BreadcrumbNav)
+    assert nav is not None
+
+
+def test_skill_editor_has_section_tree(qapp):
+    from daedalus.view.editors.skill_editor import SkillEditor
+    from daedalus.view.editors.body_editor import SectionTree
+    comp = _make_procedural()
+    editor = SkillEditor(comp)
+    tree = editor.findChild(SectionTree)
+    assert tree is not None
 
 
 def test_node_item_port_color_from_event_def(qapp):
@@ -165,8 +148,6 @@ def test_node_item_port_color_from_event_def(qapp):
     assert len(defs) == 2
     assert defs[0].color == "#aa44cc"
     assert defs[1].color == "#cc3333"
-    # color 문자열이 Qt가 파싱 가능한 유효한 hex인지 확인
     assert QColor(defs[0].color).isValid()
     assert QColor(defs[1].color).isValid()
-    # _output_events() 프로퍼티도 호환 확인
     assert item._output_events() == ["done", "error"]
