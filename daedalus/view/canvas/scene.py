@@ -3,8 +3,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Callable
 
-from PyQt6.QtCore import QPointF, Qt
-from PyQt6.QtGui import QColor, QKeyEvent, QPen
+from PyQt6.QtCore import QPointF, Qt, pyqtSignal
+from PyQt6.QtGui import QAction, QColor, QKeyEvent, QPen
 from PyQt6.QtWidgets import (
     QGraphicsLineItem,
     QGraphicsScene,
@@ -23,6 +23,8 @@ from daedalus.view.commands.state_commands import CreateStateCmd, DeleteStateCmd
 from daedalus.view.commands.transition_commands import CreateTransitionCmd, DeleteTransitionCmd
 from daedalus.view.viewmodel.state_vm import StateViewModel, TransitionViewModel
 
+from daedalus.model.project import PluginProject
+
 if TYPE_CHECKING:
     from daedalus.view.viewmodel.project_vm import ProjectViewModel
 
@@ -33,6 +35,8 @@ _DRAG_LINE_COLOR = QColor("#4488ff")
 class FsmScene(QGraphicsScene):
     """FSM 노드 편집 씬."""
 
+    node_double_clicked = pyqtSignal(object)  # skill_ref
+
     def __init__(
         self,
         project_vm: ProjectViewModel,
@@ -41,6 +45,7 @@ class FsmScene(QGraphicsScene):
         super().__init__()
         self._project_vm = project_vm
         self._skill_lookup = skill_lookup
+        self._project: PluginProject | None = None  # set via set_project()
         self._node_items: dict[StateViewModel, StateNodeItem] = {}
         self._edge_items: dict[TransitionViewModel, TransitionEdgeItem] = {}
         self._state_counter = 0
@@ -150,6 +155,11 @@ class FsmScene(QGraphicsScene):
                 return item
         return None
 
+    def handle_node_double_clicked(self, node: StateNodeItem) -> None:
+        ref = node.state_vm.model.skill_ref
+        if ref is not None:
+            self.node_double_clicked.emit(ref)
+
     # --- Registry 드롭 ---
 
     def drop_skill(self, skill_name: str, scene_pos: QPointF) -> None:
@@ -183,9 +193,40 @@ class FsmScene(QGraphicsScene):
             if menu.exec(event.screenPos()) == delete_act:
                 self._delete_state(item.state_vm)
         elif isinstance(item, TransitionEdgeItem):
+            tvm = item.transition_vm
+            transition = tvm.model
+
+            # On Transfer 스킬 서브메뉴
+            transfer_menu = menu.addMenu("On Transfer 스킬 설정")
+            transfer_skills = self._get_transfer_skills()
+            skill_actions: dict[QAction, object] = {}
+            for ts in transfer_skills:
+                act = transfer_menu.addAction(f"⚡ {ts.name}")
+                skill_actions[act] = ts
+            if transfer_skills:
+                transfer_menu.addSeparator()
+            new_act = transfer_menu.addAction("새 Transfer Skill 생성...")
+
+            # 스킬 해제 (현재 연결된 경우만)
+            unset_act = None
+            if transition.skill_ref is not None:
+                unset_act = menu.addAction(f"On Transfer 스킬 해제 ({transition.skill_ref.name})")
+
             delete_act = menu.addAction("전이 삭제")
-            if menu.exec(event.screenPos()) == delete_act:
-                self._delete_transition(item.transition_vm)
+
+            chosen = menu.exec(event.screenPos())
+            if chosen is None:
+                return
+            if chosen == delete_act:
+                self._delete_transition(tvm)
+            elif chosen == new_act:
+                self._create_and_assign_transfer_skill(transition)
+            elif chosen == unset_act:
+                transition.skill_ref = None
+                self._project_vm.notify()
+            elif chosen in skill_actions:
+                transition.skill_ref = skill_actions[chosen]
+                self._project_vm.notify()
         else:
             add_act = menu.addAction("빈 상태 추가")
             if menu.exec(event.screenPos()) == add_act:
@@ -207,6 +248,42 @@ class FsmScene(QGraphicsScene):
 
     def _delete_transition(self, tvm: TransitionViewModel) -> None:
         self._project_vm.execute(DeleteTransitionCmd(self._project_vm, tvm))
+
+    def set_project(self, project: PluginProject) -> None:
+        self._project = project
+
+    def _get_transfer_skills(self) -> list:
+        """프로젝트에서 TransferSkill 목록을 반환."""
+        from daedalus.model.plugin.skill import TransferSkill
+        if self._project is None:
+            return []
+        return [s for s in self._project.skills if isinstance(s, TransferSkill)]
+
+    def _create_and_assign_transfer_skill(self, transition: object) -> None:
+        """새 TransferSkill을 생성하고 transition에 할당."""
+        from PyQt6.QtWidgets import QInputDialog, QMessageBox
+        from daedalus.model.plugin.skill import TransferSkill
+        from daedalus.model.fsm.machine import StateMachine
+        from daedalus.model.fsm.state import SimpleState
+        if self._project is None:
+            return
+        existing = {s.name for s in self._project.skills} | {a.name for a in self._project.agents}
+        view = self.views()[0] if self.views() else None
+        while True:
+            name, ok = QInputDialog.getText(view, "새 Transfer Skill", "이름:")
+            if not ok or not name.strip():
+                return
+            name = name.strip()
+            if name in existing:
+                QMessageBox.warning(view, "이름 중복", f"'{name}' 이름이 이미 존재합니다.")
+                continue
+            break
+        s = SimpleState(name="start")
+        fsm = StateMachine(name=f"{name}_fsm", states=[s], initial_state=s)
+        skill = TransferSkill(fsm=fsm, name=name, description="")
+        self._project.skills.append(skill)
+        transition.skill_ref = skill
+        self._project_vm.notify()
 
     # --- 키보드 ---
 

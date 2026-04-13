@@ -145,6 +145,8 @@ class MainWindow(QMainWindow):
     def set_project(self, project: PluginProject) -> None:
         self._project = project
         self._registry_panel.set_project(project)
+        if self._fsm_scene is not None:
+            self._fsm_scene.set_project(project)
 
     def _skill_lookup(self, name: str) -> ProceduralSkill | DeclarativeSkill | AgentDefinition | None:
         if self._project is None:
