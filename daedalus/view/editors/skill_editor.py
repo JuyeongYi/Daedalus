@@ -26,8 +26,8 @@ from PyQt6.QtWidgets import (
 
 from daedalus.model.fsm.section import EventDef, Section
 from daedalus.model.plugin.agent import AgentDefinition
-from daedalus.model.plugin.config import FIELD_REGISTRY, FieldSpec, ProceduralSkillConfig
-from daedalus.model.plugin.enums import EffortLevel, ModelType, SkillContext, SkillShell
+from daedalus.model.plugin.config import FIELD_REGISTRY, FieldSpec
+from daedalus.model.plugin.enums import ModelType
 from daedalus.model.plugin.skill import DeclarativeSkill, ProceduralSkill, TransferSkill
 
 from daedalus.view.editors.body_editor import (
