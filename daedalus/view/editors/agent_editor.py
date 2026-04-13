@@ -69,7 +69,7 @@ class AgentEditor(QWidget):
     # ------------------------------------------------------------------ #
 
     def _build_graph_tab(self) -> QWidget:
-        """Graph 탭: 미니 레지스트리(좌) + FsmCanvasView(우)."""
+        """Graph 탭: Procedural/Transfer 레지스트리(좌) + FsmCanvasView(우)."""
         from daedalus.view.canvas.canvas_view import FsmCanvasView
         from daedalus.view.canvas.scene import AgentFsmScene
         from daedalus.view.viewmodel.project_vm import ProjectViewModel
@@ -81,22 +81,40 @@ class AgentEditor(QWidget):
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
 
-        # 로컬 스킬 레지스트리 (좌측 사이드바)
-        self._skill_section = _RegistrySection("Local Skills", QColor("#4a8a4a"))
-        self._skill_section.add_requested.connect(self._on_add_local_skill)
-        self._skill_section.item_double_clicked.connect(self._open_local_skill)
-        self._skill_section.setMinimumWidth(120)
-        self._skill_section.setMaximumWidth(200)
-        splitter.addWidget(self._skill_section)
+        # 좌측 사이드바: Procedural + Transfer 레지스트리
+        sidebar = QWidget()
+        sidebar.setMinimumWidth(130)
+        sidebar.setMaximumWidth(200)
+        sidebar_lay = QVBoxLayout(sidebar)
+        sidebar_lay.setContentsMargins(0, 0, 0, 0)
+        sidebar_lay.setSpacing(2)
+
+        self._proc_section = _RegistrySection("⚙ PROCEDURAL", QColor("#88cc88"))
+        self._proc_section.add_requested.connect(lambda: self._on_add_local_skill("procedural"))
+        self._proc_section.item_double_clicked.connect(self._open_local_skill)
+        sidebar_lay.addWidget(self._proc_section)
+
+        self._transfer_section = _RegistrySection("⚡ TRANSFER", QColor("#88aacc"), no_place=True)
+        self._transfer_section.add_requested.connect(lambda: self._on_add_local_skill("transfer"))
+        self._transfer_section.item_double_clicked.connect(self._open_local_skill)
+        sidebar_lay.addWidget(self._transfer_section)
+
+        sidebar_lay.addStretch()
+        splitter.addWidget(sidebar)
 
         # 캔버스 (우측)
         self._graph_vm = ProjectViewModel()
         self._graph_vm.add_listener(self._on_model_changed)
-        self._graph_scene = AgentFsmScene(self._graph_vm, agent_fsm=self._agent.fsm)
+        self._graph_scene = AgentFsmScene(
+            self._graph_vm,
+            agent_fsm=self._agent.fsm,
+            skill_lookup=self._local_skill_lookup,
+            agent_skills=self._agent.skills,
+        )
         self._canvas_view = FsmCanvasView(self._graph_scene)
         splitter.addWidget(self._canvas_view)
 
-        splitter.setStretchFactor(0, 0)  # registry: 고정폭
+        splitter.setStretchFactor(0, 0)  # sidebar: 고정폭
         splitter.setStretchFactor(1, 1)  # canvas: 확장
 
         lay.addWidget(splitter)
@@ -156,35 +174,34 @@ class AgentEditor(QWidget):
                 self._graph_vm.transition_vms.append(tvm)
         self._graph_vm.notify()
 
+    def _local_skill_lookup(self, name: str) -> object | None:
+        for skill in self._agent.skills:
+            if skill.name == name:
+                return skill
+        return None
+
     def _refresh_skill_list(self) -> None:
-        self._skill_section.clear()
+        from daedalus.model.plugin.skill import ProceduralSkill, TransferSkill
+        self._proc_section.clear()
+        self._transfer_section.clear()
         placed_ids: set[int] = set()
         for svm in self._graph_vm.state_vms:
             if hasattr(svm.model, "skill_ref") and svm.model.skill_ref is not None:
                 placed_ids.add(id(svm.model.skill_ref))  # type: ignore[union-attr]
         for skill in self._agent.skills:
-            self._skill_section.add_item(skill, id(skill) in placed_ids)
+            placed = id(skill) in placed_ids
+            if isinstance(skill, TransferSkill):
+                self._transfer_section.add_item(skill, placed)
+            else:
+                self._proc_section.add_item(skill, placed)
 
-    def _on_add_local_skill(self) -> None:
-        from PyQt6.QtWidgets import QMenu
-        menu = QMenu(self)
-        act_proc = menu.addAction("Procedural Skill")
-        act_trans = menu.addAction("Transfer Skill")
-        cursor_pos = self._skill_section.mapToGlobal(
-            self._skill_section.rect().bottomLeft()
-        )
-        chosen = menu.exec(cursor_pos)
-        if chosen is None:
-            return
-        kind = "procedural" if chosen == act_proc else "transfer" if chosen == act_trans else None
-        if kind is None:
-            return
-        name, ok = QInputDialog.getText(self, "New local skill", "Name:")
+    def _on_add_local_skill(self, kind: str) -> None:
+        name, ok = QInputDialog.getText(self, "새 로컬 스킬", "이름:")
         if not ok or not name.strip():
             return
         name = name.strip()
         if any(s.name == name for s in self._agent.skills):
-            QMessageBox.warning(self, "Name conflict", f"'{name}' already exists.")
+            QMessageBox.warning(self, "이름 중복", f"'{name}' 스킬이 이미 존재합니다.")
             return
         from daedalus.model.fsm.machine import StateMachine
         from daedalus.model.fsm.state import SimpleState
@@ -340,7 +357,7 @@ class AgentEditor(QWidget):
         self._var_popup.raise_()
 
     def _on_model_changed(self) -> None:
-        if hasattr(self, "_skill_section"):
+        if hasattr(self, "_proc_section"):
             self._refresh_skill_list()
         self.agent_changed.emit()
         if self._on_notify_fn is not None:
