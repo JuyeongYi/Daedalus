@@ -2,11 +2,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
+from typing import TYPE_CHECKING
 
 from daedalus.model.fsm.action import Action
 from daedalus.model.fsm.event import Event
 from daedalus.model.fsm.guard import Guard
 from daedalus.model.fsm.state import State
+
+if TYPE_CHECKING:
+    from daedalus.model.plugin.skill import TransferSkill
 
 
 class TransitionType(Enum):
@@ -31,4 +35,4 @@ class Transition:
     custom_events: dict[str, list[Action]] = field(default_factory=dict)
     # 데이터
     data_map: dict[str, str] = field(default_factory=dict)
-    skill_ref: object | None = None  # TransferSkill | None (avoid circular import)
+    skill_ref: TransferSkill | None = None

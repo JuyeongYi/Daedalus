@@ -65,3 +65,7 @@ class TransferSkill(Skill, WorkflowComponent):
     @property
     def kind(self) -> str:
         return "transfer_skill"
+
+    @property
+    def output_events(self) -> list[str]:
+        return []

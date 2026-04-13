@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 from daedalus.model.plugin.base import PluginComponent, WorkflowComponent
-from daedalus.model.plugin.skill import Skill, ProceduralSkill, DeclarativeSkill
-from daedalus.model.plugin.config import ProceduralSkillConfig, DeclarativeSkillConfig
+from daedalus.model.plugin.skill import Skill, ProceduralSkill, DeclarativeSkill, TransferSkill
+from daedalus.model.plugin.config import ProceduralSkillConfig, DeclarativeSkillConfig, TransferSkillConfig
 from daedalus.model.fsm.machine import StateMachine
 from daedalus.model.fsm.state import SimpleState
 from daedalus.model.fsm.section import Section, EventDef
@@ -98,12 +98,8 @@ def test_declarative_skill_sections_default():
     assert skill.sections[0].title == "Instructions"
 
 
-from daedalus.model.plugin.config import TransferSkillConfig
-
-
 def test_transfer_skill():
     fsm = _make_fsm()
-    from daedalus.model.plugin.skill import TransferSkill
     skill = TransferSkill(fsm=fsm, name="validate", description="입력 검증")
     assert skill.name == "validate"
     assert skill.kind == "transfer_skill"
@@ -114,14 +110,12 @@ def test_transfer_skill():
 
 def test_transfer_skill_no_transfer_on():
     fsm = _make_fsm()
-    from daedalus.model.plugin.skill import TransferSkill
     skill = TransferSkill(fsm=fsm, name="T", description="d")
     assert not hasattr(skill, "transfer_on")
 
 
 def test_transfer_skill_sections_default():
     fsm = _make_fsm()
-    from daedalus.model.plugin.skill import TransferSkill
     skill = TransferSkill(fsm=fsm, name="T", description="d")
     assert len(skill.sections) == 1
     assert skill.sections[0].title == "Instructions"
