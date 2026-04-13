@@ -5,14 +5,16 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QAction, QKeySequence
 from PyQt6.QtWidgets import (
     QDockWidget,
+    QInputDialog,
     QLabel,
     QMainWindow,
+    QMessageBox,
     QStatusBar,
     QTabWidget,
 )
 
 from daedalus.model.plugin.agent import AgentDefinition
-from daedalus.model.plugin.skill import DeclarativeSkill, ProceduralSkill
+from daedalus.model.plugin.skill import DeclarativeSkill, ProceduralSkill, TransferSkill
 from daedalus.model.project import PluginProject
 from daedalus.view.canvas.canvas_view import FsmCanvasView
 from daedalus.view.canvas.edge_item import TransitionEdgeItem
@@ -134,7 +136,8 @@ class MainWindow(QMainWindow):
         # 모든 dock/panel이 초기화된 후 연결해야 _on_tab_changed에서 safe
         self._tabs.currentChanged.connect(self._on_tab_changed)
         self._registry_panel.component_double_clicked.connect(self._open_component)
-        self._registry_panel.new_skill_requested.connect(self._on_new_skill_requested)
+        self._registry_panel.new_component_requested.connect(self._on_new_component)
+        self._fsm_scene.node_double_clicked.connect(self._open_component)
         self._active_stack.add_listener(self._update_undo_redo)
 
     # --- 프로젝트 ---
@@ -175,25 +178,63 @@ class MainWindow(QMainWindow):
             self._tabs.setCurrentIndex(self._open_tabs[name])
             return
 
-        if isinstance(component, (ProceduralSkill, DeclarativeSkill, AgentDefinition)):
+        if isinstance(component, (ProceduralSkill, DeclarativeSkill, TransferSkill, AgentDefinition)):
             editor = SkillEditor(component, on_notify_fn=self._project_vm.notify)
             idx = self._tabs.addTab(editor, name)
             self._open_tabs[name] = idx
             self._tabs.setCurrentIndex(idx)
 
-    def _on_new_skill_requested(self) -> None:
+    def _ask_unique_name(self, dialog_title: str) -> str | None:
+        """이름 입력 다이얼로그 + 중복 검증. 취소 시 None."""
+        if self._project is None:
+            return None
+        existing = (
+            {s.name for s in self._project.skills}
+            | {a.name for a in self._project.agents}
+        )
+        while True:
+            name, ok = QInputDialog.getText(self, dialog_title, "이름:")
+            if not ok or not name.strip():
+                return None
+            name = name.strip()
+            if name in existing:
+                QMessageBox.warning(self, "이름 중복", f"'{name}' 이름이 이미 존재합니다.")
+                continue
+            return name
+
+    def _make_fsm(self, name: str) -> object:
         from daedalus.model.fsm.machine import StateMachine
         from daedalus.model.fsm.state import SimpleState as _SS
         s = _SS(name="start")
-        fsm = StateMachine(name="new_fsm", states=[s], initial_state=s)
-        skill = ProceduralSkill(fsm=fsm, name="NewSkill", description="")
-        if self._project is not None:
-            self._project.skills.append(skill)
-            self._registry_panel.set_project(self._project)
-        editor = SkillEditor(skill, on_notify_fn=self._project_vm.notify)
-        idx = self._tabs.addTab(editor, "NewSkill")
-        self._open_tabs["NewSkill"] = idx
-        self._tabs.setCurrentIndex(idx)
+        return StateMachine(name=f"{name}_fsm", states=[s], initial_state=s)
+
+    def _register_component(self, component: object) -> None:
+        if self._project is None:
+            return
+        if isinstance(component, AgentDefinition):
+            self._project.agents.append(component)
+        else:
+            self._project.skills.append(component)
+        self._registry_panel.set_project(self._project)
+
+    _COMPONENT_TITLES = {
+        "procedural": "새 Procedural Skill",
+        "declarative": "새 Declarative Skill",
+        "transfer": "새 Transfer Skill",
+        "agent": "새 Agent",
+    }
+
+    def _on_new_component(self, kind: str) -> None:
+        name = self._ask_unique_name(self._COMPONENT_TITLES[kind])
+        if name is None:
+            return
+        factories = {
+            "procedural": lambda: ProceduralSkill(fsm=self._make_fsm(name), name=name, description=""),
+            "declarative": lambda: DeclarativeSkill(name=name, description=""),
+            "transfer": lambda: TransferSkill(fsm=self._make_fsm(name), name=name, description=""),
+            "agent": lambda: AgentDefinition(fsm=self._make_fsm(name), name=name, description=""),
+        }
+        self._register_component(factories[kind]())
 
     def _close_tab(self, index: int) -> None:
         if index == _FSM_TAB_INDEX:

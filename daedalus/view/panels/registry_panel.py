@@ -5,6 +5,7 @@ from PyQt6.QtCore import QMimeData, Qt, pyqtSignal
 from PyQt6.QtGui import QColor, QDrag
 from PyQt6.QtWidgets import (
     QAbstractItemView,
+    QHBoxLayout,
     QLabel,
     QListWidget,
     QListWidgetItem,
@@ -14,17 +15,14 @@ from PyQt6.QtWidgets import (
 )
 
 from daedalus.model.plugin.agent import AgentDefinition
-from daedalus.model.plugin.skill import DeclarativeSkill, ProceduralSkill
+from daedalus.model.plugin.skill import DeclarativeSkill, ProceduralSkill, TransferSkill
 from daedalus.model.project import PluginProject
 
 _ROLE_COMPONENT = Qt.ItemDataRole.UserRole + 1
 _ROLE_PLACED = Qt.ItemDataRole.UserRole + 2
 
-_COLOR_PROCEDURAL = QColor("#88cc88")
-_COLOR_DECLARATIVE = QColor("#cccc88")
-_COLOR_AGENT = QColor("#cc8888")
 _COLOR_PLACED = QColor("#445544")
-_COLOR_NO_PLACE = QColor("#666644")  # DeclarativeSkill: 배치 불가 표시
+_COLOR_NO_PLACE = QColor("#666644")
 
 _ICON = {
     "procedural_skill": "⚙",
@@ -47,103 +45,58 @@ class _DraggableList(QListWidget):
         mime = QMimeData()
         mime.setText(component.name)
         drag.setMimeData(mime)
-        # QDrag.exec() 로 드래그 실행 — PyQt6 메서드명
         _run_drag = getattr(drag, "exec")
         _run_drag(Qt.DropAction.CopyAction)
 
 
-class RegistryPanel(QWidget):
-    """스킬/에이전트 레지스트리 팔레트."""
+class _RegistrySection(QWidget):
+    """레이블 + 리스트 + "+" 버튼을 묶은 레지스트리 섹션."""
 
-    component_double_clicked = pyqtSignal(object)
-    new_skill_requested = pyqtSignal()
+    add_requested = pyqtSignal()
+    item_double_clicked = pyqtSignal(object)
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(self, label: str, color: QColor, no_place: bool = False, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self._project: PluginProject | None = None
-        self._placed_ids: set[int] = set()
+        self._color = color
+        self._no_place = no_place
 
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(4, 4, 4, 4)
-        layout.setSpacing(2)
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(2)
 
-        layout.addWidget(self._section_label("⚙ PROCEDURAL"))
-        self._proc_list = self._make_list()
-        layout.addWidget(self._proc_list)
+        hdr = QHBoxLayout()
+        hdr.setContentsMargins(0, 0, 0, 0)
+        hdr.setSpacing(2)
+        hdr.addWidget(QLabel(label))
+        hdr.addStretch()
+        btn = QPushButton("+")
+        btn.setFixedSize(20, 20)
+        btn.clicked.connect(self.add_requested)
+        hdr.addWidget(btn)
+        lay.addLayout(hdr)
 
-        layout.addWidget(self._section_label("📄 DECLARATIVE"))
-        self._decl_list = self._make_list()
-        layout.addWidget(self._decl_list)
+        self._list = _DraggableList()
+        self._list.setDragEnabled(True)
+        self._list.setDragDropMode(QAbstractItemView.DragDropMode.DragOnly)
+        self._list.setMaximumHeight(130)
+        self._list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._list.doubleClicked.connect(self._on_double_click)
+        lay.addWidget(self._list)
 
-        layout.addWidget(self._section_label("🤖 AGENTS"))
-        self._agent_list = self._make_list()
-        layout.addWidget(self._agent_list)
+    def clear(self) -> None:
+        self._list.clear()
 
-        btn = QPushButton("+ 새 스킬 정의")
-        btn.clicked.connect(self.new_skill_requested)
-        layout.addWidget(btn)
-
-    def set_project(self, project: PluginProject) -> None:
-        self._project = project
-        self._rebuild()
-
-    def set_placed_ids(self, placed_ids: set[int]) -> None:
-        self._placed_ids = placed_ids
-        self._rebuild()
-
-    def _section_label(self, text: str) -> QLabel:
-        lbl = QLabel(text)
-        lbl.setStyleSheet("color: #668; font-size: 9px; padding: 4px 2px 0px 2px;")
-        return lbl
-
-    def _make_list(self) -> _DraggableList:
-        lst = _DraggableList()
-        lst.setDragEnabled(True)
-        lst.setDragDropMode(QAbstractItemView.DragDropMode.DragOnly)
-        lst.setMaximumHeight(130)
-        lst.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        lst.doubleClicked.connect(self._on_double_click)
-        lst.setStyleSheet(
-            "QListWidget { background: #13132a; border: 1px solid #2a2a44; }"
-            "QListWidget::item { padding: 4px 6px; }"
-            "QListWidget::item:selected { background: #2a2a4a; }"
-        )
-        return lst
-
-    def _rebuild(self) -> None:
-        for lst in (self._proc_list, self._decl_list, self._agent_list):
-            lst.clear()
-        if self._project is None:
-            return
-        for skill in self._project.skills:
-            placed = id(skill) in self._placed_ids
-            if isinstance(skill, ProceduralSkill):
-                self._add_item(self._proc_list, skill, _COLOR_PROCEDURAL, placed)
-            elif isinstance(skill, DeclarativeSkill):
-                # DeclarativeSkill은 항상 드래그 불가 (graph 배치 대상 아님)
-                self._add_item(self._decl_list, skill, _COLOR_DECLARATIVE, placed=False, no_place=True)
-        for agent in self._project.agents:
-            placed = id(agent) in self._placed_ids
-            self._add_item(self._agent_list, agent, _COLOR_AGENT, placed)
-
-    def _add_item(
-        self,
-        lst: QListWidget,
-        component: object,
-        color: QColor,
-        placed: bool,
-        no_place: bool = False,
-    ) -> None:
+    def add_item(self, component: object, placed: bool) -> None:
         kind = getattr(component, "kind", "")
         icon = _ICON.get(kind, "")
         name = getattr(component, "name", str(component))
-        if no_place:
-            label = f"{icon} {name}  (배치 불가)"
-        else:
-            label = f"{icon} {name}"
+        no_place = self._no_place
+
+        label = f"{icon} {name}"
         item = QListWidgetItem(label)
         item.setData(_ROLE_COMPONENT, component)
         item.setData(_ROLE_PLACED, placed)
+
         if no_place:
             item.setForeground(_COLOR_NO_PLACE)
             item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsDragEnabled)
@@ -157,15 +110,66 @@ class RegistryPanel(QWidget):
             font.setItalic(True)
             item.setFont(font)
         else:
-            item.setForeground(color)
-        lst.addItem(item)
+            item.setForeground(self._color)
+        self._list.addItem(item)
 
     def _on_double_click(self, index) -> None:
-        lst = self.sender()
-        if not isinstance(lst, QListWidget):
-            return
-        item = lst.itemFromIndex(index)
+        item = self._list.itemFromIndex(index)
         if item:
             comp = item.data(_ROLE_COMPONENT)
             if comp is not None:
-                self.component_double_clicked.emit(comp)
+                self.item_double_clicked.emit(comp)
+
+
+class RegistryPanel(QWidget):
+    """스킬/에이전트 레지스트리 팔레트."""
+
+    component_double_clicked = pyqtSignal(object)
+    new_component_requested = pyqtSignal(str)  # kind: "procedural"|"declarative"|"agent"
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._project: PluginProject | None = None
+        self._placed_ids: set[int] = set()
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(4, 4, 4, 4)
+        layout.setSpacing(2)
+
+        self._sections: dict[str, _RegistrySection] = {
+            "procedural": _RegistrySection("⚙ PROCEDURAL", QColor("#88cc88")),
+            "declarative": _RegistrySection("📄 DECLARATIVE", QColor("#cccc88"), no_place=True),
+            "transfer": _RegistrySection("⚡ TRANSFER", QColor("#88aacc"), no_place=True),
+            "agent": _RegistrySection("🤖 AGENTS", QColor("#cc8888")),
+        }
+        for kind, section in self._sections.items():
+            section.add_requested.connect(lambda k=kind: self.new_component_requested.emit(k))
+            section.item_double_clicked.connect(self.component_double_clicked)
+            layout.addWidget(section)
+
+        layout.addStretch()
+
+    def set_project(self, project: PluginProject) -> None:
+        self._project = project
+        self._rebuild()
+
+    def set_placed_ids(self, placed_ids: set[int]) -> None:
+        self._placed_ids = placed_ids
+        self._rebuild()
+
+    def _rebuild(self) -> None:
+        for section in self._sections.values():
+            section.clear()
+        if self._project is None:
+            return
+        for skill in self._project.skills:
+            placed = id(skill) in self._placed_ids
+            if isinstance(skill, TransferSkill):
+                self._sections["transfer"].add_item(skill, placed=False)
+            elif isinstance(skill, ProceduralSkill):
+                self._sections["procedural"].add_item(skill, placed)
+            elif isinstance(skill, DeclarativeSkill):
+                self._sections["declarative"].add_item(skill, placed=False)
+        for agent in self._project.agents:
+            placed = id(agent) in self._placed_ids
+            self._sections["agent"].add_item(agent, placed)
