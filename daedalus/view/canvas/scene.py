@@ -458,10 +458,14 @@ class AgentFsmScene(FsmScene):
         new_name, ok = QInputDialog.getText(
             view, "ExitPoint 이름 변경", "이름:", text=model.name
         )
-        if ok and new_name.strip() and new_name.strip() != model.name:
-            self._project_vm.execute(
-                RenameExitPointCmd(model, model.name, new_name.strip())
-            )
+        if not (ok and new_name.strip() and new_name.strip() != model.name):
+            return
+        new_name = new_name.strip()
+        existing = {s.name for s in self._agent_fsm.states if s is not model}
+        if new_name in existing:
+            QMessageBox.warning(view, "이름 중복", f"'{new_name}' 이름이 이미 존재합니다.")
+            return
+        self._project_vm.execute(RenameExitPointCmd(model, model.name, new_name))
 
     def _change_exit_point_color(self, model) -> None:
         from daedalus.view.commands.exit_point_commands import ChangeExitPointColorCmd

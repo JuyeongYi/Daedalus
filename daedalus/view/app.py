@@ -284,8 +284,21 @@ class MainWindow(QMainWindow):
             self._property_panel.set_project_vm(self._project_vm)
             self._script_panel.set_stack(self._project_vm.command_stack)
         else:
-            # SkillEditor 탭 — undo/redo는 project VM 기준
-            self._active_stack = self._project_vm.command_stack
+            from daedalus.view.editors.agent_editor import AgentEditor as _AE
+            widget = self._tabs.widget(index)
+            if isinstance(widget, _AE):
+                # AgentEditor — undo/redo는 에이전트 그래프 VM 기준
+                agent_stack = widget._graph_vm.command_stack
+                self._active_stack = agent_stack
+                self._history_panel.set_stack(
+                    agent_stack, on_goto=widget._graph_vm.notify
+                )
+            else:
+                # SkillEditor — undo/redo는 project VM 기준
+                self._active_stack = self._project_vm.command_stack
+                self._history_panel.set_stack(
+                    self._project_vm.command_stack, on_goto=self._project_vm.notify
+                )
             self._property_panel.clear()
 
         self._active_stack.add_listener(self._update_undo_redo)

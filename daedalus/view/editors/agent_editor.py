@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import Callable
 
 from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtGui import QCloseEvent
 from PyQt6.QtWidgets import (
     QHBoxLayout,
     QInputDialog,
@@ -275,6 +276,11 @@ class AgentEditor(QWidget):
         self._var_popup.move(pos)
         self._var_popup.show()
         self._var_popup.raise_()
+
+    def closeEvent(self, event: QCloseEvent | None) -> None:
+        """탭 닫힘 시 씬 리스너를 해제해 메모리 누수 방지."""
+        self._graph_scene.close()
+        super().closeEvent(event)  # type: ignore[arg-type]
 
     def _on_model_changed(self) -> None:
         self.agent_changed.emit()
