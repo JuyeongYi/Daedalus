@@ -56,6 +56,7 @@ def test_rename_exit_point():
 def test_change_exit_point_color():
     fsm = _make_agent_fsm()
     ep = fsm.states[1]
+    assert isinstance(ep, ExitPoint)
     cmd = ChangeExitPointColorCmd(ep, "#4488ff", "#cc3333")
     cmd.execute()
     assert ep.color == "#cc3333"
