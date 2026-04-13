@@ -423,12 +423,8 @@ class AgentFsmScene(FsmScene):
                 self._delete_transition(item.transition_vm)
 
         else:
-            add_state_act = menu.addAction("빈 상태 추가")
             add_exit_act = menu.addAction("ExitPoint 추가")
-            chosen = menu.exec(event.screenPos())
-            if chosen == add_state_act:
-                self._create_state(pos)
-            elif chosen == add_exit_act:
+            if menu.exec(event.screenPos()) == add_exit_act:
                 self._create_exit_point(pos)
 
     def _create_exit_point(self, pos: QPointF) -> None:

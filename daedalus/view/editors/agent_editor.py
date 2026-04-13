@@ -150,14 +150,32 @@ class AgentEditor(QWidget):
         return container
 
     def _migrate_fsm(self) -> None:
-        """기존 에이전트 FSM에 EntryPoint/ExitPoint가 없으면 자동 추가."""
+        """기존 에이전트 FSM 마이그레이션.
+
+        - EntryPoint/ExitPoint가 없으면 추가
+        - skill_ref 없는 일반 SimpleState 제거 (구버전 잔재)
+        """
         from daedalus.model.fsm.pseudo import EntryPoint, ExitPoint
+        from daedalus.model.fsm.state import SimpleState
 
         fsm = self._agent.fsm
+        # 1) skill_ref 없는 SimpleState 제거
+        orphans = [
+            s for s in fsm.states
+            if isinstance(s, SimpleState) and (not hasattr(s, "skill_ref") or s.skill_ref is None)
+        ]
+        for s in orphans:
+            fsm.states.remove(s)
+            # 연결된 전이도 제거
+            fsm.transitions = [
+                t for t in fsm.transitions if t.source is not s and t.target is not s
+            ]
+        # 2) EntryPoint 없으면 추가
         if not any(isinstance(s, EntryPoint) for s in fsm.states):
             entry = EntryPoint(name="entry")
             fsm.states.insert(0, entry)
             fsm.initial_state = entry
+        # 3) ExitPoint 없으면 추가
         if not any(isinstance(s, ExitPoint) for s in fsm.states):
             exit_done = ExitPoint(name="done")
             fsm.states.append(exit_done)
