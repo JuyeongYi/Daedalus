@@ -174,7 +174,7 @@ class MainWindow(QMainWindow):
     # --- 탭 관리 ---
 
     def _open_component(self, component: object) -> None:
-        """레지스트리에서 더블클릭 → SkillEditor 탭 열기."""
+        """레지스트리에서 더블클릭 → SkillEditor/AgentEditor 탭 열기."""
         name = getattr(component, "name", None)
         if name is None:
             return
@@ -182,7 +182,13 @@ class MainWindow(QMainWindow):
             self._tabs.setCurrentIndex(self._open_tabs[name])
             return
 
-        if isinstance(component, (ProceduralSkill, DeclarativeSkill, TransferSkill, AgentDefinition)):
+        if isinstance(component, AgentDefinition):
+            from daedalus.view.editors.agent_editor import AgentEditor
+            editor = AgentEditor(component, on_notify_fn=self._project_vm.notify)
+            idx = self._tabs.addTab(editor, f"🤖 {name}")
+            self._open_tabs[name] = idx
+            self._tabs.setCurrentIndex(idx)
+        elif isinstance(component, (ProceduralSkill, DeclarativeSkill, TransferSkill)):
             editor = SkillEditor(component, on_notify_fn=self._project_vm.notify)
             idx = self._tabs.addTab(editor, name)
             self._open_tabs[name] = idx
@@ -212,6 +218,18 @@ class MainWindow(QMainWindow):
         s = _SS(name="start")
         return StateMachine(name=f"{name}_fsm", states=[s], initial_state=s)
 
+    def _make_agent_fsm(self, name: str) -> object:
+        from daedalus.model.fsm.machine import StateMachine
+        from daedalus.model.fsm.pseudo import EntryPoint, ExitPoint
+        entry = EntryPoint(name="entry")
+        exit_done = ExitPoint(name="done")
+        return StateMachine(
+            name=f"{name}_fsm",
+            states=[entry, exit_done],
+            initial_state=entry,
+            final_states=[exit_done],
+        )
+
     def _register_component(self, component: object) -> None:
         if self._project is None:
             return
@@ -236,7 +254,7 @@ class MainWindow(QMainWindow):
             "procedural": lambda: ProceduralSkill(fsm=self._make_fsm(name), name=name, description=""),
             "declarative": lambda: DeclarativeSkill(name=name, description=""),
             "transfer": lambda: TransferSkill(fsm=self._make_fsm(name), name=name, description=""),
-            "agent": lambda: AgentDefinition(fsm=self._make_fsm(name), name=name, description=""),
+            "agent": lambda: AgentDefinition(fsm=self._make_agent_fsm(name), name=name, description=""),  # type: ignore[arg-type]
         }
         self._register_component(factories[kind]())
 
