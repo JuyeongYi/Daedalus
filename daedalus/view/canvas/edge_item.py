@@ -19,8 +19,8 @@ _EDGE_COLOR = QColor("#6674cc")
 _EDGE_SELECTED = QColor("#88aaff")
 _EDGE_TRANSFER = QColor("#88aacc")   # Transfer Skill 할당 엣지
 _ARROW_SIZE = 8.0
-_EDGE_WIDTH = 2.5        # 기본 두께
-_EDGE_WIDTH_TRANSFER = 3.0  # Transfer Skill 할당 시 두께
+_EDGE_WIDTH = 4.0        # 기본 두께
+_EDGE_WIDTH_TRANSFER = 5.0  # Transfer Skill 할당 시 두께
 _HIT_WIDTH = 12.0        # 마우스 클릭 히트 영역
 
 
