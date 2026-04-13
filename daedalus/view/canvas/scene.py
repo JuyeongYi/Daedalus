@@ -196,7 +196,10 @@ class FsmScene(QGraphicsScene):
         return None
 
     def handle_node_double_clicked(self, node: StateNodeItem) -> None:
-        ref = node.state_vm.model.skill_ref
+        model = node.state_vm.model
+        if not hasattr(model, "skill_ref"):
+            return
+        ref = model.skill_ref  # type: ignore[union-attr]
         if ref is not None:
             self.node_double_clicked.emit(ref)
 
@@ -212,10 +215,10 @@ class FsmScene(QGraphicsScene):
         if isinstance(skill, (DeclarativeSkill, TransferSkill)):
             return
         for svm in self._project_vm.state_vms:
-            if svm.model.skill_ref is skill:
+            if hasattr(svm.model, "skill_ref") and svm.model.skill_ref is skill:  # type: ignore[union-attr]
                 return  # 이미 배치됨
         self._state_counter += 1
-        model = SimpleState(name=skill.name, skill_ref=skill)
+        model = SimpleState(name=skill.name, skill_ref=skill)  # type: ignore[arg-type,union-attr]
         vm = StateViewModel(model=model, x=scene_pos.x(), y=scene_pos.y())
         self._project_vm.execute(CreateStateCmd(self._project_vm, vm))
 
@@ -239,12 +242,14 @@ class FsmScene(QGraphicsScene):
             transfer_menu = menu.addMenu("On Transfer 스킬 설정")
             transfer_skills = self._get_transfer_skills()
             skill_actions: dict[QAction, object] = {}
-            for ts in transfer_skills:
-                act = transfer_menu.addAction(f"⚡ {ts.name}")
-                skill_actions[act] = ts
-            if transfer_skills:
-                transfer_menu.addSeparator()
-            new_act = transfer_menu.addAction("새 Transfer Skill 생성...")
+            if transfer_menu is not None:
+                for ts in transfer_skills:
+                    act = transfer_menu.addAction(f"⚡ {ts.name}")
+                    if act is not None:
+                        skill_actions[act] = ts
+                if transfer_skills:
+                    transfer_menu.addSeparator()
+            new_act = transfer_menu.addAction("새 Transfer Skill 생성...") if transfer_menu is not None else None  # type: ignore[assignment]
 
             # 스킬 해제 (현재 연결된 경우만)
             unset_act = None

@@ -162,11 +162,11 @@ class MainWindow(QMainWindow):
         return None
 
     def _get_placed_ids(self) -> set[int]:
-        return {
-            id(svm.model.skill_ref)
-            for svm in self._project_vm.state_vms
-            if svm.model.skill_ref is not None
-        }
+        result = set()
+        for svm in self._project_vm.state_vms:
+            if hasattr(svm.model, "skill_ref") and svm.model.skill_ref is not None:  # type: ignore[union-attr]
+                result.add(id(svm.model.skill_ref))  # type: ignore[union-attr]
+        return result
 
     def _on_project_vm_changed(self) -> None:
         self._registry_panel.set_placed_ids(self._get_placed_ids())

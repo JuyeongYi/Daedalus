@@ -59,7 +59,7 @@ class StateNodeItem(QGraphicsItem):
         model = self._state_vm.model
         if not hasattr(model, "skill_ref"):
             return []
-        ref = model.skill_ref
+        ref = model.skill_ref  # type: ignore[union-attr]
         if ref is None:
             return []
         if hasattr(ref, "output_event_defs"):
@@ -73,7 +73,7 @@ class StateNodeItem(QGraphicsItem):
         model = self._state_vm.model
         if not hasattr(model, "skill_ref"):
             return []
-        ref = model.skill_ref
+        ref = model.skill_ref  # type: ignore[union-attr]
         if ref is not None and hasattr(ref, "output_events"):
             return list(ref.output_events)  # type: ignore[union-attr]
         return []
@@ -130,7 +130,7 @@ class StateNodeItem(QGraphicsItem):
             return
 
         model = self._state_vm.model
-        kind: str | None
+        kind: str | None = None
         if isinstance(model, ExitPoint):
             bg_str, _, header_label, icon = _TYPE_STYLE["exit_point"]
             border_str = model.color
@@ -139,7 +139,7 @@ class StateNodeItem(QGraphicsItem):
             bg_str, border_str, header_label, icon = _TYPE_STYLE["entry_point"]
             kind = "entry_point"
         else:
-            ref = model.skill_ref if hasattr(model, "skill_ref") else None
+            ref = model.skill_ref if hasattr(model, "skill_ref") else None  # type: ignore[union-attr]
             kind = ref.kind if ref is not None else None
             bg_str, border_str, header_label, icon = _TYPE_STYLE.get(kind, _TYPE_STYLE[None])
         border_color = QColor(border_str)
