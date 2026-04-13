@@ -145,8 +145,23 @@ class AgentEditor(QWidget):
         splitter.setStretchFactor(1, 1)  # canvas: 확장
 
         lay.addWidget(splitter)
+        self._migrate_fsm()
         self._load_agent_fsm()
         return container
+
+    def _migrate_fsm(self) -> None:
+        """기존 에이전트 FSM에 EntryPoint/ExitPoint가 없으면 자동 추가."""
+        from daedalus.model.fsm.pseudo import EntryPoint, ExitPoint
+
+        fsm = self._agent.fsm
+        if not any(isinstance(s, EntryPoint) for s in fsm.states):
+            entry = EntryPoint(name="entry")
+            fsm.states.insert(0, entry)
+            fsm.initial_state = entry
+        if not any(isinstance(s, ExitPoint) for s in fsm.states):
+            exit_done = ExitPoint(name="done")
+            fsm.states.append(exit_done)
+            fsm.final_states.append(exit_done)
 
     def _load_agent_fsm(self) -> None:
         """에이전트 FSM 상태를 Graph VM에 로드."""
