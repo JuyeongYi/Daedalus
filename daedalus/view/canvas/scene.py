@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, Callable
 from PyQt6.QtCore import QPointF, Qt, pyqtSignal
 from PyQt6.QtGui import QAction, QColor, QKeyEvent, QPen
 from PyQt6.QtWidgets import (
-    QColorDialog,
     QGraphicsLineItem,
     QGraphicsScene,
     QGraphicsSceneContextMenuEvent,
@@ -469,12 +468,22 @@ class AgentFsmScene(FsmScene):
 
     def _change_exit_point_color(self, model) -> None:
         from daedalus.view.commands.exit_point_commands import ChangeExitPointColorCmd
+        from daedalus.view.editors.skill_editor import _ColorPickerPopup
+        from PyQt6.QtGui import QCursor
+
         view = self.views()[0] if self.views() else None
-        color = QColorDialog.getColor(QColor(model.color), view, "ExitPoint 색상")
-        if color.isValid() and color.name() != model.color:
-            self._project_vm.execute(
-                ChangeExitPointColorCmd(model, model.color, color.name())
-            )
+        popup = _ColorPickerPopup(parent=view)
+
+        def _on_color(new_color: str) -> None:
+            if new_color != model.color:
+                self._project_vm.execute(
+                    ChangeExitPointColorCmd(model, model.color, new_color)
+                )
+            popup.deleteLater()
+
+        popup.color_selected.connect(_on_color)
+        popup.move(QCursor.pos())
+        popup.show()
 
     def _delete_exit_point(self, state_vm: StateViewModel, model) -> None:
         from daedalus.view.commands.exit_point_commands import DeleteExitPointCmd
