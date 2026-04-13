@@ -31,3 +31,4 @@ class Transition:
     custom_events: dict[str, list[Action]] = field(default_factory=dict)
     # 데이터
     data_map: dict[str, str] = field(default_factory=dict)
+    skill_ref: object | None = None  # TransferSkill | None (avoid circular import)

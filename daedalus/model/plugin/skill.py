@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 
 from daedalus.model.fsm.section import EventDef, Section
 from daedalus.model.plugin.base import PluginComponent, WorkflowComponent
-from daedalus.model.plugin.config import DeclarativeSkillConfig, ProceduralSkillConfig
+from daedalus.model.plugin.config import DeclarativeSkillConfig, ProceduralSkillConfig, TransferSkillConfig
 
 
 @dataclass
@@ -23,7 +23,9 @@ class ProceduralSkill(Skill, WorkflowComponent):
       config, sections, transfer_on (default)
     """
     config: ProceduralSkillConfig = field(default_factory=ProceduralSkillConfig)
-    sections: list[Section] = field(default_factory=list)
+    sections: list[Section] = field(
+        default_factory=lambda: [Section("Instructions")]
+    )
     transfer_on: list[EventDef] = field(
         default_factory=lambda: [EventDef("done")]
     )
@@ -42,9 +44,24 @@ class ProceduralSkill(Skill, WorkflowComponent):
 class DeclarativeSkill(Skill):
     """선언형 = Skill only. FSM 없음, transfer_on 없음."""
     content: str = ""
-    sections: list[Section] = field(default_factory=list)
+    sections: list[Section] = field(
+        default_factory=lambda: [Section("Instructions")]
+    )
     config: DeclarativeSkillConfig = field(default_factory=DeclarativeSkillConfig)
 
     @property
     def kind(self) -> str:
         return "declarative_skill"
+
+
+@dataclass
+class TransferSkill(Skill, WorkflowComponent):
+    """엣지 전용 스킬 — 입출력 1개 고정, transfer_on 없음."""
+    config: TransferSkillConfig = field(default_factory=TransferSkillConfig)
+    sections: list[Section] = field(
+        default_factory=lambda: [Section("Instructions")]
+    )
+
+    @property
+    def kind(self) -> str:
+        return "transfer_skill"

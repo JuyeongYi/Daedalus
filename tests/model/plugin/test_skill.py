@@ -71,7 +71,8 @@ def test_procedural_skill_output_events_default():
 def test_procedural_skill_sections_default():
     fsm = _make_fsm()
     skill = ProceduralSkill(fsm=fsm, name="S", description="d")
-    assert skill.sections == []
+    assert len(skill.sections) == 1
+    assert skill.sections[0].title == "Instructions"
 
 
 def test_procedural_skill_transfer_on_default():
@@ -93,4 +94,34 @@ def test_procedural_skill_output_events_via_property():
 
 def test_declarative_skill_sections_default():
     skill = DeclarativeSkill(name="api-conventions", description="API 컨벤션")
-    assert skill.sections == []
+    assert len(skill.sections) == 1
+    assert skill.sections[0].title == "Instructions"
+
+
+from daedalus.model.plugin.config import TransferSkillConfig
+
+
+def test_transfer_skill():
+    fsm = _make_fsm()
+    from daedalus.model.plugin.skill import TransferSkill
+    skill = TransferSkill(fsm=fsm, name="validate", description="입력 검증")
+    assert skill.name == "validate"
+    assert skill.kind == "transfer_skill"
+    assert isinstance(skill, Skill)
+    assert isinstance(skill, WorkflowComponent)
+    assert isinstance(skill.config, TransferSkillConfig)
+
+
+def test_transfer_skill_no_transfer_on():
+    fsm = _make_fsm()
+    from daedalus.model.plugin.skill import TransferSkill
+    skill = TransferSkill(fsm=fsm, name="T", description="d")
+    assert not hasattr(skill, "transfer_on")
+
+
+def test_transfer_skill_sections_default():
+    fsm = _make_fsm()
+    from daedalus.model.plugin.skill import TransferSkill
+    skill = TransferSkill(fsm=fsm, name="T", description="d")
+    assert len(skill.sections) == 1
+    assert skill.sections[0].title == "Instructions"

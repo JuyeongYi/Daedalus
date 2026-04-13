@@ -72,3 +72,23 @@ def test_transition_self_type():
     t = Transition(source=s1, target=s1, type=TransitionType.SELF)
     assert t.type == TransitionType.SELF
     assert t.source is t.target
+
+
+def test_transition_skill_ref_default_none():
+    s1 = SimpleState(name="a")
+    s2 = SimpleState(name="b")
+    t = Transition(source=s1, target=s2)
+    assert t.skill_ref is None
+
+
+def test_transition_skill_ref_assignment():
+    from daedalus.model.plugin.skill import TransferSkill
+    from daedalus.model.fsm.machine import StateMachine
+    s1 = SimpleState(name="a")
+    s2 = SimpleState(name="b")
+    ss = SimpleState(name="s")
+    fsm = StateMachine(name="f", states=[ss], initial_state=ss)
+    skill = TransferSkill(fsm=fsm, name="validate", description="d")
+    t = Transition(source=s1, target=s2, skill_ref=skill)
+    assert t.skill_ref is skill
+    assert t.skill_ref.name == "validate"
