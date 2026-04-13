@@ -7,6 +7,7 @@ from PyQt6.QtCore import QPointF, QRectF, Qt
 from PyQt6.QtGui import QBrush, QColor, QFont, QPainter, QPen
 from PyQt6.QtWidgets import QGraphicsItem, QStyleOptionGraphicsItem, QWidget
 
+from daedalus.model.fsm.pseudo import EntryPoint, ExitPoint
 from daedalus.model.fsm.section import EventDef
 from daedalus.view.viewmodel.state_vm import StateViewModel
 
@@ -21,6 +22,8 @@ _TYPE_STYLE: dict[str | None, tuple[str, str, str, str]] = {
     "procedural_skill": ("#1a2a1a", "#4a8a4a", "PROCEDURAL", "⚙"),
     "declarative_skill": ("#2a2a1a", "#8a8a4a", "DECLARATIVE", "📄"),
     "agent":             ("#2a1a1a", "#8a4a4a", "AGENT",       "🤖"),
+    "entry_point":       ("#1a1a3a", "#4488ff", "▶ ENTRY",     ""),
+    "exit_point":        ("#2a1a1a", "#cc6666", "⏹ EXIT",      ""),
     None:                ("#1a1a2a", "#334466", "STATE",        ""),
 }
 
@@ -53,7 +56,10 @@ class StateNodeItem(QGraphicsItem):
         AgentDefinition은 output_event_defs 프로퍼티를,
         ProceduralSkill은 transfer_on 필드를 사용한다.
         """
-        ref = self._state_vm.model.skill_ref
+        model = self._state_vm.model
+        if not hasattr(model, "skill_ref"):
+            return []
+        ref = model.skill_ref
         if ref is None:
             return []
         if hasattr(ref, "output_event_defs"):
@@ -64,7 +70,10 @@ class StateNodeItem(QGraphicsItem):
 
     def _output_events(self) -> list[str]:
         """하위 호환용 — 이벤트 이름 목록만 반환."""
-        ref = self._state_vm.model.skill_ref
+        model = self._state_vm.model
+        if not hasattr(model, "skill_ref"):
+            return []
+        ref = model.skill_ref
         if ref is not None and hasattr(ref, "output_events"):
             return list(ref.output_events)  # type: ignore[union-attr]
         return []
@@ -91,6 +100,12 @@ class StateNodeItem(QGraphicsItem):
     def _output_port_y(self, i: int, n: int) -> float:
         return self._port_y(i, n)
 
+    def _is_entry_point(self) -> bool:
+        return isinstance(self._state_vm.model, EntryPoint)
+
+    def _is_exit_point(self) -> bool:
+        return isinstance(self._state_vm.model, ExitPoint)
+
     def _sync_height(self) -> None:
         new_h = self._height()
         if self._state_vm.height != new_h:
@@ -114,9 +129,19 @@ class StateNodeItem(QGraphicsItem):
         if painter is None:
             return
 
-        ref = self._state_vm.model.skill_ref
-        kind = ref.kind if ref is not None else None
-        bg_str, border_str, header_label, icon = _TYPE_STYLE.get(kind, _TYPE_STYLE[None])
+        model = self._state_vm.model
+        kind: str | None
+        if isinstance(model, ExitPoint):
+            bg_str, _, header_label, icon = _TYPE_STYLE["exit_point"]
+            border_str = model.color
+            kind = "exit_point"
+        elif isinstance(model, EntryPoint):
+            bg_str, border_str, header_label, icon = _TYPE_STYLE["entry_point"]
+            kind = "entry_point"
+        else:
+            ref = model.skill_ref if hasattr(model, "skill_ref") else None
+            kind = ref.kind if ref is not None else None
+            bg_str, border_str, header_label, icon = _TYPE_STYLE.get(kind, _TYPE_STYLE[None])
         border_color = QColor(border_str)
         active_border = border_color.lighter(160) if self.isSelected() else border_color
 
@@ -168,28 +193,30 @@ class StateNodeItem(QGraphicsItem):
         painter.drawText(subtext_rect, Qt.AlignmentFlag.AlignCenter, kind or "state")
 
         # 입력 포트 (좌측)
-        n_in = max(1, self._input_count)
-        painter.setPen(QPen(QColor("#333"), 1))
-        painter.setBrush(QBrush(QColor("#888")))
-        for ii in range(n_in):
-            iy = self._port_y(ii, n_in)
-            painter.drawEllipse(QPointF(0.0, iy), _PORT_R, _PORT_R)
+        if not self._is_entry_point():
+            n_in = max(1, self._input_count)
+            painter.setPen(QPen(QColor("#333"), 1))
+            painter.setBrush(QBrush(QColor("#888")))
+            for ii in range(n_in):
+                iy = self._port_y(ii, n_in)
+                painter.drawEllipse(QPointF(0.0, iy), _PORT_R, _PORT_R)
 
         # 출력 포트 — EventDef.color 직접 사용
-        event_defs = self._event_defs()
-        if not event_defs:
-            event_defs = [EventDef("done", color="#4488ff")]
-        n_defs = len(event_defs)
-        for i, edef in enumerate(event_defs):
-            y = self._output_port_y(i, n_defs)
-            port_color = QColor(edef.color)
-            painter.setPen(QPen(QColor("#111"), 1))
-            painter.setBrush(QBrush(port_color))
-            painter.drawEllipse(QPointF(_W, y), _PORT_R, _PORT_R)
-            lbl_rect = QRectF(_W + _PORT_R + 2, y - 7, _LABEL_W - 4, 14)
-            painter.setPen(QPen(port_color.lighter(140)))
-            painter.setFont(QFont("Segoe UI", 7))
-            painter.drawText(lbl_rect, Qt.AlignmentFlag.AlignVCenter, edef.name)
+        if not self._is_exit_point():
+            event_defs = self._event_defs()
+            if not event_defs:
+                event_defs = [EventDef("done", color="#4488ff")]
+            n_defs = len(event_defs)
+            for i, edef in enumerate(event_defs):
+                y = self._output_port_y(i, n_defs)
+                port_color = QColor(edef.color)
+                painter.setPen(QPen(QColor("#111"), 1))
+                painter.setBrush(QBrush(port_color))
+                painter.drawEllipse(QPointF(_W, y), _PORT_R, _PORT_R)
+                lbl_rect = QRectF(_W + _PORT_R + 2, y - 7, _LABEL_W - 4, 14)
+                painter.setPen(QPen(port_color.lighter(140)))
+                painter.setFont(QFont("Segoe UI", 7))
+                painter.drawText(lbl_rect, Qt.AlignmentFlag.AlignVCenter, edef.name)
 
     def output_port_scene_pos(self, event_name: str) -> QPointF:
         events = self._output_events() or ["done"]
@@ -205,6 +232,8 @@ class StateNodeItem(QGraphicsItem):
         return self.mapToScene(QPointF(0.0, self._port_y(index, n)))
 
     def _get_output_port_event(self, local_pos: QPointF) -> str | None:
+        if self._is_exit_point():
+            return None
         events = self._output_events() or ["done"]
         n = len(events)
         hit_r = _PORT_R * 1.8
@@ -217,6 +246,8 @@ class StateNodeItem(QGraphicsItem):
         return None
 
     def is_input_port(self, local_pos: QPointF) -> bool:
+        if self._is_entry_point():
+            return False
         if local_pos.x() > _PORT_R * 2:
             return False
         h = self._height()

@@ -2,15 +2,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from daedalus.model.fsm.state import SimpleState
+from daedalus.model.fsm.state import SimpleState, State
 from daedalus.model.fsm.transition import Transition
 
 
 @dataclass(eq=False)
 class StateViewModel:
-    """SimpleState + UI 전용 상태."""
+    """State + UI 전용 상태."""
 
-    model: SimpleState
+    model: State
     x: float = 0.0
     y: float = 0.0
     width: float = 140.0

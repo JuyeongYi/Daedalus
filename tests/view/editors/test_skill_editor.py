@@ -176,3 +176,13 @@ def test_node_item_port_color_from_event_def(qapp):
     assert QColor(defs[0].color).isValid()
     assert QColor(defs[1].color).isValid()
     assert item._output_events() == ["done", "error"]
+
+
+def test_node_item_entry_point_style(qapp):
+    from daedalus.view.canvas.node_item import _TYPE_STYLE
+    assert "entry_point" in _TYPE_STYLE
+
+
+def test_node_item_exit_point_style(qapp):
+    from daedalus.view.canvas.node_item import _TYPE_STYLE
+    assert "exit_point" in _TYPE_STYLE
