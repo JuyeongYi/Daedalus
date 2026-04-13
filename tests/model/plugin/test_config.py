@@ -104,3 +104,79 @@ def test_component_config_shared_fields():
     agent = AgentConfig(model=ModelType.OPUS, effort=EffortLevel.MAX)
     assert proc.model == agent.model
     assert proc.effort == agent.effort
+
+
+# --- TransferSkillConfig, FieldSpec, FIELD_REGISTRY tests ---
+
+def test_transfer_skill_config_defaults():
+    from daedalus.model.plugin.config import TransferSkillConfig
+    cfg = TransferSkillConfig()
+    assert cfg.kind == "transfer"
+    assert cfg.disable_model_invocation is False
+    assert cfg.user_invocable is False
+    assert cfg.context == SkillContext.INLINE
+    assert cfg.shell == SkillShell.BASH
+
+
+def test_field_spec_dataclass():
+    from daedalus.model.plugin.config import FieldSpec
+    fs = FieldSpec(label="model", widget_type="combo", attr="model", choices=["a", "b"])
+    assert fs.label == "model"
+    assert fs.widget_type == "combo"
+    assert fs.attr == "model"
+    assert fs.choices == ["a", "b"]
+    assert fs.default_enabled is False
+
+
+def test_field_registry_has_all_kinds():
+    from daedalus.model.plugin.config import FIELD_REGISTRY
+    assert "procedural" in FIELD_REGISTRY
+    assert "declarative" in FIELD_REGISTRY
+    assert "transfer" in FIELD_REGISTRY
+    assert "agent" in FIELD_REGISTRY
+
+
+def test_field_registry_procedural_fields():
+    from daedalus.model.plugin.config import FIELD_REGISTRY
+    attrs = [f.attr for f in FIELD_REGISTRY["procedural"]]
+    assert "model" in attrs
+    assert "effort" in attrs
+    assert "context" in attrs
+    assert "shell" in attrs
+    assert "disable_model_invocation" in attrs
+    assert "user_invocable" in attrs
+    assert "argument_hint" in attrs
+    assert "allowed_tools" in attrs
+    assert "paths" in attrs
+
+
+def test_field_registry_transfer_fields():
+    from daedalus.model.plugin.config import FIELD_REGISTRY
+    attrs = [f.attr for f in FIELD_REGISTRY["transfer"]]
+    assert "model" in attrs
+    assert "context" in attrs
+    assert "shell" in attrs
+    assert "disable_model_invocation" in attrs
+    # transfer에는 user_invocable, argument_hint 없음
+    assert "user_invocable" not in attrs
+    assert "argument_hint" not in attrs
+
+
+def test_field_registry_declarative_fields():
+    from daedalus.model.plugin.config import FIELD_REGISTRY
+    attrs = [f.attr for f in FIELD_REGISTRY["declarative"]]
+    assert "model" in attrs
+    assert "effort" in attrs
+    assert "argument_hint" in attrs
+    # declarative에는 context, shell 없음
+    assert "context" not in attrs
+    assert "shell" not in attrs
+
+
+def test_field_registry_agent_fields():
+    from daedalus.model.plugin.config import FIELD_REGISTRY
+    attrs = [f.attr for f in FIELD_REGISTRY["agent"]]
+    assert "model" in attrs
+    assert "effort" in attrs
+    assert "permission_mode" in attrs
+    assert "max_turns" in attrs
