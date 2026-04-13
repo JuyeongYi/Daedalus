@@ -186,3 +186,25 @@ def test_node_item_entry_point_style(qapp):
 def test_node_item_exit_point_style(qapp):
     from daedalus.view.canvas.node_item import _TYPE_STYLE
     assert "exit_point" in _TYPE_STYLE
+
+
+def test_entry_point_no_input_port(qapp):
+    from PyQt6.QtCore import QPointF
+    from daedalus.model.fsm.pseudo import EntryPoint
+    from daedalus.view.viewmodel.state_vm import StateViewModel
+    from daedalus.view.canvas.node_item import StateNodeItem
+    vm = StateViewModel(model=EntryPoint(name="entry"))
+    item = StateNodeItem(vm)
+    assert item._is_entry_point()
+    assert not item.is_input_port(QPointF(0.0, 30.0))
+
+
+def test_exit_point_no_output_port(qapp):
+    from PyQt6.QtCore import QPointF
+    from daedalus.model.fsm.pseudo import ExitPoint
+    from daedalus.view.viewmodel.state_vm import StateViewModel
+    from daedalus.view.canvas.node_item import StateNodeItem
+    vm = StateViewModel(model=ExitPoint(name="exit"))
+    item = StateNodeItem(vm)
+    assert item._is_exit_point()
+    assert item._get_output_port_event(QPointF(160.0, 50.0)) is None
