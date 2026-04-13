@@ -43,6 +43,7 @@ class TransitionEdgeItem(QGraphicsPathItem):
 
     def update_path(self) -> None:
         """출력/입력 포트 위치 기반 베지어 경로."""
+        self.prepareGeometryChange()
         trigger = self._transition_vm.model.trigger
         event_name = trigger.name if trigger is not None else "done"
 
