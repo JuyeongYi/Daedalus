@@ -11,8 +11,10 @@ from PyQt6.QtWidgets import (
     QFrame,
     QGraphicsOpacityEffect,
     QHBoxLayout,
+    QInputDialog,
     QLabel,
     QLineEdit,
+    QMessageBox,
     QPushButton,
     QScrollArea,
     QSplitter,
@@ -24,9 +26,9 @@ from PyQt6.QtWidgets import (
 
 from daedalus.model.fsm.section import EventDef, Section
 from daedalus.model.plugin.agent import AgentDefinition
-from daedalus.model.plugin.config import ProceduralSkillConfig
+from daedalus.model.plugin.config import FIELD_REGISTRY, FieldSpec, ProceduralSkillConfig
 from daedalus.model.plugin.enums import EffortLevel, ModelType, SkillContext, SkillShell
-from daedalus.model.plugin.skill import DeclarativeSkill, ProceduralSkill
+from daedalus.model.plugin.skill import DeclarativeSkill, ProceduralSkill, TransferSkill
 
 from daedalus.view.editors.body_editor import (
     BreadcrumbNav,
@@ -87,18 +89,18 @@ class _OptionalRow(QWidget):
 
 
 class _FrontmatterPanel(QScrollArea):
-    """좌측 170px 고정 패널 — name/description(필수) + 선택 필드 체크박스."""
+    """좌측 패널 — name/description(필수) + FIELD_REGISTRY 기반 선택 필드."""
 
     changed = pyqtSignal()
 
     def __init__(
         self,
-        component: ProceduralSkill | DeclarativeSkill | AgentDefinition,
+        component: ProceduralSkill | DeclarativeSkill | TransferSkill | AgentDefinition,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self._component = component
-        self.setFixedWidth(170)
+        self.setMinimumWidth(170)
         self.setWidgetResizable(True)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
@@ -111,114 +113,68 @@ class _FrontmatterPanel(QScrollArea):
         lay.addWidget(hdr)
 
         # --- 필수 필드 ---
-        lay.addWidget(self._lbl("name *"))
+        lay.addWidget(QLabel("name *"))
         self._w_name = QLineEdit(component.name)
         self._w_name.editingFinished.connect(self._save_name)
         lay.addWidget(self._w_name)
 
-        lay.addWidget(self._lbl("description *"))
+        lay.addWidget(QLabel("description *"))
         self._w_desc = QTextEdit()
         self._w_desc.setPlainText(component.description)
         self._w_desc.setFixedHeight(44)
         self._w_desc.textChanged.connect(self._save_desc)
         lay.addWidget(self._w_desc)
 
-        # --- 선택 필드 구분선 ---
-        sep = QLabel("선택 필드")
-        lay.addWidget(sep)
-
+        # --- 선택 필드 (FIELD_REGISTRY 기반) ---
         config = getattr(component, "config", None)
-
-        # model
-        self._w_model = QComboBox()
-        for e in ModelType:
-            self._w_model.addItem(e.value)
         if config is not None:
-            mv = config.model.value if isinstance(config.model, ModelType) else str(config.model)
-            idx = self._w_model.findText(mv)
-            if idx >= 0:
-                self._w_model.setCurrentIndex(idx)
-        self._row_model = _OptionalRow(
-            "model", self._w_model,
-            initially_enabled=(config is not None and config.model != ModelType.INHERIT),
-        )
-        lay.addWidget(self._row_model)
-
-        # effort
-        self._w_effort = QComboBox()
-        for e in EffortLevel:
-            self._w_effort.addItem(e.value)
-        if config is not None and config.effort is not None:
-            idx = self._w_effort.findText(config.effort.value)
-            if idx >= 0:
-                self._w_effort.setCurrentIndex(idx)
-        self._row_effort = _OptionalRow(
-            "effort", self._w_effort,
-            initially_enabled=(config is not None and config.effort is not None),
-        )
-        lay.addWidget(self._row_effort)
-
-        # allowed-tools (SkillConfig 계열)
-        if config is not None and hasattr(config, "allowed_tools"):
-            self._w_tools = QLineEdit(" ".join(config.allowed_tools))
-            self._w_tools.setPlaceholderText("Read Grep WebSearch")
-            self._row_tools = _OptionalRow(
-                "allowed-tools", self._w_tools,
-                initially_enabled=bool(config.allowed_tools),
-            )
-            lay.addWidget(self._row_tools)
-
-        # ProceduralSkill 전용 필드
-        if isinstance(config, ProceduralSkillConfig):
-            self._w_context = QComboBox()
-            for e in SkillContext:
-                self._w_context.addItem(e.value)
-            idx = self._w_context.findText(config.context.value)
-            if idx >= 0:
-                self._w_context.setCurrentIndex(idx)
-            lay.addWidget(_OptionalRow("context", self._w_context, initially_enabled=True))
-
-            self._w_paths = QLineEdit(" ".join(config.paths) if config.paths else "")
-            self._w_paths.setPlaceholderText("src/**/*.py")
-            lay.addWidget(
-                _OptionalRow(
-                    "paths", self._w_paths,
-                    initially_enabled=bool(config.paths),
-                )
-            )
-
-            self._w_shell = QComboBox()
-            for e in SkillShell:
-                self._w_shell.addItem(e.value)
-            idx = self._w_shell.findText(config.shell.value)
-            if idx >= 0:
-                self._w_shell.setCurrentIndex(idx)
-            lay.addWidget(_OptionalRow("shell", self._w_shell, initially_enabled=True))
-
-            self._w_disable_model = QCheckBox("disable-model-invocation")
-            self._w_disable_model.setChecked(config.disable_model_invocation)
-            lay.addWidget(self._w_disable_model)
-
-            self._w_user_invocable = QCheckBox("user-invocable")
-            self._w_user_invocable.setChecked(config.user_invocable)
-            lay.addWidget(self._w_user_invocable)
-
-        # argument-hint (ProceduralSkill + DeclarativeSkill)
-        if config is not None and hasattr(config, "argument_hint"):
-            self._w_hint = QLineEdit(config.argument_hint or "")
-            self._w_hint.setPlaceholderText("[topic]")
-            self._row_hint = _OptionalRow(
-                "argument-hint", self._w_hint,
-                initially_enabled=bool(config.argument_hint),
-            )
-            lay.addWidget(self._row_hint)
+            kind = config.kind
+            fields = FIELD_REGISTRY.get(kind, [])
+            if fields:
+                sep = QLabel("선택 필드")
+                lay.addWidget(sep)
+            for spec in fields:
+                widget = self._make_field_widget(spec, config)
+                if widget is not None:
+                    lay.addWidget(widget)
 
         lay.addStretch()
         self.setWidget(inner)
 
-    @staticmethod
-    def _lbl(text: str) -> QLabel:
-        return QLabel(text)
+    def _make_field_widget(self, spec: FieldSpec, config: object) -> QWidget | None:
+        """FieldSpec에서 위젯 생성."""
+        current_val = getattr(config, spec.attr, None)
+
+        if spec.widget_type == "combo":
+            w = QComboBox()
+            for choice in (spec.choices or []):
+                w.addItem(choice)
+            if current_val is not None:
+                val_str = current_val.value if hasattr(current_val, "value") else str(current_val)
+                idx = w.findText(val_str)
+                if idx >= 0:
+                    w.setCurrentIndex(idx)
+            # Determine initial enabled state
+            enabled = spec.default_enabled
+            if spec.attr == "model":
+                enabled = current_val is not None and current_val != ModelType.INHERIT
+            elif spec.attr == "effort":
+                enabled = current_val is not None
+            return _OptionalRow(spec.label, w, initially_enabled=enabled)
+
+        elif spec.widget_type == "text":
+            if isinstance(current_val, list):
+                w = QLineEdit(" ".join(current_val) if current_val else "")
+            else:
+                w = QLineEdit(str(current_val) if current_val else "")
+            return _OptionalRow(spec.label, w, initially_enabled=bool(current_val))
+
+        elif spec.widget_type == "check":
+            w = QCheckBox(spec.label)
+            w.setChecked(bool(current_val))
+            return w
+
+        return None
 
     def _save_name(self) -> None:
         self._component.name = self._w_name.text().strip()
@@ -454,6 +410,9 @@ class SkillEditor(QWidget):
         self._section_tree = SectionTree(component.sections)
         self._section_tree.section_selected.connect(self._on_tree_selected)
         self._section_tree.structure_changed.connect(self._on_structure_changed)
+        self._section_tree.add_root_requested.connect(
+            lambda: self._on_breadcrumb_add(None, 0)
+        )
         tree_lay.addWidget(self._section_tree, 1)
 
         if not isinstance(component, DeclarativeSkill):
@@ -534,11 +493,21 @@ class SkillEditor(QWidget):
         self._stack.setCurrentIndex(0)
 
     def _on_breadcrumb_add(self, parent: Section | None, depth: int) -> None:
-        new = Section(title="새 섹션")
-        if parent is None:
-            self._component.sections.append(new)
-        else:
-            parent.children.append(new)
+        siblings = self._component.sections if parent is None else parent.children
+        existing_names = {s.title for s in siblings}
+
+        while True:
+            name, ok = QInputDialog.getText(self, "섹션 추가", "섹션 이름:")
+            if not ok or not name.strip():
+                return
+            name = name.strip()
+            if name in existing_names:
+                QMessageBox.warning(self, "이름 중복", f"'{name}' 섹션이 이미 존재합니다.")
+                continue
+            break
+
+        new = Section(title=name)
+        siblings.append(new)
         self._on_structure_changed()
         self._select_section(new)
 

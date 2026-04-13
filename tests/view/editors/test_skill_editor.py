@@ -35,7 +35,7 @@ def test_frontmatter_panel_procedural(qapp):
     comp = _make_procedural()
     panel = _FrontmatterPanel(comp)
     assert isinstance(panel, QScrollArea)
-    assert panel.width() == 170 or panel.maximumWidth() == 170
+    assert panel.minimumWidth() >= 170
 
 
 def test_frontmatter_panel_declarative(qapp):
@@ -122,6 +122,18 @@ def test_skill_editor_has_section_tree(qapp):
     editor = SkillEditor(comp)
     tree = editor.findChild(SectionTree)
     assert tree is not None
+
+
+def test_frontmatter_panel_transfer(qapp):
+    from daedalus.view.editors.skill_editor import _FrontmatterPanel
+    from daedalus.model.fsm.state import SimpleState
+    from daedalus.model.fsm.machine import StateMachine
+    from daedalus.model.plugin.skill import TransferSkill
+    s = SimpleState(name="s")
+    fsm = StateMachine(name="f", states=[s], initial_state=s)
+    comp = TransferSkill(fsm=fsm, name="Validate", description="검증")
+    panel = _FrontmatterPanel(comp)
+    assert isinstance(panel, QScrollArea)
 
 
 def test_node_item_port_color_from_event_def(qapp):
