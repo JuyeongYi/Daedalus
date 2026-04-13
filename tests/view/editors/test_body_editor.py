@@ -158,3 +158,53 @@ def test_variable_popup_has_entries(qapp):
     entries = load_variables()
     popup = VariablePopup(entries)
     assert isinstance(popup, QFrame)
+
+
+def test_breadcrumb_set_current_root(qapp):
+    from daedalus.view.editors.body_editor import BreadcrumbNav
+    roots, setup, *_ = _tree()
+    nav = BreadcrumbNav(roots)
+    nav.set_current(setup)
+    # Level 0 행만 존재 (루트 형제 나열)
+    assert nav.level_count() == 1
+
+
+def test_breadcrumb_set_current_nested(qapp):
+    from daedalus.view.editors.body_editor import BreadcrumbNav
+    roots, setup, reqs, sys_reqs, _ = _tree()
+    nav = BreadcrumbNav(roots)
+    nav.set_current(sys_reqs)
+    # Level 0 (roots), Level 1 (setup children), Level 2 (reqs children)
+    assert nav.level_count() == 3
+
+
+def test_breadcrumb_chip_count_per_level(qapp):
+    from daedalus.view.editors.body_editor import BreadcrumbNav
+    roots, setup, reqs, sys_reqs, _ = _tree()
+    nav = BreadcrumbNav(roots)
+    nav.set_current(reqs)
+    # Level 0: 3 chips (Overview, Setup, Usage)
+    # Level 1: 2 chips (Requirements, Installation)
+    assert nav.chip_count(0) == 3
+    assert nav.chip_count(1) == 2
+
+
+def test_breadcrumb_section_selected_signal(qapp):
+    from daedalus.view.editors.body_editor import BreadcrumbNav
+    roots, setup, reqs, *_ = _tree()
+    nav = BreadcrumbNav(roots)
+    nav.set_current(setup)
+    assert hasattr(nav, "section_selected")
+
+
+def test_breadcrumb_add_requested_signal_exists(qapp):
+    from daedalus.view.editors.body_editor import BreadcrumbNav
+    nav = BreadcrumbNav([])
+    assert hasattr(nav, "section_add_requested")
+
+
+def test_breadcrumb_set_current_none(qapp):
+    from daedalus.view.editors.body_editor import BreadcrumbNav
+    nav = BreadcrumbNav([Section("A")])
+    nav.set_current(None)
+    assert nav.level_count() == 0

@@ -293,3 +293,122 @@ class VariablePopup(QFrame):
     def _emit(self, name: str) -> None:
         self.variable_selected.emit(name)
         self.hide()
+
+
+class BreadcrumbNav(QWidget):
+    """브레드크럼브 칩 네비게이션 — 레벨별 형제 섹션을 칩으로 나열."""
+
+    section_selected = pyqtSignal(object, list)        # (Section, path_titles)
+    section_add_requested = pyqtSignal(object, int)    # (parent_or_None, depth)
+    structure_changed = pyqtSignal()
+
+    def __init__(
+        self,
+        sections: list[Section],
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self._sections = sections
+        self._current: Section | None = None
+        self._level_rows: list[QWidget] = []
+
+        self._layout = QVBoxLayout(self)
+        self._layout.setContentsMargins(4, 4, 4, 0)
+        self._layout.setSpacing(2)
+
+    def set_sections(self, sections: list[Section]) -> None:
+        self._sections = sections
+        if self._current is not None:
+            path = find_path(self._current, self._sections)
+            if path is None:
+                self._current = None
+        self._rebuild()
+
+    def set_current(self, section: Section | None) -> None:
+        self._current = section
+        self._rebuild()
+
+    def level_count(self) -> int:
+        return len(self._level_rows)
+
+    def chip_count(self, level: int) -> int:
+        """level번째 행의 섹션 칩 수 (+ 버튼 제외)."""
+        if level < 0 or level >= len(self._level_rows):
+            return 0
+        row = self._level_rows[level]
+        return row.property("chip_count") or 0
+
+    def _rebuild(self) -> None:
+        for row in self._level_rows:
+            self._layout.removeWidget(row)
+            row.deleteLater()
+        self._level_rows.clear()
+
+        if self._current is None or not self._sections:
+            return
+
+        path = find_path(self._current, self._sections)
+        if path is None:
+            return
+
+        # Build level info: (siblings_list, parent_section_or_None, depth)
+        siblings_at_level: list[tuple[list[Section], Section | None, int]] = []
+        # Level 0: root siblings
+        siblings_at_level.append((self._sections, None, 0))
+        # Level 1..N: children of each ancestor
+        for i, node in enumerate(path[:-1]):
+            siblings_at_level.append((node.children, node, i + 1))
+
+        for siblings, parent_section, depth in siblings_at_level:
+            selected = path[depth] if depth < len(path) else None
+            row = self._make_row(siblings, selected, parent_section, depth)
+            self._layout.addWidget(row)
+            self._level_rows.append(row)
+
+    def _make_row(
+        self,
+        siblings: list[Section],
+        selected: Section | None,
+        parent_section: Section | None,
+        depth: int,
+    ) -> QWidget:
+        row = QWidget()
+        row_lay = QHBoxLayout(row)
+        row_lay.setContentsMargins(depth * 12, 0, 0, 0)
+        row_lay.setSpacing(4)
+
+        chip_count = 0
+        for section in siblings:
+            is_selected = section is selected
+            has_children = bool(section.children)
+            label = section.title
+            if is_selected and has_children:
+                label += " ▼"
+
+            btn = QPushButton(label)
+            btn.setCheckable(True)
+            btn.setChecked(is_selected)
+            btn.clicked.connect(
+                lambda _c, s=section: self._on_chip_clicked(s),
+            )
+            row_lay.addWidget(btn)
+            chip_count += 1
+
+        row_lay.addStretch()
+
+        add_btn = QPushButton("+")
+        add_btn.setFixedWidth(28)
+        add_btn.clicked.connect(
+            lambda: self.section_add_requested.emit(parent_section, depth),
+        )
+        row_lay.addWidget(add_btn)
+
+        row.setProperty("chip_count", chip_count)
+        return row
+
+    def _on_chip_clicked(self, section: Section) -> None:
+        self._current = section
+        path = find_path(section, self._sections)
+        if path is not None:
+            self.section_selected.emit(section, [s.title for s in path])
+        self._rebuild()
