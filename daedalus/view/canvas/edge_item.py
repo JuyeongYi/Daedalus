@@ -37,6 +37,7 @@ class TransitionEdgeItem(QGraphicsPathItem):
         self._transition_vm = transition_vm
         self._source_node = source_node
         self._target_node = target_node
+        self._input_index: int = 0
         self.setFlag(QGraphicsPathItem.GraphicsItemFlag.ItemIsSelectable)
         self.setZValue(-1)
         self.update_path()
@@ -53,6 +54,9 @@ class TransitionEdgeItem(QGraphicsPathItem):
     def target_node(self) -> StateNodeItem:
         return self._target_node
 
+    def set_input_index(self, index: int) -> None:
+        self._input_index = index
+
     def update_path(self) -> None:
         """출력/입력 포트 위치 기반 베지어 경로."""
         self.prepareGeometryChange()
@@ -60,7 +64,7 @@ class TransitionEdgeItem(QGraphicsPathItem):
         event_name = trigger.name if trigger is not None else "done"
 
         src_pt = self._source_node.output_port_scene_pos(event_name)
-        tgt_pt = self._target_node.input_port_scene_pos()
+        tgt_pt = self._target_node.input_port_scene_pos(self._input_index)
 
         if tgt_pt.x() < src_pt.x():
             # 역방향 — 더 크게 휘어짐

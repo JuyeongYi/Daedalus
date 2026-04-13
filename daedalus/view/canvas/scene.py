@@ -1,6 +1,7 @@
 # daedalus/view/canvas/scene.py
 from __future__ import annotations
 
+from collections import defaultdict
 from typing import TYPE_CHECKING, Callable
 
 from PyQt6.QtCore import QPointF, Qt, pyqtSignal
@@ -93,8 +94,24 @@ class FsmScene(QGraphicsScene):
                     edge = TransitionEdgeItem(tvm, src, tgt)
                     self.addItem(edge)
                     self._edge_items[tvm] = edge
+        self._sync_input_ports()
         for edge in self._edge_items.values():
             edge.update_path()
+
+    def _sync_input_ports(self) -> None:
+        """각 노드의 incoming edge 수와 edge별 input index를 할당."""
+        target_groups: dict[StateNodeItem, list[TransitionEdgeItem]] = defaultdict(list)
+        for edge in self._edge_items.values():
+            target_groups[edge.target_node].append(edge)
+        for node in self._node_items.values():
+            edges = target_groups.get(node, [])
+            edges.sort(key=lambda e: (
+                e.transition_vm.source_vm.model.name,
+                e.transition_vm.model.trigger.name if e.transition_vm.model.trigger else "",
+            ))
+            node.set_input_count(len(edges))
+            for i, edge in enumerate(edges):
+                edge.set_input_index(i)
 
     def update_edges_for_node(self, node: StateNodeItem) -> None:
         """노드 드래그 중 연결된 엣지 경로를 실시간 갱신."""

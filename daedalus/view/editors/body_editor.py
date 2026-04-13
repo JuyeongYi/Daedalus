@@ -56,6 +56,7 @@ class SectionTree(QWidget):
 
     section_selected = pyqtSignal(object, list)  # (Section, path: list[str])
     structure_changed = pyqtSignal()
+    add_root_requested = pyqtSignal()
 
     def __init__(self, sections: list[Section], parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -74,6 +75,10 @@ class SectionTree(QWidget):
         self._tree.setRootIsDecorated(True)
         self._tree.itemClicked.connect(self._on_item_clicked)
         lay.addWidget(self._tree, 1)
+
+        add_btn = QPushButton("＋ 섹션 추가")
+        add_btn.clicked.connect(self.add_root_requested.emit)
+        lay.addWidget(add_btn)
 
         self._rebuild()
 

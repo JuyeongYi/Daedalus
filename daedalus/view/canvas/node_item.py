@@ -33,6 +33,7 @@ class StateNodeItem(QGraphicsItem):
     ) -> None:
         super().__init__(parent)
         self._state_vm = state_vm
+        self._input_count: int = 1
         self.setPos(state_vm.x, state_vm.y)
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsMovable)
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable)
@@ -60,15 +61,27 @@ class StateNodeItem(QGraphicsItem):
             return list(ref.output_events)
         return []
 
+    def set_input_count(self, n: int) -> None:
+        """Scene이 incoming edge 수를 알려줄 때 호출."""
+        if self._input_count != n:
+            self._input_count = max(1, n)
+            self._sync_height()
+
     def _height(self) -> float:
-        n = max(1, len(self._output_events()))
+        n_out = max(1, len(self._output_events()))
+        n_in = max(1, self._input_count)
+        n = max(n_out, n_in)
         port_area = _PORT_SPACING * n + _PORT_PAD * 2
         return _HEADER_H + max(44.0, port_area)
 
-    def _output_port_y(self, i: int, n: int) -> float:
+    def _port_y(self, i: int, n: int) -> float:
+        """i번째 포트(입력/출력 공용)의 y좌표."""
         body_h = self._height() - _HEADER_H
         spacing = body_h / (n + 1)
         return _HEADER_H + spacing * (i + 1)
+
+    def _output_port_y(self, i: int, n: int) -> float:
+        return self._port_y(i, n)
 
     def _sync_height(self) -> None:
         new_h = self._height()
@@ -146,10 +159,13 @@ class StateNodeItem(QGraphicsItem):
         painter.setFont(QFont("Segoe UI", 7))
         painter.drawText(subtext_rect, Qt.AlignmentFlag.AlignCenter, kind or "state")
 
-        # 입력 포트 (좌측 중앙)
+        # 입력 포트 (좌측)
+        n_in = max(1, self._input_count)
         painter.setPen(QPen(QColor("#333"), 1))
         painter.setBrush(QBrush(QColor("#888")))
-        painter.drawEllipse(QPointF(0.0, h / 2), _PORT_R, _PORT_R)
+        for ii in range(n_in):
+            iy = self._port_y(ii, n_in)
+            painter.drawEllipse(QPointF(0.0, iy), _PORT_R, _PORT_R)
 
         # 출력 포트 — EventDef.color 직접 사용
         event_defs = self._event_defs()
@@ -176,8 +192,9 @@ class StateNodeItem(QGraphicsItem):
             i = 0
         return self.mapToScene(QPointF(_W, self._output_port_y(i, n)))
 
-    def input_port_scene_pos(self) -> QPointF:
-        return self.mapToScene(QPointF(0.0, self._height() / 2))
+    def input_port_scene_pos(self, index: int = 0) -> QPointF:
+        n = max(1, self._input_count)
+        return self.mapToScene(QPointF(0.0, self._port_y(index, n)))
 
     def _get_output_port_event(self, local_pos: QPointF) -> str | None:
         events = self._output_events() or ["done"]
@@ -192,9 +209,10 @@ class StateNodeItem(QGraphicsItem):
         return None
 
     def is_input_port(self, local_pos: QPointF) -> bool:
+        if local_pos.x() > _PORT_R * 2:
+            return False
         h = self._height()
-        dy = local_pos.y() - h / 2
-        return local_pos.x() <= _PORT_R * 2 and abs(dy) <= _PORT_R * 2
+        return _HEADER_H <= local_pos.y() <= h
 
     def itemChange(self, change: QGraphicsItem.GraphicsItemChange, value: Any) -> Any:
         if change == QGraphicsItem.GraphicsItemChange.ItemPositionHasChanged:

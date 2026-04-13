@@ -91,11 +91,13 @@ class MainWindow(QMainWindow):
         prop_dock = QDockWidget("Properties")
         prop_dock.setWidget(self._property_panel)
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, prop_dock)
+        prop_dock.hide()
 
         self._script_panel = ScriptListenerPanel()
         script_dock = QDockWidget("Script Listener")
         script_dock.setWidget(self._script_panel)
         self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, script_dock)
+        script_dock.hide()
 
     def _setup_menus(self) -> None:
         menubar = self.menuBar()
