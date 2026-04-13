@@ -96,6 +96,12 @@ class FsmScene(QGraphicsScene):
         for edge in self._edge_items.values():
             edge.update_path()
 
+    def update_edges_for_node(self, node: StateNodeItem) -> None:
+        """노드 드래그 중 연결된 엣지 경로를 실시간 갱신."""
+        for edge in self._edge_items.values():
+            if edge.source_node is node or edge.target_node is node:
+                edge.update_path()
+
     def handle_node_moved(
         self, node: StateNodeItem, old_pos: QPointF, new_pos: QPointF
     ) -> None:

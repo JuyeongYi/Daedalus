@@ -196,6 +196,13 @@ class StateNodeItem(QGraphicsItem):
         dy = local_pos.y() - h / 2
         return local_pos.x() <= _PORT_R * 2 and abs(dy) <= _PORT_R * 2
 
+    def itemChange(self, change: QGraphicsItem.GraphicsItemChange, value: Any) -> Any:
+        if change == QGraphicsItem.GraphicsItemChange.ItemPositionHasChanged:
+            sc: Any = self.scene()
+            if sc is not None and hasattr(sc, "update_edges_for_node"):
+                sc.update_edges_for_node(self)
+        return super().itemChange(change, value)
+
     def mousePressEvent(self, event) -> None:
         if event.button() == Qt.MouseButton.LeftButton:
             event_name = self._get_output_port_event(event.pos())
@@ -218,6 +225,12 @@ class StateNodeItem(QGraphicsItem):
             event.accept()
             return
         super().mouseMoveEvent(event)
+
+    def mouseDoubleClickEvent(self, event) -> None:
+        sc: Any = self.scene()
+        if sc is not None and hasattr(sc, "handle_node_double_clicked"):
+            sc.handle_node_double_clicked(self)
+        event.accept()
 
     def mouseReleaseEvent(self, event) -> None:
         sc: Any = self.scene()
