@@ -7,6 +7,9 @@ from daedalus.model.plugin.config import (
     ProceduralSkillConfig,
     DeclarativeSkillConfig,
     AgentConfig,
+    TransferSkillConfig,
+    FieldSpec,
+    FIELD_REGISTRY,
 )
 from daedalus.model.plugin.enums import (
     ModelType,
@@ -109,7 +112,6 @@ def test_component_config_shared_fields():
 # --- TransferSkillConfig, FieldSpec, FIELD_REGISTRY tests ---
 
 def test_transfer_skill_config_defaults():
-    from daedalus.model.plugin.config import TransferSkillConfig
     cfg = TransferSkillConfig()
     assert cfg.kind == "transfer"
     assert cfg.disable_model_invocation is False
@@ -119,7 +121,6 @@ def test_transfer_skill_config_defaults():
 
 
 def test_field_spec_dataclass():
-    from daedalus.model.plugin.config import FieldSpec
     fs = FieldSpec(label="model", widget_type="combo", attr="model", choices=["a", "b"])
     assert fs.label == "model"
     assert fs.widget_type == "combo"
@@ -129,7 +130,6 @@ def test_field_spec_dataclass():
 
 
 def test_field_registry_has_all_kinds():
-    from daedalus.model.plugin.config import FIELD_REGISTRY
     assert "procedural" in FIELD_REGISTRY
     assert "declarative" in FIELD_REGISTRY
     assert "transfer" in FIELD_REGISTRY
@@ -137,7 +137,6 @@ def test_field_registry_has_all_kinds():
 
 
 def test_field_registry_procedural_fields():
-    from daedalus.model.plugin.config import FIELD_REGISTRY
     attrs = [f.attr for f in FIELD_REGISTRY["procedural"]]
     assert "model" in attrs
     assert "effort" in attrs
@@ -151,7 +150,6 @@ def test_field_registry_procedural_fields():
 
 
 def test_field_registry_transfer_fields():
-    from daedalus.model.plugin.config import FIELD_REGISTRY
     attrs = [f.attr for f in FIELD_REGISTRY["transfer"]]
     assert "model" in attrs
     assert "context" in attrs
@@ -163,7 +161,6 @@ def test_field_registry_transfer_fields():
 
 
 def test_field_registry_declarative_fields():
-    from daedalus.model.plugin.config import FIELD_REGISTRY
     attrs = [f.attr for f in FIELD_REGISTRY["declarative"]]
     assert "model" in attrs
     assert "effort" in attrs
@@ -174,7 +171,6 @@ def test_field_registry_declarative_fields():
 
 
 def test_field_registry_agent_fields():
-    from daedalus.model.plugin.config import FIELD_REGISTRY
     attrs = [f.attr for f in FIELD_REGISTRY["agent"]]
     assert "model" in attrs
     assert "effort" in attrs

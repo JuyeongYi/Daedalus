@@ -81,8 +81,9 @@ class AgentConfig(ComponentConfig):
 
 @dataclass
 class TransferSkillConfig(SkillConfig):
+    """전이 엣지 전용 스킬 설정. user_invocable은 항상 False (UI 노출 불필요)."""
     disable_model_invocation: bool = False
-    user_invocable: bool = False
+    user_invocable: bool = False   # fixed — transfer skills are never user-invocable
     context: SkillContext = SkillContext.INLINE
     shell: SkillShell = SkillShell.BASH
 
