@@ -41,7 +41,7 @@ class MainWindow(QMainWindow):
         self._project: PluginProject | None = None
         self._project_vm = ProjectViewModel()
         self._fsm_scene: FsmScene | None = None
-        self._open_tabs: dict[str, int] = {}  # SkillEditor 탭만 관리
+        self._open_tabs: dict[str, int] = {}  # 컴포넌트 이름 → 탭 인덱스
         self._active_stack = self._project_vm.command_stack
         self._initialized = False  # setup 완료 전 시그널 발화 방어용
 
