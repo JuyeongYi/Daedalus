@@ -59,3 +59,66 @@ def test_section_depth_not_found():
     roots, *_ = _tree()
     orphan = Section("Orphan")
     assert section_depth(orphan, roots) == -1
+
+
+def test_section_tree_builds_items(qapp):
+    from daedalus.view.editors.body_editor import SectionTree
+    roots, *_ = _tree()
+    tree = SectionTree(roots)
+    assert tree.tree_widget().topLevelItemCount() == 3
+
+
+def test_section_tree_min_width(qapp):
+    from daedalus.view.editors.body_editor import SectionTree
+    tree = SectionTree([])
+    assert tree.minimumWidth() >= 100
+
+
+def test_section_tree_add_sibling(qapp):
+    from daedalus.view.editors.body_editor import SectionTree
+    roots = [Section("A")]
+    tree = SectionTree(roots)
+    tree.add_sibling(roots[0])
+    assert len(roots) == 2
+    assert roots[1].title == "새 섹션"
+
+
+def test_section_tree_add_child(qapp):
+    from daedalus.view.editors.body_editor import SectionTree
+    roots = [Section("A")]
+    tree = SectionTree(roots)
+    tree.add_child(roots[0])
+    assert len(roots[0].children) == 1
+    assert roots[0].children[0].title == "새 하위 섹션"
+
+
+def test_section_tree_add_child_depth_limit(qapp):
+    from daedalus.view.editors.body_editor import SectionTree
+    d3 = Section("D3")
+    d2 = Section("D2", children=[d3])
+    d1 = Section("D1", children=[d2])
+    d0 = Section("D0", children=[d1])
+    roots = [d0]
+    tree = SectionTree(roots)
+    tree.add_child(d3)  # depth 3 → child would be depth 4 → blocked
+    assert len(d3.children) == 0
+
+
+def test_section_tree_delete(qapp):
+    from daedalus.view.editors.body_editor import SectionTree
+    child = Section("Child")
+    parent = Section("Parent", children=[child])
+    roots = [parent]
+    tree = SectionTree(roots)
+    tree.delete_section(child)
+    assert len(parent.children) == 0
+
+
+def test_section_tree_select_by_section(qapp):
+    from daedalus.view.editors.body_editor import SectionTree
+    roots, setup, reqs, *_ = _tree()
+    tree = SectionTree(roots)
+    tree.select_section(reqs)
+    sel = tree.tree_widget().currentItem()
+    assert sel is not None
+    assert sel.text(0) == "Requirements"
