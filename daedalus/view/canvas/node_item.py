@@ -57,16 +57,16 @@ class StateNodeItem(QGraphicsItem):
         if ref is None:
             return []
         if hasattr(ref, "output_event_defs"):
-            return list(ref.output_event_defs)
+            return list(ref.output_event_defs)  # type: ignore[union-attr]
         if hasattr(ref, "transfer_on"):
-            return list(ref.transfer_on)
+            return list(ref.transfer_on)  # type: ignore[union-attr]
         return []
 
     def _output_events(self) -> list[str]:
         """하위 호환용 — 이벤트 이름 목록만 반환."""
         ref = self._state_vm.model.skill_ref
         if ref is not None and hasattr(ref, "output_events"):
-            return list(ref.output_events)
+            return list(ref.output_events)  # type: ignore[union-attr]
         return []
 
     def set_input_count(self, n: int) -> None:
@@ -230,6 +230,8 @@ class StateNodeItem(QGraphicsItem):
         return super().itemChange(change, value)
 
     def mousePressEvent(self, event) -> None:
+        if event is None:
+            return
         if event.button() == Qt.MouseButton.LeftButton:
             event_name = self._get_output_port_event(event.pos())
             if event_name is not None:
@@ -244,6 +246,8 @@ class StateNodeItem(QGraphicsItem):
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event) -> None:
+        if event is None:
+            return
         if self._dragging_connection:
             sc: Any = self.scene()
             if sc is not None and hasattr(sc, "update_transition_drag"):
@@ -253,12 +257,16 @@ class StateNodeItem(QGraphicsItem):
         super().mouseMoveEvent(event)
 
     def mouseDoubleClickEvent(self, event) -> None:
+        if event is None:
+            return
         sc: Any = self.scene()
         if sc is not None and hasattr(sc, "handle_node_double_clicked"):
             sc.handle_node_double_clicked(self)
         event.accept()
 
     def mouseReleaseEvent(self, event) -> None:
+        if event is None:
+            return
         sc: Any = self.scene()
         if self._dragging_connection:
             self._dragging_connection = False
