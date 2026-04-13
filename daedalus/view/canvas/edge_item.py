@@ -1,7 +1,15 @@
 from __future__ import annotations
 
 from PyQt6.QtCore import QPointF, QRectF
-from PyQt6.QtGui import QColor, QFont, QPainter, QPainterPath, QPen, QPolygonF
+from PyQt6.QtGui import (
+    QColor,
+    QFont,
+    QPainter,
+    QPainterPath,
+    QPainterPathStroker,
+    QPen,
+    QPolygonF,
+)
 from PyQt6.QtWidgets import QGraphicsPathItem, QStyleOptionGraphicsItem, QWidget
 
 from daedalus.view.canvas.node_item import StateNodeItem
@@ -9,7 +17,11 @@ from daedalus.view.viewmodel.state_vm import TransitionViewModel
 
 _EDGE_COLOR = QColor("#6674cc")
 _EDGE_SELECTED = QColor("#88aaff")
+_EDGE_TRANSFER = QColor("#88aacc")   # Transfer Skill 할당 엣지
 _ARROW_SIZE = 8.0
+_EDGE_WIDTH = 2.5        # 기본 두께
+_EDGE_WIDTH_TRANSFER = 3.0  # Transfer Skill 할당 시 두께
+_HIT_WIDTH = 12.0        # 마우스 클릭 히트 영역
 
 
 class TransitionEdgeItem(QGraphicsPathItem):
@@ -64,10 +76,15 @@ class TransitionEdgeItem(QGraphicsPathItem):
         path.cubicTo(ctrl1, ctrl2, tgt_pt)
         self.setPath(path)
 
+    def shape(self) -> QPainterPath:
+        """히트 영역을 시각적 두께보다 넓게 설정해 우클릭 편의성 향상."""
+        stroker = QPainterPathStroker()
+        stroker.setWidth(_HIT_WIDTH)
+        return stroker.createStroke(self.path())
+
     def boundingRect(self) -> QRectF:
         rect = super().boundingRect()
-        skill_ref = self._transition_vm.model.skill_ref
-        if skill_ref is not None:
+        if self._transition_vm.model.skill_ref is not None:
             # 라벨이 경로 바운딩 박스를 벗어날 수 있으므로 여유 확장
             rect = rect.adjusted(-10, -20, 100, 10)
         return rect
@@ -80,8 +97,19 @@ class TransitionEdgeItem(QGraphicsPathItem):
     ) -> None:
         if painter is None:
             return
-        color = _EDGE_SELECTED if self.isSelected() else _EDGE_COLOR
-        painter.setPen(QPen(color, 2))
+
+        skill_ref = self._transition_vm.model.skill_ref
+        has_skill = skill_ref is not None
+
+        if self.isSelected():
+            color = _EDGE_SELECTED
+        elif has_skill:
+            color = _EDGE_TRANSFER
+        else:
+            color = _EDGE_COLOR
+
+        width = _EDGE_WIDTH_TRANSFER if has_skill else _EDGE_WIDTH
+        painter.setPen(QPen(color, width))
         painter.drawPath(self.path())
 
         # 화살표 머리
@@ -110,10 +138,9 @@ class TransitionEdgeItem(QGraphicsPathItem):
             painter.drawPolygon(arrow)
 
         # Transfer Skill 라벨
-        skill_ref = self._transition_vm.model.skill_ref
-        if skill_ref is not None:
+        if has_skill:
             mid = path.pointAtPercent(0.5)
             label = f"⚡ {skill_ref.name}"
             painter.setPen(QPen(QColor("#88aacc")))
             painter.setFont(QFont("Segoe UI", 8))
-            painter.drawText(mid.x() + 4, mid.y() - 4, label)
+            painter.drawText(QPointF(mid.x() + 4, mid.y() - 4), label)
