@@ -117,24 +117,28 @@ class TransitionEdgeItem(QGraphicsPathItem):
         painter.setPen(QPen(color, width))
         painter.drawPath(self.path())
 
-        # 화살표 — 경로 중간 구간에 일정 간격으로 배치 (시작/끝점 제외)
+        # 화살표 — 경로 중간 구간에 일정 간격으로 배치 (최소 1개 보장)
         path = self.path()
         if path.isEmpty():
             return
         total = path.length()
-        if total < _ARROW_SPACING:
+        margin = _ARROW_SIZE * 2
+        if total < margin * 2:
             return
         painter.setBrush(color)
         painter.setPen(QPen(color))
-        margin = _ARROW_SIZE * 2  # 시작/끝 포트와 겹침 방지
-        dist = _ARROW_SPACING
-        while dist < total - margin:
-            t = path.percentAtLength(dist)
-            t_back = path.percentAtLength(max(0.0, dist - _ARROW_SIZE))
-            pt = path.pointAtPercent(t)
-            pt_back = path.pointAtPercent(t_back)
-            self._draw_arrow(painter, pt_back, pt)
-            dist += _ARROW_SPACING
+        if total < _ARROW_SPACING + margin:
+            # 짧은 경로 — 중간 지점에 1개
+            mid_t = path.percentAtLength(total * 0.5)
+            mid_back = path.percentAtLength(max(0.0, total * 0.5 - _ARROW_SIZE))
+            self._draw_arrow(painter, path.pointAtPercent(mid_back), path.pointAtPercent(mid_t))
+        else:
+            dist = _ARROW_SPACING
+            while dist < total - margin:
+                t = path.percentAtLength(dist)
+                t_back = path.percentAtLength(max(0.0, dist - _ARROW_SIZE))
+                self._draw_arrow(painter, path.pointAtPercent(t_back), path.pointAtPercent(t))
+                dist += _ARROW_SPACING
 
         # Transfer Skill 라벨
         if has_skill:
