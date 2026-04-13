@@ -137,15 +137,24 @@ class FsmScene(QGraphicsScene):
             if target is not None and target is not self._connect_source:
                 src_vm = self._connect_source.state_vm
                 tgt_vm = target.state_vm
-                model = Transition(
-                    source=src_vm.model,
-                    target=tgt_vm.model,
-                    trigger=CompletionEvent(name=self._connect_event or "done"),
+                event_name = self._connect_event or "done"
+                # 같은 (source, target, event) 조합이 이미 존재하면 무시
+                duplicate = any(
+                    t.source_vm is src_vm
+                    and t.target_vm is tgt_vm
+                    and t.model.trigger.name == event_name
+                    for t in self._project_vm.transition_vms
                 )
-                tvm = TransitionViewModel(
-                    model=model, source_vm=src_vm, target_vm=tgt_vm
-                )
-                self._project_vm.execute(CreateTransitionCmd(self._project_vm, tvm))
+                if not duplicate:
+                    model = Transition(
+                        source=src_vm.model,
+                        target=tgt_vm.model,
+                        trigger=CompletionEvent(name=event_name),
+                    )
+                    tvm = TransitionViewModel(
+                        model=model, source_vm=src_vm, target_vm=tgt_vm
+                    )
+                    self._project_vm.execute(CreateTransitionCmd(self._project_vm, tvm))
 
         self._connecting = False
         self._connect_source = None
