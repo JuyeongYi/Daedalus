@@ -15,7 +15,12 @@ from PyQt6.QtWidgets import (
 )
 
 from daedalus.model.plugin.agent import AgentDefinition
-from daedalus.model.plugin.skill import DeclarativeSkill, ProceduralSkill, TransferSkill
+from daedalus.model.plugin.skill import (
+    DeclarativeSkill,
+    ProceduralSkill,
+    ReferenceSkill,
+    TransferSkill,
+)
 from daedalus.model.project import PluginProject
 
 _ROLE_COMPONENT = Qt.ItemDataRole.UserRole + 1
@@ -28,6 +33,7 @@ _ICON = {
     "procedural_skill": "⚙",
     "declarative_skill": "📄",
     "transfer_skill": "⚡",
+    "reference_skill": "📖",
     "agent": "🤖",
 }
 
@@ -79,7 +85,7 @@ class _RegistrySection(QWidget):
         self._list = _DraggableList()
         self._list.setDragEnabled(True)
         self._list.setDragDropMode(QAbstractItemView.DragDropMode.DragOnly)
-        self._list.setMaximumHeight(130)
+        self._list.setMinimumHeight(30)
         self._list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self._list.doubleClicked.connect(self._on_double_click)
         lay.addWidget(self._list)
@@ -141,6 +147,7 @@ class RegistryPanel(QWidget):
             "procedural": _RegistrySection("⚙ PROCEDURAL", QColor("#88cc88")),
             "declarative": _RegistrySection("📄 DECLARATIVE", QColor("#cccc88"), no_place=True),
             "transfer": _RegistrySection("⚡ TRANSFER", QColor("#88aacc"), no_place=True),
+            "reference": _RegistrySection("📖 REFERENCE", QColor("#66aaaa")),
             "agent": _RegistrySection("🤖 AGENTS", QColor("#cc8888")),
         }
         for kind, section in self._sections.items():
@@ -167,6 +174,8 @@ class RegistryPanel(QWidget):
             placed = id(skill) in self._placed_ids
             if isinstance(skill, TransferSkill):
                 self._sections["transfer"].add_item(skill, placed=False)
+            elif isinstance(skill, ReferenceSkill):
+                self._sections["reference"].add_item(skill, placed)
             elif isinstance(skill, ProceduralSkill):
                 self._sections["procedural"].add_item(skill, placed)
             elif isinstance(skill, DeclarativeSkill):

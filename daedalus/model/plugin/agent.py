@@ -10,7 +10,7 @@ from daedalus.model.plugin.config import AgentConfig
 from daedalus.model.plugin.policy import ExecutionPolicy
 
 if TYPE_CHECKING:
-    from daedalus.model.plugin.skill import ProceduralSkill, TransferSkill
+    from daedalus.model.plugin.skill import ProceduralSkill, ReferenceSkill, TransferSkill
 
 
 @dataclass
@@ -27,7 +27,8 @@ class AgentDefinition(PluginComponent, WorkflowComponent):
     sections: list[Section] = field(
         default_factory=lambda: [Section(title="instruction")]
     )
-    skills: list[ProceduralSkill | TransferSkill] = field(default_factory=list)
+    skills: list[ProceduralSkill | TransferSkill | ReferenceSkill] = field(default_factory=list)
+    reference_placements: list = field(default_factory=list)  # list[ReferencePlacement]
 
     @property
     def kind(self) -> str:

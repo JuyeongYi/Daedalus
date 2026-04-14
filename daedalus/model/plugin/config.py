@@ -93,6 +93,16 @@ class TransferSkillConfig(SkillConfig):
 
 
 @dataclass
+class ReferenceSkillConfig(SkillConfig):
+    """참조 스킬 설정. 워크플로우에 참여하지 않는 참고용 노드."""
+    user_invocable: bool = False
+
+    @property
+    def kind(self) -> str:
+        return "reference"
+
+
+@dataclass
 class FieldSpec:
     """프론트매터 필드 선언 — UI 자동 생성용."""
     label: str
@@ -125,6 +135,11 @@ FIELD_REGISTRY: dict[str, list[FieldSpec]] = {
         FieldSpec("context", "combo", "context", [e.value for e in SkillContext], default_enabled=True),
         FieldSpec("shell", "combo", "shell", [e.value for e in SkillShell], default_enabled=True),
         FieldSpec("disable-model", "check", "disable_model_invocation"),
+    ],
+    "reference": [
+        FieldSpec("model", "combo", "model", [e.value for e in ModelType]),
+        FieldSpec("effort", "combo", "effort", [e.value for e in EffortLevel]),
+        FieldSpec("argument-hint", "text", "argument_hint"),
     ],
     "agent": [
         FieldSpec("model", "combo", "model", [e.value for e in ModelType]),

@@ -7,7 +7,7 @@ from daedalus.model.fsm.machine import StateMachine
 from daedalus.model.fsm.state import SimpleState
 from daedalus.model.fsm.transition import Transition
 from daedalus.model.plugin.agent import AgentDefinition
-from daedalus.model.plugin.skill import DeclarativeSkill, ProceduralSkill
+from daedalus.model.plugin.skill import DeclarativeSkill, ProceduralSkill, ReferenceSkill, TransferSkill
 from daedalus.model.project import PluginProject
 from daedalus.view.app import MainWindow
 
@@ -55,6 +55,14 @@ def _demo_project() -> PluginProject:
 
     rules_skill = DeclarativeSkill(name="rules", description="기반 규칙", content="코딩 컨벤션")
 
+    t1 = SimpleState(name="validate")
+    transfer_fsm = StateMachine(
+        name="validate_fsm", initial_state=t1, states=[t1], final_states=[t1]
+    )
+    validate_skill = TransferSkill(fsm=transfer_fsm, name="validate", description="전이 시 검증")
+
+    ref_skill = ReferenceSkill(name="coding-conventions", description="코딩 컨벤션 참조")
+
     w1 = SimpleState(name="Receive")
     w2 = SimpleState(name="Execute")
     worker_fsm = StateMachine(
@@ -68,7 +76,7 @@ def _demo_project() -> PluginProject:
 
     return PluginProject(
         name="MyPlugin",
-        skills=[init_skill, cleanup_skill, rules_skill],
+        skills=[init_skill, cleanup_skill, rules_skill, validate_skill, ref_skill],
         agents=[worker],
     )
 

@@ -32,11 +32,14 @@ class StateNodeItem(QGraphicsItem):
     """캔버스 위의 스킬/에이전트 노드."""
 
     def __init__(
-        self, state_vm: StateViewModel, parent: QGraphicsItem | None = None
+        self, state_vm: StateViewModel, parent: QGraphicsItem | None = None,
+        show_call_agents: bool = True,
     ) -> None:
         super().__init__(parent)
         self._state_vm = state_vm
         self._input_count: int = 1
+        self._ref_count: int = 0  # 하단 참조 포트 수
+        self._show_call_agents = show_call_agents
         self.setPos(state_vm.x, state_vm.y)
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsMovable)
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable)
@@ -68,6 +71,22 @@ class StateNodeItem(QGraphicsItem):
             return list(ref.transfer_on)  # type: ignore[union-attr]
         return []
 
+    def _call_agent_defs(self) -> list[EventDef]:
+        """call_agents EventDef 목록. 서브에이전트 FSM에서는 비활성."""
+        if not self._show_call_agents:
+            return []
+        model = self._state_vm.model
+        if not hasattr(model, "skill_ref"):
+            return []
+        ref = model.skill_ref  # type: ignore[union-attr]
+        if ref is not None and hasattr(ref, "call_agents"):
+            return list(ref.call_agents)  # type: ignore[union-attr]
+        return []
+
+    def is_agent_call_event(self, event_name: str) -> bool:
+        """event_name이 call_agent 포트인지 판별."""
+        return any(e.name == event_name for e in self._call_agent_defs())
+
     def _output_events(self) -> list[str]:
         """하위 호환용 — 이벤트 이름 목록만 반환."""
         model = self._state_vm.model
@@ -84,8 +103,14 @@ class StateNodeItem(QGraphicsItem):
             self._input_count = max(1, n)
             self._sync_height()
 
+    def set_ref_count(self, n: int) -> None:
+        """하단 참조 포트 수 설정."""
+        if self._ref_count != n:
+            self._ref_count = n
+            self.update()
+
     def _height(self) -> float:
-        n_out = max(1, len(self._output_events()))
+        n_out = max(1, len(self._output_events())) + len(self._call_agent_defs())
         n_in = max(1, self._input_count)
         n = max(n_out, n_in)
         port_area = _PORT_SPACING * n + _PORT_PAD * 2
@@ -118,7 +143,8 @@ class StateNodeItem(QGraphicsItem):
 
     def boundingRect(self) -> QRectF:
         h = self._height()
-        return QRectF(-_PORT_R * 2 - 2, 0, _W + _PORT_R * 2 + 2 + _LABEL_W, h)
+        extra_bottom = _PORT_R * 2 if self._ref_count > 0 else 0
+        return QRectF(-_PORT_R * 2 - 2, 0, _W + _PORT_R * 2 + 2 + _LABEL_W, h + extra_bottom)
 
     def paint(
         self,
@@ -201,14 +227,16 @@ class StateNodeItem(QGraphicsItem):
                 iy = self._port_y(ii, n_in)
                 painter.drawEllipse(QPointF(0.0, iy), _PORT_R, _PORT_R)
 
-        # 출력 포트 — EventDef.color 직접 사용
+        # 출력 포트 — transfer_on + call_agent
         if not self._is_exit_point():
             event_defs = self._event_defs()
             if not event_defs:
                 event_defs = [EventDef("done", color="#4488ff")]
-            n_defs = len(event_defs)
+            agent_defs = self._call_agent_defs()
+            n_total = len(event_defs) + len(agent_defs)
+            # transfer_on 포트
             for i, edef in enumerate(event_defs):
-                y = self._output_port_y(i, n_defs)
+                y = self._output_port_y(i, n_total)
                 port_color = QColor(edef.color)
                 painter.setPen(QPen(QColor("#111"), 1))
                 painter.setBrush(QBrush(port_color))
@@ -217,9 +245,34 @@ class StateNodeItem(QGraphicsItem):
                 painter.setPen(QPen(port_color.lighter(140)))
                 painter.setFont(QFont("Segoe UI", 7))
                 painter.drawText(lbl_rect, Qt.AlignmentFlag.AlignVCenter, edef.name)
+            # call_agent 포트 (🤖 아이콘)
+            for j, adef in enumerate(agent_defs):
+                y = self._output_port_y(len(event_defs) + j, n_total)
+                port_color = QColor(adef.color)
+                painter.setPen(QPen(QColor("#111"), 1))
+                painter.setBrush(QBrush(port_color))
+                painter.drawEllipse(QPointF(_W, y), _PORT_R, _PORT_R)
+                lbl_rect = QRectF(_W + _PORT_R + 2, y - 7, _LABEL_W + 8, 14)
+                painter.setPen(QPen(port_color.lighter(140)))
+                painter.setFont(QFont("Segoe UI", 7))
+                painter.drawText(lbl_rect, Qt.AlignmentFlag.AlignVCenter, f"🤖{adef.name}")
+
+        # 하단 참조 포트
+        if self._ref_count > 0 and not self._is_entry_point() and not self._is_exit_point():
+            painter.setPen(QPen(QColor("#333"), 1))
+            painter.setBrush(QBrush(QColor("#66aaaa")))
+            for ri in range(self._ref_count):
+                rx = self._ref_port_x(ri, self._ref_count)
+                painter.drawEllipse(QPointF(rx, h), _PORT_R, _PORT_R)
+
+    def _all_output_names(self) -> list[str]:
+        """transfer_on + call_agent 이벤트 이름 통합 목록."""
+        names = self._output_events() or ["done"]
+        names = list(names) + [e.name for e in self._call_agent_defs()]
+        return names
 
     def output_port_scene_pos(self, event_name: str) -> QPointF:
-        events = self._output_events() or ["done"]
+        events = self._all_output_names()
         n = len(events)
         try:
             i = events.index(event_name)
@@ -231,10 +284,29 @@ class StateNodeItem(QGraphicsItem):
         n = max(1, self._input_count)
         return self.mapToScene(QPointF(0.0, self._port_y(index, n)))
 
+    def _ref_port_x(self, i: int, n: int) -> float:
+        """i번째 하단 참조 포트의 x좌표."""
+        spacing = _W / (n + 1)
+        return spacing * (i + 1)
+
+    def ref_port_scene_pos(self, index: int = 0) -> QPointF:
+        """하단 참조 포트의 씬 좌표."""
+        n = max(1, self._ref_count)
+        return self.mapToScene(QPointF(self._ref_port_x(index, n), self._height()))
+
+    def is_bottom_port(self, local_pos: QPointF) -> bool:
+        """local_pos가 하단 참조 포트 근처인지 판정."""
+        if self._is_entry_point() or self._is_exit_point():
+            return False
+        h = self._height()
+        if abs(local_pos.y() - h) > _PORT_R * 2:
+            return False
+        return 0 <= local_pos.x() <= _W
+
     def _get_output_port_event(self, local_pos: QPointF) -> str | None:
         if self._is_exit_point():
             return None
-        events = self._output_events() or ["done"]
+        events = self._all_output_names()
         n = len(events)
         hit_r = _PORT_R * 1.8
         for i, name in enumerate(events):

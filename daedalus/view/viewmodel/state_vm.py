@@ -26,3 +26,20 @@ class TransitionViewModel:
     source_vm: StateViewModel
     target_vm: StateViewModel
     selected: bool = False
+
+
+@dataclass(eq=False)
+class ReferenceViewModel:
+    """ReferenceSkill 노드의 뷰 모델."""
+
+    model: object  # ReferenceSkill (circular import 방지)
+    x: float = 0.0
+    y: float = 0.0
+
+
+@dataclass(eq=False)
+class ReferenceLinkViewModel:
+    """상태 노드 → 참조 노드 연결."""
+
+    state_vm: StateViewModel
+    reference_vm: ReferenceViewModel

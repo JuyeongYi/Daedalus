@@ -20,9 +20,12 @@ from daedalus.model.fsm.event import CompletionEvent
 from daedalus.model.fsm.machine import StateMachine
 from daedalus.model.fsm.state import SimpleState
 from daedalus.model.fsm.transition import Transition
-from daedalus.model.plugin.skill import DeclarativeSkill, TransferSkill
+from daedalus.model.plugin.agent import AgentDefinition
+from daedalus.model.plugin.skill import DeclarativeSkill, ReferenceSkill, TransferSkill
 from daedalus.view.canvas.edge_item import TransitionEdgeItem
 from daedalus.view.canvas.node_item import StateNodeItem
+from daedalus.view.canvas.ref_edge_item import ReferenceEdgeItem
+from daedalus.view.canvas.ref_node_item import ReferenceNodeItem
 from daedalus.view.commands.base import Command, MacroCommand
 from daedalus.view.commands.state_commands import CreateStateCmd, DeleteStateCmd, MoveStateCmd
 from daedalus.view.commands.transition_commands import (
@@ -31,7 +34,12 @@ from daedalus.view.commands.transition_commands import (
     DeleteTransitionCmd,
     SetTransitionSkillRefCmd,
 )
-from daedalus.view.viewmodel.state_vm import StateViewModel, TransitionViewModel
+from daedalus.view.viewmodel.state_vm import (
+    ReferenceLinkViewModel,
+    ReferenceViewModel,
+    StateViewModel,
+    TransitionViewModel,
+)
 
 from daedalus.model.project import PluginProject
 
@@ -58,6 +66,8 @@ class FsmScene(QGraphicsScene):
         self._project: PluginProject | None = None  # set via set_project()
         self._node_items: dict[StateViewModel, StateNodeItem] = {}
         self._edge_items: dict[TransitionViewModel, TransitionEdgeItem] = {}
+        self._ref_node_items: dict[ReferenceViewModel, ReferenceNodeItem] = {}
+        self._ref_edge_items: dict[ReferenceLinkViewModel, ReferenceEdgeItem] = {}
         self._state_counter = 0
         self.setBackgroundBrush(_BG_COLOR)
         self.setSceneRect(-2000, -2000, 4000, 4000)
@@ -67,7 +77,14 @@ class FsmScene(QGraphicsScene):
         self._connect_event: str | None = None
         self._drag_line: QGraphicsLineItem | None = None
 
+        self._ref_connecting = False
+        self._ref_connect_source: ReferenceNodeItem | None = None
+        self._ref_drag_line: QGraphicsLineItem | None = None
+
         self._project_vm.add_listener(self._rebuild)
+
+    def _create_node_item(self, vm: StateViewModel) -> StateNodeItem:
+        return StateNodeItem(vm)
 
     def close(self) -> None:
         self._project_vm.remove_listener(self._rebuild)
@@ -78,7 +95,7 @@ class FsmScene(QGraphicsScene):
                 self.removeItem(self._node_items.pop(vm))
         for vm in self._project_vm.state_vms:
             if vm not in self._node_items:
-                item = StateNodeItem(vm)
+                item = self._create_node_item(vm)
                 self.addItem(item)
                 self._node_items[vm] = item
             else:
@@ -98,6 +115,7 @@ class FsmScene(QGraphicsScene):
         self._sync_input_ports()
         for edge in self._edge_items.values():
             edge.update_path()
+        self._rebuild_refs()
 
     def _sync_input_ports(self) -> None:
         """각 노드의 incoming edge 수와 edge별 input index를 할당."""
@@ -118,6 +136,9 @@ class FsmScene(QGraphicsScene):
         """노드 드래그 중 연결된 엣지 경로를 실시간 갱신."""
         for edge in self._edge_items.values():
             if edge.source_node is node or edge.target_node is node:
+                edge.update_path()
+        for edge in self._ref_edge_items.values():
+            if edge.source_node is node:
                 edge.update_path()
 
     def handle_node_moved(
@@ -162,6 +183,22 @@ class FsmScene(QGraphicsScene):
                 src_vm = self._connect_source.state_vm
                 tgt_vm = target.state_vm
                 event_name = self._connect_event or "done"
+                src_ref = getattr(src_vm.model, "skill_ref", None)
+                tgt_ref = getattr(tgt_vm.model, "skill_ref", None)
+                is_agent_call = self._connect_source.is_agent_call_event(event_name)
+                tgt_is_agent = isinstance(tgt_ref, AgentDefinition)
+                # 에이전트 노드 입력 ← call_agent 포트만 허용
+                if tgt_is_agent and not is_agent_call:
+                    self._connecting = False
+                    self._connect_source = None
+                    self._connect_event = None
+                    return
+                # call_agent 포트 → 에이전트 노드만 허용
+                if is_agent_call and not tgt_is_agent:
+                    self._connecting = False
+                    self._connect_source = None
+                    self._connect_event = None
+                    return
                 # 같은 (source, target, event) 조합이 이미 존재하면 무시
                 duplicate = any(
                     t.source_vm is src_vm
@@ -213,6 +250,10 @@ class FsmScene(QGraphicsScene):
         skill = self._skill_lookup(skill_name)
         if skill is None:
             return
+        # 참조 스킬은 별도 처리 (여러 인스턴스 허용)
+        if isinstance(skill, ReferenceSkill):
+            self.drop_reference_skill(skill_name, scene_pos)
+            return
         # DeclarativeSkill / TransferSkill은 FSM 노드로 배치 불가 (edge-only)
         if isinstance(skill, (DeclarativeSkill, TransferSkill)):
             return
@@ -236,6 +277,15 @@ class FsmScene(QGraphicsScene):
             delete_act = menu.addAction(f"'{item.state_vm.model.name}' 삭제")
             if menu.exec(event.screenPos()) == delete_act:
                 self._delete_state(item.state_vm)
+        elif isinstance(item, ReferenceNodeItem):
+            name = getattr(item.ref_vm.model, "name", "?")
+            delete_act = menu.addAction(f"참조 '{name}' 삭제")
+            if menu.exec(event.screenPos()) == delete_act:
+                self.delete_reference_node(item.ref_vm)
+        elif isinstance(item, ReferenceEdgeItem):
+            delete_act = menu.addAction("참조 연결 삭제")
+            if menu.exec(event.screenPos()) == delete_act:
+                self.delete_reference_link(item.link_vm)
         elif isinstance(item, TransitionEdgeItem):
             tvm = item.transition_vm
             transition = tvm.model
@@ -330,6 +380,171 @@ class FsmScene(QGraphicsScene):
             description=f"Transfer Skill '{name}' 생성 및 설정",
         ))
 
+    # --- 참조 스킬 ---
+
+    def _rebuild_refs(self) -> None:
+        """참조 노드 + 참조 엣지 동기화."""
+        pvm = self._project_vm
+        # 참조 노드
+        for rvm in list(self._ref_node_items):
+            if rvm not in pvm.reference_vms:
+                self.removeItem(self._ref_node_items.pop(rvm))
+        for rvm in pvm.reference_vms:
+            if rvm not in self._ref_node_items:
+                item = ReferenceNodeItem(rvm)
+                self.addItem(item)
+                self._ref_node_items[rvm] = item
+            else:
+                self._ref_node_items[rvm].setPos(rvm.x, rvm.y)
+        # 참조 엣지
+        for lvm in list(self._ref_edge_items):
+            if lvm not in pvm.reference_links:
+                self.removeItem(self._ref_edge_items.pop(lvm))
+        for lvm in pvm.reference_links:
+            if lvm not in self._ref_edge_items:
+                src_node = self._node_items.get(lvm.state_vm)
+                ref_node = self._ref_node_items.get(lvm.reference_vm)
+                if src_node and ref_node:
+                    edge = ReferenceEdgeItem(lvm, src_node, ref_node)
+                    self.addItem(edge)
+                    self._ref_edge_items[lvm] = edge
+        self._sync_ref_ports()
+        for edge in self._ref_edge_items.values():
+            edge.update_path()
+
+    def _sync_ref_ports(self) -> None:
+        """각 노드의 하단 참조 포트 수와 엣지별 index 할당."""
+        src_groups: dict[StateNodeItem, list[ReferenceEdgeItem]] = defaultdict(list)
+        for edge in self._ref_edge_items.values():
+            src_groups[edge.source_node].append(edge)
+        for node in self._node_items.values():
+            edges = src_groups.get(node, [])
+            node.set_ref_count(len(edges))
+            for i, edge in enumerate(edges):
+                edge.set_port_index(i)
+
+    def update_ref_edges_for_node(self, node: ReferenceNodeItem) -> None:
+        """참조 노드 드래그 중 연결선 갱신."""
+        for edge in self._ref_edge_items.values():
+            if edge.ref_node is node:
+                edge.update_path()
+
+    def _get_ref_placements(self) -> list:
+        """모델의 reference_placements 리스트 반환 (project 또는 agent)."""
+        if self._project is not None:
+            return self._project.reference_placements
+        return []
+
+    def drop_reference_skill(self, skill_name: str, scene_pos: QPointF) -> None:
+        """참조 스킬을 캔버스에 드롭 — 여러 인스턴스 허용."""
+        from daedalus.model.project import ReferencePlacement
+        if self._skill_lookup is None:
+            return
+        skill = self._skill_lookup(skill_name)
+        if not isinstance(skill, ReferenceSkill):
+            return
+        rvm = ReferenceViewModel(model=skill, x=scene_pos.x(), y=scene_pos.y())
+        self._project_vm.reference_vms.append(rvm)
+        # 모델 동기화
+        self._get_ref_placements().append(
+            ReferencePlacement(skill_name=skill_name, x=scene_pos.x(), y=scene_pos.y())
+        )
+        self._project_vm.notify()
+
+    def create_reference_link(
+        self, state_vm: StateViewModel, ref_vm: ReferenceViewModel
+    ) -> None:
+        """상태 노드 → 참조 노드 연결 생성 (같은 스킬 중복 방지)."""
+        ref_skill = ref_vm.model
+        duplicate = any(
+            l.state_vm is state_vm and l.reference_vm.model is ref_skill
+            for l in self._project_vm.reference_links
+        )
+        if not duplicate:
+            lvm = ReferenceLinkViewModel(state_vm=state_vm, reference_vm=ref_vm)
+            self._project_vm.reference_links.append(lvm)
+            # 모델 동기화
+            self._sync_refs_to_model()
+            self._project_vm.notify()
+
+    def delete_reference_node(self, ref_vm: ReferenceViewModel) -> None:
+        """참조 노드 + 연결된 링크 삭제."""
+        self._project_vm.reference_links = [
+            l for l in self._project_vm.reference_links if l.reference_vm is not ref_vm
+        ]
+        if ref_vm in self._project_vm.reference_vms:
+            self._project_vm.reference_vms.remove(ref_vm)
+        self._sync_refs_to_model()
+        self._project_vm.notify()
+
+    def delete_reference_link(self, lvm: ReferenceLinkViewModel) -> None:
+        if lvm in self._project_vm.reference_links:
+            self._project_vm.reference_links.remove(lvm)
+            self._sync_refs_to_model()
+            self._project_vm.notify()
+
+    def _sync_refs_to_model(self) -> None:
+        """뷰 모델 → 모델 동기화. 위치 + 연결 정보를 모델에 반영."""
+        from daedalus.model.project import ReferencePlacement
+        placements = self._get_ref_placements()
+        placements.clear()
+        for rvm in self._project_vm.reference_vms:
+            skill_name = getattr(rvm.model, "name", "")
+            connected = [
+                l.state_vm.model.name
+                for l in self._project_vm.reference_links
+                if l.reference_vm is rvm
+            ]
+            placements.append(ReferencePlacement(
+                skill_name=skill_name, x=rvm.x, y=rvm.y,
+                connected_states=connected,
+            ))
+
+    def begin_ref_link_drag(self, ref_node: ReferenceNodeItem) -> None:
+        """참조 노드 상단 포트에서 드래그 시작."""
+        self._ref_connecting = True
+        self._ref_connect_source = ref_node
+        line = QGraphicsLineItem()
+        line.setPen(QPen(QColor("#66aaaa"), 2, Qt.PenStyle.DashLine))
+        self.addItem(line)
+        self._ref_drag_line = line
+
+    def update_ref_link_drag(self, scene_pos: QPointF) -> None:
+        if self._ref_drag_line is not None and self._ref_connect_source is not None:
+            src_pt = self._ref_connect_source.top_port_scene_pos()
+            self._ref_drag_line.setLine(
+                src_pt.x(), src_pt.y(), scene_pos.x(), scene_pos.y(),
+            )
+
+    def end_ref_link_drag(
+        self, ref_node: ReferenceNodeItem, scene_pos: QPointF
+    ) -> None:
+        if self._ref_drag_line is not None:
+            self.removeItem(self._ref_drag_line)
+            self._ref_drag_line = None
+
+        if self._ref_connecting and self._ref_connect_source is not None:
+            # 드롭 위치에 StateNodeItem이 있는지 확인
+            target = self._state_node_at(scene_pos)
+            if target is not None:
+                self.create_reference_link(target.state_vm, ref_node.ref_vm)
+
+        self._ref_connecting = False
+        self._ref_connect_source = None
+
+    def _state_node_at(self, scene_pos: QPointF) -> StateNodeItem | None:
+        """scene_pos 위치의 StateNodeItem 반환."""
+        view_transform = self.views()[0].transform() if self.views() else None
+        for item in self.items(scene_pos) if view_transform is None else self.items(scene_pos):
+            if isinstance(item, StateNodeItem):
+                return item
+        return None
+
+    def handle_ref_node_double_clicked(self, node: ReferenceNodeItem) -> None:
+        ref = node.ref_vm.model
+        if ref is not None:
+            self.node_double_clicked.emit(ref)
+
     # --- 키보드 ---
 
     def keyPressEvent(self, event: QKeyEvent | None) -> None:
@@ -341,6 +556,10 @@ class FsmScene(QGraphicsScene):
                     self._delete_state(item.state_vm)
                 elif isinstance(item, TransitionEdgeItem):
                     self._delete_transition(item.transition_vm)
+                elif isinstance(item, ReferenceNodeItem):
+                    self.delete_reference_node(item.ref_vm)
+                elif isinstance(item, ReferenceEdgeItem):
+                    self.delete_reference_link(item.link_vm)
             return
         super().keyPressEvent(event)
 
@@ -372,10 +591,18 @@ class AgentFsmScene(FsmScene):
         agent_fsm: StateMachine,
         skill_lookup: Callable[[str], object] | None = None,
         agent_skills: list | None = None,
+        agent_ref_placements: list | None = None,
     ) -> None:
         super().__init__(project_vm, skill_lookup=skill_lookup)
         self._agent_fsm = agent_fsm
         self._agent_skills: list = agent_skills if agent_skills is not None else []
+        self._agent_ref_placements: list = agent_ref_placements if agent_ref_placements is not None else []
+
+    def _create_node_item(self, vm: StateViewModel) -> StateNodeItem:
+        return StateNodeItem(vm, show_call_agents=False)
+
+    def _get_ref_placements(self) -> list:
+        return self._agent_ref_placements
 
     def _get_transfer_skills(self) -> list:
         """에이전트 로컬 Transfer 스킬 목록."""

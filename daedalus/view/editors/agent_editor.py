@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Callable
 
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QCloseEvent, QColor
 from PyQt6.QtWidgets import (
     QHBoxLayout,
@@ -17,6 +17,7 @@ from PyQt6.QtWidgets import (
 
 from daedalus.model.fsm.section import Section
 from daedalus.model.plugin.agent import AgentDefinition
+from daedalus.model.project import PluginProject
 
 from daedalus.view.editors.body_editor import (
     BreadcrumbNav,
@@ -39,11 +40,13 @@ class AgentEditor(QWidget):
         self,
         agent: AgentDefinition,
         on_notify_fn: Callable[[], None] | None = None,
+        project: PluginProject | None = None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self._agent = agent
         self._on_notify_fn = on_notify_fn
+        self._project = project
         self._variables = load_variables()
 
         root_lay = QVBoxLayout(self)
@@ -84,7 +87,6 @@ class AgentEditor(QWidget):
         # 좌측 사이드바: Procedural + Transfer 레지스트리
         sidebar = QWidget()
         sidebar.setMinimumWidth(130)
-        sidebar.setMaximumWidth(200)
         sidebar_lay = QVBoxLayout(sidebar)
         sidebar_lay.setContentsMargins(0, 0, 0, 0)
         sidebar_lay.setSpacing(2)
@@ -99,7 +101,11 @@ class AgentEditor(QWidget):
         self._transfer_section.item_double_clicked.connect(self._open_local_skill)
         sidebar_lay.addWidget(self._transfer_section)
 
-        sidebar_lay.addStretch()
+        self._ref_section = _RegistrySection("📖 REFERENCE (global)", QColor("#66aaaa"))
+        self._ref_section.item_double_clicked.connect(self._open_local_skill)
+        sidebar_lay.addWidget(self._ref_section)
+
+        sidebar_lay.addStretch(1)
         splitter.addWidget(sidebar)
 
         # 캔버스 (우측)
@@ -110,6 +116,7 @@ class AgentEditor(QWidget):
             agent_fsm=self._agent.fsm,
             skill_lookup=self._local_skill_lookup,
             agent_skills=self._agent.skills,
+            agent_ref_placements=self._agent.reference_placements,
         )
         self._canvas_view = FsmCanvasView(self._graph_scene)
         splitter.addWidget(self._canvas_view)
@@ -122,6 +129,7 @@ class AgentEditor(QWidget):
         self._migrate_fsm()
         self._load_agent_fsm()
         self._refresh_skill_list()
+        QTimer.singleShot(0, self._canvas_view.fit_to_content)
         return container
 
     def _migrate_fsm(self) -> None:
@@ -158,14 +166,30 @@ class AgentEditor(QWidget):
 
     def _load_agent_fsm(self) -> None:
         """에이전트 FSM 상태를 Graph VM에 로드."""
+        from daedalus.model.fsm.pseudo import EntryPoint, ExitPoint
         from daedalus.view.viewmodel.state_vm import StateViewModel, TransitionViewModel
-        x_offset = 0.0
-        vm_map: dict[str, StateViewModel] = {}
+
+        entries = []
+        exits = []
+        others = []
         for state in self._agent.fsm.states:
-            vm = StateViewModel(model=state, x=x_offset, y=100.0)
+            if isinstance(state, EntryPoint):
+                entries.append(state)
+            elif isinstance(state, ExitPoint):
+                exits.append(state)
+            else:
+                others.append(state)
+
+        # EntryPoint(좌) → 일반 노드(중간) → ExitPoint(우)
+        ordered = entries + others + exits
+        x = 0.0
+        vm_map: dict[str, StateViewModel] = {}
+        for state in ordered:
+            vm = StateViewModel(model=state, x=x, y=100.0)
             self._graph_vm.state_vms.append(vm)
             vm_map[state.name] = vm
-            x_offset += 220.0
+            x += 220.0
+
         for trans in self._agent.fsm.transitions:
             src_vm = vm_map.get(trans.source.name)
             tgt_vm = vm_map.get(trans.target.name)
@@ -178,12 +202,20 @@ class AgentEditor(QWidget):
         for skill in self._agent.skills:
             if skill.name == name:
                 return skill
+        # 전역 참조 스킬 탐색
+        if self._project is not None:
+            for skill in self._project.skills:
+                if skill.name == name:
+                    from daedalus.model.plugin.skill import ReferenceSkill
+                    if isinstance(skill, ReferenceSkill):
+                        return skill
         return None
 
     def _refresh_skill_list(self) -> None:
-        from daedalus.model.plugin.skill import ProceduralSkill, TransferSkill
+        from daedalus.model.plugin.skill import ProceduralSkill, ReferenceSkill, TransferSkill
         self._proc_section.clear()
         self._transfer_section.clear()
+        self._ref_section.clear()
         placed_ids: set[int] = set()
         for svm in self._graph_vm.state_vms:
             if hasattr(svm.model, "skill_ref") and svm.model.skill_ref is not None:
@@ -192,8 +224,13 @@ class AgentEditor(QWidget):
             placed = id(skill) in placed_ids
             if isinstance(skill, TransferSkill):
                 self._transfer_section.add_item(skill, placed)
-            else:
+            elif not isinstance(skill, ReferenceSkill):
                 self._proc_section.add_item(skill, placed)
+        # 참조 스킬은 전역 프로젝트에서 가져옴
+        if self._project is not None:
+            for skill in self._project.skills:
+                if isinstance(skill, ReferenceSkill):
+                    self._ref_section.add_item(skill, placed=False)
 
     def _on_add_local_skill(self, kind: str) -> None:
         name, ok = QInputDialog.getText(self, "새 로컬 스킬", "이름:")
@@ -224,7 +261,7 @@ class AgentEditor(QWidget):
         if name in self._open_skill_tabs:
             self._tabs.setCurrentIndex(self._open_skill_tabs[name])
             return
-        editor = SkillEditor(component, on_notify_fn=self._on_model_changed)  # type: ignore[arg-type]
+        editor = SkillEditor(component, on_notify_fn=self._on_model_changed, show_call_agents=False)  # type: ignore[arg-type]
         idx = self._tabs.addTab(editor, f"⚙ {name}")
         self._open_skill_tabs[name] = idx
         self._tabs.setCurrentIndex(idx)
@@ -269,6 +306,7 @@ class AgentEditor(QWidget):
         self._content_panel = SectionContentPanel()
         self._content_panel.variable_insert_requested.connect(self._on_variable_insert)
         self._content_panel.content_changed.connect(self._on_content_changed)
+        self._content_panel.add_child_requested.connect(self._on_add_child)
         right_lay.addWidget(self._content_panel, 1)
 
         splitter.addWidget(right_area)
@@ -315,6 +353,11 @@ class AgentEditor(QWidget):
     def _on_breadcrumb_selected(self, section: Section, path: list[str]) -> None:
         self._section_tree.select_section(section)
         self._content_panel.show_section(section, path)
+
+    def _on_add_child(self) -> None:
+        if self._content_panel._section is None:
+            return
+        self._on_breadcrumb_add(self._content_panel._section, 0)
 
     def _on_breadcrumb_add(self, parent: Section | None, _depth: int = 0) -> None:
         siblings = self._agent.sections if parent is None else parent.children

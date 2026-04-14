@@ -14,7 +14,12 @@ from PyQt6.QtWidgets import (
 )
 
 from daedalus.model.plugin.agent import AgentDefinition
-from daedalus.model.plugin.skill import DeclarativeSkill, ProceduralSkill, TransferSkill
+from daedalus.model.plugin.skill import (
+    DeclarativeSkill,
+    ProceduralSkill,
+    ReferenceSkill,
+    TransferSkill,
+)
 from daedalus.model.project import PluginProject
 from daedalus.view.canvas.canvas_view import FsmCanvasView
 from daedalus.view.canvas.edge_item import TransitionEdgeItem
@@ -184,11 +189,11 @@ class MainWindow(QMainWindow):
 
         if isinstance(component, AgentDefinition):
             from daedalus.view.editors.agent_editor import AgentEditor
-            editor = AgentEditor(component, on_notify_fn=self._project_vm.notify)
+            editor = AgentEditor(component, on_notify_fn=self._project_vm.notify, project=self._project)
             idx = self._tabs.addTab(editor, f"🤖 {name}")
             self._open_tabs[name] = idx
             self._tabs.setCurrentIndex(idx)
-        elif isinstance(component, (ProceduralSkill, DeclarativeSkill, TransferSkill)):
+        elif isinstance(component, (ProceduralSkill, DeclarativeSkill, TransferSkill, ReferenceSkill)):
             editor = SkillEditor(component, on_notify_fn=self._project_vm.notify)
             idx = self._tabs.addTab(editor, name)
             self._open_tabs[name] = idx
@@ -243,6 +248,7 @@ class MainWindow(QMainWindow):
         "procedural": "새 Procedural Skill",
         "declarative": "새 Declarative Skill",
         "transfer": "새 Transfer Skill",
+        "reference": "새 Reference Skill",
         "agent": "새 Agent",
     }
 
@@ -254,6 +260,7 @@ class MainWindow(QMainWindow):
             "procedural": lambda: ProceduralSkill(fsm=self._make_fsm(name), name=name, description=""),
             "declarative": lambda: DeclarativeSkill(name=name, description=""),
             "transfer": lambda: TransferSkill(fsm=self._make_fsm(name), name=name, description=""),
+            "reference": lambda: ReferenceSkill(name=name, description=""),
             "agent": lambda: AgentDefinition(fsm=self._make_agent_fsm(name), name=name, description=""),  # type: ignore[arg-type]
         }
         self._register_component(factories[kind]())

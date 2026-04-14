@@ -88,6 +88,16 @@ class FsmCanvasView(QGraphicsView):
             self._minimap.set_main_view(self)
             self._minimap.hide()
 
+    def fit_to_content(self) -> None:
+        """노드 영역에 뷰를 맞춤."""
+        sc = self.scene()
+        if sc is None:
+            return
+        rect = sc.itemsBoundingRect()
+        if rect.isEmpty():
+            return
+        self.fitInView(rect.adjusted(-80, -80, 80, 80), Qt.AspectRatioMode.KeepAspectRatio)
+
     # --- 드롭 ---
 
     def dragEnterEvent(self, event: QDragEnterEvent | None) -> None:

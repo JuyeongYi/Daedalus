@@ -3,7 +3,12 @@ from __future__ import annotations
 from typing import Callable
 
 from daedalus.view.commands.base import Command, CommandStack
-from daedalus.view.viewmodel.state_vm import StateViewModel, TransitionViewModel
+from daedalus.view.viewmodel.state_vm import (
+    ReferenceLinkViewModel,
+    ReferenceViewModel,
+    StateViewModel,
+    TransitionViewModel,
+)
 
 
 class ProjectViewModel:
@@ -12,6 +17,8 @@ class ProjectViewModel:
     def __init__(self) -> None:
         self.state_vms: list[StateViewModel] = []
         self.transition_vms: list[TransitionViewModel] = []
+        self.reference_vms: list[ReferenceViewModel] = []
+        self.reference_links: list[ReferenceLinkViewModel] = []
         self.command_stack = CommandStack()
         self._listeners: list[Callable[[], None]] = []
 

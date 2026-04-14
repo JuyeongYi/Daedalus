@@ -153,6 +153,9 @@ class SectionTree(QWidget):
             self._populate_children(child_item, child)
 
     def _on_item_clicked(self, item: QTreeWidgetItem, _column: int) -> None:
+        # 자식이 있는 항목 클릭 시 자동 확장
+        if item.childCount() > 0 and not item.isExpanded():
+            self._tree.expandItem(item)
         section: Section | None = item.data(0, _ROLE_SECTION)
         if section is None:
             return
@@ -182,6 +185,7 @@ class SectionContentPanel(QWidget):
     """섹션 타이틀 + 본문 편집 패널."""
 
     variable_insert_requested = pyqtSignal()
+    add_child_requested = pyqtSignal()
     content_changed = pyqtSignal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
@@ -199,6 +203,9 @@ class SectionContentPanel(QWidget):
         tb_lay.setSpacing(6)
 
         tb_lay.addStretch()
+        self._btn_add_child = QPushButton("＋ 하위 섹션")
+        self._btn_add_child.clicked.connect(self.add_child_requested)
+        tb_lay.addWidget(self._btn_add_child)
         self._btn_variable = QPushButton("{ } 변수 삽입")
         self._btn_variable.clicked.connect(self.variable_insert_requested)
         tb_lay.addWidget(self._btn_variable)

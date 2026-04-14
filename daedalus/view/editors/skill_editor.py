@@ -28,7 +28,7 @@ from daedalus.model.fsm.section import EventDef, Section
 from daedalus.model.plugin.agent import AgentDefinition
 from daedalus.model.plugin.config import FIELD_REGISTRY, FieldSpec
 from daedalus.model.plugin.enums import ModelType
-from daedalus.model.plugin.skill import DeclarativeSkill, ProceduralSkill, TransferSkill
+from daedalus.model.plugin.skill import DeclarativeSkill, ProceduralSkill, ReferenceSkill, TransferSkill
 
 from daedalus.view.editors.body_editor import (
     BreadcrumbNav,
@@ -95,7 +95,7 @@ class _FrontmatterPanel(QScrollArea):
 
     def __init__(
         self,
-        component: ProceduralSkill | DeclarativeSkill | TransferSkill | AgentDefinition,
+        component: ProceduralSkill | DeclarativeSkill | TransferSkill | ReferenceSkill | AgentDefinition,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -224,56 +224,72 @@ class _EventCard(QFrame):
         self,
         event_def: EventDef,
         can_delete: bool = True,
+        multiline_desc: bool = False,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self._event = event_def
+        self._multiline = multiline_desc
         self._popup = _ColorPickerPopup(parent=self)
         self._popup.color_selected.connect(self._on_color_picked)
 
         self.setFrameShape(QFrame.Shape.StyledPanel)
         self._update_border()
 
-        lay = QHBoxLayout(self)
-        lay.setContentsMargins(8, 8, 8, 8)
-        lay.setSpacing(8)
-
-        # 색상 원 버튼
+        # 색상 버튼 (공통)
         self._color_btn = QPushButton()
         self._color_btn.setFixedSize(14, 14)
         self._color_btn.setStyleSheet(
             f"background: {event_def.color}; border: 2px solid #335; border-radius: 7px;"
         )
         self._color_btn.clicked.connect(self._show_color_popup)
-        lay.addWidget(self._color_btn)
 
-        # 이름 + 설명 컬럼
-        col = QVBoxLayout()
-        col.setSpacing(3)
-
-        name_row = QHBoxLayout()
+        # 이름 (공통)
         self._w_name = QLineEdit(event_def.name)
         self._w_name.setFixedWidth(100)
         self._w_name.editingFinished.connect(self._on_name_changed)
-        name_row.addWidget(self._w_name)
-        name_lbl = QLabel("이벤트 이름")
-        name_row.addWidget(name_lbl)
-        name_row.addStretch()
-        col.addLayout(name_row)
 
-        self._w_desc = QLineEdit(event_def.description)
-        self._w_desc.setPlaceholderText("간략한 설명 (선택)")
-        self._w_desc.editingFinished.connect(self._on_desc_changed)
-        col.addWidget(self._w_desc)
-
-        lay.addLayout(col, 1)
-
-        # 삭제 버튼
+        # 삭제 버튼 (공통)
         self._del_btn = QPushButton("✕")
         self._del_btn.setFixedSize(20, 20)
         self._del_btn.setEnabled(can_delete)
         self._del_btn.clicked.connect(lambda: self.delete_requested.emit(self._event))
-        lay.addWidget(self._del_btn)
+
+        if multiline_desc:
+            lay = QVBoxLayout(self)
+            lay.setContentsMargins(8, 8, 8, 8)
+            lay.setSpacing(6)
+            top = QHBoxLayout()
+            top.addWidget(self._color_btn)
+            top.addWidget(self._w_name)
+            top.addWidget(QLabel("🤖"))
+            top.addStretch()
+            top.addWidget(self._del_btn)
+            lay.addLayout(top)
+            self._w_desc_multi = QTextEdit()
+            self._w_desc_multi.setPlainText(event_def.description)
+            self._w_desc_multi.setPlaceholderText("에이전트에 전달할 내용을 작성하세요...")
+            self._w_desc_multi.setMinimumHeight(60)
+            self._w_desc_multi.textChanged.connect(self._on_desc_multi_changed)
+            lay.addWidget(self._w_desc_multi)
+        else:
+            lay = QHBoxLayout(self)
+            lay.setContentsMargins(8, 8, 8, 8)
+            lay.setSpacing(8)
+            lay.addWidget(self._color_btn)
+            col = QVBoxLayout()
+            col.setSpacing(3)
+            name_row = QHBoxLayout()
+            name_row.addWidget(self._w_name)
+            name_row.addWidget(QLabel("이벤트 이름"))
+            name_row.addStretch()
+            col.addLayout(name_row)
+            self._w_desc = QLineEdit(event_def.description)
+            self._w_desc.setPlaceholderText("간략한 설명 (선택)")
+            self._w_desc.editingFinished.connect(self._on_desc_changed)
+            col.addWidget(self._w_desc)
+            lay.addLayout(col, 1)
+            lay.addWidget(self._del_btn)
 
     def _update_border(self) -> None:
         c = QColor(self._event.color)
@@ -305,6 +321,10 @@ class _EventCard(QFrame):
         self._event.description = self._w_desc.text()
         self.changed.emit()
 
+    def _on_desc_multi_changed(self) -> None:
+        self._event.description = self._w_desc_multi.toPlainText()
+        self.changed.emit()
+
 
 class _TransferOnPanel(QWidget):
     """TransferOn 선택 시 우측에 표시되는 이벤트 카드 목록."""
@@ -314,10 +334,14 @@ class _TransferOnPanel(QWidget):
     def __init__(
         self,
         transfer_on: list[EventDef],
+        default_color: str = "#4488ff",
+        multiline_desc: bool = False,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self._transfer_on = transfer_on
+        self._default_color = default_color
+        self._multiline = multiline_desc
         lay = QVBoxLayout(self)
         lay.setContentsMargins(12, 12, 12, 12)
         lay.setSpacing(8)
@@ -350,13 +374,13 @@ class _TransferOnPanel(QWidget):
                     w.deleteLater()
         for event_def in self._transfer_on:
             can_delete = len(self._transfer_on) > 1
-            card = _EventCard(event_def, can_delete=can_delete)
+            card = _EventCard(event_def, can_delete=can_delete, multiline_desc=self._multiline)
             card.changed.connect(self.transfer_on_changed)
             card.delete_requested.connect(self._on_delete_event)
             self._cards_layout.addWidget(card)
 
     def _on_add_event(self) -> None:
-        self._transfer_on.append(EventDef("new_event"))
+        self._transfer_on.append(EventDef("new_event", color=self._default_color))
         self._rebuild_cards()
         self.transfer_on_changed.emit()
 
@@ -379,13 +403,15 @@ class SkillEditor(QWidget):
 
     def __init__(
         self,
-        component: ProceduralSkill | DeclarativeSkill | TransferSkill | AgentDefinition,
+        component: ProceduralSkill | DeclarativeSkill | TransferSkill | ReferenceSkill | AgentDefinition,
         on_notify_fn: Callable[[], None] | None = None,
+        show_call_agents: bool = True,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self._component = component
         self._on_notify_fn = on_notify_fn
+        self._show_call_agents = show_call_agents
 
         from daedalus.view.editors.variable_loader import load_variables
         self._variables = load_variables()
@@ -422,6 +448,10 @@ class SkillEditor(QWidget):
             self._transfer_on_btn = QPushButton("⇄ TransferOn")
             self._transfer_on_btn.clicked.connect(self._on_transfer_on_selected)
             tree_lay.addWidget(self._transfer_on_btn)
+            if self._show_call_agents:
+                self._call_agents_btn = QPushButton("🤖 AgentCall")
+                self._call_agents_btn.clicked.connect(self._on_call_agents_selected)
+                tree_lay.addWidget(self._call_agents_btn)
 
         splitter.addWidget(tree_area)
 
@@ -441,6 +471,7 @@ class SkillEditor(QWidget):
         self._content_panel = SectionContentPanel()
         self._content_panel.variable_insert_requested.connect(self._on_variable_insert)
         self._content_panel.content_changed.connect(self._on_content_changed)
+        self._content_panel.add_child_requested.connect(self._on_add_child)
         self._stack.addWidget(self._content_panel)  # index 0
 
         if isinstance(component, ProceduralSkill):
@@ -450,6 +481,11 @@ class SkillEditor(QWidget):
         self._transfer_on_panel = _TransferOnPanel(transfer_on)
         self._transfer_on_panel.transfer_on_changed.connect(self._on_model_changed)
         self._stack.addWidget(self._transfer_on_panel)  # index 1
+
+        if isinstance(component, ProceduralSkill) and self._show_call_agents:
+            self._call_agents_panel = _TransferOnPanel(component.call_agents, default_color="#8a4a4a", multiline_desc=True)
+            self._call_agents_panel.transfer_on_changed.connect(self._on_model_changed)
+            self._stack.addWidget(self._call_agents_panel)  # index 2
 
         right_lay.addWidget(self._stack, 1)
         splitter.addWidget(right_area)
@@ -511,8 +547,18 @@ class SkillEditor(QWidget):
         self._on_structure_changed()
         self._select_section(new)
 
+    def _on_add_child(self) -> None:
+        """현재 선택된 섹션에 하위 섹션 추가."""
+        if self._content_panel._section is None:
+            return
+        parent = self._content_panel._section
+        self._on_breadcrumb_add(parent, 0)
+
     def _on_transfer_on_selected(self) -> None:
         self._stack.setCurrentIndex(1)
+
+    def _on_call_agents_selected(self) -> None:
+        self._stack.setCurrentIndex(2)
 
     def _on_structure_changed(self) -> None:
         self._section_tree.set_sections(self._component.sections)
