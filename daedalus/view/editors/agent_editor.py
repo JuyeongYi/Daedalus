@@ -15,19 +15,9 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from daedalus.model.fsm.section import Section
 from daedalus.model.plugin.agent import AgentDefinition
 from daedalus.model.project import PluginProject
 
-from daedalus.view.editors.body_editor import (
-    BreadcrumbNav,
-    SectionContentPanel,
-    SectionTree,
-    VariablePopup,
-    find_path,
-)
-from daedalus.view.editors.skill_editor import _FrontmatterPanel
-from daedalus.view.editors.variable_loader import load_variables
 from daedalus.view.panels.registry_panel import _RegistrySection
 
 
@@ -47,7 +37,6 @@ class AgentEditor(QWidget):
         self._agent = agent
         self._on_notify_fn = on_notify_fn
         self._project = project
-        self._variables = load_variables()
 
         root_lay = QVBoxLayout(self)
         root_lay.setContentsMargins(0, 0, 0, 0)
@@ -63,9 +52,7 @@ class AgentEditor(QWidget):
         content_tab = self._build_content_tab()
         self._tabs.addTab(content_tab, "📝 Content")
 
-        # Initial section selection
-        if agent.sections:
-            self._select_section(agent.sections[0])
+        # ComponentEditor handles initial section selection internally
 
     # ------------------------------------------------------------------ #
     # Tab builders                                                          #
@@ -119,6 +106,7 @@ class AgentEditor(QWidget):
             agent_ref_placements=self._agent.reference_placements,
         )
         self._canvas_view = FsmCanvasView(self._graph_scene)
+        self._graph_scene.node_double_clicked.connect(self._open_local_skill)
         splitter.addWidget(self._canvas_view)
 
         splitter.setStretchFactor(0, 0)  # sidebar: 고정폭
@@ -165,7 +153,7 @@ class AgentEditor(QWidget):
             fsm.final_states.append(exit_done)
 
     def _load_agent_fsm(self) -> None:
-        """에이전트 FSM 상태를 Graph VM에 로드."""
+        """에이전트 FSM 상태를 Graph VM에 로드. 저장된 레이아웃이 있으면 복원."""
         from daedalus.model.fsm.pseudo import EntryPoint, ExitPoint
         from daedalus.view.viewmodel.state_vm import StateViewModel, TransitionViewModel
 
@@ -182,10 +170,15 @@ class AgentEditor(QWidget):
 
         # EntryPoint(좌) → 일반 노드(중간) → ExitPoint(우)
         ordered = entries + others + exits
+        saved = self._agent.graph_layout
         x = 0.0
         vm_map: dict[str, StateViewModel] = {}
         for state in ordered:
-            vm = StateViewModel(model=state, x=x, y=100.0)
+            if state.name in saved:
+                sx, sy = saved[state.name]
+                vm = StateViewModel(model=state, x=sx, y=sy)
+            else:
+                vm = StateViewModel(model=state, x=x, y=100.0)
             self._graph_vm.state_vms.append(vm)
             vm_map[state.name] = vm
             x += 220.0
@@ -197,6 +190,13 @@ class AgentEditor(QWidget):
                 tvm = TransitionViewModel(model=trans, source_vm=src_vm, target_vm=tgt_vm)
                 self._graph_vm.transition_vms.append(tvm)
         self._graph_vm.notify()
+
+    def _save_graph_layout(self) -> None:
+        """그래프 노드 위치를 모델에 저장."""
+        layout: dict[str, list[float]] = {}
+        for svm in self._graph_vm.state_vms:
+            layout[svm.model.name] = [svm.x, svm.y]
+        self._agent.graph_layout = layout
 
     def _local_skill_lookup(self, name: str) -> object | None:
         for skill in self._agent.skills:
@@ -267,62 +267,27 @@ class AgentEditor(QWidget):
         self._tabs.setCurrentIndex(idx)
 
     def _build_content_tab(self) -> QWidget:
-        """Content 탭: FrontmatterPanel(좌) + SectionTree(중) + ContentPanel(우).
+        """Content 탭: ComponentEditor + caller_contracts 우측 패널."""
+        from daedalus.view.editors.component_editor import ComponentEditor
+        from daedalus.view.editors.skill_editor import _ContractButtons
 
-        SkillEditor와 동일한 3-column QSplitter 레이아웃.
-        """
-        container = QWidget()
-        lay = QHBoxLayout(container)
-        lay.setContentsMargins(0, 0, 0, 0)
-        lay.setSpacing(0)
-
-        splitter = QSplitter(Qt.Orientation.Horizontal)
-
-        # Left: FrontmatterPanel (name / description / config 필드)
-        self._fm_panel = _FrontmatterPanel(self._agent)
-        self._fm_panel.changed.connect(self._on_model_changed)
-        splitter.addWidget(self._fm_panel)
-
-        # Center: SectionTree
-        self._section_tree = SectionTree(self._agent.sections)
-        self._section_tree.section_selected.connect(self._on_tree_selected)
-        self._section_tree.structure_changed.connect(self._on_structure_changed)
-        self._section_tree.add_root_requested.connect(
-            lambda: self._on_breadcrumb_add(None, 0)
+        right_widgets: list[QWidget] = []
+        self._caller_contract_buttons = _ContractButtons(
+            "🔒 입력 프로시저", self._agent.caller_contracts,
         )
-        splitter.addWidget(self._section_tree)
+        right_widgets.append(self._caller_contract_buttons)
 
-        # Right: BreadcrumbNav + SectionContentPanel
-        right_area = QWidget()
-        right_lay = QVBoxLayout(right_area)
-        right_lay.setContentsMargins(0, 0, 0, 0)
-        right_lay.setSpacing(0)
+        self._component_editor = ComponentEditor(
+            self._agent,
+            right_widgets=right_widgets,
+            on_notify_fn=self._on_model_changed,
+        )
 
-        self._breadcrumb = BreadcrumbNav(self._agent.sections)
-        self._breadcrumb.section_selected.connect(self._on_breadcrumb_selected)
-        self._breadcrumb.section_add_requested.connect(self._on_breadcrumb_add)
-        right_lay.addWidget(self._breadcrumb)
+        self._caller_contract_buttons.section_clicked.connect(
+            self._component_editor.show_contract_section
+        )
 
-        self._content_panel = SectionContentPanel()
-        self._content_panel.variable_insert_requested.connect(self._on_variable_insert)
-        self._content_panel.content_changed.connect(self._on_content_changed)
-        self._content_panel.add_child_requested.connect(self._on_add_child)
-        right_lay.addWidget(self._content_panel, 1)
-
-        splitter.addWidget(right_area)
-
-        splitter.setStretchFactor(0, 0)  # frontmatter: 고정폭
-        splitter.setStretchFactor(1, 0)  # tree: 고정폭
-        splitter.setStretchFactor(2, 1)  # content: 확장
-
-        lay.addWidget(splitter)
-
-        # Variable popup (parented to content_panel)
-        self._var_popup = VariablePopup(self._variables, parent=self._content_panel)
-        self._var_popup.variable_selected.connect(self._content_panel.insert_variable)
-        self._var_popup.hide()
-
-        return container
+        return self._component_editor
 
     # ------------------------------------------------------------------ #
     # Lifecycle                                                             #
@@ -333,75 +298,13 @@ class AgentEditor(QWidget):
         self._graph_scene.close()
         super().closeEvent(event)  # type: ignore[arg-type]
 
-    # ------------------------------------------------------------------ #
-    # Bidirectional sync (Content tab)                                     #
-    # ------------------------------------------------------------------ #
-
-    def _select_section(self, section: Section) -> None:
-        path = find_path(section, self._agent.sections)
-        if path is None:
-            return
-        path_titles = [s.title for s in path]
-        self._section_tree.select_section(section)
-        self._breadcrumb.set_current(section)
-        self._content_panel.show_section(section, path_titles)
-
-    def _on_tree_selected(self, section: Section, path: list[str]) -> None:
-        self._breadcrumb.set_current(section)
-        self._content_panel.show_section(section, path)
-
-    def _on_breadcrumb_selected(self, section: Section, path: list[str]) -> None:
-        self._section_tree.select_section(section)
-        self._content_panel.show_section(section, path)
-
-    def _on_add_child(self) -> None:
-        if self._content_panel._section is None:
-            return
-        self._on_breadcrumb_add(self._content_panel._section, 0)
-
-    def _on_breadcrumb_add(self, parent: Section | None, _depth: int = 0) -> None:
-        siblings = self._agent.sections if parent is None else parent.children
-        existing_names = {s.title for s in siblings}
-
-        while True:
-            name, ok = QInputDialog.getText(self, "섹션 추가", "섹션 이름:")
-            if not ok or not name.strip():
-                return
-            name = name.strip()
-            if name in existing_names:
-                QMessageBox.warning(self, "이름 중복", f"'{name}' 섹션이 이미 존재합니다.")
-                continue
-            break
-
-        new = Section(title=name)
-        siblings.append(new)
-        self._on_structure_changed()
-        self._select_section(new)
-
-    def _on_structure_changed(self) -> None:
-        self._section_tree.set_sections(self._agent.sections)
-        self._breadcrumb.set_sections(self._agent.sections)
-        self._on_model_changed()
-
-    def _on_content_changed(self) -> None:
-        self._section_tree.set_sections(self._agent.sections)
-        self._breadcrumb.set_sections(self._agent.sections)
-        self._on_model_changed()
-
-    def _on_variable_insert(self) -> None:
-        if self._var_popup.isVisible():
-            self._var_popup.hide()
-            return
-        from PyQt6.QtCore import QPoint
-        btn = self._content_panel._btn_variable
-        pos = btn.mapTo(self._content_panel, QPoint(0, btn.height()))
-        self._var_popup.move(pos)
-        self._var_popup.show()
-        self._var_popup.raise_()
-
     def _on_model_changed(self) -> None:
+        if hasattr(self, "_graph_vm"):
+            self._save_graph_layout()
         if hasattr(self, "_proc_section"):
             self._refresh_skill_list()
+        if hasattr(self, "_caller_contract_buttons"):
+            self._caller_contract_buttons.refresh()
         self.agent_changed.emit()
         if self._on_notify_fn is not None:
             self._on_notify_fn()
