@@ -16,6 +16,7 @@ from daedalus.model.plugin.config import (
 @dataclass
 class Skill(PluginComponent, ABC):
     """스킬 베이스."""
+    when_to_use: str = ""
 
 
 @dataclass

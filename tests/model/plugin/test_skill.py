@@ -119,3 +119,15 @@ def test_transfer_skill_sections_default():
     skill = TransferSkill(fsm=fsm, name="T", description="d")
     assert len(skill.sections) == 1
     assert skill.sections[0].title == "Instructions"
+
+
+def test_procedural_skill_when_to_use_default():
+    s = SimpleState(name="s")
+    fsm = StateMachine(name="f", states=[s], initial_state=s)
+    skill = ProceduralSkill(fsm=fsm, name="t", description="d")
+    assert skill.when_to_use == ""
+
+
+def test_declarative_skill_when_to_use_default():
+    skill = DeclarativeSkill(name="t", description="d")
+    assert skill.when_to_use == ""
