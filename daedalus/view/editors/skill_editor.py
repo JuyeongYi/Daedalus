@@ -11,14 +11,10 @@ from PyQt6.QtWidgets import (
     QFrame,
     QGraphicsOpacityEffect,
     QHBoxLayout,
-    QInputDialog,
     QLabel,
     QLineEdit,
-    QMessageBox,
     QPushButton,
     QScrollArea,
-    QSplitter,
-    QStackedWidget,
     QTextEdit,
     QVBoxLayout,
     QWidget,
@@ -30,13 +26,6 @@ from daedalus.model.plugin.config import FIELD_REGISTRY, FieldSpec
 from daedalus.model.plugin.enums import ModelType
 from daedalus.model.plugin.skill import DeclarativeSkill, ProceduralSkill, ReferenceSkill, TransferSkill
 
-from daedalus.view.editors.body_editor import (
-    BreadcrumbNav,
-    SectionContentPanel,
-    SectionTree,
-    VariablePopup,
-    find_path,
-)
 
 _COLOR_PRESETS = [
     "#4488ff", "#cc3333", "#cc8800", "#44aa44",
@@ -223,12 +212,14 @@ class _EventCard(QFrame):
     def __init__(
         self,
         event_def: EventDef,
+        siblings: list[EventDef] | None = None,
         can_delete: bool = True,
         multiline_desc: bool = False,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self._event = event_def
+        self._siblings = siblings or []
         self._multiline = multiline_desc
         self._popup = _ColorPickerPopup(parent=self)
         self._popup.color_selected.connect(self._on_color_picked)
@@ -313,8 +304,15 @@ class _EventCard(QFrame):
         self.changed.emit()
 
     def _on_name_changed(self) -> None:
-        self._event.name = self._w_name.text().strip() or self._event.name
-        self._w_name.setText(self._event.name)
+        new_name = self._w_name.text().strip()
+        if not new_name:
+            self._w_name.setText(self._event.name)
+            return
+        # 같은 리스트 내 이름 중복 방지
+        if any(e.name == new_name and e is not self._event for e in self._siblings):
+            self._w_name.setText(self._event.name)
+            return
+        self._event.name = new_name
         self.changed.emit()
 
     def _on_desc_changed(self) -> None:
@@ -324,6 +322,45 @@ class _EventCard(QFrame):
     def _on_desc_multi_changed(self) -> None:
         self._event.description = self._w_desc_multi.toPlainText()
         self.changed.emit()
+
+
+class _ContractButtons(QWidget):
+    """잠금 계약 섹션 버튼 목록 — 에이전트 호출 / 입력 프로시저."""
+
+    section_clicked = pyqtSignal(object)  # Section
+
+    def __init__(
+        self,
+        label: str,
+        contracts: list[Section],
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self._contracts = contracts
+        self._label = label
+        self._lay = QVBoxLayout(self)
+        self._lay.setContentsMargins(0, 0, 0, 0)
+        self._lay.setSpacing(2)
+        self._rebuild()
+
+    def refresh(self) -> None:
+        self._rebuild()
+
+    def _rebuild(self) -> None:
+        while self._lay.count():
+            child = self._lay.takeAt(0)
+            if child is not None:
+                w = child.widget()
+                if w is not None:
+                    w.deleteLater()
+        if not self._contracts:
+            return
+        lbl = QLabel(self._label)
+        self._lay.addWidget(lbl)
+        for sec in self._contracts:
+            btn = QPushButton(f"🔒 {sec.title}")
+            btn.clicked.connect(lambda _c, s=sec: self.section_clicked.emit(s))
+            self._lay.addWidget(btn)
 
 
 class _TransferOnPanel(QWidget):
@@ -374,13 +411,20 @@ class _TransferOnPanel(QWidget):
                     w.deleteLater()
         for event_def in self._transfer_on:
             can_delete = len(self._transfer_on) > 1
-            card = _EventCard(event_def, can_delete=can_delete, multiline_desc=self._multiline)
+            card = _EventCard(event_def, siblings=self._transfer_on, can_delete=can_delete, multiline_desc=self._multiline)
             card.changed.connect(self.transfer_on_changed)
             card.delete_requested.connect(self._on_delete_event)
             self._cards_layout.addWidget(card)
 
     def _on_add_event(self) -> None:
-        self._transfer_on.append(EventDef("new_event", color=self._default_color))
+        existing = {e.name for e in self._transfer_on}
+        base = "new_event"
+        name = base
+        counter = 2
+        while name in existing:
+            name = f"{base}_{counter}"
+            counter += 1
+        self._transfer_on.append(EventDef(name, color=self._default_color))
         self._rebuild_cards()
         self.transfer_on_changed.emit()
 
@@ -393,11 +437,7 @@ class _TransferOnPanel(QWidget):
 
 
 class SkillEditor(QWidget):
-    """ProceduralSkill / DeclarativeSkill / TransferSkill / AgentDefinition 편집기.
-
-    레이아웃 (QSplitter):
-      _FrontmatterPanel | SectionTree + TransferOn | BreadcrumbNav + ContentPanel / TransferOnPanel
-    """
+    """스킬/에이전트 편집기 — ComponentEditor + 타입별 우측 패널."""
 
     skill_changed = pyqtSignal()
 
@@ -409,179 +449,36 @@ class SkillEditor(QWidget):
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
-        self._component = component
-        self._on_notify_fn = on_notify_fn
-        self._show_call_agents = show_call_agents
+        from daedalus.view.editors.component_editor import ComponentEditor
 
-        from daedalus.view.editors.variable_loader import load_variables
-        self._variables = load_variables()
+        right_widgets: list[QWidget] = []
+        if isinstance(component, ProceduralSkill):
+            right_widgets.append(_TransferOnPanel(component.transfer_on))
+            if show_call_agents:
+                right_widgets.append(
+                    _TransferOnPanel(component.call_agents, default_color="#8a4a4a", multiline_desc=True)
+                )
 
-        root_lay = QHBoxLayout(self)
-        root_lay.setContentsMargins(0, 0, 0, 0)
-        root_lay.setSpacing(0)
-
-        splitter = QSplitter(Qt.Orientation.Horizontal)
-
-        # Left: Frontmatter
-        self._fm = _FrontmatterPanel(component)
-        self._fm.changed.connect(self._on_model_changed)
-        splitter.addWidget(self._fm)
-
-        # Center: SectionTree + TransferOn button
-        tree_area = QWidget()
-        tree_lay = QVBoxLayout(tree_area)
-        tree_lay.setContentsMargins(0, 0, 0, 0)
-        tree_lay.setSpacing(4)
-
-        self._section_tree = SectionTree(component.sections)
-        self._section_tree.section_selected.connect(self._on_tree_selected)
-        self._section_tree.structure_changed.connect(self._on_structure_changed)
-        self._section_tree.add_root_requested.connect(
-            lambda: self._on_breadcrumb_add(None, 0)
+        self._editor = ComponentEditor(
+            component,
+            right_widgets=right_widgets,
+            on_notify_fn=self._on_notify,
         )
-        tree_lay.addWidget(self._section_tree, 1)
 
-        if isinstance(component, ProceduralSkill):
-            sep = QFrame()
-            sep.setFrameShape(QFrame.Shape.HLine)
-            tree_lay.addWidget(sep)
-            self._transfer_on_btn = QPushButton("⇄ TransferOn")
-            self._transfer_on_btn.clicked.connect(self._on_transfer_on_selected)
-            tree_lay.addWidget(self._transfer_on_btn)
-            if self._show_call_agents:
-                self._call_agents_btn = QPushButton("🤖 AgentCall")
-                self._call_agents_btn.clicked.connect(self._on_call_agents_selected)
-                tree_lay.addWidget(self._call_agents_btn)
+        self._on_notify_fn = on_notify_fn
 
-        splitter.addWidget(tree_area)
+        # right_widgets의 changed 시그널 연결
+        for w in right_widgets:
+            if hasattr(w, "transfer_on_changed"):
+                w.transfer_on_changed.connect(self._editor._on_model_changed)
 
-        # Right: BreadcrumbNav + Stack
-        right_area = QWidget()
-        right_lay = QVBoxLayout(right_area)
-        right_lay.setContentsMargins(0, 0, 0, 0)
-        right_lay.setSpacing(0)
+        self._editor.changed.connect(self.skill_changed)
 
-        self._breadcrumb = BreadcrumbNav(component.sections)
-        self._breadcrumb.section_selected.connect(self._on_breadcrumb_selected)
-        self._breadcrumb.section_add_requested.connect(self._on_breadcrumb_add)
-        right_lay.addWidget(self._breadcrumb)
+        lay = QHBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.addWidget(self._editor)
 
-        self._stack = QStackedWidget()
-
-        self._content_panel = SectionContentPanel()
-        self._content_panel.variable_insert_requested.connect(self._on_variable_insert)
-        self._content_panel.content_changed.connect(self._on_content_changed)
-        self._content_panel.add_child_requested.connect(self._on_add_child)
-        self._stack.addWidget(self._content_panel)  # index 0
-
-        if isinstance(component, ProceduralSkill):
-            transfer_on = component.transfer_on
-        else:
-            transfer_on = []
-        self._transfer_on_panel = _TransferOnPanel(transfer_on)
-        self._transfer_on_panel.transfer_on_changed.connect(self._on_model_changed)
-        self._stack.addWidget(self._transfer_on_panel)  # index 1
-
-        if isinstance(component, ProceduralSkill) and self._show_call_agents:
-            self._call_agents_panel = _TransferOnPanel(component.call_agents, default_color="#8a4a4a", multiline_desc=True)
-            self._call_agents_panel.transfer_on_changed.connect(self._on_model_changed)
-            self._stack.addWidget(self._call_agents_panel)  # index 2
-
-        right_lay.addWidget(self._stack, 1)
-        splitter.addWidget(right_area)
-
-        splitter.setStretchFactor(0, 0)
-        splitter.setStretchFactor(1, 0)
-        splitter.setStretchFactor(2, 1)
-
-        root_lay.addWidget(splitter)
-
-        # Variable popup
-        self._var_popup = VariablePopup(self._variables, parent=self._content_panel)
-        self._var_popup.variable_selected.connect(self._content_panel.insert_variable)
-        self._var_popup.hide()
-
-        # Initial selection
-        if component.sections:
-            first = component.sections[0]
-            self._select_section(first)
-
-    # --- Bidirectional sync ---
-
-    def _select_section(self, section: Section) -> None:
-        path = find_path(section, self._component.sections)
-        if path is None:
-            return
-        path_titles = [s.title for s in path]
-        self._section_tree.select_section(section)
-        self._breadcrumb.set_current(section)
-        self._content_panel.show_section(section, path_titles)
-        self._stack.setCurrentIndex(0)
-
-    def _on_tree_selected(self, section: Section, path: list[str]) -> None:
-        self._breadcrumb.set_current(section)
-        self._content_panel.show_section(section, path)
-        self._stack.setCurrentIndex(0)
-
-    def _on_breadcrumb_selected(self, section: Section, path: list[str]) -> None:
-        self._section_tree.select_section(section)
-        self._content_panel.show_section(section, path)
-        self._stack.setCurrentIndex(0)
-
-    def _on_breadcrumb_add(self, parent: Section | None, depth: int) -> None:
-        siblings = self._component.sections if parent is None else parent.children
-        existing_names = {s.title for s in siblings}
-
-        while True:
-            name, ok = QInputDialog.getText(self, "섹션 추가", "섹션 이름:")
-            if not ok or not name.strip():
-                return
-            name = name.strip()
-            if name in existing_names:
-                QMessageBox.warning(self, "이름 중복", f"'{name}' 섹션이 이미 존재합니다.")
-                continue
-            break
-
-        new = Section(title=name)
-        siblings.append(new)
-        self._on_structure_changed()
-        self._select_section(new)
-
-    def _on_add_child(self) -> None:
-        """현재 선택된 섹션에 하위 섹션 추가."""
-        if self._content_panel._section is None:
-            return
-        parent = self._content_panel._section
-        self._on_breadcrumb_add(parent, 0)
-
-    def _on_transfer_on_selected(self) -> None:
-        self._stack.setCurrentIndex(1)
-
-    def _on_call_agents_selected(self) -> None:
-        self._stack.setCurrentIndex(2)
-
-    def _on_structure_changed(self) -> None:
-        self._section_tree.set_sections(self._component.sections)
-        self._breadcrumb.set_sections(self._component.sections)
-        self._on_model_changed()
-
-    def _on_content_changed(self) -> None:
-        self._section_tree.set_sections(self._component.sections)
-        self._breadcrumb.set_sections(self._component.sections)
-        self._on_model_changed()
-
-    def _on_variable_insert(self) -> None:
-        if self._var_popup.isVisible():
-            self._var_popup.hide()
-            return
-        from PyQt6.QtCore import QPoint
-        btn = self._content_panel._btn_variable
-        pos = btn.mapTo(self._content_panel, QPoint(0, btn.height()))
-        self._var_popup.move(pos)
-        self._var_popup.show()
-        self._var_popup.raise_()
-
-    def _on_model_changed(self) -> None:
+    def _on_notify(self) -> None:
         self.skill_changed.emit()
         if self._on_notify_fn is not None:
             self._on_notify_fn()
