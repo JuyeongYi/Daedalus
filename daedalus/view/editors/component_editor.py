@@ -50,6 +50,7 @@ class ComponentEditor(QWidget):
         component: _ComponentType,
         right_widgets: list[QWidget] | None = None,
         on_notify_fn: Callable[[], None] | None = None,
+        skill_kind: str | None = None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -77,7 +78,7 @@ class ComponentEditor(QWidget):
         )
         left_splitter.addWidget(self._section_tree)
 
-        self._fm = _FrontmatterPanel(component)
+        self._fm = _FrontmatterPanel(component, skill_kind=skill_kind)
         self._fm.setMinimumHeight(_LEFT_CHILD_MIN_H)
         self._fm.changed.connect(self._on_model_changed)
         left_splitter.addWidget(self._fm)
@@ -114,11 +115,11 @@ class ComponentEditor(QWidget):
                 right_splitter.addWidget(w)
             root_splitter.addWidget(right_splitter)
 
-        # stretch: 좌0, 중1, 우0
-        root_splitter.setStretchFactor(0, 0)
-        root_splitter.setStretchFactor(1, 1)
+        # stretch 비율: 좌1 중3 우2 (3컬럼) / 좌1 중3 (2컬럼)
+        root_splitter.setStretchFactor(0, 1)
+        root_splitter.setStretchFactor(1, 3)
         if rw:
-            root_splitter.setStretchFactor(2, 0)
+            root_splitter.setStretchFactor(2, 2)
 
         root_lay.addWidget(root_splitter)
 

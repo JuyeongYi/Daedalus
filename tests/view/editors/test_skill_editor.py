@@ -35,7 +35,6 @@ def test_frontmatter_panel_procedural(qapp):
     comp = _make_procedural()
     panel = _FrontmatterPanel(comp)
     assert isinstance(panel, QScrollArea)
-    assert panel.minimumWidth() >= 170
 
 
 def test_frontmatter_panel_declarative(qapp):

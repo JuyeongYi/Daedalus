@@ -7,7 +7,6 @@ from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import (
     QCheckBox,
-    QComboBox,
     QFrame,
     QGraphicsOpacityEffect,
     QHBoxLayout,
@@ -22,8 +21,6 @@ from PyQt6.QtWidgets import (
 
 from daedalus.model.fsm.section import EventDef, Section
 from daedalus.model.plugin.agent import AgentDefinition
-from daedalus.model.plugin.config import FIELD_REGISTRY, FieldSpec
-from daedalus.model.plugin.enums import ModelType
 from daedalus.model.plugin.skill import DeclarativeSkill, ProceduralSkill, ReferenceSkill, TransferSkill
 
 
@@ -78,18 +75,18 @@ class _OptionalRow(QWidget):
 
 
 class _FrontmatterPanel(QScrollArea):
-    """좌측 패널 — name/description(필수) + FIELD_REGISTRY 기반 선택 필드."""
+    """좌측 패널 — SKILL_FIELD_MATRIX 기반 프론트매터 편집."""
 
     changed = pyqtSignal()
 
     def __init__(
         self,
         component: ProceduralSkill | DeclarativeSkill | TransferSkill | ReferenceSkill | AgentDefinition,
+        skill_kind: str | None = None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self._component = component
-        self.setMinimumWidth(170)
         self.setWidgetResizable(True)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
@@ -98,15 +95,15 @@ class _FrontmatterPanel(QScrollArea):
         lay.setContentsMargins(8, 8, 8, 8)
         lay.setSpacing(3)
 
-        hdr = QLabel("Frontmatter")
-        lay.addWidget(hdr)
+        lay.addWidget(QLabel("Frontmatter"))
 
-        # --- 필수 필드 ---
+        # name (필수, 항상 표시)
         lay.addWidget(QLabel("name *"))
         self._w_name = QLineEdit(component.name)
         self._w_name.editingFinished.connect(self._save_name)
         lay.addWidget(self._w_name)
 
+        # description (필수, 항상 표시)
         lay.addWidget(QLabel("description *"))
         self._w_desc = QTextEdit()
         self._w_desc.setPlainText(component.description)
@@ -114,56 +111,91 @@ class _FrontmatterPanel(QScrollArea):
         self._w_desc.textChanged.connect(self._save_desc)
         lay.addWidget(self._w_desc)
 
-        # --- 선택 필드 (FIELD_REGISTRY 기반) ---
+        # SKILL_FIELD_MATRIX 기반 필드 생성
+        from daedalus.model.plugin.field_matrix import SKILL_FIELD_MATRIX
+        from daedalus.model.plugin.enums import FieldVisibility, SkillField
+
+        kind = skill_kind or self._detect_kind(component)
+        rules = SKILL_FIELD_MATRIX.get(kind, {})
         config = getattr(component, "config", None)
-        if config is not None:
-            kind = config.kind
-            fields = FIELD_REGISTRY.get(kind, [])
-            if fields:
-                sep = QLabel("선택 필드")
-                lay.addWidget(sep)
-            for spec in fields:
-                widget = self._make_field_widget(spec, config)
-                if widget is not None:
-                    lay.addWidget(widget)
+
+        skip = {SkillField.NAME, SkillField.DESCRIPTION}
+        for field, rule in rules.items():
+            if field in skip:
+                continue
+            if rule.visibility == FieldVisibility.REQUIRED:
+                widget = rule.widget()
+                self._apply_value(widget, config, field, rule)
+                lay.addWidget(QLabel(field.value))
+                lay.addWidget(widget)
+            elif rule.visibility == FieldVisibility.OPTIONAL:
+                widget = rule.widget()
+                current = self._get_current(config, component, field)
+                enabled = current is not None and current != "" and current != [] and current is not False
+                self._apply_value(widget, config, field, rule)
+                lay.addWidget(_OptionalRow(field.value, widget, initially_enabled=enabled))
 
         lay.addStretch()
         self.setWidget(inner)
 
-    def _make_field_widget(self, spec: FieldSpec, config: object) -> QWidget | None:
-        """FieldSpec에서 위젯 생성."""
-        current_val = getattr(config, spec.attr, None)
+    @staticmethod
+    def _detect_kind(component: object) -> str:
+        config = getattr(component, "config", None)
+        if config is not None and hasattr(config, "kind"):
+            return config.kind
+        return "procedural"
 
-        if spec.widget_type == "combo":
-            w = QComboBox()
-            for choice in (spec.choices or []):
-                w.addItem(choice)
-            if current_val is not None:
-                val_str = current_val.value if hasattr(current_val, "value") else str(current_val)
-                idx = w.findText(val_str)
-                if idx >= 0:
-                    w.setCurrentIndex(idx)
-            # Determine initial enabled state
-            enabled = spec.default_enabled
-            if spec.attr == "model":
-                enabled = current_val is not None and current_val != ModelType.INHERIT
-            elif spec.attr == "effort":
-                enabled = current_val is not None
-            return _OptionalRow(spec.label, w, initially_enabled=enabled)
-
-        elif spec.widget_type == "text":
-            if isinstance(current_val, list):
-                w = QLineEdit(" ".join(current_val) if current_val else "")
-            else:
-                w = QLineEdit(str(current_val) if current_val else "")
-            return _OptionalRow(spec.label, w, initially_enabled=bool(current_val))
-
-        elif spec.widget_type == "check":
-            w = QCheckBox(spec.label)
-            w.setChecked(bool(current_val))
-            return w
-
+    @staticmethod
+    def _get_current(config: object, component: object, field) -> object:
+        from daedalus.model.plugin.enums import SkillField
+        # when_to_use is on the component, not config
+        if field == SkillField.WHEN_TO_USE:
+            return getattr(component, "when_to_use", None)
+        attr_map = {
+            SkillField.ARGUMENT_HINT: "argument_hint",
+            SkillField.MODEL: "model",
+            SkillField.EFFORT: "effort",
+            SkillField.ALLOWED_TOOLS: "allowed_tools",
+            SkillField.CONTEXT: "context",
+            SkillField.AGENT: "agent",
+            SkillField.SHELL: "shell",
+            SkillField.PATHS: "paths",
+            SkillField.HOOKS: "hooks",
+            SkillField.DISABLE_MODEL: "disable_model_invocation",
+            SkillField.USER_INVOCABLE: "user_invocable",
+        }
+        attr = attr_map.get(field)
+        if attr and config is not None:
+            return getattr(config, attr, None)
         return None
+
+    @staticmethod
+    def _apply_value(widget, config, field, rule) -> None:
+        from PyQt6.QtWidgets import QComboBox, QCheckBox, QLineEdit
+        from daedalus.view.widgets.tag_input import TagInput
+        from daedalus.model.plugin.enums import SkillField
+        current = _FrontmatterPanel._get_current(config, None, field)
+
+        if isinstance(widget, QComboBox):
+            val = None
+            if current is not None:
+                val = current.value if hasattr(current, "value") else str(current)
+            elif rule.default_value is not None:
+                val = str(rule.default_value)
+            if val is not None:
+                idx = widget.findText(val)
+                if idx >= 0:
+                    widget.setCurrentIndex(idx)
+        elif isinstance(widget, QCheckBox):
+            widget.setChecked(bool(current) if current is not None else False)
+        elif isinstance(widget, TagInput):
+            if isinstance(current, list):
+                widget.set_tags(current)
+        elif isinstance(widget, QLineEdit):
+            if isinstance(current, list):
+                widget.setText(" ".join(current) if current else "")
+            elif current is not None:
+                widget.setText(str(current))
 
     def _save_name(self) -> None:
         self._component.name = self._w_name.text().strip()
@@ -324,10 +356,39 @@ class _EventCard(QFrame):
         self.changed.emit()
 
 
-class _ContractButtons(QWidget):
-    """잠금 계약 섹션 버튼 목록 — 에이전트 호출 / 입력 프로시저."""
+class _ContractCard(QFrame):
+    """계약 섹션 카드 — 타이틀 잠금, 내용 편집 가능."""
 
-    section_clicked = pyqtSignal(object)  # Section
+    changed = pyqtSignal()
+
+    def __init__(self, section: Section, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._section = section
+        self.setFrameShape(QFrame.Shape.StyledPanel)
+
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(8, 8, 8, 8)
+        lay.setSpacing(6)
+
+        title_lbl = QLabel(f"🔒 {section.title}")
+        lay.addWidget(title_lbl)
+
+        self._w_content = QTextEdit()
+        self._w_content.setPlainText(section.content)
+        self._w_content.setPlaceholderText("이 호출에서 기대하는 입력을 작성하세요...")
+        self._w_content.setMinimumHeight(60)
+        self._w_content.textChanged.connect(self._on_content_changed)
+        lay.addWidget(self._w_content)
+
+    def _on_content_changed(self) -> None:
+        self._section.content = self._w_content.toPlainText()
+        self.changed.emit()
+
+
+class _ContractPanel(QScrollArea):
+    """잠금 계약 섹션 패널 — 인라인 편집 카드 목록 (스크롤 지원)."""
+
+    contract_changed = pyqtSignal()
 
     def __init__(
         self,
@@ -338,9 +399,14 @@ class _ContractButtons(QWidget):
         super().__init__(parent)
         self._contracts = contracts
         self._label = label
-        self._lay = QVBoxLayout(self)
-        self._lay.setContentsMargins(0, 0, 0, 0)
-        self._lay.setSpacing(2)
+        self.setWidgetResizable(True)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+
+        self._inner = QWidget()
+        self._lay = QVBoxLayout(self._inner)
+        self._lay.setContentsMargins(12, 12, 12, 12)
+        self._lay.setSpacing(8)
+        self.setWidget(self._inner)
         self._rebuild()
 
     def refresh(self) -> None:
@@ -354,23 +420,28 @@ class _ContractButtons(QWidget):
                 if w is not None:
                     w.deleteLater()
         if not self._contracts:
+            placeholder = QLabel("연결된 호출이 없습니다")
+            self._lay.addWidget(placeholder)
+            self._lay.addStretch()
             return
         lbl = QLabel(self._label)
         self._lay.addWidget(lbl)
         for sec in self._contracts:
-            btn = QPushButton(f"🔒 {sec.title}")
-            btn.clicked.connect(lambda _c, s=sec: self.section_clicked.emit(s))
-            self._lay.addWidget(btn)
+            card = _ContractCard(sec)
+            card.changed.connect(self.contract_changed)
+            self._lay.addWidget(card)
+        self._lay.addStretch()
 
 
-class _TransferOnPanel(QWidget):
-    """TransferOn 선택 시 우측에 표시되는 이벤트 카드 목록."""
+class _TransferOnPanel(QScrollArea):
+    """TransferOn / AgentCall 이벤트 카드 목록 (스크롤 지원)."""
 
     transfer_on_changed = pyqtSignal()
 
     def __init__(
         self,
         transfer_on: list[EventDef],
+        title: str = "⇄ Transfer On",
         default_color: str = "#4488ff",
         multiline_desc: bool = False,
         parent: QWidget | None = None,
@@ -379,12 +450,22 @@ class _TransferOnPanel(QWidget):
         self._transfer_on = transfer_on
         self._default_color = default_color
         self._multiline = multiline_desc
-        lay = QVBoxLayout(self)
+        self.setWidgetResizable(True)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+
+        inner = QWidget()
+        lay = QVBoxLayout(inner)
         lay.setContentsMargins(12, 12, 12, 12)
         lay.setSpacing(8)
 
-        hdr = QLabel("출력 이벤트 정의 — 노드 포트로 자동 반영")
-        lay.addWidget(hdr)
+        hdr_row = QHBoxLayout()
+        btn_add = QPushButton("＋")
+        btn_add.setFixedWidth(28)
+        btn_add.clicked.connect(self._on_add_event)
+        hdr_row.addWidget(btn_add)
+        hdr_row.addWidget(QLabel(title))
+        hdr_row.addStretch()
+        lay.addLayout(hdr_row)
 
         self._cards_widget = QWidget()
         self._cards_layout = QVBoxLayout(self._cards_widget)
@@ -392,14 +473,8 @@ class _TransferOnPanel(QWidget):
         self._cards_layout.setSpacing(6)
         lay.addWidget(self._cards_widget)
 
-        btn_add = QPushButton("＋ 이벤트 추가")
-        btn_add.clicked.connect(self._on_add_event)
-        lay.addWidget(btn_add)
-
-        hint = QLabel("색상 원 클릭 → 색상 팔레트 선택. 변경 즉시 캔버스 노드에 반영.")
-        lay.addWidget(hint)
-
         lay.addStretch()
+        self.setWidget(inner)
         self._rebuild_cards()
 
     def _rebuild_cards(self) -> None:
@@ -410,8 +485,7 @@ class _TransferOnPanel(QWidget):
                 if w is not None:
                     w.deleteLater()
         for event_def in self._transfer_on:
-            can_delete = len(self._transfer_on) > 1
-            card = _EventCard(event_def, siblings=self._transfer_on, can_delete=can_delete, multiline_desc=self._multiline)
+            card = _EventCard(event_def, siblings=self._transfer_on, can_delete=True, multiline_desc=self._multiline)
             card.changed.connect(self.transfer_on_changed)
             card.delete_requested.connect(self._on_delete_event)
             self._cards_layout.addWidget(card)
@@ -429,8 +503,6 @@ class _TransferOnPanel(QWidget):
         self.transfer_on_changed.emit()
 
     def _on_delete_event(self, event_def: EventDef) -> None:
-        if len(self._transfer_on) <= 1:
-            return
         self._transfer_on.remove(event_def)
         self._rebuild_cards()
         self.transfer_on_changed.emit()
@@ -453,16 +525,29 @@ class SkillEditor(QWidget):
 
         right_widgets: list[QWidget] = []
         if isinstance(component, ProceduralSkill):
-            right_widgets.append(_TransferOnPanel(component.transfer_on))
+            right_widgets.append(_TransferOnPanel(component.transfer_on, title="⇄ Transfer On"))
             if show_call_agents:
                 right_widgets.append(
-                    _TransferOnPanel(component.call_agents, default_color="#8a4a4a", multiline_desc=True)
+                    _TransferOnPanel(component.call_agents, title="🤖 Agent Call", default_color="#8a4a4a", multiline_desc=True)
                 )
+
+        # Determine skill_kind for field matrix
+        if isinstance(component, ProceduralSkill):
+            kind = "local_procedural" if not show_call_agents else "procedural"
+        elif isinstance(component, TransferSkill):
+            kind = "local_transfer" if not show_call_agents else "transfer"
+        elif isinstance(component, DeclarativeSkill):
+            kind = "declarative"
+        elif isinstance(component, ReferenceSkill):
+            kind = "reference"
+        else:
+            kind = None
 
         self._editor = ComponentEditor(
             component,
             right_widgets=right_widgets,
             on_notify_fn=self._on_notify,
+            skill_kind=kind,
         )
 
         self._on_notify_fn = on_notify_fn
