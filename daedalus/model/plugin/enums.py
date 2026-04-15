@@ -56,3 +56,29 @@ class AgentColor(Enum):
     ORANGE = "orange"
     PINK = "pink"
     CYAN = "cyan"
+
+
+class FieldVisibility(Enum):
+    """프론트매터 필드 표시 모드."""
+    REQUIRED = "required"
+    OPTIONAL = "optional"
+    DEFAULT = "default"
+    FIXED = "fixed"
+
+
+class SkillField(Enum):
+    """스킬 프론트매터 필드 식별자."""
+    NAME = "name"
+    DESCRIPTION = "description"
+    WHEN_TO_USE = "when_to_use"
+    ARGUMENT_HINT = "argument_hint"
+    MODEL = "model"
+    EFFORT = "effort"
+    ALLOWED_TOOLS = "allowed_tools"
+    CONTEXT = "context"
+    AGENT = "agent"
+    SHELL = "shell"
+    PATHS = "paths"
+    HOOKS = "hooks"
+    DISABLE_MODEL = "disable_model_invocation"
+    USER_INVOCABLE = "user_invocable"
