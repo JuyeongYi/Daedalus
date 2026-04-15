@@ -14,6 +14,7 @@ class ModelComboBox(QComboBox):
         for m in ModelType:
             if m != ModelType.INHERIT:
                 self.addItem(m.value)
+        self.setCurrentText("sonnet")
 
 
 class EffortComboBox(QComboBox):

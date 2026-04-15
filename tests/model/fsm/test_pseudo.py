@@ -41,7 +41,7 @@ def test_exit_point():
 
 def test_exit_point_default_color():
     xp = ExitPoint(name="done")
-    assert xp.color == "#4488ff"
+    assert xp.color == "#cc6666"
 
 
 def test_exit_point_custom_color():

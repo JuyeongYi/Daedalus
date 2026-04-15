@@ -151,6 +151,17 @@ class AgentEditor(QWidget):
             exit_done = ExitPoint(name="done")
             fsm.states.append(exit_done)
             fsm.final_states.append(exit_done)
+        # 4) 전이가 하나도 없고 Entry+Exit만 있으면 기본 연결
+        if not fsm.transitions:
+            from daedalus.model.fsm.event import CompletionEvent
+            from daedalus.model.fsm.transition import Transition
+            entry = next((s for s in fsm.states if isinstance(s, EntryPoint)), None)
+            exit_pt = next((s for s in fsm.states if isinstance(s, ExitPoint)), None)
+            if entry is not None and exit_pt is not None:
+                fsm.transitions.append(Transition(
+                    source=entry, target=exit_pt,
+                    trigger=CompletionEvent(name="done"),
+                ))
 
     def _load_agent_fsm(self) -> None:
         """에이전트 FSM 상태를 Graph VM에 로드. 저장된 레이아웃이 있으면 복원."""
@@ -269,22 +280,17 @@ class AgentEditor(QWidget):
     def _build_content_tab(self) -> QWidget:
         """Content 탭: ComponentEditor + caller_contracts 우측 패널."""
         from daedalus.view.editors.component_editor import ComponentEditor
-        from daedalus.view.editors.skill_editor import _ContractButtons
+        from daedalus.view.editors.skill_editor import _ContractPanel
 
-        right_widgets: list[QWidget] = []
-        self._caller_contract_buttons = _ContractButtons(
+        self._caller_contract_panel = _ContractPanel(
             "🔒 입력 프로시저", self._agent.caller_contracts,
         )
-        right_widgets.append(self._caller_contract_buttons)
+        self._caller_contract_panel.contract_changed.connect(self._on_model_changed)
 
         self._component_editor = ComponentEditor(
             self._agent,
-            right_widgets=right_widgets,
+            right_widgets=[self._caller_contract_panel],
             on_notify_fn=self._on_model_changed,
-        )
-
-        self._caller_contract_buttons.section_clicked.connect(
-            self._component_editor.show_contract_section
         )
 
         return self._component_editor
@@ -303,8 +309,8 @@ class AgentEditor(QWidget):
             self._save_graph_layout()
         if hasattr(self, "_proc_section"):
             self._refresh_skill_list()
-        if hasattr(self, "_caller_contract_buttons"):
-            self._caller_contract_buttons.refresh()
+        if hasattr(self, "_caller_contract_panel"):
+            self._caller_contract_panel.refresh()
         self.agent_changed.emit()
         if self._on_notify_fn is not None:
             self._on_notify_fn()

@@ -64,7 +64,8 @@ class TransitionEdgeItem(QGraphicsPathItem):
         trigger = self._transition_vm.model.trigger
         event_name = trigger.name if trigger is not None else "done"
 
-        src_pt = self._source_node.output_port_scene_pos(event_name)
+        is_agent_call = self._source_node.is_agent_call_event(event_name)
+        src_pt = self._source_node.output_port_scene_pos(event_name, is_agent_call)
         tgt_pt = self._target_node.input_port_scene_pos(self._input_index)
 
         if tgt_pt.x() < src_pt.x():

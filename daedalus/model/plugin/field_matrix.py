@@ -4,7 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from PyQt6.QtWidgets import QCheckBox, QLineEdit, QWidget
+from PyQt6.QtWidgets import QCheckBox, QLineEdit, QTextEdit, QWidget
 
 from daedalus.model.plugin.enums import FieldVisibility, SkillField
 from daedalus.view.widgets.combo_widgets import (
@@ -35,7 +35,7 @@ class FieldRule:
 _PROCEDURAL: dict[SkillField, FieldRule] = {
     SkillField.NAME:           FieldRule(R, QLineEdit),
     SkillField.DESCRIPTION:    FieldRule(R, QLineEdit),
-    SkillField.WHEN_TO_USE:    FieldRule(O, QLineEdit),
+    SkillField.WHEN_TO_USE:    FieldRule(O, QTextEdit),
     SkillField.ARGUMENT_HINT:  FieldRule(O, QLineEdit),
     SkillField.MODEL:          FieldRule(R, ModelComboBox, default_value="sonnet"),
     SkillField.EFFORT:         FieldRule(O, EffortComboBox),
@@ -52,7 +52,7 @@ _PROCEDURAL: dict[SkillField, FieldRule] = {
 _DECLARATIVE: dict[SkillField, FieldRule] = {
     SkillField.NAME:           FieldRule(R, QLineEdit),
     SkillField.DESCRIPTION:    FieldRule(R, QLineEdit),
-    SkillField.WHEN_TO_USE:    FieldRule(O, QLineEdit),
+    SkillField.WHEN_TO_USE:    FieldRule(O, QTextEdit),
     SkillField.ARGUMENT_HINT:  FieldRule(O, QLineEdit),
     SkillField.MODEL:          FieldRule(R, ModelComboBox, default_value="sonnet"),
     SkillField.EFFORT:         FieldRule(O, EffortComboBox),

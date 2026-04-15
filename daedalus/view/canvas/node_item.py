@@ -16,7 +16,6 @@ _HEADER_H = 20.0
 _PORT_R = 6.0
 _PORT_SPACING = 22.0
 _PORT_PAD = 12.0
-_LABEL_W = 44.0
 
 _TYPE_STYLE: dict[str | None, tuple[str, str, str, str]] = {
     "procedural_skill": ("#1a2a1a", "#4a8a4a", "PROCEDURAL", "⚙"),
@@ -144,7 +143,7 @@ class StateNodeItem(QGraphicsItem):
     def boundingRect(self) -> QRectF:
         h = self._height()
         extra_bottom = _PORT_R * 2 if self._ref_count > 0 else 0
-        return QRectF(-_PORT_R * 2 - 2, 0, _W + _PORT_R * 2 + 2 + _LABEL_W, h + extra_bottom)
+        return QRectF(-_PORT_R * 2 - 2, 0, _W + _PORT_R * 4, h + extra_bottom)
 
     def paint(
         self,
@@ -172,8 +171,6 @@ class StateNodeItem(QGraphicsItem):
         active_border = border_color.lighter(160) if self.isSelected() else border_color
 
         h = self._height()
-        events = self._output_events() or ["done"]
-        n = len(events)
 
         # 본체
         body_rect = QRectF(0, 0, _W, h)
@@ -202,21 +199,15 @@ class StateNodeItem(QGraphicsItem):
                 icon,
             )
 
-        # 이름
-        name_rect = QRectF(4, _HEADER_H, _W - 8, h - _HEADER_H - 12)
+        # 이름 — 헤더 바로 아래, 상단 가운데
+        name_rect = QRectF(4, _HEADER_H + 2, _W - 8, 20)
         text_color = QColor("#eee") if self.isSelected() else QColor("#ccc")
         painter.setPen(QPen(text_color))
         font = QFont("Segoe UI", 11)
         if self.isSelected():
             font.setBold(True)
         painter.setFont(font)
-        painter.drawText(name_rect, Qt.AlignmentFlag.AlignCenter, self._state_vm.model.name)
-
-        # 서브텍스트
-        subtext_rect = QRectF(4, h - 12, _W - 8, 12)
-        painter.setPen(QPen(border_color.lighter(80)))
-        painter.setFont(QFont("Segoe UI", 7))
-        painter.drawText(subtext_rect, Qt.AlignmentFlag.AlignCenter, kind or "state")
+        painter.drawText(name_rect, Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop, self._state_vm.model.name)
 
         # 입력 포트 (좌측)
         if not self._is_entry_point():
@@ -234,28 +225,28 @@ class StateNodeItem(QGraphicsItem):
                 event_defs = [EventDef("done", color="#4488ff")]
             agent_defs = self._call_agent_defs()
             n_total = len(event_defs) + len(agent_defs)
-            # transfer_on 포트
+            # transfer_on 포트 — 라벨은 포트 왼쪽(본체 안), 우측 정렬
             for i, edef in enumerate(event_defs):
                 y = self._output_port_y(i, n_total)
                 port_color = QColor(edef.color)
                 painter.setPen(QPen(QColor("#111"), 1))
                 painter.setBrush(QBrush(port_color))
                 painter.drawEllipse(QPointF(_W, y), _PORT_R, _PORT_R)
-                lbl_rect = QRectF(_W + _PORT_R + 2, y - 7, _LABEL_W - 4, 14)
+                lbl_rect = QRectF(4, y - 7, _W - _PORT_R - 6, 14)
                 painter.setPen(QPen(port_color.lighter(140)))
                 painter.setFont(QFont("Segoe UI", 7))
-                painter.drawText(lbl_rect, Qt.AlignmentFlag.AlignVCenter, edef.name)
-            # call_agent 포트 (🤖 아이콘)
+                painter.drawText(lbl_rect, Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignRight, edef.name)
+            # call_agent 포트 — 라벨은 포트 왼쪽(본체 안), 우측 정렬
             for j, adef in enumerate(agent_defs):
                 y = self._output_port_y(len(event_defs) + j, n_total)
                 port_color = QColor(adef.color)
                 painter.setPen(QPen(QColor("#111"), 1))
                 painter.setBrush(QBrush(port_color))
                 painter.drawEllipse(QPointF(_W, y), _PORT_R, _PORT_R)
-                lbl_rect = QRectF(_W + _PORT_R + 2, y - 7, _LABEL_W + 8, 14)
+                lbl_rect = QRectF(4, y - 7, _W - _PORT_R - 6, 14)
                 painter.setPen(QPen(port_color.lighter(140)))
                 painter.setFont(QFont("Segoe UI", 7))
-                painter.drawText(lbl_rect, Qt.AlignmentFlag.AlignVCenter, f"🤖{adef.name}")
+                painter.drawText(lbl_rect, Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignRight, f"🤖 {adef.name}")
 
         # 하단 참조 포트
         if self._ref_count > 0 and not self._is_entry_point() and not self._is_exit_point():
@@ -271,13 +262,24 @@ class StateNodeItem(QGraphicsItem):
         names = list(names) + [e.name for e in self._call_agent_defs()]
         return names
 
-    def output_port_scene_pos(self, event_name: str) -> QPointF:
-        events = self._all_output_names()
-        n = len(events)
+    def output_port_index(self, event_name: str, is_agent_call: bool = False) -> int:
+        """이벤트 이름 + agent_call 여부로 정확한 포트 인덱스 반환."""
+        events = self._output_events() or ["done"]
+        if is_agent_call:
+            agent_names = [e.name for e in self._call_agent_defs()]
+            try:
+                j = agent_names.index(event_name)
+            except ValueError:
+                j = 0
+            return len(events) + j
         try:
-            i = events.index(event_name)
+            return events.index(event_name)
         except ValueError:
-            i = 0
+            return 0
+
+    def output_port_scene_pos(self, event_name: str, is_agent_call: bool = False) -> QPointF:
+        n = len(self._all_output_names())
+        i = self.output_port_index(event_name, is_agent_call)
         return self.mapToScene(QPointF(_W, self._output_port_y(i, n)))
 
     def input_port_scene_pos(self, index: int = 0) -> QPointF:
@@ -303,18 +305,20 @@ class StateNodeItem(QGraphicsItem):
             return False
         return 0 <= local_pos.x() <= _W
 
-    def _get_output_port_event(self, local_pos: QPointF) -> str | None:
+    def _get_output_port_event(self, local_pos: QPointF) -> tuple[str, bool] | None:
+        """클릭 위치에 해당하는 (event_name, is_agent_call) 반환."""
         if self._is_exit_point():
             return None
         events = self._all_output_names()
+        n_transfer = len(self._output_events() or ["done"])
         n = len(events)
-        hit_r = _PORT_R * 1.8
+        hit_r = _PORT_R * 2.0
         for i, name in enumerate(events):
             y = self._output_port_y(i, n)
             dx = local_pos.x() - _W
             dy = local_pos.y() - y
             if dx * dx + dy * dy <= hit_r * hit_r:
-                return name
+                return (name, i >= n_transfer)
         return None
 
     def is_input_port(self, local_pos: QPointF) -> bool:
@@ -336,13 +340,14 @@ class StateNodeItem(QGraphicsItem):
         if event is None:
             return
         if event.button() == Qt.MouseButton.LeftButton:
-            event_name = self._get_output_port_event(event.pos())
-            if event_name is not None:
+            hit = self._get_output_port_event(event.pos())
+            if hit is not None:
+                event_name, is_agent_call = hit
                 self._dragging_connection = True
                 self._drag_event_name = event_name
                 sc: Any = self.scene()
                 if sc is not None and hasattr(sc, "begin_transition_drag"):
-                    sc.begin_transition_drag(self, event_name)
+                    sc.begin_transition_drag(self, event_name, is_agent_call)
                 event.accept()
                 return
         self._drag_start_pos = self.pos()

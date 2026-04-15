@@ -175,6 +175,15 @@ class MainWindow(QMainWindow):
 
     def _on_project_vm_changed(self) -> None:
         self._registry_panel.set_placed_ids(self._get_placed_ids())
+        self._sync_agent_editors()
+
+    def _sync_agent_editors(self) -> None:
+        """열린 AgentEditor 탭의 계약 패널 동기화."""
+        from daedalus.view.editors.agent_editor import AgentEditor as _AE
+        for i in range(self._tabs.count()):
+            widget = self._tabs.widget(i)
+            if isinstance(widget, _AE) and hasattr(widget, "_caller_contract_panel"):
+                widget._caller_contract_panel.refresh()
 
     # --- 탭 관리 ---
 

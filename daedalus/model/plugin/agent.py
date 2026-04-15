@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 
 from daedalus.model.fsm.pseudo import ExitPoint
 from daedalus.model.fsm.section import EventDef, Section
+
 from daedalus.model.plugin.base import PluginComponent, WorkflowComponent
 from daedalus.model.plugin.config import AgentConfig
 from daedalus.model.plugin.policy import ExecutionPolicy
@@ -29,6 +30,8 @@ class AgentDefinition(PluginComponent, WorkflowComponent):
     )
     skills: list[ProceduralSkill | TransferSkill | ReferenceSkill] = field(default_factory=list)
     reference_placements: list = field(default_factory=list)  # list[ReferencePlacement]
+    caller_contracts: list[Section] = field(default_factory=list)
+    graph_layout: dict[str, list[float]] = field(default_factory=dict)
 
     @property
     def kind(self) -> str:

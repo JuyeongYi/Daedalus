@@ -230,9 +230,15 @@ class SectionContentPanel(QWidget):
     def current_section(self) -> Section | None:
         return self._section
 
-    def show_section(self, section: Section, path: list[str]) -> None:
+    def set_title_locked(self, locked: bool) -> None:
+        """타이틀 필드 잠금/해제. 계약 섹션은 타이틀 변경 불가."""
+        self._w_title.setReadOnly(locked)
+        self._btn_add_child.setVisible(not locked)
+
+    def show_section(self, section: Section, path: list[str], title_locked: bool = False) -> None:
         self._section = section
         self._w_title.setText(section.title)
+        self.set_title_locked(title_locked)
         self._w_content.blockSignals(True)
         self._w_content.setPlainText(section.content)
         self._w_content.blockSignals(False)

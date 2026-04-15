@@ -18,15 +18,17 @@ from PyQt6.QtWidgets import (
 
 from daedalus.model.fsm.event import CompletionEvent
 from daedalus.model.fsm.machine import StateMachine
+from daedalus.model.fsm.section import Section
 from daedalus.model.fsm.state import SimpleState
 from daedalus.model.fsm.transition import Transition
 from daedalus.model.plugin.agent import AgentDefinition
-from daedalus.model.plugin.skill import DeclarativeSkill, ReferenceSkill, TransferSkill
+from daedalus.model.plugin.skill import DeclarativeSkill, ProceduralSkill, ReferenceSkill, TransferSkill
 from daedalus.view.canvas.edge_item import TransitionEdgeItem
 from daedalus.view.canvas.node_item import StateNodeItem
 from daedalus.view.canvas.ref_edge_item import ReferenceEdgeItem
 from daedalus.view.canvas.ref_node_item import ReferenceNodeItem
 from daedalus.view.commands.base import Command, MacroCommand
+from daedalus.view.commands.section_commands import AddSectionCmd, RemoveSectionCmd
 from daedalus.view.commands.state_commands import CreateStateCmd, DeleteStateCmd, MoveStateCmd
 from daedalus.view.commands.transition_commands import (
     AddSkillToProjectCmd,
@@ -75,6 +77,7 @@ class FsmScene(QGraphicsScene):
         self._connecting = False
         self._connect_source: StateNodeItem | None = None
         self._connect_event: str | None = None
+        self._connect_is_agent_call: bool = False
         self._drag_line: QGraphicsLineItem | None = None
 
         self._ref_connecting = False
@@ -153,10 +156,11 @@ class FsmScene(QGraphicsScene):
 
     # --- 전이 드래그 ---
 
-    def begin_transition_drag(self, source: StateNodeItem, event_name: str) -> None:
+    def begin_transition_drag(self, source: StateNodeItem, event_name: str, is_agent_call: bool = False) -> None:
         self._connecting = True
         self._connect_source = source
         self._connect_event = event_name
+        self._connect_is_agent_call = is_agent_call
         line = QGraphicsLineItem()
         pen = QPen(_DRAG_LINE_COLOR, 2, Qt.PenStyle.DashLine)
         line.setPen(pen)
@@ -166,7 +170,7 @@ class FsmScene(QGraphicsScene):
     def update_transition_drag(self, scene_pos: QPointF) -> None:
         if self._drag_line is not None and self._connect_source is not None:
             event_name = self._connect_event or "done"
-            src_pt = self._connect_source.output_port_scene_pos(event_name)
+            src_pt = self._connect_source.output_port_scene_pos(event_name, self._connect_is_agent_call)
             self._drag_line.setLine(
                 src_pt.x(), src_pt.y(),
                 scene_pos.x(), scene_pos.y(),
@@ -185,7 +189,7 @@ class FsmScene(QGraphicsScene):
                 event_name = self._connect_event or "done"
                 src_ref = getattr(src_vm.model, "skill_ref", None)
                 tgt_ref = getattr(tgt_vm.model, "skill_ref", None)
-                is_agent_call = self._connect_source.is_agent_call_event(event_name)
+                is_agent_call = self._connect_is_agent_call
                 tgt_is_agent = isinstance(tgt_ref, AgentDefinition)
                 # 에이전트 노드 입력 ← call_agent 포트만 허용
                 if tgt_is_agent and not is_agent_call:
@@ -216,11 +220,23 @@ class FsmScene(QGraphicsScene):
                     tvm = TransitionViewModel(
                         model=model, source_vm=src_vm, target_vm=tgt_vm
                     )
-                    self._project_vm.execute(CreateTransitionCmd(self._project_vm, tvm))
+                    cmds: list[Command] = [CreateTransitionCmd(self._project_vm, tvm)]
+                    # call_agent 연결 시 caller/callee 양쪽에 섹션 강제 생성
+                    if is_agent_call and tgt_is_agent:
+                        sec_cmds = self._make_agent_call_section_cmds(src_ref, tgt_ref, event_name)
+                        cmds.extend(sec_cmds)
+                    if len(cmds) == 1:
+                        self._project_vm.execute(cmds[0])
+                    else:
+                        self._project_vm.execute(MacroCommand(
+                            children=cmds,
+                            description=f"에이전트 호출 '{event_name}→{tgt_vm.model.name}' 연결",
+                        ))
 
         self._connecting = False
         self._connect_source = None
         self._connect_event = None
+        self._connect_is_agent_call = False
 
     def _item_at_input_port(self, scene_pos: QPointF) -> StateNodeItem | None:
         view_transform = self.views()[0].transform() if self.views() else None
@@ -335,15 +351,86 @@ class FsmScene(QGraphicsScene):
         self._project_vm.execute(CreateStateCmd(self._project_vm, vm))
 
     def _delete_state(self, state_vm: StateViewModel) -> None:
+        ref = getattr(state_vm.model, "skill_ref", None)
+        # 에이전트 노드 삭제 시: caller_contracts가 있으면 경고 + 정리
+        if isinstance(ref, AgentDefinition) and ref.caller_contracts:
+            view = self.views()[0] if self.views() else None
+            result = QMessageBox.warning(
+                view,
+                "에이전트 노드 삭제",
+                f"'{ref.name}'에 연결된 입력 프로시저 정보가 있습니다.\n"
+                "삭제하면 저장된 입력 프로시저 정보가 모두 사라집니다.\n\n계속하시겠습니까?",
+                QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel,
+                QMessageBox.StandardButton.Cancel,
+            )
+            if result != QMessageBox.StandardButton.Ok:
+                return
+
         transitions = self._project_vm.get_transitions_for(state_vm)
-        children: list[Command] = [DeleteTransitionCmd(self._project_vm, t) for t in transitions]
+        children: list[Command] = []
+        # 연결된 전이의 caller_contracts 섹션 정리
+        for t in transitions:
+            src_ref = getattr(t.source_vm.model, "skill_ref", None)
+            tgt_ref = getattr(t.target_vm.model, "skill_ref", None)
+            trigger = t.model.trigger
+            event_name = trigger.name if trigger is not None else ""
+            if isinstance(src_ref, ProceduralSkill) and isinstance(tgt_ref, AgentDefinition):
+                children.extend(self._find_agent_call_section_cmds(src_ref, tgt_ref, event_name))
+            children.append(DeleteTransitionCmd(self._project_vm, t))
         children.append(DeleteStateCmd(self._project_vm, state_vm))
         self._project_vm.execute(
             MacroCommand(children=children, description=f"상태 '{state_vm.model.name}' 삭제")
         )
 
     def _delete_transition(self, tvm: TransitionViewModel) -> None:
-        self._project_vm.execute(DeleteTransitionCmd(self._project_vm, tvm))
+        src_ref = getattr(tvm.source_vm.model, "skill_ref", None)
+        tgt_ref = getattr(tvm.target_vm.model, "skill_ref", None)
+        trigger = tvm.model.trigger
+        event_name = trigger.name if trigger is not None else ""
+        if isinstance(src_ref, ProceduralSkill) and isinstance(tgt_ref, AgentDefinition):
+            sec_cmds = self._find_agent_call_section_cmds(src_ref, tgt_ref, event_name)
+            cmds: list[Command] = sec_cmds + [DeleteTransitionCmd(self._project_vm, tvm)]
+            self._project_vm.execute(MacroCommand(
+                children=cmds,
+                description=f"에이전트 호출 '{event_name}→{tgt_ref.name}' 삭제",
+            ))
+        else:
+            self._project_vm.execute(DeleteTransitionCmd(self._project_vm, tvm))
+
+    # --- call_agent 섹션 관리 ---
+
+    @staticmethod
+    def _callee_section_title(skill_name: str, event_name: str) -> str:
+        return f"caller: {skill_name} ({event_name})"
+
+    def _make_agent_call_section_cmds(
+        self, src_ref: object, tgt_ref: object, event_name: str
+    ) -> list[Command]:
+        """call_agent 연결 시 에이전트 측 caller_contracts에 섹션 추가."""
+        cmds: list[Command] = []
+        if not isinstance(src_ref, ProceduralSkill) or not isinstance(tgt_ref, AgentDefinition):
+            return cmds
+        callee_title = self._callee_section_title(src_ref.name, event_name)
+        if not any(s.title == callee_title for s in tgt_ref.caller_contracts):
+            cmds.append(AddSectionCmd(
+                tgt_ref.caller_contracts,
+                Section(title=callee_title, content=""),
+            ))
+        return cmds
+
+    def _find_agent_call_section_cmds(
+        self, src_ref: object, tgt_ref: object, event_name: str
+    ) -> list[Command]:
+        """call_agent 삭제 시 에이전트 측 caller_contracts에서 섹션 제거."""
+        cmds: list[Command] = []
+        if not isinstance(src_ref, ProceduralSkill) or not isinstance(tgt_ref, AgentDefinition):
+            return cmds
+        callee_title = self._callee_section_title(src_ref.name, event_name)
+        for sec in tgt_ref.caller_contracts:
+            if sec.title == callee_title:
+                cmds.append(RemoveSectionCmd(tgt_ref.caller_contracts, sec))
+                break
+        return cmds
 
     def set_project(self, project: PluginProject) -> None:
         self._project = project
@@ -669,10 +756,53 @@ class AgentFsmScene(FsmScene):
                 if menu.exec(event.screenPos()) == delete_act:
                     self._delete_state(item.state_vm)
 
+        elif isinstance(item, ReferenceNodeItem):
+            ref_name = getattr(item.ref_vm.model, "name", "?")
+            del_ref_act = menu.addAction(f"참조 '{ref_name}' 삭제")
+            if menu.exec(event.screenPos()) == del_ref_act:
+                self.delete_reference_node(item.ref_vm)
+
+        elif isinstance(item, ReferenceEdgeItem):
+            del_link_act = menu.addAction("참조 연결 삭제")
+            if menu.exec(event.screenPos()) == del_link_act:
+                self.delete_reference_link(item.link_vm)
+
         elif isinstance(item, TransitionEdgeItem):
-            delete_act = menu.addAction("전이 삭제")
-            if menu.exec(event.screenPos()) == delete_act:
-                self._delete_transition(item.transition_vm)
+            tvm = item.transition_vm
+            transition = tvm.model
+            transfer_menu = menu.addMenu("On Transfer 스킬 설정")
+            transfer_skills = self._get_transfer_skills()
+            skill_actions: dict[QAction, object] = {}
+            if transfer_menu is not None:
+                for ts in transfer_skills:
+                    act = transfer_menu.addAction(f"⚡ {ts.name}")
+                    if act is not None:
+                        skill_actions[act] = ts
+                if transfer_skills:
+                    transfer_menu.addSeparator()
+            new_act = (
+                transfer_menu.addAction("새 Transfer Skill 생성...")
+                if transfer_menu is not None else None
+            )
+            unset_act = None
+            if transition.skill_ref is not None:
+                unset_act = menu.addAction(
+                    f"On Transfer 스킬 해제 ({transition.skill_ref.name})"
+                )
+            del_trans_act = menu.addAction("전이 삭제")
+            chosen = menu.exec(event.screenPos())
+            if chosen is None:
+                return
+            if chosen == del_trans_act:
+                self._delete_transition(tvm)
+            elif chosen == new_act:
+                self._create_and_assign_transfer_skill(tvm)
+            elif chosen == unset_act:
+                self._project_vm.execute(SetTransitionSkillRefCmd(tvm, None))
+            elif chosen in skill_actions:
+                self._project_vm.execute(
+                    SetTransitionSkillRefCmd(tvm, skill_actions[chosen])
+                )
 
         else:
             add_exit_act = menu.addAction("ExitPoint 추가")
@@ -775,5 +905,9 @@ class AgentFsmScene(FsmScene):
                         self._delete_state(item.state_vm)
                 elif isinstance(item, TransitionEdgeItem):
                     self._delete_transition(item.transition_vm)
+                elif isinstance(item, ReferenceNodeItem):
+                    self.delete_reference_node(item.ref_vm)
+                elif isinstance(item, ReferenceEdgeItem):
+                    self.delete_reference_link(item.link_vm)
             return
         super().keyPressEvent(event)

@@ -44,19 +44,19 @@ class TagInput(QWidget):
         self._tags: list[str] = []
         lay = QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
-        lay.setSpacing(4)
-
-        self._chips_widget = QWidget()
-        self._chips_layout = QHBoxLayout(self._chips_widget)
-        self._chips_layout.setContentsMargins(0, 0, 0, 0)
-        self._chips_layout.setSpacing(4)
-        self._chips_layout.addStretch()
-        lay.addWidget(self._chips_widget)
+        lay.setSpacing(2)
 
         self._input = QLineEdit()
         self._input.setPlaceholderText("입력 후 Enter")
         self._input.returnPressed.connect(self._on_enter)
         lay.addWidget(self._input)
+
+        self._chips_widget = QWidget()
+        self._chips_layout = QVBoxLayout(self._chips_widget)
+        self._chips_layout.setContentsMargins(0, 0, 0, 0)
+        self._chips_layout.setSpacing(2)
+        self._chips_layout.addStretch()
+        lay.addWidget(self._chips_widget)
 
     def get_tags(self) -> list[str]:
         return list(self._tags)

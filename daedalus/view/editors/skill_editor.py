@@ -126,8 +126,15 @@ class _FrontmatterPanel(QScrollArea):
             if rule.visibility == FieldVisibility.REQUIRED:
                 widget = rule.widget()
                 self._apply_value(widget, config, field, rule)
-                lay.addWidget(QLabel(field.value))
-                lay.addWidget(widget)
+                from PyQt6.QtWidgets import QComboBox as _QCB
+                if isinstance(widget, _QCB):
+                    row = QHBoxLayout()
+                    row.addWidget(QLabel(field.value))
+                    row.addWidget(widget, 1)
+                    lay.addLayout(row)
+                else:
+                    lay.addWidget(QLabel(field.value))
+                    lay.addWidget(widget)
             elif rule.visibility == FieldVisibility.OPTIONAL:
                 widget = rule.widget()
                 current = self._get_current(config, component, field)
@@ -171,7 +178,7 @@ class _FrontmatterPanel(QScrollArea):
 
     @staticmethod
     def _apply_value(widget, config, field, rule) -> None:
-        from PyQt6.QtWidgets import QComboBox, QCheckBox, QLineEdit
+        from PyQt6.QtWidgets import QComboBox, QCheckBox, QLineEdit, QTextEdit
         from daedalus.view.widgets.tag_input import TagInput
         from daedalus.model.plugin.enums import SkillField
         current = _FrontmatterPanel._get_current(config, None, field)
@@ -191,6 +198,10 @@ class _FrontmatterPanel(QScrollArea):
         elif isinstance(widget, TagInput):
             if isinstance(current, list):
                 widget.set_tags(current)
+        elif isinstance(widget, QTextEdit):
+            if current is not None:
+                widget.setPlainText(str(current))
+            widget.setFixedHeight(44)
         elif isinstance(widget, QLineEdit):
             if isinstance(current, list):
                 widget.setText(" ".join(current) if current else "")

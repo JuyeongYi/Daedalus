@@ -46,7 +46,7 @@ class EntryPoint(State):
 @dataclass
 class ExitPoint(State):
     """CompositeState에서 특정 경로로 탈출."""
-    color: str = "#4488ff"
+    color: str = "#cc6666"
 
     @property
     def kind(self) -> str:

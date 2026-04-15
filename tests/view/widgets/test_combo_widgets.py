@@ -12,6 +12,7 @@ def test_model_combo_has_choices(qapp):
     assert "sonnet" in items
     assert "opus" in items
     assert "haiku" in items
+    assert w.currentText() == "sonnet"
 
 
 def test_effort_combo_has_choices(qapp):
