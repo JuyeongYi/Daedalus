@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from daedalus.model.validation import ValidationError, Validator
 from daedalus.model.fsm.state import SimpleState, CompositeState, ParallelState, Region
-from daedalus.model.fsm.pseudo import ChoiceState, HistoryState, EntryPoint, ExitPoint, TerminateState
+from daedalus.model.fsm.pseudo import ChoiceState, EntryPoint, ExitPoint, TerminateState
 from daedalus.model.fsm.transition import Transition
 from daedalus.model.fsm.machine import StateMachine
 from daedalus.model.fsm.variable import Variable, VariableScope
@@ -128,14 +128,6 @@ def test_choice_state_with_hooks_warns():
     errors = Validator.validate(sm)
     assert any(e.rule == "pseudo_state_hooks" for e in errors)
 
-
-def test_history_state_with_hooks_no_warning():
-    """HistoryState는 on_entry 훅 허용."""
-    action = Action(name="a", execution=LLMExecution(prompt="x"))
-    h = HistoryState(name="H", on_entry=[action])
-    sm = StateMachine(name="test", states=[h], initial_state=h)
-    errors = Validator.validate(sm)
-    assert not any(e.rule == "pseudo_state_hooks" for e in errors)
 
 
 def test_terminate_state_with_hooks_warns():

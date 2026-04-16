@@ -1,19 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal
 
 from daedalus.model.fsm.state import State
-
-
-@dataclass
-class HistoryState(State):
-    """재진입 시 마지막 위치에서 재개."""
-    mode: Literal["shallow", "deep"] = "shallow"
-
-    @property
-    def kind(self) -> str:
-        return "history"
 
 
 @dataclass
