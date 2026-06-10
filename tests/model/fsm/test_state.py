@@ -155,6 +155,5 @@ def test_states_are_hashable():
 
 def test_composite_state_requires_sub_machine():
     """sub_machine은 kw_only required (감사 1-4)."""
-    import pytest
     with pytest.raises(TypeError):
         CompositeState(name="agent")  # sub_machine 누락

@@ -27,6 +27,16 @@ def test_transition_basic():
     assert t.data_map == {}
 
 
+def test_transitions_are_identity_based():
+    """eq=False 가드 — 동일 내용 전이도 별개 인스턴스이고 hashable이다."""
+    s1 = SimpleState(name="A")
+    s2 = SimpleState(name="B")
+    a = Transition(source=s1, target=s2)
+    b = Transition(source=s1, target=s2)
+    assert a != b
+    assert len({a, b}) == 2
+
+
 def test_transition_with_guard():
     s1 = SimpleState(name="A")
     s2 = SimpleState(name="B")

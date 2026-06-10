@@ -36,6 +36,14 @@ def test_state_machine_defaults():
     assert sm.blackboard is not None
 
 
+def test_machines_are_identity_based():
+    """eq=False 가드 — 동일 내용 머신도 별개 인스턴스이고 hashable이다."""
+    a = StateMachine(name="m", initial_state=SimpleState(name="s"))
+    b = StateMachine(name="m", initial_state=SimpleState(name="s"))
+    assert a != b
+    assert len({a, b}) == 2
+
+
 def test_machine_membership_is_identity():
     """동명 복제 상태가 initial 검사를 통과하지 못한다 (false negative 제거)."""
     from daedalus.model.validation import Validator
