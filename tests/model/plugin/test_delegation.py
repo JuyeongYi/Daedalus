@@ -97,8 +97,15 @@ def test_all_defs_are_plugin_components():
         DynamicWorkflowDef(name="b", description=""),
         AgoraDispatchDef(name="c", description=""),
     ):
-        assert isinstance(d, (PluginComponent, DelegationDef))
+        assert isinstance(d, PluginComponent)
         assert isinstance(d, DelegationDef)
+
+
+def test_enum_values_are_serialization_contract():
+    assert WaitMode.WAIT.value == "wait"
+    assert WaitMode.FIRE_AND_FORGET.value == "forget"
+    assert DispatchMode.DISPATCH.value == "dispatch"
+    assert DispatchMode.BROADCAST.value == "broadcast"
 
 
 def test_project_holds_delegations():

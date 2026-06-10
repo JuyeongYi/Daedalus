@@ -34,6 +34,7 @@ class Validator:
         errors.extend(Validator._check_completion_events(sm))
         errors.extend(Validator._check_duplicate_skill_ref(sm.states))
         errors.extend(Validator._check_transfer_on_not_empty(sm.states))
+        errors.extend(Validator._check_delegation_states(sm))
         # 재귀
         for state in sm.states:
             if isinstance(state, CompositeState):
@@ -161,6 +162,7 @@ class Validator:
     @staticmethod
     def _check_duplicate_skill_ref(states: list) -> list[ValidationError]:
         from daedalus.model.fsm.state import SimpleState
+        from daedalus.model.plugin.delegation import DelegationDef
         seen: set[int] = set()
         errors: list[ValidationError] = []
         for state in states:
@@ -169,6 +171,8 @@ class Validator:
             ref = state.skill_ref
             if ref is None:
                 continue
+            if isinstance(ref, DelegationDef):
+                continue  # 위임 정의는 복수 배치 허용 (스펙 2절)
             ref_id = id(ref)
             if ref_id in seen:
                 errors.append(ValidationError(
@@ -214,5 +218,95 @@ class Validator:
                             f"최소 하나의 ExitPoint가 필요합니다."
                         ),
                         source=ref.name,
+                    ))
+        return errors
+
+    @staticmethod
+    def _check_delegation_states(sm: StateMachine) -> list[ValidationError]:
+        """위임 노드의 내용 누락(empty_delegation)과
+        forget 모드 결과 분기(forget_completion_mismatch)를 검사."""
+        from daedalus.model.fsm.state import SimpleState
+        from daedalus.model.plugin.delegation import (
+            AgoraDispatchDef,
+            DelegationDef,
+            DynamicWorkflowDef,
+            TeamSpawnDef,
+            WaitMode,
+        )
+        errors: list[ValidationError] = []
+        for state in sm.states:
+            if not isinstance(state, SimpleState):
+                continue
+            ref = state.skill_ref
+            if not isinstance(ref, DelegationDef):
+                continue
+            empty_msg = None
+            if isinstance(ref, TeamSpawnDef):
+                if not ref.teammates:
+                    empty_msg = f"'{ref.name}' 팀에 팀원이 없습니다."
+                elif any(tm.count < 1 for tm in ref.teammates):
+                    empty_msg = f"'{ref.name}' 팀원의 count가 1 미만입니다."
+            elif isinstance(ref, DynamicWorkflowDef) and not ref.objective:
+                empty_msg = f"'{ref.name}' 워크플로의 objective가 비어 있습니다."
+            elif isinstance(ref, AgoraDispatchDef) and not ref.msgtype:
+                empty_msg = f"'{ref.name}' 송신의 msgtype이 비어 있습니다."
+            if empty_msg:
+                errors.append(ValidationError(
+                    rule="empty_delegation",
+                    message=empty_msg,
+                    source=state.name,
+                ))
+            if ref.wait_mode is WaitMode.FIRE_AND_FORGET:
+                completion_names = {
+                    t.trigger.name
+                    for t in sm.transitions
+                    if t.source is state and isinstance(t.trigger, CompletionEvent)
+                }
+                if len(completion_names) > 1:
+                    errors.append(ValidationError(
+                        rule="forget_completion_mismatch",
+                        message=(
+                            f"'{state.name}'은 forget 모드인데 결과 분기"
+                            f"({len(completion_names)}개 이벤트)를 시도합니다. "
+                            f"결과가 없으므로 단일 진행만 유효합니다."
+                        ),
+                        source=state.name,
+                    ))
+        return errors
+
+    @staticmethod
+    def validate_project(project) -> list[ValidationError]:
+        """프로젝트 전체 검증 — 모든 FSM의 머신 수준 규칙 + 프로젝트 수준 규칙."""
+        errors: list[ValidationError] = []
+        for skill in project.skills:
+            fsm = getattr(skill, "fsm", None)
+            if fsm is not None:
+                errors.extend(Validator._validate_machine(fsm))
+        for agent in project.agents:
+            errors.extend(Validator._validate_machine(agent.fsm))
+        errors.extend(Validator._check_dangling_delegation_refs(project))
+        return errors
+
+    @staticmethod
+    def _check_dangling_delegation_refs(project) -> list[ValidationError]:
+        """위임 정의의 agent_ref가 프로젝트 agents에 실존하는지 검사."""
+        from daedalus.model.plugin.delegation import DynamicWorkflowDef, TeamSpawnDef
+        known = {id(a) for a in project.agents}
+        errors: list[ValidationError] = []
+        for d in project.delegations:
+            refs: list = []
+            if isinstance(d, TeamSpawnDef):
+                refs = [tm.agent_ref for tm in d.teammates]
+            elif isinstance(d, DynamicWorkflowDef):
+                refs = [ph.agent_ref for ph in d.phases if ph.agent_ref is not None]
+            for ref in refs:
+                if id(ref) not in known:
+                    errors.append(ValidationError(
+                        rule="dangling_teammate_ref",
+                        message=(
+                            f"위임 '{d.name}'이 프로젝트에 없는 에이전트 "
+                            f"'{ref.name}'을 참조합니다."
+                        ),
+                        source=d.name,
                     ))
         return errors
