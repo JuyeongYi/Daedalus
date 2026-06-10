@@ -34,3 +34,13 @@ def test_state_machine_defaults():
     assert sm.transitions == []
     assert sm.final_states == []
     assert sm.blackboard is not None
+
+
+def test_machine_membership_is_identity():
+    """동명 복제 상태가 initial 검사를 통과하지 못한다 (false negative 제거)."""
+    from daedalus.model.validation import Validator
+    real = SimpleState(name="start")
+    imposter = SimpleState(name="start")
+    sm = StateMachine(name="m", states=[real], initial_state=imposter)
+    errors = Validator.validate(sm)
+    assert any(e.rule == "initial_state_in_states" for e in errors)

@@ -7,7 +7,7 @@ from daedalus.model.fsm.state import State
 from daedalus.model.fsm.transition import Transition
 
 
-@dataclass
+@dataclass(eq=False)
 class StateMachine:
     name: str
     initial_state: State

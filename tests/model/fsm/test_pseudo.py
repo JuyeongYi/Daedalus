@@ -36,3 +36,11 @@ def test_exit_point_default_color():
 def test_exit_point_custom_color():
     xp = ExitPoint(name="error", color="#cc3333")
     assert xp.color == "#cc3333"
+
+
+def test_pseudo_states_are_distinct_by_identity():
+    """pseudo 서브클래스도 eq=False 적용 — 동명 인스턴스는 별개 (감사 1-5)."""
+    a = EntryPoint(name="e")
+    b = EntryPoint(name="e")
+    assert a != b
+    assert a == a

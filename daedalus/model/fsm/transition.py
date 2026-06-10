@@ -20,7 +20,7 @@ class TransitionType(Enum):
     LOCAL = "local"
 
 
-@dataclass
+@dataclass(eq=False)
 class Transition:
     source: State
     target: State

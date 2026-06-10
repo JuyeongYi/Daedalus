@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from daedalus.model.plugin.skill import DeclarativeSkill, ProceduralSkill
 
 
-@dataclass
+@dataclass(eq=False)
 class State(ABC):
     name: str
     on_entry_start: list[Action] = field(default_factory=list)
@@ -33,7 +33,7 @@ class State(ABC):
         """상태 종류 식별자."""
 
 
-@dataclass
+@dataclass(eq=False)
 class SimpleState(State):
     """리프 상태. 하위 상태 없음."""
     skill_ref: ProceduralSkill | DeclarativeSkill | AgentDefinition | None = None
@@ -43,24 +43,24 @@ class SimpleState(State):
         return "simple"
 
 
-@dataclass
+@dataclass(eq=False)
 class Region:
     """ParallelState 내 독립 실행 단위."""
     name: str
     sub_machine: StateMachine
 
 
-@dataclass
+@dataclass(eq=False)
 class CompositeState(State):
     """별도 컨텍스트의 상태 기계."""
-    sub_machine: StateMachine = None
+    sub_machine: StateMachine = field(kw_only=True)
 
     @property
     def kind(self) -> str:
         return "composite"
 
 
-@dataclass
+@dataclass(eq=False)
 class ParallelState(State):
     """병렬 리전. 동시 실행."""
     regions: list[Region] = field(default_factory=list)

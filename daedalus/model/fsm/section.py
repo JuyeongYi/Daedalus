@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 
-@dataclass
+@dataclass(eq=False)
 class Section:
     """자유 콘텐츠 섹션 (H1–H6 계층)."""
     title: str

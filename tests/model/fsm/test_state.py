@@ -136,3 +136,25 @@ def test_simple_state_skill_ref_can_be_cleared():
     s = SimpleState(name="ctx", skill_ref=skill)
     s.skill_ref = None
     assert s.skill_ref is None
+
+
+def test_same_name_states_are_distinct():
+    """eq=False — 동명 상태는 별개 인스턴스다 (감사 1-5)."""
+    a = SimpleState(name="x")
+    b = SimpleState(name="x")
+    assert a != b
+    assert a == a
+
+
+def test_states_are_hashable():
+    """eq=False — set/dict 키로 사용 가능 (CLAUDE.md unhashable 제약 해소)."""
+    a = SimpleState(name="x")
+    b = SimpleState(name="x")
+    assert len({a, b}) == 2
+
+
+def test_composite_state_requires_sub_machine():
+    """sub_machine은 kw_only required (감사 1-4)."""
+    import pytest
+    with pytest.raises(TypeError):
+        CompositeState(name="agent")  # sub_machine 누락
