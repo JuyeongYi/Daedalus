@@ -57,9 +57,12 @@ _FIELD_ENUM_MAP: dict[SkillField, type] = {
     SkillField.SHELL: SkillShell,
 }
 
-# list[str] 타입인 필드 집합 — uncheck 시 None 대신 [] 로 클리어,
-# QLineEdit write-back 시 공백 split으로 list 변환 (로드 측 join과 대칭)
-# 주의: HOOKS는 dict[str, Any] 필드이므로 여기에 포함하지 않는다 (클리어는 None).
+# list[str] 타입인 필드 집합 —
+# 1) QLineEdit write-back 시 공백 split으로 list 변환 (로드 측 join과 대칭)
+# 2) 선언 기본값(default)이 MISSING일 때 클리어 폴백을 []로 결정
+# 클리어 자체는 _declared_default가 dataclass 선언 기본값으로 처리하므로
+# PATHS(default None)는 자연히 None으로 정규화된다.
+# 주의: HOOKS는 dict[str, Any] 필드이므로 여기에 포함하지 않는다.
 _LIST_FIELDS: set[SkillField] = {SkillField.ALLOWED_TOOLS, SkillField.PATHS}
 
 
@@ -258,36 +261,48 @@ class _FrontmatterPanel(QScrollArea):
             elif current is not None:
                 widget.setText(str(current))
 
+    @staticmethod
+    def _read_widget_value(fld: SkillField, widget: QWidget) -> object:
+        """위젯의 현재 표시값을 추출한다 (시그널 연결과 재체크 복원이 공유)."""
+        from PyQt6.QtWidgets import QComboBox, QCheckBox, QLineEdit, QTextEdit
+        from daedalus.view.widgets.tag_input import TagInput
+        from daedalus.view.widgets.preset_picker import PresetPicker
+
+        if isinstance(widget, QComboBox):
+            return widget.currentText()
+        if isinstance(widget, QCheckBox):
+            return widget.isChecked()
+        if isinstance(widget, TagInput):
+            return widget.get_tags()
+        if isinstance(widget, PresetPicker):
+            return widget.get_selected()
+        if isinstance(widget, QTextEdit):
+            return widget.toPlainText()
+        if isinstance(widget, QLineEdit):
+            return widget.text()
+        return None
+
     def _connect_widget_signal(self, fld: SkillField, widget: QWidget) -> None:
         """위젯 타입에 맞는 시그널을 공용 핸들러에 연결한다."""
         from PyQt6.QtWidgets import QComboBox, QCheckBox, QLineEdit, QTextEdit
         from daedalus.view.widgets.tag_input import TagInput
         from daedalus.view.widgets.preset_picker import PresetPicker
 
+        def handler(*_args, f=fld, w=widget) -> None:
+            self._write_field(f, self._read_widget_value(f, w))
+
         if isinstance(widget, QComboBox):
-            widget.currentTextChanged.connect(
-                lambda val, f=fld: self._write_field(f, val)
-            )
+            widget.currentTextChanged.connect(handler)
         elif isinstance(widget, QCheckBox):
-            widget.toggled.connect(
-                lambda checked, f=fld: self._write_field(f, checked)
-            )
+            widget.toggled.connect(handler)
         elif isinstance(widget, TagInput):
-            widget.tags_changed.connect(
-                lambda f=fld, w=widget: self._write_field(f, w.get_tags())
-            )
+            widget.tags_changed.connect(handler)
         elif isinstance(widget, PresetPicker):
-            widget.selection_changed.connect(
-                lambda f=fld, w=widget: self._write_field(f, w.get_selected())
-            )
+            widget.selection_changed.connect(handler)
         elif isinstance(widget, QTextEdit):
-            widget.textChanged.connect(
-                lambda f=fld, w=widget: self._write_field(f, w.toPlainText())
-            )
+            widget.textChanged.connect(handler)
         elif isinstance(widget, QLineEdit):
-            widget.editingFinished.connect(
-                lambda f=fld, w=widget: self._write_field(f, w.text())
-            )
+            widget.editingFinished.connect(handler)
 
     def _write_field(self, fld: SkillField, value: object) -> None:
         """write-back: 위젯 값을 config 또는 component에 기록하고 changed를 emit한다."""
@@ -327,15 +342,48 @@ class _FrontmatterPanel(QScrollArea):
         setattr(config, attr, value)
         self.changed.emit()
 
+    @staticmethod
+    def _declared_default(obj: object, attr: str, fld: SkillField) -> object:
+        """dataclass 선언 기본값(default / default_factory)을 조회한다.
+
+        non-Optional 필드(context, shell, user_invocable 등)에 None을 기록해
+        타입 계약을 깨지 않도록, 클리어 값은 선언 기본값으로 결정한다.
+        default가 MISSING이면 기존 규칙(None / list 필드는 [])으로 폴백.
+        """
+        import dataclasses
+
+        if dataclasses.is_dataclass(obj):
+            for f in dataclasses.fields(obj):
+                if f.name != attr:
+                    continue
+                if f.default is not dataclasses.MISSING:
+                    return f.default
+                if f.default_factory is not dataclasses.MISSING:  # type: ignore[misc]
+                    return f.default_factory()  # type: ignore[misc]
+                break
+        return [] if fld in _LIST_FIELDS else None
+
     def _on_optional_toggled(self, fld: SkillField, checked: bool) -> None:
-        """_OptionalRow 체크 해제 시 config/component 값을 None 또는 []로 클리어한다."""
-        if self._loading or checked:
+        """_OptionalRow 토글 처리.
+
+        - 해제: config/component 값을 dataclass 선언 기본값으로 리셋
+        - 재체크: 위젯에 남아있는 표시값을 모델에 복원 (silent divergence 방지)
+        """
+        if self._loading:
+            return
+
+        if checked:
+            widget = self._field_widgets.get(fld)
+            if widget is not None:
+                self._write_field(fld, self._read_widget_value(fld, widget))
             return
 
         config = getattr(self._component, "config", None)
 
         if fld == SkillField.WHEN_TO_USE:
-            self._component.when_to_use = ""  # type: ignore[attr-defined]
+            self._component.when_to_use = self._declared_default(  # type: ignore[attr-defined]
+                self._component, "when_to_use", fld
+            )
             self.changed.emit()
             return
 
@@ -343,8 +391,7 @@ class _FrontmatterPanel(QScrollArea):
         if attr is None or config is None:
             return
 
-        clear_value: object = [] if fld in _LIST_FIELDS else None
-        setattr(config, attr, clear_value)
+        setattr(config, attr, self._declared_default(config, attr, fld))
         self.changed.emit()
 
     def _save_name(self) -> None:

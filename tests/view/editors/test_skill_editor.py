@@ -315,6 +315,52 @@ def test_optional_row_uncheck_clears_value(qapp):
     )
 
 
+def test_user_invocable_uncheck_restores_declared_default(qapp):
+    """non-Optional 필드(user_invocable: bool = True)는 행 해제 시 None이 아닌
+    dataclass 선언 기본값으로 리셋된다 (Issue 1)."""
+    from daedalus.view.editors.skill_editor import _FrontmatterPanel, _OptionalRow
+    from daedalus.model.plugin.enums import SkillField
+    comp = _make_procedural()
+    assert comp.config.user_invocable is True  # 선언 기본값
+    panel = _FrontmatterPanel(comp)
+
+    widget = panel._field_widgets.get(SkillField.USER_INVOCABLE)
+    assert widget is not None, "user_invocable 위젯 없음"
+    parent = widget.parent()
+    assert isinstance(parent, _OptionalRow), "user_invocable이 _OptionalRow 안에 없음"
+
+    parent.set_checked(False)
+    assert comp.config.user_invocable is True, (
+        f"user_invocable이 선언 기본값(True)으로 리셋되지 않음: "
+        f"{comp.config.user_invocable!r}"
+    )
+
+
+def test_optional_recheck_restores_widget_value(qapp):
+    """행 해제 → 재체크 시 위젯 표시값이 config에 복원된다 (Issue 2)."""
+    from daedalus.view.editors.skill_editor import _FrontmatterPanel, _OptionalRow
+    from daedalus.model.plugin.enums import EffortLevel, SkillField
+    comp = _make_procedural()
+    comp.config.effort = EffortLevel.HIGH
+    panel = _FrontmatterPanel(comp)
+
+    widget = panel._field_widgets[SkillField.EFFORT]
+    parent = widget.parent()
+    assert isinstance(parent, _OptionalRow)
+    assert widget.currentText() == "high"  # 로드 확인
+
+    # 해제: 선언 기본값(None)으로 클리어, 위젯은 여전히 "high" 표시
+    parent.set_checked(False)
+    assert comp.config.effort is None
+    assert widget.currentText() == "high"
+
+    # 재체크: 위젯 표시값이 모델에 복원되어야 함
+    parent.set_checked(True)
+    assert comp.config.effort == EffortLevel.HIGH, (
+        f"재체크 시 위젯 값이 복원되지 않음: {comp.config.effort!r}"
+    )
+
+
 def test_paths_writes_back_as_list(qapp):
     """PATHS(QLineEdit) 입력이 str이 아닌 list[str]로 config.paths에 기록된다 (결함 1)."""
     from daedalus.view.editors.skill_editor import _FrontmatterPanel, _OptionalRow
