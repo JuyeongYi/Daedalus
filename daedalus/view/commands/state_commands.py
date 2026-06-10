@@ -6,13 +6,20 @@ from daedalus.view.commands.base import Command
 from daedalus.view.viewmodel.state_vm import StateViewModel
 
 if TYPE_CHECKING:
+    from daedalus.model.fsm.machine import StateMachine
     from daedalus.view.viewmodel.project_vm import ProjectViewModel
 
 
 class CreateStateCmd(Command):
-    def __init__(self, project_vm: ProjectViewModel, state_vm: StateViewModel) -> None:
+    def __init__(
+        self,
+        project_vm: ProjectViewModel,
+        state_vm: StateViewModel,
+        fsm: StateMachine | None = None,
+    ) -> None:
         self._project_vm = project_vm
         self._state_vm = state_vm
+        self._fsm = fsm
 
     @property
     def description(self) -> str:
@@ -25,15 +32,25 @@ class CreateStateCmd(Command):
 
     def execute(self) -> None:
         self._project_vm.add_state_vm(self._state_vm)
+        if self._fsm is not None and self._state_vm.model not in self._fsm.states:
+            self._fsm.states.append(self._state_vm.model)
 
     def undo(self) -> None:
         self._project_vm.remove_state_vm(self._state_vm)
+        if self._fsm is not None and self._state_vm.model in self._fsm.states:
+            self._fsm.states.remove(self._state_vm.model)
 
 
 class DeleteStateCmd(Command):
-    def __init__(self, project_vm: ProjectViewModel, state_vm: StateViewModel) -> None:
+    def __init__(
+        self,
+        project_vm: ProjectViewModel,
+        state_vm: StateViewModel,
+        fsm: StateMachine | None = None,
+    ) -> None:
         self._project_vm = project_vm
         self._state_vm = state_vm
+        self._fsm = fsm
 
     @property
     def description(self) -> str:
@@ -45,9 +62,13 @@ class DeleteStateCmd(Command):
 
     def execute(self) -> None:
         self._project_vm.remove_state_vm(self._state_vm)
+        if self._fsm is not None and self._state_vm.model in self._fsm.states:
+            self._fsm.states.remove(self._state_vm.model)
 
     def undo(self) -> None:
         self._project_vm.add_state_vm(self._state_vm)
+        if self._fsm is not None and self._state_vm.model not in self._fsm.states:
+            self._fsm.states.append(self._state_vm.model)
 
 
 class MoveStateCmd(Command):
