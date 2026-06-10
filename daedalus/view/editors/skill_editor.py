@@ -57,8 +57,10 @@ _FIELD_ENUM_MAP: dict[SkillField, type] = {
     SkillField.SHELL: SkillShell,
 }
 
-# list 타입인 필드 집합 — uncheck 시 None 대신 [] 로 클리어
-_LIST_FIELDS: set[SkillField] = {SkillField.ALLOWED_TOOLS, SkillField.PATHS, SkillField.HOOKS}
+# list[str] 타입인 필드 집합 — uncheck 시 None 대신 [] 로 클리어,
+# QLineEdit write-back 시 공백 split으로 list 변환 (로드 측 join과 대칭)
+# 주의: HOOKS는 dict[str, Any] 필드이므로 여기에 포함하지 않는다 (클리어는 None).
+_LIST_FIELDS: set[SkillField] = {SkillField.ALLOWED_TOOLS, SkillField.PATHS}
 
 
 _COLOR_PRESETS = [
@@ -224,6 +226,7 @@ class _FrontmatterPanel(QScrollArea):
         """현재 값(config / component)을 위젯에 채운다."""
         from PyQt6.QtWidgets import QComboBox, QCheckBox, QLineEdit, QTextEdit
         from daedalus.view.widgets.tag_input import TagInput
+        from daedalus.view.widgets.preset_picker import PresetPicker
         current = _FrontmatterPanel._get_current(config, component, fld)
 
         if isinstance(widget, QComboBox):
@@ -241,6 +244,10 @@ class _FrontmatterPanel(QScrollArea):
         elif isinstance(widget, TagInput):
             if isinstance(current, list):
                 widget.set_tags(current)
+        elif isinstance(widget, PresetPicker):
+            # hooks: dict[str, Any] — 키 집합 ↔ 선택된 프리셋 이름 목록
+            if isinstance(current, dict):
+                widget.set_selected(list(current.keys()))
         elif isinstance(widget, QTextEdit):
             if current is not None:
                 widget.setPlainText(str(current))
@@ -305,6 +312,17 @@ class _FrontmatterPanel(QScrollArea):
                 value = enum_type(value)
             except ValueError:
                 return  # 알 수 없는 값은 무시
+
+        # list[str] 필드: QLineEdit 경유 str 입력을 공백 split (로드 측 join과 대칭)
+        if fld in _LIST_FIELDS and isinstance(value, str):
+            value = value.split()
+
+        # hooks: dict[str, Any] 필드 — PresetPicker의 이름 목록을 dict로 변환,
+        # 이미 존재하는 키의 본문은 보존
+        if fld == SkillField.HOOKS and isinstance(value, list):
+            existing = getattr(config, attr, None)
+            existing = existing if isinstance(existing, dict) else {}
+            value = {name: existing.get(name, {}) for name in value}
 
         setattr(config, attr, value)
         self.changed.emit()

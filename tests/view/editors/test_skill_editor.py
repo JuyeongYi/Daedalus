@@ -315,6 +315,95 @@ def test_optional_row_uncheck_clears_value(qapp):
     )
 
 
+def test_paths_writes_back_as_list(qapp):
+    """PATHS(QLineEdit) 입력이 str이 아닌 list[str]로 config.paths에 기록된다 (결함 1)."""
+    from daedalus.view.editors.skill_editor import _FrontmatterPanel, _OptionalRow
+    from daedalus.model.plugin.enums import SkillField
+    from PyQt6.QtWidgets import QLineEdit
+    comp = _make_procedural()
+    panel = _FrontmatterPanel(comp)
+
+    widget = panel._field_widgets.get(SkillField.PATHS)
+    assert widget is not None and isinstance(widget, QLineEdit), "paths QLineEdit 없음"
+
+    parent = widget.parent()
+    if isinstance(parent, _OptionalRow):
+        parent.set_checked(True)
+
+    widget.setText("docs/a.md docs/b.md")
+    widget.editingFinished.emit()
+    assert comp.config.paths == ["docs/a.md", "docs/b.md"], (
+        f"paths가 list로 변환되지 않음: {comp.config.paths!r}"
+    )
+
+    # 빈 문자열은 빈 리스트로
+    widget.setText("")
+    widget.editingFinished.emit()
+    assert comp.config.paths == [], f"빈 입력이 []가 아님: {comp.config.paths!r}"
+
+
+def test_hooks_load_into_picker_and_toggle_keeps_dict(qapp, tmp_path, monkeypatch):
+    """hooks dict가 PresetPicker에 로드되고, 토글 후에도 dict 타입이 유지된다 (결함 2)."""
+    from daedalus.model.plugin.enums import SkillField
+    from daedalus.view.widgets.preset_picker import PresetPicker
+
+    # HookPresetPicker는 cwd 기준 .claude/hooks/*.json을 스캔
+    hooks_dir = tmp_path / ".claude" / "hooks"
+    hooks_dir.mkdir(parents=True)
+    (hooks_dir / "lint.json").write_text("{}", encoding="utf-8")
+    (hooks_dir / "fmt.json").write_text("{}", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    from daedalus.view.editors.skill_editor import _FrontmatterPanel
+    comp = _make_procedural()
+    comp.config.hooks = {"lint": {"cmd": "ruff"}}
+    panel = _FrontmatterPanel(comp)
+
+    picker = panel._field_widgets.get(SkillField.HOOKS)
+    assert picker is not None and isinstance(picker, PresetPicker), "hooks PresetPicker 없음"
+
+    # (b-1) 로드: hooks dict의 키가 picker에 선택 상태로 반영
+    assert picker.get_selected() == ["lint"], (
+        f"hooks 로드 실패: {picker.get_selected()!r}"
+    )
+
+    # (b-2) 토글: dict 타입 유지 + 기존 본문 보존
+    picker._checkboxes["fmt"].setChecked(True)
+    assert isinstance(comp.config.hooks, dict), (
+        f"hooks가 dict가 아님: {type(comp.config.hooks)!r}"
+    )
+    assert set(comp.config.hooks.keys()) == {"lint", "fmt"}, (
+        f"hooks 키 불일치: {comp.config.hooks!r}"
+    )
+    assert comp.config.hooks["lint"] == {"cmd": "ruff"}, (
+        f"기존 hook 본문이 보존되지 않음: {comp.config.hooks['lint']!r}"
+    )
+
+
+def test_hooks_optional_uncheck_clears_to_none(qapp, tmp_path, monkeypatch):
+    """hooks _OptionalRow 해제 시 []가 아닌 None으로 클리어된다 (dict 필드)."""
+    from daedalus.model.plugin.enums import SkillField
+    from daedalus.view.editors.skill_editor import _OptionalRow
+
+    hooks_dir = tmp_path / ".claude" / "hooks"
+    hooks_dir.mkdir(parents=True)
+    (hooks_dir / "lint.json").write_text("{}", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    from daedalus.view.editors.skill_editor import _FrontmatterPanel
+    comp = _make_procedural()
+    comp.config.hooks = {"lint": {}}
+    panel = _FrontmatterPanel(comp)
+
+    picker = panel._field_widgets[SkillField.HOOKS]
+    parent = picker.parent()
+    assert isinstance(parent, _OptionalRow)
+    parent.set_checked(False)
+    assert comp.config.hooks is None, (
+        f"hooks가 None으로 클리어되지 않음: {comp.config.hooks!r}"
+    )
+
+
 def test_writeback_survives_panel_rebuild(qapp):
     """write-back된 값이 패널 재생성 후에도 다시 로드된다 (왕복)."""
     from daedalus.view.editors.skill_editor import _FrontmatterPanel
