@@ -114,3 +114,13 @@ def test_create_transition_cmd_without_fsm_keeps_legacy_behavior():
     assert tvm in vm.transition_vms
     cmd.undo()
     assert tvm not in vm.transition_vms
+
+
+def test_create_transition_cmd_execute_is_idempotent_on_fsm():
+    """redo 시 fsm.transitions에 중복 추가되지 않아야 한다."""
+    vm, fsm, model, tvm = _make_transition_fixture()
+    cmd = CreateTransitionCmd(vm, tvm, fsm=fsm)
+    cmd.execute()
+    cmd.undo()
+    cmd.execute()  # redo
+    assert sum(1 for t in fsm.transitions if t is model) == 1

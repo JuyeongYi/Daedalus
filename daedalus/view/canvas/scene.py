@@ -71,6 +71,7 @@ class FsmScene(QGraphicsScene):
         self._ref_node_items: dict[ReferenceViewModel, ReferenceNodeItem] = {}
         self._ref_edge_items: dict[ReferenceLinkViewModel, ReferenceEdgeItem] = {}
         self._state_counter = 0
+        self._target_fsm: StateMachine | None = None  # AgentFsmScene만 설정 — 모델 동기화 대상
         self.setBackgroundBrush(_BG_COLOR)
         self.setSceneRect(-2000, -2000, 4000, 4000)
 
@@ -220,7 +221,7 @@ class FsmScene(QGraphicsScene):
                     tvm = TransitionViewModel(
                         model=model, source_vm=src_vm, target_vm=tgt_vm
                     )
-                    cmds: list[Command] = [CreateTransitionCmd(self._project_vm, tvm)]
+                    cmds: list[Command] = [CreateTransitionCmd(self._project_vm, tvm, fsm=self._target_fsm)]
                     # call_agent 연결 시 caller/callee 양쪽에 섹션 강제 생성
                     if is_agent_call and tgt_is_agent:
                         sec_cmds = self._make_agent_call_section_cmds(src_ref, tgt_ref, event_name)
@@ -279,7 +280,7 @@ class FsmScene(QGraphicsScene):
         self._state_counter += 1
         model = SimpleState(name=skill.name, skill_ref=skill)  # type: ignore[arg-type,union-attr]
         vm = StateViewModel(model=model, x=scene_pos.x(), y=scene_pos.y())
-        self._project_vm.execute(CreateStateCmd(self._project_vm, vm))
+        self._project_vm.execute(CreateStateCmd(self._project_vm, vm, fsm=self._target_fsm))
 
     # --- 컨텍스트 메뉴 ---
 
@@ -348,7 +349,7 @@ class FsmScene(QGraphicsScene):
         self._state_counter += 1
         model = SimpleState(name=f"State_{self._state_counter}")
         vm = StateViewModel(model=model, x=pos.x(), y=pos.y())
-        self._project_vm.execute(CreateStateCmd(self._project_vm, vm))
+        self._project_vm.execute(CreateStateCmd(self._project_vm, vm, fsm=self._target_fsm))
 
     def _delete_state(self, state_vm: StateViewModel) -> None:
         ref = getattr(state_vm.model, "skill_ref", None)
@@ -376,8 +377,8 @@ class FsmScene(QGraphicsScene):
             event_name = trigger.name if trigger is not None else ""
             if isinstance(src_ref, ProceduralSkill) and isinstance(tgt_ref, AgentDefinition):
                 children.extend(self._find_agent_call_section_cmds(src_ref, tgt_ref, event_name))
-            children.append(DeleteTransitionCmd(self._project_vm, t))
-        children.append(DeleteStateCmd(self._project_vm, state_vm))
+            children.append(DeleteTransitionCmd(self._project_vm, t, fsm=self._target_fsm))
+        children.append(DeleteStateCmd(self._project_vm, state_vm, fsm=self._target_fsm))
         self._project_vm.execute(
             MacroCommand(children=children, description=f"상태 '{state_vm.model.name}' 삭제")
         )
@@ -389,13 +390,13 @@ class FsmScene(QGraphicsScene):
         event_name = trigger.name if trigger is not None else ""
         if isinstance(src_ref, ProceduralSkill) and isinstance(tgt_ref, AgentDefinition):
             sec_cmds = self._find_agent_call_section_cmds(src_ref, tgt_ref, event_name)
-            cmds: list[Command] = sec_cmds + [DeleteTransitionCmd(self._project_vm, tvm)]
+            cmds: list[Command] = sec_cmds + [DeleteTransitionCmd(self._project_vm, tvm, fsm=self._target_fsm)]
             self._project_vm.execute(MacroCommand(
                 children=cmds,
                 description=f"에이전트 호출 '{event_name}→{tgt_ref.name}' 삭제",
             ))
         else:
-            self._project_vm.execute(DeleteTransitionCmd(self._project_vm, tvm))
+            self._project_vm.execute(DeleteTransitionCmd(self._project_vm, tvm, fsm=self._target_fsm))
 
     # --- call_agent 섹션 관리 ---
 
@@ -682,6 +683,7 @@ class AgentFsmScene(FsmScene):
     ) -> None:
         super().__init__(project_vm, skill_lookup=skill_lookup)
         self._agent_fsm = agent_fsm
+        self._target_fsm = agent_fsm
         self._agent_skills: list = agent_skills if agent_skills is not None else []
         self._agent_ref_placements: list = agent_ref_placements if agent_ref_placements is not None else []
 
@@ -867,7 +869,7 @@ class AgentFsmScene(FsmScene):
         from daedalus.view.commands.exit_point_commands import DeleteExitPointCmd
         transitions = self._project_vm.get_transitions_for(state_vm)
         children: list[Command] = [
-            DeleteTransitionCmd(self._project_vm, t) for t in transitions
+            DeleteTransitionCmd(self._project_vm, t, fsm=self._target_fsm) for t in transitions
         ]
         children.append(DeleteExitPointCmd(self._agent_fsm, model))
         children.append(DeleteStateCmd(self._project_vm, state_vm))
