@@ -22,7 +22,7 @@ def _make_agent_fsm() -> StateMachine:
     )
 
 
-def _make_scene(qapp):
+def _make_scene():
     vm = ProjectViewModel()
     fsm = _make_agent_fsm()
     scene = AgentFsmScene(vm, agent_fsm=fsm)
@@ -30,7 +30,7 @@ def _make_scene(qapp):
 
 
 def test_create_state_syncs_to_agent_fsm(qapp):
-    vm, fsm, scene = _make_scene(qapp)
+    vm, fsm, scene = _make_scene()
     scene._create_state(QPointF(50, 60))
 
     created = [s for s in fsm.states if s.name == "State_1"]
@@ -41,7 +41,7 @@ def test_create_state_syncs_to_agent_fsm(qapp):
 
 
 def test_delete_state_syncs_to_agent_fsm(qapp):
-    vm, fsm, scene = _make_scene(qapp)
+    vm, fsm, scene = _make_scene()
     state = SimpleState(name="victim")
     fsm.states.append(state)
     svm = StateViewModel(model=state, x=0, y=0)
@@ -55,7 +55,7 @@ def test_delete_state_syncs_to_agent_fsm(qapp):
 
 
 def test_delete_transition_syncs_to_agent_fsm(qapp):
-    vm, fsm, scene = _make_scene(qapp)
+    vm, fsm, scene = _make_scene()
     a, b = fsm.states[0], fsm.states[1]
     model = Transition(source=a, target=b, trigger=CompletionEvent(name="done"))
     fsm.transitions.append(model)
@@ -74,7 +74,7 @@ def test_delete_transition_syncs_to_agent_fsm(qapp):
 
 def test_delete_exit_point_does_not_double_remove(qapp):
     """ExitPoint 삭제는 DeleteExitPointCmd가 fsm을 처리 — 이중 제거/이중 복원 금지."""
-    vm, fsm, scene = _make_scene(qapp)
+    vm, fsm, scene = _make_scene()
     extra = ExitPoint(name="alt_exit")
     fsm.states.append(extra)
     fsm.final_states.append(extra)
@@ -96,3 +96,25 @@ def test_project_scene_does_not_touch_fsm(qapp):
     scene = FsmScene(vm)
     scene._create_state(QPointF(0, 0))
     assert len(vm.state_vms) == 1  # VM에만 추가, 크래시 없음
+
+
+def test_drop_skill_syncs_to_agent_fsm(qapp):
+    """실사용 경로(drop_skill)로 만든 노드도 agent.fsm에 동기화된다."""
+    from daedalus.model.plugin.skill import ProceduralSkill
+
+    vm = ProjectViewModel()
+    fsm = _make_agent_fsm()
+    s = SimpleState(name="start")
+    skill = ProceduralSkill(
+        fsm=StateMachine(name="p_fsm", states=[s], initial_state=s),
+        name="proc", description="",
+    )
+    scene = AgentFsmScene(
+        vm, agent_fsm=fsm,
+        skill_lookup=lambda n: skill if n == "proc" else None,
+    )
+    scene.drop_skill("proc", QPointF(10, 20))
+    assert any(getattr(st, "skill_ref", None) is skill for st in fsm.states)
+
+    vm.command_stack.undo()
+    assert not any(getattr(st, "skill_ref", None) is skill for st in fsm.states)

@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+from PyQt6.QtCore import QPointF
 from PyQt6.QtWidgets import QTabWidget
 
 from daedalus.model.fsm.machine import StateMachine
 from daedalus.model.fsm.pseudo import EntryPoint, ExitPoint
+from daedalus.model.fsm.state import SimpleState
 from daedalus.model.plugin.agent import AgentDefinition
+from daedalus.model.plugin.skill import ProceduralSkill
 
 
 def _make_agent():
@@ -165,6 +168,61 @@ def test_agent_fsm_scene_delete_key_does_not_remove_entry_point(qapp):
     # EntryPoint는 삭제되지 않아야 함
     assert len(fsm.states) == before_count
     assert entry in fsm.states
+
+
+def _make_agent_with_skill() -> tuple[AgentDefinition, ProceduralSkill]:
+    entry = EntryPoint(name="entry")
+    done = ExitPoint(name="done")
+    fsm = StateMachine(
+        name="a_fsm", states=[entry, done],
+        initial_state=entry, final_states=[done],
+    )
+    agent = AgentDefinition(fsm=fsm, name="a", description="")
+    s = SimpleState(name="start")
+    skill = ProceduralSkill(
+        fsm=StateMachine(name="p_fsm", states=[s], initial_state=s),
+        name="proc", description="",
+    )
+    agent.skills.append(skill)
+    return agent, skill
+
+
+def test_canvas_skill_node_survives_reopen(qapp):
+    """drop_skill로 만든 노드가 에디터 재생성(탭 재오픈) 후 복원된다."""
+    from daedalus.view.editors.agent_editor import AgentEditor
+
+    agent, skill = _make_agent_with_skill()
+    editor1 = AgentEditor(agent)
+    editor1._graph_scene.drop_skill("proc", QPointF(120, 80))
+    assert any(
+        getattr(s, "skill_ref", None) is skill for s in agent.fsm.states
+    ), "드롭한 스킬 노드가 agent.fsm.states에 있어야 한다"
+    editor1._graph_scene.close()
+
+    editor2 = AgentEditor(agent)
+    names = [vm.model.name for vm in editor2._graph_vm.state_vms]
+    assert "proc" in names, "재오픈 시 캔버스 상태가 복원되어야 한다"
+    editor2._graph_scene.close()
+
+
+def test_deleted_default_transition_stays_deleted(qapp):
+    """기본 entry→done 전이를 지우면 재오픈 시 부활하지 않는다."""
+    from daedalus.view.editors.agent_editor import AgentEditor
+
+    agent, _skill = _make_agent_with_skill()
+    editor1 = AgentEditor(agent)
+    editor1._graph_scene.drop_skill("proc", QPointF(120, 80))
+    # _migrate_fsm이 만든 기본 entry→done 전이 삭제
+    default_tvm = editor1._graph_vm.transition_vms[0]
+    editor1._graph_scene._delete_transition(default_tvm)
+    assert agent.fsm.transitions == []
+    editor1._graph_scene.close()
+
+    editor2 = AgentEditor(agent)
+    assert agent.fsm.transitions == [], (
+        "일반 상태가 존재하면 빈 전이 목록을 마이그레이션이 덮어쓰면 안 된다"
+    )
+    editor2._graph_scene.close()
 
 
 def test_agent_fsm_scene_delete_key_preserves_last_exit_point_in_multi_select(qapp):

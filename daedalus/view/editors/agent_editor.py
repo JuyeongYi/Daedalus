@@ -152,7 +152,8 @@ class AgentEditor(QWidget):
             fsm.states.append(exit_done)
             fsm.final_states.append(exit_done)
         # 4) 전이가 하나도 없고 Entry+Exit만 있으면 기본 연결
-        if not fsm.transitions:
+        only_pseudo = all(isinstance(s, (EntryPoint, ExitPoint)) for s in fsm.states)
+        if not fsm.transitions and only_pseudo:
             from daedalus.model.fsm.event import CompletionEvent
             from daedalus.model.fsm.transition import Transition
             entry = next((s for s in fsm.states if isinstance(s, EntryPoint)), None)
