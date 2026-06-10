@@ -207,3 +207,132 @@ def test_exit_point_no_output_port(qapp):
     item = StateNodeItem(vm)
     assert item._is_exit_point()
     assert item._get_output_port_event(QPointF(160.0, 50.0)) is None
+
+
+# ---------------------------------------------------------------------------
+# Write-back + load bug tests (감사 1-2)
+# ---------------------------------------------------------------------------
+
+def test_when_to_use_loads_into_panel(qapp):
+    """when_to_use가 패널에 로드된다 (감사 1-2 로드 버그)."""
+    from daedalus.view.editors.skill_editor import _FrontmatterPanel
+    from daedalus.model.plugin.enums import SkillField
+    from PyQt6.QtWidgets import QTextEdit, QLineEdit
+    comp = _make_procedural()
+    comp.when_to_use = "복잡한 작업에 사용하세요"
+    panel = _FrontmatterPanel(comp)
+
+    widget = panel._field_widgets.get(SkillField.WHEN_TO_USE)
+    assert widget is not None, "when_to_use 위젯이 _field_widgets에 없음"
+    if isinstance(widget, QTextEdit):
+        text = widget.toPlainText()
+    else:
+        text = widget.text()
+    assert text == "복잡한 작업에 사용하세요", f"when_to_use 로드 실패: {text!r}"
+
+
+def test_combo_field_writes_back_to_config(qapp):
+    """model 콤보 변경이 config.model에 반영된다."""
+    from daedalus.view.editors.skill_editor import _FrontmatterPanel
+    from daedalus.model.plugin.enums import SkillField, ModelType
+    from PyQt6.QtWidgets import QComboBox
+    comp = _make_procedural()
+    panel = _FrontmatterPanel(comp)
+
+    widget = panel._field_widgets.get(SkillField.MODEL)
+    assert widget is not None and isinstance(widget, QComboBox), "model 콤보 위젯 없음"
+    widget.setCurrentText("opus")
+
+    assert comp.config.model == ModelType.OPUS, (
+        f"config.model이 업데이트되지 않음: {comp.config.model!r}"
+    )
+
+
+def test_checkbox_field_writes_back(qapp):
+    """bool 필드(disable_model_invocation) 토글이 config에 반영된다."""
+    from daedalus.view.editors.skill_editor import _FrontmatterPanel, _OptionalRow
+    from daedalus.model.plugin.enums import SkillField
+    from PyQt6.QtWidgets import QCheckBox
+    comp = _make_procedural()
+    panel = _FrontmatterPanel(comp)
+
+    widget = panel._field_widgets.get(SkillField.DISABLE_MODEL)
+    assert widget is not None and isinstance(widget, QCheckBox), "disable_model 체크박스 없음"
+
+    # _OptionalRow 안에 있으면 먼저 활성화
+    parent = widget.parent()
+    if isinstance(parent, _OptionalRow):
+        parent.set_checked(True)
+
+    widget.setChecked(True)
+    assert comp.config.disable_model_invocation is True, (
+        f"disable_model_invocation이 True로 반영되지 않음: {comp.config.disable_model_invocation!r}"
+    )
+
+
+def test_tag_field_writes_back(qapp):
+    """list 필드(allowed_tools) 변경이 config에 반영된다."""
+    from daedalus.view.editors.skill_editor import _FrontmatterPanel, _OptionalRow
+    from daedalus.model.plugin.enums import SkillField
+    from daedalus.view.widgets.tag_input import TagInput
+    comp = _make_procedural()
+    panel = _FrontmatterPanel(comp)
+
+    widget = panel._field_widgets.get(SkillField.ALLOWED_TOOLS)
+    assert widget is not None and isinstance(widget, TagInput), "allowed_tools TagInput 없음"
+
+    # _OptionalRow 안에 있으면 활성화
+    parent = widget.parent()
+    if isinstance(parent, _OptionalRow):
+        parent.set_checked(True)
+
+    widget.add_tag("Bash")
+    assert "Bash" in comp.config.allowed_tools, (
+        f"allowed_tools에 'Bash' 없음: {comp.config.allowed_tools!r}"
+    )
+
+
+def test_optional_row_uncheck_clears_value(qapp):
+    """_OptionalRow 해제 시 config 값이 None/[]로 클리어된다."""
+    from daedalus.view.editors.skill_editor import _FrontmatterPanel, _OptionalRow
+    from daedalus.model.plugin.enums import SkillField
+    comp = _make_procedural()
+    comp.config.effort = __import__("daedalus.model.plugin.enums", fromlist=["EffortLevel"]).EffortLevel.HIGH
+    panel = _FrontmatterPanel(comp)
+
+    # effort는 OPTIONAL — _OptionalRow로 감싸져 있어야 함
+    effort_widget = panel._field_widgets.get(SkillField.EFFORT)
+    assert effort_widget is not None, "effort 위젯 없음"
+
+    # _OptionalRow 컨테이너 찾기
+    parent = effort_widget.parent()
+    assert isinstance(parent, _OptionalRow), "effort 위젯이 _OptionalRow 안에 없음"
+
+    # 체크 해제
+    parent.set_checked(False)
+    assert comp.config.effort is None, (
+        f"effort가 None으로 클리어되지 않음: {comp.config.effort!r}"
+    )
+
+
+def test_writeback_survives_panel_rebuild(qapp):
+    """write-back된 값이 패널 재생성 후에도 다시 로드된다 (왕복)."""
+    from daedalus.view.editors.skill_editor import _FrontmatterPanel
+    from daedalus.model.plugin.enums import SkillField, ModelType
+    from PyQt6.QtWidgets import QComboBox
+    comp = _make_procedural()
+    panel = _FrontmatterPanel(comp)
+
+    # 1) write-back: model → haiku
+    widget = panel._field_widgets[SkillField.MODEL]
+    assert isinstance(widget, QComboBox)
+    widget.setCurrentText("haiku")
+    assert comp.config.model == ModelType.HAIKU
+
+    # 2) 패널 재생성
+    panel2 = _FrontmatterPanel(comp)
+    widget2 = panel2._field_widgets[SkillField.MODEL]
+    assert isinstance(widget2, QComboBox)
+    assert widget2.currentText() == "haiku", (
+        f"재생성 후 model 로드 실패: {widget2.currentText()!r}"
+    )

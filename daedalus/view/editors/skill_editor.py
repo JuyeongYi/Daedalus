@@ -22,6 +22,43 @@ from PyQt6.QtWidgets import (
 from daedalus.model.fsm.section import EventDef, Section
 from daedalus.model.plugin.agent import AgentDefinition
 from daedalus.model.plugin.skill import DeclarativeSkill, ProceduralSkill, ReferenceSkill, TransferSkill
+from daedalus.model.plugin.enums import (
+    EffortLevel,
+    ModelType,
+    SkillContext,
+    SkillField,
+    SkillShell,
+)
+
+
+# ---------------------------------------------------------------------------
+# 모듈 수준 상수: SkillField → config/component 속성명 매핑
+# 로드(load) 경로와 저장(write-back) 경로가 같은 테이블을 공유한다.
+# ---------------------------------------------------------------------------
+_FIELD_ATTR_MAP: dict[SkillField, str] = {
+    SkillField.ARGUMENT_HINT: "argument_hint",
+    SkillField.MODEL: "model",
+    SkillField.EFFORT: "effort",
+    SkillField.ALLOWED_TOOLS: "allowed_tools",
+    SkillField.CONTEXT: "context",
+    SkillField.AGENT: "agent",
+    SkillField.SHELL: "shell",
+    SkillField.PATHS: "paths",
+    SkillField.HOOKS: "hooks",
+    SkillField.DISABLE_MODEL: "disable_model_invocation",
+    SkillField.USER_INVOCABLE: "user_invocable",
+}
+
+# SkillField → 역변환에 사용할 Enum 타입 (str → Enum)
+_FIELD_ENUM_MAP: dict[SkillField, type] = {
+    SkillField.MODEL: ModelType,
+    SkillField.EFFORT: EffortLevel,
+    SkillField.CONTEXT: SkillContext,
+    SkillField.SHELL: SkillShell,
+}
+
+# list 타입인 필드 집합 — uncheck 시 None 대신 [] 로 클리어
+_LIST_FIELDS: set[SkillField] = {SkillField.ALLOWED_TOOLS, SkillField.PATHS, SkillField.HOOKS}
 
 
 _COLOR_PRESETS = [
@@ -87,6 +124,9 @@ class _FrontmatterPanel(QScrollArea):
     ) -> None:
         super().__init__(parent)
         self._component = component
+        self._field_widgets: dict[SkillField, QWidget] = {}
+        self._loading = False  # 로드 중 write-back 핸들러 억제용 가드
+
         self.setWidgetResizable(True)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
@@ -113,37 +153,54 @@ class _FrontmatterPanel(QScrollArea):
 
         # SKILL_FIELD_MATRIX 기반 필드 생성
         from daedalus.model.plugin.field_matrix import SKILL_FIELD_MATRIX
-        from daedalus.model.plugin.enums import FieldVisibility, SkillField
+        from daedalus.model.plugin.enums import FieldVisibility
 
         kind = skill_kind or self._detect_kind(component)
         rules = SKILL_FIELD_MATRIX.get(kind, {})
         config = getattr(component, "config", None)
 
-        skip = {SkillField.NAME, SkillField.DESCRIPTION}
-        for field, rule in rules.items():
-            if field in skip:
-                continue
-            if rule.visibility == FieldVisibility.REQUIRED:
-                widget = rule.widget()
-                self._apply_value(widget, config, field, rule)
-                from PyQt6.QtWidgets import QComboBox as _QCB
-                if isinstance(widget, _QCB):
-                    row = QHBoxLayout()
-                    row.addWidget(QLabel(field.value))
-                    row.addWidget(widget, 1)
-                    lay.addLayout(row)
-                else:
-                    lay.addWidget(QLabel(field.value))
-                    lay.addWidget(widget)
-            elif rule.visibility == FieldVisibility.OPTIONAL:
-                widget = rule.widget()
-                current = self._get_current(config, component, field)
-                enabled = current is not None and current != "" and current != [] and current is not False
-                self._apply_value(widget, config, field, rule)
-                lay.addWidget(_OptionalRow(field.value, widget, initially_enabled=enabled))
+        self._loading = True
+        try:
+            skip = {SkillField.NAME, SkillField.DESCRIPTION}
+            for fld, rule in rules.items():
+                if fld in skip:
+                    continue
+                if rule.visibility == FieldVisibility.REQUIRED:
+                    widget = rule.widget()
+                    self._apply_value(widget, config, component, fld, rule)
+                    self._field_widgets[fld] = widget
+                    self._connect_widget_signal(fld, widget)
+                    from PyQt6.QtWidgets import QComboBox as _QCB
+                    if isinstance(widget, _QCB):
+                        row = QHBoxLayout()
+                        row.addWidget(QLabel(fld.value))
+                        row.addWidget(widget, 1)
+                        lay.addLayout(row)
+                    else:
+                        lay.addWidget(QLabel(fld.value))
+                        lay.addWidget(widget)
+                elif rule.visibility == FieldVisibility.OPTIONAL:
+                    widget = rule.widget()
+                    current = self._get_current(config, component, fld)
+                    enabled = current is not None and current != "" and current != [] and current is not False
+                    self._apply_value(widget, config, component, fld, rule)
+                    self._field_widgets[fld] = widget
+                    self._connect_widget_signal(fld, widget)
+                    opt_row = _OptionalRow(fld.value, widget, initially_enabled=enabled)
+                    # _OptionalRow 해제 시 config/component 값 클리어
+                    opt_row.toggled.connect(
+                        lambda checked, f=fld: self._on_optional_toggled(f, checked)
+                    )
+                    lay.addWidget(opt_row)
+        finally:
+            self._loading = False
 
         lay.addStretch()
         self.setWidget(inner)
+
+    # ------------------------------------------------------------------
+    # 내부 헬퍼
+    # ------------------------------------------------------------------
 
     @staticmethod
     def _detect_kind(component: object) -> str:
@@ -153,35 +210,21 @@ class _FrontmatterPanel(QScrollArea):
         return "procedural"
 
     @staticmethod
-    def _get_current(config: object, component: object, field) -> object:
-        from daedalus.model.plugin.enums import SkillField
-        # when_to_use is on the component, not config
-        if field == SkillField.WHEN_TO_USE:
+    def _get_current(config: object, component: object, fld: SkillField) -> object:
+        """현재 값을 config 또는 component에서 읽어 반환한다."""
+        if fld == SkillField.WHEN_TO_USE:
             return getattr(component, "when_to_use", None)
-        attr_map = {
-            SkillField.ARGUMENT_HINT: "argument_hint",
-            SkillField.MODEL: "model",
-            SkillField.EFFORT: "effort",
-            SkillField.ALLOWED_TOOLS: "allowed_tools",
-            SkillField.CONTEXT: "context",
-            SkillField.AGENT: "agent",
-            SkillField.SHELL: "shell",
-            SkillField.PATHS: "paths",
-            SkillField.HOOKS: "hooks",
-            SkillField.DISABLE_MODEL: "disable_model_invocation",
-            SkillField.USER_INVOCABLE: "user_invocable",
-        }
-        attr = attr_map.get(field)
+        attr = _FIELD_ATTR_MAP.get(fld)
         if attr and config is not None:
             return getattr(config, attr, None)
         return None
 
     @staticmethod
-    def _apply_value(widget, config, field, rule) -> None:
+    def _apply_value(widget, config, component, fld: SkillField, rule) -> None:
+        """현재 값(config / component)을 위젯에 채운다."""
         from PyQt6.QtWidgets import QComboBox, QCheckBox, QLineEdit, QTextEdit
         from daedalus.view.widgets.tag_input import TagInput
-        from daedalus.model.plugin.enums import SkillField
-        current = _FrontmatterPanel._get_current(config, None, field)
+        current = _FrontmatterPanel._get_current(config, component, fld)
 
         if isinstance(widget, QComboBox):
             val = None
@@ -207,6 +250,84 @@ class _FrontmatterPanel(QScrollArea):
                 widget.setText(" ".join(current) if current else "")
             elif current is not None:
                 widget.setText(str(current))
+
+    def _connect_widget_signal(self, fld: SkillField, widget: QWidget) -> None:
+        """위젯 타입에 맞는 시그널을 공용 핸들러에 연결한다."""
+        from PyQt6.QtWidgets import QComboBox, QCheckBox, QLineEdit, QTextEdit
+        from daedalus.view.widgets.tag_input import TagInput
+        from daedalus.view.widgets.preset_picker import PresetPicker
+
+        if isinstance(widget, QComboBox):
+            widget.currentTextChanged.connect(
+                lambda val, f=fld: self._write_field(f, val)
+            )
+        elif isinstance(widget, QCheckBox):
+            widget.toggled.connect(
+                lambda checked, f=fld: self._write_field(f, checked)
+            )
+        elif isinstance(widget, TagInput):
+            widget.tags_changed.connect(
+                lambda f=fld, w=widget: self._write_field(f, w.get_tags())
+            )
+        elif isinstance(widget, PresetPicker):
+            widget.selection_changed.connect(
+                lambda f=fld, w=widget: self._write_field(f, w.get_selected())
+            )
+        elif isinstance(widget, QTextEdit):
+            widget.textChanged.connect(
+                lambda f=fld, w=widget: self._write_field(f, w.toPlainText())
+            )
+        elif isinstance(widget, QLineEdit):
+            widget.editingFinished.connect(
+                lambda f=fld, w=widget: self._write_field(f, w.text())
+            )
+
+    def _write_field(self, fld: SkillField, value: object) -> None:
+        """write-back: 위젯 값을 config 또는 component에 기록하고 changed를 emit한다."""
+        if self._loading:
+            return
+
+        config = getattr(self._component, "config", None)
+
+        if fld == SkillField.WHEN_TO_USE:
+            self._component.when_to_use = value  # type: ignore[attr-defined]
+            self.changed.emit()
+            return
+
+        attr = _FIELD_ATTR_MAP.get(fld)
+        if attr is None or config is None:
+            return
+
+        # Enum 역변환
+        enum_type = _FIELD_ENUM_MAP.get(fld)
+        if enum_type is not None and isinstance(value, str):
+            try:
+                value = enum_type(value)
+            except ValueError:
+                return  # 알 수 없는 값은 무시
+
+        setattr(config, attr, value)
+        self.changed.emit()
+
+    def _on_optional_toggled(self, fld: SkillField, checked: bool) -> None:
+        """_OptionalRow 체크 해제 시 config/component 값을 None 또는 []로 클리어한다."""
+        if self._loading or checked:
+            return
+
+        config = getattr(self._component, "config", None)
+
+        if fld == SkillField.WHEN_TO_USE:
+            self._component.when_to_use = ""  # type: ignore[attr-defined]
+            self.changed.emit()
+            return
+
+        attr = _FIELD_ATTR_MAP.get(fld)
+        if attr is None or config is None:
+            return
+
+        clear_value: object = [] if fld in _LIST_FIELDS else None
+        setattr(config, attr, clear_value)
+        self.changed.emit()
 
     def _save_name(self) -> None:
         self._component.name = self._w_name.text().strip()
