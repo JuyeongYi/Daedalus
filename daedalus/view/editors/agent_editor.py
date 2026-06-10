@@ -151,7 +151,9 @@ class AgentEditor(QWidget):
             exit_done = ExitPoint(name="done")
             fsm.states.append(exit_done)
             fsm.final_states.append(exit_done)
-        # 4) 전이가 하나도 없고 Entry+Exit만 있으면 기본 연결
+        # 4) 전이가 하나도 없고 Entry+Exit만 있으면 기본 연결.
+        #    pseudo-only + 전이 0개는 작업물이 없는 상태이므로 부트스트랩이 의도된 동작 —
+        #    일반 상태가 하나라도 있으면 사용자가 비운 것으로 보고 건드리지 않는다.
         only_pseudo = all(isinstance(s, (EntryPoint, ExitPoint)) for s in fsm.states)
         if not fsm.transitions and only_pseudo:
             from daedalus.model.fsm.event import CompletionEvent

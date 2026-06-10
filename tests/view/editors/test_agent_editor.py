@@ -213,6 +213,7 @@ def test_deleted_default_transition_stays_deleted(qapp):
     editor1 = AgentEditor(agent)
     editor1._graph_scene.drop_skill("proc", QPointF(120, 80))
     # _migrate_fsm이 만든 기본 entry→done 전이 삭제
+    assert len(editor1._graph_vm.transition_vms) == 1  # 마이그레이션 기본 전이 1개 전제
     default_tvm = editor1._graph_vm.transition_vms[0]
     editor1._graph_scene._delete_transition(default_tvm)
     assert agent.fsm.transitions == []

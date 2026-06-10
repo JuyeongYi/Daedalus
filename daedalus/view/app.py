@@ -48,6 +48,7 @@ class MainWindow(QMainWindow):
         self._fsm_scene: FsmScene | None = None
         self._open_tabs: dict[str, int] = {}  # 컴포넌트 이름 → 탭 인덱스
         self._active_stack = self._project_vm.command_stack
+        self._active_notify = self._project_vm.notify
         self._initialized = False  # setup 완료 전 시그널 발화 방어용
 
         self._setup_central()
@@ -294,6 +295,7 @@ class MainWindow(QMainWindow):
         if index == _FSM_TAB_INDEX:
             # Project FSM 캔버스
             self._active_stack = self._project_vm.command_stack
+            self._active_notify = self._project_vm.notify
             self._history_panel.set_stack(
                 self._project_vm.command_stack, on_goto=self._project_vm.notify
             )
@@ -306,15 +308,19 @@ class MainWindow(QMainWindow):
                 # AgentEditor — undo/redo는 에이전트 그래프 VM 기준
                 agent_stack = widget._graph_vm.command_stack
                 self._active_stack = agent_stack
+                self._active_notify = widget._graph_vm.notify
                 self._history_panel.set_stack(
                     agent_stack, on_goto=widget._graph_vm.notify
                 )
+                self._script_panel.set_stack(agent_stack)
             else:
                 # SkillEditor — undo/redo는 project VM 기준
                 self._active_stack = self._project_vm.command_stack
+                self._active_notify = self._project_vm.notify
                 self._history_panel.set_stack(
                     self._project_vm.command_stack, on_goto=self._project_vm.notify
                 )
+                self._script_panel.set_stack(self._project_vm.command_stack)
             self._property_panel.clear()
 
         self._active_stack.add_listener(self._update_undo_redo)
@@ -334,7 +340,7 @@ class MainWindow(QMainWindow):
             self._property_panel.clear()
 
     def _update_undo_redo(self) -> None:
-        stack = self._project_vm.command_stack
+        stack = self._active_stack
         self._undo_action.setEnabled(stack.can_undo)
         self._redo_action.setEnabled(stack.can_redo)
         self._undo_action.setText(
@@ -345,9 +351,9 @@ class MainWindow(QMainWindow):
         )
 
     def _undo(self) -> None:
-        self._project_vm.command_stack.undo()
-        self._project_vm.notify()
+        self._active_stack.undo()
+        self._active_notify()
 
     def _redo(self) -> None:
-        self._project_vm.command_stack.redo()
-        self._project_vm.notify()
+        self._active_stack.redo()
+        self._active_notify()
