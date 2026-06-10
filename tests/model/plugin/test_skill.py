@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 from daedalus.model.plugin.base import PluginComponent, WorkflowComponent
-from daedalus.model.plugin.skill import Skill, ProceduralSkill, DeclarativeSkill, TransferSkill
+from daedalus.model.plugin.skill import Skill, ProceduralSkill, DeclarativeSkill, TransferSkill, ReferenceSkill
 from daedalus.model.plugin.config import ProceduralSkillConfig, DeclarativeSkillConfig, TransferSkillConfig
 from daedalus.model.fsm.machine import StateMachine
 from daedalus.model.fsm.state import SimpleState
@@ -136,7 +136,6 @@ def test_declarative_skill_when_to_use_default():
 def test_skill_has_no_content_field():
     """본문의 단일 진실 공급원은 sections — content 필드 부재 고정 (감사 2-8)."""
     import dataclasses
-    from daedalus.model.plugin.skill import DeclarativeSkill as _DS, ReferenceSkill as _RS
-    for cls in (_DS, _RS):
+    for cls in (ProceduralSkill, DeclarativeSkill, TransferSkill, ReferenceSkill):
         names = {f.name for f in dataclasses.fields(cls)}
-        assert "content" not in names
+        assert "content" not in names, cls.__name__
