@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from daedalus.model.plugin.agent import AgentDefinition
+from daedalus.model.plugin.delegation import DelegationDef
 from daedalus.model.plugin.skill import Skill
 
 
@@ -22,3 +23,4 @@ class PluginProject:
     skills: list[Skill] = field(default_factory=list)
     agents: list[AgentDefinition] = field(default_factory=list)
     reference_placements: list[ReferencePlacement] = field(default_factory=list)
+    delegations: list[DelegationDef] = field(default_factory=list)
