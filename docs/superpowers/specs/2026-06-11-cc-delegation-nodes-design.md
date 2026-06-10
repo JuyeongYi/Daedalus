@@ -150,6 +150,10 @@ DelegationDef인 경우를 규칙들이 인지해야 함.)
 |------|------|------|
 | ① 모델 + 검증 | delegation.py + Validator 규칙 + 테스트 (순수 Python) | **지금 — WP-F(직렬화)보다 먼저 확정 필요** |
 | ② 레지스트리·배치·씬 | DELEGATION 섹션, drop 경로, NodeItem 분기 | 감사 1차 WP들 이후 |
+
+②단계 진입 시 선행 작업 (①단계 최종 리뷰에서 식별):
+1. `SimpleState.skill_ref` 타입 힌트에 `DelegationDef` 추가 (state.py:39, TYPE_CHECKING — 런타임 무영향)
+2. "배치된 DelegationDef ↔ `project.delegations` 등록" 일관성 검증 규칙 추가 검토
 | ③ kind별 편집기 폼 | 더블클릭 편집기 3종 | ② 이후 |
 | ④ 컴파일 규칙 | 본 스펙 4절 구현 | 컴파일러 WP에 합류 |
 
