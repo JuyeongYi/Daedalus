@@ -9,10 +9,12 @@ def test_model_combo_has_choices(qapp):
     w = ModelComboBox()
     assert isinstance(w, QComboBox)
     items = [w.itemText(i) for i in range(w.count())]
+    assert "inherit" in items  # WP-E: config 단일 진실(ModelType.INHERIT)과 일치
     assert "sonnet" in items
     assert "opus" in items
     assert "haiku" in items
-    assert w.currentText() == "sonnet"
+    # 기본값은 config 선언 기본값(ModelType.INHERIT)과 일치 — 로드 괴리 해소
+    assert w.currentText() == "inherit"
 
 
 def test_effort_combo_has_choices(qapp):

@@ -157,8 +157,10 @@ class _FrontmatterPanel(QScrollArea):
         lay.addWidget(self._w_desc)
 
         # SKILL_FIELD_MATRIX 기반 필드 생성
+        # 위젯 클래스는 view 측 FIELD_WIDGETS에서 조회한다(model→view 의존 역전).
         from daedalus.model.plugin.field_matrix import SKILL_FIELD_MATRIX
         from daedalus.model.plugin.enums import FieldVisibility
+        from daedalus.view.editors.field_widgets import FIELD_WIDGETS
 
         kind = skill_kind or self._detect_kind(component)
         rules = SKILL_FIELD_MATRIX.get(kind, {})
@@ -171,7 +173,7 @@ class _FrontmatterPanel(QScrollArea):
                 if fld in skip:
                     continue
                 if rule.visibility == FieldVisibility.REQUIRED:
-                    widget = rule.widget()
+                    widget = FIELD_WIDGETS[fld]()
                     self._apply_value(widget, config, component, fld, rule)
                     self._field_widgets[fld] = widget
                     self._connect_widget_signal(fld, widget)
@@ -185,7 +187,7 @@ class _FrontmatterPanel(QScrollArea):
                         lay.addWidget(QLabel(fld.value))
                         lay.addWidget(widget)
                 elif rule.visibility == FieldVisibility.OPTIONAL:
-                    widget = rule.widget()
+                    widget = FIELD_WIDGETS[fld]()
                     current = self._get_current(config, component, fld)
                     enabled = current is not None and current != "" and current != [] and current is not False
                     self._apply_value(widget, config, component, fld, rule)
@@ -237,7 +239,9 @@ class _FrontmatterPanel(QScrollArea):
             if current is not None:
                 val = current.value if hasattr(current, "value") else str(current)
             elif rule.default_value is not None:
-                val = str(rule.default_value)
+                # default_value는 enum(ModelType.INHERIT 등) 또는 스칼라.
+                dv = rule.default_value
+                val = dv.value if hasattr(dv, "value") else str(dv)
             if val is not None:
                 idx = widget.findText(val)
                 if idx >= 0:

@@ -362,29 +362,40 @@ def test_optional_recheck_restores_widget_value(qapp):
 
 
 def test_paths_writes_back_as_list(qapp):
-    """PATHS(QLineEdit) 입력이 str이 아닌 list[str]로 config.paths에 기록된다 (결함 1)."""
+    """PATHS(TagInput) 입력이 list[str]로 config.paths에 기록된다 (결함 1 + WP-E TagInput 전환).
+
+    TagInput은 칩 단위라 공백을 포함한 경로도 단일 항목으로 표현 가능하다 —
+    이전 QLineEdit + 공백 split의 표현 한계를 해소한다.
+    """
     from daedalus.view.editors.skill_editor import _FrontmatterPanel, _OptionalRow
     from daedalus.model.plugin.enums import SkillField
-    from PyQt6.QtWidgets import QLineEdit
+    from daedalus.view.widgets.tag_input import TagInput
     comp = _make_procedural()
     panel = _FrontmatterPanel(comp)
 
     widget = panel._field_widgets.get(SkillField.PATHS)
-    assert widget is not None and isinstance(widget, QLineEdit), "paths QLineEdit 없음"
+    assert widget is not None and isinstance(widget, TagInput), "paths TagInput 없음"
 
     parent = widget.parent()
     if isinstance(parent, _OptionalRow):
         parent.set_checked(True)
 
-    widget.setText("docs/a.md docs/b.md")
-    widget.editingFinished.emit()
+    widget.add_tag("docs/a.md")
+    widget.add_tag("docs/b.md")
     assert comp.config.paths == ["docs/a.md", "docs/b.md"], (
-        f"paths가 list로 변환되지 않음: {comp.config.paths!r}"
+        f"paths가 list로 기록되지 않음: {comp.config.paths!r}"
     )
 
-    # 빈 문자열은 빈 리스트로
-    widget.setText("")
-    widget.editingFinished.emit()
+    # 공백 포함 경로도 단일 항목으로 보존된다
+    widget.add_tag("My Documents/c.md")
+    assert "My Documents/c.md" in comp.config.paths, (
+        f"공백 포함 경로가 보존되지 않음: {comp.config.paths!r}"
+    )
+
+    # 전부 제거하면 빈 리스트로
+    widget.remove_tag("docs/a.md")
+    widget.remove_tag("docs/b.md")
+    widget.remove_tag("My Documents/c.md")
     assert comp.config.paths == [], f"빈 입력이 []가 아님: {comp.config.paths!r}"
 
 
