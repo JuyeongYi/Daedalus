@@ -29,7 +29,7 @@ python -m daedalus
 ## 테스트
 
 ```bash
-python -m pytest tests/ -v
+python -m pytest tests/ -q
 ```
 
 ## 아키텍처
@@ -57,6 +57,8 @@ daedalus/
 |------|------|
 | `ProceduralSkill` | 자체 FSM을 가진 절차적 작업 스킬 |
 | `DeclarativeSkill` | FSM 없는 선언적 지식 스킬 |
+| `TransferSkill` | 전이 시 실행되는 보조 지침 (자체 FSM 보유) |
+| `ReferenceSkill` | 참조 문서 (FSM 없음, 복수 배치 가능) |
 | `AgentDefinition` | 별도 컨텍스트에서 동작하는 에이전트 (자체 FSM + Blackboard) |
 | `Section` | 스킬 컨텐츠의 H1-H6 트리 섹션 |
 | `EventDef` | 스킬/에이전트 출력 이벤트 정의 (이름 + 색상) |
@@ -71,15 +73,10 @@ daedalus/
 
 ### 검증 규칙
 
-| 규칙 | 내용 |
-|------|------|
-| `initial_state_in_states` | 초기 상태가 상태 목록에 포함되어야 함 |
-| `final_states_in_states` | 최종 상태들이 상태 목록에 포함되어야 함 |
-| `no_nested_agent` | CompositeState 안에 CompositeState 불가 |
-| `no_agent_to_agent` | Agent → Agent 직접 전이 불가 (Skill 경유 필수) |
-| `missing_required_input` | LOCAL scope 필수 입력이 data_map에 없으면 경고 |
-| `pseudo_state_hooks` | 가상 상태에 lifecycle 훅 설정 시 경고 |
-| `completion_event_on_composite` | CompositeState 출력 전이에 CompletionEvent 없으면 경고 |
+머신 수준 11가지 규칙(identity 동등성 기반) + 프로젝트 수준 검증(dangling_teammate_ref). 자세한 내용은 CLAUDE.md를 참조.
+
+- **머신 수준:** 초기/최종 상태 포함성, nested agent 금지, agent→agent 직접 전이 금지, 필수 입력 매핑, 의사 상태 훅, completion event, 중복 스킬 참조, transfer_on/ExitPoint 필수성, 위임 노드 내용 검사, forget 모드 분기 경고
+- **프로젝트 수준:** 위임 정의의 에이전트 참조 검증
 
 ## GUI 주요 기능
 

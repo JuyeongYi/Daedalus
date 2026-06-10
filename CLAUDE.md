@@ -7,7 +7,7 @@ FSM 기반 Claude Code 플러그인 하네스 엔지니어링 도구.
 
 ```bash
 pip install -e ".[dev]"      # 개발 의존성 설치
-python -m pytest tests/ -v   # 전체 테스트 (102개)
+python -m pytest tests/ -v   # 전체 테스트
 python -m pytest tests/model/fsm/ -v      # FSM 코어만
 python -m pytest tests/model/plugin/ -v  # 플러그인 레이어만
 ```
@@ -43,6 +43,7 @@ daedalus/
 │   │   ├── base.py         # PluginComponent(ABC), WorkflowComponent(ABC)
 │   │   ├── skill.py        # Skill(ABC), ProceduralSkill, DeclarativeSkill
 │   │   ├── agent.py        # AgentDefinition
+│   │   ├── delegation.py   # DelegationDef + TeamSpawnDef/DynamicWorkflowDef/AgoraDispatchDef (CC 위임 노드)
 │   │   └── field_matrix.py # FieldRule, SKILL_FIELD_MATRIX (스킬 유형별 프론트매터 필드 규칙)
 │   ├── project.py           # PluginProject (최상위 컨테이너)
 │   └── validation.py        # Validator + ValidationError (7개 규칙, 재귀)
@@ -64,6 +65,8 @@ daedalus/
 |------|------|---------|
 | ProceduralSkill | 작업 지침 | 자체 FSM을 가진 독립 워크플로우 |
 | DeclarativeSkill | 배경 지식 | FSM 없음 |
+| TransferSkill | 전이 시 실행되는 보조 지침 | 자체 FSM 보유 |
+| ReferenceSkill | 참조 문서 | FSM 없음, 참조 노드로 복수 배치 |
 | AgentDefinition | 별도 컨텍스트의 상태 기계 | 자체 FSM + 별도 블랙보드 |
 
 ### CompositeState = 에이전트
@@ -146,19 +149,24 @@ ComponentConfig(ABC)          # model, effort, hooks 공통 필드
 
 `Transition.trigger = CompletionEvent(name="done")` 으로 설정.
 
-### Validator 규칙 (7개, 재귀 적용)
+### Validator 규칙 (재귀 적용)
 
 | 규칙 | 설명 |
 |------|------|
-| `initial_state_in_states` | `sm.initial_state ∈ sm.states` |
+| `initial_state_in_states` | `sm.initial_state ∈ sm.states` (identity 기준) |
 | `final_states_in_states` | `sm.final_states ⊆ sm.states` |
 | `no_nested_agent` | CompositeState 안에 CompositeState 불가 |
 | `no_agent_to_agent` | Agent → Agent 직접 전이 불가 (Skill 경유 필수) |
 | `missing_required_input` | LOCAL scope 필수 input이 data_map에 없으면 경고 |
-| `pseudo_state_hooks` | ChoiceState, TerminateState, EntryPoint, ExitPoint에 lifecycle 훅 설정 시 경고 |
-| `completion_event_on_composite` | CompositeState/ParallelState에서 나가는 전이에 CompletionEvent trigger 없으면 경고 |
+| `pseudo_state_hooks` | 의사 상태에 lifecycle 훅 설정 시 경고 |
+| `completion_event_on_composite` | Composite/ParallelState 출발 전이에 CompletionEvent 없으면 경고 |
+| `no_duplicate_skill_ref` | 동일 스킬/에이전트의 중복 배치 금지 (DelegationDef는 면제) |
+| `transfer_on_not_empty` | ProceduralSkill transfer_on / Agent ExitPoint 최소 1개 |
+| `empty_delegation` | 위임 노드 내용 누락 (팀원 0명·count<1, objective/msgtype 빈 값) 경고 |
+| `forget_completion_mismatch` | forget 모드 위임 노드의 결과 분기 시도 경고 |
 
 재귀: CompositeState.sub_machine과 Region.sub_machine 내부도 동일하게 검증.
+프로젝트 수준: `Validator.validate_project(project)` — 전체 FSM 검증 + `dangling_teammate_ref`(위임 정의의 에이전트 참조 실존 검사).
 
 ### 전략 패턴 (Guard / Action 공통)
 
@@ -194,9 +202,14 @@ name, description (PluginComponent, required)
 config (ProceduralSkill, default_factory)
 ```
 
-### dataclass는 unhashable
+### dataclass 동등성 정책
 
-dataclass 인스턴스는 기본적으로 `__hash__`가 None (mutable). set 컴프리헨션 대신 list 사용.
+FSM 모델 클래스(State 계열·pseudo 4종·Transition·StateMachine·Region·Section)는
+`@dataclass(eq=False)` — identity 동등성 + hashable. 서브클래스에 `@dataclass`를
+다시 적용할 때 `eq=False`를 빠뜨리면 `__eq__` 재생성 + unhashable로 되돌아가므로 주의.
+
+plugin 레이어(Skill, AgentDefinition 등)와 값 객체(EventDef, Variable 등)는 기본
+dataclass(값 동등성, unhashable) 유지 — 컬렉션 멤버십에는 list/`id()` 사용.
 
 ## 미구현 예정
 
