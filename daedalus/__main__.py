@@ -4,6 +4,7 @@ import traceback
 from PyQt6.QtWidgets import QApplication
 
 from daedalus.model.fsm.machine import StateMachine
+from daedalus.model.fsm.section import Section
 from daedalus.model.fsm.state import SimpleState
 from daedalus.model.fsm.transition import Transition
 from daedalus.model.plugin.agent import AgentDefinition
@@ -53,7 +54,11 @@ def _demo_project() -> PluginProject:
     )
     cleanup_skill = ProceduralSkill(fsm=cleanup_fsm, name="cleanup", description="정리 스킬")
 
-    rules_skill = DeclarativeSkill(name="rules", description="기반 규칙", content="코딩 컨벤션")
+    rules_skill = DeclarativeSkill(
+        name="rules",
+        description="기반 규칙",
+        sections=[Section(title="Instructions", content="코딩 컨벤션")],
+    )
 
     t1 = SimpleState(name="validate")
     transfer_fsm = StateMachine(

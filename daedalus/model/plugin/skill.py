@@ -15,7 +15,12 @@ from daedalus.model.plugin.config import (
 
 @dataclass
 class Skill(PluginComponent, ABC):
-    """스킬 베이스."""
+    """스킬 베이스.
+
+    본문의 단일 진실 공급원은 ``sections`` 필드다 (감사 2-8).
+    ``Section.content``에 텍스트를 담고 ``Section.children``으로 계층을 구성한다.
+    스킬 클래스에 별도 ``content: str`` 필드를 두지 않는다.
+    """
     when_to_use: str = ""
 
 
@@ -50,7 +55,6 @@ class ProceduralSkill(Skill, WorkflowComponent):
 @dataclass
 class DeclarativeSkill(Skill):
     """선언형 = Skill only. FSM 없음, transfer_on 없음."""
-    content: str = ""
     sections: list[Section] = field(
         default_factory=lambda: [Section("Instructions")]
     )
@@ -85,7 +89,6 @@ class ReferenceSkill(Skill):
     전역 정의이며 에이전트 로컬에서도 사용 가능.
     상하 방향 연결로 워크플로우 노드에 부착됨.
     """
-    content: str = ""
     sections: list[Section] = field(
         default_factory=lambda: [Section("Content")]
     )

@@ -46,11 +46,11 @@ def test_declarative_skill():
     skill = DeclarativeSkill(
         name="api-conventions",
         description="API 컨벤션",
-        content="RESTful 패턴을 사용하라.",
+        sections=[Section("Instructions", content="RESTful 패턴을 사용하라.")],
         config=DeclarativeSkillConfig(),
     )
     assert skill.name == "api-conventions"
-    assert skill.content == "RESTful 패턴을 사용하라."
+    assert skill.sections[0].content == "RESTful 패턴을 사용하라."
     assert isinstance(skill, Skill)
     assert not isinstance(skill, WorkflowComponent)
 
@@ -131,3 +131,12 @@ def test_procedural_skill_when_to_use_default():
 def test_declarative_skill_when_to_use_default():
     skill = DeclarativeSkill(name="t", description="d")
     assert skill.when_to_use == ""
+
+
+def test_skill_has_no_content_field():
+    """본문의 단일 진실 공급원은 sections — content 필드 부재 고정 (감사 2-8)."""
+    import dataclasses
+    from daedalus.model.plugin.skill import DeclarativeSkill as _DS, ReferenceSkill as _RS
+    for cls in (_DS, _RS):
+        names = {f.name for f in dataclasses.fields(cls)}
+        assert "content" not in names

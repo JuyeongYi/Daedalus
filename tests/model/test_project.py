@@ -28,7 +28,6 @@ def test_plugin_project_with_components():
     decl_skill = DeclarativeSkill(
         name="conventions",
         description="컨벤션",
-        content="...",
         config=DeclarativeSkillConfig(),
     )
     agent = AgentDefinition(
