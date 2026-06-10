@@ -39,14 +39,14 @@ daedalus/
 │   │   ├── enums.py        # ModelType, EffortLevel, SkillContext, PermissionMode 등
 │   │   ├── policy.py       # ExecutionPolicy, JoinStrategy (병렬 서브에이전트)
 │   │   ├── config.py       # ComponentConfig(ABC), SkillConfig(ABC), ProceduralSkillConfig,
-│   │   │                   # DeclarativeSkillConfig, AgentConfig
+│   │   │                   # DeclarativeSkillConfig, TransferSkillConfig, ReferenceSkillConfig, AgentConfig
 │   │   ├── base.py         # PluginComponent(ABC), WorkflowComponent(ABC)
-│   │   ├── skill.py        # Skill(ABC), ProceduralSkill, DeclarativeSkill
+│   │   ├── skill.py        # Skill(ABC), ProceduralSkill, DeclarativeSkill, TransferSkill, ReferenceSkill
 │   │   ├── agent.py        # AgentDefinition
 │   │   ├── delegation.py   # DelegationDef + TeamSpawnDef/DynamicWorkflowDef/AgoraDispatchDef (CC 위임 노드)
 │   │   └── field_matrix.py # FieldRule, SKILL_FIELD_MATRIX (스킬 유형별 프론트매터 필드 규칙)
-│   ├── project.py           # PluginProject (최상위 컨테이너)
-│   └── validation.py        # Validator + ValidationError (7개 규칙, 재귀)
+│   ├── project.py           # PluginProject (최상위 컨테이너), ReferencePlacement
+│   └── validation.py        # Validator + ValidationError (머신 규칙 11종 + validate_project, 재귀)
 └── view/             # PyQt6 기반 노드 에디터
     ├── app.py              # 메인 윈도우
     ├── canvas/             # GraphicsView/Scene, NodeItem, EdgeItem, RefNodeItem, RefEdgeItem
@@ -136,7 +136,9 @@ class FieldType(Enum):
 ComponentConfig(ABC)          # model, effort, hooks 공통 필드
 ├── SkillConfig(ABC)          # argument_hint, allowed_tools, paths
 │   ├── ProceduralSkillConfig # disable_model_invocation, context, agent, shell 등
-│   └── DeclarativeSkillConfig
+│   ├── DeclarativeSkillConfig
+│   ├── TransferSkillConfig
+│   └── ReferenceSkillConfig
 └── AgentConfig               # tools, permission_mode, skills, isolation 등
 ```
 

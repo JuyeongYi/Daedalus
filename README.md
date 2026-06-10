@@ -42,7 +42,7 @@ daedalus/
 │   ├── fsm/        # FSM 코어 — 상태, 전이, 가드, 액션, 블랙보드
 │   ├── plugin/     # Claude 플러그인 메타데이터 — 스킬, 에이전트, 설정
 │   ├── project.py  # PluginProject (최상위 컨테이너)
-│   └── validation.py  # 7가지 검증 규칙
+│   └── validation.py  # 머신 규칙 11종 + validate_project
 └── view/           # PyQt6 GUI
     ├── canvas/     # 노드-엣지 그래프 편집기
     ├── editors/    # 스킬/에이전트 속성 편집기
