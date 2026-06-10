@@ -1,3 +1,5 @@
+from daedalus.model.fsm.event import CompletionEvent
+from daedalus.model.fsm.machine import StateMachine
 from daedalus.model.fsm.state import SimpleState
 from daedalus.model.fsm.transition import Transition
 from daedalus.view.viewmodel.state_vm import StateViewModel, TransitionViewModel
@@ -62,3 +64,53 @@ class TestDeleteTransitionCmd:
         pvm, tvm = _make_transition_vm()
         cmd = DeleteTransitionCmd(pvm, tvm)
         assert "A" in cmd.description and "B" in cmd.description
+
+
+def _make_transition_fixture():
+    a = SimpleState(name="a")
+    b = SimpleState(name="b")
+    fsm = StateMachine(name="fsm", states=[a, b], initial_state=a)
+    vm = ProjectViewModel()
+    avm = StateViewModel(model=a, x=0, y=0)
+    bvm = StateViewModel(model=b, x=100, y=0)
+    vm.state_vms.extend([avm, bvm])
+    model = Transition(source=a, target=b, trigger=CompletionEvent(name="done"))
+    tvm = TransitionViewModel(model=model, source_vm=avm, target_vm=bvm)
+    return vm, fsm, model, tvm
+
+
+def test_create_transition_cmd_syncs_fsm():
+    vm, fsm, model, tvm = _make_transition_fixture()
+    cmd = CreateTransitionCmd(vm, tvm, fsm=fsm)
+
+    cmd.execute()
+    assert model in fsm.transitions
+    assert tvm in vm.transition_vms
+
+    cmd.undo()
+    assert model not in fsm.transitions
+    assert tvm not in vm.transition_vms
+
+
+def test_delete_transition_cmd_syncs_fsm():
+    vm, fsm, model, tvm = _make_transition_fixture()
+    fsm.transitions.append(model)
+    vm.transition_vms.append(tvm)
+    cmd = DeleteTransitionCmd(vm, tvm, fsm=fsm)
+
+    cmd.execute()
+    assert model not in fsm.transitions
+    assert tvm not in vm.transition_vms
+
+    cmd.undo()
+    assert model in fsm.transitions
+    assert tvm in vm.transition_vms
+
+
+def test_create_transition_cmd_without_fsm_keeps_legacy_behavior():
+    vm, _fsm, _model, tvm = _make_transition_fixture()
+    cmd = CreateTransitionCmd(vm, tvm)
+    cmd.execute()
+    assert tvm in vm.transition_vms
+    cmd.undo()
+    assert tvm not in vm.transition_vms

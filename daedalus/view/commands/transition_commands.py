@@ -6,16 +6,21 @@ from daedalus.view.commands.base import Command
 from daedalus.view.viewmodel.state_vm import TransitionViewModel
 
 if TYPE_CHECKING:
+    from daedalus.model.fsm.machine import StateMachine
     from daedalus.model.project import PluginProject
     from daedalus.view.viewmodel.project_vm import ProjectViewModel
 
 
 class CreateTransitionCmd(Command):
     def __init__(
-        self, project_vm: ProjectViewModel, transition_vm: TransitionViewModel
+        self,
+        project_vm: ProjectViewModel,
+        transition_vm: TransitionViewModel,
+        fsm: StateMachine | None = None,
     ) -> None:
         self._project_vm = project_vm
         self._transition_vm = transition_vm
+        self._fsm = fsm
 
     @property
     def description(self) -> str:
@@ -31,17 +36,25 @@ class CreateTransitionCmd(Command):
 
     def execute(self) -> None:
         self._project_vm.add_transition_vm(self._transition_vm)
+        if self._fsm is not None and self._transition_vm.model not in self._fsm.transitions:
+            self._fsm.transitions.append(self._transition_vm.model)
 
     def undo(self) -> None:
         self._project_vm.remove_transition_vm(self._transition_vm)
+        if self._fsm is not None and self._transition_vm.model in self._fsm.transitions:
+            self._fsm.transitions.remove(self._transition_vm.model)
 
 
 class DeleteTransitionCmd(Command):
     def __init__(
-        self, project_vm: ProjectViewModel, transition_vm: TransitionViewModel
+        self,
+        project_vm: ProjectViewModel,
+        transition_vm: TransitionViewModel,
+        fsm: StateMachine | None = None,
     ) -> None:
         self._project_vm = project_vm
         self._transition_vm = transition_vm
+        self._fsm = fsm
 
     @property
     def description(self) -> str:
@@ -57,9 +70,13 @@ class DeleteTransitionCmd(Command):
 
     def execute(self) -> None:
         self._project_vm.remove_transition_vm(self._transition_vm)
+        if self._fsm is not None and self._transition_vm.model in self._fsm.transitions:
+            self._fsm.transitions.remove(self._transition_vm.model)
 
     def undo(self) -> None:
         self._project_vm.add_transition_vm(self._transition_vm)
+        if self._fsm is not None and self._transition_vm.model not in self._fsm.transitions:
+            self._fsm.transitions.append(self._transition_vm.model)
 
 
 class SetTransitionSkillRefCmd(Command):
