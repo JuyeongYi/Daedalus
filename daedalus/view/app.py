@@ -278,6 +278,7 @@ class MainWindow(QMainWindow):
     def _close_tab(self, index: int) -> None:
         if index == _FSM_TAB_INDEX:
             return  # Project FSM은 닫을 수 없음
+        widget = self._tabs.widget(index)
         name = next((n for n, i in self._open_tabs.items() if i == index), None)
         if name:
             del self._open_tabs[name]
@@ -285,6 +286,10 @@ class MainWindow(QMainWindow):
         self._open_tabs = {
             n: (i if i < index else i - 1) for n, i in self._open_tabs.items()
         }
+        if widget is not None:
+            # closeEvent 발화 (AgentEditor의 씬 리스너 해제 등) + Qt 메모리 정리
+            widget.close()
+            widget.deleteLater()
 
     def _on_tab_changed(self, index: int) -> None:
         if not self._initialized:
