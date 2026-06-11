@@ -285,7 +285,7 @@ class MainWindow(QMainWindow):
         else:
             self._status_label.setText(f"열림: {fname}")
 
-    def _skill_lookup(self, name: str) -> ProceduralSkill | DeclarativeSkill | AgentDefinition | None:
+    def _skill_lookup(self, name: str) -> object | None:
         if self._project is None:
             return None
         for skill in self._project.skills:
@@ -294,6 +294,9 @@ class MainWindow(QMainWindow):
         for agent in self._project.agents:
             if agent.name == name:
                 return agent
+        for deleg in self._project.delegations:
+            if deleg.name == name:
+                return deleg
         return None
 
     def _get_placed_ids(self) -> set[int]:
@@ -318,7 +321,8 @@ class MainWindow(QMainWindow):
     # --- 탭 관리 ---
 
     def _open_component(self, component: object) -> None:
-        """레지스트리에서 더블클릭 → SkillEditor/AgentEditor 탭 열기."""
+        """레지스트리에서 더블클릭 → SkillEditor/AgentEditor/DelegationEditor 탭 열기."""
+        from daedalus.model.plugin.delegation import DelegationDef
         name = getattr(component, "name", None)
         comp_id = getattr(component, "id", None)
         if name is None or comp_id is None:
@@ -331,6 +335,17 @@ class MainWindow(QMainWindow):
             from daedalus.view.editors.agent_editor import AgentEditor
             editor = AgentEditor(component, on_notify_fn=self._project_vm.notify, project=self._project)
             idx = self._tabs.addTab(editor, f"🤖 {name}")
+            self._open_tabs[comp_id] = idx
+            self._tabs.setCurrentIndex(idx)
+        elif isinstance(component, DelegationDef):
+            from daedalus.view.editors.delegation_editor import DelegationEditor
+            editor = DelegationEditor(
+                component,
+                on_notify_fn=self._project_vm.notify,
+                project=self._project,
+            )
+            icon = {"team_spawn": "👥", "dynamic_workflow": "🔀", "agora_dispatch": "🛰"}.get(component.kind, "🛰")
+            idx = self._tabs.addTab(editor, f"{icon} {name}")
             self._open_tabs[comp_id] = idx
             self._tabs.setCurrentIndex(idx)
         elif isinstance(component, (ProceduralSkill, DeclarativeSkill, TransferSkill, ReferenceSkill)):
@@ -346,6 +361,7 @@ class MainWindow(QMainWindow):
         existing = (
             {s.name for s in self._project.skills}
             | {a.name for a in self._project.agents}
+            | {d.name for d in self._project.delegations}
         )
         while True:
             name, ok = QInputDialog.getText(self, dialog_title, "이름:")
@@ -376,10 +392,13 @@ class MainWindow(QMainWindow):
         )
 
     def _register_component(self, component: object) -> None:
+        from daedalus.model.plugin.delegation import DelegationDef
         if self._project is None:
             return
         if isinstance(component, AgentDefinition):
             self._project.agents.append(component)
+        elif isinstance(component, DelegationDef):
+            self._project.delegations.append(component)
         else:
             self._project.skills.append(component)
         self._registry_panel.set_project(self._project)
@@ -390,10 +409,14 @@ class MainWindow(QMainWindow):
         "transfer": "새 Transfer Skill",
         "reference": "새 Reference Skill",
         "agent": "새 Agent",
+        "delegation": "새 Delegation",
     }
 
     def _on_new_component(self, kind: str) -> None:
-        name = self._ask_unique_name(self._COMPONENT_TITLES[kind])
+        if kind == "delegation":
+            self._on_new_delegation()
+            return
+        name = self._ask_unique_name(self._COMPONENT_TITLES.get(kind, "새 컴포넌트"))
         if name is None:
             return
         factories = {
@@ -404,6 +427,37 @@ class MainWindow(QMainWindow):
             "agent": lambda: AgentDefinition(fsm=self._make_agent_fsm(name), name=name, description=""),  # type: ignore[arg-type]
         }
         self._register_component(factories[kind]())
+
+    _DELEGATION_KIND_TITLES = {
+        "team_spawn": "👥 팀 Spawn (TeamSpawnDef)",
+        "dynamic_workflow": "🔀 Dynamic Workflow (DynamicWorkflowDef)",
+        "agora_dispatch": "🛰 Agora Dispatch (AgoraDispatchDef)",
+    }
+
+    def _on_new_delegation(self) -> None:
+        """위임 정의 생성: kind 선택 → 이름 입력 → 등록."""
+        from daedalus.model.plugin.delegation import AgoraDispatchDef, DynamicWorkflowDef, TeamSpawnDef
+        items = list(self._DELEGATION_KIND_TITLES.values())
+        item, ok = QInputDialog.getItem(
+            self, "위임 종류 선택", "종류:", items, 0, False
+        )
+        if not ok or not item:
+            return
+        # item → kind 역매핑
+        kind = next(k for k, v in self._DELEGATION_KIND_TITLES.items() if v == item)
+        name = self._ask_unique_name(f"새 {item}")
+        if name is None:
+            return
+        factories = {
+            "team_spawn": lambda: TeamSpawnDef(name=name, description=""),
+            "dynamic_workflow": lambda: DynamicWorkflowDef(name=name, description=""),
+            "agora_dispatch": lambda: AgoraDispatchDef(name=name, description=""),
+        }
+        deleg = factories[kind]()
+        if self._project is None:
+            return
+        self._project.delegations.append(deleg)
+        self._registry_panel.set_project(self._project)
 
     def _close_tab(self, index: int) -> None:
         if index == _FSM_TAB_INDEX:

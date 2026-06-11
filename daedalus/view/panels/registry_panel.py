@@ -15,6 +15,7 @@ from PyQt6.QtWidgets import (
 )
 
 from daedalus.model.plugin.agent import AgentDefinition
+from daedalus.model.plugin.delegation import AgoraDispatchDef, DelegationDef, DynamicWorkflowDef, TeamSpawnDef
 from daedalus.model.plugin.skill import (
     DeclarativeSkill,
     ProceduralSkill,
@@ -35,6 +36,9 @@ _ICON = {
     "transfer_skill": "⚡",
     "reference_skill": "📖",
     "agent": "🤖",
+    "team_spawn": "👥",
+    "dynamic_workflow": "🔀",
+    "agora_dispatch": "🛰",
 }
 
 
@@ -132,7 +136,7 @@ class RegistryPanel(QWidget):
     """스킬/에이전트 레지스트리 팔레트."""
 
     component_double_clicked = pyqtSignal(object)
-    new_component_requested = pyqtSignal(str)  # kind: "procedural"|"declarative"|"transfer"|"agent"
+    new_component_requested = pyqtSignal(str)  # kind: "procedural"|"declarative"|"transfer"|"agent"|"delegation_*"
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -149,6 +153,7 @@ class RegistryPanel(QWidget):
             "transfer": _RegistrySection("⚡ TRANSFER", QColor("#88aacc"), no_place=True),
             "reference": _RegistrySection("📖 REFERENCE", QColor("#66aaaa")),
             "agent": _RegistrySection("🤖 AGENTS", QColor("#cc8888")),
+            "delegation": _RegistrySection("🛰 DELEGATION", QColor("#aa9955")),
         }
         for kind, section in self._sections.items():
             section.add_requested.connect(lambda k=kind: self.new_component_requested.emit(k))
@@ -183,3 +188,6 @@ class RegistryPanel(QWidget):
         for agent in self._project.agents:
             placed = id(agent) in self._placed_ids
             self._sections["agent"].add_item(agent, placed)
+        for deleg in self._project.delegations:
+            # 위임 정의는 복수 배치 허용 — placed dim 없이 항상 드래그 가능
+            self._sections["delegation"].add_item(deleg, placed=False)
