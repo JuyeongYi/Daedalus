@@ -10,6 +10,7 @@ from __future__ import annotations
 from typing import Callable
 
 from PyQt6.QtWidgets import (
+    QComboBox,
     QDialog,
     QDialogButtonBox,
     QFormLayout,
@@ -53,7 +54,6 @@ class _HookForm(QWidget):
         self._desc_edit = QLineEdit()
         form.addRow("설명:", self._desc_edit)
 
-        from PyQt6.QtWidgets import QComboBox
         self._event_combo = QComboBox()
         for ev in HookEvent:
             self._event_combo.addItem(ev.value, ev)
@@ -241,7 +241,6 @@ class HookLibraryDialog(QDialog):
 
     def _on_form_changed(self) -> None:
         # 폼이 이름/이벤트를 바꾸면 목록 라벨 갱신 (선택 유지)
-        row = self._list.currentRow()
         self._refresh_current_label()
         self._notify()
 

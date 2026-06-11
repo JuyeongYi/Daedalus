@@ -53,3 +53,26 @@ def test_preset_picker_nonexistent_dir(qapp):
     w = PresetPicker(scan_path="/nonexistent/path/12345")
     assert w.get_available() == []
     assert w.get_selected() == []
+
+
+def test_hook_picker_pending_selection_survives_refresh(qapp):
+    """라이브러리에 아직 없는 참조명은 select+refresh를 거쳐도 보존된다.
+
+    회귀: pending 미보존 시 config.hooks의 미해소 참조가 조용히 유실된다.
+    """
+    from daedalus.view.widgets.preset_picker import (
+        HookPresetPicker,
+        set_hook_name_provider,
+    )
+    names = ["fmt-on-edit"]
+    set_hook_name_provider(lambda: names)
+    w = HookPresetPicker()
+    w.set_selected(["fmt-on-edit", "ghost"])
+    assert sorted(w.get_selected()) == ["fmt-on-edit", "ghost"]
+    w.refresh()
+    assert "ghost" in w.get_selected()
+    # 라이브러리에 이름이 생기면 pending이 체크박스로 승격된다
+    names.append("ghost")
+    w.refresh()
+    assert "ghost" in w.get_available()
+    assert sorted(w.get_selected()) == ["fmt-on-edit", "ghost"]
