@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QAction, QKeySequence
@@ -222,7 +223,6 @@ class MainWindow(QMainWindow):
     def _update_title(self) -> None:
         base = "Daedalus — FSM Plugin Designer"
         if self._current_path:
-            import os
             self.setWindowTitle(f"{os.path.basename(self._current_path)} — {base}")
         else:
             self.setWindowTitle(base)
@@ -277,14 +277,13 @@ class MainWindow(QMainWindow):
         self.load_project(project)
         self._current_path = path
         self._update_title()
-        import os
         fname = os.path.basename(path)
         if deser_warnings:
             self._status_label.setText(
                 f"열림: {fname} (경고 {len(deser_warnings)}건 — F7로 확인)"
             )
         else:
-            self._status_label.setText(f"열림: {path}")
+            self._status_label.setText(f"열림: {fname}")
 
     def _skill_lookup(self, name: str) -> ProceduralSkill | DeclarativeSkill | AgentDefinition | None:
         if self._project is None:

@@ -18,7 +18,6 @@ from daedalus.model.validation import ValidationError
 
 _COLOR_ERROR = QColor("#ff5555")
 _COLOR_WARNING = QColor("#ffaa33")
-_COLOR_OK = QColor("#88cc88")
 
 _ICON_ERROR = "✖"
 _ICON_WARNING = "⚠"
