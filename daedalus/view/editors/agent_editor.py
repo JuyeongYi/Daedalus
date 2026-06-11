@@ -113,7 +113,7 @@ class AgentEditor(QWidget):
         splitter.setStretchFactor(1, 1)  # canvas: 확장
 
         lay.addWidget(splitter)
-        self._open_skill_tabs: dict[str, int] = {}
+        self._open_skill_tabs: dict[str, int] = {}  # 키: 로컬 스킬 id
         self._migrate_fsm()
         self._load_agent_fsm()
         self._refresh_skill_list()
@@ -184,32 +184,32 @@ class AgentEditor(QWidget):
 
         # EntryPoint(좌) → 일반 노드(중간) → ExitPoint(우)
         ordered = entries + others + exits
-        saved = self._agent.graph_layout
+        saved = self._agent.graph_layout  # 키: state.id (안정 식별자)
         x = 0.0
-        vm_map: dict[str, StateViewModel] = {}
+        vm_map: dict[str, StateViewModel] = {}  # 키: state.id
         for state in ordered:
-            if state.name in saved:
-                sx, sy = saved[state.name]
+            if state.id in saved:
+                sx, sy = saved[state.id]
                 vm = StateViewModel(model=state, x=sx, y=sy)
             else:
                 vm = StateViewModel(model=state, x=x, y=100.0)
             self._graph_vm.state_vms.append(vm)
-            vm_map[state.name] = vm
+            vm_map[state.id] = vm
             x += 220.0
 
         for trans in self._agent.fsm.transitions:
-            src_vm = vm_map.get(trans.source.name)
-            tgt_vm = vm_map.get(trans.target.name)
+            src_vm = vm_map.get(trans.source.id)
+            tgt_vm = vm_map.get(trans.target.id)
             if src_vm and tgt_vm:
                 tvm = TransitionViewModel(model=trans, source_vm=src_vm, target_vm=tgt_vm)
                 self._graph_vm.transition_vms.append(tvm)
         self._graph_vm.notify()
 
     def _save_graph_layout(self) -> None:
-        """그래프 노드 위치를 모델에 저장."""
+        """그래프 노드 위치를 모델에 저장. 키는 state.id (안정 식별자)."""
         layout: dict[str, list[float]] = {}
         for svm in self._graph_vm.state_vms:
-            layout[svm.model.name] = [svm.x, svm.y]
+            layout[svm.model.id] = [svm.x, svm.y]
         self._agent.graph_layout = layout
 
     def _local_skill_lookup(self, name: str) -> object | None:
@@ -270,14 +270,15 @@ class AgentEditor(QWidget):
     def _open_local_skill(self, component: object) -> None:
         from daedalus.view.editors.skill_editor import SkillEditor
         name = getattr(component, "name", None)
-        if name is None:
+        comp_id = getattr(component, "id", None)
+        if name is None or comp_id is None:
             return
-        if name in self._open_skill_tabs:
-            self._tabs.setCurrentIndex(self._open_skill_tabs[name])
+        if comp_id in self._open_skill_tabs:
+            self._tabs.setCurrentIndex(self._open_skill_tabs[comp_id])
             return
         editor = SkillEditor(component, on_notify_fn=self._on_model_changed, show_call_agents=False)  # type: ignore[arg-type]
         idx = self._tabs.addTab(editor, f"⚙ {name}")
-        self._open_skill_tabs[name] = idx
+        self._open_skill_tabs[comp_id] = idx
         self._tabs.setCurrentIndex(idx)
 
     def _build_content_tab(self) -> QWidget:

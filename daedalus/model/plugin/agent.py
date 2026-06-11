@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
+from uuid import uuid4
 
 from daedalus.model.fsm.pseudo import ExitPoint
 from daedalus.model.fsm.section import EventDef, Section
@@ -32,6 +33,8 @@ class AgentDefinition(PluginComponent, WorkflowComponent):
     reference_placements: list = field(default_factory=list)  # list[ReferencePlacement]
     caller_contracts: list[Section] = field(default_factory=list)
     graph_layout: dict[str, list[float]] = field(default_factory=dict)
+    # 안정 식별자 — 값 동등성 비교에서는 제외(compare=False).
+    id: str = field(default_factory=lambda: uuid4().hex, compare=False, kw_only=True)
 
     @property
     def kind(self) -> str:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from abc import ABC
 from dataclasses import dataclass, field
+from uuid import uuid4
 
 from daedalus.model.fsm.section import EventDef, Section
 from daedalus.model.plugin.base import PluginComponent, WorkflowComponent
@@ -22,6 +23,8 @@ class Skill(PluginComponent, ABC):
     스킬 클래스에 별도 ``content: str`` 필드를 두지 않는다.
     """
     when_to_use: str = ""
+    # 안정 식별자 — 값 동등성 비교에서는 제외(compare=False).
+    id: str = field(default_factory=lambda: uuid4().hex, compare=False, kw_only=True)
 
 
 @dataclass

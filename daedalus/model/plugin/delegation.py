@@ -3,6 +3,7 @@ from __future__ import annotations
 from abc import ABC
 from dataclasses import dataclass, field
 from enum import Enum
+from uuid import uuid4
 
 from daedalus.model.plugin.agent import AgentDefinition
 from daedalus.model.plugin.base import PluginComponent
@@ -43,6 +44,8 @@ class DelegationDef(PluginComponent, ABC):
     kind는 PluginComponent의 추상 프로퍼티로 남아 직접 인스턴스화가 막힌다.
     """
     wait_mode: WaitMode = WaitMode.WAIT
+    # 안정 식별자 — 값 동등성 비교에서는 제외(compare=False).
+    id: str = field(default_factory=lambda: uuid4().hex, compare=False, kw_only=True)
 
 
 @dataclass

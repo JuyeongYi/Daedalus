@@ -46,6 +46,7 @@ daedalus/
 │   │   ├── delegation.py   # DelegationDef + TeamSpawnDef/DynamicWorkflowDef/AgoraDispatchDef (CC 위임 노드)
 │   │   └── field_matrix.py # FieldRule(emit 포함), SKILL_FIELD_MATRIX, AGENT_FIELD_MATRIX (스킬/에이전트 유형별 프론트매터 필드 규칙)
 │   ├── project.py           # PluginProject (최상위 컨테이너), ReferencePlacement
+│   ├── serialize.py         # serialize_project/deserialize_project (모델↔JSON dict, 안정 ID 기반)
 │   └── validation.py        # Validator + ValidationError (머신 규칙 11종 + validate_project, 재귀)
 └── view/             # PyQt6 기반 노드 에디터
     ├── app.py              # 메인 윈도우
@@ -97,6 +98,12 @@ daedalus/
 
 - `Section`: 스킬 본문의 자유 콘텐츠 계층 (H1–H6). `children: list[Section]`으로 재귀 트리 구성
 - `EventDef`: TransferOn 스킬의 출력 이벤트 정의. 노드 출력 포트에 대응 (`name`, `color`, `description`)
+
+### 안정 ID + 직렬화 (serialize.py)
+
+- **안정 ID:** `State`(베이스)/`Transition`/`StateMachine`/`Region`/`Variable`/`Skill`(베이스)/`AgentDefinition`/`DelegationDef`(베이스)에 `id: str = field(default_factory=lambda: uuid4().hex, kw_only=True)`. kw_only로 다중 상속 필드 순서 제약을 회피한다. eq=False 클래스는 identity 동등성/해시를 유지(id는 `__eq__`/`__hash__` 무관)하고, 값 동등성 클래스(Variable/Skill/Agent/Delegation)는 `compare=False`로 값 비교에서 제외한다.
+- **직렬화 원칙:** `serialize_project`/`deserialize_project`는 JSON 호환 dict(`"format": 1` 버전 키)를 만든다. **소유 객체는 인라인, 참조는 ID 문자열로 평탄화**한다 — Transition.source/target(state id), SimpleState.skill_ref·Transition.skill_ref(component id), StateMachine.initial_state/final_states(state id), Delegation.agent_ref(agent id). 다형성은 `kind` property를 태그로 재사용. enum은 `.value`↔타입 복원. 역직렬화는 2-pass(객체 생성+id 레지스트리 → 참조 해소)이고 dangling id는 None+경고. `Blackboard.parent`는 ID가 아니라 sub_machine 소유 구조로 재연결한다. serialize.py는 순수 모델(PyQt 무관).
+- `AgentDefinition.graph_layout`의 키는 state.name이 아니라 **state.id**다 (이름 변경 시 레이아웃 유실 방지).
 
 ### SKILL_FIELD_MATRIX
 
