@@ -666,6 +666,23 @@ def deserialize_project(
     # ── pass 2: 모든 참조(state/skill/agent id) 해소 ──
     reg.run_pending()
 
+    # ── 블랙보드 parent 구조 재연결 (최상위) ──
+    # 역직렬화도 생성 경로다 — view 생성 경로(_register_component / 로컬 스킬 생성)와
+    # 동일한 스코핑을 복원한다: 최상위 스킬/에이전트 FSM → 프로젝트 블랙보드,
+    # 에이전트 로컬 스킬 FSM → 소유 에이전트 FSM 블랙보드. 중첩 sub_machine은
+    # _deser_machine의 parent_bb 전달로 이미 구조 재연결되어 있다.
+    for skill in project.skills:
+        fsm = getattr(skill, "fsm", None)
+        if fsm is not None and fsm.blackboard.parent is None:
+            fsm.blackboard.parent = project.blackboard
+    for agent in project.agents:
+        if agent.fsm.blackboard.parent is None:
+            agent.fsm.blackboard.parent = project.blackboard
+        for local in agent.skills:
+            lfsm = getattr(local, "fsm", None)
+            if lfsm is not None and lfsm.blackboard.parent is None:
+                lfsm.blackboard.parent = agent.fsm.blackboard
+
     # ── 경고 전달 ──
     if collect_warnings is not None:
         collect_warnings.extend(reg.warnings)

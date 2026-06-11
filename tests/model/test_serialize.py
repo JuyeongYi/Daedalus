@@ -400,3 +400,37 @@ def test_project_blackboard_default_empty():
     assert p2.blackboard.class_definitions == []
     assert p2.blackboard.variables == {}
     assert p2.blackboard.parent is None
+
+
+def test_toplevel_fsm_blackboard_parent_survives_roundtrip():
+    """저장/로드 후에도 최상위 스킬/에이전트 FSM의 blackboard.parent가
+    프로젝트 블랙보드로 재연결된다 (역직렬화 = 생성 경로)."""
+    proc, shared = _make_proc_skill()
+    entry = EntryPoint(name="e")
+    afsm = StateMachine(name="af", initial_state=entry, states=[entry])
+    agent = AgentDefinition(fsm=afsm, name="ag", description="d")
+    p = PluginProject(name="P", skills=[shared, proc], agents=[agent])
+    p2 = _roundtrip(p)
+
+    proc2 = next(s for s in p2.skills if s.name == "proc")
+    assert proc2.fsm.blackboard.parent is p2.blackboard
+    assert p2.agents[0].fsm.blackboard.parent is p2.blackboard
+
+
+def test_local_skill_fsm_blackboard_parent_survives_roundtrip():
+    """에이전트 로컬 스킬 FSM의 blackboard.parent가 소유 에이전트 FSM
+    블랙보드로 재연결된다."""
+    entry = EntryPoint(name="e")
+    afsm = StateMachine(name="af", initial_state=entry, states=[entry])
+    agent = AgentDefinition(fsm=afsm, name="ag", description="d")
+
+    ls = SimpleState(name="s")
+    lfsm = StateMachine(name="lf", initial_state=ls, states=[ls])
+    local = ProceduralSkill(fsm=lfsm, name="local-tool", description="d")
+    agent.skills.append(local)
+
+    p2 = _roundtrip(PluginProject(name="P", agents=[agent]))
+    ag2 = p2.agents[0]
+    assert ag2.skills[0].fsm.blackboard.parent is ag2.fsm.blackboard
+    # 에이전트 자신은 프로젝트 블랙보드에 연결
+    assert ag2.fsm.blackboard.parent is p2.blackboard

@@ -95,7 +95,7 @@ daedalus/
 - **역할:** 서로 다른 컨텍스트 간에 외부 데이터를 통해 맥락을 공유하는 장치
 - 동일 컨텍스트 내에서는 불필요 — 이미 같은 맥락을 공유
 - 스코핑: 최상위 `Blackboard(parent=None)`, 하위 `Blackboard(parent=부모.blackboard)`
-- **최상위 블랙보드:** `PluginProject.blackboard`(default_factory) — schemas.json의 소스(DynamicClass 단일 진실). 에이전트/스킬 FSM의 `blackboard.parent`는 **생성 경로의 책임**으로 이 객체에 배선한다 (app.py `_register_component`, agent_editor 로컬 스킬 생성). 마이그레이션 없음 — 기존 객체는 강제하지 않고 새 생성 경로만 연결. 직렬화는 parent를 ID로 평탄화하지 않고 **소유 구조로 재연결**(`_deser_machine`의 `parent_bb` 전달).
+- **최상위 블랙보드:** `PluginProject.blackboard`(default_factory) — schemas.json의 소스(DynamicClass 단일 진실). 에이전트/스킬 FSM의 `blackboard.parent`는 **생성 경로의 책임**으로 이 객체에 배선한다 (app.py `_register_component`, agent_editor 로컬 스킬 생성, **그리고 `deserialize_project` — 역직렬화도 생성 경로**: 최상위 스킬/에이전트 FSM→프로젝트 블랙보드, 로컬 스킬 FSM→소유 에이전트 FSM 블랙보드로 재연결되어 parent 스코핑이 저장/로드를 견딘다). 마이그레이션 없음 — 메모리 내 기존 객체는 강제하지 않는다. 직렬화는 parent를 ID로 평탄화하지 않고 **소유 구조로 재연결**(`_deser_machine`의 `parent_bb` 전달).
 - **DynamicClass → JSON Schema 매핑:** `blackboard.py`의 `FIELD_TYPE_TO_JSON_SCHEMA` 정본(STRING→string, INT→integer, FLOAT/NUMBER→number, BOOL→boolean, LIST→array, JSON→object, ANY→{}). CollectionType은 array로 래핑(LIST→items, SET→items+uniqueItems). 컴파일러 `compile_schemas_json(project)`가 프로젝트 블랙보드 class_definitions를 `<out>/schemas/schemas.json`으로(정의 없으면 None).
 
 ### FSM + Blackboard 하이브리드
