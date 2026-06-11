@@ -51,7 +51,7 @@ daedalus/
     ├── app.py              # 메인 윈도우
     ├── canvas/             # GraphicsView/Scene, NodeItem, EdgeItem, RefNodeItem, RefEdgeItem
     ├── commands/           # Undo/Redo 커맨드 (state, transition, section, exit_point)
-    ├── editors/            # 속성 편집기 (skill, agent, body, component, variable_loader)
+    ├── editors/            # 속성 편집기 (skill, agent, body, component, variable_loader, field_widgets)
     ├── panels/             # TreePanel, PropertyPanel, RegistryPanel, HistoryPanel
     ├── viewmodel/          # ProjectViewModel, StateViewModel (모델↔뷰 중간 계층)
     └── widgets/            # ComboWidgets, TagInput, PresetPicker
