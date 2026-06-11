@@ -61,6 +61,9 @@ WARNING_RULES: frozenset[str] = frozenset({
     "unreachable_state",
     "invalid_data_map_source",
     "trigger_unknown_event",
+    # WP-M FSM 의미론 경고
+    "choice_completeness_missing_else",
+    "parallel_join_count",
     # 프로젝트 수준 경고
     "dangling_teammate_ref",
     "dangling_string_reference",
@@ -113,6 +116,10 @@ class Validator:
         errors.extend(Validator._check_unreachable_state(sm, path))
         errors.extend(Validator._check_invalid_data_map_source(sm.transitions, path))
         errors.extend(Validator._check_trigger_unknown_event(sm, path))
+        # WP-M FSM 의미론 규칙
+        errors.extend(Validator._check_transition_type_consistency(sm.transitions, path))
+        errors.extend(Validator._check_choice_completeness(sm, path))
+        errors.extend(Validator._check_parallel_join_count(sm.states, path))
         # 재귀
         for state in sm.states:
             if isinstance(state, CompositeState):
@@ -236,19 +243,25 @@ class Validator:
         # (도구 참조 수집과 동일 집합 — 신규 훅 추가 시 한 곳만 갱신).
         for state in states:
             if isinstance(state, pseudo_types):
+                # 라이프사이클 훅 필드 + custom_events(단순 반응) 모두 의사 상태에는 부적절.
+                offending = None
                 for field_name in Validator._STATE_ACTION_FIELDS:
                     if getattr(state, field_name, []):
-                        errors.append(ValidationError(
-                            rule="pseudo_state_hooks",
-                            message=(
-                                f"의사 상태 '{state.name}'({state.kind})에 "
-                                f"'{field_name}' 훅이 설정되어 있습니다."
-                            ),
-                            source=state.name,
-                            subject=state,
-                            path=path,
-                        ))
-                        break  # 상태당 1개 경고
+                        offending = field_name
+                        break
+                if offending is None and getattr(state, "custom_events", None):
+                    offending = "custom_events"
+                if offending is not None:
+                    errors.append(ValidationError(
+                        rule="pseudo_state_hooks",
+                        message=(
+                            f"의사 상태 '{state.name}'({state.kind})에 "
+                            f"'{offending}' 훅이 설정되어 있습니다."
+                        ),
+                        source=state.name,
+                        subject=state,
+                        path=path,
+                    ))
         return errors
 
     @staticmethod
@@ -601,6 +614,132 @@ class Validator:
                     ),
                     source=f"{source.name}->{t.target.name}",
                     subject=t,
+                    path=path,
+                ))
+        return errors
+
+    # ------------------------------------------------------------------
+    # WP-M FSM 의미론 규칙 3종
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _check_transition_type_consistency(
+        transitions: list[Transition],
+        path: tuple[str, ...] = (),
+    ) -> list[ValidationError]:
+        """transition_type_consistency — INTERNAL/SELF 타입인데 source≠target이면 에러.
+
+        INTERNAL은 상태 비이탈 반응, SELF는 같은 상태로의 재진입이므로 두 경우 모두
+        source와 target이 identity로 동일해야 한다.
+        """
+        from daedalus.model.fsm.transition import TransitionType
+        errors: list[ValidationError] = []
+        for t in transitions:
+            if t.type in (TransitionType.INTERNAL, TransitionType.SELF):
+                if t.source is not t.target:
+                    errors.append(ValidationError(
+                        rule="transition_type_consistency",
+                        message=(
+                            f"전이 '{t.source.name}' → '{t.target.name}': "
+                            f"{t.type.value} 타입은 source와 target이 같아야 합니다."
+                        ),
+                        source=f"{t.source.name}->{t.target.name}",
+                        subject=t,
+                        path=path,
+                    ))
+        return errors
+
+    @staticmethod
+    def _check_choice_completeness(
+        sm: StateMachine,
+        path: tuple[str, ...] = (),
+    ) -> list[ValidationError]:
+        """choice_completeness — ChoiceState 분기 완전성.
+
+        관례: outgoing 중 **무가드 전이 = else 분기**.
+          - outgoing 0개 → 에러 (막다른 분기)
+          - 무가드 outgoing 2개 이상 → 에러 (비결정 else 중복)
+          - 무가드 0개 → 경고 (else 부재 — LLM 해석 결정성 저하)
+        """
+        errors: list[ValidationError] = []
+        for state in sm.states:
+            if not isinstance(state, ChoiceState):
+                continue
+            outgoing = [t for t in sm.transitions if t.source is state]
+            unguarded = [t for t in outgoing if t.guard is None]
+            if not outgoing:
+                errors.append(ValidationError(
+                    rule="choice_completeness",
+                    message=(
+                        f"ChoiceState '{state.name}'에 나가는 전이가 없습니다 "
+                        f"(막다른 분기)."
+                    ),
+                    source=state.name,
+                    subject=state,
+                    path=path,
+                ))
+                continue
+            if len(unguarded) >= 2:
+                errors.append(ValidationError(
+                    rule="choice_completeness",
+                    message=(
+                        f"ChoiceState '{state.name}'에 무가드 전이가 "
+                        f"{len(unguarded)}개입니다 — else 분기는 하나여야 "
+                        f"합니다 (비결정)."
+                    ),
+                    source=state.name,
+                    subject=state,
+                    path=path,
+                ))
+            elif not unguarded:
+                errors.append(ValidationError(
+                    rule="choice_completeness_missing_else",
+                    message=(
+                        f"ChoiceState '{state.name}'에 무가드(else) 전이가 "
+                        f"없습니다 — 어떤 가드도 통과하지 못하면 분기가 멈춥니다."
+                    ),
+                    source=state.name,
+                    subject=state,
+                    path=path,
+                ))
+        return errors
+
+    @staticmethod
+    def _check_parallel_join_count(
+        states: list[State],
+        path: tuple[str, ...] = (),
+    ) -> list[ValidationError]:
+        """parallel_join_count — ParallelState.join이 count형(N_OF)인데
+        join_count가 None이거나 region 수를 초과하면 경고."""
+        from daedalus.model.plugin.policy import JoinStrategy
+        errors: list[ValidationError] = []
+        for state in states:
+            if not isinstance(state, ParallelState):
+                continue
+            if state.join is not JoinStrategy.N_OF:
+                continue
+            n_regions = len(state.regions)
+            jc = state.join_count
+            if jc is None:
+                errors.append(ValidationError(
+                    rule="parallel_join_count",
+                    message=(
+                        f"ParallelState '{state.name}'의 join이 N_OF인데 "
+                        f"join_count가 지정되지 않았습니다."
+                    ),
+                    source=state.name,
+                    subject=state,
+                    path=path,
+                ))
+            elif jc > n_regions:
+                errors.append(ValidationError(
+                    rule="parallel_join_count",
+                    message=(
+                        f"ParallelState '{state.name}'의 join_count({jc})가 "
+                        f"region 수({n_regions})를 초과합니다."
+                    ),
+                    source=state.name,
+                    subject=state,
                     path=path,
                 ))
         return errors

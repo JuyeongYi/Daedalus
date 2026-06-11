@@ -146,6 +146,7 @@ def serialize_project(project: PluginProject) -> dict:
         "delegations": [_ser_delegation(d) for d in project.delegations],
         "tool_shelf": [_ser_tool(t) for t in project.tool_shelf],
         "hook_library": [_ser_hook(h) for h in project.hook_library],
+        "blackboard": _ser_blackboard(project.blackboard),
     }
 
 
@@ -377,6 +378,8 @@ def _ser_state(s: State) -> dict:
         d["sub_machine"] = _ser_machine(s.sub_machine)
     elif isinstance(s, ParallelState):
         d["regions"] = [_ser_region(r) for r in s.regions]
+        d["join"] = s.join.value
+        d["join_count"] = s.join_count
     elif isinstance(s, ExitPoint):
         d["color"] = s.color
     return d
@@ -657,6 +660,7 @@ def deserialize_project(
         delegations=[_deser_delegation(d, reg) for d in data.get("delegations", [])],
         tool_shelf=[_deser_tool(t) for t in data.get("tool_shelf", [])],
         hook_library=[_deser_hook(h) for h in data.get("hook_library", [])],
+        blackboard=_deser_blackboard(data.get("blackboard"), parent=None),
     )
 
     # ── pass 2: 모든 참조(state/skill/agent id) 해소 ──
@@ -861,7 +865,11 @@ def _deser_state(d: dict, reg: _Registry, parent_bb: Blackboard | None) -> State
         sub = _deser_machine(d["sub_machine"], reg, parent_bb=parent_bb)
         s = CompositeState(name=name, id=sid, sub_machine=sub)
     elif kind == "parallel":
-        s = ParallelState(name=name, id=sid)
+        s = ParallelState(
+            name=name, id=sid,
+            join=_to_enum(JoinStrategy, d.get("join"), JoinStrategy.ALL),
+            join_count=d.get("join_count"),
+        )
         s.regions = [_deser_region(r, reg, parent_bb) for r in d.get("regions", [])]
     elif kind == "choice":
         s = ChoiceState(name=name, id=sid)
