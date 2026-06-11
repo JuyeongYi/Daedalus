@@ -13,6 +13,15 @@ from daedalus.model.fsm.variable import VariableScope
 
 @dataclass
 class ValidationError:
+    """검증 결과 1건.
+
+    subject: 문제의 모델 객체 (노드 점프용). compare=False이므로 UI에서는
+      값 비교가 아니라 ``error.subject is node.model`` 같은 identity 비교로
+      조회해야 한다.
+    path: 중첩 위치. validate_project는 루트를 ``("skill:<이름>",)`` 또는
+      ``("agent:<이름>",)``으로 주입하고, 재귀는 ``"agent:<이름>"``(CompositeState)
+      / ``"region:<이름>"``(Region)을 누적한다.
+    """
     rule: str
     message: str
     source: str = ""
@@ -504,6 +513,10 @@ class Validator:
 
             if isinstance(source, SimpleState) and source.skill_ref is not None:
                 ref = source.skill_ref
+                # ProceduralSkill/AgentDefinition만 출력 이벤트 집합을 정의한다.
+                # DelegationDef·DeclarativeSkill 등은 known_events=None → 검사 스킵.
+                # 주의: TransferSkill.output_events는 항상 []이므로 향후 분기에
+                # 추가하면 모든 trigger가 오탐이 된다 — 추가 금지.
                 if isinstance(ref, ProceduralSkill):
                     known_events = set(ref.output_events)
                 elif isinstance(ref, AgentDefinition):
@@ -542,9 +555,13 @@ class Validator:
         for skill in project.skills:
             fsm = getattr(skill, "fsm", None)
             if fsm is not None:
-                errors.extend(Validator._validate_machine(fsm))
+                errors.extend(Validator._validate_machine(
+                    fsm, path=(f"skill:{skill.name}",),
+                ))
         for agent in project.agents:
-            errors.extend(Validator._validate_machine(agent.fsm))
+            errors.extend(Validator._validate_machine(
+                agent.fsm, path=(f"agent:{agent.name}",),
+            ))
         errors.extend(Validator._check_dangling_delegation_refs(project))
         # 신규 프로젝트 수준 규칙
         errors.extend(Validator._check_duplicate_component_name(project))
@@ -580,10 +597,6 @@ class Validator:
     @staticmethod
     def _check_duplicate_component_name(project) -> list[ValidationError]:
         """duplicate_component_name — skills/agents/delegations 전체에서 동명 컴포넌트 에러."""
-        from daedalus.model.plugin.skill import Skill
-        from daedalus.model.plugin.agent import AgentDefinition
-        from daedalus.model.plugin.delegation import DelegationDef
-
         seen: dict[str, object] = {}
         errors: list[ValidationError] = []
         all_components = [

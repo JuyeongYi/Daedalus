@@ -17,17 +17,15 @@
 """
 from __future__ import annotations
 
-import pytest
-
 from daedalus.model.validation import ValidationError, Validator
-from daedalus.model.fsm.state import SimpleState, CompositeState, ParallelState, Region
-from daedalus.model.fsm.pseudo import ChoiceState, EntryPoint, ExitPoint, TerminateState
+from daedalus.model.fsm.state import SimpleState, CompositeState
+from daedalus.model.fsm.pseudo import EntryPoint, ExitPoint
 from daedalus.model.fsm.transition import Transition
 from daedalus.model.fsm.machine import StateMachine
 from daedalus.model.fsm.variable import Variable
 from daedalus.model.fsm.event import CompletionEvent
 from daedalus.model.fsm.section import EventDef
-from daedalus.model.plugin.skill import ProceduralSkill, DeclarativeSkill, ReferenceSkill
+from daedalus.model.plugin.skill import ProceduralSkill
 from daedalus.model.plugin.agent import AgentDefinition
 from daedalus.model.plugin.config import ProceduralSkillConfig, AgentConfig
 from daedalus.model.project import PluginProject, ReferencePlacement
@@ -486,3 +484,17 @@ def test_validation_error_path_accumulated_in_nested_machine():
     dup_errors = [e for e in errors if e.rule == "duplicate_state_name"]
     assert len(dup_errors) == 1
     assert "agent:WriterAgent" in dup_errors[0].path
+
+
+def test_validate_project_injects_root_path():
+    """validate_project가 최상위 스킬/에이전트 FSM 오류에 root path를 주입한다."""
+    project = PluginProject(name="p")
+    agent = _agent_def("worker")
+    # 에이전트 FSM에 duplicate_state_name 위반 심기
+    agent.fsm.states.append(SimpleState(name="entry"))  # EntryPoint 'entry'와 동명
+    project.agents.append(agent)
+
+    errors = Validator.validate_project(project)
+    dup_errors = [e for e in errors if e.rule == "duplicate_state_name"]
+    assert len(dup_errors) == 1
+    assert dup_errors[0].path == ("agent:worker",)

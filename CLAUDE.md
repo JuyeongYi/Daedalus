@@ -160,7 +160,7 @@ ComponentConfig(ABC)          # model, effort, hooks 공통 필드
 
 ### Validator 규칙 (재귀 적용)
 
-`ValidationError` 필드: `rule`, `message`, `source`(기존) + `subject: object | None`(문제 객체, 향후 노드 점프용) + `path: tuple[str, ...]`(중첩 경로, 예: `("agent:Writer", "region:r1")`). 기본값이 있어 기존 생성자 호환.
+`ValidationError` 필드: `rule`, `message`, `source`(기존) + `subject: object | None`(문제 객체, 향후 노드 점프용 — `compare=False`이므로 identity 비교로 조회) + `path: tuple[str, ...]`(중첩 경로, 예: `("agent:Writer", "region:r1")`). 기본값이 있어 기존 생성자 호환. `validate_project`는 최상위 FSM 오류에 root path(`"skill:<이름>"`/`"agent:<이름>"`)를 주입한다.
 
 #### 머신 수준 (16종)
 
