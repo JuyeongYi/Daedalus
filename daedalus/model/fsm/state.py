@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from daedalus.model.fsm.action import Action
+from daedalus.model.fsm.join import JoinStrategy
 from daedalus.model.fsm.variable import Variable
 
 if TYPE_CHECKING:
@@ -67,8 +68,14 @@ class CompositeState(State):
 
 @dataclass(eq=False)
 class ParallelState(State):
-    """병렬 리전. 동시 실행."""
+    """병렬 리전. 동시 실행.
+
+    join: 전 Region 완료 종합 전략 (기본 ALL). N_OF면 join_count개 완료 시 join.
+    join_count: N_OF 전략에서 완료를 기다릴 Region 수 (그 외 전략에서는 무시).
+    """
     regions: list[Region] = field(default_factory=list)
+    join: JoinStrategy = JoinStrategy.ALL
+    join_count: int | None = None
 
     @property
     def kind(self) -> str:
