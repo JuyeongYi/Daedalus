@@ -127,3 +127,23 @@ def test_transition_transfer_skill_documented():
     skill = make_procedural(fsm=sm)
     text = compile_skill(skill)
     assert "skill 'edge-helper'" in text
+
+
+# ─────────────────────── 불완전 FSM 방어 가드 ───────────────────────
+
+
+def test_incomplete_fsm_direct_compile_does_not_crash():
+    """initial_state=None / states 비어 있는 FSM도 compile_skill/compile_agent
+    직접 호출이 AttributeError 없이 동작한다 (게이트 비경유 경로 보호)."""
+    from daedalus.compiler.emit import compile_agent
+    from daedalus.model.plugin.agent import AgentDefinition
+
+    empty = StateMachine(name="empty", initial_state=None, states=[])  # type: ignore[arg-type]
+    skill = make_procedural(fsm=empty)
+    text = compile_skill(skill)
+    assert "## 워크플로 절차" not in text  # 절차 단락 생략
+    assert "## 출력 이벤트" in text       # 출력 이벤트는 유지
+
+    agent = AgentDefinition(fsm=empty, name="a1", description="d")
+    atext = compile_agent(agent)
+    assert "## 내부 워크플로" not in atext

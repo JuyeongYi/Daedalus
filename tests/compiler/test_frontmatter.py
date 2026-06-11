@@ -179,3 +179,21 @@ def test_agent_model_inherit_omitted():
     agent.config = AgentConfig(model=ModelType.INHERIT)
     fm = _frontmatter(compile_agent(agent))
     assert "model:" not in fm
+
+
+# ─────────────────────── YAML 예약 스칼라 보호 ───────────────────────
+
+
+def test_yaml_reserved_scalar_quoted():
+    """description 전체가 YAML 예약어(true/null/yes/…)와 일치하면 따옴표 보호."""
+    for reserved in ("null", "True", "yes", "OFF"):
+        skill = make_procedural(description=reserved, when_to_use="")
+        fm = _frontmatter(compile_skill(skill))
+        assert f'description: "{reserved}"' in fm, fm
+
+
+def test_yaml_reserved_word_inside_sentence_not_quoted():
+    """문장 안의 예약어는 오파싱 위험이 없으므로 따옴표 불필요."""
+    skill = make_procedural(description="Returns null when empty", when_to_use="")
+    fm = _frontmatter(compile_skill(skill))
+    assert "description: Returns null when empty" in fm

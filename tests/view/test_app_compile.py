@@ -73,3 +73,33 @@ def test_compile_action_cancel_noop(qapp, monkeypatch):
     # 취소 시 상태바에 컴파일 관련 메시지가 없어야(기본 유지)
     assert "컴파일" not in window._status_label.text()
     window.close()
+
+
+def test_compile_action_warnings_show_validation_dock(qapp, tmp_path, monkeypatch):
+    """경고 동봉 성공 시에도 검증 dock이 표시된다 (F7 흐름과 관례 일치)."""
+    from daedalus.model.plugin.delegation import AgoraDispatchDef
+
+    window = MainWindow()
+    # msgtype 빈 값 → empty_delegation 경고 (에러 아님)
+    deleg = AgoraDispatchDef(name="orphan-send", description="d", msgtype="")
+    node = SimpleState(name="orphan-send", skill_ref=deleg)
+    end = SimpleState(name="end")
+    fsm = StateMachine(name="m", initial_state=node, states=[node, end], final_states=[end])
+    skill = _make_skill("warn-skill", fsm=fsm)
+    project = PluginProject(name="p", skills=[skill], delegations=[deleg])
+    window.set_project(project)
+
+    monkeypatch.setattr(
+        "daedalus.view.app.QFileDialog.getExistingDirectory",
+        lambda *a, **k: str(tmp_path),
+    )
+    dock = window._find_validation_dock()
+    assert dock is not None
+    dock.hide()
+
+    window._compile_project_dialog()
+
+    assert "컴파일 완료" in window._status_label.text()
+    assert "경고" in window._status_label.text()
+    assert not dock.isHidden(), "경고 동봉 성공 시 검증 dock이 표시되어야 한다"
+    window.close()

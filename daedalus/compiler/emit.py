@@ -80,6 +80,13 @@ def _enum_value(v: Any) -> Any:
     return v.value if isinstance(v, Enum) else v
 
 
+# YAML이 boolean/null로 오파싱할 수 있는 예약 스칼라 (YAML 1.1 포함 보수적 집합).
+# 문자열 값이 이와 (대소문자 무시) 일치하면 따옴표로 보호한다.
+_YAML_RESERVED: frozenset[str] = frozenset({
+    "true", "false", "null", "~", "yes", "no", "on", "off", "",
+})
+
+
 def _yaml_scalar(v: Any) -> str:
     """프론트매터 스칼라 값을 YAML 표기로. bool은 true/false, 나머지는 문자열."""
     if isinstance(v, bool):
@@ -87,6 +94,9 @@ def _yaml_scalar(v: Any) -> str:
     if isinstance(v, (int, float)):
         return str(v)
     s = str(v)
+    # YAML 예약 스칼라(true/null/yes/…)는 따옴표로 보호 — boolean/null 오파싱 방지.
+    if s.lower() in _YAML_RESERVED:
+        return '"' + s + '"'
     # 콜론/특수문자 포함 시 따옴표 — 보수적으로 콜론+공백, 선두 특수문자만 감싼다.
     if (": " in s) or s.startswith(("#", "-", "[", "{", "*", "&", "!", "|", ">", "@")):
         return '"' + s.replace('"', '\\"') + '"'
@@ -353,8 +363,30 @@ def _describe_fsm(sm: StateMachine, skill: ProceduralSkill) -> list[str]:
 
     형식: 번호 매긴 상태 진행 목록 + 각 상태의 작업·출구 전이 조건.
     결정적: _ordered_states로 고정된 순서.
+
+    방어 가드: states 비어 있음 / initial_state=None인 불완전 FSM은 절차 단락을
+    생략하고 출력 이벤트만 서술한다 (compile_project 경유 시 게이트가 먼저
+    거부하지만, compile_skill 직접 호출 경로를 보호).
     """
-    blocks: list[str] = ["## 워크플로 절차"]
+    blocks: list[str] = []
+    if sm.states and sm.initial_state is not None:
+        blocks.append("## 워크플로 절차")
+        blocks.extend(_fsm_procedure_blocks(sm))
+
+    # transfer_on 출구 이벤트 의미
+    if skill.transfer_on:
+        ev_lines = ["## 출력 이벤트", "이 스킬은 다음 결과 이벤트로 종료한다:"]
+        for ev in skill.transfer_on:
+            desc = f" — {ev.description}" if ev.description else ""
+            ev_lines.append(f"- `{ev.name}`{desc}")
+        blocks.append("\n".join(ev_lines))
+
+    return blocks
+
+
+def _fsm_procedure_blocks(sm: StateMachine) -> list[str]:
+    """유효한 FSM의 절차 단락 본체 (intro + 번호 목록)."""
+    blocks: list[str] = []
     states = _ordered_states(sm)
     initial = sm.initial_state
     final_ids = {id(s) for s in sm.final_states}
@@ -409,15 +441,6 @@ def _describe_fsm(sm: StateMachine, skill: ProceduralSkill) -> list[str]:
             )
 
     blocks.append("\n".join(lines))
-
-    # transfer_on 출구 이벤트 의미
-    if skill.transfer_on:
-        ev_lines = ["## 출력 이벤트", "이 스킬은 다음 결과 이벤트로 종료한다:"]
-        for ev in skill.transfer_on:
-            desc = f" — {ev.description}" if ev.description else ""
-            ev_lines.append(f"- `{ev.name}`{desc}")
-        blocks.append("\n".join(ev_lines))
-
     return blocks
 
 
@@ -771,9 +794,13 @@ def compile_agent(agent: AgentDefinition, project=None) -> str:
 
 
 def _describe_agent_fsm(agent: AgentDefinition) -> list[str]:
-    """에이전트 FSM을 절차 단락으로 — 상태 진행 + ExitPoint 출구 의미."""
+    """에이전트 FSM을 절차 단락으로 — 상태 진행 + ExitPoint 출구 의미.
+
+    방어 가드: states 비어 있음 / initial_state=None인 불완전 FSM은 생략
+    (게이트가 먼저 거부하지만 compile_agent 직접 호출 경로 보호).
+    """
     sm = agent.fsm
-    if not sm.states:
+    if not sm.states or sm.initial_state is None:
         return []
     blocks: list[str] = ["## 내부 워크플로"]
     blocks.append(

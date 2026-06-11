@@ -158,3 +158,46 @@ def test_clean_project_still_passes_after_gate_hardening(tmp_path):
     assert (tmp_path / "skills" / "top-skill" / "SKILL.md").exists()
     assert (tmp_path / "agents" / "a1.md").exists()
     assert (tmp_path / "skills" / "a1--local-proc" / "SKILL.md").exists()
+
+
+# ─────────────────────── 리뷰 마이너 후속 ───────────────────────
+
+
+def test_gate_rules_registered_in_compiler_error_rules(tmp_path):
+    """게이트가 발급하는 rule은 전부 COMPILER_ERROR_RULES에 등록되어 있고,
+    WARNING_RULES와 겹치지 않아야 한다 (등급 의도의 단일 진실)."""
+    from daedalus.compiler.project_compiler import COMPILER_ERROR_RULES
+    from daedalus.model.validation import WARNING_RULES
+    from tests.compiler.builders import make_agent
+
+    assert not (COMPILER_ERROR_RULES & WARNING_RULES)
+
+    # 두 게이트 에러를 동시에 유발하는 프로젝트로 발급 rule ⊆ 등록 집합 고정
+    agent1 = make_agent("a--b")
+    agent1.skills = [make_procedural(name="c")]
+    agent2 = make_agent("a")
+    agent2.skills = [make_procedural(name="b--c")]
+    project = PluginProject(
+        name="p", skills=[make_procedural(name="Bad Name")], agents=[agent1, agent2]
+    )
+    result = compile_project(project, tmp_path)
+    emitted = {e.rule for e in result.errors if e.rule.startswith("compile_")}
+    assert emitted == COMPILER_ERROR_RULES, (
+        f"발급 {emitted} vs 등록 {COMPILER_ERROR_RULES}"
+    )
+
+
+def test_skipped_includes_local_skills(tmp_path):
+    """거부 시 skipped에 에이전트 로컬 스킬도 포함된다."""
+    from tests.compiler.builders import make_agent
+
+    agent = make_agent("a1")
+    agent.skills = [make_procedural(name="local-proc")]
+    project = PluginProject(
+        name="p", skills=[make_procedural(name="Bad Name")], agents=[agent]
+    )
+    result = compile_project(project, tmp_path)
+    assert not result.ok
+    labels = [label for _, label in result.skipped]
+    assert any("local-proc" in lb for lb in labels), labels
+    assert any("a1" in lb for lb in labels)

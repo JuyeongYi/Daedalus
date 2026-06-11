@@ -33,6 +33,15 @@ from daedalus.model.validation import ValidationError, Validator
 # 검증기에서는 경고(편집 중)지만 컴파일 게이트에서는 에러로 승격한다.
 _OUTPUT_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 
+# 컴파일 게이트 전용 rule 분류 표 (등급 의도의 단일 진실).
+# 이 rule들은 validation.py의 WARNING_RULES에 없으므로 is_warning이 자동으로
+# False(에러)가 된다 — 게이트 rule은 전부 에러 등급이 의도다. 새 게이트 rule을
+# 추가할 때 반드시 이 집합에도 등록하라 (테스트가 발급 rule ⊆ 이 집합을 고정).
+COMPILER_ERROR_RULES: frozenset[str] = frozenset({
+    "compile_invalid_component_name",
+    "compile_output_path_conflict",
+})
+
 
 @dataclass
 class CompileResult:
@@ -188,11 +197,9 @@ def compile_project(project, out_dir: Path | str) -> CompileResult:
 
     result = CompileResult(errors=errors, warnings=warnings)
     if errors:
-        # 거부 — 무엇이 막혔는지 skipped에 기록
-        for skill in project.skills:
-            result.skipped.append(("compile_gate_error", skill.name))
-        for agent in project.agents:
-            result.skipped.append(("compile_gate_error", agent.name))
+        # 거부 — 무엇이 막혔는지 skipped에 기록 (산출 계획 전체 = 로컬 스킬 포함)
+        for item in plan:
+            result.skipped.append(("compile_gate_error", item.label))
         return result
 
     for item in plan:

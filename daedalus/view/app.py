@@ -561,10 +561,7 @@ class MainWindow(QMainWindow):
         self._validation_panel.set_errors(errors)
 
         # 검증 패널이 숨겨져 있으면 표시
-        validation_dock = self._find_validation_dock()
-        if validation_dock is not None:
-            validation_dock.show()
-            validation_dock.raise_()
+        self._show_validation_dock()
 
         error_count = sum(1 for e in errors if not e.is_warning)
         warning_count = sum(1 for e in errors if e.is_warning)
@@ -596,10 +593,7 @@ class MainWindow(QMainWindow):
         if not result.ok:
             # 에러 — 검증 패널에 동봉(경고 포함) 표시
             self._validation_panel.set_errors(result.errors + result.warnings)
-            validation_dock = self._find_validation_dock()
-            if validation_dock is not None:
-                validation_dock.show()
-                validation_dock.raise_()
+            self._show_validation_dock()
             self._status_label.setText(
                 f"컴파일 거부: 에러 {len(result.errors)}건 (F7로 확인)"
             )
@@ -611,7 +605,17 @@ class MainWindow(QMainWindow):
             f"컴파일 완료: {len(result.written)}파일 생성{warn_str} → {out_dir}"
         )
         if warn:
+            # F7 검증 흐름과 동일하게 dock도 표시 — 경고를 상태바 문구로만
+            # 인지하게 두지 않는다.
             self._validation_panel.set_errors(result.warnings)
+            self._show_validation_dock()
+
+    def _show_validation_dock(self) -> None:
+        """검증 dock을 표시하고 앞으로 올린다 (F7/컴파일 공용)."""
+        validation_dock = self._find_validation_dock()
+        if validation_dock is not None:
+            validation_dock.show()
+            validation_dock.raise_()
 
     def _find_validation_dock(self) -> QDockWidget | None:
         """'검증' 도킹 위젯을 반환한다."""
