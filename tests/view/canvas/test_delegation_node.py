@@ -11,30 +11,35 @@ from daedalus.model.plugin.delegation import (
     TeamSpawnDef,
     WaitMode,
 )
-from daedalus.view.canvas.node_item import _delegation_badge
+from daedalus.view.canvas.node_badges import badges_for
 from daedalus.view.viewmodel.state_vm import StateViewModel
 
 
-# ─────────────────────── _delegation_badge 함수 단위 ───────────────────────
+def _emojis(component: object) -> str:
+    """badges_for 결과에서 이모지만 이어 붙인 문자열 (기존 테스트 비교 포맷)."""
+    return " ".join(e for e, _ in badges_for(component))
+
+
+# ─────────────────────── badges_for — DelegationDef 단위 ───────────────────────
 
 def test_badge_team_spawn_no_flags():
     """TeamSpawnDef, WAIT, EXPLICIT → 뱃지 없음."""
     d = TeamSpawnDef(name="t", description="")
-    assert _delegation_badge(d) == ""
+    assert badges_for(d) == []
 
 
 def test_badge_fire_and_forget():
     """wait_mode=FIRE_AND_FORGET → 🔥 포함."""
     d = TeamSpawnDef(name="t", description="", wait_mode=WaitMode.FIRE_AND_FORGET)
-    badge = _delegation_badge(d)
-    assert "🔥" in badge
+    emojis = _emojis(d)
+    assert "🔥" in emojis
 
 
 def test_badge_guided_composition():
     """composition=GUIDED → ✨ 포함."""
     d = DynamicWorkflowDef(name="w", description="", composition=CompositionMode.GUIDED)
-    badge = _delegation_badge(d)
-    assert "✨" in badge
+    emojis = _emojis(d)
+    assert "✨" in emojis
 
 
 def test_badge_both_flags():
@@ -44,20 +49,20 @@ def test_badge_both_flags():
         wait_mode=WaitMode.FIRE_AND_FORGET,
         composition=CompositionMode.GUIDED,
     )
-    badge = _delegation_badge(d)
-    assert "🔥" in badge
-    assert "✨" in badge
+    emojis = _emojis(d)
+    assert "🔥" in emojis
+    assert "✨" in emojis
 
 
 def test_badge_non_delegation_returns_empty():
-    """DelegationDef가 아닌 객체(AgentDefinition 등)는 빈 문자열."""
+    """DelegationDef가 아닌 객체(config 없음)는 빈 목록."""
     class _FakeAgent:
         kind = "agent"
         wait_mode = None
         composition = None
 
-    assert _delegation_badge(_FakeAgent()) == ""
-    assert _delegation_badge(None) == ""
+    assert badges_for(_FakeAgent()) == []
+    assert badges_for(None) == []  # type: ignore[arg-type]
 
 
 def test_badge_all_three_kinds(qapp):
@@ -68,8 +73,8 @@ def test_badge_all_three_kinds(qapp):
             wait_mode=WaitMode.FIRE_AND_FORGET,
             composition=CompositionMode.GUIDED,
         )
-        badge = _delegation_badge(d)
-        assert "🔥" in badge and "✨" in badge, f"{cls.__name__} 뱃지 생성 실패: {badge!r}"
+        emojis = _emojis(d)
+        assert "🔥" in emojis and "✨" in emojis, f"{cls.__name__} 뱃지 생성 실패: {emojis!r}"
 
 
 # ─────────────────────── StateNodeItem type style ───────────────────────

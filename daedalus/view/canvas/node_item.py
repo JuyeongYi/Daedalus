@@ -9,25 +9,8 @@ from PyQt6.QtWidgets import QGraphicsItem, QStyleOptionGraphicsItem, QWidget
 
 from daedalus.model.fsm.pseudo import EntryPoint, ExitPoint
 from daedalus.model.fsm.section import EventDef
+from daedalus.view.canvas.node_badges import badges_for
 from daedalus.view.viewmodel.state_vm import StateViewModel
-
-def _delegation_badge(ref: object) -> str:
-    """DelegationDef ref → 뱃지 텍스트 (비-DelegationDef는 "" 반환)."""
-    # view→model 의존은 정상 방향 — enum 정체성 비교로 value 문자열
-    # 하드코딩(리네임 시 뱃지 소실)을 피한다.
-    from daedalus.model.plugin.delegation import (
-        CompositionMode,
-        DelegationDef,
-        WaitMode,
-    )
-    if not isinstance(ref, DelegationDef):
-        return ""
-    badges = []
-    if ref.wait_mode is WaitMode.FIRE_AND_FORGET:
-        badges.append("🔥")
-    if ref.composition is CompositionMode.GUIDED:
-        badges.append("✨")
-    return " ".join(badges)
 
 _W = 160.0
 _HEADER_H = 20.0
@@ -230,14 +213,17 @@ class StateNodeItem(QGraphicsItem):
         painter.setFont(font)
         painter.drawText(name_rect, Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop, self._state_vm.model.name)
 
-        # 위임 뱃지 (wait_mode=FIRE_AND_FORGET → 🔥, composition=GUIDED → ✨)
-        ref_for_badge = model.skill_ref if hasattr(model, "skill_ref") else None  # type: ignore[union-attr]
-        badge = _delegation_badge(ref_for_badge)
-        if badge:
+        # 뱃지 행 (프론트매터 enum/bool 시각화)
+        ref_for_badge = model.skill_ref if hasattr(model, "skill_ref") else model  # type: ignore[union-attr]
+        badge_list = badges_for(ref_for_badge)
+        if badge_list:
+            badge_text = " ".join(emoji for emoji, _ in badge_list)
+            tooltip_lines = "\n".join(f"{emoji} {tip}" for emoji, tip in badge_list)
             badge_rect = QRectF(4, _HEADER_H + 22, _W - 8, 16)
             painter.setPen(QPen(QColor("#ddaa44")))
             painter.setFont(QFont("Segoe UI", 8))
-            painter.drawText(badge_rect, Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop, badge)
+            painter.drawText(badge_rect, Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop, badge_text)
+            self.setToolTip(tooltip_lines)
 
         # 입력 포트 (좌측)
         if not self._is_entry_point():
