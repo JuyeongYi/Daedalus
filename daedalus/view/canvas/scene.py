@@ -658,11 +658,16 @@ class FsmScene(QGraphicsScene):
         if event is None:
             return
         if event.key() == Qt.Key.Key_Delete:
-            for item in list(self.selectedItems()):
+            selected = list(self.selectedItems())
+            # 1패스: 노드 삭제 (연결 전이는 MacroCommand로 함께 삭제됨)
+            for item in selected:
                 if isinstance(item, StateNodeItem):
                     self._delete_state(item.state_vm)
-                elif isinstance(item, TransitionEdgeItem):
-                    self._delete_transition(item.transition_vm)
+            # 2패스: 엣지 — 노드 삭제로 이미 제거된 전이는 중복 커맨드 금지
+            for item in selected:
+                if isinstance(item, TransitionEdgeItem):
+                    if item.transition_vm in self._project_vm.transition_vms:
+                        self._delete_transition(item.transition_vm)
                 elif isinstance(item, ReferenceNodeItem):
                     self.delete_reference_node(item.ref_vm)
                 elif isinstance(item, ReferenceEdgeItem):
@@ -915,7 +920,9 @@ class AgentFsmScene(FsmScene):
             return
         if event.key() == Qt.Key.Key_Delete:
             from daedalus.model.fsm.pseudo import EntryPoint as _EP, ExitPoint as _XP
-            for item in list(self.selectedItems()):
+            selected = list(self.selectedItems())
+            # 1패스: 노드 삭제 (연결 전이는 MacroCommand로 함께 삭제됨)
+            for item in selected:
                 if isinstance(item, StateNodeItem):
                     model = item.state_vm.model
                     if isinstance(model, _EP):
@@ -930,8 +937,11 @@ class AgentFsmScene(FsmScene):
                         self._delete_exit_point(item.state_vm, model)
                     else:
                         self._delete_state(item.state_vm)
-                elif isinstance(item, TransitionEdgeItem):
-                    self._delete_transition(item.transition_vm)
+            # 2패스: 엣지 — 노드 삭제로 이미 제거된 전이는 중복 커맨드 금지
+            for item in selected:
+                if isinstance(item, TransitionEdgeItem):
+                    if item.transition_vm in self._project_vm.transition_vms:
+                        self._delete_transition(item.transition_vm)
                 elif isinstance(item, ReferenceNodeItem):
                     self.delete_reference_node(item.ref_vm)
                 elif isinstance(item, ReferenceEdgeItem):

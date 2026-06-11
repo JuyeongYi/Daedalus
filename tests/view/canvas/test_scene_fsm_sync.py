@@ -118,3 +118,67 @@ def test_drop_skill_syncs_to_agent_fsm(qapp):
 
     vm.command_stack.undo()
     assert not any(getattr(st, "skill_ref", None) is skill for st in fsm.states)
+
+
+# --- 봉합 3: 노드+엣지 동시 삭제 중복 커맨드 방지 ---
+
+
+def _delete_key_event():
+    from PyQt6.QtCore import QEvent, Qt
+    from PyQt6.QtGui import QKeyEvent
+    return QKeyEvent(
+        QEvent.Type.KeyPress, Qt.Key.Key_Delete, Qt.KeyboardModifier.NoModifier
+    )
+
+
+def test_node_and_edge_simultaneous_delete_restores_single_transition(qapp):
+    """노드+연결 엣지 동시 선택 삭제 → undo → 전이가 정확히 1개만 복원."""
+    vm, fsm, scene = _make_scene()
+    a = SimpleState(name="a")
+    b = SimpleState(name="b")
+    fsm.states.extend([a, b])
+    avm = StateViewModel(model=a, x=0, y=0)
+    bvm = StateViewModel(model=b, x=200, y=0)
+    vm.state_vms.extend([avm, bvm])
+
+    model = Transition(source=a, target=b, trigger=CompletionEvent(name="done"))
+    fsm.transitions.append(model)
+    tvm = TransitionViewModel(model=model, source_vm=avm, target_vm=bvm)
+    vm.transition_vms.append(tvm)
+    vm.notify()  # scene rebuild → 아이템 생성
+
+    node_item = scene._node_items[avm]
+    edge_item = scene._edge_items[tvm]
+    node_item.setSelected(True)
+    edge_item.setSelected(True)
+
+    scene.keyPressEvent(_delete_key_event())
+
+    assert tvm not in vm.transition_vms
+    assert model not in fsm.transitions
+    # 중복 DeleteTransitionCmd 없이 단일 복합 커맨드 1개만 쌓여야 한다
+    assert len(vm.command_stack.history) == 1, (
+        f"커맨드가 1개여야 하는데 {len(vm.command_stack.history)}개"
+    )
+
+    while vm.command_stack.can_undo:
+        vm.command_stack.undo()
+    assert sum(1 for t in vm.transition_vms if t is tvm) == 1, (
+        "undo 후 전이 vm이 정확히 1개만 복원되어야 한다"
+    )
+    assert sum(1 for t in fsm.transitions if t is model) == 1
+
+
+def test_add_transition_vm_identity_duplicate_guard(qapp):
+    """add_transition_vm은 동일 인스턴스 중복 추가를 거부한다."""
+    vm = ProjectViewModel()
+    a = SimpleState(name="a")
+    b = SimpleState(name="b")
+    avm = StateViewModel(model=a)
+    bvm = StateViewModel(model=b)
+    model = Transition(source=a, target=b, trigger=CompletionEvent(name="done"))
+    tvm = TransitionViewModel(model=model, source_vm=avm, target_vm=bvm)
+
+    vm.add_transition_vm(tvm)
+    vm.add_transition_vm(tvm)
+    assert sum(1 for t in vm.transition_vms if t is tvm) == 1
