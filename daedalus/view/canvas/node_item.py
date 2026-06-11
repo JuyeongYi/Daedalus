@@ -218,12 +218,12 @@ class StateNodeItem(QGraphicsItem):
         badge_list = badges_for(ref_for_badge)
         if badge_list:
             badge_text = " ".join(emoji for emoji, _ in badge_list)
-            tooltip_lines = "\n".join(f"{emoji} {tip}" for emoji, tip in badge_list)
             badge_rect = QRectF(4, _HEADER_H + 22, _W - 8, 16)
             painter.setPen(QPen(QColor("#ddaa44")))
             painter.setFont(QFont("Segoe UI", 8))
             painter.drawText(badge_rect, Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop, badge_text)
-            self.setToolTip(tooltip_lines)
+        # 뱃지가 전부 사라진 노드의 잔존 툴팁도 함께 갱신
+        self.setToolTip("\n".join(f"{emoji} {tip}" for emoji, tip in badge_list))
 
         # 입력 포트 (좌측)
         if not self._is_entry_point():
