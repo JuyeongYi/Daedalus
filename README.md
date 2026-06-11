@@ -97,7 +97,7 @@ daedalus/
 - 출력: `skills/<name>/SKILL.md` (스킬 4종), `agents/<name>.md` (에이전트), 에이전트 로컬 스킬은 `skills/<agent>--<skill>/`
 - 프론트매터는 `SKILL_FIELD_MATRIX`/`AGENT_FIELD_MATRIX`의 `emit==FRONTMATTER` 필드만(FIXED 강제, INHERIT·기본값 생략)
 - ProceduralSkill FSM은 사람이 읽는 절차 단락으로, 위임 노드는 스펙 4절/1-b절 문구로, tool_shelf는 참조 단락으로 출력
-- 검증 게이트: `validate_project` 에러 1건이라도 있으면 컴파일 거부. 출력은 결정적(LF, BOM 없음)
+- 검증 게이트: `validate_project` 에러 1건이라도 있으면 컴파일 거부. 게이트 강화 — 산출 이름 규약(`^[a-z0-9][a-z0-9-]*$`) 불일치와 산출 경로 충돌(`--` 결합 모호성 포함)은 컴파일 에러로 거부. 출력은 결정적(LF, BOM 없음)
 
 ## 현재 구현 범위
 

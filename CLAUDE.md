@@ -257,7 +257,7 @@ dataclass(값 동등성, unhashable) 유지 — 컬렉션 멤버십에는 list/`
 
 **출력 구조 (CC 플러그인 규약):**
 - `<out>/skills/<skill-name>/SKILL.md` — 전역 스킬 4종 전부 (Declarative/Reference도 SKILL.md)
-- `<out>/skills/<agent-name>--<skill-name>/SKILL.md` — 에이전트 로컬 스킬 (충돌 없는 `--` 결합 규칙)
+- `<out>/skills/<agent-name>--<skill-name>/SKILL.md` — 에이전트 로컬 스킬 (`--` 결합은 충돌 무결하지 **않음** — 이름 규약이 연속 하이픈을 허용하므로 게이트가 사전 경로 집합 검사로 충돌 시 거부)
 - `<out>/agents/<agent-name>.md` — 에이전트
 
 **컴파일 정책 (확정):**
@@ -274,6 +274,9 @@ dataclass(값 동등성, unhashable) 유지 — 컬렉션 멤버십에는 list/`
 7. **에이전트**: `emit==FRONTMATTER`만 프론트매터, INVOCATION(max_turns/background/isolation)은 "호출 파라미터" 본문 단락,
    SETTINGS(hooks/mcp_servers)는 "요구 환경" 언급만(파일 생성은 WP-HOOK 예정).
 8. **컴파일 게이트**: `Validator.validate_project`의 에러(`is_warning=False`) 1건이라도 있으면 거부(파일 미생성, errors 반환). 경고는 통과(warnings 동봉).
+   게이트 강화 2종(파일 쓰기 전 산출 계획 단계): ① 산출 이름이 되는 컴포넌트(전역 스킬·에이전트·로컬 스킬)의 이름이
+   `^[a-z0-9][a-z0-9-]*$` 불일치면 `compile_invalid_component_name` **에러로 승격** 거부 (F7 검증기에서는 경고 등급 유지 — 편집 중에는 경고가 맞다).
+   ② 전체 산출 경로 집합에 중복이 있으면 `compile_output_path_conflict` 에러로 거부 + 충돌 경로/원인 컴포넌트 보고 (조용한 덮어쓰기 방지).
 
 출력은 결정적(같은 모델 → 같은 텍스트), LF 줄바꿈, UTF-8(BOM 없음). 텍스트 생성(`compile_skill`/`compile_agent`)은 파일시스템과 분리되어 문자열 단위 테스트 가능.
 

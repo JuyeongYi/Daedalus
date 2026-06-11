@@ -112,7 +112,7 @@ def test_local_skill_dir_naming(tmp_path):
     project = PluginProject(name="demo", agents=[agent])
     result = compile_project(project, tmp_path)
     assert result.ok, [e.message for e in result.errors]
-    # 충돌 없는 규칙: <agent>--<skill>
+    # 로컬 스킬 규칙: <agent>--<skill> (충돌 무결 아님 — 충돌은 게이트의 사전 경로 검사가 거부)
     assert (tmp_path / "skills" / "a1--local-proc" / "SKILL.md").exists()
     text = (tmp_path / "skills" / "a1--local-proc" / "SKILL.md").read_text(encoding="utf-8")
     # local_procedural 매트릭스: context fixed fork
