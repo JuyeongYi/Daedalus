@@ -1,12 +1,13 @@
 """ValidationError.is_warning / WARNING_RULES 완전성 테스트 (WP-J)."""
 from __future__ import annotations
 
+import inspect
+import re
+
 import pytest
 
-from daedalus.model.validation import ValidationError, WARNING_RULES, Validator
-from daedalus.model.fsm.machine import StateMachine
-from daedalus.model.fsm.state import SimpleState
-from daedalus.model.project import PluginProject
+import daedalus.model.validation as validation_module
+from daedalus.model.validation import ValidationError, WARNING_RULES
 
 
 # 에러로 분류되어야 하는 규칙 목록
@@ -38,9 +39,35 @@ _WARN_RULES = frozenset({
 })
 
 
+def _emitted_rules_from_source() -> frozenset[str]:
+    """validation.py 소스에서 실제 emit되는 rule= 리터럴을 introspect."""
+    source = inspect.getsource(validation_module)
+    return frozenset(re.findall(r'rule="([a-z0-9_]+)"', source))
+
+
 def test_warning_rules_completeness():
     """WARNING_RULES가 경고 규칙 집합과 동일하다."""
     assert WARNING_RULES == _WARN_RULES
+
+
+def test_every_emitted_rule_is_classified():
+    """validation.py가 emit하는 모든 rule이 에러/경고 어느 한쪽에 분류되어 있다.
+
+    소스 introspection — 새 규칙 추가 시 이 테스트가 깨져 분류 누락을 강제 검출한다.
+    (하드코딩 재진술이 아니라 실제 emit 지점 기준.)
+    """
+    emitted = _emitted_rules_from_source()
+    assert emitted, "validation.py에서 rule= 리터럴을 찾지 못했다 — 패턴 확인 필요"
+    classified = _ERROR_RULES | _WARN_RULES
+    unclassified = emitted - classified
+    assert not unclassified, (
+        f"분류되지 않은 규칙: {sorted(unclassified)} — "
+        f"WARNING_RULES(validation.py) 및 본 테스트의 _ERROR_RULES/_WARN_RULES에 "
+        f"등급을 지정하라"
+    )
+    # 역방향: 분류표에 있으나 더 이상 emit되지 않는 유령 규칙도 검출
+    ghost = classified - emitted
+    assert not ghost, f"emit되지 않는 유령 규칙: {sorted(ghost)}"
 
 
 def test_error_and_warning_rules_are_disjoint():

@@ -583,7 +583,7 @@ class MainWindow(QMainWindow):
                             if svm.model is subject:
                                 scene.clearSelection()
                                 node_item.setSelected(True)
-                                view = getattr(widget, "_graph_view", None)
+                                view = getattr(widget, "_canvas_view", None)
                                 if view is not None and hasattr(view, "centerOn"):
                                     view.centerOn(node_item)
                                 return
