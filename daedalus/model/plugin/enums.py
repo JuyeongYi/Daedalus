@@ -82,3 +82,14 @@ class SkillField(Enum):
     HOOKS = "hooks"
     DISABLE_MODEL = "disable_model_invocation"
     USER_INVOCABLE = "user_invocable"
+
+    @property
+    def frontmatter_key(self) -> str | None:
+        """SKILL.md 프론트매터에 직출되는 kebab-case 키.
+
+        WHEN_TO_USE는 프론트매터 직출 금지 — description/본문 합류는 컴파일러
+        정책이므로 None을 반환한다. 나머지는 snake_case → kebab-case 변환.
+        """
+        if self is SkillField.WHEN_TO_USE:
+            return None
+        return self.value.replace("_", "-")

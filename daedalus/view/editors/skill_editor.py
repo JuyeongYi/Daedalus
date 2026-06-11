@@ -57,9 +57,8 @@ _FIELD_ENUM_MAP: dict[SkillField, type] = {
     SkillField.SHELL: SkillShell,
 }
 
-# list[str] 타입인 필드 집합 —
-# 1) QLineEdit write-back 시 공백 split으로 list 변환 (로드 측 join과 대칭)
-# 2) 선언 기본값(default)이 MISSING일 때 클리어 폴백을 []로 결정
+# list[str] 타입인 필드 집합 — 선언 기본값(default)이 MISSING일 때 클리어 폴백을 []로 결정.
+# 두 필드 모두 TagInput 편집이므로 write-back 값은 항상 list로 들어온다.
 # 클리어 자체는 _declared_default가 dataclass 선언 기본값으로 처리하므로
 # PATHS(default None)는 자연히 None으로 정규화된다.
 # 주의: HOOKS는 dict[str, Any] 필드이므로 여기에 포함하지 않는다.
@@ -157,8 +156,10 @@ class _FrontmatterPanel(QScrollArea):
         lay.addWidget(self._w_desc)
 
         # SKILL_FIELD_MATRIX 기반 필드 생성
+        # 위젯 클래스는 view 측 FIELD_WIDGETS에서 조회한다(model→view 의존 역전).
         from daedalus.model.plugin.field_matrix import SKILL_FIELD_MATRIX
         from daedalus.model.plugin.enums import FieldVisibility
+        from daedalus.view.editors.field_widgets import FIELD_WIDGETS
 
         kind = skill_kind or self._detect_kind(component)
         rules = SKILL_FIELD_MATRIX.get(kind, {})
@@ -171,7 +172,7 @@ class _FrontmatterPanel(QScrollArea):
                 if fld in skip:
                     continue
                 if rule.visibility == FieldVisibility.REQUIRED:
-                    widget = rule.widget()
+                    widget = FIELD_WIDGETS[fld]()
                     self._apply_value(widget, config, component, fld, rule)
                     self._field_widgets[fld] = widget
                     self._connect_widget_signal(fld, widget)
@@ -185,7 +186,7 @@ class _FrontmatterPanel(QScrollArea):
                         lay.addWidget(QLabel(fld.value))
                         lay.addWidget(widget)
                 elif rule.visibility == FieldVisibility.OPTIONAL:
-                    widget = rule.widget()
+                    widget = FIELD_WIDGETS[fld]()
                     current = self._get_current(config, component, fld)
                     enabled = current is not None and current != "" and current != [] and current is not False
                     self._apply_value(widget, config, component, fld, rule)
@@ -237,7 +238,9 @@ class _FrontmatterPanel(QScrollArea):
             if current is not None:
                 val = current.value if hasattr(current, "value") else str(current)
             elif rule.default_value is not None:
-                val = str(rule.default_value)
+                # default_value는 enum(ModelType.INHERIT 등) 또는 스칼라.
+                dv = rule.default_value
+                val = dv.value if hasattr(dv, "value") else str(dv)
             if val is not None:
                 idx = widget.findText(val)
                 if idx >= 0:
@@ -327,10 +330,6 @@ class _FrontmatterPanel(QScrollArea):
                 value = enum_type(value)
             except ValueError:
                 return  # 알 수 없는 값은 무시
-
-        # list[str] 필드: QLineEdit 경유 str 입력을 공백 split (로드 측 join과 대칭)
-        if fld in _LIST_FIELDS and isinstance(value, str):
-            value = value.split()
 
         # hooks: dict[str, Any] 필드 — PresetPicker의 이름 목록을 dict로 변환,
         # 이미 존재하는 키의 본문은 보존

@@ -7,14 +7,18 @@ from daedalus.model.plugin.enums import EffortLevel, ModelType, SkillContext, Sk
 
 
 class ModelComboBox(QComboBox):
-    """모델 선택 콤보박스 — sonnet/opus/haiku."""
+    """모델 선택 콤보박스 — inherit/sonnet/opus/haiku.
+
+    INHERIT 항목을 포함한다 — config의 단일 진실 기본값(ModelType.INHERIT)과
+    콤보 항목 집합을 일치시켜, 모델이 INHERIT인데 위젯엔 항목이 없어 'sonnet'으로
+    표시되던 로드 괴리를 해소한다.
+    """
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         for m in ModelType:
-            if m != ModelType.INHERIT:
-                self.addItem(m.value)
-        self.setCurrentText("sonnet")
+            self.addItem(m.value)
+        self.setCurrentText(ModelType.INHERIT.value)
 
 
 class EffortComboBox(QComboBox):

@@ -51,7 +51,7 @@ daedalus/
     ├── app.py              # 메인 윈도우
     ├── canvas/             # GraphicsView/Scene, NodeItem, EdgeItem, RefNodeItem, RefEdgeItem
     ├── commands/           # Undo/Redo 커맨드 (state, transition, section, exit_point)
-    ├── editors/            # 속성 편집기 (skill, agent, body, component, variable_loader)
+    ├── editors/            # 속성 편집기 (skill, agent, body, component, variable_loader, field_widgets)
     ├── panels/             # TreePanel, PropertyPanel, RegistryPanel, HistoryPanel
     ├── viewmodel/          # ProjectViewModel, StateViewModel (모델↔뷰 중간 계층)
     └── widgets/            # ComboWidgets, TagInput, PresetPicker
@@ -106,12 +106,11 @@ daedalus/
 @dataclass
 class FieldRule:
     visibility: FieldVisibility   # REQUIRED / OPTIONAL / DEFAULT / FIXED
-    widget: type[QWidget]         # 편집기에서 사용할 위젯 클래스
-    fixed_value: Any = None       # FIXED일 때 고정값
-    default_value: Any = None
+    fixed_value: Any = None       # FIXED일 때 컴파일러가 강제할 출력값 (enum)
+    default_value: Any = None     # 위젯 초기 표시용 (단일 진실은 config 선언 기본값)
 ```
 
-`field_matrix.py`는 model/ 안에 있지만 view 위젯을 import한다 (편집기 위젯 매핑 목적).
+`field_matrix.py`는 순수 모델(PyQt 무관)이다. 편집 위젯 매핑은 view 측 `daedalus/view/editors/field_widgets.py`의 `FIELD_WIDGETS: dict[SkillField, type[QWidget]]`(1차원, kind 무관)로 분리되어 있다. 프론트매터 키는 `SkillField.frontmatter_key` property가 제공한다 (kebab-case, `WHEN_TO_USE`는 None — description/본문 합류는 컴파일러 정책). FIXED 필드는 편집기 비노출이며 `fixed_value`는 컴파일러 출력 시 강제(config에 미기록).
 
 ### FieldType (통합 타입)
 
