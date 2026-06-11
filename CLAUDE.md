@@ -45,18 +45,20 @@ daedalus/
 │   │   ├── agent.py        # AgentDefinition
 │   │   ├── delegation.py   # DelegationDef(CompositionMode/guidance 포함) + TeamSpawnDef/DynamicWorkflowDef/AgoraDispatchDef (CC 위임 노드)
 │   │   ├── tool.py         # Tool(ABC) + BuiltinTool/MCPTool/UserDefinedTool (tool_shelf 도구 단일 진실)
+│   │   ├── hook.py         # HookDef + HookEvent(CC 9종) (hook_library 훅 단일 진실)
+│   │   ├── hook_presets.py # BUILTIN_HOOK_PRESETS (복사용 훅 템플릿) + preset_copy
 │   │   └── field_matrix.py # FieldRule(emit 포함), SKILL_FIELD_MATRIX, AGENT_FIELD_MATRIX (스킬/에이전트 유형별 프론트매터 필드 규칙)
-│   ├── project.py           # PluginProject (최상위 컨테이너), ReferencePlacement, tool_shelf
+│   ├── project.py           # PluginProject (최상위 컨테이너), ReferencePlacement, tool_shelf, hook_library
 │   ├── serialize.py         # serialize_project/deserialize_project (모델↔JSON dict, 안정 ID 기반)
-│   └── validation.py        # Validator + ValidationError + WARNING_RULES + is_warning (머신 규칙 16종 + 프로젝트 규칙 7종, 재귀)
+│   └── validation.py        # Validator + ValidationError + WARNING_RULES + is_warning (머신 규칙 16종 + 프로젝트 규칙 11종, 재귀)
 ├── compiler/         # 순수 모델 → 플러그인 파일 (PyQt 무관)
-│   ├── emit.py             # compile_skill/compile_agent — model → SKILL.md/agent .md 텍스트 (결정적, LF)
+│   ├── emit.py             # compile_skill/compile_agent/compile_hooks_json — model → SKILL.md/agent .md/hooks.json 텍스트 (결정적, LF)
 │   └── project_compiler.py # compile_project(project, out_dir) → CompileResult (검증 게이트 + 파일 쓰기)
 └── view/             # PyQt6 기반 노드 에디터
-    ├── app.py              # 메인 윈도우 (F7 "프로젝트 검증", Ctrl+B "컴파일" → compile_project → 상태바/ValidationPanel)
+    ├── app.py              # 메인 윈도우 (F7 "프로젝트 검증", Ctrl+B "컴파일", 도구→"훅 라이브러리...")
     ├── canvas/             # GraphicsView/Scene, NodeItem, EdgeItem, RefNodeItem, RefEdgeItem, node_badges(뱃지 로직)
     ├── commands/           # Undo/Redo 커맨드 (state, transition, section, exit_point)
-    ├── editors/            # 속성 편집기 (skill, agent, delegation, body, component, variable_loader, field_widgets)
+    ├── editors/            # 속성 편집기 (skill, agent, delegation, hook, body, component, variable_loader, field_widgets)
     ├── panels/             # TreePanel, PropertyPanel, RegistryPanel, HistoryPanel, ValidationPanel (F7 검증 결과)
     ├── viewmodel/          # ProjectViewModel, StateViewModel (모델↔뷰 중간 계층)
     └── widgets/            # ComboWidgets, TagInput, PresetPicker
@@ -191,7 +193,7 @@ ComponentConfig(ABC)          # model, effort, hooks 공통 필드
 
 재귀: CompositeState.sub_machine과 Region.sub_machine 내부도 동일하게 검증. 재귀 시 `path`에 `"agent:<이름>"` 또는 `"region:<이름>"`이 누적된다.
 
-#### 프로젝트 수준 (8종)
+#### 프로젝트 수준 (12종)
 
 `Validator.validate_project(project)` — 전체 FSM 검증 후 추가:
 
@@ -205,8 +207,16 @@ ComponentConfig(ABC)          # model, effort, hooks 공통 필드
 | `duplicate_tool_name` | `tool_shelf` 내 동명 Tool 에러 (이름 참조 모호) |
 | `empty_tool_definition` | UserDefinedTool 본문(body) 빈 값 / MCPTool server·tool_name 빈 값 경고 |
 | `dangling_tool_ref` | FSM의 ToolEvaluation/ToolExecution.tool이 `tool_shelf ∪ CC_BUILTIN_TOOLS`에 없으면 경고 (빈 문자열은 스킵). 참조 수집은 상태 훅·custom_events·전이 가드/액션 체인 + Composite 중첩 + sub_machine/Region 재귀 |
+| `duplicate_hook_name` | `hook_library` 내 동명 HookDef 에러 (이름 참조 모호) |
+| `empty_hook_command` | HookDef.command 빈 값 경고 |
+| `hook_matcher_without_tool_event` | matcher가 있는데 event가 Pre/PostToolUse가 아니면 경고 (matcher는 도구 이벤트 전용) |
+| `dangling_hook_ref` | config.hooks 키가 hook_library에 없으면 경고 (스킬·에이전트·에이전트 로컬 스킬 전부 검사) |
 
 도구 모델(`tool.py`): `Tool(PluginComponent, ABC)` 단일 진실 + `BuiltinTool`/`MCPTool`/`UserDefinedTool`. shelf = 프로젝트(`PluginProject.tool_shelf`) 소유, FSM은 `Tool.name` 문자열로 참조(fsm/는 plugin 무관 — 객체 참조 금지, Validator가 실존 검증). `CC_BUILTIN_TOOLS`는 validation.py 모듈 frozenset(Read/Write/Edit/Bash/Glob/Grep/WebFetch/WebSearch/Agent/Task/TodoWrite/NotebookEdit/SlashCommand/PowerShell).
+
+### 훅 (HookDef / hook_library)
+
+훅은 CC lifecycle hooks의 설계 모델이다. `hook.py`의 `HookDef`(name·event·matcher·command·timeout, 안정 ID)가 단일 진실이고 `PluginProject.hook_library`에 모인다(tool_shelf와 동일 shelf 패턴). `HookEvent`는 CC 9종 이벤트(PreToolUse/PostToolUse/UserPromptSubmit/SessionStart/SessionEnd/Stop/SubagentStop/Notification/PreCompact). `ComponentConfig.hooks: dict`는 **이름 참조**다 — 키=hook_library의 HookDef.name, 값=오버라이드(빈 dict면 정의 그대로). `hook_presets.py`의 `BUILTIN_HOOK_PRESETS`(6종)는 복사해 출발점으로 쓰는 템플릿이며 `preset_copy`로 새 id 사본을 만든다. 컴파일러는 참조된 훅을 모아 `<out>/hooks/hooks.json`(CC settings hooks 스키마: matcher는 Pre/PostToolUse만, timeout은 있을 때만, 이벤트 키=HookEvent 선언 순서, 같은 이벤트 복수 훅=라이브러리 순서)을 생성하고, 스킬 프론트매터에는 `hooks: [이름, …]` 목록만 표기한다. UI는 `editors/hook_editor.HookLibraryDialog`(도구 메뉴) + `widgets/preset_picker`의 `set_hook_name_provider`로 HookPresetPicker가 hook_library 이름을 동적 표시한다.
 
 ### 전략 패턴 (Guard / Action 공통)
 

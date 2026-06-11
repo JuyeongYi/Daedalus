@@ -69,6 +69,10 @@ WARNING_RULES: frozenset[str] = frozenset({
     # 도구(tool_shelf) 경고
     "dangling_tool_ref",
     "empty_tool_definition",
+    # 훅(hook_library) 경고
+    "dangling_hook_ref",
+    "empty_hook_command",
+    "hook_matcher_without_tool_event",
 })
 
 
@@ -629,6 +633,11 @@ class Validator:
         errors.extend(Validator._check_duplicate_tool_name(project))
         errors.extend(Validator._check_empty_tool_definition(project))
         errors.extend(Validator._check_dangling_tool_refs(project))
+        # 훅(hook_library) 규칙
+        errors.extend(Validator._check_duplicate_hook_name(project))
+        errors.extend(Validator._check_empty_hook_command(project))
+        errors.extend(Validator._check_hook_matcher_event(project))
+        errors.extend(Validator._check_dangling_hook_refs(project))
         return errors
 
     # ------------------------------------------------------------------
@@ -790,6 +799,108 @@ class Validator:
                         subject=fsm,
                         path=(label,),
                     ))
+        return errors
+
+    # ------------------------------------------------------------------
+    # 훅(hook_library) 규칙 + 참조 수집 헬퍼
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _collect_hook_refs(project):
+        """config.hooks 키(훅 이름 참조)를 (label, name, subject)로 yield.
+
+        스킬/에이전트/에이전트 로컬 스킬의 config.hooks를 모두 훑는다.
+        """
+        for skill in getattr(project, "skills", []):
+            cfg = getattr(skill, "config", None)
+            hooks = getattr(cfg, "hooks", None)
+            if isinstance(hooks, dict):
+                for name in hooks:
+                    yield (f"skill:{skill.name}", name, skill)
+        for agent in getattr(project, "agents", []):
+            cfg = getattr(agent, "config", None)
+            hooks = getattr(cfg, "hooks", None)
+            if isinstance(hooks, dict):
+                for name in hooks:
+                    yield (f"agent:{agent.name}", name, agent)
+            for local in getattr(agent, "skills", []):
+                lcfg = getattr(local, "config", None)
+                lhooks = getattr(lcfg, "hooks", None)
+                if isinstance(lhooks, dict):
+                    for name in lhooks:
+                        yield (f"agent:{agent.name}/skill:{local.name}", name, local)
+
+    @staticmethod
+    def _check_duplicate_hook_name(project) -> list[ValidationError]:
+        """duplicate_hook_name — hook_library 내 동명 HookDef 에러."""
+        seen: dict[str, object] = {}
+        errors: list[ValidationError] = []
+        for hook in getattr(project, "hook_library", []):
+            if hook.name in seen:
+                errors.append(ValidationError(
+                    rule="duplicate_hook_name",
+                    message=(
+                        f"hook_library에 훅 이름 '{hook.name}'이 중복됩니다. "
+                        f"이름 참조가 모호해집니다."
+                    ),
+                    source=hook.name,
+                    subject=hook,
+                ))
+            else:
+                seen[hook.name] = hook
+        return errors
+
+    @staticmethod
+    def _check_empty_hook_command(project) -> list[ValidationError]:
+        """empty_hook_command — HookDef.command 빈 값 경고."""
+        errors: list[ValidationError] = []
+        for hook in getattr(project, "hook_library", []):
+            if not hook.command.strip():
+                errors.append(ValidationError(
+                    rule="empty_hook_command",
+                    message=f"훅 '{hook.name}'의 command가 비어 있습니다.",
+                    source=hook.name,
+                    subject=hook,
+                ))
+        return errors
+
+    @staticmethod
+    def _check_hook_matcher_event(project) -> list[ValidationError]:
+        """hook_matcher_without_tool_event — matcher가 있는데 event가
+        Pre/PostToolUse가 아니면 경고 (도구 매칭은 도구 이벤트에만 유효)."""
+        from daedalus.model.plugin.hook import TOOL_MATCH_EVENTS
+        errors: list[ValidationError] = []
+        for hook in getattr(project, "hook_library", []):
+            if hook.matcher.strip() and hook.event not in TOOL_MATCH_EVENTS:
+                errors.append(ValidationError(
+                    rule="hook_matcher_without_tool_event",
+                    message=(
+                        f"훅 '{hook.name}'의 matcher '{hook.matcher}'는 "
+                        f"event '{hook.event.value}'에서 무시됩니다. "
+                        f"matcher는 PreToolUse/PostToolUse에서만 유효합니다."
+                    ),
+                    source=hook.name,
+                    subject=hook,
+                ))
+        return errors
+
+    @staticmethod
+    def _check_dangling_hook_refs(project) -> list[ValidationError]:
+        """dangling_hook_ref — config.hooks 키가 hook_library에 없으면 경고."""
+        lib_names = {h.name for h in getattr(project, "hook_library", [])}
+        errors: list[ValidationError] = []
+        for label, name, subject in Validator._collect_hook_refs(project):
+            if name not in lib_names:
+                errors.append(ValidationError(
+                    rule="dangling_hook_ref",
+                    message=(
+                        f"{label}: config.hooks가 참조하는 훅 '{name}'이 "
+                        f"hook_library에 없습니다."
+                    ),
+                    source=name,
+                    subject=subject,
+                    path=(label,),
+                ))
         return errors
 
     @staticmethod

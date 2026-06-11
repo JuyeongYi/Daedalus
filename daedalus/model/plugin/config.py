@@ -21,6 +21,10 @@ class ComponentConfig(ABC):
     """플러그인 컴포넌트 공통 설정."""
     model: ModelType | str = ModelType.INHERIT
     effort: EffortLevel | None = None
+    # hooks: 키 = PluginProject.hook_library의 HookDef.name 참조,
+    #        값 = 오버라이드 dict (빈 dict면 HookDef 정의 그대로 사용).
+    # 이름 참조 규약은 tool_shelf 선례와 동일하며, 빈 dict 본문 보존 write-back
+    # (skill_editor의 {name: existing.get(name, {})})과 자연 호환된다.
     hooks: dict[str, Any] | None = None
 
     @property

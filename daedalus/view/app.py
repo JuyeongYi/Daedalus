@@ -170,6 +170,12 @@ class MainWindow(QMainWindow):
             self._compile_action.triggered.connect(self._compile_project_dialog)
             build_menu.addAction(self._compile_action)
 
+        tools_menu = menubar.addMenu("도구")
+        if tools_menu is not None:
+            self._hook_lib_action = QAction("훅 라이브러리...", self)
+            self._hook_lib_action.triggered.connect(self._open_hook_library)
+            tools_menu.addAction(self._hook_lib_action)
+
         view_menu = menubar.addMenu("View")
         if view_menu is None:
             return
@@ -203,6 +209,9 @@ class MainWindow(QMainWindow):
         self._registry_panel.set_project(project)
         if self._fsm_scene is not None:
             self._fsm_scene.set_project(project)
+        # HookPresetPicker가 이 프로젝트의 hook_library 이름을 동적으로 표시하도록 연결.
+        from daedalus.view.widgets.preset_picker import set_hook_name_provider
+        set_hook_name_provider(lambda p=project: [h.name for h in p.hook_library])
 
     def load_project(self, project: PluginProject) -> None:
         """기존 세션을 정리하고 새 프로젝트를 로드한다.
@@ -609,6 +618,25 @@ class MainWindow(QMainWindow):
             # 인지하게 두지 않는다.
             self._validation_panel.set_errors(result.warnings)
             self._show_validation_dock()
+
+    def _open_hook_library(self) -> None:
+        """도구 메뉴 — 훅 라이브러리 편집 다이얼로그를 연다."""
+        if self._project is None:
+            self._status_label.setText("훅 라이브러리: 프로젝트가 없습니다.")
+            return
+        from daedalus.view.editors.hook_editor import HookLibraryDialog
+
+        dlg = HookLibraryDialog(
+            self._project, on_notify_fn=self._on_hook_library_changed, parent=self
+        )
+        dlg.exec()
+
+    def _on_hook_library_changed(self) -> None:
+        """훅 라이브러리 변경 시 — 열린 편집기의 HookPresetPicker 목록 갱신."""
+        from daedalus.view.widgets.preset_picker import HookPresetPicker
+
+        for picker in self.findChildren(HookPresetPicker):
+            picker.refresh()
 
     def _show_validation_dock(self) -> None:
         """검증 dock을 표시하고 앞으로 올린다 (F7/컴파일 공용)."""
