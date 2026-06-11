@@ -51,7 +51,7 @@ daedalus/
 │   └── validation.py        # Validator + ValidationError + WARNING_RULES + is_warning (머신 규칙 16종 + 프로젝트 규칙 7종, 재귀)
 └── view/             # PyQt6 기반 노드 에디터
     ├── app.py              # 메인 윈도우 (F7 "프로젝트 검증" 액션 → Validator.validate_project → ValidationPanel 갱신)
-    ├── canvas/             # GraphicsView/Scene, NodeItem, EdgeItem, RefNodeItem, RefEdgeItem
+    ├── canvas/             # GraphicsView/Scene, NodeItem, EdgeItem, RefNodeItem, RefEdgeItem, node_badges(뱃지 로직)
     ├── commands/           # Undo/Redo 커맨드 (state, transition, section, exit_point)
     ├── editors/            # 속성 편집기 (skill, agent, delegation, body, component, variable_loader, field_widgets)
     ├── panels/             # TreePanel, PropertyPanel, RegistryPanel, HistoryPanel, ValidationPanel (F7 검증 결과)
