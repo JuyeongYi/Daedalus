@@ -348,46 +348,60 @@ class FsmScene(QGraphicsScene):
             if menu.exec(event.screenPos()) == delete_act:
                 self.delete_reference_link(item.link_vm)
         elif isinstance(item, TransitionEdgeItem):
-            tvm = item.transition_vm
-            transition = tvm.model
-
-            # On Transfer 스킬 서브메뉴
-            transfer_menu = menu.addMenu("On Transfer 스킬 설정")
-            transfer_skills = self._get_transfer_skills()
-            skill_actions: dict[QAction, object] = {}
-            if transfer_menu is not None:
-                for ts in transfer_skills:
-                    act = transfer_menu.addAction(f"⚡ {ts.name}")
-                    if act is not None:
-                        skill_actions[act] = ts
-                if transfer_skills:
-                    transfer_menu.addSeparator()
-            new_act = transfer_menu.addAction("새 Transfer Skill 생성...") if transfer_menu is not None else None  # type: ignore[assignment]
-
-            # 스킬 해제 (현재 연결된 경우만)
-            unset_act = None
-            if transition.skill_ref is not None:
-                unset_act = menu.addAction(f"On Transfer 스킬 해제 ({transition.skill_ref.name})")
-
-            delete_act = menu.addAction("전이 삭제")
-
-            chosen = menu.exec(event.screenPos())
-            if chosen is None:
-                return
-            if chosen == delete_act:
-                self._delete_transition(tvm)
-            elif chosen == new_act:
-                self._create_and_assign_transfer_skill(tvm)
-            elif chosen == unset_act:
-                self._project_vm.execute(SetTransitionSkillRefCmd(tvm, None))
-            elif chosen in skill_actions:
-                self._project_vm.execute(
-                    SetTransitionSkillRefCmd(tvm, skill_actions[chosen])
-                )
+            self._handle_transition_edge_menu(menu, item, event.screenPos())
         else:
             add_act = menu.addAction("빈 상태 추가")
             if menu.exec(event.screenPos()) == add_act:
                 self._create_state(pos)
+
+    def _handle_transition_edge_menu(
+        self, menu: QMenu, item: TransitionEdgeItem, screen_pos
+    ) -> None:
+        """전이 엣지 컨텍스트 메뉴 — On Transfer 스킬 설정/해제/생성 + 삭제.
+
+        FsmScene와 AgentFsmScene 양쪽에서 공유하는 템플릿. 스킬 목록/생성
+        정책 차이는 _get_transfer_skills / _create_and_assign_transfer_skill
+        오버라이드로 흡수한다.
+        """
+        tvm = item.transition_vm
+        transition = tvm.model
+
+        transfer_menu = menu.addMenu("On Transfer 스킬 설정")
+        transfer_skills = self._get_transfer_skills()
+        skill_actions: dict[QAction, object] = {}
+        if transfer_menu is not None:
+            for ts in transfer_skills:
+                act = transfer_menu.addAction(f"⚡ {ts.name}")
+                if act is not None:
+                    skill_actions[act] = ts
+            if transfer_skills:
+                transfer_menu.addSeparator()
+        new_act = (
+            transfer_menu.addAction("새 Transfer Skill 생성...")
+            if transfer_menu is not None else None
+        )
+
+        unset_act = None
+        if transition.skill_ref is not None:
+            unset_act = menu.addAction(
+                f"On Transfer 스킬 해제 ({transition.skill_ref.name})"
+            )
+
+        delete_act = menu.addAction("전이 삭제")
+
+        chosen = menu.exec(screen_pos)
+        if chosen is None:
+            return
+        if chosen == delete_act:
+            self._delete_transition(tvm)
+        elif chosen == new_act:
+            self._create_and_assign_transfer_skill(tvm)
+        elif chosen == unset_act:
+            self._project_vm.execute(SetTransitionSkillRefCmd(tvm, None))
+        elif chosen in skill_actions:
+            self._project_vm.execute(
+                SetTransitionSkillRefCmd(tvm, skill_actions[chosen])
+            )
 
     def _create_state(self, pos: QPointF) -> None:
         self._state_counter += 1
@@ -627,21 +641,9 @@ class FsmScene(QGraphicsScene):
         self._project_vm.execute(cmd)
 
     def _sync_refs_to_model(self) -> None:
-        """뷰 모델 → 모델 동기화. 위치 + 연결 정보를 모델에 반영."""
-        from daedalus.model.project import ReferencePlacement
-        placements = self._get_ref_placements()
-        placements.clear()
-        for rvm in self._project_vm.reference_vms:
-            skill_name = getattr(rvm.model, "name", "")
-            connected = [
-                l.state_vm.model.name
-                for l in self._project_vm.reference_links
-                if l.reference_vm is rvm
-            ]
-            placements.append(ReferencePlacement(
-                skill_name=skill_name, x=rvm.x, y=rvm.y,
-                connected_states=connected,
-            ))
+        """뷰 모델 → 모델 동기화. 위치 + 연결 정보를 모델에 반영 (sync 모듈 위임)."""
+        from daedalus.view.canvas.sync import sync_refs_to_model
+        sync_refs_to_model(self._project_vm, self._get_ref_placements())
 
     def begin_ref_link_drag(self, ref_node: ReferenceNodeItem) -> None:
         """참조 노드 상단 포트에서 드래그 시작."""
@@ -836,41 +838,7 @@ class AgentFsmScene(FsmScene):
                 self.delete_reference_link(item.link_vm)
 
         elif isinstance(item, TransitionEdgeItem):
-            tvm = item.transition_vm
-            transition = tvm.model
-            transfer_menu = menu.addMenu("On Transfer 스킬 설정")
-            transfer_skills = self._get_transfer_skills()
-            skill_actions: dict[QAction, object] = {}
-            if transfer_menu is not None:
-                for ts in transfer_skills:
-                    act = transfer_menu.addAction(f"⚡ {ts.name}")
-                    if act is not None:
-                        skill_actions[act] = ts
-                if transfer_skills:
-                    transfer_menu.addSeparator()
-            new_act = (
-                transfer_menu.addAction("새 Transfer Skill 생성...")
-                if transfer_menu is not None else None
-            )
-            unset_act = None
-            if transition.skill_ref is not None:
-                unset_act = menu.addAction(
-                    f"On Transfer 스킬 해제 ({transition.skill_ref.name})"
-                )
-            del_trans_act = menu.addAction("전이 삭제")
-            chosen = menu.exec(event.screenPos())
-            if chosen is None:
-                return
-            if chosen == del_trans_act:
-                self._delete_transition(tvm)
-            elif chosen == new_act:
-                self._create_and_assign_transfer_skill(tvm)
-            elif chosen == unset_act:
-                self._project_vm.execute(SetTransitionSkillRefCmd(tvm, None))
-            elif chosen in skill_actions:
-                self._project_vm.execute(
-                    SetTransitionSkillRefCmd(tvm, skill_actions[chosen])
-                )
+            self._handle_transition_edge_menu(menu, item, event.screenPos())
 
         else:
             add_exit_act = menu.addAction("ExitPoint 추가")
