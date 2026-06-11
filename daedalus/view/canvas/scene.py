@@ -28,6 +28,13 @@ from daedalus.view.canvas.node_item import StateNodeItem
 from daedalus.view.canvas.ref_edge_item import ReferenceEdgeItem
 from daedalus.view.canvas.ref_node_item import ReferenceNodeItem
 from daedalus.view.commands.base import Command, MacroCommand
+from daedalus.view.commands.reference_commands import (
+    CreateRefCmd,
+    CreateRefLinkCmd,
+    DeleteRefCmd,
+    DeleteRefLinkCmd,
+    MoveRefCmd,
+)
 from daedalus.view.commands.section_commands import AddSectionCmd, RemoveSectionCmd
 from daedalus.view.commands.state_commands import CreateStateCmd, DeleteStateCmd, MoveStateCmd
 from daedalus.view.commands.transition_commands import (
@@ -524,25 +531,24 @@ class FsmScene(QGraphicsScene):
         return []
 
     def drop_reference_skill(self, skill_name: str, scene_pos: QPointF) -> None:
-        """참조 스킬을 캔버스에 드롭 — 여러 인스턴스 허용."""
-        from daedalus.model.project import ReferencePlacement
+        """참조 스킬을 캔버스에 드롭 — 여러 인스턴스 허용. undo 가능."""
         if self._skill_lookup is None:
             return
         skill = self._skill_lookup(skill_name)
         if not isinstance(skill, ReferenceSkill):
             return
         rvm = ReferenceViewModel(model=skill, x=scene_pos.x(), y=scene_pos.y())
-        self._project_vm.reference_vms.append(rvm)
-        # 모델 동기화
-        self._get_ref_placements().append(
-            ReferencePlacement(skill_name=skill_name, x=scene_pos.x(), y=scene_pos.y())
+        cmd = CreateRefCmd(
+            self._project_vm, rvm,
+            self._get_ref_placements(),
+            sync_fn=self._sync_refs_to_model,
         )
-        self._project_vm.notify()
+        self._project_vm.execute(cmd)
 
     def create_reference_link(
         self, state_vm: StateViewModel, ref_vm: ReferenceViewModel
     ) -> None:
-        """상태 노드 → 참조 노드 연결 생성 (같은 스킬 중복 방지)."""
+        """상태 노드 → 참조 노드 연결 생성 (같은 스킬 중복 방지). undo 가능."""
         ref_skill = ref_vm.model
         duplicate = any(
             l.state_vm is state_vm and l.reference_vm.model is ref_skill
@@ -550,26 +556,39 @@ class FsmScene(QGraphicsScene):
         )
         if not duplicate:
             lvm = ReferenceLinkViewModel(state_vm=state_vm, reference_vm=ref_vm)
-            self._project_vm.reference_links.append(lvm)
-            # 모델 동기화
-            self._sync_refs_to_model()
-            self._project_vm.notify()
+            cmd = CreateRefLinkCmd(
+                self._project_vm, lvm,
+                sync_fn=self._sync_refs_to_model,
+            )
+            self._project_vm.execute(cmd)
 
     def delete_reference_node(self, ref_vm: ReferenceViewModel) -> None:
-        """참조 노드 + 연결된 링크 삭제."""
-        self._project_vm.reference_links = [
-            l for l in self._project_vm.reference_links if l.reference_vm is not ref_vm
-        ]
-        if ref_vm in self._project_vm.reference_vms:
-            self._project_vm.reference_vms.remove(ref_vm)
-        self._sync_refs_to_model()
-        self._project_vm.notify()
+        """참조 노드 + 연결된 링크 삭제. undo 가능."""
+        cmd = DeleteRefCmd(
+            self._project_vm, ref_vm,
+            sync_fn=self._sync_refs_to_model,
+        )
+        self._project_vm.execute(cmd)
 
     def delete_reference_link(self, lvm: ReferenceLinkViewModel) -> None:
-        if lvm in self._project_vm.reference_links:
-            self._project_vm.reference_links.remove(lvm)
-            self._sync_refs_to_model()
-            self._project_vm.notify()
+        """참조 링크 삭제. undo 가능."""
+        cmd = DeleteRefLinkCmd(
+            self._project_vm, lvm,
+            sync_fn=self._sync_refs_to_model,
+        )
+        self._project_vm.execute(cmd)
+
+    def handle_ref_node_moved(
+        self, ref_node: ReferenceNodeItem, old_pos: QPointF, new_pos: QPointF
+    ) -> None:
+        """참조 노드 드래그 release — undo 가능 + 모델 좌표 동기화."""
+        cmd = MoveRefCmd(
+            ref_node.ref_vm,
+            old_x=old_pos.x(), old_y=old_pos.y(),
+            new_x=new_pos.x(), new_y=new_pos.y(),
+            sync_fn=self._sync_refs_to_model,
+        )
+        self._project_vm.execute(cmd)
 
     def _sync_refs_to_model(self) -> None:
         """뷰 모델 → 모델 동기화. 위치 + 연결 정보를 모델에 반영."""

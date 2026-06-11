@@ -141,8 +141,13 @@ class ReferenceNodeItem(QGraphicsItem):
             return
         super().mouseReleaseEvent(event)
         if self._drag_start_pos is not None and self._drag_start_pos != self.pos():
-            self._ref_vm.x = self.pos().x()
-            self._ref_vm.y = self.pos().y()
+            sc = self.scene()
+            if sc is not None and hasattr(sc, "handle_ref_node_moved"):
+                sc.handle_ref_node_moved(self, self._drag_start_pos, self.pos())
+            else:
+                # 씬 없는 환경 fallback — vm 좌표 직접 갱신
+                self._ref_vm.x = self.pos().x()
+                self._ref_vm.y = self.pos().y()
         self._drag_start_pos = None
 
     def mouseDoubleClickEvent(self, event) -> None:
