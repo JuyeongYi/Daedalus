@@ -30,10 +30,12 @@ from daedalus.view.canvas.edge_item import TransitionEdgeItem
 from daedalus.view.canvas.node_item import StateNodeItem
 from daedalus.view.canvas.scene import FsmScene
 from daedalus.view.editors.skill_editor import SkillEditor
+from daedalus.model.validation import ValidationError, Validator
 from daedalus.view.panels.history_panel import HistoryPanel
 from daedalus.view.panels.property_panel import PropertyPanel
 from daedalus.view.panels.registry_panel import RegistryPanel
 from daedalus.view.panels.script_listener import ScriptListenerPanel
+from daedalus.view.panels.validation_panel import ValidationPanel
 from daedalus.view.viewmodel.project_vm import ProjectViewModel
 
 _FSM_TAB_INDEX = 0  # 프로젝트 FSM 캔버스는 항상 탭 0
@@ -110,6 +112,14 @@ class MainWindow(QMainWindow):
         self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, script_dock)
         script_dock.hide()
 
+        self._validation_panel = ValidationPanel(
+            on_item_activated=self._on_validation_item_activated,
+        )
+        validation_dock = QDockWidget("검증")
+        validation_dock.setWidget(self._validation_panel)
+        self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, validation_dock)
+        validation_dock.hide()
+
     def _setup_menus(self) -> None:
         menubar = self.menuBar()
         if menubar is None:
@@ -144,6 +154,13 @@ class MainWindow(QMainWindow):
         self._redo_action.setShortcut(QKeySequence.StandardKey.Redo)
         self._redo_action.triggered.connect(self._redo)
         edit_menu.addAction(self._redo_action)
+
+        validate_menu = menubar.addMenu("검증")
+        if validate_menu is not None:
+            self._validate_action = QAction("프로젝트 검증", self)
+            self._validate_action.setShortcut(QKeySequence(Qt.Key.Key_F7))
+            self._validate_action.triggered.connect(self._run_validation)
+            validate_menu.addAction(self._validate_action)
 
         view_menu = menubar.addMenu("View")
         if view_menu is None:
@@ -249,17 +266,25 @@ class MainWindow(QMainWindow):
 
     def open_path(self, path: str) -> None:
         """경로에서 프로젝트를 로드한다 (다이얼로그 없이 — 테스트/CLI 재사용)."""
+        deser_warnings: list[str] = []
         try:
             with open(path, "r", encoding="utf-8") as f:
                 data = json.load(f)
-            project = deserialize_project(data)
+            project = deserialize_project(data, collect_warnings=deser_warnings)
         except (OSError, ValueError) as exc:
             self._status_label.setText(f"열기 실패: {exc}")
             return
         self.load_project(project)
         self._current_path = path
         self._update_title()
-        self._status_label.setText(f"열림: {path}")
+        import os
+        fname = os.path.basename(path)
+        if deser_warnings:
+            self._status_label.setText(
+                f"열림: {fname} (경고 {len(deser_warnings)}건 — F7로 확인)"
+            )
+        else:
+            self._status_label.setText(f"열림: {path}")
 
     def _skill_lookup(self, name: str) -> ProceduralSkill | DeclarativeSkill | AgentDefinition | None:
         if self._project is None:
@@ -468,3 +493,102 @@ class MainWindow(QMainWindow):
     def _redo(self) -> None:
         self._active_stack.redo()
         self._active_notify()
+
+    # --- 검증 ---
+
+    def _run_validation(self) -> None:
+        """F7 — 프로젝트 전체 검증 실행 후 ValidationPanel 갱신."""
+        if self._project is None:
+            self._status_label.setText("검증: 프로젝트가 없습니다.")
+            return
+
+        errors = Validator.validate_project(self._project)
+        self._validation_panel.set_errors(errors)
+
+        # 검증 패널이 숨겨져 있으면 표시
+        validation_dock = self._find_validation_dock()
+        if validation_dock is not None:
+            validation_dock.show()
+            validation_dock.raise_()
+
+        error_count = sum(1 for e in errors if not e.is_warning)
+        warning_count = sum(1 for e in errors if e.is_warning)
+        if not errors:
+            self._status_label.setText("검증: 문제 없음")
+        else:
+            self._status_label.setText(
+                f"검증: 오류 {error_count} / 경고 {warning_count}"
+            )
+
+    def _find_validation_dock(self) -> QDockWidget | None:
+        """'검증' 도킹 위젯을 반환한다."""
+        for dock in self.findChildren(QDockWidget):
+            if dock.widget() is self._validation_panel:
+                return dock
+        return None
+
+    def _on_validation_item_activated(self, error: ValidationError) -> None:
+        """ValidationPanel 더블클릭 → 해당 노드 포커스."""
+        if self._project is None:
+            return
+
+        subject = error.subject
+        if subject is None:
+            return
+
+        # path의 첫 요소로 에이전트 컨텍스트 판별
+        path = error.path
+        agent_name: str | None = None
+        if path:
+            first = path[0]
+            if first.startswith("agent:"):
+                agent_name = first[len("agent:"):]
+
+        if agent_name is not None:
+            # 에이전트 탭 내부 노드
+            self._focus_in_agent_tab(agent_name, subject)
+        else:
+            # 프로젝트 캔버스(탭 0)
+            self._focus_in_project_canvas(subject)
+
+    def _focus_in_project_canvas(self, subject: object) -> None:
+        """프로젝트 FSM 캔버스(탭 0)에서 subject와 identity 일치하는 노드를 선택+센터링."""
+        self._tabs.setCurrentIndex(_FSM_TAB_INDEX)
+        if self._fsm_scene is None:
+            return
+        for svm, node_item in self._fsm_scene._node_items.items():
+            if svm.model is subject:
+                self._fsm_scene.clearSelection()
+                node_item.setSelected(True)
+                view = self._tabs.widget(_FSM_TAB_INDEX)
+                if hasattr(view, "centerOn"):
+                    view.centerOn(node_item)  # type: ignore[union-attr]
+                elif hasattr(view, "ensureVisible"):
+                    view.ensureVisible(node_item)  # type: ignore[union-attr]
+                return
+
+    def _focus_in_agent_tab(self, agent_name: str, subject: object) -> None:
+        """에이전트 탭이 열려 있으면 해당 노드를 포커스, 없으면 상태바 안내."""
+        from daedalus.view.editors.agent_editor import AgentEditor
+        for i in range(self._tabs.count()):
+            widget = self._tabs.widget(i)
+            if isinstance(widget, AgentEditor):
+                ag = getattr(widget, "_agent", None)
+                if ag is not None and ag.name == agent_name:
+                    self._tabs.setCurrentIndex(i)
+                    # AgentEditor 내부 씬에서 노드 탐색
+                    scene = getattr(widget, "_graph_scene", None)
+                    if scene is not None:
+                        for svm, node_item in scene._node_items.items():
+                            if svm.model is subject:
+                                scene.clearSelection()
+                                node_item.setSelected(True)
+                                view = getattr(widget, "_graph_view", None)
+                                if view is not None and hasattr(view, "centerOn"):
+                                    view.centerOn(node_item)
+                                return
+                    return
+        # 탭이 열려 있지 않음
+        self._status_label.setText(
+            f"에이전트 '{agent_name}' 탭을 열어 확인하세요."
+        )
