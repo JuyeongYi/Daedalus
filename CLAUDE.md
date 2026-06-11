@@ -16,9 +16,9 @@ pytest는 `python -m pytest`로 실행한다 (`pytest` 직접 실행 시 command
 
 ## 아키텍처
 
-**컴파일러 패턴:** 순수 모델(model/) → 컴파일러(compiler/, 미구현) → 플러그인 파일
+**컴파일러 패턴:** 순수 모델(model/) → 컴파일러(compiler/) → 플러그인 파일
 
-현재 구현 범위: **model/ + view/** (FSM 코어 + 플러그인 메타데이터 + PyQt6 에디터).
+현재 구현 범위: **model/ + view/ + compiler/** (FSM 코어 + 플러그인 메타데이터 + PyQt6 에디터 + SKILL.md/agent .md 생성).
 
 ```
 daedalus/
@@ -49,8 +49,11 @@ daedalus/
 │   ├── project.py           # PluginProject (최상위 컨테이너), ReferencePlacement, tool_shelf
 │   ├── serialize.py         # serialize_project/deserialize_project (모델↔JSON dict, 안정 ID 기반)
 │   └── validation.py        # Validator + ValidationError + WARNING_RULES + is_warning (머신 규칙 16종 + 프로젝트 규칙 7종, 재귀)
+├── compiler/         # 순수 모델 → 플러그인 파일 (PyQt 무관)
+│   ├── emit.py             # compile_skill/compile_agent — model → SKILL.md/agent .md 텍스트 (결정적, LF)
+│   └── project_compiler.py # compile_project(project, out_dir) → CompileResult (검증 게이트 + 파일 쓰기)
 └── view/             # PyQt6 기반 노드 에디터
-    ├── app.py              # 메인 윈도우 (F7 "프로젝트 검증" 액션 → Validator.validate_project → ValidationPanel 갱신)
+    ├── app.py              # 메인 윈도우 (F7 "프로젝트 검증", Ctrl+B "컴파일" → compile_project → 상태바/ValidationPanel)
     ├── canvas/             # GraphicsView/Scene, NodeItem, EdgeItem, RefNodeItem, RefEdgeItem, node_badges(뱃지 로직)
     ├── commands/           # Undo/Redo 커맨드 (state, transition, section, exit_point)
     ├── editors/            # 속성 편집기 (skill, agent, delegation, body, component, variable_loader, field_widgets)
@@ -248,7 +251,37 @@ FSM 모델 클래스(State 계열·pseudo 4종·Transition·StateMachine·Region
 plugin 레이어(Skill, AgentDefinition 등)와 값 객체(EventDef, Variable 등)는 기본
 dataclass(값 동등성, unhashable) 유지 — 컬렉션 멤버십에는 list/`id()` 사용.
 
+## 컴파일러 (compiler/)
+
+`compile_project(project, out_dir) → CompileResult`. 순수 stdlib(PyQt 무관, import 순수성 테스트로 고정).
+
+**출력 구조 (CC 플러그인 규약):**
+- `<out>/skills/<skill-name>/SKILL.md` — 전역 스킬 4종 전부 (Declarative/Reference도 SKILL.md)
+- `<out>/skills/<agent-name>--<skill-name>/SKILL.md` — 에이전트 로컬 스킬 (`--` 결합은 충돌 무결하지 **않음** — 이름 규약이 연속 하이픈을 허용하므로 게이트가 사전 경로 집합 검사로 충돌 시 거부)
+- `<out>/agents/<agent-name>.md` — 에이전트
+
+**컴파일 정책 (확정):**
+1. **프론트매터**: 해당 kind 매트릭스에서 `emit==FRONTMATTER`인 필드만. 키는 `frontmatter_key`(kebab-case).
+   FIXED는 `fixed_value` 강제 출력. `model==INHERIT`는 키 생략. OPTIONAL 값이 config 선언 기본값과 같으면 생략(잡음 제거).
+   enum은 `.value`, bool은 `true`/`false`, 리스트는 flow-style `[a, b]`.
+2. **when_to_use**: description과 합류 — `<description> Use when <when_to_use>` (description이 `.!?`로 끝나면 공백, 아니면 `. `로 연결).
+3. **본문**: `sections` 트리 → 마크다운 헤딩(루트 H1, 깊이별 `#`/`##`/…, 최대 H6).
+4. **ProceduralSkill FSM → 절차 단락**: initial_state부터 전이 BFS 순서로 번호 매긴 상태 목록(시작/종료 표지),
+   각 SimpleState skill_ref는 "skill 이름 사용", CompositeState는 "에이전트 X에 위임", 전이별 트리거/가드 조건 + transfer_on 출력 이벤트.
+5. **위임 노드**: 스펙 4절 문구(TeamSpawn/DynamicWorkflow/AgoraDispatch 도구 호출 지침) + 1-b절 GUIDED(유도문 + teammates/phases "힌트" 격하 + guidance).
+   wait/forget 의미론 + 공통 전제(팀/워크플로 도구·Agora `.mcp.json`) 단락.
+6. **tool_shelf**: 참조 문서 단락으로만(실행 코드 생성은 Tier 2).
+7. **에이전트**: `emit==FRONTMATTER`만 프론트매터, INVOCATION(max_turns/background/isolation)은 "호출 파라미터" 본문 단락,
+   SETTINGS(hooks/mcp_servers)는 "요구 환경" 언급만(파일 생성은 WP-HOOK 예정).
+8. **컴파일 게이트**: `Validator.validate_project`의 에러(`is_warning=False`) 1건이라도 있으면 거부(파일 미생성, errors 반환). 경고는 통과(warnings 동봉).
+   게이트 강화 2종(파일 쓰기 전 산출 계획 단계): ① 산출 이름이 되는 컴포넌트(전역 스킬·에이전트·로컬 스킬)의 이름이
+   `^[a-z0-9][a-z0-9-]*$` 불일치면 `compile_invalid_component_name` **에러로 승격** 거부 (F7 검증기에서는 경고 등급 유지 — 편집 중에는 경고가 맞다).
+   ② 전체 산출 경로 집합에 중복이 있으면 `compile_output_path_conflict` 에러로 거부 + 충돌 경로/원인 컴포넌트 보고 (조용한 덮어쓰기 방지).
+
+출력은 결정적(같은 모델 → 같은 텍스트), LF 줄바꿈, UTF-8(BOM 없음). 텍스트 생성(`compile_skill`/`compile_agent`)은 파일시스템과 분리되어 문자열 단위 테스트 가능.
+
 ## 미구현 예정
 
-- `compiler/`: model → SKILL.md / Agent .md 파일 생성
+- `compiler/` Tier 2: ToolExecution/ToolEvaluation 실행 래퍼(인자 이스케이프·shell 분기·success_condition), MCP 서버 실행 코드
+- `hooks.json` / `.mcp.json` 설정 파일 생성 (WP-HOOK)
 - CLI: 기존 Claude Code CLI 툴 연동 (플러그인 내 명시)
