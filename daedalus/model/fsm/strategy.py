@@ -30,7 +30,13 @@ class LLMEvaluation(EvaluationStrategy):
 
 @dataclass
 class ToolEvaluation(EvaluationStrategy):
-    """CLI 도구 실행 결과 판단."""
+    """CLI 도구 실행 결과 판단.
+
+    ``tool``은 프로젝트 ``tool_shelf``의 ``Tool.name``을 가리키는 **이름 문자열**이다
+    (객체 참조 아님). fsm/는 Claude 무관 원칙이라 plugin 레이어의 Tool 객체를 알지
+    못하므로, 결합은 이름으로만 하고 실존 여부는 Validator(dangling_tool_ref)가 검증한다.
+    빈 문자열이면 미지정으로 간주(검증 스킵).
+    """
     tool: str = ""
     command: str = ""
     success_condition: str = ""
@@ -99,7 +105,13 @@ class LLMExecution(ExecutionStrategy):
 
 @dataclass
 class ToolExecution(ExecutionStrategy):
-    """CLI 도구 실행."""
+    """CLI 도구 실행.
+
+    ``tool``은 프로젝트 ``tool_shelf``의 ``Tool.name``을 가리키는 **이름 문자열**이다
+    (객체 참조 아님). fsm/는 Claude 무관 원칙이라 plugin 레이어의 Tool 객체를 알지
+    못하므로, 결합은 이름으로만 하고 실존 여부는 Validator(dangling_tool_ref)가 검증한다.
+    빈 문자열이면 미지정으로 간주(검증 스킵).
+    """
     tool: str = ""
     command: str = ""
 
