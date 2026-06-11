@@ -64,6 +64,7 @@ WARNING_RULES: frozenset[str] = frozenset({
     # 프로젝트 수준 경고
     "dangling_teammate_ref",
     "dangling_string_reference",
+    "unregistered_delegation",
     "invalid_component_name",  # 빈 이름 제외는 is_warning에서 처리
     # 도구(tool_shelf) 경고
     "dangling_tool_ref",
@@ -354,6 +355,7 @@ class Validator:
         from daedalus.model.fsm.state import SimpleState
         from daedalus.model.plugin.delegation import (
             AgoraDispatchDef,
+            CompositionMode,
             DelegationDef,
             DynamicWorkflowDef,
             TeamSpawnDef,
@@ -366,15 +368,21 @@ class Validator:
             ref = state.skill_ref
             if not isinstance(ref, DelegationDef):
                 continue
+            is_guided = ref.composition is CompositionMode.GUIDED
             empty_msg = None
             if isinstance(ref, TeamSpawnDef):
-                if not ref.teammates:
-                    empty_msg = f"'{ref.name}' 팀에 팀원이 없습니다."
-                elif any(tm.count < 1 for tm in ref.teammates):
-                    empty_msg = f"'{ref.name}' 팀원의 count가 1 미만입니다."
-            elif isinstance(ref, DynamicWorkflowDef) and not ref.objective:
-                empty_msg = f"'{ref.name}' 워크플로의 objective가 비어 있습니다."
+                if not is_guided:
+                    # EXPLICIT 모드에서만 팀원 0명/count<1 경고
+                    if not ref.teammates:
+                        empty_msg = f"'{ref.name}' 팀에 팀원이 없습니다."
+                    elif any(tm.count < 1 for tm in ref.teammates):
+                        empty_msg = f"'{ref.name}' 팀원의 count가 1 미만입니다."
+            elif isinstance(ref, DynamicWorkflowDef):
+                if not is_guided and not ref.objective:
+                    # EXPLICIT 모드에서만 objective 빈 값 경고
+                    empty_msg = f"'{ref.name}' 워크플로의 objective가 비어 있습니다."
             elif isinstance(ref, AgoraDispatchDef) and not ref.msgtype:
+                # AgoraDispatch msgtype 경고는 모드 무관 유지
                 empty_msg = f"'{ref.name}' 송신의 msgtype이 비어 있습니다."
             if empty_msg:
                 errors.append(ValidationError(
@@ -612,6 +620,7 @@ class Validator:
                 agent.fsm, path=(f"agent:{agent.name}",),
             ))
         errors.extend(Validator._check_dangling_delegation_refs(project))
+        errors.extend(Validator._check_unregistered_delegations(project))
         # 신규 프로젝트 수준 규칙
         errors.extend(Validator._check_duplicate_component_name(project))
         errors.extend(Validator._check_invalid_component_name(project))
@@ -806,6 +815,46 @@ class Validator:
                         source=d.name,
                         subject=ref,
                     ))
+        return errors
+
+    @staticmethod
+    def _check_unregistered_delegations(project) -> list[ValidationError]:
+        """unregistered_delegation — 배치된 SimpleState.skill_ref가 DelegationDef인데
+        project.delegations에 미등록이면 경고."""
+        from daedalus.model.fsm.state import SimpleState
+        from daedalus.model.plugin.delegation import DelegationDef
+
+        registered_ids = {id(d) for d in project.delegations}
+        errors: list[ValidationError] = []
+
+        def _scan_machine(sm: StateMachine) -> None:
+            for state in sm.states:
+                if isinstance(state, SimpleState):
+                    ref = state.skill_ref
+                    if isinstance(ref, DelegationDef) and id(ref) not in registered_ids:
+                        errors.append(ValidationError(
+                            rule="unregistered_delegation",
+                            message=(
+                                f"배치된 노드 '{state.name}'의 skill_ref "
+                                f"'{ref.name}'({ref.kind})이 project.delegations에 "
+                                f"등록되어 있지 않습니다."
+                            ),
+                            source=state.name,
+                            subject=ref,
+                        ))
+                elif isinstance(state, CompositeState):
+                    _scan_machine(state.sub_machine)
+                elif isinstance(state, ParallelState):
+                    for region in state.regions:
+                        _scan_machine(region.sub_machine)
+
+        for skill in project.skills:
+            fsm = getattr(skill, "fsm", None)
+            if fsm is not None:
+                _scan_machine(fsm)
+        for agent in project.agents:
+            _scan_machine(agent.fsm)
+
         return errors
 
     @staticmethod

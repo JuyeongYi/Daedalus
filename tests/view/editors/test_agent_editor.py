@@ -71,7 +71,7 @@ def test_agent_editor_has_proc_and_transfer_sections(qapp):
     editor = AgentEditor(_make_agent())
     graph_tab = editor._tabs.widget(0)
     sections = graph_tab.findChildren(_RegistrySection)
-    assert len(sections) == 3  # Procedural + Transfer + Reference
+    assert len(sections) == 4  # Procedural + Transfer + Reference + Delegation
 
 
 def test_agent_editor_graph_tab_has_canvas(qapp):

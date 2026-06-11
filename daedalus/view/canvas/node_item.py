@@ -11,6 +11,24 @@ from daedalus.model.fsm.pseudo import EntryPoint, ExitPoint
 from daedalus.model.fsm.section import EventDef
 from daedalus.view.viewmodel.state_vm import StateViewModel
 
+def _delegation_badge(ref: object) -> str:
+    """DelegationDef ref → 뱃지 텍스트 (비-DelegationDef는 "" 반환)."""
+    # view→model 의존은 정상 방향 — enum 정체성 비교로 value 문자열
+    # 하드코딩(리네임 시 뱃지 소실)을 피한다.
+    from daedalus.model.plugin.delegation import (
+        CompositionMode,
+        DelegationDef,
+        WaitMode,
+    )
+    if not isinstance(ref, DelegationDef):
+        return ""
+    badges = []
+    if ref.wait_mode is WaitMode.FIRE_AND_FORGET:
+        badges.append("🔥")
+    if ref.composition is CompositionMode.GUIDED:
+        badges.append("✨")
+    return " ".join(badges)
+
 _W = 160.0
 _HEADER_H = 20.0
 _PORT_R = 6.0
@@ -21,6 +39,9 @@ _TYPE_STYLE: dict[str | None, tuple[str, str, str, str]] = {
     "procedural_skill": ("#1a2a1a", "#4a8a4a", "PROCEDURAL", "⚙"),
     "declarative_skill": ("#2a2a1a", "#8a8a4a", "DECLARATIVE", "📄"),
     "agent":             ("#2a1a1a", "#8a4a4a", "AGENT",       "🤖"),
+    "team_spawn":        ("#1a1a2a", "#7755aa", "DELEGATION",  "👥"),
+    "dynamic_workflow":  ("#1a2a2a", "#4a88aa", "DELEGATION",  "🔀"),
+    "agora_dispatch":    ("#1a1a2a", "#aa7744", "DELEGATION",  "🛰"),
     "entry_point":       ("#1a1a3a", "#4488ff", "▶ ENTRY",     ""),
     "exit_point":        ("#2a1a1a", "#cc6666", "⏹ EXIT",      ""),
     None:                ("#1a1a2a", "#334466", "STATE",        ""),
@@ -208,6 +229,15 @@ class StateNodeItem(QGraphicsItem):
             font.setBold(True)
         painter.setFont(font)
         painter.drawText(name_rect, Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop, self._state_vm.model.name)
+
+        # 위임 뱃지 (wait_mode=FIRE_AND_FORGET → 🔥, composition=GUIDED → ✨)
+        ref_for_badge = model.skill_ref if hasattr(model, "skill_ref") else None  # type: ignore[union-attr]
+        badge = _delegation_badge(ref_for_badge)
+        if badge:
+            badge_rect = QRectF(4, _HEADER_H + 22, _W - 8, 16)
+            painter.setPen(QPen(QColor("#ddaa44")))
+            painter.setFont(QFont("Segoe UI", 8))
+            painter.drawText(badge_rect, Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop, badge)
 
         # 입력 포트 (좌측)
         if not self._is_entry_point():

@@ -36,6 +36,7 @@ _WARN_RULES = frozenset({
     "trigger_unknown_event",
     "dangling_teammate_ref",
     "dangling_string_reference",
+    "unregistered_delegation",
     "invalid_component_name",
     "dangling_tool_ref",
     "empty_tool_definition",

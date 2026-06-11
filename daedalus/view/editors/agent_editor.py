@@ -92,6 +92,11 @@ class AgentEditor(QWidget):
         self._ref_section.item_double_clicked.connect(self._open_local_skill)
         sidebar_lay.addWidget(self._ref_section)
 
+        self._deleg_section = _RegistrySection("🛰 DELEGATION", QColor("#aa9955"))
+        self._deleg_section.add_requested.connect(self._on_add_delegation)
+        self._deleg_section.item_double_clicked.connect(self._open_delegation)
+        sidebar_lay.addWidget(self._deleg_section)
+
         sidebar_lay.addStretch(1)
         splitter.addWidget(sidebar)
 
@@ -223,6 +228,10 @@ class AgentEditor(QWidget):
                     from daedalus.model.plugin.skill import ReferenceSkill
                     if isinstance(skill, ReferenceSkill):
                         return skill
+            # 전역 위임 정의 탐색
+            for deleg in self._project.delegations:
+                if deleg.name == name:
+                    return deleg
         return None
 
     def _refresh_skill_list(self) -> None:
@@ -230,6 +239,8 @@ class AgentEditor(QWidget):
         self._proc_section.clear()
         self._transfer_section.clear()
         self._ref_section.clear()
+        if hasattr(self, "_deleg_section"):
+            self._deleg_section.clear()
         placed_ids: set[int] = set()
         for svm in self._graph_vm.state_vms:
             if hasattr(svm.model, "skill_ref") and svm.model.skill_ref is not None:
@@ -240,11 +251,63 @@ class AgentEditor(QWidget):
                 self._transfer_section.add_item(skill, placed)
             elif not isinstance(skill, ReferenceSkill):
                 self._proc_section.add_item(skill, placed)
-        # 참조 스킬은 전역 프로젝트에서 가져옴
+        # 참조 스킬 + 위임 정의는 전역 프로젝트에서 가져옴
         if self._project is not None:
             for skill in self._project.skills:
                 if isinstance(skill, ReferenceSkill):
                     self._ref_section.add_item(skill, placed=False)
+            if hasattr(self, "_deleg_section"):
+                for deleg in self._project.delegations:
+                    # 위임 정의는 복수 배치 허용 — 항상 드래그 가능
+                    self._deleg_section.add_item(deleg, placed=False)
+
+    def _on_add_delegation(self) -> None:
+        """전역 프로젝트에 새 위임 정의를 추가 (에이전트 그래프 사이드바 '+' 버튼)."""
+        from daedalus.model.plugin.delegation import AgoraDispatchDef, DynamicWorkflowDef, TeamSpawnDef
+        if self._project is None:
+            return
+        from daedalus.view.editors.delegation_editor import DELEGATION_KIND_TITLES
+        items = list(DELEGATION_KIND_TITLES.values())
+        item, ok = QInputDialog.getItem(self, "위임 종류 선택", "종류:", items, 0, False)
+        if not ok or not item:
+            return
+        kind = next(k for k, v in DELEGATION_KIND_TITLES.items() if v == item)
+        name, ok2 = QInputDialog.getText(self, f"새 {item}", "이름:")
+        if not ok2 or not name.strip():
+            return
+        name = name.strip()
+        # 이름 공간은 프로젝트 전역 — 스킬/에이전트와도 충돌 금지
+        # (duplicate_component_name 검증과 동일 기준)
+        existing = (
+            {d.name for d in self._project.delegations}
+            | {s.name for s in self._project.skills}
+            | {a.name for a in self._project.agents}
+        )
+        if name in existing:
+            QMessageBox.warning(self, "이름 중복", f"'{name}' 이름이 이미 존재합니다.")
+            return
+        factories = {
+            "team_spawn": lambda: TeamSpawnDef(name=name, description=""),
+            "dynamic_workflow": lambda: DynamicWorkflowDef(name=name, description=""),
+            "agora_dispatch": lambda: AgoraDispatchDef(name=name, description=""),
+        }
+        deleg = factories[kind]()
+        self._project.delegations.append(deleg)
+        self._refresh_skill_list()
+
+    def _open_delegation(self, component: object) -> None:
+        """위임 정의 더블클릭 → DelegationEditor 다이얼로그."""
+        from daedalus.model.plugin.delegation import DelegationDef
+        from daedalus.view.editors.delegation_editor import DelegationEditor
+        if not isinstance(component, DelegationDef):
+            return
+        editor = DelegationEditor(
+            component,
+            on_notify_fn=self._on_model_changed,
+            project=self._project,
+            parent=self,
+        )
+        editor.exec()
 
     def _on_add_local_skill(self, kind: str) -> None:
         name, ok = QInputDialog.getText(self, "새 로컬 스킬", "이름:")
