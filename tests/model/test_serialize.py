@@ -341,3 +341,62 @@ def test_serialize_is_pyqt_free():
         f"STDOUT: {result.stdout}\nSTDERR: {result.stderr}"
     )
     assert "OK" in result.stdout
+
+
+# ─────────────────────── WP-M/N 합류 라운드트립 ───────────────────────
+
+
+def test_parallel_state_join_roundtrip():
+    """ParallelState.join/join_count 직렬화 왕복."""
+    from daedalus.model.fsm.join import JoinStrategy
+    inner = SimpleState(name="I")
+    inner_m = StateMachine(name="im", initial_state=inner, states=[inner])
+    region = Region(name="r1", sub_machine=inner_m)
+    par = ParallelState(name="Par", regions=[region],
+                        join=JoinStrategy.N_OF, join_count=1)
+    fsm = StateMachine(name="af", initial_state=par, states=[par])
+    agent = AgentDefinition(fsm=fsm, name="ag", description="d")
+    p = PluginProject(name="P", agents=[agent])
+    p2 = _roundtrip(p)
+    par2 = p2.agents[0].fsm.states[0]
+    assert par2.join is JoinStrategy.N_OF
+    assert par2.join_count == 1
+
+
+def test_parallel_state_join_default_roundtrip():
+    from daedalus.model.fsm.join import JoinStrategy
+    inner = SimpleState(name="I")
+    inner_m = StateMachine(name="im", initial_state=inner, states=[inner])
+    par = ParallelState(name="Par", regions=[Region(name="r", sub_machine=inner_m)])
+    fsm = StateMachine(name="af", initial_state=par, states=[par])
+    agent = AgentDefinition(fsm=fsm, name="ag", description="d")
+    p2 = _roundtrip(PluginProject(name="P", agents=[agent]))
+    par2 = p2.agents[0].fsm.states[0]
+    assert par2.join is JoinStrategy.ALL
+    assert par2.join_count is None
+
+
+def test_project_blackboard_roundtrip():
+    """PluginProject.blackboard(class_definitions/variables) 왕복."""
+    dc = DynamicClass(
+        name="TaskState", description="런타임 상태",
+        fields=[DynamicField(name="step", field_type=FieldType.INT, required=True)],
+    )
+    v = Variable(name="phase", description="", scope=VariableScope.BLACKBOARD,
+                 field_type=FieldType.STRING)
+    p = PluginProject(
+        name="P",
+        blackboard=Blackboard(class_definitions=[dc], variables={"phase": v}),
+    )
+    p2 = _roundtrip(p)
+    assert p2.blackboard.class_definitions[0].name == "TaskState"
+    assert p2.blackboard.class_definitions[0].fields[0].field_type is FieldType.INT
+    assert p2.blackboard.variables["phase"].scope is VariableScope.BLACKBOARD
+
+
+def test_project_blackboard_default_empty():
+    """기본 PluginProject.blackboard는 빈 블랙보드로 왕복."""
+    p2 = _roundtrip(PluginProject(name="P"))
+    assert p2.blackboard.class_definitions == []
+    assert p2.blackboard.variables == {}
+    assert p2.blackboard.parent is None

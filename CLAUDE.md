@@ -32,12 +32,13 @@ daedalus/
 │   │   ├── state.py        # State(ABC), SimpleState, CompositeState, ParallelState, Region
 │   │   ├── pseudo.py       # ChoiceState, TerminateState, EntryPoint, ExitPoint
 │   │   ├── transition.py   # Transition + TransitionType
-│   │   ├── blackboard.py   # Blackboard, DynamicClass, DynamicField(FieldType 사용)
+│   │   ├── join.py         # JoinStrategy (병렬 조인 전략 — 순수 FSM 개념, policy.py가 re-export)
+│   │   ├── blackboard.py   # Blackboard, DynamicClass, DynamicField(FieldType 사용), FIELD_TYPE_TO_JSON_SCHEMA
 │   │   ├── section.py      # Section(자유 콘텐츠 계층), EventDef(TransferOn 출력 이벤트)
 │   │   └── machine.py      # StateMachine
 │   ├── plugin/       # Claude 플러그인 메타데이터
 │   │   ├── enums.py        # ModelType, EffortLevel, SkillContext, PermissionMode, AgentField, FieldEmit 등
-│   │   ├── policy.py       # ExecutionPolicy, JoinStrategy (병렬 서브에이전트)
+│   │   ├── policy.py       # ExecutionPolicy (병렬 서브에이전트). JoinStrategy는 fsm/join.py에서 re-export(하위 호환)
 │   │   ├── config.py       # ComponentConfig(ABC), SkillConfig(ABC), ProceduralSkillConfig,
 │   │   │                   # DeclarativeSkillConfig, TransferSkillConfig, ReferenceSkillConfig, AgentConfig
 │   │   ├── base.py         # PluginComponent(ABC), WorkflowComponent(ABC)
@@ -48,7 +49,7 @@ daedalus/
 │   │   ├── hook.py         # HookDef + HookEvent(CC 9종) (hook_library 훅 단일 진실)
 │   │   ├── hook_presets.py # BUILTIN_HOOK_PRESETS (복사용 훅 템플릿) + preset_copy
 │   │   └── field_matrix.py # FieldRule(emit 포함), SKILL_FIELD_MATRIX, AGENT_FIELD_MATRIX (스킬/에이전트 유형별 프론트매터 필드 규칙)
-│   ├── project.py           # PluginProject (최상위 컨테이너), ReferencePlacement, tool_shelf, hook_library
+│   ├── project.py           # PluginProject (최상위 컨테이너), ReferencePlacement, tool_shelf, hook_library, blackboard(최상위)
 │   ├── serialize.py         # serialize_project/deserialize_project (모델↔JSON dict, 안정 ID 기반)
 │   └── validation.py        # Validator + ValidationError + WARNING_RULES + is_warning (머신 규칙 16종 + 프로젝트 규칙 11종, 재귀)
 ├── compiler/         # 순수 모델 → 플러그인 파일 (PyQt 무관)
@@ -87,12 +88,15 @@ daedalus/
 - `ParallelState` 내 독립 실행 단위
 - `sub_machine: StateMachine`을 포함 — 각 Region은 자신만의 FSM을 가짐
 - 향후 리전별 우선순위, 취소 정책, 동기화 포인트 등 확장 가능
+- **조인 전략:** `ParallelState.join: JoinStrategy = ALL` + `join_count: int | None`. ALL=전 Region, ANY=하나, N_OF=`join_count`개 완료 시 join. `JoinStrategy`는 순수 FSM 개념이라 `model/fsm/join.py`에 있고 `model/plugin/policy.py`가 re-export로 하위 호환 유지(`ExecutionPolicy`도 동일 enum 사용).
 
 ### Blackboard = 컨텍스트 간 공유 장치
 
 - **역할:** 서로 다른 컨텍스트 간에 외부 데이터를 통해 맥락을 공유하는 장치
 - 동일 컨텍스트 내에서는 불필요 — 이미 같은 맥락을 공유
 - 스코핑: 최상위 `Blackboard(parent=None)`, 하위 `Blackboard(parent=부모.blackboard)`
+- **최상위 블랙보드:** `PluginProject.blackboard`(default_factory) — schemas.json의 소스(DynamicClass 단일 진실). 에이전트/스킬 FSM의 `blackboard.parent`는 **생성 경로의 책임**으로 이 객체에 배선한다 (app.py `_register_component`, agent_editor 로컬 스킬 생성). 마이그레이션 없음 — 기존 객체는 강제하지 않고 새 생성 경로만 연결. 직렬화는 parent를 ID로 평탄화하지 않고 **소유 구조로 재연결**(`_deser_machine`의 `parent_bb` 전달).
+- **DynamicClass → JSON Schema 매핑:** `blackboard.py`의 `FIELD_TYPE_TO_JSON_SCHEMA` 정본(STRING→string, INT→integer, FLOAT/NUMBER→number, BOOL→boolean, LIST→array, JSON→object, ANY→{}). CollectionType은 array로 래핑(LIST→items, SET→items+uniqueItems). 컴파일러 `compile_schemas_json(project)`가 프로젝트 블랙보드 class_definitions를 `<out>/schemas/schemas.json`으로(정의 없으면 None).
 
 ### FSM + Blackboard 하이브리드
 
@@ -133,7 +137,7 @@ class FieldType(Enum):
     STRING = "string"   # Variable / DynamicField 공용
     INT = "int"
     FLOAT = "float"
-    NUMBER = "number"
+    NUMBER = "number"   # deprecated: INT/FLOAT 사용, 컴파일 시 JSON Schema "number"로 합류(FLOAT와 동일)
     BOOL = "bool"
     LIST = "list"
     JSON = "json"
@@ -142,6 +146,7 @@ class FieldType(Enum):
 
 - `VariableType`과 `DynamicFieldType`을 통합한 단일 열거형
 - `Variable.field_type: FieldType`, `DynamicField.field_type: FieldType`
+- `NUMBER`는 **deprecated** — 의미가 명확한 INT/FLOAT을 쓰라. 컴파일 시 INT→integer, FLOAT/NUMBER→number로 합류된다(하위 호환용 잔존). 매핑 정본은 `blackboard.py`의 `FIELD_TYPE_TO_JSON_SCHEMA`.
 
 ### ComponentConfig 계층
 
@@ -160,7 +165,7 @@ ComponentConfig(ABC)          # model, effort, hooks 공통 필드
 세 가지 완료를 통합적으로 표현:
 - SimpleState 작업 완료 → 부모 FSM에 완료 신호
 - CompositeState sub_machine이 final_state 도달 → 부모 FSM에 완료 신호
-- ParallelState 전 Region 완료 → 부모 FSM에 완료 신호
+- ParallelState는 `ParallelState.join` 전략에 따라 완료 (ALL=전 Region, ANY=하나, N_OF=join_count개) → 부모 FSM에 완료 신호
 
 `Transition.trigger = CompletionEvent(name="done")` 으로 설정.
 
@@ -170,7 +175,7 @@ ComponentConfig(ABC)          # model, effort, hooks 공통 필드
 
 `ValidationError.is_warning` property — 규칙이 경고 등급이면 True, 에러 등급이면 False. `WARNING_RULES: frozenset[str]` 모듈 상수가 경고 등급 규칙 집합을 단일 진실로 보유 (view에서 rule 이름 하드코딩 금지). `invalid_component_name`은 빈 이름=에러/불일치=경고를 `is_warning`에서 메시지 내용으로 세분화한다.
 
-#### 머신 수준 (16종)
+#### 머신 수준 (19규칙명)
 
 | 규칙 | 설명 |
 |------|------|
@@ -190,6 +195,14 @@ ComponentConfig(ABC)          # model, effort, hooks 공통 필드
 | `unreachable_state` | initial_state + 모든 EntryPoint에서 전이 그래프로 도달 불가 상태 경고 |
 | `invalid_data_map_source` | Transition.data_map의 key가 source.outputs에 없으면 경고 (pseudo 상태 스킵) |
 | `trigger_unknown_event` | CompletionEvent trigger.name이 source 출력 이벤트 집합에 없으면 경고 (EventDef rename 고아 전이 검출) |
+| `transition_type_consistency` | INTERNAL/SELF 타입인데 `source is not target`이면 에러 |
+| `choice_completeness` | ChoiceState outgoing 0개=에러, 무가드 2개 이상=에러(else 중복/비결정) |
+| `choice_completeness_missing_else` | ChoiceState 무가드(else) 전이 0개=경고 (LLM 해석 결정성 저하) |
+| `parallel_join_count` | ParallelState join=N_OF인데 join_count가 None이거나 region 수 초과 시 경고 |
+
+**INTERNAL vs custom_events 역할 분리:** INTERNAL = 상태 비이탈 + guard/action 있는 반응(entry/exit 미발화, `source is target` 필수). 단순 반응(guard·data_map 없이 액션만)은 `State.custom_events`로 표현한다. 의사 상태(Choice/Terminate/Entry/Exit)에는 lifecycle 훅뿐 아니라 custom_events도 `pseudo_state_hooks` 경고 대상이다.
+
+**ChoiceState else 관례:** ChoiceState outgoing 중 **무가드 전이 = else 분기**. 가드 전이를 선언 순서로 평가하고 모두 실패하면 유일한 무가드 전이로 진행. 컴파일러 절차 서술은 무가드 전이를 `[else]`로, ParallelState는 join 전략 문구로 출력한다.
 
 재귀: CompositeState.sub_machine과 Region.sub_machine 내부도 동일하게 검증. 재귀 시 `path`에 `"agent:<이름>"` 또는 `"region:<이름>"`이 누적된다.
 

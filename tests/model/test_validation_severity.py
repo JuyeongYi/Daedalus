@@ -22,6 +22,8 @@ _ERROR_RULES = frozenset({
     "duplicate_component_name",
     "duplicate_tool_name",
     "duplicate_hook_name",
+    "transition_type_consistency",
+    "choice_completeness",
 })
 
 # 경고로 분류되어야 하는 규칙 목록 (WARNING_RULES와 동일)
@@ -35,6 +37,8 @@ _WARN_RULES = frozenset({
     "unreachable_state",
     "invalid_data_map_source",
     "trigger_unknown_event",
+    "choice_completeness_missing_else",
+    "parallel_join_count",
     "dangling_teammate_ref",
     "dangling_string_reference",
     "unregistered_delegation",
