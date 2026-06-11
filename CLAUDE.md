@@ -47,7 +47,7 @@ daedalus/
 │   │   └── field_matrix.py # FieldRule(emit 포함), SKILL_FIELD_MATRIX, AGENT_FIELD_MATRIX (스킬/에이전트 유형별 프론트매터 필드 규칙)
 │   ├── project.py           # PluginProject (최상위 컨테이너), ReferencePlacement
 │   ├── serialize.py         # serialize_project/deserialize_project (모델↔JSON dict, 안정 ID 기반)
-│   └── validation.py        # Validator + ValidationError (머신 규칙 11종 + validate_project, 재귀)
+│   └── validation.py        # Validator + ValidationError (머신 규칙 16종 + validate_project 프로젝트 규칙 4종, 재귀)
 └── view/             # PyQt6 기반 노드 에디터
     ├── app.py              # 메인 윈도우
     ├── canvas/             # GraphicsView/Scene, NodeItem, EdgeItem, RefNodeItem, RefEdgeItem
@@ -160,6 +160,10 @@ ComponentConfig(ABC)          # model, effort, hooks 공통 필드
 
 ### Validator 규칙 (재귀 적용)
 
+`ValidationError` 필드: `rule`, `message`, `source`(기존) + `subject: object | None`(문제 객체, 향후 노드 점프용 — `compare=False`이므로 identity 비교로 조회) + `path: tuple[str, ...]`(중첩 경로, 예: `("agent:Writer", "region:r1")`). 기본값이 있어 기존 생성자 호환. `validate_project`는 최상위 FSM 오류에 root path(`"skill:<이름>"`/`"agent:<이름>"`)를 주입한다.
+
+#### 머신 수준 (16종)
+
 | 규칙 | 설명 |
 |------|------|
 | `initial_state_in_states` | `sm.initial_state ∈ sm.states` (identity 기준) |
@@ -173,9 +177,24 @@ ComponentConfig(ABC)          # model, effort, hooks 공통 필드
 | `transfer_on_not_empty` | ProceduralSkill transfer_on / Agent ExitPoint 최소 1개 |
 | `empty_delegation` | 위임 노드 내용 누락 (팀원 0명·count<1, objective/msgtype 빈 값) 경고 |
 | `forget_completion_mismatch` | forget 모드 위임 노드의 결과 분기 시도 경고 |
+| `transition_endpoint_not_in_states` | Transition.source/target이 sm.states에 없으면 에러 (initial/final 비대칭 해소) |
+| `duplicate_state_name` | 동일 머신 내 동명 상태 경고 (컴파일/직렬화 혼동 방지) |
+| `unreachable_state` | initial_state + 모든 EntryPoint에서 전이 그래프로 도달 불가 상태 경고 |
+| `invalid_data_map_source` | Transition.data_map의 key가 source.outputs에 없으면 경고 (pseudo 상태 스킵) |
+| `trigger_unknown_event` | CompletionEvent trigger.name이 source 출력 이벤트 집합에 없으면 경고 (EventDef rename 고아 전이 검출) |
 
-재귀: CompositeState.sub_machine과 Region.sub_machine 내부도 동일하게 검증.
-프로젝트 수준: `Validator.validate_project(project)` — 전체 FSM 검증 + `dangling_teammate_ref`(위임 정의의 에이전트 참조 실존 검사).
+재귀: CompositeState.sub_machine과 Region.sub_machine 내부도 동일하게 검증. 재귀 시 `path`에 `"agent:<이름>"` 또는 `"region:<이름>"`이 누적된다.
+
+#### 프로젝트 수준 (4종)
+
+`Validator.validate_project(project)` — 전체 FSM 검증 후 추가:
+
+| 규칙 | 설명 |
+|------|------|
+| `dangling_teammate_ref` | 위임 정의의 agent_ref가 project.agents에 실존하지 않으면 경고 |
+| `duplicate_component_name` | skills/agents/delegations 전체에서 동명 컴포넌트 에러 (컴파일 디렉토리 충돌) |
+| `invalid_component_name` | 이름이 `^[a-z0-9][a-z0-9-]*$` 불일치 시 경고, 빈 이름은 에러 |
+| `dangling_string_reference` | `ProceduralSkillConfig.agent`, `AgentConfig.skills`, `reference_placements.skill_name`의 문자열 참조 실존 검사. AgentConfig.skills는 전역 + 에이전트 로컬 스킬 합산 |
 
 ### 전략 패턴 (Guard / Action 공통)
 
