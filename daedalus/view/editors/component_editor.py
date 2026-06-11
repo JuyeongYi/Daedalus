@@ -81,6 +81,8 @@ class ComponentEditor(QWidget):
         self._fm = _FrontmatterPanel(component, skill_kind=skill_kind)
         self._fm.setMinimumHeight(_LEFT_CHILD_MIN_H)
         self._fm.changed.connect(self._on_model_changed)
+        # description / when_to_use 키스트로크 → content 채널
+        self._fm.content_changed.connect(lambda: self._on_model_changed(scope="content"))
         left_splitter.addWidget(self._fm)
 
         root_splitter.addWidget(left_splitter)
@@ -181,7 +183,9 @@ class ComponentEditor(QWidget):
     def _on_content_changed(self) -> None:
         self._section_tree.set_sections(self._component.sections)
         self._breadcrumb.set_sections(self._component.sections)
-        self._on_model_changed()
+        # 섹션 content/title 키스트로크 — content 채널로 보내 무거운 structure
+        # 리스너(캔버스 _rebuild, 레지스트리 재구성)가 키 입력마다 돌지 않게 한다.
+        self._on_model_changed(scope="content")
 
     def _on_variable_insert(self) -> None:
         if self._var_popup.isVisible():
@@ -196,10 +200,10 @@ class ComponentEditor(QWidget):
         self._var_popup.show()
         self._var_popup.raise_()
 
-    def _on_model_changed(self) -> None:
+    def _on_model_changed(self, scope: str = "structure") -> None:
+        from daedalus.view.viewmodel.project_vm import call_notify
         self.changed.emit()
-        if self._on_notify_fn is not None:
-            self._on_notify_fn()
+        call_notify(self._on_notify_fn, scope)  # type: ignore[arg-type]
 
     def show_contract_section(self, section: Section) -> None:
         """잠금 계약 섹션 표시 — 타이틀 잠금, 내용만 편집 가능."""

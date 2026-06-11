@@ -124,3 +124,73 @@ def test_variable_popup_opens_at_button_global_pos(qapp):
     finally:
         editor._var_popup.hide()
         editor.close()
+
+
+# ---------------------------------------------------------------------------
+# notify 채널 분리 — 텍스트 키스트로크가 structure 리스너를 깨우지 않는다
+# ---------------------------------------------------------------------------
+
+def test_section_content_typing_routes_to_content_scope(qapp):
+    """섹션 content 타이핑 → ProjectViewModel.notify(scope='content')만 호출.
+
+    structure 리스너(캔버스 _rebuild 등)는 키스트로크마다 돌지 않아야 한다.
+    """
+    from daedalus.view.viewmodel.project_vm import ProjectViewModel
+    from daedalus.model.fsm.section import Section
+    comp = _make_declarative()
+    comp.sections.append(Section(title="Sec", content=""))
+
+    pvm = ProjectViewModel()
+    struct: list[int] = []
+    content: list[int] = []
+    pvm.add_listener(lambda: struct.append(1))
+    pvm.add_listener(lambda: content.append(1), scope="content")
+
+    from daedalus.view.editors.component_editor import ComponentEditor
+    editor = ComponentEditor(comp, on_notify_fn=pvm.notify)
+
+    # 섹션 content 변경 시뮬레이션
+    editor._on_content_changed()
+
+    assert content == [1], "content 리스너가 호출되어야 한다"
+    assert struct == [], "structure 리스너는 content 타이핑에 호출되면 안 된다"
+
+
+def test_structure_change_routes_to_structure_scope(qapp):
+    """섹션 구조 변경 → structure 채널 (기본). content 리스너 미호출."""
+    from daedalus.view.viewmodel.project_vm import ProjectViewModel
+    comp = _make_declarative()
+
+    pvm = ProjectViewModel()
+    struct: list[int] = []
+    content: list[int] = []
+    pvm.add_listener(lambda: struct.append(1))
+    pvm.add_listener(lambda: content.append(1), scope="content")
+
+    from daedalus.view.editors.component_editor import ComponentEditor
+    editor = ComponentEditor(comp, on_notify_fn=pvm.notify)
+
+    editor._on_structure_changed()
+
+    assert struct == [1], "structure 리스너가 호출되어야 한다"
+    assert content == [], "content 리스너는 구조 변경에 호출되면 안 된다"
+
+
+def test_description_typing_routes_to_content_scope(qapp):
+    """frontmatter description 타이핑 → content 채널."""
+    from daedalus.view.viewmodel.project_vm import ProjectViewModel
+    comp = _make_declarative()
+
+    pvm = ProjectViewModel()
+    struct: list[int] = []
+    content: list[int] = []
+    pvm.add_listener(lambda: struct.append(1))
+    pvm.add_listener(lambda: content.append(1), scope="content")
+
+    from daedalus.view.editors.component_editor import ComponentEditor
+    editor = ComponentEditor(comp, on_notify_fn=pvm.notify)
+
+    editor._fm._w_desc.setPlainText("새 설명")  # textChanged → _save_desc → content_changed
+
+    assert content and content[-1] == 1, "description 타이핑은 content 채널로"
+    assert struct == [], "description 타이핑이 structure 리스너를 깨워서는 안 된다"

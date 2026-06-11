@@ -92,6 +92,82 @@ class TestProjectViewModel:
         pvm = ProjectViewModel()
         pvm.remove_listener(lambda: None)  # should not raise
 
+    # --- notify 채널 분리 ---
+
+    def test_structure_listener_not_called_on_content_notify(self):
+        """structure 리스너는 content 채널 notify에 호출되지 않는다."""
+        struct_calls: list[str] = []
+        content_calls: list[str] = []
+        pvm = ProjectViewModel()
+        pvm.add_listener(lambda: struct_calls.append("s"))  # 기본 structure
+        pvm.add_listener(lambda: content_calls.append("c"), scope="content")
+
+        pvm.notify(scope="content")
+        assert struct_calls == [], "content notify가 structure 리스너를 깨워서는 안 된다"
+        assert content_calls == ["c"]
+
+    def test_content_listener_not_called_on_structure_notify(self):
+        """content 리스너는 structure 채널 notify에 호출되지 않는다."""
+        struct_calls: list[str] = []
+        content_calls: list[str] = []
+        pvm = ProjectViewModel()
+        pvm.add_listener(lambda: struct_calls.append("s"))
+        pvm.add_listener(lambda: content_calls.append("c"), scope="content")
+
+        pvm.notify()  # 기본 structure
+        assert struct_calls == ["s"]
+        assert content_calls == [], "structure notify가 content 리스너를 깨워서는 안 된다"
+
+    def test_default_scope_is_structure(self):
+        """notify()/add_listener() 기본 채널은 structure (상위 호환)."""
+        calls: list[str] = []
+        pvm = ProjectViewModel()
+        pvm.add_listener(lambda: calls.append("x"))
+        pvm.notify()
+        assert calls == ["x"]
+
+    def test_remove_listener_clears_both_channels(self):
+        calls: list[str] = []
+        pvm = ProjectViewModel()
+        listener = lambda: calls.append("c")
+        pvm.add_listener(listener, scope="content")
+        pvm.remove_listener(listener)
+        pvm.notify(scope="content")
+        assert calls == []
+
+    def test_call_notify_scope_aware(self):
+        """call_notify는 scope 키워드를 받는 콜백에만 채널을 전달한다."""
+        from daedalus.view.viewmodel.project_vm import call_notify
+
+        received: list[str] = []
+
+        def with_scope(scope: str = "structure") -> None:
+            received.append(scope)
+
+        plain_calls: list[str] = []
+
+        def plain() -> None:
+            plain_calls.append("p")
+
+        call_notify(with_scope, "content")
+        assert received == ["content"]
+
+        call_notify(plain, "content")  # plain은 scope 미수신 — 인자 없이 호출
+        assert plain_calls == ["p"]
+
+        call_notify(None, "content")  # None은 무시
+
+    def test_call_notify_does_not_swallow_internal_typeerror(self):
+        """콜백 내부 TypeError는 삼키지 않는다 (시그니처 기반 분기)."""
+        import pytest
+        from daedalus.view.viewmodel.project_vm import call_notify
+
+        def boom() -> None:  # scope 미수신 콜백이 내부에서 TypeError
+            raise TypeError("internal")
+
+        with pytest.raises(TypeError, match="internal"):
+            call_notify(boom, "content")
+
     def test_execute_delegates_to_command_stack(self):
         from daedalus.view.commands.base import Command
 

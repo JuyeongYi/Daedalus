@@ -152,6 +152,9 @@ class _FrontmatterPanel(QScrollArea):
     """좌측 패널 — SKILL_FIELD_MATRIX 기반 프론트매터 편집."""
 
     changed = pyqtSignal()
+    # 텍스트 키스트로크 전용 채널 — description / when_to_use 타이핑.
+    # 무거운 structure 리스너를 우회하기 위해 별도 시그널로 분리한다.
+    content_changed = pyqtSignal()
 
     def __init__(
         self,
@@ -394,7 +397,8 @@ class _FrontmatterPanel(QScrollArea):
 
         if fld == SkillField.WHEN_TO_USE:
             self._component.when_to_use = value  # type: ignore[attr-defined]
-            self.changed.emit()
+            # when_to_use는 텍스트 키스트로크 — content 채널로.
+            self.content_changed.emit()
             return
 
         attr = _FIELD_ATTR_MAP.get(fld)
@@ -477,7 +481,8 @@ class _FrontmatterPanel(QScrollArea):
 
     def _save_desc(self) -> None:
         self._component.description = self._w_desc.toPlainText().strip()
-        self.changed.emit()
+        # description은 텍스트 키스트로크 — content 채널로.
+        self.content_changed.emit()
 
 
 class _ColorPickerPopup(QFrame):
