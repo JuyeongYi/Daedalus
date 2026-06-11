@@ -67,12 +67,11 @@ class AgentConfig(ComponentConfig):
     permission_mode: PermissionMode = PermissionMode.DEFAULT
     max_turns: int | None = None
     skills: list[str] = field(default_factory=list)
-    mcp_servers: list[dict[str, Any]] | None = None
+    mcp_servers: list[str] | None = None  # MCP 서버 이름 참조 목록 — 서버 정의 자체는 .mcp.json 등 외부 소유, 모델은 이름만 참조
     memory: MemoryScope | None = None
     background: bool = False
     isolation: AgentIsolation = AgentIsolation.NONE
     color: AgentColor | None = None
-    initial_prompt: str | None = None
 
     @property
     def kind(self) -> str:

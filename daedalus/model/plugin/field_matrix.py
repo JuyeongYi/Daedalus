@@ -16,8 +16,14 @@ from dataclasses import dataclass
 from typing import Any
 
 from daedalus.model.plugin.enums import (
+    AgentColor,
+    AgentField,
+    AgentIsolation,
+    FieldEmit,
     FieldVisibility,
+    MemoryScope,
     ModelType,
+    PermissionMode,
     SkillContext,
     SkillField,
 )
@@ -30,22 +36,24 @@ F = FieldVisibility.FIXED
 
 @dataclass
 class FieldRule:
-    """프론트매터 필드 규칙 — visibility + 값.
+    """프론트매터 필드 규칙 — visibility + 값 + emit 위치.
 
     위젯 클래스는 더 이상 여기에 두지 않는다(model→view 의존 역전).
     fixed_value: FIXED일 때 컴파일러가 강제할 출력값 (enum 또는 스칼라).
     default_value: 위젯 초기 표시용 기본값 (단일 진실은 config 선언 기본값).
+    emit: 컴파일러가 이 필드를 배출할 위치 (기본값: FRONTMATTER).
     """
     visibility: FieldVisibility
     fixed_value: Any = None
     default_value: Any = None
+    emit: FieldEmit = FieldEmit.FRONTMATTER
 
 
 # fmt: off
 _PROCEDURAL: dict[SkillField, FieldRule] = {
     SkillField.NAME:           FieldRule(R),
     SkillField.DESCRIPTION:    FieldRule(R),
-    SkillField.WHEN_TO_USE:    FieldRule(O),
+    SkillField.WHEN_TO_USE:    FieldRule(O, emit=FieldEmit.BODY),
     SkillField.ARGUMENT_HINT:  FieldRule(O),
     SkillField.MODEL:          FieldRule(R, default_value=ModelType.INHERIT),
     SkillField.EFFORT:         FieldRule(O),
@@ -62,7 +70,7 @@ _PROCEDURAL: dict[SkillField, FieldRule] = {
 _DECLARATIVE: dict[SkillField, FieldRule] = {
     SkillField.NAME:           FieldRule(R),
     SkillField.DESCRIPTION:    FieldRule(R),
-    SkillField.WHEN_TO_USE:    FieldRule(O),
+    SkillField.WHEN_TO_USE:    FieldRule(O, emit=FieldEmit.BODY),
     SkillField.ARGUMENT_HINT:  FieldRule(O),
     SkillField.MODEL:          FieldRule(R, default_value=ModelType.INHERIT),
     SkillField.EFFORT:         FieldRule(O),
@@ -79,7 +87,7 @@ _DECLARATIVE: dict[SkillField, FieldRule] = {
 _TRANSFER: dict[SkillField, FieldRule] = {
     SkillField.NAME:           FieldRule(R),
     SkillField.DESCRIPTION:    FieldRule(R),
-    SkillField.WHEN_TO_USE:    FieldRule(D),
+    SkillField.WHEN_TO_USE:    FieldRule(D, emit=FieldEmit.BODY),
     SkillField.ARGUMENT_HINT:  FieldRule(D),
     SkillField.MODEL:          FieldRule(R, default_value=ModelType.INHERIT),
     SkillField.EFFORT:         FieldRule(O),
@@ -96,7 +104,7 @@ _TRANSFER: dict[SkillField, FieldRule] = {
 _REFERENCE: dict[SkillField, FieldRule] = {
     SkillField.NAME:           FieldRule(R),
     SkillField.DESCRIPTION:    FieldRule(R),
-    SkillField.WHEN_TO_USE:    FieldRule(D),
+    SkillField.WHEN_TO_USE:    FieldRule(D, emit=FieldEmit.BODY),
     SkillField.ARGUMENT_HINT:  FieldRule(D),
     SkillField.MODEL:          FieldRule(R, default_value=ModelType.INHERIT),
     SkillField.EFFORT:         FieldRule(O),
@@ -113,7 +121,7 @@ _REFERENCE: dict[SkillField, FieldRule] = {
 _LOCAL_PROCEDURAL: dict[SkillField, FieldRule] = {
     SkillField.NAME:           FieldRule(R),
     SkillField.DESCRIPTION:    FieldRule(R),
-    SkillField.WHEN_TO_USE:    FieldRule(D),
+    SkillField.WHEN_TO_USE:    FieldRule(D, emit=FieldEmit.BODY),
     SkillField.ARGUMENT_HINT:  FieldRule(D),
     SkillField.MODEL:          FieldRule(R, default_value=ModelType.INHERIT),
     SkillField.EFFORT:         FieldRule(D),
@@ -130,7 +138,7 @@ _LOCAL_PROCEDURAL: dict[SkillField, FieldRule] = {
 _LOCAL_TRANSFER: dict[SkillField, FieldRule] = {
     SkillField.NAME:           FieldRule(R),
     SkillField.DESCRIPTION:    FieldRule(R),
-    SkillField.WHEN_TO_USE:    FieldRule(D),
+    SkillField.WHEN_TO_USE:    FieldRule(D, emit=FieldEmit.BODY),
     SkillField.ARGUMENT_HINT:  FieldRule(D),
     SkillField.MODEL:          FieldRule(R, default_value=ModelType.INHERIT),
     SkillField.EFFORT:         FieldRule(D),
@@ -153,3 +161,23 @@ SKILL_FIELD_MATRIX: dict[str, dict[SkillField, FieldRule]] = {
     "local_procedural": _LOCAL_PROCEDURAL,
     "local_transfer": _LOCAL_TRANSFER,
 }
+
+# fmt: off
+AGENT_FIELD_MATRIX: dict[AgentField, FieldRule] = {
+    AgentField.NAME:             FieldRule(R),
+    AgentField.DESCRIPTION:      FieldRule(R),
+    AgentField.MODEL:            FieldRule(R, default_value=ModelType.INHERIT),
+    AgentField.EFFORT:           FieldRule(O),
+    AgentField.TOOLS:            FieldRule(O),
+    AgentField.DISALLOWED_TOOLS: FieldRule(O),
+    AgentField.PERMISSION_MODE:  FieldRule(O, default_value=PermissionMode.DEFAULT),
+    AgentField.SKILLS:           FieldRule(O),
+    AgentField.MEMORY:           FieldRule(O),
+    AgentField.COLOR:            FieldRule(O),
+    AgentField.HOOKS:            FieldRule(O, emit=FieldEmit.SETTINGS),
+    AgentField.MAX_TURNS:        FieldRule(O, emit=FieldEmit.INVOCATION),
+    AgentField.BACKGROUND:       FieldRule(O, emit=FieldEmit.INVOCATION),
+    AgentField.ISOLATION:        FieldRule(O, default_value=AgentIsolation.NONE, emit=FieldEmit.INVOCATION),
+    AgentField.MCP_SERVERS:      FieldRule(O, emit=FieldEmit.SETTINGS),
+}
+# fmt: on
