@@ -531,8 +531,17 @@ class _Registry:
             fn()
 
 
-def deserialize_project(data: dict) -> PluginProject:
-    """JSON 호환 dict → PluginProject. 2-pass 참조 해소."""
+def deserialize_project(
+    data: dict,
+    *,
+    collect_warnings: list[str] | None = None,
+) -> PluginProject:
+    """JSON 호환 dict → PluginProject. 2-pass 참조 해소.
+
+    collect_warnings: 호출자가 리스트를 주면 역직렬화 중 발생한 dangling id
+      경고 문자열을 해당 리스트에 채워준다. None이면 경고를 버린다(기존 동작).
+      반환 타입은 항상 PluginProject — 변경 없음.
+    """
     fmt = data.get("format")
     if fmt != FORMAT_VERSION:
         raise ValueError(
@@ -556,6 +565,11 @@ def deserialize_project(data: dict) -> PluginProject:
 
     # ── pass 2: 모든 참조(state/skill/agent id) 해소 ──
     reg.run_pending()
+
+    # ── 경고 전달 ──
+    if collect_warnings is not None:
+        collect_warnings.extend(reg.warnings)
+
     return project
 
 
