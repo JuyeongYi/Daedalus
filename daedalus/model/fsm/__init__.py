@@ -1,4 +1,5 @@
 from daedalus.model.fsm.event import *
+from daedalus.model.fsm.join import *
 from daedalus.model.fsm.variable import *
 from daedalus.model.fsm.strategy import *
 from daedalus.model.fsm.guard import *

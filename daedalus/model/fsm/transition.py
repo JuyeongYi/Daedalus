@@ -15,6 +15,19 @@ if TYPE_CHECKING:
 
 
 class TransitionType(Enum):
+    """전이 유형.
+
+    역할 분리 (의미론 정본):
+      - EXTERNAL: 상태를 벗어나는 일반 전이 (source의 exit 훅 발화 후 target의 entry 훅 발화).
+        source ≠ target일 수도, 같을 수도 있다.
+      - INTERNAL: **상태 비이탈** + guard/action이 있는 반응. entry/exit 훅을 **발화하지 않는다**.
+        guard 평가나 액션 체인이 필요한 자기 반응에 쓴다. ``source is target`` 필수.
+        단순 반응(guard·data_map 없이 액션만)은 INTERNAL 대신 ``State.custom_events``로 표현하라.
+      - SELF: 상태를 떠났다 같은 상태로 재진입 (exit→entry 훅 재발화). ``source is target`` 필수.
+      - LOCAL: composite 경계를 넘지 않는 지역 전이 (외곽 상태 재진입 회피).
+
+    ``transition_type_consistency`` 검증 규칙이 INTERNAL/SELF의 ``source is target``을 강제한다.
+    """
     EXTERNAL = "external"
     INTERNAL = "internal"
     SELF = "self"

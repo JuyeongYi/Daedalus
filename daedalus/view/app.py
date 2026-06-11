@@ -417,6 +417,11 @@ class MainWindow(QMainWindow):
             self._project.delegations.append(component)
         else:
             self._project.skills.append(component)
+        # 블랙보드 스코핑 배선 — 새로 생성한 컴포넌트의 FSM 블랙보드를 프로젝트
+        # 블랙보드의 자식으로 연결한다 (생성 경로의 책임, 마이그레이션 없음).
+        fsm = getattr(component, "fsm", None)
+        if fsm is not None and fsm.blackboard.parent is None:
+            fsm.blackboard.parent = self._project.blackboard
         self._registry_panel.set_project(self._project)
 
     _COMPONENT_TITLES = {

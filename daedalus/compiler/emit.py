@@ -424,7 +424,8 @@ def _fsm_procedure_blocks(sm: StateMachine) -> list[str]:
             head += f": 에이전트 '{state.name}'에 위임한다 (별도 컨텍스트 상태 기계)."
         elif isinstance(state, ParallelState):
             regs = ", ".join(r.name for r in state.regions)
-            head += f": 병렬 실행 — 리전 {regs}을(를) 동시에 진행한다."
+            join_note = _describe_join(state)
+            head += f": 병렬 실행 — 리전 {regs}을(를) 동시에 진행한다 ({join_note})."
         elif isinstance(state, ChoiceState):
             head += ": 즉시 조건을 평가해 분기한다 (머무르지 않음)."
         elif isinstance(state, TerminateState):
@@ -437,9 +438,14 @@ def _fsm_procedure_blocks(sm: StateMachine) -> list[str]:
 
         # 나가는 전이 — 출구 조건
         outgoing = [t for t in sm.transitions if t.source is state]
+        is_choice = isinstance(state, ChoiceState)
         for t in outgoing:
             cond = _transition_condition(t)
-            cond_str = f" [{cond}]" if cond else ""
+            # ChoiceState 무가드 전이 = else 분기 (관례)
+            if is_choice and t.guard is None:
+                cond_str = " [else]" if not cond else f" [else, {cond}]"
+            else:
+                cond_str = f" [{cond}]" if cond else ""
             xfer = ""
             if t.skill_ref is not None:
                 xfer = f" (전이 시 skill '{t.skill_ref.name}' 실행)"
@@ -449,6 +455,17 @@ def _fsm_procedure_blocks(sm: StateMachine) -> list[str]:
 
     blocks.append("\n".join(lines))
     return blocks
+
+
+def _describe_join(state: ParallelState) -> str:
+    """ParallelState.join 전략을 사람이 읽는 문구로."""
+    from daedalus.model.fsm.join import JoinStrategy
+    if state.join is JoinStrategy.ANY:
+        return "리전 중 하나라도 완료하면 다음으로 진행"
+    if state.join is JoinStrategy.N_OF:
+        n = state.join_count if state.join_count is not None else "?"
+        return f"리전 {n}개가 완료하면 다음으로 진행"
+    return "모든 리전 완료 후 종합"
 
 
 # ─────────────────────────── 위임 단락 ───────────────────────────
@@ -835,10 +852,14 @@ def _describe_agent_fsm(agent: AgentDefinition) -> list[str]:
         else:
             head += "."
         lines.append(head)
+        is_choice = isinstance(state, ChoiceState)
         for t in sm.transitions:
             if t.source is state:
                 cond = _transition_condition(t)
-                cond_str = f" [{cond}]" if cond else ""
+                if is_choice and t.guard is None:
+                    cond_str = " [else]" if not cond else f" [else, {cond}]"
+                else:
+                    cond_str = f" [{cond}]" if cond else ""
                 lines.append(f"    - → **{t.target.name}**{cond_str}")
     blocks.append("\n".join(lines))
 
@@ -932,6 +953,66 @@ def compile_hooks_json(project) -> str | None:
         hooks_obj[event.value] = groups
 
     text = json.dumps({"hooks": hooks_obj}, ensure_ascii=False, indent=2)
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+    if not text.endswith("\n"):
+        text += "\n"
+    return text
+
+
+# ─────────────────────────── schemas.json (블랙보드) ───────────────────────────
+
+
+def _field_to_json_schema(fld) -> dict[str, Any]:
+    """DynamicField → JSON Schema 속성. CollectionType으로 array 래핑."""
+    from daedalus.model.fsm.blackboard import (
+        CollectionType,
+        FIELD_TYPE_TO_JSON_SCHEMA,
+    )
+    scalar = dict(FIELD_TYPE_TO_JSON_SCHEMA.get(fld.field_type, {}))
+    if fld.collection is CollectionType.LIST:
+        return {"type": "array", "items": scalar}
+    if fld.collection is CollectionType.SET:
+        return {"type": "array", "items": scalar, "uniqueItems": True}
+    return scalar
+
+
+def _class_to_json_schema(cls) -> dict[str, Any]:
+    """DynamicClass → JSON Schema object. required는 필드 required 플래그 기준."""
+    properties: dict[str, Any] = {}
+    required: list[str] = []
+    for fld in cls.fields:
+        prop = _field_to_json_schema(fld)
+        if fld.default is not None:
+            prop = {**prop, "default": fld.default}
+        properties[fld.name] = prop
+        if fld.required:
+            required.append(fld.name)
+    schema: dict[str, Any] = {"type": "object"}
+    if cls.description:
+        schema["description"] = cls.description
+    schema["properties"] = properties
+    if required:
+        schema["required"] = required
+    return schema
+
+
+def compile_schemas_json(project) -> str | None:
+    """프로젝트 최상위 블랙보드의 class_definitions → schemas.json 텍스트.
+
+    각 DynamicClass를 JSON Schema object로 변환해
+    ``{"<클래스명>": <schema>}`` 형태로 묶는다 (선언 순서 = 결정적 키 순서).
+    class_definitions가 비어 있으면 None (파일 생성 안 함).
+
+    LF·UTF-8 보장 텍스트(끝 개행 1개). json.loads 왕복 가능.
+    """
+    bb = getattr(project, "blackboard", None)
+    classes = getattr(bb, "class_definitions", None) or []
+    if not classes:
+        return None
+    schemas_obj: dict[str, Any] = {}
+    for cls in classes:
+        schemas_obj[cls.name] = _class_to_json_schema(cls)
+    text = json.dumps(schemas_obj, ensure_ascii=False, indent=2)
     text = text.replace("\r\n", "\n").replace("\r", "\n")
     if not text.endswith("\n"):
         text += "\n"

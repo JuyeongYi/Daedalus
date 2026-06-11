@@ -25,7 +25,12 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 
-from daedalus.compiler.emit import compile_agent, compile_hooks_json, compile_skill
+from daedalus.compiler.emit import (
+    compile_agent,
+    compile_hooks_json,
+    compile_schemas_json,
+    compile_skill,
+)
 from daedalus.model.plugin.skill import Skill
 from daedalus.model.validation import ValidationError, Validator
 
@@ -164,6 +169,19 @@ def _plan_outputs(project) -> tuple[list[_PlannedOutput], list[ValidationError]]
             component=project,
         ))
 
+    # schemas.json (블랙보드 class_definitions) — 정의가 있을 때만 계획에 합류.
+    # 고정 경로 'schemas/schemas.json'이라 컴포넌트 산출(skills/·agents/)과 충돌
+    # 불가하지만, 경로 집합·결정성 일관성을 위해 plan에 포함한다.
+    schemas_text = compile_schemas_json(project)
+    if schemas_text is not None:
+        plan.append(_PlannedOutput(
+            rel_path=PurePosixPath("schemas") / "schemas.json",
+            label="schemas.json (blackboard class definitions)",
+            subject=project,
+            kind="schemas_json",
+            component=project,
+        ))
+
     # 산출 경로 충돌 검사 — 첫 점유자와 이후 충돌자를 모두 보고
     seen: dict[PurePosixPath, _PlannedOutput] = {}
     for item in plan:
@@ -222,6 +240,8 @@ def compile_project(project, out_dir: Path | str) -> CompileResult:
             text = compile_agent(item.component, project=project)
         elif item.kind == "hooks_json":
             text = compile_hooks_json(project) or ""
+        elif item.kind == "schemas_json":
+            text = compile_schemas_json(project) or ""
         else:  # local_skill
             text = compile_skill(item.component, local=True, project=project)
         path = out_dir / item.rel_path

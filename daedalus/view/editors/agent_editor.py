@@ -322,6 +322,9 @@ class AgentEditor(QWidget):
         from daedalus.model.plugin.skill import ProceduralSkill, TransferSkill
         s = SimpleState(name="start")
         fsm = StateMachine(name=f"{name}_fsm", states=[s], initial_state=s)
+        # 블랙보드 스코핑 — 로컬 스킬 FSM 블랙보드를 소유 에이전트 FSM 블랙보드의 자식으로.
+        if fsm.blackboard.parent is None:
+            fsm.blackboard.parent = self._agent.fsm.blackboard
         if kind == "procedural":
             skill = ProceduralSkill(fsm=fsm, name=name, description="")
         else:

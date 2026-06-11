@@ -28,7 +28,8 @@ class CompletionEvent(StateEvent):
     """상태 완료 시 발생하는 이벤트.
 
     SimpleState 작업 완료, CompositeState sub_machine 종료,
-    ParallelState 전 Region 완료 시 발생.
+    ParallelState는 ``ParallelState.join`` 전략에 따라 완료 시 발생
+    (ALL=전 Region, ANY=하나, N_OF=join_count개).
     """
 
     @property
