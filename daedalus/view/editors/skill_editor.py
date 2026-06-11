@@ -152,6 +152,9 @@ class _FrontmatterPanel(QScrollArea):
     """좌측 패널 — SKILL_FIELD_MATRIX 기반 프론트매터 편집."""
 
     changed = pyqtSignal()
+    # 텍스트 키스트로크 전용 채널 — description / when_to_use 타이핑.
+    # 무거운 structure 리스너를 우회하기 위해 별도 시그널로 분리한다.
+    content_changed = pyqtSignal()
 
     def __init__(
         self,
@@ -394,7 +397,8 @@ class _FrontmatterPanel(QScrollArea):
 
         if fld == SkillField.WHEN_TO_USE:
             self._component.when_to_use = value  # type: ignore[attr-defined]
-            self.changed.emit()
+            # when_to_use는 텍스트 키스트로크 — content 채널로.
+            self.content_changed.emit()
             return
 
         attr = _FIELD_ATTR_MAP.get(fld)
@@ -477,7 +481,8 @@ class _FrontmatterPanel(QScrollArea):
 
     def _save_desc(self) -> None:
         self._component.description = self._w_desc.toPlainText().strip()
-        self.changed.emit()
+        # description은 텍스트 키스트로크 — content 채널로.
+        self.content_changed.emit()
 
 
 class _ColorPickerPopup(QFrame):
@@ -644,8 +649,8 @@ class _ContractCard(QFrame):
         lay.setContentsMargins(8, 8, 8, 8)
         lay.setSpacing(6)
 
-        title_lbl = QLabel(f"🔒 {section.title}")
-        lay.addWidget(title_lbl)
+        self._title_lbl = QLabel(f"🔒 {section.title}")
+        lay.addWidget(self._title_lbl)
 
         self._w_content = QTextEdit()
         self._w_content.setPlainText(section.content)
@@ -653,6 +658,14 @@ class _ContractCard(QFrame):
         self._w_content.setMinimumHeight(60)
         self._w_content.textChanged.connect(self._on_content_changed)
         lay.addWidget(self._w_content)
+
+    @property
+    def section(self) -> Section:
+        return self._section
+
+    def sync_title(self) -> None:
+        """모델 제목을 라벨에 반영 (in-place 갱신 — 위젯 재생성 회피)."""
+        self._title_lbl.setText(f"🔒 {self._section.title}")
 
     def _on_content_changed(self) -> None:
         self._section.content = self._w_content.toPlainText()
@@ -680,13 +693,35 @@ class _ContractPanel(QScrollArea):
         self._lay = QVBoxLayout(self._inner)
         self._lay.setContentsMargins(12, 12, 12, 12)
         self._lay.setSpacing(8)
+        self._cards: list[_ContractCard] = []
         self.setWidget(self._inner)
         self._rebuild()
 
     def refresh(self) -> None:
+        """모델과 카드를 동기화한다.
+
+        카드 수/순서/대상 Section이 동일하면 위젯을 재생성하지 않고
+        제목만 in-place 갱신한다 — 편집 중인 QTextEdit가 deleteLater되어
+        타이핑이 끊기는 버그(_ContractCard 실사용 버그)를 막는다.
+        구조가 달라졌을 때만 전체 재구성한다.
+        """
+        if self._cards_match_model():
+            for card in self._cards:
+                card.sync_title()
+            return
         self._rebuild()
 
+    def _cards_match_model(self) -> bool:
+        """현재 카드 목록이 모델 contracts와 identity 기준으로 1:1 대응하는지."""
+        if len(self._cards) != len(self._contracts):
+            return False
+        return all(
+            card.section is sec
+            for card, sec in zip(self._cards, self._contracts)
+        )
+
     def _rebuild(self) -> None:
+        self._cards = []
         while self._lay.count():
             child = self._lay.takeAt(0)
             if child is not None:
@@ -704,6 +739,7 @@ class _ContractPanel(QScrollArea):
             card = _ContractCard(sec)
             card.changed.connect(self.contract_changed)
             self._lay.addWidget(card)
+            self._cards.append(card)
         self._lay.addStretch()
 
 

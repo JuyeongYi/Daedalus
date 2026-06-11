@@ -57,11 +57,11 @@ daedalus/
 │   └── project_compiler.py # compile_project(project, out_dir) → CompileResult (검증 게이트 + 파일 쓰기)
 └── view/             # PyQt6 기반 노드 에디터
     ├── app.py              # 메인 윈도우 (F7 "프로젝트 검증", Ctrl+B "컴파일", 도구→"훅 라이브러리...")
-    ├── canvas/             # GraphicsView/Scene, NodeItem, EdgeItem, RefNodeItem, RefEdgeItem, node_badges(뱃지 로직)
+    ├── canvas/             # GraphicsView/Scene, NodeItem, EdgeItem, RefNodeItem, RefEdgeItem, node_badges(뱃지 로직), sync(VM→모델 동기화 — Qt 무관)
     ├── commands/           # Undo/Redo 커맨드 (state, transition, section, exit_point)
     ├── editors/            # 속성 편집기 (skill, agent, delegation, hook, body, component, variable_loader, field_widgets)
     ├── panels/             # TreePanel, PropertyPanel, RegistryPanel, HistoryPanel, ValidationPanel (F7 검증 결과)
-    ├── viewmodel/          # ProjectViewModel, StateViewModel (모델↔뷰 중간 계층)
+    ├── viewmodel/          # ProjectViewModel(notify structure/content 채널), StateViewModel (모델↔뷰 중간 계층)
     └── widgets/            # ComboWidgets, TagInput, PresetPicker
 ```
 
@@ -273,6 +273,18 @@ FSM 모델 클래스(State 계열·pseudo 4종·Transition·StateMachine·Region
 
 plugin 레이어(Skill, AgentDefinition 등)와 값 객체(EventDef, Variable 등)는 기본
 dataclass(값 동등성, unhashable) 유지 — 컬렉션 멤버십에는 list/`id()` 사용.
+
+### notify 채널 (structure / content)
+
+`ProjectViewModel.notify(scope=...)`와 `add_listener(listener, scope=...)`는 두 채널을
+구분한다. **structure**(기본값)는 상태/전이/참조의 추가·삭제·이동 등 구조 변경으로,
+캔버스 `_rebuild`·레지스트리·트리·상태바 같은 무거운 리스너가 구독한다. **content**는
+섹션 content/title·description·when_to_use 같은 텍스트 키스트로크로, structure 리스너를
+깨우지 않아 타이핑마다 재구성이 도는 것을 막는다(채널은 서로 격리 — 교차 호출 없음).
+에디터는 임의의 `Callable[[], None]`을 `on_notify_fn`으로 받으므로, `call_notify(fn, scope)`
+헬퍼가 시그니처를 검사해 scope를 받는 콜백에만 채널을 전달한다(상위 호환). 텍스트 편집
+패널은 위젯 재생성으로 편집 중 위젯이 파괴되지 않도록 in-place 동기화 원칙을 따른다
+(`_ContractPanel.refresh` 참조).
 
 ## 컴파일러 (compiler/)
 
