@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING
+from uuid import uuid4
 
 from daedalus.model.fsm.action import Action
 from daedalus.model.fsm.event import Event
@@ -24,6 +25,7 @@ class TransitionType(Enum):
 class Transition:
     source: State
     target: State
+    id: str = field(default_factory=lambda: uuid4().hex, kw_only=True)
     type: TransitionType = TransitionType.EXTERNAL
     trigger: Event | None = None
     guard: Guard | None = None

@@ -3,6 +3,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
+from uuid import uuid4
 
 from daedalus.model.fsm.action import Action
 from daedalus.model.fsm.variable import Variable
@@ -16,6 +17,8 @@ if TYPE_CHECKING:
 @dataclass(eq=False)
 class State(ABC):
     name: str
+    # 안정 식별자 — 직렬화 시 참조 평탄화의 기준. identity 동등성/해시와는 무관.
+    id: str = field(default_factory=lambda: uuid4().hex, kw_only=True)
     on_entry_start: list[Action] = field(default_factory=list)
     on_entry: list[Action] = field(default_factory=list)
     on_entry_end: list[Action] = field(default_factory=list)
@@ -48,6 +51,7 @@ class Region:
     """ParallelState 내 독립 실행 단위."""
     name: str
     sub_machine: StateMachine
+    id: str = field(default_factory=lambda: uuid4().hex, kw_only=True)
 
 
 @dataclass(eq=False)

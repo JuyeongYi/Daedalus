@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
+from uuid import uuid4
 
 
 class VariableScope(Enum):
@@ -37,3 +38,5 @@ class Variable:
     required: bool = False
     default: Any | None = None
     conflict_resolution: ConflictResolution = ConflictResolution.LAST_WRITE
+    # 안정 식별자 — 값 동등성 비교에서는 제외(compare=False).
+    id: str = field(default_factory=lambda: uuid4().hex, compare=False, kw_only=True)
