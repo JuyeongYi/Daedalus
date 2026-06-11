@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from daedalus.model.fsm.blackboard import Blackboard
 from daedalus.model.plugin.agent import AgentDefinition
 from daedalus.model.plugin.delegation import DelegationDef
 from daedalus.model.plugin.hook import HookDef
@@ -32,3 +33,6 @@ class PluginProject:
     # 훅 라이브러리 — HookDef의 단일 진실 (tool_shelf와 동일 shelf 패턴).
     # ComponentConfig.hooks의 키는 여기 HookDef.name을 이름으로 참조한다.
     hook_library: list[HookDef] = field(default_factory=list)
+    # 최상위 블랙보드 — schemas.json의 소스 (DynamicClass 정의의 단일 진실).
+    # 에이전트/스킬 FSM의 blackboard.parent가 이 객체를 가리키도록 생성 경로에서 배선한다.
+    blackboard: Blackboard = field(default_factory=Blackboard)
