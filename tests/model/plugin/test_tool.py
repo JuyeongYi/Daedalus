@@ -61,7 +61,14 @@ def test_tool_id_excluded_from_equality():
 
 
 def test_tool_id_kw_only():
-    """id는 kw_only — 위치 인수로 새지 않는다."""
+    """id는 kw_only — 위치 인수로 새지 않는다.
+
+    위치 인수 바인딩으로 MRO 필드 순서(name, description, server, tool_name)도
+    함께 고정한다 — 순서 변경 시 아래 어서트가 깨진다.
+    """
     t = MCPTool("nm", "desc", "srv", "tn")
     assert t.name == "nm"
+    assert t.description == "desc"
+    assert t.server == "srv"
+    assert t.tool_name == "tn"
     assert t.id  # 자동 생성

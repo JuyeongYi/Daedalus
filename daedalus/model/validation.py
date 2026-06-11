@@ -227,14 +227,11 @@ class Validator:
     ) -> list[ValidationError]:
         errors: list[ValidationError] = []
         pseudo_types = (ChoiceState, TerminateState, EntryPoint, ExitPoint)
-        hook_fields = [
-            "on_entry_start", "on_entry", "on_entry_end",
-            "on_exit_start", "on_exit", "on_exit_end",
-            "on_active",
-        ]
+        # 라이프사이클 훅 필드 목록은 _STATE_ACTION_FIELDS 단일 진실을 재사용한다
+        # (도구 참조 수집과 동일 집합 — 신규 훅 추가 시 한 곳만 갱신).
         for state in states:
             if isinstance(state, pseudo_types):
-                for field_name in hook_fields:
+                for field_name in Validator._STATE_ACTION_FIELDS:
                     if getattr(state, field_name, []):
                         errors.append(ValidationError(
                             rule="pseudo_state_hooks",
@@ -632,7 +629,12 @@ class Validator:
     @staticmethod
     def _collect_eval_tools(ev: EvaluationStrategy | None) -> list[str]:
         """EvaluationStrategy(중첩 CompositeEvaluation 포함)에서 비어있지 않은
-        ToolEvaluation.tool 이름을 수집한다."""
+        ToolEvaluation.tool 이름을 수집한다.
+
+        MCPEvaluation은 **의도적으로 제외** — MCPEvaluation.tool은 shelf의
+        Tool.name이 아니라 MCP 서버 내 도구명이며, 참조 단위가 server+tool
+        조합이라 dangling 검증은 Tier 2(MCP 서버 레지스트리)에서 별도 처리한다.
+        """
         if ev is None:
             return []
         names: list[str] = []
@@ -647,7 +649,11 @@ class Validator:
     @staticmethod
     def _collect_exec_tools(ex: ExecutionStrategy | None) -> list[str]:
         """ExecutionStrategy(중첩 CompositeExecution 포함)에서 비어있지 않은
-        ToolExecution.tool 이름을 수집한다."""
+        ToolExecution.tool 이름을 수집한다.
+
+        MCPExecution은 **의도적으로 제외** — _collect_eval_tools와 동일 사유
+        (server+tool 조합이 참조 단위, Tier 2에서 별도 처리).
+        """
         if ex is None:
             return []
         names: list[str] = []

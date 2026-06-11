@@ -48,7 +48,12 @@ class ToolEvaluation(EvaluationStrategy):
 
 @dataclass
 class MCPEvaluation(EvaluationStrategy):
-    """MCP 도구 호출 결과 판단."""
+    """MCP 도구 호출 결과 판단.
+
+    ``tool``은 tool_shelf의 Tool.name이 **아니라** MCP 서버 내 도구명이다 —
+    참조 단위가 server+tool 조합이라 dangling_tool_ref 검사 대상이 아니다
+    (MCP 서버 레지스트리 검증은 Tier 2).
+    """
     server: str = ""
     tool: str = ""
     arguments: dict[str, Any] = field(default_factory=dict)
@@ -122,7 +127,12 @@ class ToolExecution(ExecutionStrategy):
 
 @dataclass
 class MCPExecution(ExecutionStrategy):
-    """MCP 도구 호출."""
+    """MCP 도구 호출.
+
+    ``tool``은 tool_shelf의 Tool.name이 **아니라** MCP 서버 내 도구명이다 —
+    참조 단위가 server+tool 조합이라 dangling_tool_ref 검사 대상이 아니다
+    (MCP 서버 레지스트리 검증은 Tier 2).
+    """
     server: str = ""
     tool: str = ""
     arguments: dict[str, Any] = field(default_factory=dict)
