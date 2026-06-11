@@ -459,7 +459,7 @@ def _fsm_procedure_blocks(sm: StateMachine) -> list[str]:
 
 def _describe_join(state: ParallelState) -> str:
     """ParallelState.join 전략을 사람이 읽는 문구로."""
-    from daedalus.model.plugin.policy import JoinStrategy
+    from daedalus.model.fsm.join import JoinStrategy
     if state.join is JoinStrategy.ANY:
         return "리전 중 하나라도 완료하면 다음으로 진행"
     if state.join is JoinStrategy.N_OF:

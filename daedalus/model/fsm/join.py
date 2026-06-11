@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from enum import Enum
 
+__all__ = ["JoinStrategy"]
+
 
 class JoinStrategy(Enum):
     """ParallelState/ExecutionPolicy의 조인(완료 종합) 전략.

@@ -711,7 +711,7 @@ class Validator:
     ) -> list[ValidationError]:
         """parallel_join_count — ParallelState.join이 count형(N_OF)인데
         join_count가 None이거나 region 수를 초과하면 경고."""
-        from daedalus.model.plugin.policy import JoinStrategy
+        from daedalus.model.fsm.join import JoinStrategy
         errors: list[ValidationError] = []
         for state in states:
             if not isinstance(state, ParallelState):
