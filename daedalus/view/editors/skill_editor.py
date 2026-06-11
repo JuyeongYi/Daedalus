@@ -57,9 +57,8 @@ _FIELD_ENUM_MAP: dict[SkillField, type] = {
     SkillField.SHELL: SkillShell,
 }
 
-# list[str] 타입인 필드 집합 —
-# 1) QLineEdit write-back 시 공백 split으로 list 변환 (로드 측 join과 대칭)
-# 2) 선언 기본값(default)이 MISSING일 때 클리어 폴백을 []로 결정
+# list[str] 타입인 필드 집합 — 선언 기본값(default)이 MISSING일 때 클리어 폴백을 []로 결정.
+# 두 필드 모두 TagInput 편집이므로 write-back 값은 항상 list로 들어온다.
 # 클리어 자체는 _declared_default가 dataclass 선언 기본값으로 처리하므로
 # PATHS(default None)는 자연히 None으로 정규화된다.
 # 주의: HOOKS는 dict[str, Any] 필드이므로 여기에 포함하지 않는다.
@@ -331,10 +330,6 @@ class _FrontmatterPanel(QScrollArea):
                 value = enum_type(value)
             except ValueError:
                 return  # 알 수 없는 값은 무시
-
-        # list[str] 필드: QLineEdit 경유 str 입력을 공백 split (로드 측 join과 대칭)
-        if fld in _LIST_FIELDS and isinstance(value, str):
-            value = value.split()
 
         # hooks: dict[str, Any] 필드 — PresetPicker의 이름 목록을 dict로 변환,
         # 이미 존재하는 키의 본문은 보존
