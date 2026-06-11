@@ -43,7 +43,7 @@ daedalus/
 │   │   ├── base.py         # PluginComponent(ABC), WorkflowComponent(ABC)
 │   │   ├── skill.py        # Skill(ABC), ProceduralSkill, DeclarativeSkill, TransferSkill, ReferenceSkill
 │   │   ├── agent.py        # AgentDefinition
-│   │   ├── delegation.py   # DelegationDef + TeamSpawnDef/DynamicWorkflowDef/AgoraDispatchDef (CC 위임 노드)
+│   │   ├── delegation.py   # DelegationDef(CompositionMode/guidance 포함) + TeamSpawnDef/DynamicWorkflowDef/AgoraDispatchDef (CC 위임 노드)
 │   │   ├── tool.py         # Tool(ABC) + BuiltinTool/MCPTool/UserDefinedTool (tool_shelf 도구 단일 진실)
 │   │   └── field_matrix.py # FieldRule(emit 포함), SKILL_FIELD_MATRIX, AGENT_FIELD_MATRIX (스킬/에이전트 유형별 프론트매터 필드 규칙)
 │   ├── project.py           # PluginProject (최상위 컨테이너), ReferencePlacement, tool_shelf
@@ -53,7 +53,7 @@ daedalus/
     ├── app.py              # 메인 윈도우 (F7 "프로젝트 검증" 액션 → Validator.validate_project → ValidationPanel 갱신)
     ├── canvas/             # GraphicsView/Scene, NodeItem, EdgeItem, RefNodeItem, RefEdgeItem
     ├── commands/           # Undo/Redo 커맨드 (state, transition, section, exit_point)
-    ├── editors/            # 속성 편집기 (skill, agent, body, component, variable_loader, field_widgets)
+    ├── editors/            # 속성 편집기 (skill, agent, delegation, body, component, variable_loader, field_widgets)
     ├── panels/             # TreePanel, PropertyPanel, RegistryPanel, HistoryPanel, ValidationPanel (F7 검증 결과)
     ├── viewmodel/          # ProjectViewModel, StateViewModel (모델↔뷰 중간 계층)
     └── widgets/            # ComboWidgets, TagInput, PresetPicker
@@ -188,13 +188,14 @@ ComponentConfig(ABC)          # model, effort, hooks 공통 필드
 
 재귀: CompositeState.sub_machine과 Region.sub_machine 내부도 동일하게 검증. 재귀 시 `path`에 `"agent:<이름>"` 또는 `"region:<이름>"`이 누적된다.
 
-#### 프로젝트 수준 (7종)
+#### 프로젝트 수준 (8종)
 
 `Validator.validate_project(project)` — 전체 FSM 검증 후 추가:
 
 | 규칙 | 설명 |
 |------|------|
 | `dangling_teammate_ref` | 위임 정의의 agent_ref가 project.agents에 실존하지 않으면 경고 |
+| `unregistered_delegation` | 배치된 SimpleState.skill_ref가 DelegationDef인데 project.delegations에 미등록이면 경고 |
 | `duplicate_component_name` | skills/agents/delegations 전체에서 동명 컴포넌트 에러 (컴파일 디렉토리 충돌) |
 | `invalid_component_name` | 이름이 `^[a-z0-9][a-z0-9-]*$` 불일치 시 경고, 빈 이름은 에러 |
 | `dangling_string_reference` | `ProceduralSkillConfig.agent`, `AgentConfig.skills`, `reference_placements.skill_name`의 문자열 참조 실존 검사. AgentConfig.skills는 전역 + 에이전트 로컬 스킬 합산 |
