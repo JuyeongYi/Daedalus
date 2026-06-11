@@ -28,6 +28,13 @@ from daedalus.view.canvas.node_item import StateNodeItem
 from daedalus.view.canvas.ref_edge_item import ReferenceEdgeItem
 from daedalus.view.canvas.ref_node_item import ReferenceNodeItem
 from daedalus.view.commands.base import Command, MacroCommand
+from daedalus.view.commands.reference_commands import (
+    CreateRefCmd,
+    CreateRefLinkCmd,
+    DeleteRefCmd,
+    DeleteRefLinkCmd,
+    MoveRefCmd,
+)
 from daedalus.view.commands.section_commands import AddSectionCmd, RemoveSectionCmd
 from daedalus.view.commands.state_commands import CreateStateCmd, DeleteStateCmd, MoveStateCmd
 from daedalus.view.commands.transition_commands import (
@@ -148,12 +155,46 @@ class FsmScene(QGraphicsScene):
     def handle_node_moved(
         self, node: StateNodeItem, old_pos: QPointF, new_pos: QPointF
     ) -> None:
-        cmd = MoveStateCmd(
-            node.state_vm,
-            old_x=old_pos.x(), old_y=old_pos.y(),
-            new_x=new_pos.x(), new_y=new_pos.y(),
-        )
-        self._project_vm.execute(cmd)
+        """노드 드래그 release — 다중 선택 시 이동된 모든 노드를 하나의 커맨드로 처리."""
+        selected_nodes = [
+            item for item in self.selectedItems()
+            if isinstance(item, StateNodeItem)
+        ]
+        if len(selected_nodes) <= 1:
+            # 단일 선택 — 기존 경로
+            cmd = MoveStateCmd(
+                node.state_vm,
+                old_x=old_pos.x(), old_y=old_pos.y(),
+                new_x=new_pos.x(), new_y=new_pos.y(),
+            )
+            self._project_vm.execute(cmd)
+            return
+
+        # 다중 선택 — 이동된 모든 노드를 하나의 MacroCommand로 묶음
+        cmds: list[Command] = []
+        for item in selected_nodes:
+            svm = item.state_vm
+            if item is node:
+                # release를 발생시킨 노드 — old_pos가 제공됨
+                cmds.append(MoveStateCmd(
+                    svm,
+                    old_x=old_pos.x(), old_y=old_pos.y(),
+                    new_x=new_pos.x(), new_y=new_pos.y(),
+                ))
+            elif svm.x != item.pos().x() or svm.y != item.pos().y():
+                # 함께 드래그된 노드 — vm 좌표가 구 위치, item.pos()가 새 위치
+                cmds.append(MoveStateCmd(
+                    svm,
+                    old_x=svm.x, old_y=svm.y,
+                    new_x=item.pos().x(), new_y=item.pos().y(),
+                ))
+        if len(cmds) == 1:
+            self._project_vm.execute(cmds[0])
+        else:
+            self._project_vm.execute(MacroCommand(
+                children=cmds,
+                description="노드 다중 이동",
+            ))
 
     # --- 전이 드래그 ---
 
@@ -524,25 +565,23 @@ class FsmScene(QGraphicsScene):
         return []
 
     def drop_reference_skill(self, skill_name: str, scene_pos: QPointF) -> None:
-        """참조 스킬을 캔버스에 드롭 — 여러 인스턴스 허용."""
-        from daedalus.model.project import ReferencePlacement
+        """참조 스킬을 캔버스에 드롭 — 여러 인스턴스 허용. undo 가능."""
         if self._skill_lookup is None:
             return
         skill = self._skill_lookup(skill_name)
         if not isinstance(skill, ReferenceSkill):
             return
         rvm = ReferenceViewModel(model=skill, x=scene_pos.x(), y=scene_pos.y())
-        self._project_vm.reference_vms.append(rvm)
-        # 모델 동기화
-        self._get_ref_placements().append(
-            ReferencePlacement(skill_name=skill_name, x=scene_pos.x(), y=scene_pos.y())
+        cmd = CreateRefCmd(
+            self._project_vm, rvm,
+            sync_fn=self._sync_refs_to_model,
         )
-        self._project_vm.notify()
+        self._project_vm.execute(cmd)
 
     def create_reference_link(
         self, state_vm: StateViewModel, ref_vm: ReferenceViewModel
     ) -> None:
-        """상태 노드 → 참조 노드 연결 생성 (같은 스킬 중복 방지)."""
+        """상태 노드 → 참조 노드 연결 생성 (같은 스킬 중복 방지). undo 가능."""
         ref_skill = ref_vm.model
         duplicate = any(
             l.state_vm is state_vm and l.reference_vm.model is ref_skill
@@ -550,26 +589,39 @@ class FsmScene(QGraphicsScene):
         )
         if not duplicate:
             lvm = ReferenceLinkViewModel(state_vm=state_vm, reference_vm=ref_vm)
-            self._project_vm.reference_links.append(lvm)
-            # 모델 동기화
-            self._sync_refs_to_model()
-            self._project_vm.notify()
+            cmd = CreateRefLinkCmd(
+                self._project_vm, lvm,
+                sync_fn=self._sync_refs_to_model,
+            )
+            self._project_vm.execute(cmd)
 
     def delete_reference_node(self, ref_vm: ReferenceViewModel) -> None:
-        """참조 노드 + 연결된 링크 삭제."""
-        self._project_vm.reference_links = [
-            l for l in self._project_vm.reference_links if l.reference_vm is not ref_vm
-        ]
-        if ref_vm in self._project_vm.reference_vms:
-            self._project_vm.reference_vms.remove(ref_vm)
-        self._sync_refs_to_model()
-        self._project_vm.notify()
+        """참조 노드 + 연결된 링크 삭제. undo 가능."""
+        cmd = DeleteRefCmd(
+            self._project_vm, ref_vm,
+            sync_fn=self._sync_refs_to_model,
+        )
+        self._project_vm.execute(cmd)
 
     def delete_reference_link(self, lvm: ReferenceLinkViewModel) -> None:
-        if lvm in self._project_vm.reference_links:
-            self._project_vm.reference_links.remove(lvm)
-            self._sync_refs_to_model()
-            self._project_vm.notify()
+        """참조 링크 삭제. undo 가능."""
+        cmd = DeleteRefLinkCmd(
+            self._project_vm, lvm,
+            sync_fn=self._sync_refs_to_model,
+        )
+        self._project_vm.execute(cmd)
+
+    def handle_ref_node_moved(
+        self, ref_node: ReferenceNodeItem, old_pos: QPointF, new_pos: QPointF
+    ) -> None:
+        """참조 노드 드래그 release — undo 가능 + 모델 좌표 동기화."""
+        cmd = MoveRefCmd(
+            ref_node.ref_vm,
+            old_x=old_pos.x(), old_y=old_pos.y(),
+            new_x=new_pos.x(), new_y=new_pos.y(),
+            sync_fn=self._sync_refs_to_model,
+        )
+        self._project_vm.execute(cmd)
 
     def _sync_refs_to_model(self) -> None:
         """뷰 모델 → 모델 동기화. 위치 + 연결 정보를 모델에 반영."""
@@ -639,11 +691,16 @@ class FsmScene(QGraphicsScene):
         if event is None:
             return
         if event.key() == Qt.Key.Key_Delete:
-            for item in list(self.selectedItems()):
+            selected = list(self.selectedItems())
+            # 1패스: 노드 삭제 (연결 전이는 MacroCommand로 함께 삭제됨)
+            for item in selected:
                 if isinstance(item, StateNodeItem):
                     self._delete_state(item.state_vm)
-                elif isinstance(item, TransitionEdgeItem):
-                    self._delete_transition(item.transition_vm)
+            # 2패스: 엣지 — 노드 삭제로 이미 제거된 전이는 중복 커맨드 금지
+            for item in selected:
+                if isinstance(item, TransitionEdgeItem):
+                    if item.transition_vm in self._project_vm.transition_vms:
+                        self._delete_transition(item.transition_vm)
                 elif isinstance(item, ReferenceNodeItem):
                     self.delete_reference_node(item.ref_vm)
                 elif isinstance(item, ReferenceEdgeItem):
@@ -698,7 +755,8 @@ class AgentFsmScene(FsmScene):
         return [s for s in self._agent_skills if isinstance(s, TransferSkill)]
 
     def _create_and_assign_transfer_skill(self, tvm: TransitionViewModel) -> None:
-        """로컬 Transfer 스킬 생성 후 전이에 할당."""
+        """로컬 Transfer 스킬 생성 후 전이에 할당. undo 가능."""
+        from daedalus.view.commands.transition_commands import AddSkillToListCmd
         existing = {s.name for s in self._agent_skills}
         view = self.views()[0] if self.views() else None
         while True:
@@ -713,8 +771,13 @@ class AgentFsmScene(FsmScene):
         s = SimpleState(name="start")
         fsm = StateMachine(name=f"{name}_fsm", states=[s], initial_state=s)
         skill = TransferSkill(fsm=fsm, name=name, description="")
-        self._agent_skills.append(skill)
-        self._project_vm.execute(SetTransitionSkillRefCmd(tvm, skill))
+        self._project_vm.execute(MacroCommand(
+            children=[
+                AddSkillToListCmd(self._agent_skills, skill),
+                SetTransitionSkillRefCmd(tvm, skill),
+            ],
+            description=f"Transfer Skill '{name}' 생성 및 설정",
+        ))
 
     def contextMenuEvent(self, event: QGraphicsSceneContextMenuEvent | None) -> None:
         if event is None:
@@ -890,7 +953,9 @@ class AgentFsmScene(FsmScene):
             return
         if event.key() == Qt.Key.Key_Delete:
             from daedalus.model.fsm.pseudo import EntryPoint as _EP, ExitPoint as _XP
-            for item in list(self.selectedItems()):
+            selected = list(self.selectedItems())
+            # 1패스: 노드 삭제 (연결 전이는 MacroCommand로 함께 삭제됨)
+            for item in selected:
                 if isinstance(item, StateNodeItem):
                     model = item.state_vm.model
                     if isinstance(model, _EP):
@@ -905,8 +970,11 @@ class AgentFsmScene(FsmScene):
                         self._delete_exit_point(item.state_vm, model)
                     else:
                         self._delete_state(item.state_vm)
-                elif isinstance(item, TransitionEdgeItem):
-                    self._delete_transition(item.transition_vm)
+            # 2패스: 엣지 — 노드 삭제로 이미 제거된 전이는 중복 커맨드 금지
+            for item in selected:
+                if isinstance(item, TransitionEdgeItem):
+                    if item.transition_vm in self._project_vm.transition_vms:
+                        self._delete_transition(item.transition_vm)
                 elif isinstance(item, ReferenceNodeItem):
                     self.delete_reference_node(item.ref_vm)
                 elif isinstance(item, ReferenceEdgeItem):

@@ -133,3 +133,34 @@ class AddSkillToProjectCmd(Command):
     def undo(self) -> None:
         if self._skill in self._project.skills:
             self._project.skills.remove(self._skill)
+
+
+class AddSkillToListCmd(Command):
+    """스킬을 임의 리스트에 추가 (undo: identity 기준 제거).
+
+    plugin 레이어 스킬은 값 동등성 dataclass이므로 list.remove()가
+    같은 값의 다른 인스턴스를 제거할 수 있다 — identity로 판단한다.
+    """
+
+    def __init__(self, skill_list: list, skill: object) -> None:
+        self._skill_list = skill_list
+        self._skill = skill
+
+    @property
+    def description(self) -> str:
+        return f"스킬 '{getattr(self._skill, 'name', '?')}' 추가"
+
+    @property
+    def script_repr(self) -> str:
+        return f'add_skill_to_list("{getattr(self._skill, "name", "?")}")'
+
+    def execute(self) -> None:
+        if not any(s is self._skill for s in self._skill_list):
+            self._skill_list.append(self._skill)
+
+    def undo(self) -> None:
+        # identity 기준 제거 — 값 동등성 dataclass에서 remove() 오작동 방지
+        for i, s in enumerate(self._skill_list):
+            if s is self._skill:
+                del self._skill_list[i]
+                break

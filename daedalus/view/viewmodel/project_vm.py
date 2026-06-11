@@ -56,7 +56,9 @@ class ProjectViewModel:
             self.state_vms.remove(vm)
 
     def add_transition_vm(self, vm: TransitionViewModel) -> None:
-        self.transition_vms.append(vm)
+        # identity 기준 중복 가드 — undo 시 중복 복원 방지
+        if not any(v is vm for v in self.transition_vms):
+            self.transition_vms.append(vm)
 
     def remove_transition_vm(self, vm: TransitionViewModel) -> None:
         if vm in self.transition_vms:

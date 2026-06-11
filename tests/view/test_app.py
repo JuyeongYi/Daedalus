@@ -66,3 +66,39 @@ def test_undo_action_state_follows_active_stack(qapp):
         "에이전트 스택에 커맨드가 있으면 Undo 액션이 활성화되어야 한다"
     )
     window.close()
+
+
+def test_close_tab_triggers_close_event_cleanup(qapp):
+    """_close_tab 경유 시 AgentEditor.closeEvent → scene.close()가 호출된다."""
+    from daedalus.view.editors.agent_editor import AgentEditor
+
+    window = MainWindow()
+    agent = _make_agent()
+    project = PluginProject(name="p")
+    project.agents.append(agent)
+    window.set_project(project)
+
+    window._open_component(agent)
+    widget = window._tabs.currentWidget()
+    assert isinstance(widget, AgentEditor)
+    tab_index = window._tabs.currentIndex()
+
+    close_called: list[bool] = []
+    original_close = widget._graph_scene.close
+
+    def _tracking_close() -> None:
+        close_called.append(True)
+        original_close()
+
+    widget._graph_scene.close = _tracking_close  # type: ignore[method-assign]
+
+    window._close_tab(tab_index)
+
+    assert close_called, (
+        "_close_tab이 widget.close()를 호출해 AgentEditor.closeEvent → "
+        "scene.close()(씬 리스너 해제)가 실행되어야 한다"
+    )
+    # 탭이 실제로 제거되었는지 확인
+    assert window._tabs.count() == 1
+    assert "my_agent" not in window._open_tabs
+    window.close()
