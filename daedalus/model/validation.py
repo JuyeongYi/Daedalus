@@ -28,6 +28,37 @@ class ValidationError:
     subject: object | None = field(default=None, compare=False, repr=False)
     path: tuple[str, ...] = field(default_factory=tuple)
 
+    @property
+    def is_warning(self) -> bool:
+        """규칙이 경고 등급이면 True, 에러 등급이면 False.
+
+        invalid_component_name은 빈 이름(에러)과 규약 불일치(경고)가 같은 rule 이름을
+        공유한다 — 빈 이름 메시지는 "이름이 비어 있습니다"로 특정하여 에러로 분류.
+        """
+        if self.rule == "invalid_component_name":
+            return "비어 있습니다" not in self.message
+        return self.rule in WARNING_RULES
+
+
+# 경고 등급 규칙 집합 (모델 단일 진실 — view에서 rule 이름 하드코딩 금지).
+# invalid_component_name은 is_warning property에서 메시지 내용으로 세분화.
+WARNING_RULES: frozenset[str] = frozenset({
+    # 머신 수준 경고
+    "missing_required_input",
+    "pseudo_state_hooks",
+    "completion_event_on_composite",
+    "empty_delegation",
+    "forget_completion_mismatch",
+    "duplicate_state_name",
+    "unreachable_state",
+    "invalid_data_map_source",
+    "trigger_unknown_event",
+    # 프로젝트 수준 경고
+    "dangling_teammate_ref",
+    "dangling_string_reference",
+    "invalid_component_name",  # 빈 이름 제외는 is_warning에서 처리
+})
+
 
 class Validator:
     @staticmethod
