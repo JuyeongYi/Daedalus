@@ -100,6 +100,7 @@ from daedalus.model.plugin.enums import (
     SkillContext,
     SkillShell,
 )
+from daedalus.model.plugin.hook import HookDef, HookEvent
 from daedalus.model.plugin.policy import ExecutionPolicy, JoinStrategy
 from daedalus.model.plugin.skill import (
     DeclarativeSkill,
@@ -144,7 +145,34 @@ def serialize_project(project: PluginProject) -> dict:
         ],
         "delegations": [_ser_delegation(d) for d in project.delegations],
         "tool_shelf": [_ser_tool(t) for t in project.tool_shelf],
+        "hook_library": [_ser_hook(h) for h in project.hook_library],
     }
+
+
+# ── hook library ──
+
+def _ser_hook(h: HookDef) -> dict:
+    return {
+        "id": h.id,
+        "name": h.name,
+        "description": h.description,
+        "event": h.event.value,
+        "matcher": h.matcher,
+        "command": h.command,
+        "timeout": h.timeout,
+    }
+
+
+def _deser_hook(d: dict) -> HookDef:
+    return HookDef(
+        name=d.get("name", ""),
+        description=d.get("description", ""),
+        event=_to_enum(HookEvent, d.get("event"), HookEvent.PRE_TOOL_USE),
+        matcher=d.get("matcher", ""),
+        command=d.get("command", ""),
+        timeout=d.get("timeout"),
+        id=d.get("id") or _new_id(),
+    )
 
 
 # ── tool shelf ──
@@ -628,6 +656,7 @@ def deserialize_project(
         ],
         delegations=[_deser_delegation(d, reg) for d in data.get("delegations", [])],
         tool_shelf=[_deser_tool(t) for t in data.get("tool_shelf", [])],
+        hook_library=[_deser_hook(h) for h in data.get("hook_library", [])],
     )
 
     # ── pass 2: 모든 참조(state/skill/agent id) 해소 ──

@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 
 from daedalus.model.plugin.agent import AgentDefinition
 from daedalus.model.plugin.delegation import DelegationDef
+from daedalus.model.plugin.hook import HookDef
 from daedalus.model.plugin.skill import Skill
 from daedalus.model.plugin.tool import Tool
 
@@ -28,3 +29,6 @@ class PluginProject:
     # 도구 선반 — BuiltinTool/MCPTool/UserDefinedTool의 단일 진실 (결정 Z: shelf).
     # FSM 전략의 ToolEvaluation/ToolExecution.tool은 여기 Tool.name을 이름으로 참조한다.
     tool_shelf: list[Tool] = field(default_factory=list)
+    # 훅 라이브러리 — HookDef의 단일 진실 (tool_shelf와 동일 shelf 패턴).
+    # ComponentConfig.hooks의 키는 여기 HookDef.name을 이름으로 참조한다.
+    hook_library: list[HookDef] = field(default_factory=list)

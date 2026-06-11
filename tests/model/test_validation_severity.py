@@ -21,6 +21,7 @@ _ERROR_RULES = frozenset({
     "transition_endpoint_not_in_states",
     "duplicate_component_name",
     "duplicate_tool_name",
+    "duplicate_hook_name",
 })
 
 # 경고로 분류되어야 하는 규칙 목록 (WARNING_RULES와 동일)
@@ -40,6 +41,9 @@ _WARN_RULES = frozenset({
     "invalid_component_name",
     "dangling_tool_ref",
     "empty_tool_definition",
+    "dangling_hook_ref",
+    "empty_hook_command",
+    "hook_matcher_without_tool_event",
 })
 
 
