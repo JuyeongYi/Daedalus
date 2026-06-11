@@ -16,6 +16,7 @@
 """
 from __future__ import annotations
 
+import json
 from dataclasses import MISSING as _DC_MISSING
 from dataclasses import fields as dc_fields
 from enum import Enum
@@ -63,6 +64,7 @@ from daedalus.model.plugin.field_matrix import (
     SKILL_FIELD_MATRIX,
     FieldRule,
 )
+from daedalus.model.plugin.hook import HookDef, HookEvent, TOOL_MATCH_EVENTS
 from daedalus.model.plugin.skill import (
     DeclarativeSkill,
     ProceduralSkill,
@@ -191,6 +193,11 @@ def _emit_skill_field(
     # 빈 컬렉션은 생략
     if isinstance(value, (list, dict)) and not value:
         return None
+
+    # hooks(dict[str, Any]) — 프론트매터에는 참조 이름 목록만 표기(flow-list).
+    # 본문 풀이 단락은 두지 않는다 (이름 참조 규약). 라이브러리 실존은 게이트가 검증.
+    if sfield is SkillField.HOOKS and isinstance(value, dict):
+        return _format_kv(key, list(value.keys()))
 
     # REQUIRED 외에는 선언 기본값과 같으면 생략(잡음 제거)
     if rule.visibility is not FieldVisibility.REQUIRED:
@@ -747,7 +754,8 @@ def _settings_note_agent(agent: AgentDefinition) -> list[str]:
     needs: list[str] = []
     hooks = getattr(config, "hooks", None)
     if hooks:
-        needs.append("lifecycle hooks (hooks.json — 생성은 WP-HOOK 예정)")
+        names = ", ".join(str(n) for n in hooks)
+        needs.append(f"lifecycle hooks: {names} (hooks/hooks.json 생성됨)")
     mcp = getattr(config, "mcp_servers", None)
     if mcp:
         names = ", ".join(str(n) for n in mcp)
@@ -842,6 +850,92 @@ def _describe_agent_fsm(agent: AgentDefinition) -> list[str]:
             ex_lines.append(f"- `{ep.name}`")
         blocks.append("\n".join(ex_lines))
     return blocks
+
+
+# ─────────────────────────── hooks.json (SETTINGS) ───────────────────────────
+
+
+def _collect_referenced_hook_names(project) -> list[str]:
+    """프로젝트 전체 config.hooks 키(훅 이름 참조)를 첫 등장 순서·중복 제거로 수집.
+
+    스킬·에이전트·에이전트 로컬 스킬의 config.hooks를 모두 훑는다. 출력은
+    결정적(선언 순회 순서)이며, hook_library에 없는 이름은 여기서 거르지 않는다
+    (dangling은 검증/게이트 경고로 별도 처리 — emit은 라이브러리 교집합만 출력).
+    """
+    names: list[str] = []
+    seen: set[str] = set()
+
+    def _add_from(cfg) -> None:
+        hooks = getattr(cfg, "hooks", None)
+        if isinstance(hooks, dict):
+            for name in hooks:
+                if name not in seen:
+                    seen.add(name)
+                    names.append(name)
+
+    for skill in getattr(project, "skills", []):
+        _add_from(getattr(skill, "config", None))
+    for agent in getattr(project, "agents", []):
+        _add_from(getattr(agent, "config", None))
+        for local in getattr(agent, "skills", []):
+            _add_from(getattr(local, "config", None))
+    return names
+
+
+def _hook_command_entry(hook: HookDef) -> dict[str, Any]:
+    """단일 훅 → CC hooks.json의 command 엔트리. timeout은 있을 때만 출력."""
+    entry: dict[str, Any] = {"type": "command", "command": hook.command}
+    if hook.timeout is not None:
+        entry["timeout"] = hook.timeout
+    return entry
+
+
+def compile_hooks_json(project) -> str | None:
+    """프로젝트가 참조하는 HookDef를 모아 CC settings hooks.json 텍스트로.
+
+    스키마:
+        {"hooks": {"<EventName>": [{"matcher": "...", "hooks": [{"type": "command",
+          "command": "...", "timeout": ...}]}]}}
+    - matcher는 도구 이벤트(Pre/PostToolUse)에서만 출력. 그 외 이벤트는 matcher 생략.
+    - 같은 이벤트의 복수 훅은 hook_library 선언 순서로 정렬(결정적).
+    - 이벤트 키 순서는 HookEvent 선언 순서(결정적).
+    참조가 없거나 라이브러리에 매칭되는 훅이 없으면 None(파일 생성 안 함).
+
+    LF·UTF-8 보장 텍스트(끝 개행 1개). json.loads 왕복 가능.
+    """
+    library = getattr(project, "hook_library", None) or []
+    by_name = {h.name: h for h in library}
+    referenced = _collect_referenced_hook_names(project)
+    resolved = [by_name[n] for n in referenced if n in by_name]
+    if not resolved:
+        return None
+
+    # 이벤트 → HookDef 목록 (라이브러리 선언 순서 유지, 결정적).
+    resolved_names = {h.name for h in resolved}
+    event_buckets: dict[HookEvent, list[HookDef]] = {}
+    for hook in library:
+        if hook.name in resolved_names:
+            event_buckets.setdefault(hook.event, []).append(hook)
+
+    hooks_obj: dict[str, Any] = {}
+    for event in HookEvent:  # 선언 순서 = 결정적 이벤트 키 순서
+        bucket = event_buckets.get(event)
+        if not bucket:
+            continue
+        groups: list[dict[str, Any]] = []
+        for hook in bucket:
+            group: dict[str, Any] = {}
+            if event in TOOL_MATCH_EVENTS and hook.matcher:
+                group["matcher"] = hook.matcher
+            group["hooks"] = [_hook_command_entry(hook)]
+            groups.append(group)
+        hooks_obj[event.value] = groups
+
+    text = json.dumps({"hooks": hooks_obj}, ensure_ascii=False, indent=2)
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+    if not text.endswith("\n"):
+        text += "\n"
+    return text
 
 
 # ─────────────────────────── 블록 결합 ───────────────────────────
