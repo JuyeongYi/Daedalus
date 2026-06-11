@@ -82,7 +82,6 @@ def test_agent_config_defaults():
     assert c.background is False
     assert c.isolation == AgentIsolation.NONE
     assert c.color is None
-    assert c.initial_prompt is None
 
 
 def test_agent_config_custom():
@@ -105,6 +104,22 @@ def test_component_config_shared_fields():
     agent = AgentConfig(model=ModelType.OPUS, effort=EffortLevel.MAX)
     assert proc.model == agent.model
     assert proc.effort == agent.effort
+
+
+# --- WP-H: AgentConfig 감사 테스트 ---
+
+def test_agent_config_no_initial_prompt_field():
+    """본문 단일 진실은 AgentDefinition.sections — initial_prompt 필드 부재 고정 (감사 2-5)."""
+    import dataclasses
+    names = {f.name for f in dataclasses.fields(AgentConfig)}
+    assert "initial_prompt" not in names, "AgentConfig에 initial_prompt 필드가 잔존함"
+
+
+def test_agent_config_mcp_servers_is_list_str():
+    """mcp_servers는 list[str] (이름 참조 목록) — list[dict] 아님."""
+    c = AgentConfig(mcp_servers=["server-a", "server-b"])
+    assert c.mcp_servers == ["server-a", "server-b"]
+    assert all(isinstance(s, str) for s in c.mcp_servers)
 
 
 # --- TransferSkillConfig tests ---

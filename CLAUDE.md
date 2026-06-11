@@ -36,7 +36,7 @@ daedalus/
 │   │   ├── section.py      # Section(자유 콘텐츠 계층), EventDef(TransferOn 출력 이벤트)
 │   │   └── machine.py      # StateMachine
 │   ├── plugin/       # Claude 플러그인 메타데이터
-│   │   ├── enums.py        # ModelType, EffortLevel, SkillContext, PermissionMode 등
+│   │   ├── enums.py        # ModelType, EffortLevel, SkillContext, PermissionMode, AgentField, FieldEmit 등
 │   │   ├── policy.py       # ExecutionPolicy, JoinStrategy (병렬 서브에이전트)
 │   │   ├── config.py       # ComponentConfig(ABC), SkillConfig(ABC), ProceduralSkillConfig,
 │   │   │                   # DeclarativeSkillConfig, TransferSkillConfig, ReferenceSkillConfig, AgentConfig
@@ -44,7 +44,7 @@ daedalus/
 │   │   ├── skill.py        # Skill(ABC), ProceduralSkill, DeclarativeSkill, TransferSkill, ReferenceSkill
 │   │   ├── agent.py        # AgentDefinition
 │   │   ├── delegation.py   # DelegationDef + TeamSpawnDef/DynamicWorkflowDef/AgoraDispatchDef (CC 위임 노드)
-│   │   └── field_matrix.py # FieldRule, SKILL_FIELD_MATRIX (스킬 유형별 프론트매터 필드 규칙)
+│   │   └── field_matrix.py # FieldRule(emit 포함), SKILL_FIELD_MATRIX, AGENT_FIELD_MATRIX (스킬/에이전트 유형별 프론트매터 필드 규칙)
 │   ├── project.py           # PluginProject (최상위 컨테이너), ReferencePlacement
 │   └── validation.py        # Validator + ValidationError (머신 규칙 11종 + validate_project, 재귀)
 └── view/             # PyQt6 기반 노드 에디터
@@ -108,9 +108,10 @@ class FieldRule:
     visibility: FieldVisibility   # REQUIRED / OPTIONAL / DEFAULT / FIXED
     fixed_value: Any = None       # FIXED일 때 컴파일러가 강제할 출력값 (enum)
     default_value: Any = None     # 위젯 초기 표시용 (단일 진실은 config 선언 기본값)
+    emit: FieldEmit = FieldEmit.FRONTMATTER  # 컴파일러 배출 위치 (FRONTMATTER/BODY/INVOCATION/SETTINGS)
 ```
 
-`field_matrix.py`는 순수 모델(PyQt 무관)이다. 편집 위젯 매핑은 view 측 `daedalus/view/editors/field_widgets.py`의 `FIELD_WIDGETS: dict[SkillField, type[QWidget]]`(1차원, kind 무관)로 분리되어 있다. 프론트매터 키는 `SkillField.frontmatter_key` property가 제공한다 (kebab-case, `WHEN_TO_USE`는 None — description/본문 합류는 컴파일러 정책). FIXED 필드는 편집기 비노출이며 `fixed_value`는 컴파일러 출력 시 강제(config에 미기록).
+`field_matrix.py`는 순수 모델(PyQt 무관)이다. 편집 위젯 매핑은 view 측 `daedalus/view/editors/field_widgets.py`의 `FIELD_WIDGETS: dict[SkillField, type[QWidget]]`(1차원, kind 무관)과 `AGENT_FIELD_WIDGETS: dict[AgentField, type[QWidget]]`로 분리되어 있다. 프론트매터 키는 `SkillField.frontmatter_key` property가 제공한다 (kebab-case, `WHEN_TO_USE`는 None — description/본문 합류는 컴파일러 정책). `AgentField.frontmatter_key`는 전 멤버 kebab-case 변환. FIXED 필드는 편집기 비노출이며 `fixed_value`는 컴파일러 출력 시 강제(config에 미기록). `AGENT_FIELD_MATRIX`는 에이전트 전용 1차원 매트릭스.
 
 ### FieldType (통합 타입)
 
