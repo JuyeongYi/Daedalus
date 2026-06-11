@@ -717,7 +717,8 @@ class AgentFsmScene(FsmScene):
         return [s for s in self._agent_skills if isinstance(s, TransferSkill)]
 
     def _create_and_assign_transfer_skill(self, tvm: TransitionViewModel) -> None:
-        """로컬 Transfer 스킬 생성 후 전이에 할당."""
+        """로컬 Transfer 스킬 생성 후 전이에 할당. undo 가능."""
+        from daedalus.view.commands.transition_commands import AddSkillToListCmd
         existing = {s.name for s in self._agent_skills}
         view = self.views()[0] if self.views() else None
         while True:
@@ -732,8 +733,13 @@ class AgentFsmScene(FsmScene):
         s = SimpleState(name="start")
         fsm = StateMachine(name=f"{name}_fsm", states=[s], initial_state=s)
         skill = TransferSkill(fsm=fsm, name=name, description="")
-        self._agent_skills.append(skill)
-        self._project_vm.execute(SetTransitionSkillRefCmd(tvm, skill))
+        self._project_vm.execute(MacroCommand(
+            children=[
+                AddSkillToListCmd(self._agent_skills, skill),
+                SetTransitionSkillRefCmd(tvm, skill),
+            ],
+            description=f"Transfer Skill '{name}' 생성 및 설정",
+        ))
 
     def contextMenuEvent(self, event: QGraphicsSceneContextMenuEvent | None) -> None:
         if event is None:
