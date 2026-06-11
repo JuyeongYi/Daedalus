@@ -102,6 +102,42 @@ class AgoraDispatchDef(DelegationDef):
 - AgentAgora의 comm-matrix·봇·스키마 본문은 모델링하지 않는다 (YAGNI) —
   Daedalus가 설계하는 것은 "이 시점에 누구에게 무엇을 보낸다"는 행동양식뿐이다.
 
+## 1-b. 구성 모드 확장 — guided composition (2026-06-12 사용자 요구 반영)
+
+정적 명세 외에, **본문 내용을 참고해 팀 구성/워크플로 구조를 Claude가 스스로
+결정하도록 유도하는 구문이 자동 삽입되는** 모드를 추가한다.
+
+```python
+class CompositionMode(Enum):
+    EXPLICIT = "explicit"   # teammates/phases를 명세대로 컴파일 (기존 동작)
+    GUIDED = "guided"       # "본문을 근거로 구성을 스스로 결정하라" 유도문 자동 삽입
+
+
+@dataclass
+class DelegationDef(PluginComponent, ABC):
+    wait_mode: WaitMode = WaitMode.WAIT
+    composition: CompositionMode = CompositionMode.EXPLICIT
+    guidance: str = ""      # GUIDED일 때 유도문에 덧붙일 사용자 보충 지침 (선택)
+```
+
+- GUIDED 의미론 (kind별):
+  - **TeamSpawn**: teammates는 비워도 되고, 채우면 "고정 명단"이 아니라 "구성 힌트"로
+    문구가 바뀐다. 컴파일 출력: "이 노드가 속한 스킬/에이전트 본문(해당 섹션 계층)을
+    근거로 필요한 역할과 인원을 스스로 판단해 팀을 구성·spawn하라. {힌트가 있으면:
+    다음 구성을 출발점으로 삼되 본문이 요구하면 조정하라: …} {guidance}"
+  - **DynamicWorkflow**: objective/phases 동일 원칙 — "본문이 기술하는 작업을 달성하는
+    워크플로우를 스스로 설계해 Workflow 도구로 실행하라. {phases 힌트 …} {guidance}"
+  - **AgoraDispatch**: payload 구성에만 적용 — "본문 맥락에서 payload를 구성하라"
+    (msgtype/target은 GUIDED에서도 명시 필수 — 스키마 정체성은 위임 불가).
+- 검증 영향: `empty_delegation` 규칙은 `composition == GUIDED`인 노드의
+  teammates 0명 / objective·phases 빈 값을 **경고하지 않는다** (의도된 비움).
+  AgoraDispatch의 msgtype 빈 값 경고는 모드 무관 유지.
+- 편집기 영향 (③단계): kind별 폼 상단에 composition 콤보 + guidance 텍스트.
+  GUIDED 선택 시 teammates/phases 영역을 "힌트 (선택)" 라벨로 전환.
+- "본문"의 범위: 노드가 배치된 컴포넌트(스킬/에이전트)의 sections가 컴파일된
+  결과 문서 — 별도 참조 메커니즘을 만들지 않는다 (산출물 문서 안에서 유도문과
+  본문이 자연히 같은 컨텍스트에 있음).
+
 ## 2. 배치·씬·편집기 (후속 WP — 모델 확정 후)
 
 - 레지스트리(프로젝트 RegistryPanel + AgentEditor 사이드바)에 🛰 DELEGATION 섹션 추가.
