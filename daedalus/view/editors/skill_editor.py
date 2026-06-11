@@ -23,8 +23,13 @@ from daedalus.model.fsm.section import EventDef, Section
 from daedalus.model.plugin.agent import AgentDefinition
 from daedalus.model.plugin.skill import DeclarativeSkill, ProceduralSkill, ReferenceSkill, TransferSkill
 from daedalus.model.plugin.enums import (
+    AgentColor,
+    AgentField,
+    AgentIsolation,
     EffortLevel,
+    MemoryScope,
     ModelType,
+    PermissionMode,
     SkillContext,
     SkillField,
     SkillShell,
@@ -32,10 +37,10 @@ from daedalus.model.plugin.enums import (
 
 
 # ---------------------------------------------------------------------------
-# 모듈 수준 상수: SkillField → config/component 속성명 매핑
+# 모듈 수준 상수: SkillField | AgentField → config/component 속성명 매핑
 # 로드(load) 경로와 저장(write-back) 경로가 같은 테이블을 공유한다.
 # ---------------------------------------------------------------------------
-_FIELD_ATTR_MAP: dict[SkillField, str] = {
+_FIELD_ATTR_MAP: dict[SkillField | AgentField, str] = {
     SkillField.ARGUMENT_HINT: "argument_hint",
     SkillField.MODEL: "model",
     SkillField.EFFORT: "effort",
@@ -47,14 +52,35 @@ _FIELD_ATTR_MAP: dict[SkillField, str] = {
     SkillField.HOOKS: "hooks",
     SkillField.DISABLE_MODEL: "disable_model_invocation",
     SkillField.USER_INVOCABLE: "user_invocable",
+    # AgentField 항목
+    AgentField.MODEL: "model",
+    AgentField.EFFORT: "effort",
+    AgentField.TOOLS: "tools",
+    AgentField.DISALLOWED_TOOLS: "disallowed_tools",
+    AgentField.PERMISSION_MODE: "permission_mode",
+    AgentField.SKILLS: "skills",
+    AgentField.MEMORY: "memory",
+    AgentField.COLOR: "color",
+    AgentField.HOOKS: "hooks",
+    AgentField.MAX_TURNS: "max_turns",
+    AgentField.BACKGROUND: "background",
+    AgentField.ISOLATION: "isolation",
+    AgentField.MCP_SERVERS: "mcp_servers",
 }
 
-# SkillField → 역변환에 사용할 Enum 타입 (str → Enum)
-_FIELD_ENUM_MAP: dict[SkillField, type] = {
+# SkillField | AgentField → 역변환에 사용할 Enum 타입 (str → Enum)
+_FIELD_ENUM_MAP: dict[SkillField | AgentField, type] = {
     SkillField.MODEL: ModelType,
     SkillField.EFFORT: EffortLevel,
     SkillField.CONTEXT: SkillContext,
     SkillField.SHELL: SkillShell,
+    # AgentField 항목
+    AgentField.MODEL: ModelType,
+    AgentField.EFFORT: EffortLevel,
+    AgentField.PERMISSION_MODE: PermissionMode,
+    AgentField.MEMORY: MemoryScope,
+    AgentField.ISOLATION: AgentIsolation,
+    AgentField.COLOR: AgentColor,
 }
 
 # list[str] 타입인 필드 집합 — 선언 기본값(default)이 MISSING일 때 클리어 폴백을 []로 결정.
@@ -62,7 +88,14 @@ _FIELD_ENUM_MAP: dict[SkillField, type] = {
 # 클리어 자체는 _declared_default가 dataclass 선언 기본값으로 처리하므로
 # PATHS(default None)는 자연히 None으로 정규화된다.
 # 주의: HOOKS는 dict[str, Any] 필드이므로 여기에 포함하지 않는다.
-_LIST_FIELDS: set[SkillField] = {SkillField.ALLOWED_TOOLS, SkillField.PATHS}
+_LIST_FIELDS: set[SkillField | AgentField] = {
+    SkillField.ALLOWED_TOOLS,
+    SkillField.PATHS,
+    AgentField.TOOLS,
+    AgentField.DISALLOWED_TOOLS,
+    AgentField.SKILLS,
+    AgentField.MCP_SERVERS,
+}
 
 
 _COLOR_PRESETS = [
@@ -128,7 +161,7 @@ class _FrontmatterPanel(QScrollArea):
     ) -> None:
         super().__init__(parent)
         self._component = component
-        self._field_widgets: dict[SkillField, QWidget] = {}
+        self._field_widgets: dict[SkillField | AgentField, QWidget] = {}
         self._loading = False  # 로드 중 write-back 핸들러 억제용 가드
 
         self.setWidgetResizable(True)
@@ -155,27 +188,67 @@ class _FrontmatterPanel(QScrollArea):
         self._w_desc.textChanged.connect(self._save_desc)
         lay.addWidget(self._w_desc)
 
-        # SKILL_FIELD_MATRIX 기반 필드 생성
-        # 위젯 클래스는 view 측 FIELD_WIDGETS에서 조회한다(model→view 의존 역전).
-        from daedalus.model.plugin.field_matrix import SKILL_FIELD_MATRIX
-        from daedalus.model.plugin.enums import FieldVisibility
-        from daedalus.view.editors.field_widgets import FIELD_WIDGETS
+        # SKILL_FIELD_MATRIX / AGENT_FIELD_MATRIX 기반 필드 생성
+        # 위젯 클래스는 view 측 FIELD_WIDGETS / AGENT_FIELD_WIDGETS에서 조회한다(model→view 의존 역전).
+        from daedalus.model.plugin.field_matrix import AGENT_FIELD_MATRIX, SKILL_FIELD_MATRIX
+        from daedalus.model.plugin.enums import FieldEmit, FieldVisibility
+        from daedalus.view.editors.field_widgets import AGENT_FIELD_WIDGETS, FIELD_WIDGETS
 
         kind = skill_kind or self._detect_kind(component)
-        rules = SKILL_FIELD_MATRIX.get(kind, {})
         config = getattr(component, "config", None)
+
+        is_agent = kind == "agent"
+        if is_agent:
+            rules = AGENT_FIELD_MATRIX  # type: ignore[assignment]
+            widget_map = AGENT_FIELD_WIDGETS  # type: ignore[assignment]
+        else:
+            rules = SKILL_FIELD_MATRIX.get(kind, {})  # type: ignore[assignment]
+            widget_map = FIELD_WIDGETS  # type: ignore[assignment]
 
         self._loading = True
         try:
             skip = {SkillField.NAME, SkillField.DESCRIPTION}
-            for fld, rule in rules.items():
+            if is_agent:
+                skip = {AgentField.NAME, AgentField.DESCRIPTION}  # type: ignore[assignment]
+
+            # 에이전트는 emit 그룹 순서(FRONTMATTER → INVOCATION → SETTINGS)로
+            # 정렬해 렌더링한다. 매트릭스 선언 순서에 의존하면 그룹 라벨과
+            # 필드가 어긋날 수 있다 (예: SETTINGS 필드가 Invocation 라벨 아래 표시).
+            items = list(rules.items())
+            if is_agent:
+                group_order = {
+                    FieldEmit.FRONTMATTER: 0,
+                    FieldEmit.BODY: 0,
+                    FieldEmit.INVOCATION: 1,
+                    FieldEmit.SETTINGS: 2,
+                }
+                items.sort(key=lambda kv: group_order[kv[1].emit])  # stable — 그룹 내 선언 순서 유지
+            current_group: FieldEmit | None = None
+
+            for fld, rule in items:
                 if fld in skip:
                     continue
+                if rule.visibility == FieldVisibility.FIXED:
+                    continue
+                if fld not in widget_map:
+                    continue
+
+                # emit 그룹 전환 시 구분 라벨 (에이전트 전용)
+                if (
+                    is_agent
+                    and rule.emit in (FieldEmit.INVOCATION, FieldEmit.SETTINGS)
+                    and rule.emit is not current_group
+                ):
+                    title = "Invocation" if rule.emit is FieldEmit.INVOCATION else "Settings"
+                    lay.addWidget(QLabel(f"— {title} —"))
+                    current_group = rule.emit
+
+                widget = widget_map[fld]()
+                self._apply_value(widget, config, component, fld, rule)
+                self._field_widgets[fld] = widget
+                self._connect_widget_signal(fld, widget)
+
                 if rule.visibility == FieldVisibility.REQUIRED:
-                    widget = FIELD_WIDGETS[fld]()
-                    self._apply_value(widget, config, component, fld, rule)
-                    self._field_widgets[fld] = widget
-                    self._connect_widget_signal(fld, widget)
                     from PyQt6.QtWidgets import QComboBox as _QCB
                     if isinstance(widget, _QCB):
                         row = QHBoxLayout()
@@ -186,12 +259,8 @@ class _FrontmatterPanel(QScrollArea):
                         lay.addWidget(QLabel(fld.value))
                         lay.addWidget(widget)
                 elif rule.visibility == FieldVisibility.OPTIONAL:
-                    widget = FIELD_WIDGETS[fld]()
                     current = self._get_current(config, component, fld)
                     enabled = current is not None and current != "" and current != [] and current is not False
-                    self._apply_value(widget, config, component, fld, rule)
-                    self._field_widgets[fld] = widget
-                    self._connect_widget_signal(fld, widget)
                     opt_row = _OptionalRow(fld.value, widget, initially_enabled=enabled)
                     # _OptionalRow 해제 시 config/component 값 클리어
                     opt_row.toggled.connect(
@@ -216,7 +285,7 @@ class _FrontmatterPanel(QScrollArea):
         return "procedural"
 
     @staticmethod
-    def _get_current(config: object, component: object, fld: SkillField) -> object:
+    def _get_current(config: object, component: object, fld: SkillField | AgentField) -> object:
         """현재 값을 config 또는 component에서 읽어 반환한다."""
         if fld == SkillField.WHEN_TO_USE:
             return getattr(component, "when_to_use", None)
@@ -226,14 +295,19 @@ class _FrontmatterPanel(QScrollArea):
         return None
 
     @staticmethod
-    def _apply_value(widget, config, component, fld: SkillField, rule) -> None:
+    def _apply_value(widget, config, component, fld: SkillField | AgentField, rule) -> None:
         """현재 값(config / component)을 위젯에 채운다."""
-        from PyQt6.QtWidgets import QComboBox, QCheckBox, QLineEdit, QTextEdit
+        from PyQt6.QtWidgets import QComboBox, QCheckBox, QLineEdit, QSpinBox, QTextEdit
         from daedalus.view.widgets.tag_input import TagInput
         from daedalus.view.widgets.preset_picker import PresetPicker
         current = _FrontmatterPanel._get_current(config, component, fld)
 
-        if isinstance(widget, QComboBox):
+        if isinstance(widget, QSpinBox):
+            # QSpinBox 기본 상한이 99라 max_turns가 잘릴 수 있다.
+            # CC의 실제 상한은 컴파일러 WP에서 확정 — 잠정 1~1000.
+            widget.setRange(1, 1000)
+            widget.setValue(int(current) if current is not None else 1)
+        elif isinstance(widget, QComboBox):
             val = None
             if current is not None:
                 val = current.value if hasattr(current, "value") else str(current)
@@ -265,12 +339,14 @@ class _FrontmatterPanel(QScrollArea):
                 widget.setText(str(current))
 
     @staticmethod
-    def _read_widget_value(fld: SkillField, widget: QWidget) -> object:
+    def _read_widget_value(fld: SkillField | AgentField, widget: QWidget) -> object:
         """위젯의 현재 표시값을 추출한다 (시그널 연결과 재체크 복원이 공유)."""
-        from PyQt6.QtWidgets import QComboBox, QCheckBox, QLineEdit, QTextEdit
+        from PyQt6.QtWidgets import QComboBox, QCheckBox, QLineEdit, QSpinBox, QTextEdit
         from daedalus.view.widgets.tag_input import TagInput
         from daedalus.view.widgets.preset_picker import PresetPicker
 
+        if isinstance(widget, QSpinBox):
+            return widget.value()
         if isinstance(widget, QComboBox):
             return widget.currentText()
         if isinstance(widget, QCheckBox):
@@ -285,16 +361,18 @@ class _FrontmatterPanel(QScrollArea):
             return widget.text()
         return None
 
-    def _connect_widget_signal(self, fld: SkillField, widget: QWidget) -> None:
+    def _connect_widget_signal(self, fld: SkillField | AgentField, widget: QWidget) -> None:
         """위젯 타입에 맞는 시그널을 공용 핸들러에 연결한다."""
-        from PyQt6.QtWidgets import QComboBox, QCheckBox, QLineEdit, QTextEdit
+        from PyQt6.QtWidgets import QComboBox, QCheckBox, QLineEdit, QSpinBox, QTextEdit
         from daedalus.view.widgets.tag_input import TagInput
         from daedalus.view.widgets.preset_picker import PresetPicker
 
         def handler(*_args, f=fld, w=widget) -> None:
             self._write_field(f, self._read_widget_value(f, w))
 
-        if isinstance(widget, QComboBox):
+        if isinstance(widget, QSpinBox):
+            widget.valueChanged.connect(handler)
+        elif isinstance(widget, QComboBox):
             widget.currentTextChanged.connect(handler)
         elif isinstance(widget, QCheckBox):
             widget.toggled.connect(handler)
@@ -307,7 +385,7 @@ class _FrontmatterPanel(QScrollArea):
         elif isinstance(widget, QLineEdit):
             widget.editingFinished.connect(handler)
 
-    def _write_field(self, fld: SkillField, value: object) -> None:
+    def _write_field(self, fld: SkillField | AgentField, value: object) -> None:
         """write-back: 위젯 값을 config 또는 component에 기록하고 changed를 emit한다."""
         if self._loading:
             return
@@ -333,7 +411,7 @@ class _FrontmatterPanel(QScrollArea):
 
         # hooks: dict[str, Any] 필드 — PresetPicker의 이름 목록을 dict로 변환,
         # 이미 존재하는 키의 본문은 보존
-        if fld == SkillField.HOOKS and isinstance(value, list):
+        if fld in (SkillField.HOOKS, AgentField.HOOKS) and isinstance(value, list):
             existing = getattr(config, attr, None)
             existing = existing if isinstance(existing, dict) else {}
             value = {name: existing.get(name, {}) for name in value}
@@ -342,7 +420,7 @@ class _FrontmatterPanel(QScrollArea):
         self.changed.emit()
 
     @staticmethod
-    def _declared_default(obj: object, attr: str, fld: SkillField) -> object:
+    def _declared_default(obj: object, attr: str, fld: SkillField | AgentField) -> object:
         """dataclass 선언 기본값(default / default_factory)을 조회한다.
 
         non-Optional 필드(context, shell, user_invocable 등)에 None을 기록해
@@ -362,7 +440,7 @@ class _FrontmatterPanel(QScrollArea):
                 break
         return [] if fld in _LIST_FIELDS else None
 
-    def _on_optional_toggled(self, fld: SkillField, checked: bool) -> None:
+    def _on_optional_toggled(self, fld: SkillField | AgentField, checked: bool) -> None:
         """_OptionalRow 토글 처리.
 
         - 해제: config/component 값을 dataclass 선언 기본값으로 리셋

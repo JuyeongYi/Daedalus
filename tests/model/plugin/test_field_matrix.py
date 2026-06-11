@@ -1,7 +1,7 @@
 # tests/model/plugin/test_field_matrix.py
 from __future__ import annotations
 
-from daedalus.model.plugin.enums import FieldVisibility, SkillField
+from daedalus.model.plugin.enums import AgentField, FieldEmit, FieldVisibility, SkillField
 
 
 def test_field_visibility_values():
@@ -164,3 +164,98 @@ def test_field_matrix_is_pyqt_free():
         f"STDOUT: {result.stdout}\nSTDERR: {result.stderr}"
     )
     assert "OK" in result.stdout
+
+
+# ---------------------------------------------------------------------------
+# WP-H: AGENT_FIELD_MATRIX + FieldEmit 신설
+# ---------------------------------------------------------------------------
+
+def test_agent_field_matrix_completeness():
+    """AGENT_FIELD_MATRIX에 AgentField 전 멤버가 키로 존재해야 한다."""
+    from daedalus.model.plugin.field_matrix import AGENT_FIELD_MATRIX
+    for af in AgentField:
+        assert af in AGENT_FIELD_MATRIX, f"AGENT_FIELD_MATRIX에 {af} 누락"
+
+
+def test_agent_field_matrix_emit_invocation():
+    """MAX_TURNS/BACKGROUND/ISOLATION의 emit은 INVOCATION이어야 한다."""
+    from daedalus.model.plugin.field_matrix import AGENT_FIELD_MATRIX
+    for af in (AgentField.MAX_TURNS, AgentField.BACKGROUND, AgentField.ISOLATION):
+        assert AGENT_FIELD_MATRIX[af].emit == FieldEmit.INVOCATION, (
+            f"{af} emit이 INVOCATION이 아님: {AGENT_FIELD_MATRIX[af].emit!r}"
+        )
+
+
+def test_agent_field_matrix_emit_settings():
+    """HOOKS/MCP_SERVERS의 emit은 SETTINGS이어야 한다."""
+    from daedalus.model.plugin.field_matrix import AGENT_FIELD_MATRIX
+    for af in (AgentField.HOOKS, AgentField.MCP_SERVERS):
+        assert AGENT_FIELD_MATRIX[af].emit == FieldEmit.SETTINGS, (
+            f"{af} emit이 SETTINGS이 아님: {AGENT_FIELD_MATRIX[af].emit!r}"
+        )
+
+
+def test_agent_field_matrix_emit_frontmatter():
+    """HOOKS/MCP_SERVERS/MAX_TURNS/BACKGROUND/ISOLATION을 제외한 나머지는 FRONTMATTER이어야 한다."""
+    from daedalus.model.plugin.field_matrix import AGENT_FIELD_MATRIX
+    non_frontmatter = {
+        AgentField.HOOKS, AgentField.MCP_SERVERS,
+        AgentField.MAX_TURNS, AgentField.BACKGROUND, AgentField.ISOLATION,
+    }
+    for af, rule in AGENT_FIELD_MATRIX.items():
+        if af in non_frontmatter:
+            continue
+        assert rule.emit == FieldEmit.FRONTMATTER, (
+            f"{af} emit이 FRONTMATTER이 아님: {rule.emit!r}"
+        )
+
+
+def test_skill_matrix_when_to_use_emit_body():
+    """6개 스킬 매트릭스 전부에서 WHEN_TO_USE.emit == BODY이어야 한다."""
+    from daedalus.model.plugin.field_matrix import SKILL_FIELD_MATRIX
+    for kind, rules in SKILL_FIELD_MATRIX.items():
+        rule = rules[SkillField.WHEN_TO_USE]
+        assert rule.emit == FieldEmit.BODY, (
+            f"{kind} WHEN_TO_USE.emit이 BODY가 아님: {rule.emit!r}"
+        )
+
+
+def test_skill_matrix_other_fields_emit_frontmatter():
+    """6개 스킬 매트릭스에서 WHEN_TO_USE 외 필드의 emit은 FRONTMATTER이어야 한다."""
+    from daedalus.model.plugin.field_matrix import SKILL_FIELD_MATRIX
+    for kind, rules in SKILL_FIELD_MATRIX.items():
+        for fld, rule in rules.items():
+            if fld is SkillField.WHEN_TO_USE:
+                continue
+            assert rule.emit == FieldEmit.FRONTMATTER, (
+                f"{kind}/{fld} emit이 FRONTMATTER이 아님: {rule.emit!r}"
+            )
+
+
+def test_agent_field_frontmatter_key_kebab_case():
+    """AgentField 전 멤버의 frontmatter_key가 kebab-case여야 한다."""
+    for af in AgentField:
+        key = af.frontmatter_key
+        assert key is not None, f"{af} frontmatter_key가 None"
+        assert "_" not in key, f"{af} frontmatter_key에 underscore 잔존: {key!r}"
+        assert key == af.value.replace("_", "-"), (
+            f"{af} frontmatter_key 불일치: {key!r} != {af.value.replace('_', '-')!r}"
+        )
+
+    # 대표 케이스 명시 단언
+    assert AgentField.PERMISSION_MODE.frontmatter_key == "permission-mode"
+    assert AgentField.DISALLOWED_TOOLS.frontmatter_key == "disallowed-tools"
+    assert AgentField.MCP_SERVERS.frontmatter_key == "mcp-servers"
+    assert AgentField.MAX_TURNS.frontmatter_key == "max-turns"
+    assert AgentField.NAME.frontmatter_key == "name"
+
+
+def test_field_rule_has_emit_field():
+    """FieldRule 인스턴스에 emit 필드가 존재하고 기본값은 FRONTMATTER이다."""
+    from daedalus.model.plugin.field_matrix import FieldRule
+    r = FieldRule(FieldVisibility.REQUIRED)
+    assert hasattr(r, "emit")
+    assert r.emit == FieldEmit.FRONTMATTER
+
+    r_body = FieldRule(FieldVisibility.OPTIONAL, emit=FieldEmit.BODY)
+    assert r_body.emit == FieldEmit.BODY

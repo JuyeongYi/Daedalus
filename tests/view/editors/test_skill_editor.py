@@ -482,3 +482,74 @@ def test_writeback_survives_panel_rebuild(qapp):
     assert widget2.currentText() == "haiku", (
         f"재생성 후 model 로드 실패: {widget2.currentText()!r}"
     )
+
+
+# ---------------------------------------------------------------------------
+# WP-H: AgentDefinition 프론트매터 패널 회귀 테스트
+# ---------------------------------------------------------------------------
+
+def test_frontmatter_panel_agent_has_13_fields(qapp):
+    """AgentDefinition 전달 시 _field_widgets에 13개 필드(NAME/DESCRIPTION 제외)가 생성된다.
+
+    빈 패널 버그(SKILL_FIELD_MATRIX.get('agent', {}) → {}) 회귀 방지.
+    """
+    from daedalus.view.editors.skill_editor import _FrontmatterPanel
+    from daedalus.model.plugin.enums import AgentField
+    comp = _make_agent()
+    panel = _FrontmatterPanel(comp)
+
+    # NAME/DESCRIPTION은 공통 헤더에서 처리되므로 _field_widgets에 없다.
+    assert AgentField.NAME not in panel._field_widgets
+    assert AgentField.DESCRIPTION not in panel._field_widgets
+
+    # 나머지 13개 필드가 모두 존재해야 한다.
+    expected_fields = {
+        AgentField.MODEL, AgentField.EFFORT,
+        AgentField.TOOLS, AgentField.DISALLOWED_TOOLS,
+        AgentField.PERMISSION_MODE, AgentField.SKILLS,
+        AgentField.MEMORY, AgentField.COLOR, AgentField.HOOKS,
+        AgentField.MAX_TURNS, AgentField.BACKGROUND,
+        AgentField.ISOLATION, AgentField.MCP_SERVERS,
+    }
+    assert len(expected_fields) == 13
+    for fld in expected_fields:
+        assert fld in panel._field_widgets, (
+            f"AgentField.{fld.name}이 _field_widgets에 없음"
+        )
+
+
+def test_frontmatter_panel_agent_combo_default_value(qapp):
+    """에이전트 패널 MODEL 콤보박스 기본값이 'inherit'으로 표시된다."""
+    from daedalus.view.editors.skill_editor import _FrontmatterPanel
+    from daedalus.model.plugin.enums import AgentField
+    from PyQt6.QtWidgets import QComboBox
+    comp = _make_agent()
+    panel = _FrontmatterPanel(comp)
+
+    widget = panel._field_widgets.get(AgentField.MODEL)
+    assert widget is not None and isinstance(widget, QComboBox), "MODEL 콤보박스 없음"
+    assert widget.currentText() == "inherit", (
+        f"MODEL 기본값이 'inherit'이 아님: {widget.currentText()!r}"
+    )
+
+
+def test_frontmatter_panel_agent_max_turns_spinbox_writeback(qapp):
+    """에이전트 패널 MAX_TURNS QSpinBox write-back — int 값이 config에 기록된다."""
+    from daedalus.view.editors.skill_editor import _FrontmatterPanel, _OptionalRow
+    from daedalus.model.plugin.enums import AgentField
+    from PyQt6.QtWidgets import QSpinBox
+    comp = _make_agent()
+    panel = _FrontmatterPanel(comp)
+
+    widget = panel._field_widgets.get(AgentField.MAX_TURNS)
+    assert widget is not None and isinstance(widget, QSpinBox), "MAX_TURNS QSpinBox 없음"
+
+    # _OptionalRow 안에 있으면 활성화
+    parent = widget.parent()
+    if isinstance(parent, _OptionalRow):
+        parent.set_checked(True)
+
+    widget.setValue(10)
+    assert comp.config.max_turns == 10, (
+        f"max_turns가 int 10으로 기록되지 않음: {comp.config.max_turns!r}"
+    )

@@ -3,6 +3,14 @@ from __future__ import annotations
 from enum import Enum
 
 
+class FieldEmit(Enum):
+    """컴파일러가 필드를 배출할 위치 — 프론트매터 직출 / 본문 합류 / 호출 시점 파라미터(Agent tool 인수) / 설정 파일(.mcp.json, settings 등)."""
+    FRONTMATTER = "frontmatter"
+    BODY = "body"
+    INVOCATION = "invocation"
+    SETTINGS = "settings"
+
+
 class ModelType(Enum):
     SONNET = "sonnet"
     OPUS = "opus"
@@ -28,6 +36,7 @@ class SkillShell(Enum):
 
 
 class PermissionMode(Enum):
+    """Claude Code Agent tool의 mode enum(acceptEdits/auto/bypassPermissions/default/dontAsk/plan)과 일치함을 2026-06 기준 검증함."""
     DEFAULT = "default"
     ACCEPT_EDITS = "acceptEdits"
     AUTO = "auto"
@@ -92,4 +101,29 @@ class SkillField(Enum):
         """
         if self is SkillField.WHEN_TO_USE:
             return None
+        return self.value.replace("_", "-")
+
+
+class AgentField(Enum):
+    """에이전트 프론트매터/설정 필드 식별자."""
+    NAME = "name"
+    DESCRIPTION = "description"
+    MODEL = "model"
+    EFFORT = "effort"
+    TOOLS = "tools"
+    DISALLOWED_TOOLS = "disallowed_tools"
+    PERMISSION_MODE = "permission_mode"
+    SKILLS = "skills"
+    MEMORY = "memory"
+    COLOR = "color"
+    HOOKS = "hooks"
+    MAX_TURNS = "max_turns"
+    BACKGROUND = "background"
+    ISOLATION = "isolation"
+    MCP_SERVERS = "mcp_servers"
+
+    @property
+    def frontmatter_key(self) -> str:
+        """CC agent .md 실제 키 케이싱(camelCase 여부) 확정은 컴파일러 WP 정책 —
+        여기서는 kebab-case 기준값만 제공."""
         return self.value.replace("_", "-")
