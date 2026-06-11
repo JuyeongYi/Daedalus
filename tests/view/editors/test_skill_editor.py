@@ -553,3 +553,76 @@ def test_frontmatter_panel_agent_max_turns_spinbox_writeback(qapp):
     assert comp.config.max_turns == 10, (
         f"max_turns가 int 10으로 기록되지 않음: {comp.config.max_turns!r}"
     )
+
+
+# ---------------------------------------------------------------------------
+# _ContractPanel refresh — in-place 동기화 (편집 중 위젯 생존)
+# ---------------------------------------------------------------------------
+
+def test_contract_panel_refresh_preserves_card_when_structure_unchanged(qapp):
+    """카드 textChanged → refresh 후에도 동일 카드 위젯이 생존(id 비교).
+
+    실사용 버그 회귀: 타이핑 중 자기 위젯이 deleteLater되면 안 된다.
+    """
+    from daedalus.view.editors.skill_editor import _ContractPanel
+    contracts = [Section(title="caller: A (done)", content="")]
+    panel = _ContractPanel("🔒 입력", contracts)
+
+    card_before = panel._cards[0]
+    id_before = id(card_before)
+
+    # 사용자가 카드 내용 타이핑 → contract_changed → (실사용에서) refresh 호출
+    card_before._w_content.setPlainText("입력 데이터")
+    panel.refresh()
+
+    assert len(panel._cards) == 1
+    assert id(panel._cards[0]) == id_before, "구조 불변 시 카드 위젯이 생존해야 한다"
+    # 모델에도 반영됨
+    assert contracts[0].content == "입력 데이터"
+
+
+def test_contract_panel_refresh_syncs_title_in_place(qapp):
+    """모델 제목 변경 후 refresh → 위젯 재생성 없이 라벨만 갱신된다."""
+    from daedalus.view.editors.skill_editor import _ContractPanel
+    contracts = [Section(title="caller: A (done)", content="")]
+    panel = _ContractPanel("🔒 입력", contracts)
+    id_before = id(panel._cards[0])
+
+    contracts[0].title = "caller: A (failed)"
+    panel.refresh()
+
+    assert id(panel._cards[0]) == id_before, "제목만 바뀌면 위젯은 생존"
+    assert "failed" in panel._cards[0]._title_lbl.text()
+
+
+def test_contract_panel_refresh_rebuilds_when_structure_changes(qapp):
+    """카드 수가 달라지면 전체 재구성한다."""
+    from daedalus.view.editors.skill_editor import _ContractPanel
+    contracts = [Section(title="caller: A (done)", content="")]
+    panel = _ContractPanel("🔒 입력", contracts)
+    assert len(panel._cards) == 1
+
+    contracts.append(Section(title="caller: B (done)", content=""))
+    panel.refresh()
+    assert len(panel._cards) == 2, "Section 추가 시 카드도 재구성되어야 한다"
+
+
+def test_agent_editor_caller_contract_typing_survives_notify(qapp):
+    """통합 회귀: AgentEditor caller_contract 타이핑 → 전역 notify 후 카드 생존.
+
+    경로: textChanged → contract_changed → _on_model_changed → panel.refresh()
+    """
+    from daedalus.view.editors.agent_editor import AgentEditor
+    agent = _make_agent()
+    agent.caller_contracts.append(Section(title="caller: proc (done)", content=""))
+    editor = AgentEditor(agent)
+
+    panel = editor._caller_contract_panel
+    card = panel._cards[0]
+    id_before = id(card)
+
+    card._w_content.setPlainText("타이핑 중...")  # textChanged 발화 → notify 경로
+
+    assert len(panel._cards) == 1
+    assert id(panel._cards[0]) == id_before, "notify 경로를 거쳐도 카드가 생존해야 한다"
+    assert agent.caller_contracts[0].content == "타이핑 중..."
