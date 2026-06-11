@@ -11,19 +11,21 @@ from daedalus.model.fsm.pseudo import EntryPoint, ExitPoint
 from daedalus.model.fsm.section import EventDef
 from daedalus.view.viewmodel.state_vm import StateViewModel
 
-# 위임 노드 뱃지 텍스트 계산 (delegation.py의 enum 상수 직접 비교를 피하고
-# value 문자열로만 비교해 순환 임포트 없이 처리한다)
 def _delegation_badge(ref: object) -> str:
     """DelegationDef ref → 뱃지 텍스트 (비-DelegationDef는 "" 반환)."""
-    wait_mode = getattr(ref, "wait_mode", None)
-    composition = getattr(ref, "composition", None)
-    kind = getattr(ref, "kind", None)
-    if kind not in ("team_spawn", "dynamic_workflow", "agora_dispatch"):
+    # view→model 의존은 정상 방향 — enum 정체성 비교로 value 문자열
+    # 하드코딩(리네임 시 뱃지 소실)을 피한다.
+    from daedalus.model.plugin.delegation import (
+        CompositionMode,
+        DelegationDef,
+        WaitMode,
+    )
+    if not isinstance(ref, DelegationDef):
         return ""
     badges = []
-    if wait_mode is not None and getattr(wait_mode, "value", None) == "forget":
+    if ref.wait_mode is WaitMode.FIRE_AND_FORGET:
         badges.append("🔥")
-    if composition is not None and getattr(composition, "value", None) == "guided":
+    if ref.composition is CompositionMode.GUIDED:
         badges.append("✨")
     return " ".join(badges)
 

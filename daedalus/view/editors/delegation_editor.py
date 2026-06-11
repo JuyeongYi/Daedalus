@@ -40,6 +40,15 @@ from daedalus.model.plugin.delegation import (
 from daedalus.model.project import PluginProject
 
 
+# 위임 kind → 표시 타이틀 — 생성 다이얼로그(app.py/agent_editor)와 창 제목의
+# 단일 진실. 새 kind 추가 시 여기 한 곳만 갱신한다.
+DELEGATION_KIND_TITLES: dict[str, str] = {
+    "team_spawn": "👥 팀 Spawn (TeamSpawnDef)",
+    "dynamic_workflow": "🔀 Dynamic Workflow (DynamicWorkflowDef)",
+    "agora_dispatch": "🛰 Agora Dispatch (AgoraDispatchDef)",
+}
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # 공통 헬퍼: 에이전트 이름 목록
 # ──────────────────────────────────────────────────────────────────────────────
@@ -197,7 +206,8 @@ class _TeammateRow(QWidget):
         self._role_edit.textChanged.connect(self._on_role_changed)
 
     def _on_agent_changed(self) -> None:
-        # spec.agent_ref는 set 불가(실제 객체 참조) — 상위에서 project 통해 복원
+        # agent_ref 기록은 상위 _TeamSpawnBody._on_agent_ref_changed가
+        # 콤보 데이터(이름)→객체 해소로 수행 — 여기서는 변경 통지만 한다.
         self._on_changed()
 
     def _on_count_changed(self) -> None:
@@ -553,12 +563,9 @@ class DelegationEditor(QDialog):
         self._on_notify_fn = on_notify_fn
         self._project = project
 
-        kind_titles = {
-            "team_spawn": "👥 Team Spawn",
-            "dynamic_workflow": "🔀 Dynamic Workflow",
-            "agora_dispatch": "🛰 Agora Dispatch",
-        }
-        self.setWindowTitle(f"{kind_titles.get(deleg.kind, 'Delegation')} — {deleg.name}")
+        self.setWindowTitle(
+            f"{DELEGATION_KIND_TITLES.get(deleg.kind, 'Delegation')} — {deleg.name}"
+        )
         self.resize(520, 600)
 
         root = QVBoxLayout(self)

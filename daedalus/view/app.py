@@ -428,23 +428,18 @@ class MainWindow(QMainWindow):
         }
         self._register_component(factories[kind]())
 
-    _DELEGATION_KIND_TITLES = {
-        "team_spawn": "👥 팀 Spawn (TeamSpawnDef)",
-        "dynamic_workflow": "🔀 Dynamic Workflow (DynamicWorkflowDef)",
-        "agora_dispatch": "🛰 Agora Dispatch (AgoraDispatchDef)",
-    }
-
     def _on_new_delegation(self) -> None:
         """위임 정의 생성: kind 선택 → 이름 입력 → 등록."""
         from daedalus.model.plugin.delegation import AgoraDispatchDef, DynamicWorkflowDef, TeamSpawnDef
-        items = list(self._DELEGATION_KIND_TITLES.values())
+        from daedalus.view.editors.delegation_editor import DELEGATION_KIND_TITLES
+        items = list(DELEGATION_KIND_TITLES.values())
         item, ok = QInputDialog.getItem(
             self, "위임 종류 선택", "종류:", items, 0, False
         )
         if not ok or not item:
             return
         # item → kind 역매핑
-        kind = next(k for k, v in self._DELEGATION_KIND_TITLES.items() if v == item)
+        kind = next(k for k, v in DELEGATION_KIND_TITLES.items() if v == item)
         name = self._ask_unique_name(f"새 {item}")
         if name is None:
             return

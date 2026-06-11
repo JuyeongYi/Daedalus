@@ -266,21 +266,23 @@ class AgentEditor(QWidget):
         from daedalus.model.plugin.delegation import AgoraDispatchDef, DynamicWorkflowDef, TeamSpawnDef
         if self._project is None:
             return
-        kind_titles = {
-            "team_spawn": "👥 팀 Spawn (TeamSpawnDef)",
-            "dynamic_workflow": "🔀 Dynamic Workflow (DynamicWorkflowDef)",
-            "agora_dispatch": "🛰 Agora Dispatch (AgoraDispatchDef)",
-        }
-        items = list(kind_titles.values())
+        from daedalus.view.editors.delegation_editor import DELEGATION_KIND_TITLES
+        items = list(DELEGATION_KIND_TITLES.values())
         item, ok = QInputDialog.getItem(self, "위임 종류 선택", "종류:", items, 0, False)
         if not ok or not item:
             return
-        kind = next(k for k, v in kind_titles.items() if v == item)
+        kind = next(k for k, v in DELEGATION_KIND_TITLES.items() if v == item)
         name, ok2 = QInputDialog.getText(self, f"새 {item}", "이름:")
         if not ok2 or not name.strip():
             return
         name = name.strip()
-        existing = {d.name for d in self._project.delegations}
+        # 이름 공간은 프로젝트 전역 — 스킬/에이전트와도 충돌 금지
+        # (duplicate_component_name 검증과 동일 기준)
+        existing = (
+            {d.name for d in self._project.delegations}
+            | {s.name for s in self._project.skills}
+            | {a.name for a in self._project.agents}
+        )
         if name in existing:
             QMessageBox.warning(self, "이름 중복", f"'{name}' 이름이 이미 존재합니다.")
             return
