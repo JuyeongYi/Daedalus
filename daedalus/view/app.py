@@ -46,7 +46,7 @@ class MainWindow(QMainWindow):
         self._project: PluginProject | None = None
         self._project_vm = ProjectViewModel()
         self._fsm_scene: FsmScene | None = None
-        self._open_tabs: dict[str, int] = {}  # 컴포넌트 이름 → 탭 인덱스
+        self._open_tabs: dict[str, int] = {}  # 컴포넌트 id → 탭 인덱스
         self._active_stack = self._project_vm.command_stack
         self._active_notify = self._project_vm.notify
         self._initialized = False  # setup 완료 전 시그널 발화 방어용
@@ -191,22 +191,23 @@ class MainWindow(QMainWindow):
     def _open_component(self, component: object) -> None:
         """레지스트리에서 더블클릭 → SkillEditor/AgentEditor 탭 열기."""
         name = getattr(component, "name", None)
-        if name is None:
+        comp_id = getattr(component, "id", None)
+        if name is None or comp_id is None:
             return
-        if name in self._open_tabs:
-            self._tabs.setCurrentIndex(self._open_tabs[name])
+        if comp_id in self._open_tabs:
+            self._tabs.setCurrentIndex(self._open_tabs[comp_id])
             return
 
         if isinstance(component, AgentDefinition):
             from daedalus.view.editors.agent_editor import AgentEditor
             editor = AgentEditor(component, on_notify_fn=self._project_vm.notify, project=self._project)
             idx = self._tabs.addTab(editor, f"🤖 {name}")
-            self._open_tabs[name] = idx
+            self._open_tabs[comp_id] = idx
             self._tabs.setCurrentIndex(idx)
         elif isinstance(component, (ProceduralSkill, DeclarativeSkill, TransferSkill, ReferenceSkill)):
             editor = SkillEditor(component, on_notify_fn=self._project_vm.notify)
             idx = self._tabs.addTab(editor, name)
-            self._open_tabs[name] = idx
+            self._open_tabs[comp_id] = idx
             self._tabs.setCurrentIndex(idx)
 
     def _ask_unique_name(self, dialog_title: str) -> str | None:
