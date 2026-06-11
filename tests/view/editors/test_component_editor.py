@@ -103,3 +103,24 @@ def test_on_notify_callback(qapp):
     editor = ComponentEditor(comp, on_notify_fn=lambda: called.append(1))
     editor._on_model_changed()
     assert len(called) == 1
+
+
+def test_variable_popup_opens_at_button_global_pos(qapp):
+    """변수 삽입 팝업은 Qt.Popup 최상위 창 — 버튼의 전역 좌표 바로 아래에 떠야 한다.
+
+    회귀: 패널 상대 좌표를 move()에 넘기면 화면 좌상단 근처에 떴다.
+    """
+    from PyQt6.QtCore import QPoint
+    from daedalus.view.editors.component_editor import ComponentEditor
+    comp = _make_declarative()
+    editor = ComponentEditor(comp)
+    editor.show()
+    editor._on_variable_insert()
+    try:
+        btn = editor._content_panel._btn_variable
+        expected = btn.mapToGlobal(QPoint(0, btn.height()))
+        assert editor._var_popup.pos() == expected
+        assert editor._var_popup.isVisible()
+    finally:
+        editor._var_popup.hide()
+        editor.close()
