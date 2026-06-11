@@ -227,3 +227,59 @@ class PluginProject:
 2. [ ] 메모 파일 확인: `agent-field-matrix-needed`
 3. [ ] §7 옵션 중 선택
 4. [ ] 선택한 옵션으로 진행 (A/C 권장)
+
+---
+
+## 10. WP-L — Tier 1 구현 완료 + 단일화 확정 (2026-06)
+
+### 단일화 확정
+
+**`UserDefinedTool`을 단일 진실로 한다.** 로드맵(`docs/specs/2026-04-16-feature-roadmap.md`)
+4-8 '외부 스크립트 실행 노드'는 **별도 모델 타입이 아니다.** `UserDefinedTool`(스크립트/지침
+본문 보유)이 도구의 단일 진실이고, 실행 노드는 `ToolExecution(tool=<도구 이름>)`을 on_entry로
+갖는 **SimpleState 프리셋**(view 레이어, 향후)으로 표현한다. 로드맵 4-8 문구를 이 결정에 맞게
+수정함 (양 문서 상호 참조).
+
+### 구현 범위 (Tier 1, 완료)
+
+결정 D/Z/B1을 집행했다.
+
+- **`daedalus/model/plugin/tool.py` 신설** — `Tool(PluginComponent, ABC)` + `kind` 추상 프로퍼티.
+  - `BuiltinTool(name, description, allowed_arguments_note)` — CC 내장 도구 참조.
+  - `MCPTool(name, description, server, tool_name)` — MCP 서버·도구명.
+  - `UserDefinedTool(name, description, body, shell=SkillShell.BASH)` — 구현 본문.
+  - 안정 ID: `id: str = field(default_factory=lambda: uuid4().hex, compare=False, kw_only=True)` (WP-F 패턴).
+  - 세션 스케치(§3)의 `ClaudeCodeTool` enum은 **채택하지 않음** — BuiltinTool은 `name`이 곧 CC 도구
+    이름이고, 유효 이름 집합 검증은 validation.py의 `CC_BUILTIN_TOOLS` frozenset이 담당. enum을
+    이중으로 두면 동기화 부담만 늘어 YAGNI 위배.
+- **`PluginProject.tool_shelf: list[Tool]`** 추가 (결정 Z: shelf = 프로젝트 소유).
+- **`serialize.py` 합류** — `_ser_tool`/`_deser_tool` + `_KNOWN_TOOL_KINDS`. kind 태그 dispatch,
+  미지 kind는 State 패턴처럼 명시 실패(직렬화 TypeError / 역직렬화 ValueError). 라운드트립 테스트 포함.
+- **`strategy.py` 의미 명문화** — `ToolEvaluation.tool` / `ToolExecution.tool` docstring에
+  "tool_shelf의 Tool.name을 가리키는 이름 문자열, fsm/는 plugin 무관이라 객체 참조 금지, Validator가
+  실존 검증" 명기 (결정 B1).
+- **검증 규칙 3종** (세션 §3 6개 중 Tier 1 선별 — 권한(allow/deny) 결합 규칙 3개는 Tier 2로 보류,
+  여기서는 도구 *실존*만 검사):
+  - `dangling_tool_ref` (경고): FSM이 참조하는 도구 이름이 `tool_shelf ∪ CC_BUILTIN_TOOLS`에 없음.
+    빈 문자열은 미지정으로 스킵.
+  - `duplicate_tool_name` (에러): tool_shelf 내 동명.
+  - `empty_tool_definition` (경고): UserDefinedTool 본문 빈 값 / MCPTool server·tool_name 빈 값.
+  - `CC_BUILTIN_TOOLS`는 validation.py 모듈 frozenset(Read/Write/Edit/Bash/Glob/Grep/WebFetch/
+    WebSearch/Agent/Task/TodoWrite/NotebookEdit/SlashCommand/PowerShell).
+  - 참조 수집은 `_collect_machine_tool_refs` 헬퍼가 상태 라이프사이클 훅·custom_events·전이 가드·
+    전이 액션 체인 + CompositeEvaluation/CompositeExecution 중첩 + sub_machine/Region 재귀까지 훑는다.
+  - 세 규칙 모두 WARNING_RULES(경고 2종) / 에러(duplicate_tool_name)로 분류 등록 — introspection
+    완전성 테스트(`test_validation_severity.py`)가 미분류를 잡는다.
+
+### 컴파일러 v0 범위 메모
+
+**Tool/MCP 전략의 실행 코드 생성은 Tier 2다.** 컴파일러 v0는 `tool_shelf`를 **참조 문서 단락**으로만
+출력한다 (각 Tool의 name/description/본문을 SKILL.md 등에 문서화). `ToolExecution`/`ToolEvaluation`의
+실제 실행 래퍼(인자 이스케이프, shell 분기, success_condition 해석)는 §4 문제 ④⑤와 함께 Tier 2에서
+설계한다.
+
+### 보류 (Tier 2)
+
+세션 §3의 권한 결합 규칙 3개(`tool_in_effective_permission`, `allow_deny_disjoint`,
+`permission_list_on_shelf`)와 §4 문제 ④(`SuccessCondition` 계층)·⑤(`Command` 객체)·⑥(`output_mapping`)은
+미진행. `unused_shelf_tool`(정보성)도 보류.

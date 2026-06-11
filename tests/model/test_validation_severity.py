@@ -20,6 +20,7 @@ _ERROR_RULES = frozenset({
     "transfer_on_not_empty",
     "transition_endpoint_not_in_states",
     "duplicate_component_name",
+    "duplicate_tool_name",
 })
 
 # 경고로 분류되어야 하는 규칙 목록 (WARNING_RULES와 동일)
@@ -36,6 +37,8 @@ _WARN_RULES = frozenset({
     "dangling_teammate_ref",
     "dangling_string_reference",
     "invalid_component_name",
+    "dangling_tool_ref",
+    "empty_tool_definition",
 })
 
 

@@ -189,7 +189,9 @@ class ComponentEditor(QWidget):
             return
         from PyQt6.QtCore import QPoint
         btn = self._content_panel._btn_variable
-        pos = btn.mapTo(self._content_panel, QPoint(0, btn.height()))
+        # VariablePopup은 Qt.Popup 플래그의 최상위 창 — move()는 전역 좌표를 받는다.
+        # (패널 상대 좌표를 넘기면 화면 좌상단 근처에 떠 버린다.)
+        pos = btn.mapToGlobal(QPoint(0, btn.height()))
         self._var_popup.move(pos)
         self._var_popup.show()
         self._var_popup.raise_()

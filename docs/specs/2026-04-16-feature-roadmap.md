@@ -190,4 +190,9 @@
   - 스크립트 내부에 `claude --print` 등 비대화형 CLI 플래그가 설정됨
   - cwd는 실행 시점에 결정
 - **기존 노드와의 차이:** ProceduralSkill은 본문(마크다운)을 직접 정의. 이 노드는 외부 스크립트에 실행을 위임.
-- **모델:** 새로운 상태/스킬 유형 필요 (기존 모델에 없음)
+- **모델 (WP-L 단일화 결정으로 재정의됨, 2026-06):** 별도 상태/스킬 유형을 새로 만들지 **않는다**.
+  단일 진실은 `daedalus/model/plugin/tool.py`의 `UserDefinedTool`(스크립트/지침 본문 보유)이며,
+  실행 노드는 `ToolExecution(tool=<UserDefinedTool 이름>)`을 on_entry 액션으로 갖는 **SimpleState 프리셋**
+  (view 레이어, 향후 구현)으로 표현한다. 도구 자체는 프로젝트 `tool_shelf`에 놓이고
+  FSM은 이름 문자열로 참조한다(검증: `dangling_tool_ref`).
+  → 결정 배경·필드 구성: `docs/continue/2026-04-17-tool-architecture-session.md` §10 (WP-L 단일화 확정).

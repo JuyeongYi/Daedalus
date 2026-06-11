@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from daedalus.model.plugin.agent import AgentDefinition
 from daedalus.model.plugin.delegation import DelegationDef
 from daedalus.model.plugin.skill import Skill
+from daedalus.model.plugin.tool import Tool
 
 
 @dataclass
@@ -24,3 +25,6 @@ class PluginProject:
     agents: list[AgentDefinition] = field(default_factory=list)
     reference_placements: list[ReferencePlacement] = field(default_factory=list)
     delegations: list[DelegationDef] = field(default_factory=list)
+    # 도구 선반 — BuiltinTool/MCPTool/UserDefinedTool의 단일 진실 (결정 Z: shelf).
+    # FSM 전략의 ToolEvaluation/ToolExecution.tool은 여기 Tool.name을 이름으로 참조한다.
+    tool_shelf: list[Tool] = field(default_factory=list)

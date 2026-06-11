@@ -106,6 +106,12 @@ from daedalus.model.plugin.skill import (
     ReferenceSkill,
     TransferSkill,
 )
+from daedalus.model.plugin.tool import (
+    BuiltinTool,
+    MCPTool,
+    Tool,
+    UserDefinedTool,
+)
 from daedalus.model.project import PluginProject, ReferencePlacement
 
 FORMAT_VERSION = 1
@@ -136,7 +142,64 @@ def serialize_project(project: PluginProject) -> dict:
             _ser_ref_placement(r) for r in project.reference_placements
         ],
         "delegations": [_ser_delegation(d) for d in project.delegations],
+        "tool_shelf": [_ser_tool(t) for t in project.tool_shelf],
     }
+
+
+# ── tool shelf ──
+
+# 직렬화가 인지하는 Tool kind 전체 — 새 Tool 서브클래스 추가 시 여기와
+# _ser_tool/_deser_tool 분기를 함께 갱신해야 한다 (미등록 시 명시 에러).
+_KNOWN_TOOL_KINDS = {"builtin", "mcp", "user"}
+
+
+def _ser_tool(t: Tool) -> dict:
+    d: dict[str, Any] = {
+        "kind": t.kind,
+        "id": t.id,
+        "name": t.name,
+        "description": t.description,
+    }
+    if t.kind not in _KNOWN_TOOL_KINDS:
+        raise TypeError(
+            f"직렬화 미지원 Tool kind: {t.kind!r} ({type(t).__name__}) — "
+            "serialize.py의 _KNOWN_TOOL_KINDS/_ser_tool/_deser_tool에 분기를 추가하라"
+        )
+    if isinstance(t, BuiltinTool):
+        d["allowed_arguments_note"] = t.allowed_arguments_note
+    elif isinstance(t, MCPTool):
+        d.update(server=t.server, tool_name=t.tool_name)
+    elif isinstance(t, UserDefinedTool):
+        d.update(body=t.body, shell=t.shell.value)
+    return d
+
+
+def _deser_tool(d: dict) -> Tool:
+    kind = d.get("kind")
+    name = d.get("name", "")
+    desc = d.get("description", "")
+    tid = d.get("id") or _new_id()
+    tool: Tool
+    if kind == "builtin":
+        tool = BuiltinTool(
+            name=name, description=desc, id=tid,
+            allowed_arguments_note=d.get("allowed_arguments_note", ""),
+        )
+    elif kind == "mcp":
+        tool = MCPTool(
+            name=name, description=desc, id=tid,
+            server=d.get("server", ""), tool_name=d.get("tool_name", ""),
+        )
+    elif kind == "user":
+        tool = UserDefinedTool(
+            name=name, description=desc, id=tid,
+            body=d.get("body", ""),
+            shell=_to_enum(SkillShell, d.get("shell"), SkillShell.BASH),
+        )
+    else:
+        # 조용한 강등은 데이터 손실을 은폐한다 — 명시 실패 (State 패턴과 동일).
+        raise ValueError(f"역직렬화 미지원 Tool kind: {kind!r}")
+    return tool
 
 
 # ── 변수 / 액션 / 전략 / 이벤트 / 가드 ──
@@ -561,6 +624,7 @@ def deserialize_project(
             _deser_ref_placement(r) for r in data.get("reference_placements", [])
         ],
         delegations=[_deser_delegation(d, reg) for d in data.get("delegations", [])],
+        tool_shelf=[_deser_tool(t) for t in data.get("tool_shelf", [])],
     )
 
     # ── pass 2: 모든 참조(state/skill/agent id) 해소 ──
