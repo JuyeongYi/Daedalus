@@ -211,29 +211,38 @@ class _FrontmatterPanel(QScrollArea):
             if is_agent:
                 skip = {AgentField.NAME, AgentField.DESCRIPTION}  # type: ignore[assignment]
 
-            # emit 그룹별 섹션 라벨 추적 (에이전트만 해당)
-            _emitted_invocation_label = False
-            _emitted_settings_label = False
+            # 에이전트는 emit 그룹 순서(FRONTMATTER → INVOCATION → SETTINGS)로
+            # 정렬해 렌더링한다. 매트릭스 선언 순서에 의존하면 그룹 라벨과
+            # 필드가 어긋날 수 있다 (예: SETTINGS 필드가 Invocation 라벨 아래 표시).
+            items = list(rules.items())
+            if is_agent:
+                group_order = {
+                    FieldEmit.FRONTMATTER: 0,
+                    FieldEmit.BODY: 0,
+                    FieldEmit.INVOCATION: 1,
+                    FieldEmit.SETTINGS: 2,
+                }
+                items.sort(key=lambda kv: group_order[kv[1].emit])  # stable — 그룹 내 선언 순서 유지
+            current_group: FieldEmit | None = None
 
-            for fld, rule in rules.items():
+            for fld, rule in items:
                 if fld in skip:
                     continue
                 if rule.visibility == FieldVisibility.FIXED:
                     continue
-
-                # emit 그룹 구분 라벨 (에이전트 전용)
-                if is_agent:
-                    if rule.emit == FieldEmit.INVOCATION and not _emitted_invocation_label:
-                        sep = QLabel("— Invocation —")
-                        lay.addWidget(sep)
-                        _emitted_invocation_label = True
-                    elif rule.emit == FieldEmit.SETTINGS and not _emitted_settings_label:
-                        sep = QLabel("— Settings —")
-                        lay.addWidget(sep)
-                        _emitted_settings_label = True
-
                 if fld not in widget_map:
                     continue
+
+                # emit 그룹 전환 시 구분 라벨 (에이전트 전용)
+                if (
+                    is_agent
+                    and rule.emit in (FieldEmit.INVOCATION, FieldEmit.SETTINGS)
+                    and rule.emit is not current_group
+                ):
+                    title = "Invocation" if rule.emit is FieldEmit.INVOCATION else "Settings"
+                    lay.addWidget(QLabel(f"— {title} —"))
+                    current_group = rule.emit
+
                 widget = widget_map[fld]()
                 self._apply_value(widget, config, component, fld, rule)
                 self._field_widgets[fld] = widget
@@ -294,6 +303,9 @@ class _FrontmatterPanel(QScrollArea):
         current = _FrontmatterPanel._get_current(config, component, fld)
 
         if isinstance(widget, QSpinBox):
+            # QSpinBox 기본 상한이 99라 max_turns가 잘릴 수 있다.
+            # CC의 실제 상한은 컴파일러 WP에서 확정 — 잠정 1~1000.
+            widget.setRange(1, 1000)
             widget.setValue(int(current) if current is not None else 1)
         elif isinstance(widget, QComboBox):
             val = None
