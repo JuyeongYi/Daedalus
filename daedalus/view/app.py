@@ -1,10 +1,13 @@
 # daedalus/view/app.py
 from __future__ import annotations
 
+import json
+
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QAction, QKeySequence
 from PyQt6.QtWidgets import (
     QDockWidget,
+    QFileDialog,
     QInputDialog,
     QLabel,
     QMainWindow,
@@ -21,6 +24,7 @@ from daedalus.model.plugin.skill import (
     TransferSkill,
 )
 from daedalus.model.project import PluginProject
+from daedalus.model.serialize import deserialize_project, serialize_project
 from daedalus.view.canvas.canvas_view import FsmCanvasView
 from daedalus.view.canvas.edge_item import TransitionEdgeItem
 from daedalus.view.canvas.node_item import StateNodeItem
@@ -44,6 +48,7 @@ class MainWindow(QMainWindow):
         self.resize(1400, 860)
 
         self._project: PluginProject | None = None
+        self._current_path: str | None = None  # 현재 저장 경로 (.daedalus.json)
         self._project_vm = ProjectViewModel()
         self._fsm_scene: FsmScene | None = None
         self._open_tabs: dict[str, int] = {}  # 컴포넌트 id → 탭 인덱스
@@ -109,6 +114,24 @@ class MainWindow(QMainWindow):
         menubar = self.menuBar()
         if menubar is None:
             return
+
+        file_menu = menubar.addMenu("File")
+        if file_menu is not None:
+            open_action = QAction("열기", self)
+            open_action.setShortcut(QKeySequence.StandardKey.Open)  # Ctrl+O
+            open_action.triggered.connect(self._open_project_dialog)
+            file_menu.addAction(open_action)
+
+            save_action = QAction("저장", self)
+            save_action.setShortcut(QKeySequence.StandardKey.Save)  # Ctrl+S
+            save_action.triggered.connect(self._save_project)
+            file_menu.addAction(save_action)
+
+            save_as_action = QAction("다른 이름으로 저장", self)
+            save_as_action.setShortcut(QKeySequence.StandardKey.SaveAs)
+            save_as_action.triggered.connect(self._save_project_as)
+            file_menu.addAction(save_as_action)
+
         edit_menu = menubar.addMenu("Edit")
         if edit_menu is None:
             return
@@ -155,6 +178,87 @@ class MainWindow(QMainWindow):
         self._registry_panel.set_project(project)
         if self._fsm_scene is not None:
             self._fsm_scene.set_project(project)
+
+    def load_project(self, project: PluginProject) -> None:
+        """기존 세션을 정리하고 새 프로젝트를 로드한다.
+
+        열린 에디터 탭을 닫고, 프로젝트 VM(캔버스 상태)을 비운 뒤
+        레지스트리/씬을 새 프로젝트로 재구성한다.
+        """
+        # 1) 열린 에디터 탭 정리 (Project FSM 탭 0 제외, 역순 제거)
+        for index in range(self._tabs.count() - 1, _FSM_TAB_INDEX, -1):
+            self._close_tab(index)
+        self._open_tabs.clear()
+
+        # 2) 프로젝트 VM(캔버스) 초기화
+        self._project_vm.state_vms.clear()
+        self._project_vm.transition_vms.clear()
+        self._project_vm.reference_vms.clear()
+        self._project_vm.reference_links.clear()
+
+        # 3) 새 프로젝트 로드 — set_project가 registry/scene 갱신
+        self.set_project(project)
+        self._project_vm.notify()
+
+    # --- 저장 / 열기 ---
+
+    def _update_title(self) -> None:
+        base = "Daedalus — FSM Plugin Designer"
+        if self._current_path:
+            import os
+            self.setWindowTitle(f"{os.path.basename(self._current_path)} — {base}")
+        else:
+            self.setWindowTitle(base)
+
+    def _save_to_path(self, path: str) -> None:
+        if self._project is None:
+            return
+        try:
+            data = serialize_project(self._project)
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+        except OSError as exc:
+            self._status_label.setText(f"저장 실패: {exc}")
+            return
+        self._current_path = path
+        self._update_title()
+        self._status_label.setText(f"저장됨: {path}")
+
+    def _save_project(self) -> None:
+        if self._current_path:
+            self._save_to_path(self._current_path)
+        else:
+            self._save_project_as()
+
+    def _save_project_as(self) -> None:
+        path, _ = QFileDialog.getSaveFileName(
+            self, "다른 이름으로 저장", self._current_path or "",
+            "Daedalus 프로젝트 (*.daedalus.json *.json)",
+        )
+        if path:
+            self._save_to_path(path)
+
+    def _open_project_dialog(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            self, "열기", self._current_path or "",
+            "Daedalus 프로젝트 (*.daedalus.json *.json)",
+        )
+        if path:
+            self.open_path(path)
+
+    def open_path(self, path: str) -> None:
+        """경로에서 프로젝트를 로드한다 (다이얼로그 없이 — 테스트/CLI 재사용)."""
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            project = deserialize_project(data)
+        except (OSError, ValueError) as exc:
+            self._status_label.setText(f"열기 실패: {exc}")
+            return
+        self.load_project(project)
+        self._current_path = path
+        self._update_title()
+        self._status_label.setText(f"열림: {path}")
 
     def _skill_lookup(self, name: str) -> ProceduralSkill | DeclarativeSkill | AgentDefinition | None:
         if self._project is None:
