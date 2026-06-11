@@ -1,5 +1,5 @@
 # daedalus/view/editors/field_widgets.py
-"""SkillField → 편집 위젯 매핑 (view 레이어).
+"""SkillField / AgentField → 편집 위젯 매핑 (view 레이어).
 
 field_matrix.py(model)에서 분리된 위젯 선택 책임을 담는다. 위젯 선택은
 스킬 kind와 무관함이 확인되어 1차원 dict로 충분하다 — 한 SkillField는
@@ -12,13 +12,17 @@ field_matrix.py(model)에서 분리된 위젯 선택 책임을 담는다. 위젯
 """
 from __future__ import annotations
 
-from PyQt6.QtWidgets import QCheckBox, QLineEdit, QTextEdit, QWidget
+from PyQt6.QtWidgets import QCheckBox, QLineEdit, QSpinBox, QTextEdit, QWidget
 
-from daedalus.model.plugin.enums import SkillField
+from daedalus.model.plugin.enums import AgentField, SkillField
 from daedalus.view.widgets.combo_widgets import (
+    AgentColorComboBox,
+    AgentIsolationComboBox,
     ContextComboBox,
     EffortComboBox,
+    MemoryScopeComboBox,
     ModelComboBox,
+    PermissionModeComboBox,
     ShellComboBox,
 )
 from daedalus.view.widgets.preset_picker import HookPresetPicker
@@ -40,4 +44,21 @@ FIELD_WIDGETS: dict[SkillField, type[QWidget]] = {
     SkillField.HOOKS:          HookPresetPicker,
     SkillField.DISABLE_MODEL:  QCheckBox,
     SkillField.USER_INVOCABLE: QCheckBox,
+}
+
+# AgentField → 위젯 클래스 (NAME/DESCRIPTION 제외 — 공통 헤더에서 처리).
+AGENT_FIELD_WIDGETS: dict[AgentField, type[QWidget]] = {
+    AgentField.MODEL:            ModelComboBox,
+    AgentField.EFFORT:           EffortComboBox,
+    AgentField.TOOLS:            TagInput,
+    AgentField.DISALLOWED_TOOLS: TagInput,
+    AgentField.PERMISSION_MODE:  PermissionModeComboBox,
+    AgentField.SKILLS:           TagInput,
+    AgentField.MEMORY:           MemoryScopeComboBox,
+    AgentField.COLOR:            AgentColorComboBox,
+    AgentField.HOOKS:            HookPresetPicker,
+    AgentField.MAX_TURNS:        QSpinBox,
+    AgentField.BACKGROUND:       QCheckBox,
+    AgentField.ISOLATION:        AgentIsolationComboBox,
+    AgentField.MCP_SERVERS:      TagInput,
 }

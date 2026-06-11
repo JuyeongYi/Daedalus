@@ -3,7 +3,16 @@ from __future__ import annotations
 
 from PyQt6.QtWidgets import QComboBox
 
-from daedalus.model.plugin.enums import EffortLevel, ModelType, SkillContext, SkillShell
+from daedalus.model.plugin.enums import (
+    AgentColor,
+    AgentIsolation,
+    EffortLevel,
+    MemoryScope,
+    ModelType,
+    PermissionMode,
+    SkillContext,
+    SkillShell,
+)
 
 
 class ModelComboBox(QComboBox):
@@ -46,3 +55,41 @@ class ShellComboBox(QComboBox):
         super().__init__(parent)
         for s in SkillShell:
             self.addItem(s.value)
+
+
+class PermissionModeComboBox(QComboBox):
+    """권한 모드 콤보박스 — default/acceptEdits/auto/dontAsk/bypassPermissions/plan."""
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        for p in PermissionMode:
+            self.addItem(p.value)
+        self.setCurrentText(PermissionMode.DEFAULT.value)
+
+
+class MemoryScopeComboBox(QComboBox):
+    """메모리 스코프 콤보박스 — user/project/local."""
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        for m in MemoryScope:
+            self.addItem(m.value)
+
+
+class AgentIsolationComboBox(QComboBox):
+    """에이전트 격리 모드 콤보박스 — none/worktree."""
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        for i in AgentIsolation:
+            self.addItem(i.value)
+        self.setCurrentText(AgentIsolation.NONE.value)
+
+
+class AgentColorComboBox(QComboBox):
+    """에이전트 색상 콤보박스 — red/blue/green/yellow/purple/orange/pink/cyan."""
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        for c in AgentColor:
+            self.addItem(c.value)
