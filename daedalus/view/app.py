@@ -217,7 +217,8 @@ class MainWindow(QMainWindow):
             data = serialize_project(self._project)
             with open(path, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
-        except OSError as exc:
+        except (OSError, TypeError, ValueError) as exc:
+            # OSError: IO 실패 / TypeError·ValueError: 직렬화 불가 객체 혼입
             self._status_label.setText(f"저장 실패: {exc}")
             return
         self._current_path = path

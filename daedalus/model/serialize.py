@@ -263,8 +263,21 @@ def _ser_state_common(s: State) -> dict:
     }
 
 
+# 직렬화가 인지하는 State kind 전체 — 새 State 서브클래스 추가 시 여기와
+# _ser_state/_deser_state 분기를 함께 갱신해야 한다 (미등록 시 명시 에러).
+_KNOWN_STATE_KINDS = {
+    "simple", "composite", "parallel",
+    "choice", "terminate", "entry_point", "exit_point",
+}
+
+
 def _ser_state(s: State) -> dict:
     d = _ser_state_common(s)
+    if d["kind"] not in _KNOWN_STATE_KINDS:
+        raise TypeError(
+            f"직렬화 미지원 State kind: {d['kind']!r} ({type(s).__name__}) — "
+            "serialize.py의 _KNOWN_STATE_KINDS/_ser_state/_deser_state에 분기를 추가하라"
+        )
     if isinstance(s, SimpleState):
         # skill_ref 는 component id 참조로 평탄화
         d["skill_ref"] = s.skill_ref.id if s.skill_ref is not None else None
@@ -520,6 +533,11 @@ class _Registry:
 
 def deserialize_project(data: dict) -> PluginProject:
     """JSON 호환 dict → PluginProject. 2-pass 참조 해소."""
+    fmt = data.get("format")
+    if fmt != FORMAT_VERSION:
+        raise ValueError(
+            f"지원하지 않는 파일 형식 버전: {fmt!r} (지원: {FORMAT_VERSION})"
+        )
     reg = _Registry()
 
     # ── pass 1: 컴포넌트(skill/agent) 객체 생성 + 등록 ──
@@ -744,7 +762,8 @@ def _deser_state(d: dict, reg: _Registry, parent_bb: Blackboard | None) -> State
     elif kind == "exit_point":
         s = ExitPoint(name=name, id=sid, color=d.get("color", "#cc6666"))
     else:
-        s = SimpleState(name=name, id=sid)
+        # SimpleState로 조용히 강등하면 데이터 손실이 은폐된다 — 명시 실패.
+        raise ValueError(f"역직렬화 미지원 State kind: {kind!r}")
     _apply_state_common(s, d)
     reg.states[sid] = s
     return s
