@@ -21,6 +21,16 @@ class DispatchMode(Enum):
     BROADCAST = "broadcast"        # 자기 제외 전원 fan-out
 
 
+class CompositionMode(Enum):
+    """위임 구성 모드.
+
+    EXPLICIT: teammates/phases를 명세대로 컴파일 (기존 동작).
+    GUIDED: "본문을 근거로 구성을 스스로 결정하라" 유도문 자동 삽입.
+    """
+    EXPLICIT = "explicit"
+    GUIDED = "guided"
+
+
 @dataclass
 class TeammateSpec:
     """팀원 한 명 — 프로젝트 내 에이전트 객체 참조."""
@@ -44,6 +54,8 @@ class DelegationDef(PluginComponent, ABC):
     kind는 PluginComponent의 추상 프로퍼티로 남아 직접 인스턴스화가 막힌다.
     """
     wait_mode: WaitMode = WaitMode.WAIT
+    composition: CompositionMode = CompositionMode.EXPLICIT
+    guidance: str = ""             # GUIDED일 때 유도문에 덧붙일 사용자 보충 지침 (선택)
     # 안정 식별자 — 값 동등성 비교에서는 제외(compare=False).
     id: str = field(default_factory=lambda: uuid4().hex, compare=False, kw_only=True)
 

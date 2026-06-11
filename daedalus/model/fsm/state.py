@@ -11,6 +11,7 @@ from daedalus.model.fsm.variable import Variable
 if TYPE_CHECKING:
     from daedalus.model.fsm.machine import StateMachine
     from daedalus.model.plugin.agent import AgentDefinition
+    from daedalus.model.plugin.delegation import DelegationDef
     from daedalus.model.plugin.skill import DeclarativeSkill, ProceduralSkill
 
 
@@ -39,7 +40,7 @@ class State(ABC):
 @dataclass(eq=False)
 class SimpleState(State):
     """리프 상태. 하위 상태 없음."""
-    skill_ref: ProceduralSkill | DeclarativeSkill | AgentDefinition | None = None
+    skill_ref: ProceduralSkill | DeclarativeSkill | AgentDefinition | DelegationDef | None = None
 
     @property
     def kind(self) -> str:

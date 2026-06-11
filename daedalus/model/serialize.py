@@ -82,6 +82,7 @@ from daedalus.model.plugin.config import (
 )
 from daedalus.model.plugin.delegation import (
     AgoraDispatchDef,
+    CompositionMode,
     DispatchMode,
     DynamicWorkflowDef,
     PhaseSpec,
@@ -524,6 +525,8 @@ def _ser_delegation(d: Any) -> dict:
         "name": d.name,
         "description": d.description,
         "wait_mode": d.wait_mode.value,
+        "composition": d.composition.value,
+        "guidance": d.guidance,
     }
     if isinstance(d, TeamSpawnDef):
         out["teammates"] = [
@@ -1101,10 +1104,13 @@ def _deser_delegation(d: dict, reg: _Registry) -> Any:
     desc = d.get("description", "")
     did = d.get("id") or _new_id()
     wait = _to_enum(WaitMode, d.get("wait_mode"), WaitMode.WAIT)
+    composition = _to_enum(CompositionMode, d.get("composition"), CompositionMode.EXPLICIT)
+    guidance = d.get("guidance", "")
 
     deleg: Any
     if kind == "team_spawn":
-        deleg = TeamSpawnDef(name=name, description=desc, id=did, wait_mode=wait)
+        deleg = TeamSpawnDef(name=name, description=desc, id=did, wait_mode=wait,
+                             composition=composition, guidance=guidance)
         for tm in d.get("teammates", []):
             spec = TeammateSpec(
                 agent_ref=None,  # type: ignore[arg-type]
@@ -1122,6 +1128,7 @@ def _deser_delegation(d: dict, reg: _Registry) -> Any:
     elif kind == "dynamic_workflow":
         deleg = DynamicWorkflowDef(
             name=name, description=desc, id=did, wait_mode=wait,
+            composition=composition, guidance=guidance,
             objective=d.get("objective", ""),
         )
         for p in d.get("phases", []):
@@ -1137,11 +1144,13 @@ def _deser_delegation(d: dict, reg: _Registry) -> Any:
     elif kind == "agora_dispatch":
         deleg = AgoraDispatchDef(
             name=name, description=desc, id=did, wait_mode=wait,
+            composition=composition, guidance=guidance,
             mode=_to_enum(DispatchMode, d.get("mode"), DispatchMode.DISPATCH),
             target=d.get("target", ""),
             msgtype=d.get("msgtype", ""),
             payload_note=d.get("payload_note", ""),
         )
     else:
-        deleg = TeamSpawnDef(name=name, description=desc, id=did, wait_mode=wait)
+        deleg = TeamSpawnDef(name=name, description=desc, id=did, wait_mode=wait,
+                             composition=composition, guidance=guidance)
     return deleg
