@@ -35,7 +35,7 @@ class TestCreateRefCmd:
         skill = _make_ref_skill()
         rvm = ReferenceViewModel(model=skill, x=10.0, y=20.0)
         sync = MagicMock()
-        cmd = CreateRefCmd(pvm, rvm, project.reference_placements, sync_fn=sync)
+        cmd = CreateRefCmd(pvm, rvm, sync_fn=sync)
         cmd.execute()
         assert rvm in pvm.reference_vms
         sync.assert_called()
@@ -45,7 +45,7 @@ class TestCreateRefCmd:
         skill = _make_ref_skill()
         rvm = ReferenceViewModel(model=skill, x=10.0, y=20.0)
         sync = MagicMock()
-        cmd = CreateRefCmd(pvm, rvm, project.reference_placements, sync_fn=sync)
+        cmd = CreateRefCmd(pvm, rvm, sync_fn=sync)
         cmd.execute()
         cmd.undo()
         assert rvm not in pvm.reference_vms
@@ -54,7 +54,7 @@ class TestCreateRefCmd:
         pvm, project = _make_pvm_with_project()
         skill = _make_ref_skill("my_ref")
         rvm = ReferenceViewModel(model=skill, x=0.0, y=0.0)
-        cmd = CreateRefCmd(pvm, rvm, project.reference_placements, sync_fn=lambda: None)
+        cmd = CreateRefCmd(pvm, rvm, sync_fn=lambda: None)
         assert "my_ref" in cmd.description
 
 

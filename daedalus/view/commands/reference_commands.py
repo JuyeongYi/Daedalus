@@ -19,12 +19,10 @@ class CreateRefCmd(Command):
         self,
         project_vm: ProjectViewModel,
         ref_vm: ReferenceViewModel,
-        placements: list,
         sync_fn: Callable[[], None],
     ) -> None:
         self._project_vm = project_vm
         self._ref_vm = ref_vm
-        self._placements = placements
         self._sync_fn = sync_fn
 
     @property

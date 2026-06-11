@@ -574,7 +574,6 @@ class FsmScene(QGraphicsScene):
         rvm = ReferenceViewModel(model=skill, x=scene_pos.x(), y=scene_pos.y())
         cmd = CreateRefCmd(
             self._project_vm, rvm,
-            self._get_ref_placements(),
             sync_fn=self._sync_refs_to_model,
         )
         self._project_vm.execute(cmd)
