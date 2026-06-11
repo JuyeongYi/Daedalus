@@ -169,6 +169,40 @@ def test_node_and_edge_simultaneous_delete_restores_single_transition(qapp):
     assert sum(1 for t in fsm.transitions if t is model) == 1
 
 
+# --- 봉합 4: 다중 선택 드래그 스냅백 ---
+
+
+def test_multi_drag_updates_all_vm_coords(qapp):
+    """두 노드 동시 드래그 → 둘 다 vm 좌표가 신좌표, undo 시 둘 다 구좌표."""
+    vm, fsm, scene = _make_scene()
+    a = SimpleState(name="aa")
+    b = SimpleState(name="bb")
+    fsm.states.extend([a, b])
+    avm = StateViewModel(model=a, x=0.0, y=0.0)
+    bvm = StateViewModel(model=b, x=200.0, y=0.0)
+    vm.state_vms.extend([avm, bvm])
+    vm.notify()  # scene rebuild → 아이템 생성
+
+    node_a = scene._node_items[avm]
+    node_b = scene._node_items[bvm]
+    node_a.setSelected(True)
+    node_b.setSelected(True)
+
+    # Qt 드래그 시뮬레이션: 두 아이템 모두 (50, 60)만큼 이동된 상태
+    node_a.setPos(50.0, 60.0)
+    node_b.setPos(250.0, 60.0)
+
+    # release 핸들러 — node_a가 트리거
+    scene.handle_node_moved(node_a, QPointF(0.0, 0.0), QPointF(50.0, 60.0))
+
+    assert (avm.x, avm.y) == (50.0, 60.0), "트리거 노드 vm 좌표가 신좌표여야 한다"
+    assert (bvm.x, bvm.y) == (250.0, 60.0), "동반 이동 노드 vm 좌표도 신좌표여야 한다"
+
+    vm.command_stack.undo()
+    assert (avm.x, avm.y) == (0.0, 0.0), "undo 후 트리거 노드가 구좌표여야 한다"
+    assert (bvm.x, bvm.y) == (200.0, 0.0), "undo 후 동반 이동 노드도 구좌표여야 한다"
+
+
 def test_add_transition_vm_identity_duplicate_guard(qapp):
     """add_transition_vm은 동일 인스턴스 중복 추가를 거부한다."""
     vm = ProjectViewModel()

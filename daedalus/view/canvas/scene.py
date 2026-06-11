@@ -155,12 +155,46 @@ class FsmScene(QGraphicsScene):
     def handle_node_moved(
         self, node: StateNodeItem, old_pos: QPointF, new_pos: QPointF
     ) -> None:
-        cmd = MoveStateCmd(
-            node.state_vm,
-            old_x=old_pos.x(), old_y=old_pos.y(),
-            new_x=new_pos.x(), new_y=new_pos.y(),
-        )
-        self._project_vm.execute(cmd)
+        """노드 드래그 release — 다중 선택 시 이동된 모든 노드를 하나의 커맨드로 처리."""
+        selected_nodes = [
+            item for item in self.selectedItems()
+            if isinstance(item, StateNodeItem)
+        ]
+        if len(selected_nodes) <= 1:
+            # 단일 선택 — 기존 경로
+            cmd = MoveStateCmd(
+                node.state_vm,
+                old_x=old_pos.x(), old_y=old_pos.y(),
+                new_x=new_pos.x(), new_y=new_pos.y(),
+            )
+            self._project_vm.execute(cmd)
+            return
+
+        # 다중 선택 — 이동된 모든 노드를 하나의 MacroCommand로 묶음
+        cmds: list[Command] = []
+        for item in selected_nodes:
+            svm = item.state_vm
+            if item is node:
+                # release를 발생시킨 노드 — old_pos가 제공됨
+                cmds.append(MoveStateCmd(
+                    svm,
+                    old_x=old_pos.x(), old_y=old_pos.y(),
+                    new_x=new_pos.x(), new_y=new_pos.y(),
+                ))
+            elif svm.x != item.pos().x() or svm.y != item.pos().y():
+                # 함께 드래그된 노드 — vm 좌표가 구 위치, item.pos()가 새 위치
+                cmds.append(MoveStateCmd(
+                    svm,
+                    old_x=svm.x, old_y=svm.y,
+                    new_x=item.pos().x(), new_y=item.pos().y(),
+                ))
+        if len(cmds) == 1:
+            self._project_vm.execute(cmds[0])
+        else:
+            self._project_vm.execute(MacroCommand(
+                children=cmds,
+                description="노드 다중 이동",
+            ))
 
     # --- 전이 드래그 ---
 
