@@ -128,6 +128,13 @@ class MainWindow(QMainWindow):
 
         file_menu = menubar.addMenu("File")
         if file_menu is not None:
+            new_action = QAction("새 프로젝트", self)
+            new_action.setShortcut(QKeySequence.StandardKey.New)  # Ctrl+N
+            new_action.triggered.connect(self._new_project)
+            file_menu.addAction(new_action)
+
+            file_menu.addSeparator()
+
             open_action = QAction("열기", self)
             open_action.setShortcut(QKeySequence.StandardKey.Open)  # Ctrl+O
             open_action.triggered.connect(self._open_project_dialog)
@@ -199,6 +206,7 @@ class MainWindow(QMainWindow):
         self._tabs.currentChanged.connect(self._on_tab_changed)
         self._registry_panel.component_double_clicked.connect(self._open_component)
         self._registry_panel.new_component_requested.connect(self._on_new_component)
+        self._registry_panel.component_delete_requested.connect(self._on_delete_component)
         self._fsm_scene.node_double_clicked.connect(self._open_component)
         self._active_stack.add_listener(self._update_undo_redo)
 
@@ -329,6 +337,36 @@ class MainWindow(QMainWindow):
         if path:
             self._save_to_path(path)
 
+    def _new_project(self) -> None:
+        """Ctrl+N — 새 빈 프로젝트를 생성한다.
+
+        현재 프로젝트가 비어 있지 않으면(스킬/에이전트/위임/graph placement 중
+        하나라도 존재) 저장 여부를 확인하는 다이얼로그를 표시한다.
+        """
+        if self._project is not None:
+            has_content = (
+                bool(self._project.skills)
+                or bool(self._project.agents)
+                or bool(self._project.delegations)
+                or len(self._project.graph.states) > 1  # EntryPoint 제외
+            )
+            if has_content:
+                reply = QMessageBox.question(
+                    self,
+                    "새 프로젝트",
+                    "저장하지 않은 변경이 사라질 수 있습니다.\n계속하시겠습니까?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.No,
+                )
+                if reply != QMessageBox.StandardButton.Yes:
+                    return
+
+        new_proj = PluginProject(name="새 프로젝트")
+        self.load_project(new_proj)
+        self._current_path = None
+        self._update_title()
+        self._status_label.setText("새 프로젝트")
+
     def _open_project_dialog(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
             self, "열기", self._current_path or "",
@@ -382,6 +420,7 @@ class MainWindow(QMainWindow):
     def _on_project_vm_changed(self) -> None:
         self._registry_panel.set_placed_ids(self._get_placed_ids())
         self._sync_agent_editors()
+        self._sync_tab_titles()
 
     def _sync_agent_editors(self) -> None:
         """열린 AgentEditor 탭의 계약 패널 동기화."""
@@ -390,6 +429,174 @@ class MainWindow(QMainWindow):
             widget = self._tabs.widget(i)
             if isinstance(widget, _AE) and hasattr(widget, "_caller_contract_panel"):
                 widget._caller_contract_panel.refresh()
+
+    def _sync_tab_titles(self) -> None:
+        """열린 탭의 타이틀을 현재 컴포넌트 이름과 동기화한다.
+
+        _open_tabs 키는 컴포넌트 id(str). 탭에 연결된 editor의 컴포넌트 이름을
+        읽어 탭 텍스트가 달라졌으면 갱신한다. 키스트로크마다 notify가 오더라도
+        문자열 비교로 갱신 여부를 판단하므로 비용이 낮다.
+        """
+        from daedalus.model.plugin.delegation import DelegationDef
+        for comp_id, tab_idx in self._open_tabs.items():
+            widget = self._tabs.widget(tab_idx)
+            if widget is None:
+                continue
+            # editor에서 컴포넌트 이름을 읽는다
+            comp: object | None = None
+            from daedalus.view.editors.agent_editor import AgentEditor as _AE
+            from daedalus.view.editors.skill_editor import SkillEditor as _SE
+            if isinstance(widget, _AE):
+                comp = getattr(widget, "_agent", None)
+            elif isinstance(widget, _SE):
+                # SkillEditor → ComponentEditor._fm._component
+                editor = getattr(widget, "_editor", None)
+                if editor is not None:
+                    fm = getattr(editor, "_fm", None)
+                    if fm is not None:
+                        comp = getattr(fm, "_component", None)
+            if comp is None:
+                continue
+            name = getattr(comp, "name", None)
+            if name is None:
+                continue
+            # 아이콘 프리픽스 포함 여부에 따라 현재 탭 텍스트를 비교
+            current_text = self._tabs.tabText(tab_idx)
+            if isinstance(comp, AgentDefinition):
+                expected = f"🤖 {name}"
+            elif isinstance(comp, DelegationDef):
+                icon = {"team_spawn": "👥", "dynamic_workflow": "🔀", "agora_dispatch": "🛰"}.get(comp.kind, "🛰")
+                expected = f"{icon} {name}"
+            else:
+                expected = name
+            if current_text != expected:
+                self._tabs.setTabText(tab_idx, expected)
+
+    # --- 컴포넌트 이름 변경 ---
+
+    def _on_component_renamed(self, component: object, old_name: str, new_name: str) -> None:
+        """_FrontmatterPanel.renamed 시그널 핸들러.
+
+        1. 중복 이름 검사 — 다른 컴포넌트와 동명이면 거부(component.name을 old로 원복).
+        2. rename_component로 문자열 참조 일괄 갱신.
+        3. notify(structure) — 레지스트리/탭 타이틀 갱신 트리거.
+        """
+        if self._project is None:
+            return
+
+        # 중복 이름 방지
+        existing = (
+            {s.name for s in self._project.skills if s is not component}
+            | {a.name for a in self._project.agents if a is not component}
+            | {d.name for d in self._project.delegations if d is not component}
+        )
+        if new_name in existing:
+            QMessageBox.warning(
+                self, "이름 중복",
+                f"'{new_name}' 이름이 이미 존재합니다.\n이름이 원래대로 되돌아갑니다.",
+            )
+            # component.name이 이미 new_name으로 바뀌었으므로 old_name으로 원복
+            component.name = old_name  # type: ignore[union-attr]
+            return
+
+        from daedalus.model.project import rename_component
+        # component.name은 _save_name에서 renamed 발화 전에 아직 old_name임.
+        # rename_component가 old_name → new_name으로 변경 + 참조 갱신을 수행한다.
+        rename_component(self._project, component, new_name)
+        self._project_vm.notify()
+
+    # --- 컴포넌트 삭제 ---
+
+    def _on_delete_component(self, component: object) -> None:
+        """레지스트리 우클릭 '삭제' → 확인 후 모델·뷰 정리."""
+        from daedalus.model.project import remove_component
+
+        if self._project is None:
+            return
+
+        comp_name = getattr(component, "name", str(component))
+        comp_id = getattr(component, "id", None)
+
+        # 참조 요약 수집 (간략 — validate 없이 빠른 사전 검사)
+        ref_lines: list[str] = []
+        if self._project is not None:
+            from daedalus.model.fsm.state import SimpleState
+            from daedalus.model.plugin.delegation import DynamicWorkflowDef, TeamSpawnDef
+
+            def _scan_fsm_refs(sm_obj) -> int:
+                count = 0
+                if sm_obj is None:
+                    return 0
+                for state in sm_obj.states:
+                    if isinstance(state, SimpleState) and state.skill_ref is component:
+                        count += 1
+                return count
+
+            for sk in self._project.skills:
+                n = _scan_fsm_refs(getattr(sk, "fsm", None))
+                if n:
+                    ref_lines.append(f"  스킬 '{sk.name}'의 FSM: {n}개 배치")
+            for ag in self._project.agents:
+                n = _scan_fsm_refs(getattr(ag, "fsm", None))
+                if n:
+                    ref_lines.append(f"  에이전트 '{ag.name}'의 FSM: {n}개 배치")
+            for dl in self._project.delegations:
+                if isinstance(dl, TeamSpawnDef):
+                    for spec in dl.teammates:
+                        if spec.agent_ref is component:
+                            ref_lines.append(f"  위임 '{dl.name}' teammates 참조")
+                elif isinstance(dl, DynamicWorkflowDef):
+                    for phase in dl.phases:
+                        if phase.agent_ref is component:
+                            ref_lines.append(f"  위임 '{dl.name}' phases 참조")
+
+        msg = f"'{comp_name}'을(를) 삭제하시겠습니까?"
+        if ref_lines:
+            msg += "\n\n다음 위치에서 참조 중입니다 (삭제 시 None으로 정리됩니다):\n"
+            msg += "\n".join(ref_lines[:10])
+            if len(ref_lines) > 10:
+                msg += f"\n  ... 외 {len(ref_lines) - 10}건"
+
+        reply = QMessageBox.question(
+            self,
+            "컴포넌트 삭제",
+            msg,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        # 에이전트 삭제 시 로컬 스킬 탭도 닫아야 함 — 미리 수집
+        local_skill_ids: set[str] = set()
+        if isinstance(component, AgentDefinition):
+            fsm = getattr(component, "fsm", None)
+            if fsm is not None:
+                from daedalus.model.fsm.state import SimpleState
+                for state in fsm.states:
+                    if isinstance(state, SimpleState) and state.skill_ref is not None:
+                        sid = getattr(state.skill_ref, "id", None)
+                        if sid is not None:
+                            local_skill_ids.add(sid)
+
+        # 모델 정리
+        remove_component(self._project, component)
+
+        # view 정리 1) 열린 탭 닫기 (해당 컴포넌트 탭 + 로컬 스킬 탭)
+        ids_to_close: set[str] = set()
+        if comp_id is not None:
+            ids_to_close.add(comp_id)
+        ids_to_close.update(local_skill_ids)
+
+        for cid in list(ids_to_close):
+            if cid in self._open_tabs:
+                self._close_tab(self._open_tabs[cid])
+
+        # view 정리 2) 캔버스 + 레지스트리 + notify
+        self._load_project_graph()
+        self._registry_panel.set_project(self._project)
+        self._project_vm.notify()
+        self._status_label.setText(f"'{comp_name}' 삭제됨")
 
     # --- 탭 관리 ---
 
@@ -407,6 +614,10 @@ class MainWindow(QMainWindow):
         if isinstance(component, AgentDefinition):
             from daedalus.view.editors.agent_editor import AgentEditor
             editor = AgentEditor(component, on_notify_fn=self._project_vm.notify, project=self._project)
+            # AgentEditor._component_editor._fm.renamed → 이름 변경 처리
+            fm = getattr(getattr(editor, "_component_editor", None), "_fm", None)
+            if fm is not None and hasattr(fm, "renamed"):
+                fm.renamed.connect(self._on_component_renamed)
             idx = self._tabs.addTab(editor, f"🤖 {name}")
             self._open_tabs[comp_id] = idx
             self._tabs.setCurrentIndex(idx)
@@ -423,6 +634,10 @@ class MainWindow(QMainWindow):
             self._tabs.setCurrentIndex(idx)
         elif isinstance(component, (ProceduralSkill, DeclarativeSkill, TransferSkill, ReferenceSkill)):
             editor = SkillEditor(component, on_notify_fn=self._project_vm.notify)
+            # SkillEditor._editor._fm.renamed → 이름 변경 처리
+            fm = getattr(getattr(editor, "_editor", None), "_fm", None)
+            if fm is not None and hasattr(fm, "renamed"):
+                fm.renamed.connect(self._on_component_renamed)
             idx = self._tabs.addTab(editor, name)
             self._open_tabs[comp_id] = idx
             self._tabs.setCurrentIndex(idx)
