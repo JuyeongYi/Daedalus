@@ -128,6 +128,58 @@ class TestRenameComponent:
         rename_component(proj, skill, "bar")
         assert "my-hook" in skill.config.hooks  # hooks 키 비변경
 
+    # --- 동명-다른타입 크로스타입 오갱신 방지 (리뷰 FAIL 1 회귀) ---
+
+    def test_skill_rename_does_not_touch_agent_name_refs(self):
+        """스킬 "x"와 에이전트 "x"가 동명일 때, 스킬 rename이
+        ProceduralSkillConfig.agent(에이전트 이름 참조)를 오갱신하면 안 된다."""
+        proj = _make_project()
+        skill_x = _make_proc("x")
+        agent_x = _make_agent("x")
+        proj.skills.append(skill_x)
+        proj.agents.append(agent_x)
+
+        caller = _make_proc("caller")
+        caller.config = ProceduralSkillConfig(agent="x")  # 에이전트 "x" 참조
+        proj.skills.append(caller)
+
+        rename_component(proj, skill_x, "skill-renamed")
+        assert caller.config.agent == "x"  # 에이전트 참조 비변경
+        assert skill_x.name == "skill-renamed"
+
+    def test_agent_rename_does_not_touch_skill_name_refs(self):
+        """에이전트 "x"와 스킬 "x"가 동명일 때, 에이전트 rename이
+        AgentConfig.skills / ReferencePlacement.skill_name(스킬 이름 참조)을
+        오갱신하면 안 된다."""
+        proj = _make_project()
+        skill_x = _make_proc("x")
+        agent_x = _make_agent("x")
+        proj.skills.append(skill_x)
+        proj.agents.append(agent_x)
+
+        user_agent = _make_agent("user")
+        user_agent.config = AgentConfig(skills=["x"])  # 스킬 "x" 참조
+        proj.agents.append(user_agent)
+        proj.reference_placements.append(ReferencePlacement(skill_name="x"))
+
+        rename_component(proj, agent_x, "agent-renamed")
+        assert user_agent.config.skills == ["x"]  # 스킬 참조 비변경
+        assert proj.reference_placements[0].skill_name == "x"
+        assert agent_x.name == "agent-renamed"
+
+    def test_agent_rename_updates_procedural_agent_ref(self):
+        """에이전트 rename은 ProceduralSkillConfig.agent를 갱신해야 한다 (가드가
+        정상 경로를 막지 않는지 확인)."""
+        proj = _make_project()
+        agent = _make_agent("ag")
+        proj.agents.append(agent)
+        caller = _make_proc("caller")
+        caller.config = ProceduralSkillConfig(agent="ag")
+        proj.skills.append(caller)
+
+        rename_component(proj, agent, "new-ag")
+        assert caller.config.agent == "new-ag"
+
 
 # ---------------------------------------------------------------------------
 # remove_component 테스트
@@ -265,3 +317,40 @@ class TestRemoveComponent:
         log = remove_component(proj, skill)
         assert isinstance(log, list)
         assert len(log) > 0
+
+    # --- 동명-다른타입 오삭제 방지 + 삭제 후 검증 무크래시 (리뷰 FAIL 1/2 회귀) ---
+
+    def test_agent_remove_preserves_same_name_skill_ref_placements(self):
+        """에이전트 "x" 삭제 시 동명 스킬 "x"의 ReferencePlacement는 보존되어야 한다."""
+        proj = _make_project()
+        ref_x = ReferenceSkill(name="x", description="")
+        agent_x = _make_agent("x")
+        proj.skills.append(ref_x)
+        proj.agents.append(agent_x)
+        proj.reference_placements.append(ReferencePlacement(skill_name="x"))
+
+        remove_component(proj, agent_x)
+        assert len(proj.reference_placements) == 1  # 스킬 "x"의 배치 보존
+        assert proj.reference_placements[0].skill_name == "x"
+
+    def test_validate_project_no_crash_after_agent_remove_with_team_spawn(self):
+        """에이전트 삭제로 TeammateSpec.agent_ref가 None이 된 뒤
+        Validator.validate_project가 크래시 없이 동작해야 한다 (리뷰 FAIL 2)."""
+        from daedalus.model.validation import Validator
+
+        proj = _make_project()
+        agent = _make_agent("my-ag")
+        proj.agents.append(agent)
+
+        deleg = TeamSpawnDef(name="team1", description="")
+        deleg.teammates.append(TeammateSpec(agent_ref=agent, count=1))
+        proj.delegations.append(deleg)
+
+        remove_component(proj, agent)
+        assert deleg.teammates[0].agent_ref is None
+
+        # 크래시 없이 검증 결과를 반환해야 한다 (None은 dangling이 아니라
+        # 비워진 참조 — empty_delegation 등 다른 규칙이 다룬다)
+        errors = Validator.validate_project(proj)
+        assert isinstance(errors, list)
+        assert not any(e.rule == "dangling_teammate_ref" for e in errors)

@@ -88,6 +88,12 @@ def rename_component(
 
     ComponentConfig.hooks 키는 hook_library의 HookDef.name 참조로 컴포넌트 이름과
     무관하므로 건드리지 않는다.
+
+    각 참조는 **참조 대상 타입별로 분리**해 갱신한다 — 동명-다른타입 컴포넌트
+    (예: 스킬 "x"와 에이전트 "x")가 공존해도 무관 참조를 오갱신하지 않는다:
+    - ProceduralSkillConfig.agent는 에이전트 이름 참조 → component가 에이전트일 때만
+    - AgentConfig.skills는 스킬 이름 참조 → component가 스킬일 때만
+    - ReferencePlacement.skill_name은 스킬 이름 참조 → component가 스킬일 때만
     """
     from daedalus.model.plugin.config import AgentConfig, ProceduralSkillConfig
 
@@ -95,30 +101,36 @@ def rename_component(
     if old_name == new_name:
         return
 
+    is_agent = isinstance(component, AgentDefinition)
+    is_skill = isinstance(component, Skill)
+
     # 1) 이름 자체 변경
     component.name = new_name  # type: ignore[union-attr]
 
-    # 2) ProceduralSkillConfig.agent 갱신
-    for skill in project.skills:
-        cfg = getattr(skill, "config", None)
-        if isinstance(cfg, ProceduralSkillConfig) and cfg.agent == old_name:
-            cfg.agent = new_name
+    # 2) ProceduralSkillConfig.agent 갱신 — 에이전트 이름 참조
+    if is_agent:
+        for skill in project.skills:
+            cfg = getattr(skill, "config", None)
+            if isinstance(cfg, ProceduralSkillConfig) and cfg.agent == old_name:
+                cfg.agent = new_name
 
-    # 3) AgentConfig.skills 갱신
-    for agent in project.agents:
-        cfg = getattr(agent, "config", None)
-        if isinstance(cfg, AgentConfig) and isinstance(cfg.skills, list):
-            cfg.skills = [new_name if s == old_name else s for s in cfg.skills]
+    # 3) AgentConfig.skills 갱신 — 스킬 이름 참조
+    if is_skill:
+        for agent in project.agents:
+            cfg = getattr(agent, "config", None)
+            if isinstance(cfg, AgentConfig) and isinstance(cfg.skills, list):
+                cfg.skills = [new_name if s == old_name else s for s in cfg.skills]
 
-    # 4) ReferencePlacement.skill_name 갱신 — project + 각 agent
-    for rp in project.reference_placements:
-        if rp.skill_name == old_name:
-            rp.skill_name = new_name
-
-    for agent in project.agents:
-        for rp in getattr(agent, "reference_placements", []):
+    # 4) ReferencePlacement.skill_name 갱신 — 스킬 이름 참조 (project + 각 agent)
+    if is_skill:
+        for rp in project.reference_placements:
             if rp.skill_name == old_name:
                 rp.skill_name = new_name
+
+        for agent in project.agents:
+            for rp in getattr(agent, "reference_placements", []):
+                if rp.skill_name == old_name:
+                    rp.skill_name = new_name
 
 
 def remove_component(
@@ -134,6 +146,7 @@ def remove_component(
     - project.graph 에서 해당 skill_ref를 가진 SimpleState + 연결 전이 제거
     - project.graph_layout 에서 해당 state.id 제거
     - project.reference_placements + 각 agent reference_placements에서 skill_name 일치 항목 제거
+      (skill_name은 스킬 이름 참조 — component가 스킬일 때만, 동명-다른타입 오삭제 방지)
     - 다른 스킬/에이전트 FSM의 skill_ref(SimpleState/Transition.skill_ref)가 삭제 대상이면 None으로
     - 위임 정의의 agent_ref가 삭제 대상 에이전트면 None으로
     - 에이전트 삭제 시 로컬 스킬은 소유 구조상 자동 소멸 (별도 목록 없음)
@@ -185,19 +198,21 @@ def remove_component(
             project.graph_layout.pop(s.id, None)
         log.append(f"캔버스 노드 {len(states_to_remove)}개 + 연결 전이 제거됨")
 
-    # --- 3) reference_placements 정리 ---
-    def _clean_ref_placements(placements: list) -> int:
-        before = len(placements)
-        to_remove = [rp for rp in placements if rp.skill_name == comp_name]
-        for rp in to_remove:
-            placements.remove(rp)
-        return before - len(placements)
+    # --- 3) reference_placements 정리 — skill_name은 스킬 이름 참조이므로
+    #     component가 스킬일 때만 (동명 에이전트/위임 삭제 시 오삭제 방지) ---
+    if isinstance(component, Skill):
+        def _clean_ref_placements(placements: list) -> int:
+            before = len(placements)
+            to_remove = [rp for rp in placements if rp.skill_name == comp_name]
+            for rp in to_remove:
+                placements.remove(rp)
+            return before - len(placements)
 
-    n_rp = _clean_ref_placements(project.reference_placements)
-    for agent in project.agents:
-        n_rp += _clean_ref_placements(getattr(agent, "reference_placements", []))
-    if n_rp > 0:
-        log.append(f"참조 배치 {n_rp}개 제거됨")
+        n_rp = _clean_ref_placements(project.reference_placements)
+        for agent in project.agents:
+            n_rp += _clean_ref_placements(getattr(agent, "reference_placements", []))
+        if n_rp > 0:
+            log.append(f"참조 배치 {n_rp}개 제거됨")
 
     # --- 4) 다른 FSM의 skill_ref → None 으로 ---
     def _nullify_skill_refs_in_machine(sm: StateMachine) -> int:

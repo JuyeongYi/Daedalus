@@ -1072,7 +1072,9 @@ class Validator:
         for d in project.delegations:
             refs: list = []
             if isinstance(d, TeamSpawnDef):
-                refs = [tm.agent_ref for tm in d.teammates]
+                # remove_component가 삭제된 에이전트의 agent_ref를 None으로 만들 수 있다.
+                # None은 dangling이 아니라 '비워진 참조' — empty_delegation 규칙이 다룬다.
+                refs = [tm.agent_ref for tm in d.teammates if tm.agent_ref is not None]
             elif isinstance(d, DynamicWorkflowDef):
                 refs = [ph.agent_ref for ph in d.phases if ph.agent_ref is not None]
             for ref in refs:
