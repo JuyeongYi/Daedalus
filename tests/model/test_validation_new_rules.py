@@ -266,6 +266,40 @@ def test_trigger_known_event_passes_for_procedural_skill():
     assert not any(e.rule == "trigger_unknown_event" for e in errors)
 
 
+def test_trigger_call_agents_event_passes_for_procedural_skill():
+    """call_agents 이벤트도 합법적 출력 — Agent Call 포트에서 그은 전이가
+    trigger_unknown_event 오탐을 내면 안 된다 (사용자 버그 신고 회귀)."""
+    skill = _procedural("my-skill", transfer_on=[EventDef("done")])
+    skill.call_agents.append(EventDef("new_event"))
+    state = SimpleState(name="node", skill_ref=skill)
+    next_s = SimpleState(name="next")
+    t = Transition(
+        source=state,
+        target=next_s,
+        trigger=CompletionEvent(name="new_event"),  # Agent Call 포트 이벤트
+    )
+    sm = _sm([state, next_s], [t])
+    errors = Validator.validate(sm)
+    assert not any(e.rule == "trigger_unknown_event" for e in errors)
+
+
+def test_trigger_unknown_still_warns_with_call_agents_present():
+    """call_agents가 있어도 어느 집합에도 없는 이벤트는 여전히 경고."""
+    skill = _procedural("my-skill", transfer_on=[EventDef("done")])
+    skill.call_agents.append(EventDef("new_event"))
+    state = SimpleState(name="node", skill_ref=skill)
+    next_s = SimpleState(name="next")
+    t = Transition(
+        source=state,
+        target=next_s,
+        trigger=CompletionEvent(name="ghost"),
+    )
+    sm = _sm([state, next_s], [t])
+    errors = Validator.validate(sm)
+    matching = [e for e in errors if e.rule == "trigger_unknown_event"]
+    assert len(matching) == 1
+
+
 def test_trigger_unknown_event_warns_for_agent():
     agent = _agent_def("worker", exit_names=["ok", "err"])
     state = SimpleState(name="node", skill_ref=agent)

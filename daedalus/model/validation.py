@@ -600,7 +600,12 @@ class Validator:
                 # 주의: TransferSkill.output_events는 항상 []이므로 향후 분기에
                 # 추가하면 모든 trigger가 오탐이 된다 — 추가 금지.
                 if isinstance(ref, ProceduralSkill):
-                    known_events = set(ref.output_events)
+                    # transfer_on(output_events) + call_agents — 캔버스는 Agent Call
+                    # 포트에서도 전이를 만들므로(trigger=CompletionEvent(이벤트명))
+                    # call_agents 이벤트도 합법적 출력 이벤트 집합에 포함한다.
+                    known_events = set(ref.output_events) | {
+                        e.name for e in ref.call_agents
+                    }
                 elif isinstance(ref, AgentDefinition):
                     known_events = set(ref.output_events)
             elif isinstance(source, CompositeState):
