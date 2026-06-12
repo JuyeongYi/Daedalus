@@ -636,12 +636,18 @@ def _next_step_invoke_line(target_state, sm: StateMachine) -> str | None:
                 tgt_name = getattr(tgt_ref, "name", "")
                 cond = _next_step_condition(t)
                 inline_parts.append(
-                    f"위임 완료 후: [{cond}] → `{tgt_name}` 스킬을 인보크하라"
+                    f"위임 완료 후: [{cond}] → {_invoke_phrase(tgt_ref, tgt_name)}"
                 )
         if inline_parts:
             line += " (" + "; ".join(inline_parts) + ")"
         return line
-    # 스킬 placement
+    return _invoke_phrase(ref, name)
+
+
+def _invoke_phrase(ref, name: str) -> str:
+    """skill_ref 종류별 인보크 지시 문구 — 위임 노드를 '스킬'로 오라벨하지 않는다."""
+    if isinstance(ref, DelegationDef):
+        return f"`{name}` 위임 노드를 수행하라"
     return f"`{name}` 스킬을 인보크하라"
 
 

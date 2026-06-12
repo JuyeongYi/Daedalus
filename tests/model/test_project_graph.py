@@ -83,7 +83,8 @@ def test_graph_roundtrip_states_transitions_layout():
     assert tr.source.name == "a" and tr.target.name == "b"
     # skill_ref 2-pass 해소 — 역직렬화된 컴포넌트를 가리킨다
     sa2 = next(s for s in p2.graph.states if s.name == "a")
-    assert sa2.skill_ref is p2.skills[0]
+    a2 = next(s for s in p2.skills if s.name == "a")
+    assert sa2.skill_ref is a2
     # graph_layout 좌표 보존
     assert p2.graph_layout[sa2.id] == [10.0, 20.0]
 

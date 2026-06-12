@@ -114,7 +114,11 @@ from daedalus.model.plugin.tool import (
     Tool,
     UserDefinedTool,
 )
-from daedalus.model.project import PluginProject, ReferencePlacement
+from daedalus.model.project import (
+    PluginProject,
+    ReferencePlacement,
+    _make_project_graph,
+)
 
 FORMAT_VERSION = 1
 
@@ -663,7 +667,6 @@ def deserialize_project(
     if graph_data is not None:
         graph = _deser_machine(graph_data, reg, parent_bb=blackboard)
     else:
-        from daedalus.model.project import _make_project_graph
         graph = _make_project_graph()
 
     project = PluginProject(

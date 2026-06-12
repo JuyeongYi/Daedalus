@@ -286,8 +286,8 @@ class MainWindow(QMainWindow):
         self._project_vm.reference_links.clear()
 
         # 3) 새 프로젝트 로드 — set_project가 registry/scene 갱신
+        # (notify는 set_project → _load_project_graph 끝에서 1회 발화 — 중복 금지)
         self.set_project(project)
-        self._project_vm.notify()
 
     # --- 저장 / 열기 ---
 
