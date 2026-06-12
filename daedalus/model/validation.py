@@ -757,6 +757,14 @@ class Validator:
     # ------------------------------------------------------------------
 
     @staticmethod
+    def _graph_has_placements(graph: StateMachine) -> bool:
+        """프로젝트 그래프에 EntryPoint 외 노드(placement)가 하나라도 있으면 True.
+
+        빈 그래프(시작점만)는 검증을 스킵해 경고 폭주를 막는다.
+        """
+        return any(not isinstance(s, EntryPoint) for s in graph.states)
+
+    @staticmethod
     def validate_project(project) -> list[ValidationError]:
         """프로젝트 전체 검증 — 모든 FSM의 머신 수준 규칙 + 프로젝트 수준 규칙."""
         errors: list[ValidationError] = []
@@ -770,6 +778,11 @@ class Validator:
             errors.extend(Validator._validate_machine(
                 agent.fsm, path=(f"agent:{agent.name}",),
             ))
+        # 프로젝트 워크플로 그래프 — placement가 하나라도 있을 때만 머신 규칙 적용.
+        # 빈 캔버스(EntryPoint 하나뿐)는 검증 스킵 (경고 폭주 방지).
+        graph = getattr(project, "graph", None)
+        if graph is not None and Validator._graph_has_placements(graph):
+            errors.extend(Validator._validate_machine(graph, path=("project",)))
         errors.extend(Validator._check_dangling_delegation_refs(project))
         errors.extend(Validator._check_unregistered_delegations(project))
         # 신규 프로젝트 수준 규칙

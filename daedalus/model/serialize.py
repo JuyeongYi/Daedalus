@@ -114,7 +114,11 @@ from daedalus.model.plugin.tool import (
     Tool,
     UserDefinedTool,
 )
-from daedalus.model.project import PluginProject, ReferencePlacement
+from daedalus.model.project import (
+    PluginProject,
+    ReferencePlacement,
+    _make_project_graph,
+)
 
 FORMAT_VERSION = 1
 
@@ -147,6 +151,10 @@ def serialize_project(project: PluginProject) -> dict:
         "tool_shelf": [_ser_tool(t) for t in project.tool_shelf],
         "hook_library": [_ser_hook(h) for h in project.hook_library],
         "blackboard": _ser_blackboard(project.blackboard),
+        # 프로젝트 워크플로 그래프 — 노드/전이를 정식 FSM으로 왕복 (버그 1 수정).
+        # skill_ref는 _ser_machine이 component id로 평탄화 → 역직렬화 2-pass가 해소.
+        "graph": _ser_machine(project.graph),
+        "graph_layout": {k: list(v) for k, v in project.graph_layout.items()},
     }
 
 
@@ -650,6 +658,17 @@ def deserialize_project(
     skills = [_deser_skill(s, reg) for s in data.get("skills", [])]
     agents = [_deser_agent(a, reg) for a in data.get("agents", [])]
 
+    blackboard = _deser_blackboard(data.get("blackboard"), parent=None)
+
+    # 프로젝트 그래프 — 노드/전이를 정식 FSM으로 복원. skill_ref(component id)는
+    # 이미 pass1에서 등록된 skills/agents를 가리키며 pass2 pending이 해소한다.
+    # 하위 호환: "graph" 키 부재(구버전 파일) → default와 동일한 빈 그래프 생성.
+    graph_data = data.get("graph")
+    if graph_data is not None:
+        graph = _deser_machine(graph_data, reg, parent_bb=blackboard)
+    else:
+        graph = _make_project_graph()
+
     project = PluginProject(
         name=data.get("name", ""),
         skills=skills,
@@ -660,7 +679,9 @@ def deserialize_project(
         delegations=[_deser_delegation(d, reg) for d in data.get("delegations", [])],
         tool_shelf=[_deser_tool(t) for t in data.get("tool_shelf", [])],
         hook_library=[_deser_hook(h) for h in data.get("hook_library", [])],
-        blackboard=_deser_blackboard(data.get("blackboard"), parent=None),
+        blackboard=blackboard,
+        graph=graph,
+        graph_layout={k: list(v) for k, v in data.get("graph_layout", {}).items()},
     )
 
     # ── pass 2: 모든 참조(state/skill/agent id) 해소 ──

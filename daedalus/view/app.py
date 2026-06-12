@@ -212,6 +212,61 @@ class MainWindow(QMainWindow):
         # HookPresetPicker가 이 프로젝트의 hook_library 이름을 동적으로 표시하도록 연결.
         from daedalus.view.widgets.preset_picker import set_hook_name_provider
         set_hook_name_provider(lambda p=project: [h.name for h in p.hook_library])
+        # 프로젝트 그래프(워크플로 백킹 머신) → 캔버스 VM 재구성 (버그 1: 저장된
+        # 노드 연결 복원). EntryPoint 마커 + placement 노드 + 전이를 graph_layout
+        # 좌표로 배치한다. _load_agent_fsm 미러링.
+        self._load_project_graph()
+
+    def _load_project_graph(self) -> None:
+        """project.graph + graph_layout으로부터 캔버스 VM(state_vms/transition_vms)을
+        재구성한다. 기존 VM은 비우고 새로 채운다 (중복 방지). notify로 캔버스 갱신.
+        """
+        from daedalus.model.fsm.pseudo import EntryPoint
+        from daedalus.view.viewmodel.state_vm import StateViewModel, TransitionViewModel
+
+        if self._project is None:
+            return
+        graph = self._project.graph
+
+        # 기존 캔버스 VM 비우기 (set_project 재호출 시 중복 누적 방지)
+        self._project_vm.state_vms.clear()
+        self._project_vm.transition_vms.clear()
+
+        entries = [s for s in graph.states if isinstance(s, EntryPoint)]
+        others = [s for s in graph.states if not isinstance(s, EntryPoint)]
+        ordered = entries + others
+
+        saved = self._project.graph_layout  # 키: state.id (안정 식별자)
+        x = 0.0
+        vm_map: dict[str, StateViewModel] = {}
+        for state in ordered:
+            if state.id in saved:
+                sx, sy = saved[state.id]
+                vm = StateViewModel(model=state, x=sx, y=sy)
+            else:
+                vm = StateViewModel(model=state, x=x, y=100.0)
+            self._project_vm.state_vms.append(vm)
+            vm_map[state.id] = vm
+            x += 220.0
+
+        for trans in graph.transitions:
+            src_vm = vm_map.get(trans.source.id)
+            tgt_vm = vm_map.get(trans.target.id)
+            if src_vm and tgt_vm:
+                tvm = TransitionViewModel(
+                    model=trans, source_vm=src_vm, target_vm=tgt_vm
+                )
+                self._project_vm.transition_vms.append(tvm)
+        self._project_vm.notify()
+
+    def _save_graph_layout(self) -> None:
+        """캔버스 노드 위치를 project.graph_layout에 기록. 키는 state.id."""
+        if self._project is None:
+            return
+        layout: dict[str, list[float]] = {}
+        for svm in self._project_vm.state_vms:
+            layout[svm.model.id] = [svm.x, svm.y]
+        self._project.graph_layout = layout
 
     def load_project(self, project: PluginProject) -> None:
         """기존 세션을 정리하고 새 프로젝트를 로드한다.
@@ -231,8 +286,8 @@ class MainWindow(QMainWindow):
         self._project_vm.reference_links.clear()
 
         # 3) 새 프로젝트 로드 — set_project가 registry/scene 갱신
+        # (notify는 set_project → _load_project_graph 끝에서 1회 발화 — 중복 금지)
         self.set_project(project)
-        self._project_vm.notify()
 
     # --- 저장 / 열기 ---
 
@@ -246,6 +301,8 @@ class MainWindow(QMainWindow):
     def _save_to_path(self, path: str) -> None:
         if self._project is None:
             return
+        # 저장 직전 캔버스 좌표를 graph_layout에 반영 (버그 1: 좌표 왕복)
+        self._save_graph_layout()
         try:
             data = serialize_project(self._project)
             with open(path, "w", encoding="utf-8") as f:

@@ -335,6 +335,14 @@ class FsmScene(QGraphicsScene):
         item = self.itemAt(pos, self.views()[0].transform()) if self.views() else None
         menu = QMenu()
         if isinstance(item, StateNodeItem):
+            from daedalus.model.fsm.pseudo import EntryPoint as _EP
+            if isinstance(item.state_vm.model, _EP):
+                # 프로젝트 그래프 시작점(EntryPoint)은 삭제 불가 — 안내만.
+                act = menu.addAction("삭제 불가 (워크플로 시작점)")
+                if act is not None:
+                    act.setEnabled(False)
+                menu.exec(event.screenPos())
+                return
             delete_act = menu.addAction(f"'{item.state_vm.model.name}' 삭제")
             if menu.exec(event.screenPos()) == delete_act:
                 self._delete_state(item.state_vm)
@@ -410,6 +418,10 @@ class FsmScene(QGraphicsScene):
         self._project_vm.execute(CreateStateCmd(self._project_vm, vm, fsm=self._target_fsm))
 
     def _delete_state(self, state_vm: StateViewModel) -> None:
+        from daedalus.model.fsm.pseudo import EntryPoint as _EP
+        # EntryPoint(워크플로 시작점)는 삭제 불가 — 모든 경로에서 방어.
+        if isinstance(state_vm.model, _EP):
+            return
         ref = getattr(state_vm.model, "skill_ref", None)
         # 에이전트 노드 삭제 시: caller_contracts가 있으면 경고 + 정리
         if isinstance(ref, AgentDefinition) and ref.caller_contracts:
@@ -493,6 +505,10 @@ class FsmScene(QGraphicsScene):
 
     def set_project(self, project: PluginProject) -> None:
         self._project = project
+        # 프로젝트 캔버스의 노드/전이를 정식 FSM(project.graph)에 동기화하도록 배선
+        # (버그 3: 각 노드가 정식 상태여야 한다). AgentFsmScene은 _target_fsm을
+        # 에이전트 FSM으로 별도 설정하므로 이 메서드를 거치지 않는다.
+        self._target_fsm = project.graph
 
     def _get_transfer_skills(self) -> list:
         """프로젝트에서 TransferSkill 목록을 반환."""

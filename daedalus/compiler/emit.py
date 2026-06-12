@@ -602,6 +602,91 @@ _DELEGATION_PREAMBLE = (
 )
 
 
+# ─────────────────────────── 프로젝트 그래프: 다음 단계 ───────────────────────────
+
+
+def _next_step_condition(t) -> str:
+    """프로젝트 그래프 전이의 조건 문구. 무가드 전이는 '무조건'."""
+    cond = _transition_condition(t)
+    return cond if cond else "무조건"
+
+
+def _next_step_invoke_line(target_state, sm: StateMachine) -> str | None:
+    """전이 타깃 placement에 대한 한 줄 지시문.
+
+    - 스킬 placement: "[조건] → `<skill>` 스킬을 인보크하라"
+    - 에이전트 placement: "[조건] → 에이전트 `X`에게 위임하라" + 그 에이전트
+      placement의 outgoing을 한 단계 인라인("위임 완료 후: …")
+    EntryPoint 등 skill_ref 없는 타깃은 None(스킵).
+    """
+    ref = getattr(target_state, "skill_ref", None)
+    if ref is None:
+        return None
+    name = getattr(ref, "name", "")
+    if isinstance(ref, AgentDefinition):
+        line = f"에이전트 `{name}`에게 위임하라"
+        # 에이전트 placement의 outgoing을 한 단계 인라인 (별도 컨텍스트라 호출자
+        # 쪽에 후속 지시를 둔다 — 에이전트 .md는 호출자 지침을 담을 수 없음).
+        inline_parts: list[str] = []
+        for t in sm.transitions:
+            if t.source is target_state:
+                tgt_ref = getattr(t.target, "skill_ref", None)
+                if tgt_ref is None or isinstance(tgt_ref, AgentDefinition):
+                    continue
+                tgt_name = getattr(tgt_ref, "name", "")
+                cond = _next_step_condition(t)
+                inline_parts.append(
+                    f"위임 완료 후: [{cond}] → {_invoke_phrase(tgt_ref, tgt_name)}"
+                )
+        if inline_parts:
+            line += " (" + "; ".join(inline_parts) + ")"
+        return line
+    return _invoke_phrase(ref, name)
+
+
+def _invoke_phrase(ref, name: str) -> str:
+    """skill_ref 종류별 인보크 지시 문구 — 위임 노드를 '스킬'로 오라벨하지 않는다."""
+    if isinstance(ref, DelegationDef):
+        return f"`{name}` 위임 노드를 수행하라"
+    return f"`{name}` 스킬을 인보크하라"
+
+
+def _next_steps_section(component, project) -> list[str]:
+    """project.graph에서 component placement의 outgoing 전이를 모아 "## 다음 단계"
+    단락 블록을 생성한다 (버그 2). outgoing이 없으면 빈 목록(단락 생략).
+
+    component는 전역 스킬 객체. 그래프에서 skill_ref가 identity로 일치하는
+    SimpleState placement를 찾고, 그 placement에서 나가는 전이를 서술한다.
+    """
+    graph = getattr(project, "graph", None)
+    if graph is None:
+        return []
+    # 이 컴포넌트의 placement(들) — identity 비교
+    placements = [
+        s for s in graph.states
+        if getattr(s, "skill_ref", None) is component
+    ]
+    if not placements:
+        return []
+    lines: list[str] = []
+    for placement in placements:
+        for t in graph.transitions:
+            if t.source is not placement:
+                continue
+            invoke = _next_step_invoke_line(t.target, graph)
+            if invoke is None:
+                continue
+            cond = _next_step_condition(t)
+            lines.append(f"- [{cond}] → {invoke}")
+    if not lines:
+        return []
+    return [
+        "## 다음 단계",
+        "이 스킬 완료 후 다음 조건에 따라 워크플로를 이어가라:",
+        "\n".join(lines),
+    ]
+
+
 # ─────────────────────────── tool_shelf 참조 단락 ───────────────────────────
 
 
@@ -683,6 +768,11 @@ def compile_skill(
                 blocks.extend(_delegation_section(ref))
         if project is not None:
             blocks.extend(_tool_shelf_section(project))
+
+    # 프로젝트 그래프 기반 "다음 단계" (버그 2) — 전역 스킬에 한함.
+    # 로컬 스킬(에이전트 소유)은 프로젝트 그래프 placement 대상이 아니다.
+    if project is not None and not local:
+        blocks.extend(_next_steps_section(skill, project))
 
     return _join_blocks(blocks)
 
