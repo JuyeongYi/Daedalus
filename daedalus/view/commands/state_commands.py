@@ -51,6 +51,10 @@ class DeleteStateCmd(Command):
         self._project_vm = project_vm
         self._state_vm = state_vm
         self._fsm = fsm
+        # undo 복원용 — execute 시점에 기록
+        self._was_final: bool = False
+        self._final_index: int = -1  # final_states 내 위치
+        self._was_initial: bool = False
 
     @property
     def description(self) -> str:
@@ -61,14 +65,41 @@ class DeleteStateCmd(Command):
         return f'delete_state("{self._state_vm.model.name}")'
 
     def execute(self) -> None:
+        model = self._state_vm.model
+        if self._fsm is not None:
+            # final_states 상태 기록 후 제거
+            if model in self._fsm.final_states:
+                self._was_final = True
+                self._final_index = self._fsm.final_states.index(model)
+                self._fsm.final_states.remove(model)
+            else:
+                self._was_final = False
+                self._final_index = -1
+            # initial_state 상태 기록 후 None으로 처리
+            # (StateMachine.initial_state 타입은 State — None 불허이므로 None 대입하지 않음.
+            #  dangling 참조는 undo로 되돌릴 때까지 검증기가 잡아준다.
+            #  undo가 정확히 원복하므로 일관성 유지.)
+            self._was_initial = (self._fsm.initial_state is model)
+            # states에서 제거
+            if model in self._fsm.states:
+                self._fsm.states.remove(model)
         self._project_vm.remove_state_vm(self._state_vm)
-        if self._fsm is not None and self._state_vm.model in self._fsm.states:
-            self._fsm.states.remove(self._state_vm.model)
 
     def undo(self) -> None:
+        model = self._state_vm.model
+        if self._fsm is not None:
+            if model not in self._fsm.states:
+                self._fsm.states.append(model)
+            # final_states 원래 위치에 복원
+            if self._was_final and model not in self._fsm.final_states:
+                if 0 <= self._final_index <= len(self._fsm.final_states):
+                    self._fsm.final_states.insert(self._final_index, model)
+                else:
+                    self._fsm.final_states.append(model)
+            # initial_state 복원
+            if self._was_initial:
+                self._fsm.initial_state = model
         self._project_vm.add_state_vm(self._state_vm)
-        if self._fsm is not None and self._state_vm.model not in self._fsm.states:
-            self._fsm.states.append(self._state_vm.model)
 
 
 class MoveStateCmd(Command):

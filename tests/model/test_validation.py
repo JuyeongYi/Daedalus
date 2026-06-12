@@ -119,6 +119,28 @@ def test_final_state_not_in_states():
     assert any(e.rule == "final_states_in_states" for e in errors)
 
 
+def test_final_state_message_contains_state_name():
+    """final_states_in_states 메시지에 상태 이름이 포함된다."""
+    s1 = SimpleState(name="A")
+    s2 = SimpleState(name="MissingEnd")
+    sm = StateMachine(name="test", states=[s1], initial_state=s1, final_states=[s2])
+    errors = Validator.validate(sm)
+    errs = [e for e in errors if e.rule == "final_states_in_states"]
+    assert errs, "final_states_in_states 에러가 있어야 한다"
+    assert "MissingEnd" in errs[0].message, "메시지에 상태 이름이 포함되어야 한다"
+
+
+def test_initial_state_message_contains_state_name():
+    """initial_state_in_states 메시지에 상태 이름이 포함된다."""
+    s1 = SimpleState(name="A")
+    s2 = SimpleState(name="MissingStart")
+    sm = StateMachine(name="test", states=[s1], initial_state=s2)
+    errors = Validator.validate(sm)
+    errs = [e for e in errors if e.rule == "initial_state_in_states"]
+    assert errs, "initial_state_in_states 에러가 있어야 한다"
+    assert "MissingStart" in errs[0].message, "메시지에 상태 이름이 포함되어야 한다"
+
+
 # -- pseudo_state_hooks --
 
 def test_choice_state_with_hooks_warns():

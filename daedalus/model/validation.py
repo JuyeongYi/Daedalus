@@ -143,7 +143,11 @@ class Validator:
         if sm.states and sm.initial_state not in sm.states:
             return [ValidationError(
                 rule="initial_state_in_states",
-                message=f"'{sm.name}': initial_state '{sm.initial_state.name}'이 states에 포함되지 않습니다.",
+                message=(
+                    f"'{sm.name}': 시작 상태 '{sm.initial_state.name}'이 "
+                    f"삭제되었거나 이 FSM에 속하지 않습니다. "
+                    f"FSM 편집기에서 시작 상태를 다시 지정하세요."
+                ),
                 source=sm.name,
                 subject=sm,
                 path=path,
@@ -160,7 +164,11 @@ class Validator:
             if fs not in sm.states:
                 errors.append(ValidationError(
                     rule="final_states_in_states",
-                    message=f"'{sm.name}': final_state '{fs.name}'이 states에 포함되지 않습니다.",
+                    message=(
+                        f"'{sm.name}': 종료 상태 '{fs.name}'이 "
+                        f"삭제되었거나 이 FSM에 속하지 않습니다. "
+                        f"해당 상태를 다시 추가하거나 종료 상태 목록에서 제거하세요."
+                    ),
                     source=sm.name,
                     subject=fs,
                     path=path,
