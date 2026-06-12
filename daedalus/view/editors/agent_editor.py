@@ -142,6 +142,9 @@ class AgentEditor(QWidget):
         ]
         for s in orphans:
             fsm.states.remove(s)
+            # final_states 정리 — dangling 참조 방지
+            if s in fsm.final_states:
+                fsm.final_states.remove(s)
             # 연결된 전이도 제거
             fsm.transitions = [
                 t for t in fsm.transitions if t.source is not s and t.target is not s
