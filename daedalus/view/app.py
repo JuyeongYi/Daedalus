@@ -682,7 +682,10 @@ class MainWindow(QMainWindow):
             self._focus_in_project_canvas(subject)
 
     def _focus_in_project_canvas(self, subject: object) -> None:
-        """프로젝트 FSM 캔버스(탭 0)에서 subject와 identity 일치하는 노드를 선택+센터링."""
+        """프로젝트 FSM 캔버스(탭 0)에서 subject와 identity 일치하는 노드를 선택+센터링.
+
+        subject가 캔버스에 없으면(삭제된 노드 등) 상태바에 안내를 표시하고 no-op.
+        """
         self._tabs.setCurrentIndex(_FSM_TAB_INDEX)
         if self._fsm_scene is None:
             return
@@ -696,9 +699,18 @@ class MainWindow(QMainWindow):
                 elif hasattr(view, "ensureVisible"):
                     view.ensureVisible(node_item)  # type: ignore[union-attr]
                 return
+        # subject가 캔버스에 없음 — 삭제된 노드일 수 있음
+        name = getattr(subject, "name", None)
+        if name:
+            self._status_label.setText(
+                f"'{name}' 노드가 캔버스에 없습니다 (이미 삭제되었을 수 있습니다)."
+            )
 
     def _focus_in_agent_tab(self, agent_name: str, subject: object) -> None:
-        """에이전트 탭이 열려 있으면 해당 노드를 포커스, 없으면 상태바 안내."""
+        """에이전트 탭이 열려 있으면 해당 노드를 포커스, 없으면 상태바 안내.
+
+        subject가 캔버스에 없으면(삭제된 노드 등) 상태바에 안내를 표시하고 no-op.
+        """
         from daedalus.view.editors.agent_editor import AgentEditor
         for i in range(self._tabs.count()):
             widget = self._tabs.widget(i)
@@ -717,6 +729,13 @@ class MainWindow(QMainWindow):
                                 if view is not None and hasattr(view, "centerOn"):
                                     view.centerOn(node_item)
                                 return
+                    # 탭은 열려있지만 subject를 찾지 못함 — 삭제된 노드일 수 있음
+                    name = getattr(subject, "name", None)
+                    if name:
+                        self._status_label.setText(
+                            f"'{name}' 노드가 에이전트 '{agent_name}' 캔버스에 없습니다 "
+                            f"(이미 삭제되었을 수 있습니다)."
+                        )
                     return
         # 탭이 열려 있지 않음
         self._status_label.setText(

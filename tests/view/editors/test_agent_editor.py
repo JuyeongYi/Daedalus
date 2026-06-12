@@ -226,6 +226,32 @@ def test_deleted_default_transition_stays_deleted(qapp):
     editor2._graph_scene.close()
 
 
+def test_migrate_fsm_removes_orphan_from_final_states(qapp):
+    """_migrate_fsm: skill_ref 없는 SimpleState가 final_states에 있어도 제거된다."""
+    from daedalus.model.fsm.machine import StateMachine
+    from daedalus.model.fsm.pseudo import EntryPoint, ExitPoint
+    from daedalus.model.fsm.state import SimpleState
+    from daedalus.model.plugin.agent import AgentDefinition
+    from daedalus.view.editors.agent_editor import AgentEditor
+
+    entry = EntryPoint(name="entry")
+    orphan = SimpleState(name="orphan")  # skill_ref=None — 구버전 잔재
+    exit_done = ExitPoint(name="done")
+    fsm = StateMachine(
+        name="test_fsm",
+        states=[entry, orphan, exit_done],
+        initial_state=entry,
+        final_states=[orphan, exit_done],  # orphan이 final_states에 포함된 상황
+    )
+    agent = AgentDefinition(fsm=fsm, name="test-agent", description="")
+
+    editor = AgentEditor(agent)  # _migrate_fsm 내부에서 호출됨
+
+    assert orphan not in fsm.states, "orphan이 states에서 제거되어야 한다"
+    assert orphan not in fsm.final_states, "orphan이 final_states에서도 제거되어야 한다"
+    assert exit_done in fsm.final_states, "exit_done은 final_states에 남아있어야 한다"
+
+
 def test_agent_fsm_scene_delete_key_preserves_last_exit_point_in_multi_select(qapp):
     """두 개 ExitPoint를 모두 선택해 Delete해도 마지막 하나는 살아남아야 한다."""
     from PyQt6.QtCore import Qt
