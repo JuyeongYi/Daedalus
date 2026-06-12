@@ -1,7 +1,7 @@
 # daedalus/view/panels/registry_panel.py
 from __future__ import annotations
 
-from PyQt6.QtCore import QMimeData, Qt, pyqtSignal
+from PyQt6.QtCore import QMimeData, QPoint, Qt, pyqtSignal
 from PyQt6.QtGui import QColor, QDrag
 from PyQt6.QtWidgets import (
     QAbstractItemView,
@@ -9,6 +9,7 @@ from PyQt6.QtWidgets import (
     QLabel,
     QListWidget,
     QListWidgetItem,
+    QMenu,
     QPushButton,
     QVBoxLayout,
     QWidget,
@@ -65,6 +66,7 @@ class _RegistrySection(QWidget):
 
     add_requested = pyqtSignal()
     item_double_clicked = pyqtSignal(object)
+    delete_requested = pyqtSignal(object)  # component
 
     def __init__(self, label: str, color: QColor, no_place: bool = False, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -92,6 +94,8 @@ class _RegistrySection(QWidget):
         self._list.setMinimumHeight(30)
         self._list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self._list.doubleClicked.connect(self._on_double_click)
+        self._list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self._list.customContextMenuRequested.connect(self._on_context_menu)
         lay.addWidget(self._list)
 
     def clear(self) -> None:
@@ -131,12 +135,26 @@ class _RegistrySection(QWidget):
             if comp is not None:
                 self.item_double_clicked.emit(comp)
 
+    def _on_context_menu(self, pos: QPoint) -> None:
+        item = self._list.itemAt(pos)
+        if item is None:
+            return
+        comp = item.data(_ROLE_COMPONENT)
+        if comp is None:
+            return
+        menu = QMenu(self)
+        delete_action = menu.addAction("삭제")
+        if delete_action is not None:
+            delete_action.triggered.connect(lambda: self.delete_requested.emit(comp))
+        menu.exec(self._list.mapToGlobal(pos))
+
 
 class RegistryPanel(QWidget):
     """스킬/에이전트 레지스트리 팔레트."""
 
     component_double_clicked = pyqtSignal(object)
     new_component_requested = pyqtSignal(str)  # kind: "procedural"|"declarative"|"transfer"|"agent"|"delegation_*"
+    component_delete_requested = pyqtSignal(object)  # component
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -158,6 +176,7 @@ class RegistryPanel(QWidget):
         for kind, section in self._sections.items():
             section.add_requested.connect(lambda k=kind: self.new_component_requested.emit(k))
             section.item_double_clicked.connect(self.component_double_clicked)
+            section.delete_requested.connect(self.component_delete_requested)
             layout.addWidget(section)
 
         layout.addStretch()

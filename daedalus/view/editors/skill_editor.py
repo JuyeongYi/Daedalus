@@ -155,6 +155,8 @@ class _FrontmatterPanel(QScrollArea):
     # 텍스트 키스트로크 전용 채널 — description / when_to_use 타이핑.
     # 무거운 structure 리스너를 우회하기 위해 별도 시그널로 분리한다.
     content_changed = pyqtSignal()
+    # 이름 변경 시 발화 — (component, old_name, new_name). 중복 방지 및 참조 갱신용.
+    renamed = pyqtSignal(object, str, str)
 
     def __init__(
         self,
@@ -476,7 +478,19 @@ class _FrontmatterPanel(QScrollArea):
         self.changed.emit()
 
     def _save_name(self) -> None:
-        self._component.name = self._w_name.text().strip()
+        old_name = self._component.name
+        new_name = self._w_name.text().strip()
+        if not new_name:
+            # 빈 이름 — 원복
+            self._w_name.setText(old_name)
+            return
+        if new_name == old_name:
+            return
+        # 이름 변경 — renamed 시그널로 중복 검사/참조 갱신을 상위에 위임
+        self.renamed.emit(self._component, old_name, new_name)
+        # renamed 핸들러가 변경을 거부했으면 컴포넌트 이름이 old_name으로 유지됨.
+        # 위젯을 항상 컴포넌트 실제 이름과 동기화한다.
+        self._w_name.setText(self._component.name)
         self.changed.emit()
 
     def _save_desc(self) -> None:
