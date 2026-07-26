@@ -41,6 +41,8 @@ class ReferencePlacement:
 @dataclass
 class PluginProject:
     name: str
+    description: str = ""      # 플러그인 설명 — plugin.json description (빈 값이면 키 생략)
+    version: str = "0.1.0"     # 플러그인 버전 — plugin.json version (semver 문자열)
     skills: list[Skill] = field(default_factory=list)
     agents: list[AgentDefinition] = field(default_factory=list)
     reference_placements: list[ReferencePlacement] = field(default_factory=list)

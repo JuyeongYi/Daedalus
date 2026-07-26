@@ -1109,6 +1109,28 @@ def compile_schemas_json(project) -> str | None:
     return text
 
 
+# ─────────────────────────── plugin.json (매니페스트) ───────────────────────────
+
+
+def compile_plugin_manifest(project) -> str:
+    """프로젝트 → .claude-plugin/plugin.json 텍스트 (LF, 결정적, 항상 생성).
+
+    키 순서 고정: name → description(빈 문자열이면 키 생략) → version.
+    LF·UTF-8 보장 텍스트(끝 개행 1개). json.loads 왕복 가능.
+    """
+    manifest: dict[str, Any] = {"name": getattr(project, "name", "")}
+    description = getattr(project, "description", "") or ""
+    if description:
+        manifest["description"] = description
+    manifest["version"] = getattr(project, "version", "0.1.0")
+
+    text = json.dumps(manifest, ensure_ascii=False, indent=2)
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+    if not text.endswith("\n"):
+        text += "\n"
+    return text
+
+
 # ─────────────────────────── 블록 결합 ───────────────────────────
 
 

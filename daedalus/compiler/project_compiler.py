@@ -2,6 +2,7 @@
 """프로젝트 컴파일 — 게이트 + 파일 쓰기 (순수 stdlib, PyQt 무관).
 
 CC 플러그인 출력 구조:
+    <out>/.claude-plugin/plugin.json            # 플러그인 매니페스트 (항상 생성)
     <out>/skills/<skill-name>/SKILL.md          # 전역 스킬 4종
     <out>/skills/<agent-name>--<skill-name>/SKILL.md   # 에이전트 로컬 스킬
     <out>/agents/<agent-name>.md                # 에이전트
@@ -28,6 +29,7 @@ from pathlib import Path, PurePosixPath
 from daedalus.compiler.emit import (
     compile_agent,
     compile_hooks_json,
+    compile_plugin_manifest,
     compile_schemas_json,
     compile_skill,
 )
@@ -115,6 +117,22 @@ def _plan_outputs(project) -> tuple[list[_PlannedOutput], list[ValidationError]]
                 subject=subject,
             ))
 
+    # 프로젝트 이름 — plugin.json의 name(플러그인 식별자)이 되므로 컴포넌트와
+    # 동일 규약을 컴파일 게이트에서 에러로 강제한다.
+    if not _OUTPUT_NAME_RE.match(project.name or ""):
+        errors.append(ValidationError(
+            rule="compile_invalid_component_name",
+            message=(
+                f"프로젝트 '{project.name}'의 이름이 규약 '^[a-z0-9][a-z0-9-]*$'에 "
+                f"맞지 않습니다. 컴파일 시에는 이름 규약이 필수입니다 — "
+                f"plugin.json의 name(플러그인 식별자)이 되므로 CC 플러그인 로더가 "
+                f"받지 않는 산출물이 생깁니다. 파일 → 프로젝트 속성…에서 이름을 "
+                f"변경하세요."
+            ),
+            source=project.name,
+            subject=project,
+        ))
+
     # 전역 스킬
     for skill in project.skills:
         if not isinstance(skill, Skill):
@@ -182,6 +200,16 @@ def _plan_outputs(project) -> tuple[list[_PlannedOutput], list[ValidationError]]
             component=project,
         ))
 
+    # plugin.json (플러그인 매니페스트) — 무조건 계획에 합류(매니페스트 없이는
+    # 산출 디렉토리를 CC 플러그인으로 설치할 수 없다).
+    plan.append(_PlannedOutput(
+        rel_path=PurePosixPath(".claude-plugin") / "plugin.json",
+        label="plugin.json (플러그인 매니페스트)",
+        subject=project,
+        kind="plugin_manifest",
+        component=project,
+    ))
+
     # 산출 경로 충돌 검사 — 첫 점유자와 이후 충돌자를 모두 보고
     seen: dict[PurePosixPath, _PlannedOutput] = {}
     for item in plan:
@@ -242,6 +270,8 @@ def compile_project(project, out_dir: Path | str) -> CompileResult:
             text = compile_hooks_json(project) or ""
         elif item.kind == "schemas_json":
             text = compile_schemas_json(project) or ""
+        elif item.kind == "plugin_manifest":
+            text = compile_plugin_manifest(project)
         else:  # local_skill
             text = compile_skill(item.component, local=True, project=project)
         path = out_dir / item.rel_path

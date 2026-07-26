@@ -142,6 +142,8 @@ def serialize_project(project: PluginProject) -> dict:
     return {
         "format": FORMAT_VERSION,
         "name": project.name,
+        "description": project.description,
+        "version": project.version,
         "skills": [_ser_skill(s) for s in project.skills],
         "agents": [_ser_agent(a) for a in project.agents],
         "reference_placements": [
@@ -671,6 +673,8 @@ def deserialize_project(
 
     project = PluginProject(
         name=data.get("name", ""),
+        description=data.get("description", ""),
+        version=data.get("version", "0.1.0"),
         skills=skills,
         agents=agents,
         reference_placements=[
