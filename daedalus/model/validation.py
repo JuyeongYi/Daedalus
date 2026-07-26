@@ -793,6 +793,7 @@ class Validator:
         # 신규 프로젝트 수준 규칙
         errors.extend(Validator._check_duplicate_component_name(project))
         errors.extend(Validator._check_invalid_component_name(project))
+        errors.extend(Validator._check_invalid_project_name(project))
         errors.extend(Validator._check_dangling_string_references(project))
         # 도구(tool_shelf) 규칙
         errors.extend(Validator._check_duplicate_tool_name(project))
@@ -1196,6 +1197,39 @@ class Validator:
                     subject=comp,
                 ))
         return errors
+
+    @staticmethod
+    def _check_invalid_project_name(project) -> list[ValidationError]:
+        """invalid_component_name — 프로젝트 이름도 컴포넌트와 동일 규약 적용.
+
+        프로젝트 이름은 plugin.json의 name(플러그인 식별자)이 되므로 컴포넌트
+        이름과 같은 등급(빈 이름=에러, 규약 불일치=경고)으로 검사한다.
+        다른 프로젝트 수준 규칙(duplicate_component_name 등)에는 프로젝트 이름을
+        끌어들이지 않는다 — 이름 규약 검사만.
+        """
+        name = getattr(project, "name", None)
+        if name is None:
+            return []
+        if name == "":
+            return [ValidationError(
+                rule="invalid_component_name",
+                message="프로젝트 이름이 비어 있습니다.",
+                source="",
+                subject=project,
+                path=("project",),
+            )]
+        if not Validator._COMPONENT_NAME_RE.match(name):
+            return [ValidationError(
+                rule="invalid_component_name",
+                message=(
+                    f"프로젝트 이름 '{name}'이 명명 규약 "
+                    f"'^[a-z0-9][a-z0-9-]*$'에 맞지 않습니다."
+                ),
+                source=name,
+                subject=project,
+                path=("project",),
+            )]
+        return []
 
     @staticmethod
     def _check_dangling_string_references(project) -> list[ValidationError]:

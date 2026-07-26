@@ -414,6 +414,16 @@ def test_valid_component_name_passes():
     assert not any(e.rule == "invalid_component_name" for e in errors)
 
 
+def test_invalid_project_name_warns():
+    """프로젝트 이름도 컴포넌트와 동일 규약으로 검사된다 (WP-T A-5)."""
+    project = PluginProject(name="새 프로젝트")
+    errors = Validator.validate_project(project)
+    matching = [e for e in errors if e.rule == "invalid_component_name" and e.subject is project]
+    assert len(matching) == 1
+    assert matching[0].is_warning
+    assert matching[0].path == ("project",)
+
+
 # ---------------------------------------------------------------------------
 # dangling_string_reference
 # ---------------------------------------------------------------------------

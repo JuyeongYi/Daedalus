@@ -687,6 +687,40 @@ def _next_steps_section(component, project) -> list[str]:
     ]
 
 
+# ─────────────────────────── 블랙보드 사용 지침 단락 ───────────────────────────
+
+
+def _blackboard_section(project) -> list[str]:
+    """프로젝트 최상위 블랙보드 class_definitions → '## 공유 상태 (블랙보드)' 블록.
+
+    정의가 없으면 빈 리스트 (단락 생략).
+    """
+    bb = getattr(project, "blackboard", None)
+    classes = getattr(bb, "class_definitions", None) or []
+    if not classes:
+        return []
+
+    lines: list[str] = []
+    for cls in classes:
+        desc = f" — {cls.description}" if cls.description else ""
+        lines.append(f"- `{cls.name}` → `state/{cls.name}.json`{desc}")
+
+    return [
+        "## 공유 상태 (블랙보드)",
+        (
+            "이 워크플로의 컨텍스트 간 공유 상태는 작업 폴더의 `state/` 디렉토리에 JSON 파일로\n"
+            "유지한다. 각 파일의 구조는 플러그인의 `schemas/schemas.json`에 정의된 스키마를 따른다."
+        ),
+        "\n".join(lines),
+        (
+            "규칙:\n"
+            "- 파일을 수정하기 전에 반드시 현재 내용을 읽어라 (읽기-수정-쓰기).\n"
+            "- 파일이 없으면 스키마에 맞는 초기 객체로 생성하라.\n"
+            "- 스키마의 required 필드는 항상 채워라."
+        ),
+    ]
+
+
 # ─────────────────────────── tool_shelf 참조 단락 ───────────────────────────
 
 
@@ -768,6 +802,8 @@ def compile_skill(
                 blocks.extend(_delegation_section(ref))
         if project is not None:
             blocks.extend(_tool_shelf_section(project))
+        if project is not None and not local:
+            blocks.extend(_blackboard_section(project))
 
     # 프로젝트 그래프 기반 "다음 단계" (버그 2) — 전역 스킬에 한함.
     # 로컬 스킬(에이전트 소유)은 프로젝트 그래프 placement 대상이 아니다.
@@ -904,6 +940,7 @@ def compile_agent(agent: AgentDefinition, project=None) -> str:
 
     if project is not None:
         blocks.extend(_tool_shelf_section(project))
+        blocks.extend(_blackboard_section(project))
 
     return _join_blocks(blocks)
 
@@ -1103,6 +1140,28 @@ def compile_schemas_json(project) -> str | None:
     for cls in classes:
         schemas_obj[cls.name] = _class_to_json_schema(cls)
     text = json.dumps(schemas_obj, ensure_ascii=False, indent=2)
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+    if not text.endswith("\n"):
+        text += "\n"
+    return text
+
+
+# ─────────────────────────── plugin.json (매니페스트) ───────────────────────────
+
+
+def compile_plugin_manifest(project) -> str:
+    """프로젝트 → .claude-plugin/plugin.json 텍스트 (LF, 결정적, 항상 생성).
+
+    키 순서 고정: name → description(빈 문자열이면 키 생략) → version.
+    LF·UTF-8 보장 텍스트(끝 개행 1개). json.loads 왕복 가능.
+    """
+    manifest: dict[str, Any] = {"name": getattr(project, "name", "")}
+    description = getattr(project, "description", "") or ""
+    if description:
+        manifest["description"] = description
+    manifest["version"] = getattr(project, "version", "0.1.0")
+
+    text = json.dumps(manifest, ensure_ascii=False, indent=2)
     text = text.replace("\r\n", "\n").replace("\r", "\n")
     if not text.endswith("\n"):
         text += "\n"

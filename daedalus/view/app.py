@@ -7,6 +7,7 @@ import os
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QAction, QKeySequence
 from PyQt6.QtWidgets import (
+    QDialog,
     QDockWidget,
     QFileDialog,
     QInputDialog,
@@ -149,6 +150,10 @@ class MainWindow(QMainWindow):
             save_as_action.setShortcut(QKeySequence.StandardKey.SaveAs)
             save_as_action.triggered.connect(self._save_project_as)
             file_menu.addAction(save_as_action)
+
+            properties_action = QAction("프로젝트 속성…", self)
+            properties_action.triggered.connect(self._edit_project_properties)
+            file_menu.addAction(properties_action)
 
         edit_menu = menubar.addMenu("Edit")
         if edit_menu is None:
@@ -361,11 +366,26 @@ class MainWindow(QMainWindow):
                 if reply != QMessageBox.StandardButton.Yes:
                     return
 
-        new_proj = PluginProject(name="새 프로젝트")
+        new_proj = PluginProject(name="new-plugin")
         self.load_project(new_proj)
         self._current_path = None
         self._update_title()
         self._status_label.setText("새 프로젝트")
+
+    def _edit_project_properties(self) -> None:
+        """"프로젝트 속성…" — name/description/version 편집.
+
+        이름 규약 검사는 여기서 막지 않는다 — F7 경고 / 컴파일 게이트가 잡는다.
+        """
+        if self._project is None:
+            return
+        from daedalus.view.editors.project_properties import ProjectPropertiesDialog
+
+        dialog = ProjectPropertiesDialog(self._project, parent=self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            dialog.apply_to(self._project)
+            self._update_title()
+            self._status_label.setText("프로젝트 속성 변경됨")
 
     def _open_project_dialog(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
@@ -958,6 +978,13 @@ class MainWindow(QMainWindow):
 
         subject가 캔버스에 없으면(삭제된 노드 등) 상태바에 안내를 표시하고 no-op.
         """
+        # 프로젝트 자체가 subject인 검증 항목(예: 프로젝트 이름 규약)은 캔버스
+        # 노드가 아니다 — 조치 위치를 안내하고 끝낸다.
+        if subject is self._project:
+            self._status_label.setText(
+                "프로젝트 이름/속성은 파일 → 프로젝트 속성…에서 수정하세요."
+            )
+            return
         self._tabs.setCurrentIndex(_FSM_TAB_INDEX)
         if self._fsm_scene is None:
             return
