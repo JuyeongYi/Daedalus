@@ -80,7 +80,7 @@ def _demo_project() -> PluginProject:
     worker = AgentDefinition(fsm=worker_fsm, name="worker", description="작업 에이전트")
 
     return PluginProject(
-        name="MyPlugin",
+        name="my-plugin",
         skills=[init_skill, cleanup_skill, rules_skill, validate_skill, ref_skill],
         agents=[worker],
     )

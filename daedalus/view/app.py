@@ -978,6 +978,13 @@ class MainWindow(QMainWindow):
 
         subject가 캔버스에 없으면(삭제된 노드 등) 상태바에 안내를 표시하고 no-op.
         """
+        # 프로젝트 자체가 subject인 검증 항목(예: 프로젝트 이름 규약)은 캔버스
+        # 노드가 아니다 — 조치 위치를 안내하고 끝낸다.
+        if subject is self._project:
+            self._status_label.setText(
+                "프로젝트 이름/속성은 파일 → 프로젝트 속성…에서 수정하세요."
+            )
+            return
         self._tabs.setCurrentIndex(_FSM_TAB_INDEX)
         if self._fsm_scene is None:
             return
