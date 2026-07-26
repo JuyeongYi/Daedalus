@@ -79,6 +79,7 @@ _MODEL_EMOJI: dict[ModelType, str] = {
     ModelType.OPUS: "Ⓞ",
     ModelType.SONNET: "Ⓢ",
     ModelType.HAIKU: "Ⓗ",
+    ModelType.FABLE: "Ⓕ",
 }
 
 
@@ -128,10 +129,10 @@ def badges_for(component: object) -> list[tuple[str, str]]:
         emoji = _MODEL_EMOJI[val]
         result.append((emoji, f"모델 고정: {val.value}"))
 
-    # effort HIGH/MAX
+    # effort HIGH 이상 (HIGH/XHIGH/MAX)
     from daedalus.model.plugin.enums import EffortLevel
     diff, val = _differs(config, "effort")
-    if diff and val in (EffortLevel.HIGH, EffortLevel.MAX):
+    if diff and val in (EffortLevel.HIGH, EffortLevel.XHIGH, EffortLevel.MAX):
         result.append(("⚡", f"effort: {val.value}"))
 
     # hooks 비어있지 않은 dict

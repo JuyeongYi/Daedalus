@@ -12,16 +12,21 @@ class FieldEmit(Enum):
 
 
 class ModelType(Enum):
+    """CC 모델 별칭 4종 + INHERIT. 별칭은 항상 해당 계열 최신 모델로 해석되므로
+    버전 명시 멤버(opus-5 등)는 두지 않는다 — 2026-07 기준 CC Agent tool enum과 일치."""
     SONNET = "sonnet"
     OPUS = "opus"
     HAIKU = "haiku"
+    FABLE = "fable"
     INHERIT = "inherit"
 
 
 class EffortLevel(Enum):
+    """CC effort 5단 (2026-07 기준: low/medium/high/xhigh/max)."""
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
+    XHIGH = "xhigh"
     MAX = "max"
 
 
@@ -54,6 +59,7 @@ class MemoryScope(Enum):
 class AgentIsolation(Enum):
     NONE = "none"
     WORKTREE = "worktree"
+    REMOTE = "remote"
 
 
 class AgentColor(Enum):

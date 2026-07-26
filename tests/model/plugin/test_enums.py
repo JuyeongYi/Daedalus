@@ -16,12 +16,21 @@ def test_model_type():
     assert ModelType.SONNET.value == "sonnet"
     assert ModelType.OPUS.value == "opus"
     assert ModelType.HAIKU.value == "haiku"
+    assert ModelType.FABLE.value == "fable"
     assert ModelType.INHERIT.value == "inherit"
 
 
 def test_effort_level():
     assert EffortLevel.LOW.value == "low"
+    assert EffortLevel.XHIGH.value == "xhigh"
     assert EffortLevel.MAX.value == "max"
+
+
+def test_effort_level_order():
+    """CC effort 5단 순서 (low → max)."""
+    assert [e.value for e in EffortLevel] == [
+        "low", "medium", "high", "xhigh", "max"
+    ]
 
 
 def test_skill_context():
@@ -50,6 +59,7 @@ def test_memory_scope():
 def test_agent_isolation():
     assert AgentIsolation.NONE.value == "none"
     assert AgentIsolation.WORKTREE.value == "worktree"
+    assert AgentIsolation.REMOTE.value == "remote"
 
 
 def test_agent_color_all_values():
