@@ -262,6 +262,8 @@ class SectionContentPanel(QWidget):
         self._w_content.blockSignals(False)
 
     def _on_preview_toggled(self, checked: bool) -> None:
+        # 변수 삽입도 숨은 문서를 조용히 바꾸는 경로 — 프리뷰 중 잠근다
+        self._btn_variable.setEnabled(not checked)
         if checked:
             self._w_preview.document().setMarkdown(self._w_content.toPlainText())
             self._content_stack.setCurrentIndex(1)

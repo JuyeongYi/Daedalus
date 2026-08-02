@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import pytest
+
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QFont, QTextCursor, QTextDocument
 from PySide6.QtTest import QTest
@@ -469,3 +471,71 @@ def test_panel_show_section_resets_preview(qapp):
     panel.show_section(section2, ["B"])
     assert panel._content_stack.currentIndex() == 0
     assert not _find_toolbar_button(panel._md_toolbar, "👁").isChecked()
+
+
+# --- 리뷰 후속 회귀 (WP-MD2 권고 반영 잠금) ---
+
+
+def test_slash_menu_flips_above_when_no_space_below(qapp):
+    ed = MarkdownEditor()
+    ed.resize(400, 120)
+    ed.show()
+    qapp.processEvents()
+    ed.setPlainText("x\n" * 30)
+    cursor = ed.textCursor()
+    cursor.movePosition(QTextCursor.MoveOperation.End)
+    ed.setTextCursor(cursor)
+    QTest.keyClicks(ed, "/")
+    assert ed._slash_start is not None
+    geo = ed._slash_menu.geometry()
+    assert geo.top() >= 0
+    assert geo.bottom() <= ed.viewport().height()
+    ed.hide()
+
+
+def test_preview_toggle_disables_edit_buttons(qapp):
+    ed = MarkdownEditor()
+    tb = MarkdownToolbar(ed)
+    assert all(b.isEnabled() for b in tb._edit_buttons)
+    tb._btn_preview.click()
+    assert all(not b.isEnabled() for b in tb._edit_buttons)
+    tb._btn_preview.click()
+    assert all(b.isEnabled() for b in tb._edit_buttons)
+
+
+def test_preview_toggle_disables_variable_button(qapp):
+    from daedalus.view.editors.body_editor import SectionContentPanel
+
+    panel = SectionContentPanel()
+    section = Section("T", content="body")
+    panel.show_section(section, ["T"])
+    panel._md_toolbar._btn_preview.click()
+    assert not panel._btn_variable.isEnabled()
+    panel._md_toolbar._btn_preview.click()
+    assert panel._btn_variable.isEnabled()
+
+
+def test_toggle_line_marker_preserves_cursor(qapp):
+    ed = MarkdownEditor()
+    ed.setPlainText("hello")
+    cursor = ed.textCursor()
+    cursor.setPosition(3)
+    ed.setTextCursor(cursor)
+    ed.toggle_line_marker("- ")
+    assert ed.toPlainText() == "- hello"
+    assert ed.textCursor().position() == 5
+
+
+def test_toggle_line_marker_invalid_marker_raises(qapp):
+    ed = MarkdownEditor()
+    with pytest.raises(ValueError):
+        ed.toggle_line_marker("* ")
+
+
+def test_ctrl_shortcut_closes_slash_menu(qapp):
+    ed = MarkdownEditor()
+    QTest.keyClicks(ed, "/")
+    assert ed._slash_start is not None
+    QTest.keyClick(ed, Qt.Key.Key_B, Qt.KeyboardModifier.ControlModifier)
+    assert ed._slash_start is None
+    assert ed.toPlainText() == "/****"

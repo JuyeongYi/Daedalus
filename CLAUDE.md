@@ -65,6 +65,7 @@ daedalus/
     ├── canvas/             # GraphicsView/Scene, NodeItem, EdgeItem, RefNodeItem, RefEdgeItem, node_badges(뱃지 로직), sync(VM→모델 동기화 — Qt 무관)
     ├── commands/           # Undo/Redo 커맨드 (state, transition, section, exit_point)
     ├── editors/            # 속성 편집기 (skill, agent, delegation, hook, body, component, variable_loader, field_widgets, project_properties)
+    │                       # body: SectionContentPanel = MarkdownToolbar + QStackedWidget(0=MarkdownEditor 편집, 1=QTextBrowser 프리뷰 — setMarkdown 1회 렌더, show_section이 편집 모드로 리셋, 프리뷰 중 편집 버튼·변수 삽입 잠금)
     ├── panels/             # TreePanel, PropertyPanel, RegistryPanel, HistoryPanel, ValidationPanel (F7 검증 결과)
     │                       # RegistryPanel: component_delete_requested 시그널 + _RegistrySection 우클릭 "삭제" 컨텍스트 메뉴
     ├── viewmodel/          # ProjectViewModel(notify structure/content 채널), StateViewModel (모델↔뷰 중간 계층)

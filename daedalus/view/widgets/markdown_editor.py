@@ -442,6 +442,10 @@ class MarkdownEditor(QPlainTextEdit):
         # 논리 상태(_slash_start)로 판단한다 — 그래야 top-level이 show()되지
         # 않은 오프스크린 테스트에서도 정상 동작한다.
         menu_was_open = self._slash_start is not None
+        # Ctrl 조합 단축키는 삽입 흐름이 아니다 — 메뉴를 닫고 평소대로 처리한다.
+        if menu_was_open and event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+            self._close_slash_menu()
+            menu_was_open = False
         if menu_was_open and self._handle_slash_menu_key(event):
             return
 
@@ -533,7 +537,20 @@ class MarkdownEditor(QPlainTextEdit):
 
     def _position_slash_menu(self) -> None:
         rect = self.cursorRect()
-        self._slash_menu.move(rect.bottomLeft())
+        menu = self._slash_menu
+        vp = self.viewport()
+        # 뷰포트가 메뉴보다 낮으면 높이를 캡한다 (목록은 내부 스크롤)
+        max_h = max(_SLASH_ROW_HEIGHT + 4, vp.height())
+        if menu.height() > max_h:
+            menu.setFixedHeight(max_h)
+        x = rect.left()
+        y = rect.bottom()
+        # 아래 공간이 부족하면 커서 위로 뒤집는다 (viewport 자식이라 밖은 클리핑됨)
+        if y + menu.height() > vp.height():
+            y = rect.top() - menu.height()
+        y = max(0, y)
+        x = max(0, min(x, vp.width() - menu.width()))
+        menu.move(x, y)
 
     def _close_slash_menu(self) -> None:
         self._slash_menu.hide()
@@ -815,9 +832,21 @@ class MarkdownEditor(QPlainTextEdit):
         마커면 제거, 다른 리스트/인용 마커면 교체, 없으면 들여쓰기 뒤에 삽입한다.
         번호 리스트는 선택 범위 안에서 1부터 재번호한다. 빈 줄은 건너뛴다.
         """
+        if marker not in _MARKER_KIND:
+            raise ValueError(f"unsupported marker: {marker!r}")
         desired_kind = _MARKER_KIND[marker]
         cursor = self.textCursor()
         doc = self.document()
+
+        # 선택이 없으면 편집 후 커서 위치를 보존한다 (set_heading_level과 일관)
+        restore: tuple[int, int, int] | None = None
+        if not cursor.hasSelection():
+            cur_block = doc.findBlock(cursor.position())
+            restore = (
+                cur_block.blockNumber(),
+                cursor.positionInBlock(),
+                len(cur_block.text()),
+            )
 
         if cursor.hasSelection():
             start_pos = min(cursor.selectionStart(), cursor.selectionEnd())
@@ -863,6 +892,15 @@ class MarkdownEditor(QPlainTextEdit):
                 )
                 block_cursor.insertText(new_text)
         edit_cursor.endEditBlock()
+
+        if restore is not None:
+            block_num, pos_in_block, old_len = restore
+            block = doc.findBlockByNumber(block_num)
+            new_len = len(block.text())
+            new_pos = min(max(0, pos_in_block + new_len - old_len), new_len)
+            result_cursor = self.textCursor()
+            result_cursor.setPosition(block.position() + new_pos)
+            self.setTextCursor(result_cursor)
 
     # --- 체크박스 클릭 토글 ---
 
@@ -918,6 +956,7 @@ class MarkdownToolbar(QWidget):
     def __init__(self, editor: MarkdownEditor, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._editor = editor
+        self._edit_buttons: list[QPushButton] = []  # 프리뷰 중 비활성화 대상
 
         lay = QHBoxLayout(self)
         lay.setContentsMargins(4, 2, 4, 2)
@@ -960,7 +999,9 @@ class MarkdownToolbar(QWidget):
         if checkable:
             btn.toggled.connect(handler)
         else:
+            # checkable은 프리뷰(👁) 전용 — 나머지는 전부 편집 버튼
             btn.clicked.connect(handler)
+            self._edit_buttons.append(btn)
         lay.addWidget(btn)
         return btn
 
@@ -987,6 +1028,9 @@ class MarkdownToolbar(QWidget):
         self._editor.setFocus()
 
     def _on_preview_toggled(self, checked: bool) -> None:
+        # 프리뷰 중 편집 버튼이 숨은 문서를 조용히 바꾸지 못하게 잠근다
+        for btn in self._edit_buttons:
+            btn.setEnabled(not checked)
         self.preview_toggled.emit(checked)
         self._editor.setFocus()
 
