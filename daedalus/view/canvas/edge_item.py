@@ -1,7 +1,10 @@
 from __future__ import annotations
 
-from PySide6.QtCore import QPointF, QRectF
+from typing import Any
+
+from PySide6.QtCore import QPointF, QRectF, Qt
 from PySide6.QtGui import (
+    QBrush,
     QColor,
     QFont,
     QPainter,
@@ -10,7 +13,13 @@ from PySide6.QtGui import (
     QPen,
     QPolygonF,
 )
-from PySide6.QtWidgets import QGraphicsPathItem, QStyleOptionGraphicsItem, QWidget
+from PySide6.QtWidgets import (
+    QGraphicsEllipseItem,
+    QGraphicsItem,
+    QGraphicsPathItem,
+    QStyleOptionGraphicsItem,
+    QWidget,
+)
 
 from daedalus.view.canvas.node_item import StateNodeItem
 from daedalus.view.viewmodel.state_vm import TransitionViewModel
@@ -23,6 +32,12 @@ _ARROW_SPACING = 320.0   # 화살표 간격 (px)
 _EDGE_WIDTH = 4.0        # 기본 두께
 _EDGE_WIDTH_TRANSFER = 5.0  # Transfer Skill 할당 시 두께
 _HIT_WIDTH = 12.0        # 마우스 클릭 히트 영역
+
+# WP-ER — 경유점(waypoint) 핸들
+_HANDLE_R = 5.0
+_HANDLE_COLOR = QColor("#88aaff")     # 선택 엣지 색과 통일 (핸들은 엣지 선택 중에만 표시)
+_HANDLE_BORDER = QColor("#222222")
+_SEGMENT_SAMPLES = 24  # 최근접 구간 판정용 곡선 샘플 수
 
 
 class TransitionEdgeItem(QGraphicsPathItem):
@@ -38,6 +53,7 @@ class TransitionEdgeItem(QGraphicsPathItem):
         self._transition_vm = transition_vm
         self._source_node = source_node
         self._target_node = target_node
+        self._handles: list[WaypointHandleItem] = []
         self.setFlag(QGraphicsPathItem.GraphicsItemFlag.ItemIsSelectable)
         self.setZValue(-1)
         self.update_path()
@@ -54,13 +70,8 @@ class TransitionEdgeItem(QGraphicsPathItem):
     def target_node(self) -> StateNodeItem:
         return self._target_node
 
-    def update_path(self) -> None:
-        """출력/입력 포트 위치 기반 베지어 경로.
-
-        WP-IC: 입력 포트 위치는 target_port(이름) 기준으로 조회한다 —
-        같은 target_port를 향하는 여러 전이는 자연히 한 점에 수렴한다.
-        """
-        self.prepareGeometryChange()
+    def _route_points(self) -> list[QPointF]:
+        """소스 포트 → 경유점들 → 타깃 포트 순의 경로 통과점 목록."""
         trigger = self._transition_vm.model.trigger
         event_name = trigger.name if trigger is not None else "done"
 
@@ -69,19 +80,121 @@ class TransitionEdgeItem(QGraphicsPathItem):
         target_port = self._transition_vm.model.target_port
         tgt_pt = self._target_node.input_port_scene_pos(target_port)
 
-        if tgt_pt.x() < src_pt.x():
-            # 역방향 — 더 크게 휘어짐
-            dx = abs(tgt_pt.x() - src_pt.x()) * 0.8 + 80
-            ctrl1 = QPointF(src_pt.x() + dx, src_pt.y())
-            ctrl2 = QPointF(tgt_pt.x() - dx, tgt_pt.y())
-        else:
-            dx = abs(tgt_pt.x() - src_pt.x()) * 0.5
-            ctrl1 = QPointF(src_pt.x() + dx, src_pt.y())
-            ctrl2 = QPointF(tgt_pt.x() - dx, tgt_pt.y())
+        waypoints = self._transition_vm.waypoints
+        return [src_pt] + [QPointF(x, y) for x, y in waypoints] + [tgt_pt]
 
-        path = QPainterPath(src_pt)
-        path.cubicTo(ctrl1, ctrl2, tgt_pt)
+    def update_path(self) -> None:
+        """출력/입력 포트 위치 기반 베지어 경로.
+
+        WP-IC: 입력 포트 위치는 target_port(이름) 기준으로 조회한다 —
+        같은 target_port를 향하는 여러 전이는 자연히 한 점에 수렴한다.
+
+        WP-ER: transition_vm.waypoints가 있으면 소스 포트 → 경유점들 → 타깃
+        포트 순으로 각 구간을 기존과 동일한 베지어 곡선으로 잇는다(각 구간의
+        끝점이 정확히 경유점을 지나므로 경로가 경유점을 통과함이 보장된다).
+        경유점이 없으면 구간이 하나뿐이라 기존 렌더와 완전히 동일하다(하위 호환).
+        """
+        self.prepareGeometryChange()
+        points = self._route_points()
+
+        path = QPainterPath(points[0])
+        for p1, p2 in zip(points, points[1:]):
+            self._add_curve_segment(path, p1, p2)
         self.setPath(path)
+        self._sync_handles()
+
+    @staticmethod
+    def _add_curve_segment(path: QPainterPath, p1: QPointF, p2: QPointF) -> None:
+        """p1(현재 경로 끝점)에서 p2까지 기존 스타일의 베지어 구간을 잇는다."""
+        if p2.x() < p1.x():
+            # 역방향 — 더 크게 휘어짐
+            dx = abs(p2.x() - p1.x()) * 0.8 + 80
+            ctrl1 = QPointF(p1.x() + dx, p1.y())
+            ctrl2 = QPointF(p2.x() - dx, p2.y())
+        else:
+            dx = abs(p2.x() - p1.x()) * 0.5
+            ctrl1 = QPointF(p1.x() + dx, p1.y())
+            ctrl2 = QPointF(p2.x() - dx, p2.y())
+        path.cubicTo(ctrl1, ctrl2, p2)
+
+    # --- WP-ER 경유점 편집 ---
+
+    def nearest_segment_index(self, scene_pos: QPointF) -> int:
+        """scene_pos에 가장 가까운 구간의 0-based 인덱스.
+
+        구간 i는 route_points()[i] → route_points()[i+1]. 반환값은 그대로
+        transition_vm.waypoints.insert(index, ...)에 쓸 수 있는 삽입 위치다
+        (구간 i에 삽입 = waypoints[i] 앞에 삽입, 경로 순서가 보존된다).
+        """
+        points = self._route_points()
+        best_index = 0
+        best_dist: float | None = None
+        for i in range(len(points) - 1):
+            seg_path = QPainterPath(points[i])
+            self._add_curve_segment(seg_path, points[i], points[i + 1])
+            for s in range(_SEGMENT_SAMPLES + 1):
+                pt = seg_path.pointAtPercent(s / _SEGMENT_SAMPLES)
+                dx = pt.x() - scene_pos.x()
+                dy = pt.y() - scene_pos.y()
+                dist = dx * dx + dy * dy
+                if best_dist is None or dist < best_dist:
+                    best_dist = dist
+                    best_index = i
+        return best_index
+
+    def update_waypoint_preview(self, index: int, pos: QPointF) -> None:
+        """드래그 중 실시간 미리보기 — undo 커맨드 없이 vm에 직접 반영.
+
+        노드 드래그 중 update_edges_for_node가 하는 역할과 동일한 결의 실시간
+        갱신. 커밋(undo 가능)은 release 시 scene.handle_waypoint_moved가 한다.
+        """
+        waypoints = self._transition_vm.waypoints
+        if 0 <= index < len(waypoints):
+            waypoints[index] = (pos.x(), pos.y())
+        self.update_path()
+
+    def _sync_handles(self) -> None:
+        """자식 핸들 아이템 개수·위치·표시 여부를 transition_vm.waypoints와 동기화.
+
+        엣지가 선택된 동안에만 표시(캔버스 잡음 방지). 핸들 객체는 재사용되고
+        매번 enumerate로 인덱스를 다시 매기므로, 추가/제거로 인한 순서 변화에도
+        항상 올바른 위치에 정렬된다.
+        """
+        waypoints = self._transition_vm.waypoints
+        while len(self._handles) < len(waypoints):
+            handle = WaypointHandleItem(self, len(self._handles))
+            handle.setParentItem(self)
+            self._handles.append(handle)
+        while len(self._handles) > len(waypoints):
+            handle = self._handles.pop()
+            handle.setParentItem(None)
+            sc = handle.scene()
+            if sc is not None:
+                sc.removeItem(handle)
+
+        visible = self.isSelected()
+        for i, handle in enumerate(self._handles):
+            handle.set_index(i)
+            pt = QPointF(*waypoints[i])
+            if handle.pos() != pt:
+                handle.setPos(pt)
+            handle.setVisible(visible)
+
+    def itemChange(self, change: QGraphicsItem.GraphicsItemChange, value: Any) -> Any:
+        if change == QGraphicsItem.GraphicsItemChange.ItemSelectedHasChanged:
+            self._sync_handles()
+        return super().itemChange(change, value)
+
+    def mouseDoubleClickEvent(self, event) -> None:
+        """더블클릭 — 클릭 지점에 가장 가까운 구간에 경유점 삽입."""
+        if event is None:
+            return
+        sc: Any = self.scene()
+        if sc is not None and hasattr(sc, "handle_edge_double_clicked"):
+            sc.handle_edge_double_clicked(self, event.scenePos())
+            event.accept()
+            return
+        super().mouseDoubleClickEvent(event)
 
     def shape(self) -> QPainterPath:
         """히트 영역을 시각적 두께보다 넓게 설정해 우클릭 편의성 향상."""
@@ -168,3 +281,82 @@ class TransitionEdgeItem(QGraphicsPathItem):
             to_pt.y() - _ARROW_SIZE * dy + _ARROW_SIZE * 0.5 * dx,
         )
         painter.drawPolygon(QPolygonF([to_pt, left, right]))
+
+
+class WaypointHandleItem(QGraphicsEllipseItem):
+    """엣지 경유점(waypoint) 편집 핸들 — 소유 엣지가 선택된 동안에만 표시.
+
+    TransitionEdgeItem의 자식 아이템(setParentItem)으로, 엣지 자신은 절대
+    이동하지 않으므로(pos()가 항상 원점) 자식 로컬 좌표 == 씬 좌표다.
+    드래그는 Qt 기본 ItemIsMovable로 처리하고, itemChange로 실시간 미리보기를
+    반영하며, release 시 scene.handle_waypoint_moved로 undo 가능한 커맨드를
+    커밋한다(TransitionEdgeItem/ReferenceNodeItem 드래그 관례와 동일).
+    """
+
+    def __init__(self, edge: TransitionEdgeItem, index: int) -> None:
+        super().__init__(-_HANDLE_R, -_HANDLE_R, _HANDLE_R * 2, _HANDLE_R * 2)
+        self._edge = edge
+        self._index = index
+        self._drag_start: QPointF | None = None
+        self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsMovable)
+        self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable)
+        self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemSendsGeometryChanges)
+        self.setZValue(2)
+        self.setBrush(QBrush(_HANDLE_COLOR))
+        self.setPen(QPen(_HANDLE_BORDER, 1))
+        self.setVisible(False)
+
+    @property
+    def edge(self) -> TransitionEdgeItem:
+        return self._edge
+
+    @property
+    def index(self) -> int:
+        return self._index
+
+    def set_index(self, index: int) -> None:
+        self._index = index
+
+    def itemChange(self, change: QGraphicsItem.GraphicsItemChange, value: Any) -> Any:
+        if change == QGraphicsItem.GraphicsItemChange.ItemPositionHasChanged:
+            # update_waypoint_preview → update_path → _sync_handles의 setPos가
+            # 이 itemChange로 되돌아오는 재진입은 좌표 수렴으로 2단계에서 멈춘다
+            # (의도된 설계 — 리뷰 확인).
+            self._edge.update_waypoint_preview(self._index, self.pos())
+        return super().itemChange(change, value)
+
+    def mousePressEvent(self, event) -> None:
+        if event is None:
+            return
+        if event.button() == Qt.MouseButton.LeftButton:
+            # 기본(super) 선택 로직을 타지 않는다 — 단일 클릭 선택 규칙이 엣지
+            # 선택을 해제하면 _sync_handles가 핸들을 숨겨 마우스 그랩이 소실되고
+            # 드래그가 무산된다 (리뷰 결함 1: "선택 시 표시"와 "드래그"의 상호
+            # 무효화). 대신 엣지 선택을 유지하고 자신을 선택(Delete 대상)한다.
+            self._drag_start = self.pos()
+            self._edge.setSelected(True)
+            self.setSelected(True)
+            event.accept()
+            return
+        self._drag_start = self.pos()
+        super().mousePressEvent(event)
+
+    def mouseReleaseEvent(self, event) -> None:
+        if event is None:
+            return
+        if event.button() != Qt.MouseButton.LeftButton:
+            super().mouseReleaseEvent(event)
+            self._drag_start = None
+            return
+        # press와 대칭으로 기본(super) 처리를 타지 않는다 — 기본 release의 클릭
+        # 선택 정리가 press에서 세운 선택(엣지+핸들)을 전부 해제해, 이어지는
+        # Delete가 대상을 잃는다 (리뷰 결함 2의 후반부). 그랩은 release 처리
+        # 종료와 함께 Qt가 해제한다.
+        event.accept()
+        if self._drag_start is not None and self._drag_start != self.pos():
+            sc: Any = self.scene()
+            if sc is not None and hasattr(sc, "handle_waypoint_moved"):
+                sc.handle_waypoint_moved(
+                    self._edge, self._index, self._drag_start, self.pos()
+                )
+        self._drag_start = None

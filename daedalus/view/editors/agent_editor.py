@@ -233,20 +233,34 @@ class AgentEditor(QWidget):
             vm_map[state.id] = vm
             x += 220.0
 
+        saved_edges = self._agent.edge_layout  # 키: Transition.id (WP-ER)
         for trans in self._agent.fsm.transitions:
             src_vm = vm_map.get(trans.source.id)
             tgt_vm = vm_map.get(trans.target.id)
             if src_vm and tgt_vm:
-                tvm = TransitionViewModel(model=trans, source_vm=src_vm, target_vm=tgt_vm)
+                waypoints = [(x, y) for x, y in saved_edges.get(trans.id, [])]
+                tvm = TransitionViewModel(
+                    model=trans, source_vm=src_vm, target_vm=tgt_vm,
+                    waypoints=waypoints,
+                )
                 self._graph_vm.transition_vms.append(tvm)
         self._graph_vm.notify()
 
     def _save_graph_layout(self) -> None:
-        """그래프 노드 위치를 모델에 저장. 키는 state.id (안정 식별자)."""
+        """그래프 노드 위치를 모델에 저장. 키는 state.id (안정 식별자).
+
+        WP-ER: 엣지 경유점(waypoint)도 함께 agent.edge_layout에 기록한다.
+        """
         layout: dict[str, list[float]] = {}
         for svm in self._graph_vm.state_vms:
             layout[svm.model.id] = [svm.x, svm.y]
         self._agent.graph_layout = layout
+
+        edge_layout: dict[str, list[list[float]]] = {}
+        for tvm in self._graph_vm.transition_vms:
+            if tvm.waypoints:
+                edge_layout[tvm.model.id] = [list(pt) for pt in tvm.waypoints]
+        self._agent.edge_layout = edge_layout
 
     def _local_skill_lookup(self, name: str) -> object | None:
         for skill in self._agent.skills:

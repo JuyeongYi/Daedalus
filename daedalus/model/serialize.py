@@ -157,6 +157,10 @@ def serialize_project(project: PluginProject) -> dict:
         # skill_ref는 _ser_machine이 component id로 평탄화 → 역직렬화 2-pass가 해소.
         "graph": _ser_machine(project.graph),
         "graph_layout": {k: list(v) for k, v in project.graph_layout.items()},
+        # WP-ER — 전이 엣지 경유점(waypoint). 키는 Transition.id.
+        "edge_layout": {
+            k: [list(pt) for pt in v] for k, v in project.edge_layout.items()
+        },
         # WP-RS Part B — 구버전 파일(키 부재)은 역직렬화 시 기본 True로 취급.
         "emit_progress_hook": project.emit_progress_hook,
     }
@@ -557,6 +561,10 @@ def _ser_agent(a: AgentDefinition) -> dict:
         ],
         "caller_contracts": [_ser_section(s) for s in a.caller_contracts],
         "graph_layout": {k: list(v) for k, v in a.graph_layout.items()},
+        # WP-ER — 전이 엣지 경유점(waypoint). 키는 Transition.id.
+        "edge_layout": {
+            k: [list(pt) for pt in v] for k, v in a.edge_layout.items()
+        },
         "entry_paths": [_ser_eventdef(e) for e in a.entry_paths],
     }
 
@@ -697,6 +705,10 @@ def deserialize_project(
         blackboard=blackboard,
         graph=graph,
         graph_layout={k: list(v) for k, v in data.get("graph_layout", {}).items()},
+        # WP-ER — 구버전 키 부재 → 빈 dict (경고 없음).
+        edge_layout={
+            k: [list(pt) for pt in v] for k, v in data.get("edge_layout", {}).items()
+        },
         # WP-RS Part B — 구버전 파일(키 부재) → 기본 True.
         emit_progress_hook=data.get("emit_progress_hook", True),
     )
@@ -1198,6 +1210,10 @@ def _deser_agent(d: dict, reg: _Registry) -> AgentDefinition:
         ],
         caller_contracts=[_deser_section(s) for s in d.get("caller_contracts", [])],
         graph_layout={k: list(v) for k, v in d.get("graph_layout", {}).items()},
+        # WP-ER — 구버전 키 부재 → 빈 dict (경고 없음).
+        edge_layout={
+            k: [list(pt) for pt in v] for k, v in d.get("edge_layout", {}).items()
+        },
         # WP-IC — 구버전 파일(키 부재) → 빈 리스트(기본 포트 1개, 경고 없음).
         entry_paths=[_deser_eventdef(e) for e in d.get("entry_paths", [])],
     )

@@ -62,6 +62,10 @@ class PluginProject:
     graph: StateMachine = field(default_factory=_make_project_graph)
     # 그래프 노드 위치 — 키는 state.id (AgentDefinition.graph_layout과 동일 규약, 이름 변경 안전).
     graph_layout: dict[str, list[float]] = field(default_factory=dict)
+    # WP-ER — 전이 엣지의 경유점(waypoint) 좌표. 키는 Transition.id(안정 식별자,
+    # graph_layout의 state.id 규약과 동일), 값은 [x, y] 목록(소스→타깃 순서).
+    # 웨이포인트는 뷰 관심사이므로 fsm 모델(Transition)에는 넣지 않는다.
+    edge_layout: dict[str, list[list[float]]] = field(default_factory=dict)
     # WP-RS Part B — 세션 시작 시 진행 상태(state/__progress__.json) 자동 주입 SessionStart
     # 훅을 컴파일 시점에 합성 배출할지 여부. 기본 True. hook_library를 오염시키지
     # 않는다(compiler/emit.py의 compile_hooks_json이 컴파일 시점에 합성).
@@ -192,7 +196,11 @@ def remove_component(
 
     removed_state_ids: set = {id(s) for s in states_to_remove}
     if states_to_remove:
-        # 연결 전이 먼저 제거
+        # 연결 전이 먼저 제거 (edge_layout 정리 대상 수집)
+        transitions_to_remove = [
+            t for t in project.graph.transitions
+            if id(t.source) in removed_state_ids or id(t.target) in removed_state_ids
+        ]
         project.graph.transitions = [
             t for t in project.graph.transitions
             if id(t.source) not in removed_state_ids and id(t.target) not in removed_state_ids
@@ -203,6 +211,9 @@ def remove_component(
         for s in states_to_remove:
             # graph_layout에서 제거
             project.graph_layout.pop(s.id, None)
+        for t in transitions_to_remove:
+            # edge_layout(웨이포인트)에서 제거 (WP-ER)
+            project.edge_layout.pop(t.id, None)
         log.append(f"캔버스 노드 {len(states_to_remove)}개 + 연결 전이 제거됨")
 
     # --- 3) reference_placements 정리 — skill_name은 스킬 이름 참조이므로

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from daedalus.model.fsm.state import SimpleState, State
 from daedalus.model.fsm.transition import Transition
@@ -26,6 +26,10 @@ class TransitionViewModel:
     source_vm: StateViewModel
     target_vm: StateViewModel
     selected: bool = False
+    # WP-ER — 경유점(waypoint) 좌표 목록(소스→타깃 순서). 뷰 전용 —
+    # 저장 시점에 PluginProject.edge_layout / AgentDefinition.edge_layout으로
+    # (키: Transition.id) 평탄화된다.
+    waypoints: list[tuple[float, float]] = field(default_factory=list)
 
 
 @dataclass(eq=False)

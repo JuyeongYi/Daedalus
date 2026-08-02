@@ -135,6 +135,122 @@ class AddSkillToProjectCmd(Command):
             self._project.skills.remove(self._skill)
 
 
+class AddWaypointCmd(Command):
+    """엣지에 경유점 삽입 — undo 가능 (WP-ER)."""
+
+    def __init__(
+        self,
+        transition_vm: TransitionViewModel,
+        index: int,
+        x: float,
+        y: float,
+    ) -> None:
+        self._transition_vm = transition_vm
+        self._index = index
+        self._point = (x, y)
+
+    @property
+    def description(self) -> str:
+        return "경유점 추가"
+
+    @property
+    def script_repr(self) -> str:
+        return f'add_waypoint(index={self._index}, x={self._point[0]:.0f}, y={self._point[1]:.0f})'
+
+    def execute(self) -> None:
+        self._transition_vm.waypoints.insert(self._index, self._point)
+
+    def undo(self) -> None:
+        waypoints = self._transition_vm.waypoints
+        if 0 <= self._index < len(waypoints):
+            waypoints.pop(self._index)
+
+
+class MoveWaypointCmd(Command):
+    """경유점 드래그 이동 — undo 가능 (WP-ER)."""
+
+    def __init__(
+        self,
+        transition_vm: TransitionViewModel,
+        index: int,
+        old_x: float,
+        old_y: float,
+        new_x: float,
+        new_y: float,
+    ) -> None:
+        self._transition_vm = transition_vm
+        self._index = index
+        self._old = (old_x, old_y)
+        self._new = (new_x, new_y)
+
+    @property
+    def description(self) -> str:
+        return "경유점 이동"
+
+    @property
+    def script_repr(self) -> str:
+        return f'move_waypoint(index={self._index}, x={self._new[0]:.0f}, y={self._new[1]:.0f})'
+
+    def execute(self) -> None:
+        waypoints = self._transition_vm.waypoints
+        if 0 <= self._index < len(waypoints):
+            waypoints[self._index] = self._new
+
+    def undo(self) -> None:
+        waypoints = self._transition_vm.waypoints
+        if 0 <= self._index < len(waypoints):
+            waypoints[self._index] = self._old
+
+
+class RemoveWaypointCmd(Command):
+    """경유점 제거 — undo 가능(원 위치로 복원). (WP-ER)"""
+
+    def __init__(self, transition_vm: TransitionViewModel, index: int) -> None:
+        self._transition_vm = transition_vm
+        self._index = index
+        self._point: tuple[float, float] | None = None
+
+    @property
+    def description(self) -> str:
+        return "경유점 제거"
+
+    @property
+    def script_repr(self) -> str:
+        return f'remove_waypoint(index={self._index})'
+
+    def execute(self) -> None:
+        waypoints = self._transition_vm.waypoints
+        if 0 <= self._index < len(waypoints):
+            self._point = waypoints.pop(self._index)
+
+    def undo(self) -> None:
+        if self._point is not None:
+            self._transition_vm.waypoints.insert(self._index, self._point)
+
+
+class ClearWaypointsCmd(Command):
+    """전이의 경유점을 모두 제거(직선 복원) — undo 가능 (WP-ER)."""
+
+    def __init__(self, transition_vm: TransitionViewModel) -> None:
+        self._transition_vm = transition_vm
+        self._saved: list[tuple[float, float]] = []
+
+    @property
+    def description(self) -> str:
+        return "경유점 모두 제거"
+
+    @property
+    def script_repr(self) -> str:
+        return "clear_waypoints()"
+
+    def execute(self) -> None:
+        self._saved = list(self._transition_vm.waypoints)
+        self._transition_vm.waypoints.clear()
+
+    def undo(self) -> None:
+        self._transition_vm.waypoints[:] = self._saved
+
+
 class AddSkillToListCmd(Command):
     """스킬을 임의 리스트에 추가 (undo: identity 기준 제거).
 

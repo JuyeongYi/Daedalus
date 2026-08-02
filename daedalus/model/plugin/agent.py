@@ -31,6 +31,9 @@ class AgentDefinition(PluginComponent, WorkflowComponent):
     reference_placements: list = field(default_factory=list)  # list[ReferencePlacement]
     caller_contracts: list[Section] = field(default_factory=list)
     graph_layout: dict[str, list[float]] = field(default_factory=dict)
+    # WP-ER — 전이 엣지의 경유점(waypoint) 좌표. 키는 Transition.id, 값은 [x, y] 목록
+    # (소스→타깃 순서). PluginProject.edge_layout과 동일 규약.
+    edge_layout: dict[str, list[list[float]]] = field(default_factory=dict)
     # WP-IC — 입력 포트 정의. 빈 리스트 = 기본 포트 1개(암묵, 이름 없음).
     entry_paths: list[EventDef] = field(default_factory=list)
     # 안정 식별자 — 값 동등성 비교에서는 제외(compare=False).

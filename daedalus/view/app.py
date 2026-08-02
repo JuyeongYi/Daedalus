@@ -293,13 +293,16 @@ class MainWindow(QMainWindow):
             vm_map[state.id] = vm
             x += 220.0
 
+        saved_edges = self._project.edge_layout  # 키: Transition.id (WP-ER)
         for trans in graph.transitions:
             # source/target이 EntryPoint면 vm_map에 없어 자연히 스킵된다.
             src_vm = vm_map.get(trans.source.id)
             tgt_vm = vm_map.get(trans.target.id)
             if src_vm and tgt_vm:
+                waypoints = [(x, y) for x, y in saved_edges.get(trans.id, [])]
                 tvm = TransitionViewModel(
-                    model=trans, source_vm=src_vm, target_vm=tgt_vm
+                    model=trans, source_vm=src_vm, target_vm=tgt_vm,
+                    waypoints=waypoints,
                 )
                 self._project_vm.transition_vms.append(tvm)
 
@@ -329,13 +332,23 @@ class MainWindow(QMainWindow):
         self._project_vm.notify()
 
     def _save_graph_layout(self) -> None:
-        """캔버스 노드 위치를 project.graph_layout에 기록. 키는 state.id."""
+        """캔버스 노드 위치를 project.graph_layout에 기록. 키는 state.id.
+
+        WP-ER: 엣지 경유점(waypoint)도 함께 project.edge_layout에 기록한다.
+        키는 Transition.id.
+        """
         if self._project is None:
             return
         layout: dict[str, list[float]] = {}
         for svm in self._project_vm.state_vms:
             layout[svm.model.id] = [svm.x, svm.y]
         self._project.graph_layout = layout
+
+        edge_layout: dict[str, list[list[float]]] = {}
+        for tvm in self._project_vm.transition_vms:
+            if tvm.waypoints:
+                edge_layout[tvm.model.id] = [list(pt) for pt in tvm.waypoints]
+        self._project.edge_layout = edge_layout
 
     def load_project(self, project: PluginProject) -> None:
         """기존 세션을 정리하고 새 프로젝트를 로드한다.
