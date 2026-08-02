@@ -4,8 +4,16 @@ from dataclasses import dataclass
 
 import pytest
 
-from PySide6.QtCore import QMimeData, QPointF, Qt, QUrl
-from PySide6.QtGui import QColor, QDragEnterEvent, QDropEvent, QFont, QTextCursor, QTextDocument
+from PySide6.QtCore import QEvent, QMimeData, QPointF, Qt, QUrl
+from PySide6.QtGui import (
+    QColor,
+    QDragEnterEvent,
+    QDropEvent,
+    QFont,
+    QKeyEvent,
+    QTextCursor,
+    QTextDocument,
+)
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QPushButton
 
@@ -995,3 +1003,239 @@ def test_mixed_drop_keeps_outside_urls(qapp, tmp_path):
     text = ed.toPlainText()
     assert "${CLAUDE_PLUGIN_ROOT}/files/a.txt" in text
     assert "outside.txt" in text
+
+
+# --- WP-MK Part A: 코드 인용 (7케이스) ---
+
+
+def _select_all(ed: MarkdownEditor) -> None:
+    cursor = ed.textCursor()
+    cursor.select(QTextCursor.SelectionType.Document)
+    ed.setTextCursor(cursor)
+
+
+def test_toggle_inline_code_wraps_selection(qapp):
+    ed = MarkdownEditor()
+    ed.setPlainText("code")
+    _select_all(ed)
+    ed.toggle_inline_code()
+    assert ed.toPlainText() == "`code`"
+
+
+def test_toggle_inline_code_unwraps_when_already_in_code(qapp):
+    ed = MarkdownEditor()
+    ed.setPlainText("`code`")
+    _select_all(ed)
+    ed.toggle_inline_code()
+    assert ed.toPlainText() == "code"
+
+
+def test_toggle_inline_code_no_selection_inserts_pair_with_centered_cursor(qapp):
+    ed = MarkdownEditor()
+    ed.toggle_inline_code()
+    assert ed.toPlainText() == "``"
+    assert ed.textCursor().position() == 1
+
+
+def test_toggle_code_block_wraps_single_line(qapp):
+    ed = MarkdownEditor()
+    ed.setPlainText("x = 1")
+    _select_all(ed)
+    ed.toggle_code_block()
+    assert ed.toPlainText() == "```\nx = 1\n```"
+
+
+def test_toggle_code_block_multiline_selection_expands_to_line_boundaries(qapp):
+    ed = MarkdownEditor()
+    ed.setPlainText("line1\nline2\nline3")
+    cursor = ed.textCursor()
+    cursor.setPosition(2)  # line1 중간
+    cursor.setPosition(8, QTextCursor.MoveMode.KeepAnchor)  # line2 중간까지
+    ed.setTextCursor(cursor)
+    ed.toggle_code_block()
+    assert ed.toPlainText() == "```\nline1\nline2\n```\nline3"
+
+
+def test_toggle_code_block_unwraps_when_reapplied(qapp):
+    ed = MarkdownEditor()
+    ed.setPlainText("x = 1")
+    _select_all(ed)
+    ed.toggle_code_block()
+    assert ed.toPlainText() == "```\nx = 1\n```"
+    # wrap 직후 남은 선택(펜스 포함 전체)으로 재호출하면 벗겨진다(왕복 토글)
+    ed.toggle_code_block()
+    assert ed.toPlainText() == "x = 1"
+
+
+def test_toggle_code_block_empty_line_inserts_empty_fence_with_centered_cursor(qapp):
+    ed = MarkdownEditor()
+    ed.toggle_code_block()
+    assert ed.toPlainText() == "```\n\n```"
+    assert ed.textCursor().position() == 4
+
+
+def test_toggle_code_block_is_single_undo_unit(qapp):
+    ed = MarkdownEditor()
+    ed.setPlainText("x = 1")
+    _select_all(ed)
+    ed.toggle_code_block()
+    assert ed.toPlainText() == "```\nx = 1\n```"
+    ed.undo()
+    assert ed.toPlainText() == "x = 1"
+
+
+# --- WP-MK Part B: 단축키 확장 (12케이스) ---
+
+
+def test_ctrl_backtick_toggles_inline_code(qapp):
+    ed = MarkdownEditor()
+    ed.setPlainText("code")
+    _select_all(ed)
+    QTest.keyClick(ed, Qt.Key.Key_QuoteLeft, Qt.KeyboardModifier.ControlModifier)
+    assert ed.toPlainText() == "`code`"
+
+
+def test_ctrl_shift_c_toggles_code_block(qapp):
+    ed = MarkdownEditor()
+    ed.setPlainText("x")
+    _select_all(ed)
+    QTest.keyClick(
+        ed, Qt.Key.Key_C,
+        Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier,
+    )
+    assert ed.toPlainText() == "```\nx\n```"
+
+
+def test_ctrl_digit_1_to_6_sets_heading_level(qapp):
+    for level in range(1, 7):
+        ed = MarkdownEditor()
+        ed.setPlainText("title")
+        key = Qt.Key(Qt.Key.Key_0.value + level)
+        QTest.keyClick(ed, key, Qt.KeyboardModifier.ControlModifier)
+        assert ed.toPlainText() == "#" * level + " title"
+
+
+def test_ctrl_0_clears_heading_level(qapp):
+    ed = MarkdownEditor()
+    ed.setPlainText("# title")
+    QTest.keyClick(ed, Qt.Key.Key_0, Qt.KeyboardModifier.ControlModifier)
+    assert ed.toPlainText() == "title"
+
+
+def test_ctrl_shift_8_toggles_bullet_marker(qapp):
+    ed = MarkdownEditor()
+    ed.setPlainText("item")
+    QTest.keyClick(
+        ed, Qt.Key.Key_8,
+        Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier,
+    )
+    assert ed.toPlainText() == "- item"
+
+
+def test_ctrl_shift_7_toggles_ordered_marker(qapp):
+    ed = MarkdownEditor()
+    ed.setPlainText("item")
+    QTest.keyClick(
+        ed, Qt.Key.Key_7,
+        Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier,
+    )
+    assert ed.toPlainText() == "1. item"
+
+
+def test_ctrl_shift_9_toggles_task_marker(qapp):
+    ed = MarkdownEditor()
+    ed.setPlainText("item")
+    QTest.keyClick(
+        ed, Qt.Key.Key_9,
+        Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier,
+    )
+    assert ed.toPlainText() == "- [ ] item"
+
+
+def test_ctrl_shift_period_toggles_quote_marker(qapp):
+    ed = MarkdownEditor()
+    ed.setPlainText("item")
+    QTest.keyClick(
+        ed, Qt.Key.Key_Period,
+        Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier,
+    )
+    assert ed.toPlainText() == "> item"
+
+
+def test_ctrl_digit_text_fallback_when_key_code_mismatched(qapp):
+    """일부 플랫폼에서 event.key()가 표준 숫자 키 코드와 다르게 와도
+    event.text()로 판정할 수 있어야 한다(플랫폼 키맵 차이 대응)."""
+    ed = MarkdownEditor()
+    ed.setPlainText("title")
+    event = QKeyEvent(
+        QEvent.Type.KeyPress, Qt.Key.Key_unknown,
+        Qt.KeyboardModifier.ControlModifier, "3",
+    )
+    ed.keyPressEvent(event)
+    assert ed.toPlainText() == "### title"
+
+
+def test_ctrl_shift_marker_text_fallback_when_key_code_mismatched(qapp):
+    """Ctrl+Shift+8 같은 조합이 event.key()로 오지 않고 event.text()의 shift
+    기호('*')로만 판별 가능한 플랫폼 대응."""
+    ed = MarkdownEditor()
+    ed.setPlainText("item")
+    event = QKeyEvent(
+        QEvent.Type.KeyPress, Qt.Key.Key_unknown,
+        Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier, "*",
+    )
+    ed.keyPressEvent(event)
+    assert ed.toPlainText() == "- item"
+
+
+def test_ctrl_backtick_closes_slash_menu(qapp):
+    ed = MarkdownEditor()
+    QTest.keyClicks(ed, "/")
+    assert ed._slash_start is not None
+    QTest.keyClick(ed, Qt.Key.Key_QuoteLeft, Qt.KeyboardModifier.ControlModifier)
+    assert ed._slash_start is None
+
+
+# --- WP-MK Part C: 툴바 · 슬래시 메뉴 반영 (4케이스) ---
+
+
+def test_toolbar_inline_code_button_wraps_selection(qapp):
+    ed = MarkdownEditor()
+    ed.setPlainText("code")
+    _select_all(ed)
+    toolbar = MarkdownToolbar(ed)
+    _find_toolbar_button(toolbar, "<>").click()
+    assert ed.toPlainText() == "`code`"
+
+
+def test_toolbar_code_block_button_wraps_selection(qapp):
+    ed = MarkdownEditor()
+    ed.setPlainText("x")
+    _select_all(ed)
+    toolbar = MarkdownToolbar(ed)
+    _find_toolbar_button(toolbar, "{}").click()
+    assert ed.toPlainText() == "```\nx\n```"
+
+
+def test_toolbar_code_buttons_disabled_during_preview(qapp):
+    ed = MarkdownEditor()
+    tb = MarkdownToolbar(ed)
+    inline_btn = _find_toolbar_button(tb, "<>")
+    block_btn = _find_toolbar_button(tb, "{}")
+    tb._btn_preview.click()
+    assert not inline_btn.isEnabled()
+    assert not block_btn.isEnabled()
+    tb._btn_preview.click()
+    assert inline_btn.isEnabled()
+    assert block_btn.isEnabled()
+
+
+def test_slash_menu_inline_code_item_inserts_backtick_pair(qapp):
+    ed = MarkdownEditor()
+    QTest.keyClicks(ed, "/")
+    QTest.keyClicks(ed, "backtick")
+    assert ed._slash_menu.count() == 1
+    assert ed._slash_menu.item(0).text() == "인라인 코드"
+    QTest.keyClick(ed, Qt.Key.Key_Return)
+    assert ed.toPlainText() == "``"
+    assert ed.textCursor().position() == 1
