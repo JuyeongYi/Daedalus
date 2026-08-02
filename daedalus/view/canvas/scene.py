@@ -24,6 +24,7 @@ from daedalus.model.fsm.transition import Transition
 from daedalus.model.plugin.agent import AgentDefinition
 from daedalus.model.plugin.delegation import DelegationDef
 from daedalus.model.plugin.skill import DeclarativeSkill, ProceduralSkill, ReferenceSkill, TransferSkill
+from daedalus.view.canvas.draggable import DraggableItemMixin
 from daedalus.view.canvas.edge_item import TransitionEdgeItem, WaypointHandleItem
 from daedalus.view.canvas.node_item import StateNodeItem
 from daedalus.view.canvas.ref_edge_item import ReferenceEdgeItem
@@ -34,10 +35,9 @@ from daedalus.view.commands.reference_commands import (
     CreateRefLinkCmd,
     DeleteRefCmd,
     DeleteRefLinkCmd,
-    MoveRefCmd,
 )
 from daedalus.view.commands.section_commands import AddSectionCmd, RemoveSectionCmd
-from daedalus.view.commands.state_commands import CreateStateCmd, DeleteStateCmd, MoveStateCmd
+from daedalus.view.commands.state_commands import CreateStateCmd, DeleteStateCmd
 from daedalus.view.commands.transition_commands import (
     AddSkillToProjectCmd,
     AddWaypointCmd,
@@ -90,6 +90,7 @@ class FsmScene(QGraphicsScene):
         self._ref_edge_items: dict[ReferenceLinkViewModel, ReferenceEdgeItem] = {}
         self._state_counter = 0
         self._target_fsm: StateMachine | None = None  # AgentFsmScene만 설정 — 모델 동기화 대상
+        self._drag_positions: dict[DraggableItemMixin, QPointF] = {}  # WP-DM 드래그 시작 스냅샷
         self.setBackgroundBrush(_BG_COLOR)
         self.setSceneRect(_INITIAL_SCENE_RECT)
 
@@ -165,49 +166,75 @@ class FsmScene(QGraphicsScene):
                 edge.update_path()
         self.grow_scene_rect()
 
-    def handle_node_moved(
-        self, node: StateNodeItem, old_pos: QPointF, new_pos: QPointF
-    ) -> None:
-        """노드 드래그 release — 다중 선택 시 이동된 모든 노드를 하나의 커맨드로 처리."""
-        selected_nodes = [
-            item for item in self.selectedItems()
-            if isinstance(item, StateNodeItem)
-        ]
-        if len(selected_nodes) <= 1:
-            # 단일 선택 — 기존 경로
-            cmd = MoveStateCmd(
-                node.state_vm,
-                old_x=old_pos.x(), old_y=old_pos.y(),
-                new_x=new_pos.x(), new_y=new_pos.y(),
-            )
-            self._project_vm.execute(cmd)
-            return
+    # --- 드래그 이동 (WP-DM) ---
 
-        # 다중 선택 — 이동된 모든 노드를 하나의 MacroCommand로 묶음
+    def snapshot_drag_positions(self) -> None:
+        """드래그 시작(press) 시점 — 선택된 모든 draggable의 vm 좌표를 미리 기록.
+
+        WaypointHandleItem처럼 pos() 변경이 실시간으로 모델(waypoints)을
+        미리보기 갱신하는 아이템은, release 시점에 vm_position()을 다시 읽으면
+        이미 새 값으로 갱신돼 있어 old/new 차이를 판정할 수 없다 — press
+        시점 스냅샷으로 해결한다.
+        """
+        self._drag_positions = {
+            item: item.vm_position()
+            for item in self.selectedItems()
+            if isinstance(item, DraggableItemMixin)
+        }
+
+    def handle_items_moved(
+        self, grabbed: DraggableItemMixin, old_pos: QPointF, new_pos: QPointF
+    ) -> None:
+        """드래그 릴리스 단일 진입점(WP-DM).
+
+        Qt는 선택된 이동 가능 아이템을 전부 화면에서 함께 옮기지만, release
+        이벤트는 잡은(grabbed) 아이템 하나에만 배달된다 — 이 메서드가 선택된
+        모든 draggable을 모아 하나의 undo 단위로 묶어 그 비대칭을 흡수하는
+        단일 진입점이다. 아이템 타입 분기는 두지 않는다 — 커맨드 생성 지식은
+        각 아이템의 make_move_command()에 있고, 씬은 수집·묶기만 한다.
+        """
+        items: list[DraggableItemMixin] = [
+            item for item in self.selectedItems()
+            if isinstance(item, DraggableItemMixin)
+        ]
+        if grabbed not in items:
+            items.append(grabbed)
+
+        snapshot = self._drag_positions
         cmds: list[Command] = []
-        for item in selected_nodes:
-            svm = item.state_vm
-            if item is node:
-                # release를 발생시킨 노드 — old_pos가 제공됨
-                cmds.append(MoveStateCmd(
-                    svm,
-                    old_x=old_pos.x(), old_y=old_pos.y(),
-                    new_x=new_pos.x(), new_y=new_pos.y(),
-                ))
-            elif svm.x != item.pos().x() or svm.y != item.pos().y():
-                # 함께 드래그된 노드 — vm 좌표가 구 위치, item.pos()가 새 위치
-                cmds.append(MoveStateCmd(
-                    svm,
-                    old_x=svm.x, old_y=svm.y,
-                    new_x=item.pos().x(), new_y=item.pos().y(),
-                ))
+        for item in items:
+            if item is grabbed:
+                old, new = old_pos, new_pos
+            else:
+                # 함께 드래그된(passenger) 아이템 — press 시점 스냅샷을 우선
+                # 쓰고(WaypointHandleItem 등 실시간 미리보기로 vm이 이미
+                # 갱신됐을 수 있는 아이템 대응), 스냅샷이 없으면(직접 호출 등)
+                # vm_position()으로 폴백한다.
+                old = snapshot.get(item, item.vm_position())
+                new = item.pos()
+                if old == new:
+                    continue
+            cmd = item.make_move_command(old, new)
+            if cmd is not None:
+                cmds.append(cmd)
+        self._drag_positions = {}
+
+        if not cmds:
+            return
         if len(cmds) == 1:
             self._project_vm.execute(cmds[0])
         else:
             self._project_vm.execute(MacroCommand(
                 children=cmds,
-                description="노드 다중 이동",
+                description="캔버스 다중 이동",
             ))
+
+    def handle_node_moved(
+        self, node: StateNodeItem, old_pos: QPointF, new_pos: QPointF
+    ) -> None:
+        """노드 드래그 release — WP-DM: handle_items_moved에 위임(시그니처
+        유지, 기존 호출부·테스트 호환)."""
+        self.handle_items_moved(node, old_pos, new_pos)
 
     # --- 엣지 경유점 (WP-ER) ---
 
@@ -225,7 +252,13 @@ class FsmScene(QGraphicsScene):
         old_pos: QPointF,
         new_pos: QPointF,
     ) -> None:
-        """경유점 핸들 드래그 release — undo 가능."""
+        """경유점 핸들 드래그 release — WP-DM: handle_items_moved에 위임(시그니처
+        유지, 기존 호출부·테스트 호환)."""
+        handle = edge.handle_at(index)
+        if handle is not None:
+            self.handle_items_moved(handle, old_pos, new_pos)
+            return
+        # 방어적 폴백 — 인덱스가 어긋난 경우 기존 단일 커맨드 경로 유지
         self._project_vm.execute(
             MoveWaypointCmd(
                 edge.transition_vm, index,
@@ -714,14 +747,9 @@ class FsmScene(QGraphicsScene):
     def handle_ref_node_moved(
         self, ref_node: ReferenceNodeItem, old_pos: QPointF, new_pos: QPointF
     ) -> None:
-        """참조 노드 드래그 release — undo 가능 + 모델 좌표 동기화."""
-        cmd = MoveRefCmd(
-            ref_node.ref_vm,
-            old_x=old_pos.x(), old_y=old_pos.y(),
-            new_x=new_pos.x(), new_y=new_pos.y(),
-            sync_fn=self._sync_refs_to_model,
-        )
-        self._project_vm.execute(cmd)
+        """참조 노드 드래그 release — WP-DM: handle_items_moved에 위임(시그니처
+        유지, 기존 호출부·테스트 호환)."""
+        self.handle_items_moved(ref_node, old_pos, new_pos)
 
     def _sync_refs_to_model(self) -> None:
         """뷰 모델 → 모델 동기화. 위치 + 연결 정보를 모델에 반영 (sync 모듈 위임)."""
