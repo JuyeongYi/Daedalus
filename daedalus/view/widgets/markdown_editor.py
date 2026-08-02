@@ -7,8 +7,9 @@ Copyright (c) 2014-2026 Patrizio Bekerle)의 설계를 PySide6로 포팅했다.
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import (
     QColor,
     QFont,
@@ -17,7 +18,15 @@ from PySide6.QtGui import (
     QTextCursor,
     QTextDocument,
 )
-from PySide6.QtWidgets import QPlainTextEdit, QWidget
+from PySide6.QtWidgets import (
+    QFrame,
+    QHBoxLayout,
+    QListWidget,
+    QListWidgetItem,
+    QPlainTextEdit,
+    QPushButton,
+    QWidget,
+)
 
 MARKDOWN_PALETTE: dict[str, QColor] = {
     "text": QColor("#cccccc"),
@@ -72,6 +81,36 @@ _QUOTE_LINE_RE = re.compile(r"^(\s*>\s?)(.*)$")
 
 # --- 체크박스 클릭 토글용 ---
 _TASK_CHECK_RE = re.compile(r"^(\s*[-*+]\s+\[)([ xX])(\])")
+
+# --- toggle_line_marker용 ---
+_LEADING_WS_RE = re.compile(r"^(\s*)")
+_QUOTE_MARKER_RE = re.compile(r"^(\s{0,3})((?:>\s?)+)")
+_MARKER_KIND: dict[str, str] = {
+    "- ": "bullet",
+    "1. ": "ordered",
+    "- [ ] ": "task",
+    "> ": "quote",
+}
+
+
+def _detect_line_marker(text: str) -> tuple[str, str, str] | None:
+    """줄의 리스트/인용 마커를 감지한다. (kind, indent, rest) 또는 마커 없으면 None.
+
+    task는 UL 패턴도 만족하므로 먼저 검사한다(하이라이터 규칙 순서와 동일).
+    """
+    m = _TASK_RE.match(text)
+    if m:
+        return ("task", m.group(1), text[m.end():])
+    m = _UL_RE.match(text)
+    if m:
+        return ("bullet", m.group(1), text[m.end():])
+    m = _OL_RE.match(text)
+    if m:
+        return ("ordered", m.group(1), text[m.end():])
+    m = _QUOTE_MARKER_RE.match(text)
+    if m:
+        return ("quote", m.group(1), text[m.end():])
+    return None
 
 
 def _make_format(
@@ -292,6 +331,88 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         self.setFormat(bracket_end, m.end() - bracket_end, self._fmt_link_url)
 
 
+@dataclass(frozen=True)
+class SlashItem:
+    """슬래시 메뉴 항목 — 표시/필터/삽입 스니펫을 묶는다."""
+
+    label: str        # 표시 텍스트 (예: "제목 1")
+    keywords: str      # 필터 매칭 대상 (label + 영문 별칭)
+    snippet: str       # 삽입 텍스트
+    cursor_back: int = 0  # 삽입 후 커서를 끝에서 뒤로 물릴 문자 수
+
+
+SLASH_CATALOG: list[SlashItem] = [
+    SlashItem("제목 1", "제목 1 h1 heading", "# "),
+    SlashItem("제목 2", "제목 2 h2 heading", "## "),
+    SlashItem("제목 3", "제목 3 h3 heading", "### "),
+    SlashItem("불릿 리스트", "불릿 리스트 list bullet ul", "- "),
+    SlashItem("번호 리스트", "번호 리스트 number ordered list ol", "1. "),
+    SlashItem("체크리스트", "체크리스트 check task checklist todo", "- [ ] "),
+    SlashItem("인용", "인용 quote blockquote", "> "),
+    SlashItem("코드 블록", "코드 블록 code block fence", "```\n\n```", 4),
+    SlashItem("구분선", "구분선 hr divider horizontal rule", "---\n"),
+    SlashItem("링크", "링크 link url", "[](url)", 6),
+]
+
+_SLASH_ITEM_ROLE = Qt.ItemDataRole.UserRole
+_SLASH_ROW_HEIGHT = 24
+_SLASH_MAX_VISIBLE_ROWS = 8
+_SLASH_MENU_WIDTH = 180
+
+
+class _SlashMenu(QListWidget):
+    """`/` 슬래시 메뉴 — 에디터 viewport의 자식 오버레이(Qt.Popup 아님).
+
+    포커스는 에디터가 계속 보유한다(오프스크린 테스트를 위해).
+    """
+
+    def __init__(self, editor: "MarkdownEditor") -> None:
+        super().__init__(editor.viewport())
+        self._editor = editor
+        self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.setFrameShape(QListWidget.Shape.NoFrame)
+        self.setStyleSheet(
+            "QListWidget { background-color: #252540; color: #ccc; "
+            "border: 1px solid #3a3a5c; }"
+            "QListWidget::item { padding: 2px 8px; }"
+            "QListWidget::item:selected { background-color: #334; color: #88aaff; }"
+        )
+        self.itemClicked.connect(self._on_item_clicked)
+        self.hide()
+
+    def populate(self, items: list[SlashItem]) -> None:
+        self.clear()
+        for item in items:
+            list_item = QListWidgetItem(item.label)
+            list_item.setData(_SLASH_ITEM_ROLE, item)
+            self.addItem(list_item)
+        if self.count() > 0:
+            self.setCurrentRow(0)
+        self._resize_to_contents()
+
+    def _resize_to_contents(self) -> None:
+        visible_rows = min(max(self.count(), 1), _SLASH_MAX_VISIBLE_ROWS)
+        self.setFixedWidth(_SLASH_MENU_WIDTH)
+        self.setFixedHeight(_SLASH_ROW_HEIGHT * visible_rows + 4)
+
+    def selected_item(self) -> SlashItem | None:
+        current = self.currentItem()
+        if current is None:
+            return None
+        return current.data(_SLASH_ITEM_ROLE)
+
+    def move_selection(self, delta: int) -> None:
+        if self.count() == 0:
+            return
+        row = (self.currentRow() + delta) % self.count()
+        self.setCurrentRow(row)
+
+    def _on_item_clicked(self, item: QListWidgetItem) -> None:
+        self.setCurrentItem(item)
+        self._editor._confirm_slash_item()
+        self._editor.setFocus()
+
+
 class MarkdownEditor(QPlainTextEdit):
     """마크다운 본문 에디터 — 하이라이팅 + 리스트/인용 이어쓰기 + 서식 단축키."""
 
@@ -307,10 +428,53 @@ class MarkdownEditor(QPlainTextEdit):
         )
         self.setTabChangesFocus(False)
         self._highlighter = MarkdownHighlighter(self.document(), _BASE_POINT_SIZE)
+        self._slash_menu = _SlashMenu(self)
+        self._slash_start: int | None = None
 
     # --- 키 입력 ---
 
     def keyPressEvent(self, event) -> None:  # noqa: N802 (Qt override)
+        """`/` 슬래시 메뉴가 열려 있으면 ↑/↓/Enter/Tab/Esc를 메뉴가 소비하고,
+        그 외 키는 평소대로 처리한 뒤 슬래시 메뉴 상태(필터/닫힘)를 동기화한다.
+        메뉴가 닫혀 있었다면 처리 후 `/` 입력으로 새로 열릴 조건인지 확인한다.
+        """
+        # 메뉴가 열려 있는지는 위젯의 실제 화면 가시성(isVisible)이 아니라
+        # 논리 상태(_slash_start)로 판단한다 — 그래야 top-level이 show()되지
+        # 않은 오프스크린 테스트에서도 정상 동작한다.
+        menu_was_open = self._slash_start is not None
+        # Ctrl 조합 단축키는 삽입 흐름이 아니다 — 메뉴를 닫고 평소대로 처리한다.
+        if menu_was_open and event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+            self._close_slash_menu()
+            menu_was_open = False
+        if menu_was_open and self._handle_slash_menu_key(event):
+            return
+
+        self._dispatch_key(event)
+
+        if menu_was_open:
+            self._sync_slash_menu_after_edit()
+        else:
+            self._maybe_open_slash_menu(event)
+
+    def _handle_slash_menu_key(self, event) -> bool:
+        """슬래시 메뉴가 열린 동안 소비하는 키 5종. 소비했으면 True."""
+        key = event.key()
+        if key == Qt.Key.Key_Escape:
+            self._close_slash_menu()
+            return True
+        if key == Qt.Key.Key_Up:
+            self._slash_menu.move_selection(-1)
+            return True
+        if key == Qt.Key.Key_Down:
+            self._slash_menu.move_selection(1)
+            return True
+        if key in (Qt.Key.Key_Return, Qt.Key.Key_Enter, Qt.Key.Key_Tab):
+            self._confirm_slash_item()
+            return True
+        return False
+
+    def _dispatch_key(self, event) -> None:
+        """기존 Enter/Tab/서식 단축키 분기 — 슬래시 메뉴와 무관한 원래 동작."""
         key = event.key()
         mods = event.modifiers()
 
@@ -346,6 +510,101 @@ class MarkdownEditor(QPlainTextEdit):
             return
 
         super().keyPressEvent(event)
+
+    # --- `/` 슬래시 메뉴 ---
+
+    def _maybe_open_slash_menu(self, event) -> None:
+        """방금 처리된 키가 여는 조건을 만족하는 `/`였으면 메뉴를 연다.
+
+        조건: 커서 앞(같은 블록)이 공백뿐(빈 문자열 포함).
+        """
+        if event.text() != "/":
+            return
+        cursor = self.textCursor()
+        block = cursor.block()
+        col = cursor.positionInBlock()  # '/' 삽입 직후이므로 col-1이 슬래시 위치
+        prefix = block.text()[: col - 1]
+        if prefix.strip() != "":
+            return
+        self._slash_start = cursor.position() - 1
+        self._open_slash_menu()
+
+    def _open_slash_menu(self) -> None:
+        self._slash_menu.populate(SLASH_CATALOG)
+        self._position_slash_menu()
+        self._slash_menu.show()
+        self._slash_menu.raise_()
+
+    def _position_slash_menu(self) -> None:
+        rect = self.cursorRect()
+        menu = self._slash_menu
+        vp = self.viewport()
+        # 뷰포트가 메뉴보다 낮으면 높이를 캡한다 (목록은 내부 스크롤)
+        max_h = max(_SLASH_ROW_HEIGHT + 4, vp.height())
+        if menu.height() > max_h:
+            menu.setFixedHeight(max_h)
+        x = rect.left()
+        y = rect.bottom()
+        # 아래 공간이 부족하면 커서 위로 뒤집는다 (viewport 자식이라 밖은 클리핑됨)
+        if y + menu.height() > vp.height():
+            y = rect.top() - menu.height()
+        y = max(0, y)
+        x = max(0, min(x, vp.width() - menu.width()))
+        menu.move(x, y)
+
+    def _close_slash_menu(self) -> None:
+        self._slash_menu.hide()
+        self._slash_start = None
+
+    def _sync_slash_menu_after_edit(self) -> None:
+        """필터 재계산 또는 닫힘 조건(커서가 슬래시 앞으로/슬래시 삭제됨) 처리."""
+        if self._slash_start is None:
+            return
+        cursor = self.textCursor()
+        pos = cursor.position()
+        doc_text = self.toPlainText()
+        if (
+            pos <= self._slash_start
+            or self._slash_start >= len(doc_text)
+            or doc_text[self._slash_start] != "/"
+        ):
+            self._close_slash_menu()
+            return
+        filter_text = doc_text[self._slash_start + 1 : pos]
+        if "\n" in filter_text:
+            self._close_slash_menu()
+            return
+        self._filter_slash_menu(filter_text)
+        self._position_slash_menu()
+
+    def _filter_slash_menu(self, filter_text: str) -> None:
+        needle = filter_text.lower()
+        if needle == "":
+            matched = list(SLASH_CATALOG)
+        else:
+            matched = [item for item in SLASH_CATALOG if needle in item.keywords.lower()]
+        self._slash_menu.populate(matched)
+
+    def _confirm_slash_item(self) -> None:
+        item = self._slash_menu.selected_item()
+        if item is None:
+            # 매치 0개 -> Enter/Tab 무동작(메뉴 유지)
+            return
+        start = self._slash_start
+        end = self.textCursor().position()
+        self._close_slash_menu()
+        if start is None:
+            return
+        edit_cursor = self.textCursor()
+        edit_cursor.setPosition(start)
+        edit_cursor.setPosition(end, QTextCursor.MoveMode.KeepAnchor)
+        edit_cursor.beginEditBlock()
+        edit_cursor.insertText(item.snippet)
+        edit_cursor.endEditBlock()
+        new_pos = edit_cursor.position() - item.cursor_back
+        result_cursor = self.textCursor()
+        result_cursor.setPosition(new_pos)
+        self.setTextCursor(result_cursor)
 
     # --- Enter: 리스트/인용 이어쓰기 ---
 
@@ -518,9 +777,136 @@ class MarkdownEditor(QPlainTextEdit):
             result_cursor.setPosition(pos + 1)
             self.setTextCursor(result_cursor)
 
+    # --- 공개 편집 API (툴바/슬래시 메뉴용) ---
+
+    def toggle_wrap(self, prefix: str, suffix: str) -> None:
+        """`_toggle_wrap`의 공개 래퍼."""
+        self._toggle_wrap(prefix, suffix)
+
+    def insert_link(self) -> None:
+        """`_insert_link`의 공개 래퍼."""
+        self._insert_link()
+
+    def set_heading_level(self, level: int) -> None:
+        """현재 줄의 헤딩 레벨을 설정한다.
+
+        기존 `#{1,6}\\s+` 접두를 제거한 뒤 level(1-6)이면 `"#" * level + " "`을
+        붙인다. 현재 접두 레벨과 같은 level을 다시 적용하면 접두 제거(본문 복귀).
+        level == 0은 접두 제거만 한다.
+        """
+        if not 0 <= level <= 6:
+            raise ValueError("level must be between 0 and 6")
+        cursor = self.textCursor()
+        block = cursor.block()
+        text = block.text()
+        m = _HEADING_PREFIX_RE.match(text)
+        current_level = len(m.group(1)) if m else 0
+        old_prefix_len = m.end() if m else 0
+        content = text[old_prefix_len:]
+
+        new_prefix = "" if level == 0 or level == current_level else "#" * level + " "
+        new_text = new_prefix + content
+        if new_text == text:
+            return
+
+        offset_in_content = max(0, cursor.positionInBlock() - old_prefix_len)
+        new_cursor_pos = block.position() + len(new_prefix) + offset_in_content
+
+        edit_cursor = QTextCursor(block)
+        edit_cursor.movePosition(QTextCursor.MoveOperation.StartOfBlock)
+        edit_cursor.movePosition(
+            QTextCursor.MoveOperation.EndOfBlock, QTextCursor.MoveMode.KeepAnchor,
+        )
+        edit_cursor.beginEditBlock()
+        edit_cursor.insertText(new_text)
+        edit_cursor.endEditBlock()
+
+        result_cursor = self.textCursor()
+        result_cursor.setPosition(new_cursor_pos)
+        self.setTextCursor(result_cursor)
+
+    def toggle_line_marker(self, marker: str) -> None:
+        """선택에 걸친 모든 줄(선택 없으면 현재 줄)에 리스트/인용 마커를 토글한다.
+
+        marker는 "- " / "1. " / "- [ ] " / "> " 중 하나. 이미 같은 종류의
+        마커면 제거, 다른 리스트/인용 마커면 교체, 없으면 들여쓰기 뒤에 삽입한다.
+        번호 리스트는 선택 범위 안에서 1부터 재번호한다. 빈 줄은 건너뛴다.
+        """
+        if marker not in _MARKER_KIND:
+            raise ValueError(f"unsupported marker: {marker!r}")
+        desired_kind = _MARKER_KIND[marker]
+        cursor = self.textCursor()
+        doc = self.document()
+
+        # 선택이 없으면 편집 후 커서 위치를 보존한다 (set_heading_level과 일관)
+        restore: tuple[int, int, int] | None = None
+        if not cursor.hasSelection():
+            cur_block = doc.findBlock(cursor.position())
+            restore = (
+                cur_block.blockNumber(),
+                cursor.positionInBlock(),
+                len(cur_block.text()),
+            )
+
+        if cursor.hasSelection():
+            start_pos = min(cursor.selectionStart(), cursor.selectionEnd())
+            end_pos = max(cursor.selectionStart(), cursor.selectionEnd())
+        else:
+            start_pos = end_pos = cursor.position()
+
+        start_block_num = doc.findBlock(start_pos).blockNumber()
+        end_block = doc.findBlock(end_pos)
+        end_block_num = end_block.blockNumber()
+        if end_block_num > start_block_num and end_pos == end_block.position():
+            end_block_num -= 1
+
+        edit_cursor = self.textCursor()
+        edit_cursor.beginEditBlock()
+        order_counter = 1
+        for block_num in range(start_block_num, end_block_num + 1):
+            block = doc.findBlockByNumber(block_num)
+            text = block.text()
+            if text.strip() == "":
+                continue
+            info = _detect_line_marker(text)
+            if info is not None and info[0] == desired_kind:
+                new_text = info[1] + info[2]
+            else:
+                if info is not None:
+                    indent, rest = info[1], info[2]
+                else:
+                    indent_m = _LEADING_WS_RE.match(text)
+                    indent = indent_m.group(1) if indent_m else ""
+                    rest = text[len(indent):]
+                if desired_kind == "ordered":
+                    marker_text = f"{order_counter}. "
+                    order_counter += 1
+                else:
+                    marker_text = marker
+                new_text = indent + marker_text + rest
+            if new_text != text:
+                block_cursor = QTextCursor(block)
+                block_cursor.movePosition(QTextCursor.MoveOperation.StartOfBlock)
+                block_cursor.movePosition(
+                    QTextCursor.MoveOperation.EndOfBlock, QTextCursor.MoveMode.KeepAnchor,
+                )
+                block_cursor.insertText(new_text)
+        edit_cursor.endEditBlock()
+
+        if restore is not None:
+            block_num, pos_in_block, old_len = restore
+            block = doc.findBlockByNumber(block_num)
+            new_len = len(block.text())
+            new_pos = min(max(0, pos_in_block + new_len - old_len), new_len)
+            result_cursor = self.textCursor()
+            result_cursor.setPosition(block.position() + new_pos)
+            self.setTextCursor(result_cursor)
+
     # --- 체크박스 클릭 토글 ---
 
     def mousePressEvent(self, event) -> None:  # noqa: N802 (Qt override)
+        if event.button() == Qt.MouseButton.LeftButton and self._slash_start is not None:
+            self._close_slash_menu()
         if event.button() == Qt.MouseButton.LeftButton:
             hit_cursor = self.cursorForPosition(event.position().toPoint())
             block = hit_cursor.block()
@@ -531,6 +917,10 @@ class MarkdownEditor(QPlainTextEdit):
                     event.accept()
                     return
         super().mousePressEvent(event)
+
+    def focusOutEvent(self, event) -> None:  # noqa: N802 (Qt override)
+        self._close_slash_menu()
+        super().focusOutEvent(event)
 
     def _checkbox_range(self, block) -> tuple[int, int] | None:
         m = _TASK_CHECK_RE.match(block.text())
@@ -549,3 +939,106 @@ class MarkdownEditor(QPlainTextEdit):
         toggle_cursor.setPosition(block.position() + m.end(2), QTextCursor.MoveMode.KeepAnchor)
         toggle_cursor.insertText(new_char)
         return True
+
+
+class MarkdownToolbar(QWidget):
+    """서식 툴바 — `MarkdownEditor` 공개 API에 배선된 버튼 행.
+
+    `H1 H2 H3 │ B I S │ • 1. ☑ │ " 🔗 │ 👁` — 프리뷰 버튼(👁)만 예외로
+    `preview_toggled` 시그널을 방출할 뿐 문서를 건드리지 않는다(프리뷰 자체는
+    `SectionContentPanel` 소관).
+    """
+
+    preview_toggled = Signal(bool)
+
+    _BUTTON_WIDTH = 30
+
+    def __init__(self, editor: MarkdownEditor, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._editor = editor
+        self._edit_buttons: list[QPushButton] = []  # 프리뷰 중 비활성화 대상
+
+        lay = QHBoxLayout(self)
+        lay.setContentsMargins(4, 2, 4, 2)
+        lay.setSpacing(2)
+
+        self._add_button(lay, "H1", "제목 1", lambda: self._apply_heading(1))
+        self._add_button(lay, "H2", "제목 2", lambda: self._apply_heading(2))
+        self._add_button(lay, "H3", "제목 3", lambda: self._apply_heading(3))
+        self._add_separator(lay)
+        self._add_button(lay, "B", "굵게 (Ctrl+B)", lambda: self._apply_wrap("**", "**"))
+        self._add_button(lay, "I", "기울임 (Ctrl+I)", lambda: self._apply_wrap("*", "*"))
+        self._add_button(lay, "S", "취소선 (Ctrl+Shift+X)", lambda: self._apply_wrap("~~", "~~"))
+        self._add_separator(lay)
+        self._add_button(lay, "•", "불릿 리스트", lambda: self._apply_marker("- "))
+        self._add_button(lay, "1.", "번호 리스트", lambda: self._apply_marker("1. "))
+        self._add_button(lay, "☑", "체크리스트", lambda: self._apply_marker("- [ ] "))
+        self._add_separator(lay)
+        self._add_button(lay, "\"", "인용", lambda: self._apply_marker("> "))
+        self._add_button(lay, "🔗", "링크 (Ctrl+K)", self._apply_link)
+        self._add_separator(lay)
+        self._btn_preview = self._add_button(
+            lay, "👁", "미리보기 전환", self._on_preview_toggled, checkable=True,
+        )
+        lay.addStretch(1)
+
+    def _add_button(
+        self,
+        lay: QHBoxLayout,
+        text: str,
+        tooltip: str,
+        handler,
+        *,
+        checkable: bool = False,
+    ) -> QPushButton:
+        btn = QPushButton(text)
+        btn.setFlat(True)
+        btn.setFixedWidth(self._BUTTON_WIDTH)
+        btn.setToolTip(tooltip)
+        btn.setCheckable(checkable)
+        if checkable:
+            btn.toggled.connect(handler)
+        else:
+            # checkable은 프리뷰(👁) 전용 — 나머지는 전부 편집 버튼
+            btn.clicked.connect(handler)
+            self._edit_buttons.append(btn)
+        lay.addWidget(btn)
+        return btn
+
+    def _add_separator(self, lay: QHBoxLayout) -> None:
+        sep = QFrame()
+        sep.setFrameShape(QFrame.Shape.VLine)
+        sep.setFrameShadow(QFrame.Shadow.Sunken)
+        lay.addWidget(sep)
+
+    def _apply_heading(self, level: int) -> None:
+        self._editor.set_heading_level(level)
+        self._editor.setFocus()
+
+    def _apply_wrap(self, prefix: str, suffix: str) -> None:
+        self._editor.toggle_wrap(prefix, suffix)
+        self._editor.setFocus()
+
+    def _apply_marker(self, marker: str) -> None:
+        self._editor.toggle_line_marker(marker)
+        self._editor.setFocus()
+
+    def _apply_link(self) -> None:
+        self._editor.insert_link()
+        self._editor.setFocus()
+
+    def _on_preview_toggled(self, checked: bool) -> None:
+        # 프리뷰 중 편집 버튼이 숨은 문서를 조용히 바꾸지 못하게 잠근다
+        for btn in self._edit_buttons:
+            btn.setEnabled(not checked)
+        self.preview_toggled.emit(checked)
+        self._editor.setFocus()
+
+    def set_preview_checked(self, checked: bool) -> None:
+        """프리뷰(👁) 버튼 체크 상태를 외부에서 리셋할 때 쓰는 공개 API.
+
+        `checked`가 현재 상태와 다르면 `toggled` 시그널이 발생해 `preview_toggled`도
+        함께 방출된다(호출자가 이를 감안해야 함 — `SectionContentPanel.show_section`은
+        이 방출로 스택이 편집 모드로 복귀하는 것을 활용한다).
+        """
+        self._btn_preview.setChecked(checked)

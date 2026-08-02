@@ -2,16 +2,27 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import pytest
+
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QFont, QTextCursor, QTextDocument
 from PySide6.QtTest import QTest
+from PySide6.QtWidgets import QPushButton
 
 from daedalus.model.fsm.section import Section
 from daedalus.view.widgets.markdown_editor import (
     MARKDOWN_PALETTE,
     MarkdownEditor,
     MarkdownHighlighter,
+    MarkdownToolbar,
 )
+
+
+def _find_toolbar_button(toolbar: MarkdownToolbar, text: str) -> QPushButton:
+    for btn in toolbar.findChildren(QPushButton):
+        if btn.text() == text:
+            return btn
+    raise AssertionError(f"toolbar button {text!r} not found")
 
 
 def _make_doc(text: str) -> QTextDocument:
@@ -268,3 +279,263 @@ def test_tab_without_selection_inserts_at_cursor(qapp):
     ed.setTextCursor(cursor)
     QTest.keyClick(ed, Qt.Key.Key_Tab)
     assert ed.toPlainText() == "hello     world"
+
+
+# --- WP-MD2 Part A: 공개 편집 API (5케이스) ---
+
+
+def test_set_heading_level_applies(qapp):
+    ed = MarkdownEditor()
+    ed.setPlainText("제목")
+    ed.set_heading_level(1)
+    assert ed.toPlainText() == "# 제목"
+
+
+def test_set_heading_level_reclick_removes(qapp):
+    ed = MarkdownEditor()
+    ed.setPlainText("# 제목")
+    ed.set_heading_level(1)
+    assert ed.toPlainText() == "제목"
+
+
+def test_set_heading_level_replaces_level(qapp):
+    ed = MarkdownEditor()
+    ed.setPlainText("# 제목")
+    ed.set_heading_level(2)
+    assert ed.toPlainText() == "## 제목"
+
+
+def test_toggle_line_marker_bullet_toggle(qapp):
+    ed = MarkdownEditor()
+    ed.setPlainText("item")
+    ed.toggle_line_marker("- ")
+    assert ed.toPlainText() == "- item"
+    ed.toggle_line_marker("- ")
+    assert ed.toPlainText() == "item"
+
+
+def test_toggle_line_marker_ordered_renumber(qapp):
+    ed = MarkdownEditor()
+    ed.setPlainText("a\nb\nc")
+    cursor = ed.textCursor()
+    cursor.movePosition(QTextCursor.MoveOperation.Start)
+    cursor.movePosition(QTextCursor.MoveOperation.End, QTextCursor.MoveMode.KeepAnchor)
+    ed.setTextCursor(cursor)
+    ed.toggle_line_marker("1. ")
+    assert ed.toPlainText() == "1. a\n2. b\n3. c"
+
+
+# --- WP-MD2 Part B: `/` 슬래시 메뉴 (6케이스) ---
+
+
+def test_slash_menu_opens_on_empty_line(qapp):
+    ed = MarkdownEditor()
+    QTest.keyClicks(ed, "/")
+    assert ed.toPlainText() == "/"
+    assert ed._slash_start is not None
+
+
+def test_slash_menu_not_opened_mid_line(qapp):
+    ed = MarkdownEditor()
+    ed.setPlainText("abc")
+    _set_cursor_at_end(ed)
+    QTest.keyClicks(ed, "/")
+    assert ed.toPlainText() == "abc/"
+    assert ed._slash_start is None
+
+
+def test_slash_menu_filters_by_keyword(qapp):
+    ed = MarkdownEditor()
+    QTest.keyClicks(ed, "/")
+    QTest.keyClicks(ed, "co")
+    assert ed._slash_menu.count() == 1
+    assert ed._slash_menu.item(0).text() == "코드 블록"
+
+
+def test_slash_menu_enter_confirms_code_block(qapp):
+    ed = MarkdownEditor()
+    QTest.keyClicks(ed, "/")
+    QTest.keyClicks(ed, "co")
+    QTest.keyClick(ed, Qt.Key.Key_Return)
+    assert ed.toPlainText() == "```\n\n```"
+    assert ed.textCursor().position() == 4
+    assert ed._slash_start is None
+
+
+def test_slash_menu_esc_closes_keeps_text(qapp):
+    ed = MarkdownEditor()
+    QTest.keyClicks(ed, "/")
+    QTest.keyClicks(ed, "co")
+    QTest.keyClick(ed, Qt.Key.Key_Escape)
+    assert ed._slash_start is None
+    assert ed.toPlainText() == "/co"
+
+
+def test_slash_menu_backspace_deletes_slash_closes(qapp):
+    ed = MarkdownEditor()
+    QTest.keyClicks(ed, "/")
+    assert ed._slash_start is not None
+    QTest.keyClick(ed, Qt.Key.Key_Backspace)
+    assert ed._slash_start is None
+    assert ed.toPlainText() == ""
+
+
+# --- WP-MD2 Part C: 서식 툴바 (4케이스) ---
+
+
+def test_toolbar_bold_button_wraps_selection(qapp):
+    ed = MarkdownEditor()
+    ed.setPlainText("hello")
+    cursor = ed.textCursor()
+    cursor.select(QTextCursor.SelectionType.Document)
+    ed.setTextCursor(cursor)
+    toolbar = MarkdownToolbar(ed)
+    _find_toolbar_button(toolbar, "B").click()
+    assert ed.toPlainText() == "**hello**"
+
+
+def test_toolbar_h2_button_applies_and_removes(qapp):
+    ed = MarkdownEditor()
+    ed.setPlainText("title")
+    toolbar = MarkdownToolbar(ed)
+    btn = _find_toolbar_button(toolbar, "H2")
+    btn.click()
+    assert ed.toPlainText() == "## title"
+    btn.click()
+    assert ed.toPlainText() == "title"
+
+
+def test_toolbar_checklist_button_toggles(qapp):
+    ed = MarkdownEditor()
+    ed.setPlainText("todo")
+    toolbar = MarkdownToolbar(ed)
+    btn = _find_toolbar_button(toolbar, "☑")
+    btn.click()
+    assert ed.toPlainText() == "- [ ] todo"
+    btn.click()
+    assert ed.toPlainText() == "todo"
+
+
+def test_toolbar_preview_button_emits_signal(qapp):
+    ed = MarkdownEditor()
+    toolbar = MarkdownToolbar(ed)
+    received = []
+    toolbar.preview_toggled.connect(received.append)
+    _find_toolbar_button(toolbar, "👁").click()
+    assert received == [True]
+
+
+# --- WP-MD2 Part D: 프리뷰 토글 + 패널 통합 (3케이스) ---
+
+
+def test_panel_preview_toggle_switches_stack_and_renders_heading(qapp):
+    from daedalus.view.editors.body_editor import SectionContentPanel
+
+    panel = SectionContentPanel()
+    section = Section("T", content="# 제목")
+    panel.show_section(section, ["T"])
+
+    _find_toolbar_button(panel._md_toolbar, "👁").click()
+
+    assert panel._content_stack.currentIndex() == 1
+    rendered_text = panel._w_preview.document().toPlainText()
+    assert "#" not in rendered_text
+    assert "제목" in rendered_text
+
+
+def test_panel_preview_toggle_off_restores_editor_and_content(qapp):
+    from daedalus.view.editors.body_editor import SectionContentPanel
+
+    panel = SectionContentPanel()
+    section = Section("T", content="본문 내용")
+    panel.show_section(section, ["T"])
+
+    btn = _find_toolbar_button(panel._md_toolbar, "👁")
+    btn.click()
+    assert panel._content_stack.currentIndex() == 1
+    btn.click()
+    assert panel._content_stack.currentIndex() == 0
+    assert panel._w_content.toPlainText() == "본문 내용"
+
+
+def test_panel_show_section_resets_preview(qapp):
+    from daedalus.view.editors.body_editor import SectionContentPanel
+
+    panel = SectionContentPanel()
+    section1 = Section("A", content="a")
+    panel.show_section(section1, ["A"])
+    _find_toolbar_button(panel._md_toolbar, "👁").click()
+    assert panel._content_stack.currentIndex() == 1
+
+    section2 = Section("B", content="b")
+    panel.show_section(section2, ["B"])
+    assert panel._content_stack.currentIndex() == 0
+    assert not _find_toolbar_button(panel._md_toolbar, "👁").isChecked()
+
+
+# --- 리뷰 후속 회귀 (WP-MD2 권고 반영 잠금) ---
+
+
+def test_slash_menu_flips_above_when_no_space_below(qapp):
+    ed = MarkdownEditor()
+    ed.resize(400, 120)
+    ed.show()
+    qapp.processEvents()
+    ed.setPlainText("x\n" * 30)
+    cursor = ed.textCursor()
+    cursor.movePosition(QTextCursor.MoveOperation.End)
+    ed.setTextCursor(cursor)
+    QTest.keyClicks(ed, "/")
+    assert ed._slash_start is not None
+    geo = ed._slash_menu.geometry()
+    assert geo.top() >= 0
+    assert geo.bottom() <= ed.viewport().height()
+    ed.hide()
+
+
+def test_preview_toggle_disables_edit_buttons(qapp):
+    ed = MarkdownEditor()
+    tb = MarkdownToolbar(ed)
+    assert all(b.isEnabled() for b in tb._edit_buttons)
+    tb._btn_preview.click()
+    assert all(not b.isEnabled() for b in tb._edit_buttons)
+    tb._btn_preview.click()
+    assert all(b.isEnabled() for b in tb._edit_buttons)
+
+
+def test_preview_toggle_disables_variable_button(qapp):
+    from daedalus.view.editors.body_editor import SectionContentPanel
+
+    panel = SectionContentPanel()
+    section = Section("T", content="body")
+    panel.show_section(section, ["T"])
+    panel._md_toolbar._btn_preview.click()
+    assert not panel._btn_variable.isEnabled()
+    panel._md_toolbar._btn_preview.click()
+    assert panel._btn_variable.isEnabled()
+
+
+def test_toggle_line_marker_preserves_cursor(qapp):
+    ed = MarkdownEditor()
+    ed.setPlainText("hello")
+    cursor = ed.textCursor()
+    cursor.setPosition(3)
+    ed.setTextCursor(cursor)
+    ed.toggle_line_marker("- ")
+    assert ed.toPlainText() == "- hello"
+    assert ed.textCursor().position() == 5
+
+
+def test_toggle_line_marker_invalid_marker_raises(qapp):
+    ed = MarkdownEditor()
+    with pytest.raises(ValueError):
+        ed.toggle_line_marker("* ")
+
+
+def test_ctrl_shortcut_closes_slash_menu(qapp):
+    ed = MarkdownEditor()
+    QTest.keyClicks(ed, "/")
+    assert ed._slash_start is not None
+    QTest.keyClick(ed, Qt.Key.Key_B, Qt.KeyboardModifier.ControlModifier)
+    assert ed._slash_start is None
+    assert ed.toPlainText() == "/****"
