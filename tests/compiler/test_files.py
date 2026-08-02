@@ -196,3 +196,78 @@ def test_gate_rejection_skips_copy_and_scan(tmp_path):
     assert not result.ok
     assert result.copied_files == []
     assert not (out_dir / "files").exists()
+
+
+# ── 리뷰 반영 회귀 (자기모순·정션·구두점) ──
+
+
+def _proj_with_body(body: str):
+    from daedalus.model.fsm.machine import StateMachine
+    from daedalus.model.fsm.state import SimpleState
+    from daedalus.model.plugin.skill import ProceduralSkill
+    from daedalus.model.project import PluginProject
+
+    s = SimpleState(name="s")
+    fsm = StateMachine(name="f", initial_state=s, states=[s], final_states=[s])
+    skill = ProceduralSkill(fsm=fsm, name="alpha", description="d", body=body)
+    return PluginProject(name="p", skills=[skill])
+
+
+def test_angle_wrapped_space_path_not_flagged(tmp_path):
+    """드롭이 만드는 <...> 감싼 공백 경로 토큰을 스캐너가 오탐하지 않는다
+    (리뷰: Part B/C 자기모순)."""
+    files = tmp_path / "files"
+    files.mkdir()
+    (files / "with space.txt").write_text("x", encoding="utf-8")
+    project = _proj_with_body(
+        "참조: <${CLAUDE_PLUGIN_ROOT}/files/with space.txt>\n"
+    )
+    result = compile_project(project, tmp_path / "out", files_dir=files)
+    assert not [w for w in result.warnings if w.rule == "dangling_file_ref"]
+
+
+def test_angle_wrapped_missing_path_still_flagged(tmp_path):
+    files = tmp_path / "files"
+    files.mkdir()
+    project = _proj_with_body("참조: <${CLAUDE_PLUGIN_ROOT}/files/no such.txt>\n")
+    result = compile_project(project, tmp_path / "out", files_dir=files)
+    assert [w for w in result.warnings if w.rule == "dangling_file_ref"]
+
+
+def test_trailing_punctuation_not_part_of_path(tmp_path):
+    """쉼표·세미콜론·마침표 종결이 경로에 딸려 들어가 오탐하지 않는다."""
+    files = tmp_path / "files"
+    files.mkdir()
+    (files / "top.txt").write_text("x", encoding="utf-8")
+    project = _proj_with_body(
+        "A: ${CLAUDE_PLUGIN_ROOT}/files/top.txt, "
+        "B: ${CLAUDE_PLUGIN_ROOT}/files/top.txt; "
+        "C: ${CLAUDE_PLUGIN_ROOT}/files/top.txt.\n"
+    )
+    result = compile_project(project, tmp_path / "out", files_dir=files)
+    assert not [w for w in result.warnings if w.rule == "dangling_file_ref"]
+
+
+def test_junction_like_dirs_excluded_from_copy(tmp_path, monkeypatch):
+    """Windows 정션(is_symlink()=False)도 복사에서 제외된다 — files/ 밖 유출·
+    폭주 재귀 방지 (리뷰 실측). isjunction을 몽키패치해 플랫폼 무관 검증."""
+    import os as _os
+
+    from daedalus.compiler import project_compiler as pc
+
+    files = tmp_path / "files"
+    (files / "normal").mkdir(parents=True)
+    (files / "normal" / "ok.txt").write_text("ok", encoding="utf-8")
+    fake_junction = files / "junction_dir"
+    fake_junction.mkdir()
+    (fake_junction / "secret.txt").write_text("SECRET", encoding="utf-8")
+
+    monkeypatch.setattr(
+        _os.path, "isjunction", lambda p: str(p).endswith("junction_dir"),
+        raising=False,
+    )
+    project = _proj_with_body("본문\n")
+    out = tmp_path / "out"
+    compile_project(project, out, files_dir=files)
+    assert (out / "files" / "normal" / "ok.txt").exists()
+    assert not (out / "files" / "junction_dir").exists()

@@ -945,3 +945,53 @@ def test_drag_enter_accepts_when_file_under_root(qapp, tmp_path):
     )
     ed.dragEnterEvent(event)
     assert event.isAccepted()
+
+
+def test_drop_space_path_wraps_in_angle_brackets(qapp, tmp_path):
+    """공백 있는 경로는 <...>로 감싸 삽입 — 컴파일러 스캐너 오탐 방지."""
+    from PySide6.QtCore import QMimeData, QPointF, QUrl
+    from PySide6.QtGui import QDropEvent
+
+    from daedalus.view.widgets.markdown_editor import set_files_root_provider
+
+    files = tmp_path / "files"
+    files.mkdir()
+    target = files / "with space.txt"
+    target.write_text("x", encoding="utf-8")
+    set_files_root_provider(lambda: str(files))
+
+    ed = MarkdownEditor()
+    mime = QMimeData()
+    mime.setUrls([QUrl.fromLocalFile(str(target))])
+    ed.dropEvent(QDropEvent(
+        QPointF(1, 1), Qt.DropAction.CopyAction, mime,
+        Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier,
+    ))
+    assert ed.toPlainText().strip() == "<${CLAUDE_PLUGIN_ROOT}/files/with space.txt>"
+
+
+def test_mixed_drop_keeps_outside_urls(qapp, tmp_path):
+    """files 안팎이 섞인 드롭에서 바깥 URL이 조용히 사라지지 않는다."""
+    from PySide6.QtCore import QMimeData, QPointF, QUrl
+    from PySide6.QtGui import QDropEvent
+
+    from daedalus.view.widgets.markdown_editor import set_files_root_provider
+
+    files = tmp_path / "files"
+    files.mkdir()
+    inside = files / "a.txt"
+    inside.write_text("x", encoding="utf-8")
+    outside = tmp_path / "outside.txt"
+    outside.write_text("y", encoding="utf-8")
+    set_files_root_provider(lambda: str(files))
+
+    ed = MarkdownEditor()
+    mime = QMimeData()
+    mime.setUrls([QUrl.fromLocalFile(str(inside)), QUrl.fromLocalFile(str(outside))])
+    ed.dropEvent(QDropEvent(
+        QPointF(1, 1), Qt.DropAction.CopyAction, mime,
+        Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier,
+    ))
+    text = ed.toPlainText()
+    assert "${CLAUDE_PLUGIN_ROOT}/files/a.txt" in text
+    assert "outside.txt" in text

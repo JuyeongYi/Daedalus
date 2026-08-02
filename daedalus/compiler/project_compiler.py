@@ -44,9 +44,15 @@ _OUTPUT_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 
 # 스킬/에이전트 body에서 파일 참조 토큰을 스캔하는 패턴 — MarkdownEditor의
 # 드롭 삽입(view/widgets/markdown_editor.py `_file_ref_token`)이 만드는 형식과
-# 동일: ``${CLAUDE_PLUGIN_ROOT}/files/<상대경로>``. 공백·마크다운 구분자
-# (`)]`"'<>`)에서 경로가 끊긴다고 보수적으로 가정한다.
-_FILE_REF_RE = re.compile(r"\$\{CLAUDE_PLUGIN_ROOT\}/files/([^\s)\]`\"'<>]+)")
+# 동일: ``${CLAUDE_PLUGIN_ROOT}/files/<상대경로>``.
+#
+# 두 형태를 모두 인식한다:
+#   1. `<${CLAUDE_PLUGIN_ROOT}/files/공백 있는 경로>` — 꺾쇠로 감싼 형태(드롭이
+#      공백 경로에 붙인다). 닫는 꺾쇠까지가 경로 — 공백에서 끊지 않는다.
+#   2. `${CLAUDE_PLUGIN_ROOT}/files/경로` — 맨 형태. 공백·마크다운 구분자
+#      (`)]`"'<>,;`)에서 끊고, 문장 종결 마침표는 뒤에서 트림한다.
+_FILE_REF_ANGLE_RE = re.compile(r"<\$\{CLAUDE_PLUGIN_ROOT\}/files/([^>]+)>")
+_FILE_REF_BARE_RE = re.compile(r"\$\{CLAUDE_PLUGIN_ROOT\}/files/([^\s)\]`\"'<>,;]+)")
 
 # 컴파일 게이트 전용 rule 분류 표 (등급 의도의 단일 진실).
 # 이 rule들은 validation.py의 WARNING_RULES에 없으므로 is_warning이 자동으로
@@ -262,18 +268,31 @@ def _copy_files_tree(src_dir: Path, dst_dir: Path) -> list[Path]:
         rel_root = root_path.relative_to(src_dir)
         # in-place 정렬 + 심볼릭 링크 디렉토리 제외 — os.walk가 다음 순회에서
         # 이 리스트를 그대로 재사용하므로 순회 순서·재귀 범위를 동시에 제어한다.
-        dirnames[:] = sorted(d for d in dirnames if not (root_path / d).is_symlink())
+        # Windows 디렉토리 정션(junction)은 is_symlink()가 False다 — 거르지
+        # 않으면 files/ 밖 내용이 산출물로 새고, 자기 참조 정션은 폭주 재귀가
+        # 된다(리뷰 실측). isjunction은 Python 3.12 표준.
+        dirnames[:] = sorted(
+            d for d in dirnames if not _is_link_like(root_path / d)
+        )
         for dirname in dirnames:
             (dst_dir / rel_root / dirname).mkdir(parents=True, exist_ok=True)
         for filename in sorted(filenames):
             src_file = root_path / filename
-            if src_file.is_symlink():
+            if _is_link_like(src_file):
                 continue
             dst_file = dst_dir / rel_root / filename
             dst_file.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(src_file, dst_file)
             copied.append(dst_file)
     return copied
+
+
+def _is_link_like(path: Path) -> bool:
+    """심볼릭 링크 또는 Windows 정션이면 True — files/ 복사에서 제외 대상."""
+    if path.is_symlink():
+        return True
+    isjunction = getattr(os.path, "isjunction", None)
+    return bool(isjunction and isjunction(path))
 
 
 def _scan_dangling_file_refs(project, files_dir: Path) -> list[ValidationError]:
@@ -285,9 +304,19 @@ def _scan_dangling_file_refs(project, files_dir: Path) -> list[ValidationError]:
     """
     warnings: list[ValidationError] = []
 
+    def _iter_refs(body: str):
+        """꺾쇠 형태를 먼저 소비하고, 남은 텍스트에서 맨 형태를 찾는다."""
+        text = body or ""
+        for match in _FILE_REF_ANGLE_RE.finditer(text):
+            yield match.group(1)
+        stripped = _FILE_REF_ANGLE_RE.sub("", text)
+        for match in _FILE_REF_BARE_RE.finditer(stripped):
+            # 문장 종결 마침표는 경로가 아니다 (Windows는 후행 점을 무시해
+            # 가려지지만 리눅스 컴파일에서는 오탐이 된다)
+            yield match.group(1).rstrip(".")
+
     def scan(label: str, subject: object, body: str) -> None:
-        for match in _FILE_REF_RE.finditer(body or ""):
-            rel = match.group(1)
+        for rel in _iter_refs(body):
             candidate = files_dir.joinpath(*rel.split("/"))
             if candidate.exists():
                 continue
