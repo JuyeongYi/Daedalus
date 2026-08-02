@@ -107,10 +107,13 @@ class MainWindow(QMainWindow):
 
         # 파일 독 패널 (WP-FR) — 프로젝트 옆 files/ 트리. _current_path 변경 시점
         # (저장/열기/새 프로젝트)마다 _sync_files_root가 루트를 재설정한다.
+        # 레지스트리 **오른쪽에 나란히** 배치(세로 스택이 아니라 수평 분할) —
+        # 트리에서 에디터로 드래그하는 동선이 짧아진다.
         self._file_panel = FilePanel()
         file_dock = QDockWidget("파일")
         file_dock.setWidget(self._file_panel)
         self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, file_dock)
+        self.splitDockWidget(registry_dock, file_dock, Qt.Orientation.Horizontal)
         from daedalus.view.widgets.markdown_editor import set_files_root_provider
         set_files_root_provider(lambda: self._file_panel.files_root())
 
