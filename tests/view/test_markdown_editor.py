@@ -268,3 +268,47 @@ def test_tab_without_selection_inserts_at_cursor(qapp):
     ed.setTextCursor(cursor)
     QTest.keyClick(ed, Qt.Key.Key_Tab)
     assert ed.toPlainText() == "hello     world"
+
+
+# --- WP-MD2 Part A: 공개 편집 API (5케이스) ---
+
+
+def test_set_heading_level_applies(qapp):
+    ed = MarkdownEditor()
+    ed.setPlainText("제목")
+    ed.set_heading_level(1)
+    assert ed.toPlainText() == "# 제목"
+
+
+def test_set_heading_level_reclick_removes(qapp):
+    ed = MarkdownEditor()
+    ed.setPlainText("# 제목")
+    ed.set_heading_level(1)
+    assert ed.toPlainText() == "제목"
+
+
+def test_set_heading_level_replaces_level(qapp):
+    ed = MarkdownEditor()
+    ed.setPlainText("# 제목")
+    ed.set_heading_level(2)
+    assert ed.toPlainText() == "## 제목"
+
+
+def test_toggle_line_marker_bullet_toggle(qapp):
+    ed = MarkdownEditor()
+    ed.setPlainText("item")
+    ed.toggle_line_marker("- ")
+    assert ed.toPlainText() == "- item"
+    ed.toggle_line_marker("- ")
+    assert ed.toPlainText() == "item"
+
+
+def test_toggle_line_marker_ordered_renumber(qapp):
+    ed = MarkdownEditor()
+    ed.setPlainText("a\nb\nc")
+    cursor = ed.textCursor()
+    cursor.movePosition(QTextCursor.MoveOperation.Start)
+    cursor.movePosition(QTextCursor.MoveOperation.End, QTextCursor.MoveMode.KeepAnchor)
+    ed.setTextCursor(cursor)
+    ed.toggle_line_marker("1. ")
+    assert ed.toPlainText() == "1. a\n2. b\n3. c"

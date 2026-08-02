@@ -73,6 +73,36 @@ _QUOTE_LINE_RE = re.compile(r"^(\s*>\s?)(.*)$")
 # --- 체크박스 클릭 토글용 ---
 _TASK_CHECK_RE = re.compile(r"^(\s*[-*+]\s+\[)([ xX])(\])")
 
+# --- toggle_line_marker용 ---
+_LEADING_WS_RE = re.compile(r"^(\s*)")
+_QUOTE_MARKER_RE = re.compile(r"^(\s{0,3})((?:>\s?)+)")
+_MARKER_KIND: dict[str, str] = {
+    "- ": "bullet",
+    "1. ": "ordered",
+    "- [ ] ": "task",
+    "> ": "quote",
+}
+
+
+def _detect_line_marker(text: str) -> tuple[str, str, str] | None:
+    """줄의 리스트/인용 마커를 감지한다. (kind, indent, rest) 또는 마커 없으면 None.
+
+    task는 UL 패턴도 만족하므로 먼저 검사한다(하이라이터 규칙 순서와 동일).
+    """
+    m = _TASK_RE.match(text)
+    if m:
+        return ("task", m.group(1), text[m.end():])
+    m = _UL_RE.match(text)
+    if m:
+        return ("bullet", m.group(1), text[m.end():])
+    m = _OL_RE.match(text)
+    if m:
+        return ("ordered", m.group(1), text[m.end():])
+    m = _QUOTE_MARKER_RE.match(text)
+    if m:
+        return ("quote", m.group(1), text[m.end():])
+    return None
+
 
 def _make_format(
     color_key: str | None = None,
@@ -517,6 +547,110 @@ class MarkdownEditor(QPlainTextEdit):
             result_cursor = self.textCursor()
             result_cursor.setPosition(pos + 1)
             self.setTextCursor(result_cursor)
+
+    # --- 공개 편집 API (툴바/슬래시 메뉴용) ---
+
+    def toggle_wrap(self, prefix: str, suffix: str) -> None:
+        """`_toggle_wrap`의 공개 래퍼."""
+        self._toggle_wrap(prefix, suffix)
+
+    def insert_link(self) -> None:
+        """`_insert_link`의 공개 래퍼."""
+        self._insert_link()
+
+    def set_heading_level(self, level: int) -> None:
+        """현재 줄의 헤딩 레벨을 설정한다.
+
+        기존 `#{1,6}\\s+` 접두를 제거한 뒤 level(1-6)이면 `"#" * level + " "`을
+        붙인다. 현재 접두 레벨과 같은 level을 다시 적용하면 접두 제거(본문 복귀).
+        level == 0은 접두 제거만 한다.
+        """
+        if not 0 <= level <= 6:
+            raise ValueError("level must be between 0 and 6")
+        cursor = self.textCursor()
+        block = cursor.block()
+        text = block.text()
+        m = _HEADING_PREFIX_RE.match(text)
+        current_level = len(m.group(1)) if m else 0
+        old_prefix_len = m.end() if m else 0
+        content = text[old_prefix_len:]
+
+        new_prefix = "" if level == 0 or level == current_level else "#" * level + " "
+        new_text = new_prefix + content
+        if new_text == text:
+            return
+
+        offset_in_content = max(0, cursor.positionInBlock() - old_prefix_len)
+        new_cursor_pos = block.position() + len(new_prefix) + offset_in_content
+
+        edit_cursor = QTextCursor(block)
+        edit_cursor.movePosition(QTextCursor.MoveOperation.StartOfBlock)
+        edit_cursor.movePosition(
+            QTextCursor.MoveOperation.EndOfBlock, QTextCursor.MoveMode.KeepAnchor,
+        )
+        edit_cursor.beginEditBlock()
+        edit_cursor.insertText(new_text)
+        edit_cursor.endEditBlock()
+
+        result_cursor = self.textCursor()
+        result_cursor.setPosition(new_cursor_pos)
+        self.setTextCursor(result_cursor)
+
+    def toggle_line_marker(self, marker: str) -> None:
+        """선택에 걸친 모든 줄(선택 없으면 현재 줄)에 리스트/인용 마커를 토글한다.
+
+        marker는 "- " / "1. " / "- [ ] " / "> " 중 하나. 이미 같은 종류의
+        마커면 제거, 다른 리스트/인용 마커면 교체, 없으면 들여쓰기 뒤에 삽입한다.
+        번호 리스트는 선택 범위 안에서 1부터 재번호한다. 빈 줄은 건너뛴다.
+        """
+        desired_kind = _MARKER_KIND[marker]
+        cursor = self.textCursor()
+        doc = self.document()
+
+        if cursor.hasSelection():
+            start_pos = min(cursor.selectionStart(), cursor.selectionEnd())
+            end_pos = max(cursor.selectionStart(), cursor.selectionEnd())
+        else:
+            start_pos = end_pos = cursor.position()
+
+        start_block_num = doc.findBlock(start_pos).blockNumber()
+        end_block = doc.findBlock(end_pos)
+        end_block_num = end_block.blockNumber()
+        if end_block_num > start_block_num and end_pos == end_block.position():
+            end_block_num -= 1
+
+        edit_cursor = self.textCursor()
+        edit_cursor.beginEditBlock()
+        order_counter = 1
+        for block_num in range(start_block_num, end_block_num + 1):
+            block = doc.findBlockByNumber(block_num)
+            text = block.text()
+            if text.strip() == "":
+                continue
+            info = _detect_line_marker(text)
+            if info is not None and info[0] == desired_kind:
+                new_text = info[1] + info[2]
+            else:
+                if info is not None:
+                    indent, rest = info[1], info[2]
+                else:
+                    indent_m = _LEADING_WS_RE.match(text)
+                    indent = indent_m.group(1) if indent_m else ""
+                    rest = text[len(indent):]
+                if desired_kind == "ordered":
+                    marker_text = f"{order_counter}. "
+                    order_counter += 1
+                else:
+                    marker_text = marker
+                new_text = indent + marker_text + rest
+            if new_text != text:
+                block_cursor = QTextCursor(block)
+                block_cursor.movePosition(QTextCursor.MoveOperation.StartOfBlock)
+                block_cursor.movePosition(
+                    QTextCursor.MoveOperation.EndOfBlock, QTextCursor.MoveMode.KeepAnchor,
+                )
+                block_cursor.insertText(new_text)
+        edit_cursor.endEditBlock()
 
     # --- 체크박스 클릭 토글 ---
 
