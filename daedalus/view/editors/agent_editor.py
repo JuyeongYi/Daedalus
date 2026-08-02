@@ -92,7 +92,7 @@ class AgentEditor(QWidget):
         self._ref_section.item_double_clicked.connect(self._open_local_skill)
         sidebar_lay.addWidget(self._ref_section)
 
-        self._deleg_section = _RegistrySection("🛰 DELEGATION", QColor("#aa9955"), no_add=True)
+        self._deleg_section = _RegistrySection("🛰 DELEGATION (deprecated)", QColor("#aa9955"), no_add=True)
         self._deleg_section.item_double_clicked.connect(self._open_delegation)
         sidebar_lay.addWidget(self._deleg_section)
 
