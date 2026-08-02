@@ -177,12 +177,13 @@ def test_tab_indents_list_line_by_two(qapp):
     assert ed.toPlainText() == "- item"
 
 
-def test_tab_indents_normal_line_by_four(qapp):
+def test_tab_normal_line_inserts_four_at_cursor(qapp):
+    # 일반 줄 + 선택 없음: 줄 들여쓰기가 아니라 커서 위치에 4칸 삽입 (타 에디터 관례)
     ed = MarkdownEditor()
     ed.setPlainText("plain text")
     _set_cursor_at_end(ed)
     QTest.keyClick(ed, Qt.Key.Key_Tab)
-    assert ed.toPlainText() == "    plain text"
+    assert ed.toPlainText() == "plain text    "
 
 
 def test_ctrl_b_toggles_bold_wrap(qapp):
@@ -232,3 +233,38 @@ def test_section_content_panel_typing_updates_content(qapp):
 
     assert section.content == "new content"
     assert received
+
+
+# --- 리뷰 후속 회귀 (사소 지적 수정 잠금) ---
+
+
+def test_enter_at_line_start_does_not_duplicate_marker(qapp):
+    ed = MarkdownEditor()
+    ed.setPlainText("- item")
+    cursor = ed.textCursor()
+    cursor.setPosition(0)
+    ed.setTextCursor(cursor)
+    QTest.keyClick(ed, Qt.Key.Key_Return)
+    assert ed.toPlainText() == "\n- item"
+
+
+def test_ctrl_i_on_bold_selection_adds_italic(qapp):
+    ed = MarkdownEditor()
+    ed.setPlainText("**w**")
+    cursor = ed.textCursor()
+    cursor.select(QTextCursor.SelectionType.Document)
+    ed.setTextCursor(cursor)
+    QTest.keyClick(ed, Qt.Key.Key_I, Qt.KeyboardModifier.ControlModifier)
+    assert ed.toPlainText() == "***w***"
+    QTest.keyClick(ed, Qt.Key.Key_I, Qt.KeyboardModifier.ControlModifier)
+    assert ed.toPlainText() == "**w**"
+
+
+def test_tab_without_selection_inserts_at_cursor(qapp):
+    ed = MarkdownEditor()
+    ed.setPlainText("hello world")
+    cursor = ed.textCursor()
+    cursor.setPosition(5)
+    ed.setTextCursor(cursor)
+    QTest.keyClick(ed, Qt.Key.Key_Tab)
+    assert ed.toPlainText() == "hello     world"

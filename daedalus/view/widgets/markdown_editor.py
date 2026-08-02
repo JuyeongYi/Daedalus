@@ -176,7 +176,8 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         if not _HEADING_RE.match(text):
             return False
         m = _HEADING_PREFIX_RE.match(text)
-        assert m is not None
+        if m is None:
+            return False
         level = len(m.group(1))
         text_start = m.end()
         self.setFormat(0, len(m.group(1)), self._fmt_marker)
@@ -301,7 +302,8 @@ class MarkdownEditor(QPlainTextEdit):
         self.setFont(font)
         self.setObjectName("markdownEditor")
         self.setStyleSheet(
-            "MarkdownEditor { background-color: #1e1e32; color: #cccccc; border: none; }",
+            f"MarkdownEditor {{ background-color: #1e1e32; "
+            f"color: {MARKDOWN_PALETTE['text'].name()}; border: none; }}",
         )
         self.setTabChangesFocus(False)
         self._highlighter = MarkdownHighlighter(self.document(), _BASE_POINT_SIZE)
@@ -375,6 +377,11 @@ class MarkdownEditor(QPlainTextEdit):
         return False
 
     def _finish_list_continuation(self, cursor: QTextCursor, content: str, marker: str) -> bool:
+        # 커서가 마커 접두 안(줄 맨 앞 포함)이면 이어쓰기 대신 기본 개행 —
+        # 마커 앞 Enter 시 마커가 복제되는 것을 막는다.
+        text = cursor.block().text()
+        if cursor.positionInBlock() < len(text) - len(content):
+            return False
         cursor.beginEditBlock()
         if content == "":
             # 내용 없음(마커만) — 마커 제거로 리스트 탈출
@@ -396,6 +403,15 @@ class MarkdownEditor(QPlainTextEdit):
 
     def _handle_tab(self, reverse: bool) -> None:
         cursor = self.textCursor()
+        if not reverse and not cursor.hasSelection():
+            text = cursor.block().text()
+            is_list = bool(
+                _TASK_RE.match(text) or _UL_RE.match(text) or _OL_RE.match(text)
+            )
+            if not is_list:
+                # 일반/펜스 줄: 다른 에디터 관례대로 커서 위치에 삽입
+                cursor.insertText(" " * self._indent_width_for(cursor.block()))
+                return
         doc = self.document()
         start_pos = min(cursor.selectionStart(), cursor.selectionEnd())
         end_pos = max(cursor.selectionStart(), cursor.selectionEnd())
@@ -449,11 +465,18 @@ class MarkdownEditor(QPlainTextEdit):
         start = cursor.selectionStart()
         selected = cursor.selectedText()
 
-        if (
+        is_wrapped = (
             len(selected) >= len(prefix) + len(suffix)
             and selected.startswith(prefix)
             and selected.endswith(suffix)
-        ):
+        )
+        if is_wrapped and prefix == "*":
+            # 짝수 `*` 런은 볼드 마커 — 이탤릭 벗기기가 `**w**`를 `*w*`로
+            # 파괴하지 않도록 홀수 런(이탤릭 포함)일 때만 벗긴다.
+            lead = len(selected) - len(selected.lstrip("*"))
+            trail = len(selected) - len(selected.rstrip("*"))
+            is_wrapped = lead % 2 == 1 and trail % 2 == 1
+        if is_wrapped:
             inner = selected[len(prefix):len(selected) - len(suffix)]
             cursor.beginEditBlock()
             cursor.removeSelectedText()
