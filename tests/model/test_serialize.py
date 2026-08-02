@@ -434,3 +434,26 @@ def test_local_skill_fsm_blackboard_parent_survives_roundtrip():
     assert ag2.skills[0].fsm.blackboard.parent is ag2.fsm.blackboard
     # 에이전트 자신은 프로젝트 블랙보드에 연결
     assert ag2.fsm.blackboard.parent is p2.blackboard
+
+
+def test_delegation_placement_survives_round_trip():
+    """위임 placement의 skill_ref가 저장/로드 왕복에서 유실되지 않는다 (WP-DG 리뷰 선재 결함)."""
+    from daedalus.model.fsm.state import SimpleState
+    from daedalus.model.plugin.delegation import DynamicWorkflowDef
+    from daedalus.model.project import PluginProject
+    from daedalus.model.serialize import deserialize_project, serialize_project
+
+    deleg = DynamicWorkflowDef(name="wf", description="d", objective="do it")
+    project = PluginProject(name="p", delegations=[deleg])
+    project.graph.states.append(SimpleState(name="wf", skill_ref=deleg))
+
+    warnings: list[str] = []
+    restored = deserialize_project(serialize_project(project), collect_warnings=warnings)
+
+    placements = [
+        s for s in restored.graph.states
+        if isinstance(s, SimpleState) and s.name == "wf"
+    ]
+    assert len(placements) == 1
+    assert placements[0].skill_ref is restored.delegations[0]
+    assert not warnings

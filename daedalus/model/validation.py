@@ -1158,6 +1158,9 @@ class Validator:
                 _scan_machine(fsm)
         for agent in project.agents:
             _scan_machine(agent.fsm)
+        graph = getattr(project, "graph", None)
+        if graph is not None:
+            _scan_machine(graph)
 
         return errors
 

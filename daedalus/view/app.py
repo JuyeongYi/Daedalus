@@ -730,6 +730,8 @@ class MainWindow(QMainWindow):
     }
 
     def _on_new_component(self, kind: str) -> None:
+        if kind not in self._COMPONENT_TITLES:
+            return  # delegation 등 생성이 격하된 종류 — 프로그램적 발화 방어
         name = self._ask_unique_name(self._COMPONENT_TITLES.get(kind, "새 컴포넌트"))
         if name is None:
             return

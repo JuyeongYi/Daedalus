@@ -62,7 +62,10 @@ class _DraggableList(QListWidget):
 
 
 class _RegistrySection(QWidget):
-    """레이블 + 리스트 + "+" 버튼을 묶은 레지스트리 섹션."""
+    """레이블 + 리스트 + "+" 버튼을 묶은 레지스트리 섹션.
+
+    no_add=True면 "+" 버튼을 만들지 않는다 (신규 생성이 격하된 종류 — delegation).
+    """
 
     add_requested = Signal()
     item_double_clicked = Signal(object)
