@@ -34,6 +34,7 @@ from daedalus.view.canvas.node_item import StateNodeItem
 from daedalus.view.canvas.scene import FsmScene
 from daedalus.view.editors.skill_editor import SkillEditor
 from daedalus.model.validation import ValidationError, Validator
+from daedalus.view.panels.file_panel import FilePanel
 from daedalus.view.panels.history_panel import HistoryPanel
 from daedalus.view.panels.property_panel import PropertyPanel
 from daedalus.view.panels.registry_panel import RegistryPanel
@@ -103,6 +104,15 @@ class MainWindow(QMainWindow):
         registry_dock = QDockWidget("Registry")
         registry_dock.setWidget(self._registry_panel)
         self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, registry_dock)
+
+        # 파일 독 패널 (WP-FR) — 프로젝트 옆 files/ 트리. _current_path 변경 시점
+        # (저장/열기/새 프로젝트)마다 _sync_files_root가 루트를 재설정한다.
+        self._file_panel = FilePanel()
+        file_dock = QDockWidget("파일")
+        file_dock.setWidget(self._file_panel)
+        self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, file_dock)
+        from daedalus.view.widgets.markdown_editor import set_files_root_provider
+        set_files_root_provider(lambda: self._file_panel.files_root())
 
         self._history_panel = HistoryPanel(
             self._project_vm.command_stack, on_goto=self._project_vm.notify,
@@ -373,6 +383,11 @@ class MainWindow(QMainWindow):
 
     # --- 저장 / 열기 ---
 
+    def _sync_files_root(self) -> None:
+        """FilePanel의 root를 `_current_path` 기준으로 재설정한다 (WP-FR)."""
+        project_dir = Path(self._current_path).parent if self._current_path else None
+        self._file_panel.set_project_dir(project_dir)
+
     def _update_title(self) -> None:
         base = "Daedalus — FSM Plugin Designer"
         if self._current_path:
@@ -395,6 +410,7 @@ class MainWindow(QMainWindow):
             return
         self._current_path = path
         self._update_title()
+        self._sync_files_root()
         self._status_label.setText(f"저장됨: {path}")
 
     def _save_project(self) -> None:
@@ -439,6 +455,7 @@ class MainWindow(QMainWindow):
         self.load_project(new_proj)
         self._current_path = None
         self._update_title()
+        self._sync_files_root()
         self._status_label.setText("새 프로젝트")
 
     def _edit_project_properties(self) -> None:
@@ -477,6 +494,7 @@ class MainWindow(QMainWindow):
         self.load_project(project)
         self._current_path = path
         self._update_title()
+        self._sync_files_root()
         fname = os.path.basename(path)
         if deser_warnings:
             self._status_label.setText(
@@ -941,7 +959,8 @@ class MainWindow(QMainWindow):
 
         from daedalus.compiler import compile_project
 
-        result = compile_project(self._project, out_dir)
+        files_dir = Path(self._current_path).parent / "files" if self._current_path else None
+        result = compile_project(self._project, out_dir, files_dir=files_dir)
         if not result.ok:
             # 에러 — 검증 패널에 동봉(경고 포함) 표시
             self._validation_panel.set_errors(result.errors + result.warnings)
@@ -953,8 +972,9 @@ class MainWindow(QMainWindow):
 
         warn = len(result.warnings)
         warn_str = f" / 경고 {warn}건" if warn else ""
+        copied_str = f" / files {len(result.copied_files)}개 복사" if result.copied_files else ""
         self._status_label.setText(
-            f"컴파일 완료: {len(result.written)}파일 생성{warn_str} → {out_dir}"
+            f"컴파일 완료: {len(result.written)}파일 생성{copied_str}{warn_str} → {out_dir}"
         )
         if warn:
             # F7 검증 흐름과 동일하게 dock도 표시 — 경고를 상태바 문구로만
