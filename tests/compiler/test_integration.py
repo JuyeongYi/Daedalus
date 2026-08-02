@@ -7,7 +7,7 @@ from daedalus.compiler.emit import compile_skill
 from daedalus.model.fsm.machine import StateMachine
 from daedalus.model.fsm.state import SimpleState
 from daedalus.model.fsm.event import CompletionEvent
-from daedalus.model.fsm.section import EventDef, Section
+from daedalus.model.fsm.section import EventDef
 from daedalus.model.fsm.transition import Transition
 from daedalus.model.plugin.config import ProceduralSkillConfig
 from daedalus.model.plugin.skill import ProceduralSkill
@@ -41,7 +41,7 @@ def _representative_project():
         description="Main workflow",
         when_to_use="orchestrating helpers",
         config=ProceduralSkillConfig(),
-        sections=[Section("Instructions", "Coordinate.")],
+        body="# Instructions\n\nCoordinate.",
         transfer_on=[EventDef("done")],
     )
     kb = make_declarative("domain-kb")

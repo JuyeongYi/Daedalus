@@ -5,7 +5,7 @@ from __future__ import annotations
 from daedalus.model.fsm.event import CompletionEvent
 from daedalus.model.fsm.machine import StateMachine
 from daedalus.model.fsm.pseudo import EntryPoint, ExitPoint
-from daedalus.model.fsm.section import EventDef, Section
+from daedalus.model.fsm.section import EventDef
 from daedalus.model.fsm.state import SimpleState
 from daedalus.model.fsm.transition import Transition
 from daedalus.model.plugin.agent import AgentDefinition
@@ -52,7 +52,7 @@ def make_procedural(
     description: str = "Does a thing",
     when_to_use: str = "the user wants a thing",
     config: ProceduralSkillConfig | None = None,
-    sections: list[Section] | None = None,
+    body: str | None = None,
     fsm: StateMachine | None = None,
 ) -> ProceduralSkill:
     return ProceduralSkill(
@@ -61,7 +61,7 @@ def make_procedural(
         description=description,
         when_to_use=when_to_use,
         config=config or ProceduralSkillConfig(model=ModelType.SONNET),
-        sections=sections or [Section("Instructions", "Do the work.")],
+        body=body if body is not None else "# Instructions\n\nDo the work.",
         transfer_on=[EventDef("done", description="success")],
     )
 
@@ -71,7 +71,7 @@ def make_declarative(name: str = "kb") -> DeclarativeSkill:
         name=name,
         description="Background knowledge",
         when_to_use="reasoning about X",
-        sections=[Section("Knowledge", "Facts here.")],
+        body="# Knowledge\n\nFacts here.",
         config=DeclarativeSkillConfig(),
     )
 
@@ -82,7 +82,7 @@ def make_transfer(name: str = "edge-skill") -> TransferSkill:
         name=name,
         description="Edge helper",
         when_to_use="on transition",
-        sections=[Section("Instructions", "Run on edge.")],
+        body="# Instructions\n\nRun on edge.",
         config=TransferSkillConfig(),
     )
 
@@ -92,7 +92,7 @@ def make_reference(name: str = "ref-doc") -> ReferenceSkill:
         name=name,
         description="Reference document",
         when_to_use="lookup",
-        sections=[Section("Content", "Reference body.")],
+        body="# Content\n\nReference body.",
         config=ReferenceSkillConfig(),
     )
 
@@ -116,7 +116,7 @@ def make_agent(name: str = "worker") -> AgentDefinition:
         name=name,
         description="A worker agent",
         config=AgentConfig(model=ModelType.SONNET),
-        sections=[Section("instruction", "Do agent work.")],
+        body="# instruction\n\nDo agent work.",
     )
 
 
@@ -197,6 +197,6 @@ def make_delegation_skill(
         description="Skill with delegation",
         when_to_use="delegating",
         config=ProceduralSkillConfig(),
-        sections=[Section("Instructions", "Delegate the work.")],
+        body="# Instructions\n\nDelegate the work.",
         transfer_on=[EventDef("done")],
     )

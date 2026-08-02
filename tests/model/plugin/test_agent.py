@@ -26,11 +26,10 @@ def test_agent_definition():
     assert agent.kind == "agent"
 
 
-def test_agent_sections_default():
+def test_agent_body_default():
     fsm = _make_agent_fsm()
     agent = AgentDefinition(fsm=fsm, name="A", description="d")
-    assert len(agent.sections) == 1
-    assert agent.sections[0].title == "instruction"
+    assert agent.body == ""
 
 
 def test_agent_no_transfer_on():

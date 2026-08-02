@@ -9,7 +9,7 @@
      frontmatter_key. FIXED는 fixed_value 강제. model==INHERIT는 키 생략.
      OPTIONAL 필드 값이 선언 기본값과 같으면 생략. enum은 .value.
   2. when_to_use: description과 합류 — "<description> Use when <when_to_use>".
-  3. 본문: sections 트리 → 헤딩 깊이(H1=루트).
+  3. 본문: body(단일 마크다운 문자열)을 그대로 배출(공백뿐이면 블록 생략, WP-SB).
   4. ProceduralSkill FSM → 사람이 읽는 절차 단락.
   5. 위임 노드: 스펙 4절 + 1-b절(guided) 문구.
   6. tool_shelf: 참조 문서 단락.
@@ -40,7 +40,6 @@ from daedalus.model.fsm.strategy import (
     MCPEvaluation,
     ToolEvaluation,
 )
-from daedalus.model.fsm.section import Section
 from daedalus.model.plugin.agent import AgentDefinition
 from daedalus.model.plugin.config import ComponentConfig
 from daedalus.model.plugin.delegation import (
@@ -240,21 +239,18 @@ def _frontmatter_block(lines: list[str]) -> str:
     return f"---\n{body}\n---"
 
 
-# ─────────────────────────── 본문(sections) ───────────────────────────
+# ─────────────────────────── 본문(body) ───────────────────────────
 
 
-def _render_sections(sections: list[Section], depth: int = 1) -> list[str]:
-    """sections 트리를 마크다운 블록 목록으로. depth=1 → H1(#)."""
-    blocks: list[str] = []
-    for sec in sections:
-        hashes = "#" * min(depth, 6)
-        blocks.append(f"{hashes} {sec.title}".rstrip())
-        content = (sec.content or "").strip("\n")
-        if content.strip():
-            blocks.append(content)
-        if sec.children:
-            blocks.extend(_render_sections(sec.children, depth + 1))
-    return blocks
+def _body_block(body: str) -> str | None:
+    """component.body를 본문 블록 하나로. 공백뿐이면 None(블록 생략).
+
+    앞뒤 개행만 정리한다(내부 서식은 사용자 마크다운 그대로 보존).
+    """
+    stripped = (body or "").strip("\n")
+    if not stripped.strip():
+        return None
+    return stripped
 
 
 # ─────────────────────────── 가드/트리거 서술 ───────────────────────────
@@ -785,9 +781,10 @@ def compile_skill(
 
     blocks: list[str] = [_frontmatter_block(fm_lines)]
 
-    # 본문(sections)
-    sections = getattr(skill, "sections", [])
-    blocks.extend(_render_sections(sections, depth=1))
+    # 본문(body)
+    body_block = _body_block(getattr(skill, "body", ""))
+    if body_block is not None:
+        blocks.append(body_block)
 
     # ProceduralSkill — FSM 절차 + 위임 + tool_shelf
     if isinstance(skill, ProceduralSkill):
@@ -918,8 +915,10 @@ def compile_agent(agent: AgentDefinition, project=None) -> str:
     fm_lines = _frontmatter_lines_agent(agent)
     blocks: list[str] = [_frontmatter_block(fm_lines)]
 
-    # 본문(sections)
-    blocks.extend(_render_sections(agent.sections, depth=1))
+    # 본문(body)
+    body_block = _body_block(agent.body)
+    if body_block is not None:
+        blocks.append(body_block)
 
     # 호출 파라미터(INVOCATION)
     blocks.extend(_invocation_section_agent(agent))
