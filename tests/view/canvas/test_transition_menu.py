@@ -67,7 +67,7 @@ def test_transition_menu_delete_dispatch(qapp, monkeypatch):
         return None
     monkeypatch.setattr(menu, "exec", fake_exec)
 
-    scene._handle_transition_edge_menu(menu, edge_item, None)
+    scene._handle_transition_edge_menu(menu, edge_item, None, None)
 
     assert tvm not in vm.transition_vms
     assert tvm.model not in fsm.transitions
@@ -84,6 +84,6 @@ def test_transition_menu_cancel_does_nothing(qapp, monkeypatch):
     menu = QMenu()
     monkeypatch.setattr(menu, "exec", lambda _pos: None)
 
-    scene._handle_transition_edge_menu(menu, edge_item, None)
+    scene._handle_transition_edge_menu(menu, edge_item, None, None)
 
     assert tvm in vm.transition_vms

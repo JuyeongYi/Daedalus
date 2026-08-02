@@ -24,7 +24,7 @@ from daedalus.model.fsm.transition import Transition
 from daedalus.model.plugin.agent import AgentDefinition
 from daedalus.model.plugin.delegation import DelegationDef
 from daedalus.model.plugin.skill import DeclarativeSkill, ProceduralSkill, ReferenceSkill, TransferSkill
-from daedalus.view.canvas.edge_item import TransitionEdgeItem
+from daedalus.view.canvas.edge_item import TransitionEdgeItem, WaypointHandleItem
 from daedalus.view.canvas.node_item import StateNodeItem
 from daedalus.view.canvas.ref_edge_item import ReferenceEdgeItem
 from daedalus.view.canvas.ref_node_item import ReferenceNodeItem
@@ -40,8 +40,12 @@ from daedalus.view.commands.section_commands import AddSectionCmd, RemoveSection
 from daedalus.view.commands.state_commands import CreateStateCmd, DeleteStateCmd, MoveStateCmd
 from daedalus.view.commands.transition_commands import (
     AddSkillToProjectCmd,
+    AddWaypointCmd,
+    ClearWaypointsCmd,
     CreateTransitionCmd,
     DeleteTransitionCmd,
+    MoveWaypointCmd,
+    RemoveWaypointCmd,
     SetTransitionSkillRefCmd,
 )
 from daedalus.view.viewmodel.state_vm import (
@@ -180,6 +184,39 @@ class FsmScene(QGraphicsScene):
                 children=cmds,
                 description="노드 다중 이동",
             ))
+
+    # --- 엣지 경유점 (WP-ER) ---
+
+    def handle_edge_double_clicked(self, edge: TransitionEdgeItem, scene_pos: QPointF) -> None:
+        """엣지 더블클릭 — 클릭 지점에 가장 가까운 구간에 경유점 삽입. undo 가능."""
+        index = edge.nearest_segment_index(scene_pos)
+        self._project_vm.execute(
+            AddWaypointCmd(edge.transition_vm, index, scene_pos.x(), scene_pos.y())
+        )
+
+    def handle_waypoint_moved(
+        self,
+        edge: TransitionEdgeItem,
+        index: int,
+        old_pos: QPointF,
+        new_pos: QPointF,
+    ) -> None:
+        """경유점 핸들 드래그 release — undo 가능."""
+        self._project_vm.execute(
+            MoveWaypointCmd(
+                edge.transition_vm, index,
+                old_x=old_pos.x(), old_y=old_pos.y(),
+                new_x=new_pos.x(), new_y=new_pos.y(),
+            )
+        )
+
+    def remove_waypoint(self, edge: TransitionEdgeItem, index: int) -> None:
+        """경유점 하나 제거 — undo 가능."""
+        self._project_vm.execute(RemoveWaypointCmd(edge.transition_vm, index))
+
+    def clear_waypoints(self, edge: TransitionEdgeItem) -> None:
+        """전이의 경유점을 모두 제거(직선 복원) — undo 가능."""
+        self._project_vm.execute(ClearWaypointsCmd(edge.transition_vm))
 
     # --- 전이 드래그 ---
 
@@ -345,16 +382,18 @@ class FsmScene(QGraphicsScene):
             if menu.exec(event.screenPos()) == delete_act:
                 self.delete_reference_link(item.link_vm)
         elif isinstance(item, TransitionEdgeItem):
-            self._handle_transition_edge_menu(menu, item, event.screenPos())
+            self._handle_transition_edge_menu(menu, item, pos, event.screenPos())
+        elif isinstance(item, WaypointHandleItem):
+            self._handle_waypoint_handle_menu(menu, item, event.screenPos())
         else:
             add_act = menu.addAction("빈 상태 추가")
             if menu.exec(event.screenPos()) == add_act:
                 self._create_state(pos)
 
     def _handle_transition_edge_menu(
-        self, menu: QMenu, item: TransitionEdgeItem, screen_pos
+        self, menu: QMenu, item: TransitionEdgeItem, scene_pos: QPointF, screen_pos
     ) -> None:
-        """전이 엣지 컨텍스트 메뉴 — On Transfer 스킬 설정/해제/생성 + 삭제.
+        """전이 엣지 컨텍스트 메뉴 — On Transfer 스킬 설정/해제/생성 + 삭제 + 경유점.
 
         FsmScene와 AgentFsmScene 양쪽에서 공유하는 템플릿. 스킬 목록/생성
         정책 차이는 _get_transfer_skills / _create_and_assign_transfer_skill
@@ -384,6 +423,9 @@ class FsmScene(QGraphicsScene):
                 f"On Transfer 스킬 해제 ({transition.skill_ref.name})"
             )
 
+        add_wp_act = menu.addAction("경유점 추가")
+        clear_wp_act = menu.addAction("경유점 모두 제거") if tvm.waypoints else None
+
         delete_act = menu.addAction("전이 삭제")
 
         chosen = menu.exec(screen_pos)
@@ -395,10 +437,22 @@ class FsmScene(QGraphicsScene):
             self._create_and_assign_transfer_skill(tvm)
         elif chosen == unset_act:
             self._project_vm.execute(SetTransitionSkillRefCmd(tvm, None))
+        elif chosen == add_wp_act:
+            self.handle_edge_double_clicked(item, scene_pos)
+        elif chosen == clear_wp_act:
+            self.clear_waypoints(item)
         elif chosen in skill_actions:
             self._project_vm.execute(
                 SetTransitionSkillRefCmd(tvm, skill_actions[chosen])
             )
+
+    def _handle_waypoint_handle_menu(
+        self, menu: QMenu, item: WaypointHandleItem, screen_pos
+    ) -> None:
+        """경유점 핸들 우클릭 메뉴 — 제거 하나."""
+        remove_act = menu.addAction("경유점 제거")
+        if menu.exec(screen_pos) == remove_act:
+            self.remove_waypoint(item.edge, item.index)
 
     def _create_state(self, pos: QPointF) -> None:
         self._state_counter += 1
@@ -715,6 +769,8 @@ class FsmScene(QGraphicsScene):
                     self.delete_reference_node(item.ref_vm)
                 elif isinstance(item, ReferenceEdgeItem):
                     self.delete_reference_link(item.link_vm)
+                elif isinstance(item, WaypointHandleItem):
+                    self.remove_waypoint(item.edge, item.index)
             return
         super().keyPressEvent(event)
 
@@ -843,7 +899,10 @@ class AgentFsmScene(FsmScene):
                 self.delete_reference_link(item.link_vm)
 
         elif isinstance(item, TransitionEdgeItem):
-            self._handle_transition_edge_menu(menu, item, event.screenPos())
+            self._handle_transition_edge_menu(menu, item, pos, event.screenPos())
+
+        elif isinstance(item, WaypointHandleItem):
+            self._handle_waypoint_handle_menu(menu, item, event.screenPos())
 
         else:
             add_exit_act = menu.addAction("ExitPoint 추가")
@@ -955,5 +1014,7 @@ class AgentFsmScene(FsmScene):
                     self.delete_reference_node(item.ref_vm)
                 elif isinstance(item, ReferenceEdgeItem):
                     self.delete_reference_link(item.link_vm)
+                elif isinstance(item, WaypointHandleItem):
+                    self.remove_waypoint(item.edge, item.index)
             return
         super().keyPressEvent(event)
