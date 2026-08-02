@@ -9,7 +9,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QEvent, QTimer, Qt, Signal
 from PySide6.QtGui import (
     QColor,
     QFont,
@@ -21,10 +21,16 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
+    QLabel,
+    QLineEdit,
     QListWidget,
     QListWidgetItem,
     QPlainTextEdit,
     QPushButton,
+    QTextEdit,
+    QTreeWidget,
+    QTreeWidgetItem,
+    QVBoxLayout,
     QWidget,
 )
 
@@ -416,6 +422,8 @@ class _SlashMenu(QListWidget):
 class MarkdownEditor(QPlainTextEdit):
     """마크다운 본문 에디터 — 하이라이팅 + 리스트/인용 이어쓰기 + 서식 단축키."""
 
+    search_requested = Signal(str)
+
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         font = QFont(_BASE_FONT_FAMILY)
@@ -507,6 +515,9 @@ class MarkdownEditor(QPlainTextEdit):
             return
         if ctrl and not shift and key == Qt.Key.Key_K:
             self._insert_link()
+            return
+        if ctrl and not shift and key == Qt.Key.Key_F:
+            self.search_requested.emit(self.textCursor().selectedText())
             return
 
         super().keyPressEvent(event)
@@ -941,15 +952,277 @@ class MarkdownEditor(QPlainTextEdit):
         return True
 
 
+_SEARCH_MATCH_BG = QColor("#665522")
+_SEARCH_CURRENT_BG = QColor("#a3843a")
+
+
+class SearchBar(QWidget):
+    """찾기/바꾸기 바 — `MarkdownEditor` 위에 접히는 바(기본 숨김).
+
+    포팅 정답지: qmarkdowntextedit의 QPlainTextEditSearchWidget을 단순화
+    (정규식/단어 단위/선택 범위 검색 없음 — WP-MD3 Part A 명세 범위).
+    검색은 `toPlainText()`에 대한 평문 부분 문자열 매칭이며 `QTextDocument.find`를
+    쓰지 않는다 — 매치 목록을 직접 들고 있어야 다음/이전·바꾸기 순서 제어가 쉽다.
+    """
+
+    def __init__(self, editor: "MarkdownEditor", parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._editor = editor
+        self._matches: list[tuple[int, int]] = []
+        self._current: int = -1
+
+        lay = QHBoxLayout(self)
+        lay.setContentsMargins(6, 4, 6, 4)
+        lay.setSpacing(4)
+
+        self._search_edit = QLineEdit()
+        self._search_edit.setPlaceholderText("찾기")
+        lay.addWidget(self._search_edit, 1)
+
+        self._prev_btn = QPushButton("↑")
+        self._prev_btn.setFixedWidth(24)
+        self._prev_btn.setToolTip("이전 (Shift+Enter)")
+        lay.addWidget(self._prev_btn)
+
+        self._next_btn = QPushButton("↓")
+        self._next_btn.setFixedWidth(24)
+        self._next_btn.setToolTip("다음 (Enter)")
+        lay.addWidget(self._next_btn)
+
+        self._case_btn = QPushButton("Aa")
+        self._case_btn.setCheckable(True)
+        self._case_btn.setFixedWidth(28)
+        self._case_btn.setToolTip("대소문자 구분")
+        lay.addWidget(self._case_btn)
+
+        self._count_label = QLabel("0/0")
+        self._count_label.setStyleSheet("color: #888;")
+        self._count_label.setFixedWidth(56)
+        lay.addWidget(self._count_label)
+
+        self._replace_edit = QLineEdit()
+        self._replace_edit.setPlaceholderText("바꾸기")
+        lay.addWidget(self._replace_edit, 1)
+
+        self._replace_btn = QPushButton("바꾸기")
+        lay.addWidget(self._replace_btn)
+
+        self._replace_all_btn = QPushButton("모두 바꾸기")
+        lay.addWidget(self._replace_all_btn)
+
+        self._close_btn = QPushButton("✕")
+        self._close_btn.setFlat(True)
+        self._close_btn.setFixedWidth(20)
+        self._close_btn.setToolTip("닫기 (Esc)")
+        lay.addWidget(self._close_btn)
+
+        self.setStyleSheet(
+            "SearchBar { background-color: #252540; }"
+            "QLineEdit { background-color: #1e1e32; color: #ccc; "
+            "border: 1px solid #3a3a5c; }",
+        )
+
+        self._search_edit.textChanged.connect(lambda _t: self._perform_search())
+        self._case_btn.toggled.connect(lambda _c: self._perform_search())
+        self._next_btn.clicked.connect(self.search_next)
+        self._prev_btn.clicked.connect(self.search_prev)
+        self._replace_btn.clicked.connect(self.replace_current)
+        self._replace_all_btn.clicked.connect(self.replace_all)
+        self._close_btn.clicked.connect(self.close_bar)
+
+        self._search_edit.installEventFilter(self)
+        self._replace_edit.installEventFilter(self)
+
+        self.hide()
+
+    # --- 표시/숨김 ---
+
+    def open(self, prefill: str = "") -> None:
+        """바를 열고 검색창에 포커스한다. prefill이 있으면 검색어로 채운다.
+
+        `setText`가 실제로 값을 바꾸면 `textChanged` → `_perform_search`가 이미
+        원래 커서 위치를 앵커로 실행되므로, 그 경우 재호출하지 않는다(재호출하면
+        직전 호출이 옮겨 둔 커서를 앵커로 다시 검색해 한 칸 더 건너뛰는 버그가 된다).
+        값이 그대로면(빈 prefill 포함, 재오픈 등) 여기서 명시적으로 1회 실행한다.
+        """
+        self.show()
+        changed = bool(prefill) and self._search_edit.text() != prefill
+        if changed:
+            self._search_edit.setText(prefill)
+        self._search_edit.selectAll()
+        self._search_edit.setFocus()
+        if not changed:
+            self._perform_search()
+
+    def close_bar(self) -> None:
+        """바를 숨기고 하이라이트를 지운 뒤 에디터로 포커스를 돌려준다."""
+        self.hide()
+        self._matches = []
+        self._current = -1
+        self._editor.setExtraSelections([])
+        self._editor.setFocus()
+
+    # --- Esc/Enter/Shift+Enter/Up/Down 배선 (검색·바꾸기 입력창 공용) ---
+
+    def eventFilter(self, obj, event):  # noqa: N802 (Qt override)
+        if event.type() == QEvent.Type.KeyPress and obj in (
+            self._search_edit,
+            self._replace_edit,
+        ):
+            key = event.key()
+            mods = event.modifiers()
+            if key == Qt.Key.Key_Escape:
+                self.close_bar()
+                return True
+            if key == Qt.Key.Key_Up or (
+                key in (Qt.Key.Key_Return, Qt.Key.Key_Enter)
+                and mods & Qt.KeyboardModifier.ShiftModifier
+            ):
+                self.search_prev()
+                return True
+            if key == Qt.Key.Key_Down or key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+                self.search_next()
+                return True
+        return super().eventFilter(obj, event)
+
+    # --- 검색 ---
+
+    def _collect_matches(self) -> list[tuple[int, int]]:
+        term = self._search_edit.text()
+        if term == "":
+            return []
+        text = self._editor.toPlainText()
+        case_sensitive = self._case_btn.isChecked()
+        haystack = text if case_sensitive else text.lower()
+        needle = term if case_sensitive else term.lower()
+        step = len(needle)
+        matches: list[tuple[int, int]] = []
+        start = 0
+        while True:
+            idx = haystack.find(needle, start)
+            if idx == -1:
+                break
+            matches.append((idx, idx + step))
+            start = idx + step
+        return matches
+
+    def _nearest_match_index(self, pos: int) -> int:
+        for i, (start, _end) in enumerate(self._matches):
+            if start >= pos:
+                return i
+        return 0
+
+    def _perform_search(self) -> None:
+        anchor = self._editor.textCursor().position()
+        self._matches = self._collect_matches()
+        if not self._matches:
+            self._current = -1
+            self._update_highlights()
+            self._update_count_label()
+            return
+        self._current = self._nearest_match_index(anchor)
+        self._select_current()
+
+    def _select_current(self) -> None:
+        start, end = self._matches[self._current]
+        cursor = self._editor.textCursor()
+        cursor.setPosition(start)
+        cursor.setPosition(end, QTextCursor.MoveMode.KeepAnchor)
+        self._editor.setTextCursor(cursor)
+        self._editor.ensureCursorVisible()
+        self._update_highlights()
+        self._update_count_label()
+
+    def search_next(self) -> None:
+        if not self._matches:
+            return
+        self._current = (self._current + 1) % len(self._matches)
+        self._select_current()
+
+    def search_prev(self) -> None:
+        if not self._matches:
+            return
+        self._current = (self._current - 1) % len(self._matches)
+        self._select_current()
+
+    def _update_highlights(self) -> None:
+        selections = []
+        for i, (start, end) in enumerate(self._matches):
+            cursor = QTextCursor(self._editor.document())
+            cursor.setPosition(start)
+            cursor.setPosition(end, QTextCursor.MoveMode.KeepAnchor)
+            fmt = QTextCharFormat()
+            fmt.setBackground(_SEARCH_CURRENT_BG if i == self._current else _SEARCH_MATCH_BG)
+            selection = QTextEdit.ExtraSelection()
+            selection.format = fmt
+            selection.cursor = cursor
+            selections.append(selection)
+        self._editor.setExtraSelections(selections)
+
+    def _update_count_label(self) -> None:
+        total = len(self._matches)
+        current = self._current + 1 if self._current >= 0 else 0
+        self._count_label.setText(f"{current}/{total}")
+
+    # --- 바꾸기 ---
+
+    def replace_current(self) -> None:
+        """현재 일치 1건을 치환하고 다음 일치로 이동한다."""
+        if not self._matches or self._current < 0:
+            return
+        start, end = self._matches[self._current]
+        replacement = self._replace_edit.text()
+        cursor = QTextCursor(self._editor.document())
+        cursor.setPosition(start)
+        cursor.setPosition(end, QTextCursor.MoveMode.KeepAnchor)
+        cursor.beginEditBlock()
+        cursor.insertText(replacement)
+        cursor.endEditBlock()
+        new_pos = start + len(replacement)
+
+        self._matches = self._collect_matches()
+        if self._matches:
+            self._current = self._nearest_match_index(new_pos)
+            self._select_current()
+        else:
+            self._current = -1
+            result_cursor = self._editor.textCursor()
+            result_cursor.setPosition(min(new_pos, len(self._editor.toPlainText())))
+            self._editor.setTextCursor(result_cursor)
+            self._update_highlights()
+            self._update_count_label()
+
+    def replace_all(self) -> None:
+        """전체 일치를 1 undo 단위로 치환하고 치환 건수를 일치 수 라벨에 표시한다."""
+        if not self._matches:
+            return
+        count = len(self._matches)
+        replacement = self._replace_edit.text()
+        edit_cursor = self._editor.textCursor()
+        edit_cursor.beginEditBlock()
+        for start, end in reversed(self._matches):
+            cursor = QTextCursor(self._editor.document())
+            cursor.setPosition(start)
+            cursor.setPosition(end, QTextCursor.MoveMode.KeepAnchor)
+            cursor.insertText(replacement)
+        edit_cursor.endEditBlock()
+
+        self._matches = self._collect_matches()
+        self._current = -1
+        self._update_highlights()
+        self._count_label.setText(f"{count}건 바꿈")
+
+
 class MarkdownToolbar(QWidget):
     """서식 툴바 — `MarkdownEditor` 공개 API에 배선된 버튼 행.
 
-    `H1 H2 H3 │ B I S │ • 1. ☑ │ " 🔗 │ 👁` — 프리뷰 버튼(👁)만 예외로
-    `preview_toggled` 시그널을 방출할 뿐 문서를 건드리지 않는다(프리뷰 자체는
-    `SectionContentPanel` 소관).
+    `H1 H2 H3 │ B I S │ • 1. ☑ │ " 🔗 │ ☰ 👁` — ☰(TOC 토글)·👁(프리뷰)는
+    문서를 건드리지 않고 각각 `toc_toggled`/`preview_toggled` 시그널만 방출한다
+    (TOC 패널 표시/숨김·프리뷰 자체는 `SectionContentPanel` 소관).
     """
 
     preview_toggled = Signal(bool)
+    toc_toggled = Signal(bool)
 
     _BUTTON_WIDTH = 30
 
@@ -977,6 +1250,10 @@ class MarkdownToolbar(QWidget):
         self._add_button(lay, "\"", "인용", lambda: self._apply_marker("> "))
         self._add_button(lay, "🔗", "링크 (Ctrl+K)", self._apply_link)
         self._add_separator(lay)
+        self._btn_toc = self._add_button(
+            lay, "☰", "목차 토글", self._on_toc_toggled, checkable=True,
+        )
+        self._edit_buttons.append(self._btn_toc)  # 프리뷰 중 비활성화 대상에 포함
         self._btn_preview = self._add_button(
             lay, "👁", "미리보기 전환", self._on_preview_toggled, checkable=True,
         )
@@ -997,9 +1274,10 @@ class MarkdownToolbar(QWidget):
         btn.setToolTip(tooltip)
         btn.setCheckable(checkable)
         if checkable:
+            # checkable은 ☰(TOC)/👁(프리뷰) 전용 — 문서를 건드리지 않으므로
+            # 호출부가 필요할 때만 개별적으로 _edit_buttons에 편입시킨다
             btn.toggled.connect(handler)
         else:
-            # checkable은 프리뷰(👁) 전용 — 나머지는 전부 편집 버튼
             btn.clicked.connect(handler)
             self._edit_buttons.append(btn)
         lay.addWidget(btn)
@@ -1027,6 +1305,10 @@ class MarkdownToolbar(QWidget):
         self._editor.insert_link()
         self._editor.setFocus()
 
+    def _on_toc_toggled(self, checked: bool) -> None:
+        self.toc_toggled.emit(checked)
+        self._editor.setFocus()
+
     def _on_preview_toggled(self, checked: bool) -> None:
         # 프리뷰 중 편집 버튼이 숨은 문서를 조용히 바꾸지 못하게 잠근다
         for btn in self._edit_buttons:
@@ -1042,3 +1324,111 @@ class MarkdownToolbar(QWidget):
         이 방출로 스택이 편집 모드로 복귀하는 것을 활용한다).
         """
         self._btn_preview.setChecked(checked)
+
+
+_TOC_HEADING_RE = re.compile(r"^(#{1,6})\s+(.+)$")
+_TOC_DEBOUNCE_MS = 300
+_TOC_BLOCK_ROLE = Qt.ItemDataRole.UserRole
+
+
+@dataclass(frozen=True)
+class TocEntry:
+    """TOC 항목 — 헤딩 레벨·텍스트·해당 블록 번호(점프용)."""
+
+    level: int
+    text: str
+    block_number: int
+
+
+class TocPanel(QWidget):
+    """TOC 사이드바 — 문서의 ATX 헤딩을 읽기 전용으로 나열(왕복 파싱 아님).
+
+    코드 펜스 내부의 `#` 줄은 `MarkdownHighlighter`가 이미 기록해 둔 블록
+    상태(`userState() == _STATE_CODE_FENCE`)로 판별해 제외한다 — 별도 펜스
+    추적 로직을 중복 구현하지 않는다.
+    """
+
+    def __init__(self, editor: "MarkdownEditor", parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._editor = editor
+        self._entries: list[TocEntry] = []
+
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(0)
+
+        self._tree = QTreeWidget()
+        self._tree.setHeaderHidden(True)
+        self._tree.setStyleSheet(
+            "QTreeWidget { background-color: #20203a; color: #ccc; border: none; }"
+            "QTreeWidget::item { padding: 2px 4px; }",
+        )
+        self._tree.itemClicked.connect(self._on_item_clicked)
+        lay.addWidget(self._tree)
+
+        self._timer = QTimer(self)
+        self._timer.setSingleShot(True)
+        self._timer.setInterval(_TOC_DEBOUNCE_MS)
+        self._timer.timeout.connect(self._reparse)
+
+        self._editor.textChanged.connect(self._schedule_reparse)
+        self._reparse()
+
+    # --- 파싱(읽기 전용) ---
+
+    def _schedule_reparse(self) -> None:
+        self._timer.start()
+
+    def refresh(self) -> None:
+        """디바운스를 우회해 즉시 재파싱한다 — 문서 갈아치우기(show_body) 등에 사용."""
+        self._timer.stop()
+        self._reparse()
+
+    def _reparse(self) -> None:
+        entries = self._extract_headings()
+        if entries == self._entries:
+            return  # 구조 불변 — 트리 재구성 생략(in-place 원칙)
+        self._entries = entries
+        self._rebuild_tree()
+
+    def _extract_headings(self) -> list[TocEntry]:
+        entries: list[TocEntry] = []
+        block = self._editor.document().begin()
+        while block.isValid():
+            if block.userState() != MarkdownHighlighter._STATE_CODE_FENCE:
+                m = _TOC_HEADING_RE.match(block.text())
+                if m:
+                    entries.append(
+                        TocEntry(len(m.group(1)), m.group(2).strip(), block.blockNumber()),
+                    )
+            block = block.next()
+        return entries
+
+    def _rebuild_tree(self) -> None:
+        self._tree.clear()
+        stack: list[tuple[int, QTreeWidgetItem]] = []
+        for entry in self._entries:
+            item = QTreeWidgetItem([entry.text])
+            item.setData(0, _TOC_BLOCK_ROLE, entry.block_number)
+            while stack and stack[-1][0] >= entry.level:
+                stack.pop()
+            if stack:
+                stack[-1][1].addChild(item)
+            else:
+                self._tree.addTopLevelItem(item)
+            stack.append((entry.level, item))
+        self._tree.expandAll()
+
+    # --- 클릭 점프 ---
+
+    def _on_item_clicked(self, item: QTreeWidgetItem, _column: int) -> None:
+        block_number = item.data(0, _TOC_BLOCK_ROLE)
+        if block_number is None:
+            return
+        block = self._editor.document().findBlockByNumber(block_number)
+        if not block.isValid():
+            return
+        cursor = QTextCursor(block)
+        self._editor.setTextCursor(cursor)
+        self._editor.centerCursor()
+        self._editor.setFocus()
