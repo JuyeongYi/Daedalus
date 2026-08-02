@@ -13,6 +13,17 @@ class CollectionType(Enum):
     SET = "set"
 
 
+# 블랙보드 필드에 허용되는 타입 — 스칼라 원소 타입만 (사용자 확정, WP-BT).
+# 컨테이너 형상은 CollectionType이 전담한다: "문자열 목록" = STRING × LIST.
+# FieldType enum 자체는 Variable과 공용이라 멤버를 제거하지 않는다(구버전 호환).
+BLACKBOARD_FIELD_TYPES: tuple[FieldType, ...] = (
+    FieldType.STRING,
+    FieldType.INT,
+    FieldType.FLOAT,
+    FieldType.BOOL,
+)
+
+
 @dataclass
 class DynamicField:
     name: str

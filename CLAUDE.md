@@ -33,7 +33,7 @@ daedalus/
 │   │   ├── pseudo.py       # ChoiceState, TerminateState, EntryPoint, ExitPoint
 │   │   ├── transition.py   # Transition(target_port: str = "" — WP-IC 입력 포트 참조, 빈 값=기본 포트) + TransitionType
 │   │   ├── join.py         # JoinStrategy (병렬 조인 전략 — 순수 FSM 개념, policy.py가 re-export)
-│   │   ├── blackboard.py   # Blackboard, DynamicClass, DynamicField(FieldType 사용), FIELD_TYPE_TO_JSON_SCHEMA
+│   │   ├── blackboard.py   # Blackboard, DynamicClass, DynamicField(FieldType 사용), FIELD_TYPE_TO_JSON_SCHEMA, BLACKBOARD_FIELD_TYPES(WP-BT — 블랙보드 필드 허용 타입 4종)
 │   │   ├── section.py      # Section(자유 콘텐츠 계층 — AgentDefinition.caller_contracts 잠금 계약 카드 전용, WP-SB로 스킬/에이전트 본문에서는 퇴역),
 │   │   │                   #   EventDef(TransferOn 출력 이벤트 + WP-IC entry_paths 입력 포트 정의 공용 — name/color/description),
 │   │   │                   #   render_markdown(WP-SB 구버전 sections→body 마이그레이션 헬퍼)
@@ -276,6 +276,7 @@ class FieldType(Enum):
 
 - `VariableType`과 `DynamicFieldType`을 통합한 단일 열거형
 - `Variable.field_type: FieldType`, `DynamicField.field_type: FieldType`
+- **블랙보드 필드는 스칼라 4종만**(WP-BT, 사용자 확정): `BLACKBOARD_FIELD_TYPES = (STRING, INT, FLOAT, BOOL)` — 컨테이너 형상은 CollectionType(none/list/set)이 전담한다("문자열 목록" = STRING × LIST). 편집기 콤보는 이 4종만 노출(legacy 값은 "(legacy)" 표시 유지), `invalid_blackboard_field_type` 경고가 구버전 필드를 짚는다. Variable은 종전 그대로 전 멤버 사용 가능.
 - `NUMBER`는 **deprecated** — 의미가 명확한 INT/FLOAT을 쓰라. 컴파일 시 INT→integer, FLOAT/NUMBER→number로 합류된다(하위 호환용 잔존). 매핑 정본은 `blackboard.py`의 `FIELD_TYPE_TO_JSON_SCHEMA`.
 
 ### ComponentConfig 계층

@@ -80,6 +80,7 @@ WARNING_RULES: frozenset[str] = frozenset({
     # 블랙보드(blackboard) 경고 — WP-BB
     "dangling_blackboard_ref",
     "orphan_blackboard_field",
+    "invalid_blackboard_field_type",
 })
 
 
@@ -875,6 +876,34 @@ class Validator:
         # 블랙보드(blackboard) 규칙 — WP-BB
         errors.extend(Validator._check_dangling_blackboard_refs(project))
         errors.extend(Validator._check_orphan_blackboard_fields(project))
+        errors.extend(Validator._check_blackboard_field_types(project))
+        return errors
+
+    @staticmethod
+    def _check_blackboard_field_types(project) -> list[ValidationError]:
+        """invalid_blackboard_field_type — 블랙보드 필드 타입이 허용 집합
+        (BLACKBOARD_FIELD_TYPES — 스칼라 원소 타입 4종) 밖이면 경고 (WP-BT).
+
+        구버전 파일의 list/json/any/number 필드를 F7이 짚어 준다 (로드·컴파일은
+        계속 동작 — 경고 등급). 컨테이너 형상은 CollectionType이 전담한다.
+        """
+        from daedalus.model.fsm.blackboard import BLACKBOARD_FIELD_TYPES
+
+        errors: list[ValidationError] = []
+        classes = getattr(project.blackboard, "class_definitions", None) or []
+        for cls in classes:
+            for fld in cls.fields:
+                if fld.field_type not in BLACKBOARD_FIELD_TYPES:
+                    errors.append(ValidationError(
+                        rule="invalid_blackboard_field_type",
+                        message=(
+                            f"블랙보드 필드 '{cls.name}.{fld.name}'의 타입 "
+                            f"'{fld.field_type.value}'은 더 이상 허용되지 않습니다 — "
+                            f"스칼라 타입(string/int/float/bool) + 컬렉션 조합을 쓰세요."
+                        ),
+                        source=f"{cls.name}.{fld.name}",
+                        subject=fld,
+                    ))
         return errors
 
     # ------------------------------------------------------------------
