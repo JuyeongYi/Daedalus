@@ -59,9 +59,10 @@ class AgentEditor(QWidget):
     # ------------------------------------------------------------------ #
 
     def _build_graph_tab(self) -> QWidget:
-        """Graph 탭: Procedural/Transfer 레지스트리(좌) + FsmCanvasView(우)."""
+        """Graph 탭: Procedural/Transfer 레지스트리(좌) + FsmCanvasView(중) + 속성(우)."""
         from daedalus.view.canvas.canvas_view import FsmCanvasView
         from daedalus.view.canvas.scene import AgentFsmScene
+        from daedalus.view.panels.property_panel import PropertyPanel
         from daedalus.view.viewmodel.project_vm import ProjectViewModel
 
         container = QWidget()
@@ -113,8 +114,16 @@ class AgentEditor(QWidget):
         self._graph_scene.node_double_clicked.connect(self._open_local_skill)
         splitter.addWidget(self._canvas_view)
 
+        # 속성 패널 (우측) — 에이전트 FSM 상태 선택 시 reads/writes 등 편집
+        # (WP-BB Part C-1 — 프로젝트 캔버스 PropertyPanel과 동일 컴포넌트 재사용).
+        self._property_panel = PropertyPanel(self._graph_vm)
+        self._property_panel.setMinimumWidth(160)
+        splitter.addWidget(self._property_panel)
+        self._graph_scene.selectionChanged.connect(self._on_graph_selection)
+
         splitter.setStretchFactor(0, 0)  # sidebar: 고정폭
         splitter.setStretchFactor(1, 1)  # canvas: 확장
+        splitter.setStretchFactor(2, 0)  # 속성: 고정폭
 
         lay.addWidget(splitter)
         self._open_skill_tabs: dict[str, int] = {}  # 키: 로컬 스킬 id
@@ -123,6 +132,26 @@ class AgentEditor(QWidget):
         self._refresh_skill_list()
         QTimer.singleShot(0, self._canvas_view.fit_to_content)
         return container
+
+    def _on_graph_selection(self) -> None:
+        """에이전트 FSM 캔버스 선택 → 우측 PropertyPanel 갱신 (WP-BB Part C-1)."""
+        from daedalus.view.canvas.edge_item import TransitionEdgeItem
+        from daedalus.view.canvas.node_item import StateNodeItem
+
+        try:
+            selected = self._graph_scene.selectedItems()
+        except RuntimeError:
+            # 씬의 C++ 객체가 이미 파괴된 뒤 지연 발화된 시그널(테스트/종료 시
+            # 미close 인스턴스의 뒷정리 경로) — 무시.
+            return
+        if len(selected) == 1:
+            item = selected[0]
+            if isinstance(item, StateNodeItem):
+                self._property_panel.show_state(item.state_vm)
+            elif isinstance(item, TransitionEdgeItem):
+                self._property_panel.show_transition(item.transition_vm)
+        else:
+            self._property_panel.clear()
 
     def _migrate_fsm(self) -> None:
         """기존 에이전트 FSM 마이그레이션.

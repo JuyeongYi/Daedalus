@@ -246,6 +246,12 @@ class MainWindow(QMainWindow):
             return candidate_strings(entries, p)
 
         set_tool_candidate_provider(_tool_candidates)
+        # 상태 reads/writes TagInput이 블랙보드 "클래스"/"클래스.필드" 후보를
+        # 표시하도록 연결 (WP-BB). 호출 시점 스냅샷 — 도구 후보와 동일 정책.
+        from daedalus.view.editors.blackboard_editor import blackboard_candidate_strings
+        from daedalus.view.widgets.tag_input import set_blackboard_candidate_provider
+
+        set_blackboard_candidate_provider(lambda p=project: blackboard_candidate_strings(p))
         # 프로젝트 그래프(워크플로 백킹 머신) → 캔버스 VM 재구성 (버그 1: 저장된
         # 노드 연결 복원). placement 노드 + 전이를 graph_layout 좌표로 배치한다
         # (WP-EP: EntryPoint는 그리지 않음). _load_agent_fsm 미러링.

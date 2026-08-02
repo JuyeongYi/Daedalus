@@ -34,6 +34,19 @@ from daedalus.view.widgets.combo_widgets import CollectionTypeComboBox, FieldTyp
 _FIELD_COLS = ("이름", "타입", "컬렉션", "필수", "기본값")
 
 
+def blackboard_candidate_strings(project: PluginProject | None) -> list[str]:
+    """프로젝트 최상위 블랙보드에서 "클래스" + "클래스.필드" 후보 문자열 전체를 만든다
+    (WP-BB Part C-1 — 상태 reads/writes TagInput 자동완성 후보)."""
+    if project is None:
+        return []
+    result: list[str] = []
+    for cls in project.blackboard.class_definitions:
+        result.append(cls.name)
+        for fld in cls.fields:
+            result.append(f"{cls.name}.{fld.name}")
+    return result
+
+
 class BlackboardPanel(QWidget):
     """프로젝트 최상위 블랙보드(class_definitions) 편집 상주 탭.
 
