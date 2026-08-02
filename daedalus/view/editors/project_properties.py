@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from PySide6.QtWidgets import (
     QCheckBox,
+    QComboBox,
     QDialog,
     QDialogButtonBox,
     QFormLayout,
@@ -19,7 +20,14 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from daedalus.model.plugin.enums import BuildTarget
 from daedalus.model.project import PluginProject
+
+# 빌드 타깃 콤보 표시 문구 — BuildTarget과 1:1 (WP-TG).
+BUILD_TARGET_LABELS: list[tuple[BuildTarget, str]] = [
+    (BuildTarget.MARKETPLACE, "마켓플레이스 플러그인"),
+    (BuildTarget.LOCAL, "로컬 플러그인"),
+]
 
 
 class ProjectPropertiesDialog(QDialog):
@@ -53,6 +61,13 @@ class ProjectPropertiesDialog(QDialog):
             self._emit_progress_hook_cb,
         )
 
+        self._build_target_combo = QComboBox()
+        for target, label in BUILD_TARGET_LABELS:
+            self._build_target_combo.addItem(label, target)
+        idx = self._build_target_combo.findData(project.build_target)
+        self._build_target_combo.setCurrentIndex(idx if idx >= 0 else 0)
+        form.addRow("빌드 타깃:", self._build_target_combo)
+
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         )
@@ -66,3 +81,4 @@ class ProjectPropertiesDialog(QDialog):
         project.description = self._description_edit.text()
         project.version = self._version_edit.text()
         project.emit_progress_hook = self._emit_progress_hook_cb.isChecked()
+        project.build_target = self._build_target_combo.currentData()

@@ -17,6 +17,7 @@ from daedalus.model.fsm.strategy import (
 )
 from daedalus.model.fsm.transition import Transition
 from daedalus.model.fsm.variable import VariableScope
+from daedalus.model.plugin.enums import BuildTarget
 
 
 @dataclass
@@ -85,6 +86,9 @@ WARNING_RULES: frozenset[str] = frozenset({
     # compiler/project_compiler.py 소관(검증기는 파일시스템 무접근 순수성
     # 유지)이지만, is_warning 판정 일관성을 위해 여기 등록한다.
     "dangling_file_ref",
+    # 빌드 타깃(build_target) 경고 — WP-TG
+    "mcp_agent_in_marketplace_build",
+    "plugin_root_in_local_build",
 })
 
 
@@ -881,6 +885,9 @@ class Validator:
         errors.extend(Validator._check_dangling_blackboard_refs(project))
         errors.extend(Validator._check_orphan_blackboard_fields(project))
         errors.extend(Validator._check_blackboard_field_types(project))
+        # 빌드 타깃(build_target) 규칙 — WP-TG
+        errors.extend(Validator._check_mcp_agent_in_marketplace_build(project))
+        errors.extend(Validator._check_plugin_root_in_local_build(project))
         return errors
 
     @staticmethod
@@ -1527,4 +1534,98 @@ class Validator:
                     source=field_ref,
                     subject=fld,
                 ))
+        return errors
+
+    # ------------------------------------------------------------------
+    # 빌드 타깃(build_target) 규칙 2종 — WP-TG Part D
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _check_mcp_agent_in_marketplace_build(project) -> list[ValidationError]:
+        """mcp_agent_in_marketplace_build — build_target=MARKETPLACE인데 에이전트가
+        MCP를 사용(config.tools의 mcp__ 접두 또는 mcp_servers 선언)하면 경고.
+
+        CC는 마켓플레이스 플러그인으로 배포되는 에이전트의 MCP 사용을 지원하지
+        않는다(mcpServers 등 프론트매터 미지원) — 로컬 플러그인 빌드로 전환하거나
+        MCP 사용을 제거하라고 안내한다. LOCAL 빌드면 이 제약이 없으므로 무경고.
+        """
+        build_target = getattr(project, "build_target", BuildTarget.MARKETPLACE)
+        if build_target is not BuildTarget.MARKETPLACE:
+            return []
+        errors: list[ValidationError] = []
+        for agent in getattr(project, "agents", []):
+            cfg = getattr(agent, "config", None)
+            tools = getattr(cfg, "tools", None) or []
+            mcp_servers = getattr(cfg, "mcp_servers", None) or []
+            has_mcp_tool = any(
+                isinstance(t, str) and t.startswith("mcp__") for t in tools
+            )
+            if has_mcp_tool or mcp_servers:
+                errors.append(ValidationError(
+                    rule="mcp_agent_in_marketplace_build",
+                    message=(
+                        f"에이전트 '{agent.name}'이 MCP를 사용하지만 빌드 타깃이 "
+                        f"마켓플레이스 플러그인입니다 — CC는 플러그인 배포 "
+                        f"에이전트의 MCP 사용을 지원하지 않습니다. 로컬 플러그인 "
+                        f"빌드로 전환하거나 MCP 사용을 제거하세요."
+                    ),
+                    source=agent.name,
+                    subject=agent,
+                    path=(f"agent:{agent.name}",),
+                ))
+        return errors
+
+    @staticmethod
+    def _check_plugin_root_in_local_build(project) -> list[ValidationError]:
+        """plugin_root_in_local_build — build_target=LOCAL인데 스킬/에이전트(로컬
+        스킬 포함) 본문에 files/ 참조 이외 용도의 ``${CLAUDE_PLUGIN_ROOT}``가 남아
+        있으면 경고. files/ 참조(``${CLAUDE_PLUGIN_ROOT}/files/``)는 컴파일이
+        ``${CLAUDE_PROJECT_DIR}/files/``로 자동 치환하므로 검사에서 제외한다.
+        """
+        build_target = getattr(project, "build_target", BuildTarget.MARKETPLACE)
+        if build_target is not BuildTarget.LOCAL:
+            return []
+        errors: list[ValidationError] = []
+
+        def _scan(label: str, subject: object, body: str, path: tuple[str, ...]) -> None:
+            text = body or ""
+            # files/ 참조는 컴파일이 자동 치환하므로 제거한 나머지에서만 검사.
+            remaining = text.replace("${CLAUDE_PLUGIN_ROOT}/files/", "")
+            if "${CLAUDE_PLUGIN_ROOT}" in remaining:
+                errors.append(ValidationError(
+                    rule="plugin_root_in_local_build",
+                    message=(
+                        f"{label}의 본문에 '${{CLAUDE_PLUGIN_ROOT}}'가 files/ 참조 "
+                        f"이외 용도로 남아 있습니다 — 로컬 빌드에서는 이 경로가 "
+                        f"유효하지 않습니다."
+                    ),
+                    source=label,
+                    subject=subject,
+                    path=path,
+                ))
+
+        for skill in getattr(project, "skills", []):
+            _scan(
+                f"스킬 '{skill.name}'", skill, getattr(skill, "body", ""),
+                (f"skill:{skill.name}",),
+            )
+        for agent in getattr(project, "agents", []):
+            _scan(
+                f"에이전트 '{agent.name}'", agent, getattr(agent, "body", ""),
+                (f"agent:{agent.name}",),
+            )
+            # 잠금 계약 카드도 agent .md에 그대로 배출되므로 함께 검사한다
+            # (리뷰 지적 C — body만 보면 계약 카드의 죽은 경로를 놓친다)
+            for contract in getattr(agent, "caller_contracts", None) or []:
+                _scan(
+                    f"에이전트 '{agent.name}'의 호출 계약 '{contract.title}'",
+                    agent, getattr(contract, "content", ""),
+                    (f"agent:{agent.name}",),
+                )
+            for local in getattr(agent, "skills", None) or []:
+                _scan(
+                    f"에이전트 '{agent.name}'의 로컬 스킬 '{local.name}'",
+                    local, getattr(local, "body", ""),
+                    (f"agent:{agent.name}", f"skill:{local.name}"),
+                )
         return errors

@@ -50,6 +50,16 @@ class PermissionMode(Enum):
     PLAN = "plan"
 
 
+class BuildTarget(Enum):
+    """프로젝트 빌드 타깃 — 마켓플레이스 플러그인 vs 로컬 플러그인(.claude/ 반입형).
+
+    MCP를 쓰는 에이전트는 CC 정책상 마켓플레이스 플러그인으로 배포할 수 없어
+    (mcpServers 등 프론트매터 미지원), 프로젝트 수준에서 빌드 타깃을 가른다
+    (WP-TG). LOCAL은 plugin.json을 생성하지 않고 설치 스크립트를 동봉한다."""
+    MARKETPLACE = "marketplace"
+    LOCAL = "local"
+
+
 class MemoryScope(Enum):
     USER = "user"
     PROJECT = "project"
