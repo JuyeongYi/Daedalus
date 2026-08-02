@@ -34,7 +34,8 @@ daedalus/
 │   │   ├── transition.py   # Transition + TransitionType
 │   │   ├── join.py         # JoinStrategy (병렬 조인 전략 — 순수 FSM 개념, policy.py가 re-export)
 │   │   ├── blackboard.py   # Blackboard, DynamicClass, DynamicField(FieldType 사용), FIELD_TYPE_TO_JSON_SCHEMA
-│   │   ├── section.py      # Section(자유 콘텐츠 계층), EventDef(TransferOn 출력 이벤트)
+│   │   ├── section.py      # Section(자유 콘텐츠 계층 — AgentDefinition.caller_contracts 잠금 계약 카드 전용, WP-SB로 스킬/에이전트 본문에서는 퇴역),
+│   │   │                   #   EventDef(TransferOn 출력 이벤트), render_markdown(WP-SB 구버전 sections→body 마이그레이션 헬퍼)
 │   │   └── machine.py      # StateMachine
 │   ├── plugin/       # Claude 플러그인 메타데이터
 │   │   ├── enums.py        # ModelType, EffortLevel, SkillContext, PermissionMode, AgentField, FieldEmit 등
@@ -66,7 +67,9 @@ daedalus/
     ├── canvas/             # GraphicsView/Scene, NodeItem, EdgeItem, RefNodeItem, RefEdgeItem, node_badges(뱃지 로직), sync(VM→모델 동기화 — Qt 무관)
     ├── commands/           # Undo/Redo 커맨드 (state, transition, section, exit_point)
     ├── editors/            # 속성 편집기 (skill, agent, delegation, hook, body, component, variable_loader, field_widgets, project_properties)
-    │                       # body: SectionContentPanel = MarkdownToolbar + QStackedWidget(0=MarkdownEditor 편집, 1=QTextBrowser 프리뷰 — setMarkdown 1회 렌더, show_section이 편집 모드로 리셋, 프리뷰 중 편집 버튼·변수 삽입 잠금)
+    │                       # body: SectionContentPanel = MarkdownToolbar + QStackedWidget(0=MarkdownEditor 편집, 1=QTextBrowser 프리뷰 — setMarkdown 1회 렌더, show_body(component)가 편집 모드로 리셋, 프리뷰 중 편집 버튼·변수 삽입 잠금)
+    │                       # WP-SB: 수동 섹션 트리 편집(SectionTree/BreadcrumbNav, find_path/section_depth/MAX_DEPTH)은 마크다운 에디터로 대체되어 제거 —
+    │                       #   component_editor.ComponentEditor는 좌(FrontmatterPanel) | 중(SectionContentPanel, component.body 단일 편집) | 우(옵션) 2~3분할로 단순화
     ├── panels/             # TreePanel, PropertyPanel, RegistryPanel, HistoryPanel, ValidationPanel (F7 검증 결과)
     │                       # RegistryPanel: component_delete_requested 시그널 + _RegistrySection 우클릭 "삭제" 컨텍스트 메뉴
     ├── viewmodel/          # ProjectViewModel(notify structure/content 채널), StateViewModel (모델↔뷰 중간 계층)
@@ -113,9 +116,11 @@ daedalus/
 - **공유 데이터:** Blackboard.variables (Variable.scope = BLACKBOARD)
 - **동적 상태 파일:** Blackboard.class_definitions (DynamicClass) — 설계 시 정의, 런타임에 work 폴더 state/에 생성
 
-### Section / EventDef
+### 본문(body) / Section / EventDef
 
-- `Section`: 스킬 본문의 자유 콘텐츠 계층 (H1–H6). `children: list[Section]`으로 재귀 트리 구성
+- **본문의 단일 진실은 `body: str`(단일 마크다운 문자열)** — `ProceduralSkill`/`DeclarativeSkill`/`TransferSkill`/`ReferenceSkill`/`AgentDefinition` 전부 동일 필드(WP-SB, 기본값 `""`). 마크다운 에디터(WP-MD1/MD2)가 헤딩·리스트·슬래시 메뉴를 네이티브로 다루면서 수동 섹션 트리 편집의 존재 의의가 사라져 단일 텍스트로 통일했다.
+- `Section`(`model/fsm/section.py`)은 자유 콘텐츠 계층(H1–H6, `children: list[Section]` 재귀 트리) 자체는 그대로 남아 있으나, 이제 **`AgentDefinition.caller_contracts`(잠금 계약 카드) 전용**이다 — 호출 계약 카드는 `_ContractPanel`/`_ContractCard`(skill_editor.py)와 `commands/section_commands.py`(scene.py의 call_agent 연결 시 자동 추가/제거)가 계속 사용한다.
+- `render_markdown(sections, depth=1) -> str`(section.py): 구버전(sections 트리) 파일을 로드할 때 `body`로 평탄화하는 단방향 마이그레이션 헬퍼. `serialize.py`의 `_deser_body`가 `body` 키 부재 + `sections` 키 존재 시에만 호출한다(경고 없음 — 정상 마이그레이션 경로).
 - `EventDef`: TransferOn 스킬의 출력 이벤트 정의. 노드 출력 포트에 대응 (`name`, `color`, `description`)
 
 ### PluginProject.graph = 워크플로 백킹 머신
@@ -324,7 +329,7 @@ dataclass(값 동등성, unhashable) 유지 — 컬렉션 멤버십에는 list/`
    FIXED는 `fixed_value` 강제 출력. `model==INHERIT`는 키 생략. OPTIONAL 값이 config 선언 기본값과 같으면 생략(잡음 제거).
    enum은 `.value`, bool은 `true`/`false`, 리스트는 flow-style `[a, b]`.
 2. **when_to_use**: description과 합류 — `<description> Use when <when_to_use>` (description이 `.!?`로 끝나면 공백, 아니면 `. `로 연결).
-3. **본문**: `sections` 트리 → 마크다운 헤딩(루트 H1, 깊이별 `#`/`##`/…, 최대 H6).
+3. **본문**: `body`(단일 마크다운 문자열)를 앞뒤 개행만 정리해 그대로 배출(공백뿐이면 블록 생략, WP-SB).
 4. **ProceduralSkill FSM → 절차 단락**: initial_state부터 전이 BFS 순서로 번호 매긴 상태 목록(시작/종료 표지),
    각 SimpleState skill_ref는 "skill 이름 사용", CompositeState는 "에이전트 X에 위임", 전이별 트리거/가드 조건 + transfer_on 출력 이벤트.
 5. **위임 노드** (deprecated — 신규 생성 UI 없음, 기존 위임의 컴파일 산출은 존치): 스펙 4절 문구(TeamSpawn/DynamicWorkflow/AgoraDispatch 도구 호출 지침) + 1-b절 GUIDED(유도문 + teammates/phases "힌트" 격하 + guidance).
