@@ -53,12 +53,13 @@ class DraggableItemMixin:
         """
         origin = self._drag_origin
         self._drag_origin = None
-        if origin is None:
-            return
-        new_pos = self.pos()  # type: ignore[attr-defined]
-        if origin == new_pos:
-            return
         sc: Any = self.scene()  # type: ignore[attr-defined]
+        new_pos = self.pos() if origin is not None else None  # type: ignore[attr-defined]
+        if origin is None or origin == new_pos:
+            # 이동 없이 끝난 클릭 — 스냅샷 수명주기를 대칭으로 닫는다.
+            if sc is not None and hasattr(sc, "clear_drag_positions"):
+                sc.clear_drag_positions()
+            return
         if sc is not None and hasattr(sc, "handle_items_moved"):
             sc.handle_items_moved(self, origin, new_pos)
         else:

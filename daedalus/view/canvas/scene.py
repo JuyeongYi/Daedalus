@@ -182,6 +182,15 @@ class FsmScene(QGraphicsScene):
             if isinstance(item, DraggableItemMixin)
         }
 
+    def clear_drag_positions(self) -> None:
+        """드래그 스냅샷 폐기 — 이동 없이 끝난 클릭 등에서 호출.
+
+        스냅샷을 남겨두면 _rebuild()로 파괴된 아이템 참조를 다음 press까지
+        붙잡는다. begin_drag()가 매 press마다 dict를 통째로 재할당하므로
+        정확성 문제는 없지만, 수명주기를 대칭으로 닫아 둔다.
+        """
+        self._drag_positions = {}
+
     def handle_items_moved(
         self, grabbed: DraggableItemMixin, old_pos: QPointF, new_pos: QPointF
     ) -> None:

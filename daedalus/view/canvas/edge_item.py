@@ -193,7 +193,12 @@ class TransitionEdgeItem(QGraphicsPathItem):
         """드래그 중 실시간 미리보기 — undo 커맨드 없이 vm에 직접 반영.
 
         노드 드래그 중 update_edges_for_node가 하는 역할과 동일한 결의 실시간
-        갱신. 커밋(undo 가능)은 release 시 scene.handle_waypoint_moved가 한다.
+        갱신. 커밋(undo 가능)은 release 시 scene.handle_items_moved가 한다
+        (WP-DM 이전에는 handle_waypoint_moved였다).
+
+        주의: 이 실시간 갱신 때문에 release 시점의 vm 좌표는 이미 새 값이다 —
+        함께 드래그된(passenger) 웨이포인트의 구 위치는 press 시점 스냅샷
+        (FsmScene.snapshot_drag_positions)에서 가져와야 한다.
         """
         waypoints = self._transition_vm.waypoints
         if 0 <= index < len(waypoints):
