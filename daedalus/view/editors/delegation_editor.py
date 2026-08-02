@@ -570,6 +570,14 @@ class DelegationEditor(QDialog):
 
         root = QVBoxLayout(self)
 
+        # deprecated 안내
+        deprecation_notice = QLabel(
+            "⚠ 위임 노드는 deprecated — 스킬 본문에 위임 지시를 직접 서술하는 방식을 권장합니다."
+        )
+        deprecation_notice.setWordWrap(True)
+        deprecation_notice.setStyleSheet("color: #cc9944; font-size: 10px;")
+        root.addWidget(deprecation_notice)
+
         # 이름
         name_lay = QHBoxLayout()
         name_lay.addWidget(QLabel("이름:"))
