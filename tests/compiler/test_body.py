@@ -125,6 +125,39 @@ def test_transition_transfer_skill_documented():
     assert "skill 'edge-helper'" in text
 
 
+# ─────────────────────── WP-BB: 상태 접근 선언 서술 ───────────────────────
+
+
+def test_fsm_procedure_shows_access_declarations_sorted():
+    s1 = SimpleState(name="check", reads=["B", "A.y", "A.x"])
+    s2 = SimpleState(name="proceed", writes=["C.z"])
+    sm = StateMachine(name="g", initial_state=s1, states=[s1, s2], final_states=[s2])
+    sm.transitions.append(
+        Transition(source=s1, target=s2, trigger=CompletionEvent(name="done"))
+    )
+    skill = make_procedural(fsm=sm)
+    text = compile_skill(skill)
+    # 이름순 정렬: A.x, A.y, B
+    assert "(읽기: `A.x`, `A.y`, `B`)" in text
+    assert "(쓰기: `C.z`)" in text
+
+
+def test_fsm_procedure_no_access_declaration_no_suffix():
+    """reads/writes가 없으면 접미사 문구가 붙지 않는다 (하위 호환)."""
+    skill = make_procedural()  # analyze → report, reads/writes 없음
+    text = compile_skill(skill)
+    assert "읽기:" not in text
+    assert "쓰기:" not in text
+
+
+def test_fsm_procedure_shows_both_read_and_write():
+    s1 = SimpleState(name="work", reads=["A"], writes=["B"])
+    sm = StateMachine(name="g", initial_state=s1, states=[s1])
+    skill = make_procedural(fsm=sm)
+    text = compile_skill(skill)
+    assert "(읽기: `A` / 쓰기: `B`)" in text
+
+
 # ─────────────────────── 불완전 FSM 방어 가드 ───────────────────────
 
 
