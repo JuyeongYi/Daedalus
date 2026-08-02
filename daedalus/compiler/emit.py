@@ -647,6 +647,21 @@ def _invoke_phrase(ref, name: str) -> str:
     return f"`{name}` 스킬을 인보크하라"
 
 
+def _graph_placements(component, project) -> list:
+    """component가 project.graph에 SimpleState로 배치된 노드 목록(identity 비교).
+
+    "다음 단계" 단락(버그 2)과 WP-RS 작업 재개 단락이 공유하는 placement 판정
+    로직의 단일 진실.
+    """
+    graph = getattr(project, "graph", None)
+    if graph is None:
+        return []
+    return [
+        s for s in graph.states
+        if getattr(s, "skill_ref", None) is component
+    ]
+
+
 def _next_steps_section(component, project) -> list[str]:
     """project.graph에서 component placement의 outgoing 전이를 모아 "## 다음 단계"
     단락 블록을 생성한다 (버그 2). outgoing이 없으면 빈 목록(단락 생략).
@@ -654,16 +669,10 @@ def _next_steps_section(component, project) -> list[str]:
     component는 전역 스킬 객체. 그래프에서 skill_ref가 identity로 일치하는
     SimpleState placement를 찾고, 그 placement에서 나가는 전이를 서술한다.
     """
-    graph = getattr(project, "graph", None)
-    if graph is None:
-        return []
-    # 이 컴포넌트의 placement(들) — identity 비교
-    placements = [
-        s for s in graph.states
-        if getattr(s, "skill_ref", None) is component
-    ]
+    placements = _graph_placements(component, project)
     if not placements:
         return []
+    graph = project.graph
     lines: list[str] = []
     for placement in placements:
         for t in graph.transitions:
@@ -680,6 +689,54 @@ def _next_steps_section(component, project) -> list[str]:
         "## 다음 단계",
         "이 스킬 완료 후 다음 조건에 따라 워크플로를 이어가라:",
         "\n".join(lines),
+    ]
+
+
+# ─────────────────────────── 작업 재개 (WP-RS) ───────────────────────────
+
+# state/__progress__.json 규약 — 플러그인 FSM(프로젝트 그래프)의 진행 위치를 담는
+# 단일 파일. 스킬 내부 FSM 상태는 기록하지 않는다(사용자 확정 설계).
+
+_PROGRESS_UPDATE_NOTE = (
+    "전이 시 `state/__progress__.json`을 갱신하라 — 이 스킬을 `completed`에 추가하고 "
+    "`current`를 다음 대상으로, `note`에 인계 한 줄을 남겨라."
+)
+
+_TRANSFER_PROGRESS_NOTE = (
+    "이 전이 스킬 실행 중에는 `state/__progress__.json`의 `note`에 전이 맥락을 기록하라."
+)
+
+
+def _resume_preamble_section(project, skill_name: str) -> list[str]:
+    """WP-RS Part A-1: 재개 프리앰블 — 프론트매터 직후, 본문 앞에 배출된다.
+
+    프로젝트 그래프에 배치된 전역 ProceduralSkill에만 배출된다(게이트는 호출부).
+    """
+    plugin_name = getattr(project, "name", "")
+    body = "\n".join([
+        "시작 전에 `state/__progress__.json`을 확인하라.",
+        (
+            f"- `current`가 이 스킬(`{skill_name}`)이면: `note`를 참고해 중단 지점부터 "
+            "이어서 진행하라."
+        ),
+        "- `current`가 다른 스킬이면: 워크플로 위치가 그쪽이다 — 진행을 멈추고 사용자에게 확인하라.",
+        (
+            "- 파일이 없으면: "
+            f'`{{"plugin": "{plugin_name}", "current": "{skill_name}", "completed": [], ...}}`'
+            "로 생성하고 진행하라."
+        ),
+    ])
+    return ["## 작업 재개", body]
+
+
+def _progress_terminal_section() -> list[str]:
+    """WP-RS Part A-3: 터미널 배치(outgoing 0개) — "다음 단계" 대신 배출된다."""
+    return [
+        "## 작업 완료",
+        (
+            "이 스킬이 워크플로의 마지막 단계다. 완료 시 `state/__progress__.json`의 "
+            '`current`를 `"done"`으로 바꾸고 `note`에 결과 요약을 남겨라.'
+        ),
     ]
 
 
@@ -814,10 +871,22 @@ def compile_skill(
 
     blocks: list[str] = [_frontmatter_block(fm_lines)]
 
+    # 작업 재개 프리앰블(WP-RS) — 프론트매터 직후, 본문 앞. 프로젝트 그래프에
+    # 배치된 전역 ProceduralSkill에만 배출(미배치·로컬·다른 스킬 종류는 없음).
+    progress_placements: list = []
+    if project is not None and not local and isinstance(skill, ProceduralSkill):
+        progress_placements = _graph_placements(skill, project)
+    if progress_placements:
+        blocks.extend(_resume_preamble_section(project, skill.name))
+
     # 본문(body)
     body_block = _body_block(getattr(skill, "body", ""))
     if body_block is not None:
         blocks.append(body_block)
+
+    # TransferSkill: 전이 도중 중단 대비 note (본문 끝, 로컬 스킬은 제외)
+    if isinstance(skill, TransferSkill) and not local:
+        blocks.append(_TRANSFER_PROGRESS_NOTE)
 
     # ProceduralSkill — FSM 절차 + 위임 + tool_shelf
     if isinstance(skill, ProceduralSkill):
@@ -841,8 +910,17 @@ def compile_skill(
 
     # 프로젝트 그래프 기반 "다음 단계" (버그 2) — 전역 스킬에 한함.
     # 로컬 스킬(에이전트 소유)은 프로젝트 그래프 placement 대상이 아니다.
+    # WP-RS: 배치된 ProceduralSkill이면 다음 단계 단락 끝에 진행 상태 갱신 규칙을
+    # 합류시키고, outgoing이 없는 터미널 배치면 "다음 단계" 대신 "작업 완료"를 배출한다.
     if project is not None and not local:
-        blocks.extend(_next_steps_section(skill, project))
+        next_blocks = _next_steps_section(skill, project)
+        if next_blocks:
+            if progress_placements:
+                next_blocks = list(next_blocks)
+                next_blocks[-1] = next_blocks[-1] + "\n\n" + _PROGRESS_UPDATE_NOTE
+            blocks.extend(next_blocks)
+        elif progress_placements:
+            blocks.extend(_progress_terminal_section())
 
     return _join_blocks(blocks)
 
