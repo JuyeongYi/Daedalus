@@ -105,7 +105,10 @@ def test_entry_point_not_deletable_on_project_canvas(qapp):
 
 
 def test_load_reconstructs_project_canvas(qapp):
-    """set_project가 project.graph + graph_layout으로 캔버스 VM을 재구성한다."""
+    """set_project가 project.graph + graph_layout으로 캔버스 VM을 재구성한다.
+
+    WP-EP: EntryPoint(워크플로 시작점)는 캔버스에 그리지 않는다 — placement만 VM화.
+    """
     a = _mk_proc("a")
     b = _mk_proc("b")
     project = PluginProject(name="p", skills=[a, b])
@@ -122,8 +125,9 @@ def test_load_reconstructs_project_canvas(qapp):
     window.set_project(project)
 
     pvm = window._project_vm
-    # EntryPoint + 2 placement = 3 노드 VM
-    assert len(pvm.state_vms) == 3
+    # EntryPoint는 비노출 — 2 placement만 VM화
+    assert len(pvm.state_vms) == 2
+    assert not any(isinstance(v.model, EntryPoint) for v in pvm.state_vms)
     # 전이 1개 복원
     assert len(pvm.transition_vms) == 1
     # 저장된 좌표 적용
@@ -133,15 +137,108 @@ def test_load_reconstructs_project_canvas(qapp):
 
 
 def test_save_graph_layout_records_coords(qapp):
-    project = PluginProject(name="p")
+    """WP-EP: EntryPoint는 캔버스 VM이 없으므로 graph_layout에 저장되지 않는다."""
+    a = _mk_proc("a")
+    project = PluginProject(name="p", skills=[a])
+    sa = SimpleState(name="a", skill_ref=a)
+    project.graph.states.append(sa)
+
     window = MainWindow()
     window.set_project(project)
 
-    # 캔버스에 EntryPoint VM이 있고 좌표를 바꾼 뒤 저장 레이아웃 기록
     pvm = window._project_vm
-    entry_vm = pvm.state_vms[0]
-    entry_vm.x = 55.0
-    entry_vm.y = 66.0
+    a_vm = pvm.state_vms[0]
+    a_vm.x = 55.0
+    a_vm.y = 66.0
     window._save_graph_layout()
-    assert project.graph_layout[entry_vm.model.id] == [55.0, 66.0]
+    assert project.graph_layout[a_vm.model.id] == [55.0, 66.0]
+    # EntryPoint의 state.id 키가 없다
+    entry_id = project.graph.initial_state.id
+    assert entry_id not in project.graph_layout
+    window.close()
+
+
+def test_demo_project_load_has_no_entry_point_vm(qapp):
+    """WP-EP: __main__._demo_project()(개발용 데모 프로젝트) 로드 후에도
+    캔버스 VM 목록에 EntryPoint가 없다.
+    """
+    from daedalus.__main__ import _demo_project
+
+    window = MainWindow()
+    window.set_project(_demo_project())
+    pvm = window._project_vm
+    assert not any(isinstance(v.model, EntryPoint) for v in pvm.state_vms)
+    window.close()
+
+
+def test_roundtrip_project_load_has_no_entry_point_vm(qapp):
+    """WP-EP: 직렬화→역직렬화 왕복 프로젝트 로드 후에도 캔버스 VM에
+    EntryPoint가 없다 (placement는 그대로 복원됨).
+    """
+    import json
+
+    from daedalus.model.serialize import deserialize_project, serialize_project
+
+    a = _mk_proc("a")
+    b = _mk_proc("b")
+    project = PluginProject(name="p", skills=[a, b])
+    sa = SimpleState(name="a", skill_ref=a)
+    sb = SimpleState(name="b", skill_ref=b)
+    project.graph.states += [sa, sb]
+    project.graph.transitions.append(
+        Transition(source=sa, target=sb, trigger=CompletionEvent(name="done"))
+    )
+
+    p2 = deserialize_project(json.loads(json.dumps(serialize_project(project))))
+
+    window = MainWindow()
+    window.set_project(p2)
+    pvm = window._project_vm
+    assert not any(isinstance(v.model, EntryPoint) for v in pvm.state_vms)
+    # placement 2개 + 전이 1개는 그대로 복원된다
+    assert len(pvm.state_vms) == 2
+    assert len(pvm.transition_vms) == 1
+    window.close()
+
+
+def test_old_version_start_transition_not_rendered_but_preserved(qapp):
+    """구버전 직렬화 dict(EntryPoint→스킬 시작 전이 포함) 로드 시 예외/경고 없이
+    성공하고, 그 전이는 캔버스에 렌더되지 않으며 저장 왕복 후에도 모델에
+    EntryPoint가 보존된다.
+    """
+    import json
+
+    from daedalus.model.serialize import deserialize_project, serialize_project
+
+    a = _mk_proc("a")
+    project = PluginProject(name="p", skills=[a])
+    sa = SimpleState(name="a", skill_ref=a)
+    project.graph.states.append(sa)
+    entry = project.graph.initial_state
+    project.graph.transitions.append(
+        Transition(source=entry, target=sa, trigger=CompletionEvent(name="done"))
+    )
+
+    data = json.loads(json.dumps(serialize_project(project)))
+    warns: list[str] = []
+    p2 = deserialize_project(data, collect_warnings=warns)
+    assert warns == []
+
+    # 모델에는 시작 전이가 보존된다
+    assert len(p2.graph.transitions) == 1
+    assert isinstance(p2.graph.transitions[0].source, EntryPoint)
+
+    # 캔버스에는 렌더되지 않는다 (EntryPoint VM 없음 → 그 전이 VM도 없음)
+    window = MainWindow()
+    window.set_project(p2)
+    pvm = window._project_vm
+    assert not any(isinstance(v.model, EntryPoint) for v in pvm.state_vms)
+    assert len(pvm.transition_vms) == 0
+
+    # 저장 왕복 후에도 모델에 EntryPoint + 시작 전이가 보존된다
+    window._save_graph_layout()
+    data2 = json.loads(json.dumps(serialize_project(p2)))
+    p3 = deserialize_project(data2)
+    assert isinstance(p3.graph.initial_state, EntryPoint)
+    assert len(p3.graph.transitions) == 1
     window.close()

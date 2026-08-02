@@ -187,6 +187,24 @@ def test_entry_point_counts_as_start_for_reachability():
     assert not any(e.rule == "unreachable_state" for e in errors)
 
 
+def test_unreachable_state_skip_rules_skips_check():
+    """WP-EP: skip_rules={'unreachable_state'}면 검사를 생략한다."""
+    s1 = SimpleState(name="start")
+    s2 = SimpleState(name="island")   # s2로 오는 전이 없음
+    sm = _sm([s1, s2], [])
+    errors = Validator.validate(sm, skip_rules=frozenset({"unreachable_state"}))
+    assert not any(e.rule == "unreachable_state" for e in errors)
+
+
+def test_unreachable_state_default_skip_rules_unaffected():
+    """WP-EP: skip_rules 기본값(빈 집합)이면 기존과 동일하게 검사한다."""
+    s1 = SimpleState(name="start")
+    s2 = SimpleState(name="island")
+    sm = _sm([s1, s2], [])
+    errors = Validator.validate(sm)
+    assert any(e.rule == "unreachable_state" for e in errors)
+
+
 # ---------------------------------------------------------------------------
 # invalid_data_map_source
 # ---------------------------------------------------------------------------
