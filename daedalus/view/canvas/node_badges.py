@@ -84,6 +84,27 @@ _MODEL_EMOJI: dict[ModelType, str] = {
 
 
 # ---------------------------------------------------------------------------
+# 상태 접근 선언 뱃지 (WP-BB Part C-2) — State.reads/writes
+# ---------------------------------------------------------------------------
+
+def state_access_badges(state: object) -> list[tuple[str, str]]:
+    """State의 reads/writes 접근 선언 → (이모지, 툴팁) 목록.
+
+    writes가 있으면 ✏(블랙보드 쓰기) 뱃지, reads가 있으면 📖(블랙보드 읽기)
+    뱃지 — 둘 다 선언되어 있으면 두 뱃지가 모두 표시된다(노이즈 방지 원칙은
+    "선언 있을 때만 렌더"로 지킨다 — 값 자체는 항상 정보성).
+    """
+    reads = list(getattr(state, "reads", None) or [])
+    writes = list(getattr(state, "writes", None) or [])
+    result: list[tuple[str, str]] = []
+    if writes:
+        result.append(("✏", f"블랙보드 쓰기: {', '.join(writes)}"))
+    if reads:
+        result.append(("📖", f"블랙보드 읽기: {', '.join(reads)}"))
+    return result
+
+
+# ---------------------------------------------------------------------------
 # 공개 API
 # ---------------------------------------------------------------------------
 

@@ -27,7 +27,8 @@ from daedalus.model.plugin.enums import (
     ModelType,
     SkillContext,
 )
-from daedalus.view.canvas.node_badges import badges_for
+from daedalus.model.fsm.state import SimpleState
+from daedalus.view.canvas.node_badges import badges_for, state_access_badges
 
 
 # ---------------------------------------------------------------------------
@@ -312,3 +313,32 @@ def test_delegation_tooltips_present():
     assert "✨" in emojis_in_result
     tips = [t for _, t in result]
     assert all(len(t) > 0 for t in tips), "모든 뱃지에 툴팁이 있어야 한다"
+
+
+# ---------------------------------------------------------------------------
+# state_access_badges (WP-BB Part C-2) — State.reads/writes
+# ---------------------------------------------------------------------------
+
+def test_state_no_access_no_badges():
+    s = SimpleState(name="s")
+    assert state_access_badges(s) == []
+
+
+def test_state_writes_badge():
+    s = SimpleState(name="s", writes=["TaskState.step"])
+    result = state_access_badges(s)
+    assert ("✏", "블랙보드 쓰기: TaskState.step") in result
+
+
+def test_state_reads_only_badge():
+    s = SimpleState(name="s", reads=["TaskState"])
+    result = state_access_badges(s)
+    assert ("📖", "블랙보드 읽기: TaskState") in result
+
+
+def test_state_both_reads_and_writes_show_both_badges():
+    """읽기+쓰기가 모두 선언되어 있으면 두 뱃지가 모두 렌더된다."""
+    s = SimpleState(name="s", reads=["A"], writes=["B"])
+    emojis = [e for e, _ in state_access_badges(s)]
+    assert "✏" in emojis
+    assert "📖" in emojis
