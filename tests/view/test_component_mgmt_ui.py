@@ -7,8 +7,18 @@ from daedalus.model.fsm.state import SimpleState
 from daedalus.model.plugin.agent import AgentDefinition
 from daedalus.model.plugin.skill import ProceduralSkill
 from daedalus.model.project import PluginProject
+from daedalus.view import app as app_module
 from daedalus.view.app import MainWindow
 from daedalus.view.panels.registry_panel import RegistryPanel
+
+
+def _stub_build_target_dialog(monkeypatch, choice: str = "마켓플레이스 플러그인") -> None:
+    """QInputDialog.getItem을 지정 선택지로 스텁 — WP-TG 빌드 타깃 다이얼로그가
+    _new_project() 호출마다 뜨는 것을 막는다 (다이얼로그 테스트는 몽키패치로)."""
+    monkeypatch.setattr(
+        app_module.QInputDialog, "getItem",
+        staticmethod(lambda *a, **k: (choice, True)),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -38,18 +48,19 @@ def _make_agent(name: str) -> AgentDefinition:
 # ---------------------------------------------------------------------------
 
 class TestNewProject:
-    def test_new_project_loads_empty_project(self, qapp):
+    def test_new_project_loads_empty_project(self, qapp, monkeypatch):
         window = MainWindow()
         # 기존에 스킬이 있는 프로젝트 로드
         proj = PluginProject(name="existing")
         proj.skills.append(_make_proc("skill1"))
         window.set_project(proj)
 
-        # 비어있지 않은 프로젝트 → _new_project 직접 호출 (다이얼로그 없이 내부 호출)
+        # 비어있지 않은 프로젝트 → _new_project 직접 호출 (확인 다이얼로그 없이 내부 호출)
         # 테스트에서 QMessageBox 없이 확인: 빈 프로젝트일 때 새 프로젝트 동작
         empty_proj = PluginProject(name="empty")
         window.set_project(empty_proj)
-        window._new_project()  # 빈 프로젝트 → 다이얼로그 없이 새 프로젝트 생성
+        _stub_build_target_dialog(monkeypatch)
+        window._new_project()  # 빈 프로젝트 → 확인 다이얼로그 없이 새 프로젝트 생성
 
         assert window._project is not None
         assert len(window._project.skills) == 0
@@ -58,7 +69,7 @@ class TestNewProject:
         assert len(window._project.graph.states) == 1
         window.close()
 
-    def test_new_project_clears_tabs(self, qapp):
+    def test_new_project_clears_tabs(self, qapp, monkeypatch):
         window = MainWindow()
         proj = PluginProject(name="p")
         skill = _make_proc("my-skill")
@@ -71,17 +82,19 @@ class TestNewProject:
         # 빈 프로젝트로 만든 후 새 프로젝트
         empty_proj = PluginProject(name="empty")
         window.set_project(empty_proj)
-        window._new_project()  # 빈 → 새 프로젝트 (다이얼로그 없음)
+        _stub_build_target_dialog(monkeypatch)
+        window._new_project()  # 빈 → 새 프로젝트 (확인 다이얼로그 없음)
 
         assert window._tabs.count() == 2  # Project FSM + 블랙보드 탭만
         window.close()
 
-    def test_new_project_resets_current_path(self, qapp):
+    def test_new_project_resets_current_path(self, qapp, monkeypatch):
         window = MainWindow()
         window._current_path = "some/path.json"
 
         empty_proj = PluginProject(name="empty")
         window.set_project(empty_proj)
+        _stub_build_target_dialog(monkeypatch)
         window._new_project()
 
         assert window._current_path is None

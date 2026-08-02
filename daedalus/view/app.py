@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
 )
 
 from daedalus.model.plugin.agent import AgentDefinition
+from daedalus.model.plugin.enums import BuildTarget
 from daedalus.model.plugin.skill import (
     DeclarativeSkill,
     ProceduralSkill,
@@ -434,7 +435,8 @@ class MainWindow(QMainWindow):
         """Ctrl+N — 새 빈 프로젝트를 생성한다.
 
         현재 프로젝트가 비어 있지 않으면(스킬/에이전트/위임/graph placement 중
-        하나라도 존재) 저장 여부를 확인하는 다이얼로그를 표시한다.
+        하나라도 존재) 저장 여부를 확인하는 다이얼로그를 표시한다. 빌드 타깃
+        선택(WP-TG)을 취소하면 새 프로젝트 생성 자체를 취소한다.
         """
         if self._project is not None:
             has_content = (
@@ -454,12 +456,31 @@ class MainWindow(QMainWindow):
                 if reply != QMessageBox.StandardButton.Yes:
                     return
 
-        new_proj = PluginProject(name="new-plugin")
+        target = self._prompt_build_target()
+        if target is None:
+            return  # 취소 — 프로젝트 생성 취소
+
+        new_proj = PluginProject(name="new-plugin", build_target=target)
         self.load_project(new_proj)
         self._current_path = None
         self._update_title()
         self._sync_files_root()
         self._status_label.setText("새 프로젝트")
+
+    def _prompt_build_target(self) -> BuildTarget | None:
+        """새 프로젝트 생성 시 빌드 타깃을 고르게 한다. 취소 시 None(WP-TG)."""
+        from daedalus.view.editors.project_properties import BUILD_TARGET_LABELS
+
+        items = [label for _target, label in BUILD_TARGET_LABELS]
+        choice, ok = QInputDialog.getItem(
+            self, "빌드 타깃", "새 프로젝트의 빌드 타깃을 선택하세요:", items, 0, False,
+        )
+        if not ok:
+            return None
+        for target, label in BUILD_TARGET_LABELS:
+            if label == choice:
+                return target
+        return BuildTarget.MARKETPLACE
 
     def _edit_project_properties(self) -> None:
         """"프로젝트 속성…" — name/description/version 편집.
