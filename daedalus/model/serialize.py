@@ -424,6 +424,8 @@ def _ser_transition(t: Transition) -> dict:
         "data_map": dict(t.data_map),
         # transfer skill 참조 — id (없으면 None)
         "skill_ref": t.skill_ref.id if t.skill_ref is not None else None,
+        # WP-IC — 타깃 입력 포트 이름. 빈 값 = 기본 포트.
+        "target_port": t.target_port,
     }
 
 
@@ -532,6 +534,9 @@ def _ser_skill(s: Any) -> dict:
     if isinstance(s, ProceduralSkill):
         d["transfer_on"] = [_ser_eventdef(e) for e in s.transfer_on]
         d["call_agents"] = [_ser_eventdef(e) for e in s.call_agents]
+        d["entry_paths"] = [_ser_eventdef(e) for e in s.entry_paths]
+    if isinstance(s, DeclarativeSkill):
+        d["entry_paths"] = [_ser_eventdef(e) for e in s.entry_paths]
     return d
 
 
@@ -552,6 +557,7 @@ def _ser_agent(a: AgentDefinition) -> dict:
         ],
         "caller_contracts": [_ser_section(s) for s in a.caller_contracts],
         "graph_layout": {k: list(v) for k, v in a.graph_layout.items()},
+        "entry_paths": [_ser_eventdef(e) for e in a.entry_paths],
     }
 
 
@@ -966,6 +972,8 @@ def _deser_transition(d: dict, reg: _Registry) -> Transition:
             k: _deser_actions(v) for k, v in d.get("custom_events", {}).items()
         },
         data_map=dict(d.get("data_map", {})),
+        # WP-IC — 구버전 파일(키 부재) → 기본값 "" (경고 없음).
+        target_port=d.get("target_port", ""),
     )
 
     def _resolve(t=t, d=d):
@@ -1140,6 +1148,8 @@ def _deser_skill(d: dict, reg: _Registry) -> Any:
             body=body,
             transfer_on=[_deser_eventdef(e) for e in d.get("transfer_on", [])],
             call_agents=[_deser_eventdef(e) for e in d.get("call_agents", [])],
+            # WP-IC — 구버전 파일(키 부재) → 빈 리스트(기본 포트 1개, 경고 없음).
+            entry_paths=[_deser_eventdef(e) for e in d.get("entry_paths", [])],
         )
     elif kind == "transfer_skill":
         fsm = _deser_machine(d["fsm"], reg, parent_bb=None)
@@ -1153,6 +1163,7 @@ def _deser_skill(d: dict, reg: _Registry) -> Any:
             name=name, description=desc, id=sid,
             config=config or DeclarativeSkillConfig(),
             body=body,
+            entry_paths=[_deser_eventdef(e) for e in d.get("entry_paths", [])],
         )
     elif kind == "reference_skill":
         skill = ReferenceSkill(
@@ -1187,6 +1198,8 @@ def _deser_agent(d: dict, reg: _Registry) -> AgentDefinition:
         ],
         caller_contracts=[_deser_section(s) for s in d.get("caller_contracts", [])],
         graph_layout={k: list(v) for k, v in d.get("graph_layout", {}).items()},
+        # WP-IC — 구버전 파일(키 부재) → 빈 리스트(기본 포트 1개, 경고 없음).
+        entry_paths=[_deser_eventdef(e) for e in d.get("entry_paths", [])],
     )
     reg.components[sid] = agent
     return agent
