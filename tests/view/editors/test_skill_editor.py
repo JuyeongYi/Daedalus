@@ -392,6 +392,58 @@ def test_paths_writes_back_as_list(qapp):
     assert comp.config.paths == [], f"빈 입력이 []가 아님: {comp.config.paths!r}"
 
 
+def test_allowed_tools_tag_input_gets_dynamic_candidates(qapp):
+    """ALLOWED_TOOLS TagInput은 등록된 도구 후보 제공자의 목록을 받는다 (WP-TM Part B)."""
+    from daedalus.model.plugin.enums import SkillField
+    from daedalus.view.editors.skill_editor import _FrontmatterPanel
+    from daedalus.view.widgets.tag_input import set_tool_candidate_provider
+
+    set_tool_candidate_provider(lambda: ["Read", "mcp__playwright__browser_click"])
+    try:
+        comp = _make_procedural()
+        panel = _FrontmatterPanel(comp)
+        widget = panel._field_widgets.get(SkillField.ALLOWED_TOOLS)
+        assert widget is not None
+        assert widget.get_candidates() == ["Read", "mcp__playwright__browser_click"]
+    finally:
+        set_tool_candidate_provider(None)
+
+
+def test_agent_tools_and_disallowed_tools_get_dynamic_candidates(qapp):
+    """에이전트 TOOLS/DISALLOWED_TOOLS TagInput도 동일 후보 제공자를 받는다."""
+    from daedalus.model.plugin.enums import AgentField
+    from daedalus.view.editors.skill_editor import _FrontmatterPanel
+    from daedalus.view.widgets.tag_input import set_tool_candidate_provider
+
+    set_tool_candidate_provider(lambda: ["Agent(worker)"])
+    try:
+        comp = _make_agent()
+        panel = _FrontmatterPanel(comp)
+        tools_widget = panel._field_widgets.get(AgentField.TOOLS)
+        disallowed_widget = panel._field_widgets.get(AgentField.DISALLOWED_TOOLS)
+        assert tools_widget is not None and tools_widget.get_candidates() == ["Agent(worker)"]
+        assert disallowed_widget is not None and disallowed_widget.get_candidates() == ["Agent(worker)"]
+    finally:
+        set_tool_candidate_provider(None)
+
+
+def test_paths_tag_input_does_not_get_tool_candidates(qapp):
+    """PATHS는 도구 권한 문자열이 아니므로 도구 후보를 받지 않는다."""
+    from daedalus.model.plugin.enums import SkillField
+    from daedalus.view.editors.skill_editor import _FrontmatterPanel
+    from daedalus.view.widgets.tag_input import set_tool_candidate_provider
+
+    set_tool_candidate_provider(lambda: ["Read"])
+    try:
+        comp = _make_procedural()
+        panel = _FrontmatterPanel(comp)
+        widget = panel._field_widgets.get(SkillField.PATHS)
+        assert widget is not None
+        assert widget.get_candidates() == []
+    finally:
+        set_tool_candidate_provider(None)
+
+
 def test_hooks_load_into_picker_and_toggle_keeps_dict(qapp, tmp_path, monkeypatch):
     """hooks dict가 PresetPicker에 로드되고, 토글 후에도 dict 타입이 유지된다 (결함 2)."""
     from daedalus.model.plugin.enums import SkillField

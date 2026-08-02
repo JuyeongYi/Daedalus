@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+from pathlib import Path
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction, QKeySequence
@@ -225,6 +226,17 @@ class MainWindow(QMainWindow):
         # HookPresetPicker가 이 프로젝트의 hook_library 이름을 동적으로 표시하도록 연결.
         from daedalus.view.widgets.preset_picker import set_hook_name_provider
         set_hook_name_provider(lambda p=project: [h.name for h in p.hook_library])
+        # ALLOWED_TOOLS/TOOLS/DISALLOWED_TOOLS TagInput이 카탈로그+빌트인+
+        # Agent(이름) 후보를 동적으로 표시하도록 연결 (WP-TM).
+        from daedalus.view.editors.catalogue_loader import candidate_strings, load_catalogue
+        from daedalus.view.widgets.tag_input import set_tool_candidate_provider
+
+        def _tool_candidates(p=project) -> list[str]:
+            project_dir = Path(self._current_path).parent if self._current_path else None
+            entries = load_catalogue(project_dir=project_dir)
+            return candidate_strings(entries, p)
+
+        set_tool_candidate_provider(_tool_candidates)
         # 프로젝트 그래프(워크플로 백킹 머신) → 캔버스 VM 재구성 (버그 1: 저장된
         # 노드 연결 복원). placement 노드 + 전이를 graph_layout 좌표로 배치한다
         # (WP-EP: EntryPoint는 그리지 않음). _load_agent_fsm 미러링.

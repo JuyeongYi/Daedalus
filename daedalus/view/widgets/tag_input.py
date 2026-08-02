@@ -1,8 +1,11 @@
 # daedalus/view/widgets/tag_input.py
 from __future__ import annotations
 
-from PySide6.QtCore import Signal
+from typing import Callable
+
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
+    QCompleter,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -42,6 +45,8 @@ class TagInput(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._tags: list[str] = []
+        self._candidates: list[str] = []
+        self._completer: QCompleter | None = None
         lay = QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(2)
@@ -57,6 +62,22 @@ class TagInput(QWidget):
         self._chips_layout.setSpacing(2)
         self._chips_layout.addStretch()
         lay.addWidget(self._chips_widget)
+
+    def set_candidates(self, candidates: list[str]) -> None:
+        """자동완성 후보 목록을 부착한다 (부분 일치, 대소문자 무시).
+
+        카탈로그/프로젝트 변화에 맞춰 재호출되면 이전 QCompleter를 교체한다.
+        """
+        self._candidates = list(candidates)
+        completer = QCompleter(self._candidates, self)
+        completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+        completer.setFilterMode(Qt.MatchFlag.MatchContains)
+        completer.setCompletionMode(QCompleter.CompletionMode.PopupCompletion)
+        self._input.setCompleter(completer)
+        self._completer = completer
+
+    def get_candidates(self) -> list[str]:
+        return list(self._candidates)
 
     def get_tags(self) -> list[str]:
         return list(self._tags)
@@ -96,3 +117,22 @@ class TagInput(QWidget):
             chip = _TagChip(tag)
             chip.remove_requested.connect(self.remove_tag)
             self._chips_layout.insertWidget(self._chips_layout.count() - 1, chip)
+
+
+# 동적 도구/에이전트 후보 제공자 — app.py가 프로젝트 로드 시 설정한다(WP-TM).
+# ALLOWED_TOOLS/TOOLS/DISALLOWED_TOOLS 필드의 TagInput이 생성 시점에 이 제공자를
+# 조회해 카탈로그+빌트인+에이전트 후보를 채운다. None이면 빈 목록(자동완성 없음).
+_TOOL_CANDIDATE_PROVIDER: Callable[[], list[str]] | None = None
+
+
+def set_tool_candidate_provider(provider: Callable[[], list[str]] | None) -> None:
+    """ALLOWED_TOOLS/TOOLS/DISALLOWED_TOOLS TagInput이 표시할 후보 제공자를 등록한다."""
+    global _TOOL_CANDIDATE_PROVIDER
+    _TOOL_CANDIDATE_PROVIDER = provider
+
+
+def get_tool_candidates() -> list[str]:
+    """등록된 동적 제공자에서 도구/에이전트 후보 목록을 가져온다 (없으면 빈 목록)."""
+    if _TOOL_CANDIDATE_PROVIDER is not None:
+        return list(_TOOL_CANDIDATE_PROVIDER())
+    return []

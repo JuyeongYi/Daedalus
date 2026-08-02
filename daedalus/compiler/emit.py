@@ -683,6 +683,39 @@ def _next_steps_section(component, project) -> list[str]:
     ]
 
 
+# ─────────────────────────── 요구 환경: MCP 서버 자동 언급 (WP-TM Part C) ───────────────────────────
+
+
+def _mcp_servers_from_tools(tools) -> list[str]:
+    """allowed_tools/tools 문자열 목록에서 ``mcp__<server>__`` 접두의 서버 이름을
+    추출한다 (이름순 정렬 — 결정적 출력).
+    """
+    servers: set[str] = set()
+    for tool_str in tools or ():
+        if not isinstance(tool_str, str) or not tool_str.startswith("mcp__"):
+            continue
+        rest = tool_str[len("mcp__"):]
+        server = rest.split("__", 1)[0]
+        if server:
+            servers.add(server)
+    return sorted(servers)
+
+
+def _mcp_requirement_section_skill(skill: Skill) -> list[str]:
+    """스킬 config.allowed_tools의 mcp__ 접두에서 서버 이름을 추출해 "## 요구 환경"
+    단락을 만든다. 서버가 없으면 빈 목록(단락 생략).
+    """
+    config = getattr(skill, "config", None)
+    servers = _mcp_servers_from_tools(getattr(config, "allowed_tools", None))
+    if not servers:
+        return []
+    names = ", ".join(f"`{s}`" for s in servers)
+    return [
+        "## 요구 환경",
+        f"이 스킬은 다음 MCP 서버가 연결되어 있어야 한다: {names}",
+    ]
+
+
 # ─────────────────────────── 블랙보드 사용 지침 단락 ───────────────────────────
 
 
@@ -802,6 +835,10 @@ def compile_skill(
         if project is not None and not local:
             blocks.extend(_blackboard_section(project))
 
+    # 요구 환경(MCP 서버 자동 언급) — allowed_tools의 mcp__ 접두에서 추출.
+    # project 유무와 무관(스킬 자체 config만 참조), "다음 단계" 단락 앞.
+    blocks.extend(_mcp_requirement_section_skill(skill))
+
     # 프로젝트 그래프 기반 "다음 단계" (버그 2) — 전역 스킬에 한함.
     # 로컬 스킬(에이전트 소유)은 프로젝트 그래프 placement 대상이 아니다.
     if project is not None and not local:
@@ -889,16 +926,23 @@ def _invocation_section_agent(agent: AgentDefinition) -> list[str]:
 
 
 def _settings_note_agent(agent: AgentDefinition) -> list[str]:
-    """SETTINGS emit 필드(hooks/mcp_servers)를 요구 환경 언급 단락으로 (v0 산출 제외)."""
+    """SETTINGS emit 필드(hooks/mcp_servers)를 요구 환경 언급 단락으로 (v0 산출 제외).
+
+    WP-TM Part C: config.tools의 mcp__ 접두에서 추출한 서버 이름도 명시적
+    mcp_servers 선언과 합쳐(중복 제거, 이름순) 같은 단락에 담는다 — 별도
+    "## 요구 환경" 단락을 또 만들지 않는다.
+    """
     config = agent.config
     needs: list[str] = []
     hooks = getattr(config, "hooks", None)
     if hooks:
         names = ", ".join(str(n) for n in hooks)
         needs.append(f"lifecycle hooks: {names} (hooks/hooks.json 생성됨)")
-    mcp = getattr(config, "mcp_servers", None)
-    if mcp:
-        names = ", ".join(str(n) for n in mcp)
+    mcp_declared = set(getattr(config, "mcp_servers", None) or ())
+    mcp_from_tools = set(_mcp_servers_from_tools(getattr(config, "tools", None)))
+    mcp_all = sorted(mcp_declared | mcp_from_tools)
+    if mcp_all:
+        names = ", ".join(mcp_all)
         needs.append(f"MCP 서버 연결: {names} (`.mcp.json`)")
     if not needs:
         return []
