@@ -290,3 +290,101 @@ def test_waypoints_survive_save_load_round_trip(qapp, tmp_path):
     tvm2 = window2._project_vm.transition_vms[0]
     assert tvm2.waypoints == [(123.0, 45.0), (222.0, -33.0)]
     window2.close()
+
+
+# ── 리뷰 반영: 실제 Qt 이벤트 경로 회귀 (결함 1·2 잠금) ──
+# QTest.mouseMove는 buttons 상태를 싣지 않으므로 합성 QMouseEvent로
+# buttons=LeftButton을 명시해 view.viewport()에 전달한다 (리뷰어 레시피).
+
+
+def _send_mouse(view, type_, scene_pos, *, button, buttons):
+    from PySide6.QtCore import QPointF as _QPointF, Qt  # noqa: F401
+    from PySide6.QtGui import QMouseEvent
+    from PySide6.QtWidgets import QApplication
+
+    vp_pos = view.mapFromScene(scene_pos)
+    ev = QMouseEvent(
+        type_, _QPointF(vp_pos),
+        _QPointF(view.viewport().mapToGlobal(vp_pos)),
+        button, buttons, Qt.KeyboardModifier.NoModifier,
+    )
+    QApplication.sendEvent(view.viewport(), ev)
+
+
+def _view_scene_with_waypoint(qapp):
+    """뷰 + 씬 + 경유점 1개짜리 전이. (view, scene, vm, tvm, edge, handle 스캔용)"""
+    from PySide6.QtWidgets import QGraphicsView
+
+    vm = ProjectViewModel()
+    scene = FsmScene(vm)
+    a = StateViewModel(model=SimpleState(name="a"), x=0, y=0)
+    b = StateViewModel(model=SimpleState(name="b"), x=400, y=0)
+    vm.state_vms.extend([a, b])
+    tvm = TransitionViewModel(
+        model=Transition(source=a.model, target=b.model,
+                         trigger=CompletionEvent(name="done")),
+        source_vm=a, target_vm=b,
+    )
+    tvm.waypoints.append((300.0, 150.0))
+    vm.transition_vms.append(tvm)
+    scene._rebuild()
+    view = QGraphicsView(scene)
+    view.resize(800, 600)
+    view.show()
+    qapp.processEvents()
+    return view, scene, vm, tvm
+
+
+def test_handle_drag_via_real_mouse_events(qapp):
+    """핸들 press가 엣지 선택을 해제하지 않고, 드래그가 실제로 동작한다 (결함 1)."""
+    from PySide6.QtCore import QEvent, QPointF as _QP, Qt
+
+    view, scene, vm, tvm = _view_scene_with_waypoint(qapp)
+    edge = scene._edge_items[tvm]
+    edge.setSelected(True)
+    qapp.processEvents()
+
+    handle_pos = _QP(300.0, 150.0)
+    target_pos = _QP(340.0, 90.0)
+
+    _send_mouse(view, QEvent.Type.MouseButtonPress, handle_pos,
+                button=Qt.MouseButton.LeftButton, buttons=Qt.MouseButton.LeftButton)
+    assert edge.isSelected(), "핸들 press가 엣지 선택을 해제하면 안 된다"
+    _send_mouse(view, QEvent.Type.MouseMove, target_pos,
+                button=Qt.MouseButton.NoButton, buttons=Qt.MouseButton.LeftButton)
+    _send_mouse(view, QEvent.Type.MouseButtonRelease, target_pos,
+                button=Qt.MouseButton.LeftButton, buttons=Qt.MouseButton.NoButton)
+    qapp.processEvents()
+
+    wx, wy = tvm.waypoints[0]
+    assert abs(wx - 340.0) < 2.0 and abs(wy - 90.0) < 2.0, f"드래그 미반영: {tvm.waypoints}"
+    assert vm.command_stack.can_undo
+    vm.command_stack.undo()
+    wx2, wy2 = tvm.waypoints[0]
+    assert abs(wx2 - 300.0) < 0.01 and abs(wy2 - 150.0) < 0.01
+    view.hide()
+
+
+def test_delete_on_handle_removes_waypoint_not_transition(qapp):
+    """핸들이 선택된 상태의 Delete는 경유점만 제거한다 — 전이는 무사 (결함 2)."""
+    from PySide6.QtCore import QEvent, QPointF as _QP, Qt
+    from PySide6.QtTest import QTest
+
+    view, scene, vm, tvm = _view_scene_with_waypoint(qapp)
+    edge = scene._edge_items[tvm]
+    edge.setSelected(True)
+    qapp.processEvents()
+
+    handle_pos = _QP(300.0, 150.0)
+    _send_mouse(view, QEvent.Type.MouseButtonPress, handle_pos,
+                button=Qt.MouseButton.LeftButton, buttons=Qt.MouseButton.LeftButton)
+    _send_mouse(view, QEvent.Type.MouseButtonRelease, handle_pos,
+                button=Qt.MouseButton.LeftButton, buttons=Qt.MouseButton.NoButton)
+    qapp.processEvents()
+
+    QTest.keyClick(view.viewport(), Qt.Key.Key_Delete)
+    qapp.processEvents()
+
+    assert tvm.waypoints == []
+    assert tvm in vm.transition_vms, "Delete가 전이까지 지우면 안 된다"
+    view.hide()

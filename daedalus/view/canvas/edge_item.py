@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from PySide6.QtCore import QPointF, QRectF
+from PySide6.QtCore import QPointF, QRectF, Qt
 from PySide6.QtGui import (
     QBrush,
     QColor,
@@ -35,7 +35,7 @@ _HIT_WIDTH = 12.0        # 마우스 클릭 히트 영역
 
 # WP-ER — 경유점(waypoint) 핸들
 _HANDLE_R = 5.0
-_HANDLE_COLOR = QColor("#88aaff")     # 포트 색 계열(선택 엣지 색과 통일)
+_HANDLE_COLOR = QColor("#88aaff")     # 선택 엣지 색과 통일 (핸들은 엣지 선택 중에만 표시)
 _HANDLE_BORDER = QColor("#222222")
 _SEGMENT_SAMPLES = 24  # 최근접 구간 판정용 곡선 샘플 수
 
@@ -319,11 +319,24 @@ class WaypointHandleItem(QGraphicsEllipseItem):
 
     def itemChange(self, change: QGraphicsItem.GraphicsItemChange, value: Any) -> Any:
         if change == QGraphicsItem.GraphicsItemChange.ItemPositionHasChanged:
+            # update_waypoint_preview → update_path → _sync_handles의 setPos가
+            # 이 itemChange로 되돌아오는 재진입은 좌표 수렴으로 2단계에서 멈춘다
+            # (의도된 설계 — 리뷰 확인).
             self._edge.update_waypoint_preview(self._index, self.pos())
         return super().itemChange(change, value)
 
     def mousePressEvent(self, event) -> None:
         if event is None:
+            return
+        if event.button() == Qt.MouseButton.LeftButton:
+            # 기본(super) 선택 로직을 타지 않는다 — 단일 클릭 선택 규칙이 엣지
+            # 선택을 해제하면 _sync_handles가 핸들을 숨겨 마우스 그랩이 소실되고
+            # 드래그가 무산된다 (리뷰 결함 1: "선택 시 표시"와 "드래그"의 상호
+            # 무효화). 대신 엣지 선택을 유지하고 자신을 선택(Delete 대상)한다.
+            self._drag_start = self.pos()
+            self._edge.setSelected(True)
+            self.setSelected(True)
+            event.accept()
             return
         self._drag_start = self.pos()
         super().mousePressEvent(event)
@@ -331,7 +344,15 @@ class WaypointHandleItem(QGraphicsEllipseItem):
     def mouseReleaseEvent(self, event) -> None:
         if event is None:
             return
-        super().mouseReleaseEvent(event)
+        if event.button() != Qt.MouseButton.LeftButton:
+            super().mouseReleaseEvent(event)
+            self._drag_start = None
+            return
+        # press와 대칭으로 기본(super) 처리를 타지 않는다 — 기본 release의 클릭
+        # 선택 정리가 press에서 세운 선택(엣지+핸들)을 전부 해제해, 이어지는
+        # Delete가 대상을 잃는다 (리뷰 결함 2의 후반부). 그랩은 release 처리
+        # 종료와 함께 Qt가 해제한다.
+        event.accept()
         if self._drag_start is not None and self._drag_start != self.pos():
             sc: Any = self.scene()
             if sc is not None and hasattr(sc, "handle_waypoint_moved"):

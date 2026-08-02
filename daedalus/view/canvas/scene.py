@@ -756,6 +756,14 @@ class FsmScene(QGraphicsScene):
             return
         if event.key() == Qt.Key.Key_Delete:
             selected = list(self.selectedItems())
+            # 경유점 핸들이 선택돼 있으면 그것만 처리하고 끝낸다 — 핸들은 엣지가
+            # 선택된 동안에만 보이므로, 엣지 삭제 분기까지 타면 Delete 한 번에
+            # 전이 전체가 함께 지워진다 (리뷰 결함 2).
+            handles = [i for i in selected if isinstance(i, WaypointHandleItem)]
+            if handles:
+                for h in sorted(handles, key=lambda i: i.index, reverse=True):
+                    self.remove_waypoint(h.edge, h.index)
+                return
             # 1패스: 노드 삭제 (연결 전이는 MacroCommand로 함께 삭제됨)
             for item in selected:
                 if isinstance(item, StateNodeItem):
@@ -769,8 +777,6 @@ class FsmScene(QGraphicsScene):
                     self.delete_reference_node(item.ref_vm)
                 elif isinstance(item, ReferenceEdgeItem):
                     self.delete_reference_link(item.link_vm)
-                elif isinstance(item, WaypointHandleItem):
-                    self.remove_waypoint(item.edge, item.index)
             return
         super().keyPressEvent(event)
 
@@ -989,6 +995,12 @@ class AgentFsmScene(FsmScene):
         if event.key() == Qt.Key.Key_Delete:
             from daedalus.model.fsm.pseudo import EntryPoint as _EP, ExitPoint as _XP
             selected = list(self.selectedItems())
+            # 경유점 핸들 우선 처리 — 프로젝트 캔버스와 동일 (리뷰 결함 2)
+            handles = [i for i in selected if isinstance(i, WaypointHandleItem)]
+            if handles:
+                for h in sorted(handles, key=lambda i: i.index, reverse=True):
+                    self.remove_waypoint(h.edge, h.index)
+                return
             # 1패스: 노드 삭제 (연결 전이는 MacroCommand로 함께 삭제됨)
             for item in selected:
                 if isinstance(item, StateNodeItem):
@@ -1014,7 +1026,5 @@ class AgentFsmScene(FsmScene):
                     self.delete_reference_node(item.ref_vm)
                 elif isinstance(item, ReferenceEdgeItem):
                     self.delete_reference_link(item.link_vm)
-                elif isinstance(item, WaypointHandleItem):
-                    self.remove_waypoint(item.edge, item.index)
             return
         super().keyPressEvent(event)
