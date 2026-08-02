@@ -15,6 +15,8 @@ from daedalus.view.widgets.markdown_editor import (
     MarkdownEditor,
     MarkdownHighlighter,
     MarkdownToolbar,
+    SearchBar,
+    TocPanel,
 )
 
 
@@ -544,3 +546,217 @@ def test_ctrl_shortcut_closes_slash_menu(qapp):
     QTest.keyClick(ed, Qt.Key.Key_B, Qt.KeyboardModifier.ControlModifier)
     assert ed._slash_start is None
     assert ed.toPlainText() == "/****"
+
+
+# --- WP-MD3 Part A: SearchBar (7케이스) ---
+
+
+def test_search_bar_highlights_all_matches_and_updates_count(qapp):
+    ed = MarkdownEditor()
+    ed.setPlainText("foo bar foo baz foo")
+    sb = SearchBar(ed)
+    sb.open("foo")
+    assert sb._matches == [(0, 3), (8, 11), (16, 19)]
+    assert len(ed.extraSelections()) == 3
+    assert sb._count_label.text() == "1/3"
+
+
+def test_search_bar_next_prev_wraps_around(qapp):
+    ed = MarkdownEditor()
+    ed.setPlainText("foo bar foo")
+    sb = SearchBar(ed)
+    sb.open("foo")
+    assert sb._count_label.text() == "1/2"
+    sb.search_next()
+    assert sb._count_label.text() == "2/2"
+    sb.search_next()  # 끝에서 랩어라운드
+    assert sb._count_label.text() == "1/2"
+    sb.search_prev()  # 처음에서 반대로 랩어라운드
+    assert sb._count_label.text() == "2/2"
+
+
+def test_search_bar_case_toggle_reruns_search(qapp):
+    ed = MarkdownEditor()
+    ed.setPlainText("Foo foo FOO")
+    sb = SearchBar(ed)
+    sb.open("foo")
+    assert len(sb._matches) == 3  # 기본은 대소문자 무시
+    sb._case_btn.setChecked(True)
+    assert sb._matches == [(4, 7)]
+    assert sb._count_label.text() == "1/1"
+
+
+def test_search_bar_replace_current_moves_to_next(qapp):
+    ed = MarkdownEditor()
+    ed.setPlainText("foo bar foo")
+    sb = SearchBar(ed)
+    sb.open("foo")
+    sb._replace_edit.setText("XX")
+    sb.replace_current()
+    assert ed.toPlainText() == "XX bar foo"
+    # 남은 유일한 일치(foo)로 커서가 이동해 있어야 한다(앞 치환으로 2->3글자 폭이
+    # 줄어 위치가 1칸 당겨진 (7, 10)이 된다)
+    assert ed.textCursor().selectedText() == "foo"
+    assert sb._matches == [(7, 10)]
+
+
+def test_search_bar_replace_all_is_single_undo_unit(qapp):
+    ed = MarkdownEditor()
+    ed.setPlainText("foo bar foo baz foo")
+    sb = SearchBar(ed)
+    sb.open("foo")
+    sb._replace_edit.setText("Q")
+    sb.replace_all()
+    assert ed.toPlainText() == "Q bar Q baz Q"
+    assert sb._count_label.text() == "3건 바꿈"
+    ed.undo()  # 단일 undo로 전체 치환이 통째로 되돌아가야 한다
+    assert ed.toPlainText() == "foo bar foo baz foo"
+
+
+def test_search_bar_esc_closes_and_clears_highlights(qapp):
+    ed = MarkdownEditor()
+    ed.setPlainText("foo bar")
+    sb = SearchBar(ed)
+    sb.open("foo")
+    assert len(ed.extraSelections()) == 1
+    QTest.keyClick(sb._search_edit, Qt.Key.Key_Escape)
+    assert sb.isHidden()
+    assert len(ed.extraSelections()) == 0
+
+
+def test_ctrl_f_emits_search_requested_with_selection(qapp):
+    ed = MarkdownEditor()
+    ed.setPlainText("hello world")
+    cursor = ed.textCursor()
+    cursor.movePosition(QTextCursor.MoveOperation.Start)
+    cursor.movePosition(
+        QTextCursor.MoveOperation.Right, QTextCursor.MoveMode.KeepAnchor, 5,
+    )
+    ed.setTextCursor(cursor)
+    received: list[str] = []
+    ed.search_requested.connect(received.append)
+    QTest.keyClick(ed, Qt.Key.Key_F, Qt.KeyboardModifier.ControlModifier)
+    assert received == ["hello"]
+
+    sb = SearchBar(ed)
+    sb.open(received[0])
+    assert sb._search_edit.text() == "hello"
+    assert sb._matches == [(0, 5)]
+
+
+# --- WP-MD3 Part B: TocPanel (5케이스) ---
+
+
+def test_toc_extracts_headings_with_level_hierarchy(qapp):
+    ed = MarkdownEditor()
+    toc = TocPanel(ed)
+    ed.setPlainText("# A\n## B\n### C\n## D")
+    toc.refresh()
+    top = toc._tree.topLevelItem(0)
+    assert top.text(0) == "A"
+    assert top.childCount() == 2
+    assert top.child(0).text(0) == "B"
+    assert top.child(0).childCount() == 1
+    assert top.child(0).child(0).text(0) == "C"
+    assert top.child(1).text(0) == "D"
+
+
+def test_toc_excludes_heading_inside_code_fence(qapp):
+    ed = MarkdownEditor()
+    toc = TocPanel(ed)
+    ed.setPlainText("# Real\n```\n# not a heading\n```\n## Also Real")
+    toc.refresh()
+    assert [e.text for e in toc._entries] == ["Real", "Also Real"]
+
+
+def test_toc_click_jumps_to_heading_block(qapp):
+    ed = MarkdownEditor()
+    toc = TocPanel(ed)
+    ed.setPlainText("intro\n\n## Target\n\nbody")
+    toc.refresh()
+    item = toc._tree.topLevelItem(0)
+    assert item.text(0) == "Target"
+    toc._on_item_clicked(item, 0)
+    assert ed.textCursor().block().text() == "## Target"
+
+
+def test_toc_debounced_update(qapp):
+    # 주의(스위트 순서 의존 크래시 회피): QTest.qWait(...)로 실제 300ms를 대기시키면
+    # 이 테스트만 실행할 때는 통과하지만, tests/view/ 전체(1000+ 케이스)를 먼저 실행한
+    # 뒤에는 실제 이벤트 루프가 도는 그 400ms 동안 이전 테스트들이 남긴 잔여
+    # QTimer/위젯이 함께 플러시되며 재현되는 네이티브 크래시(Fatal Python error:
+    # Aborted)가 확인됐다(WP-MD3 로직과 무관 — 격리 실행/-k 필터 실행 시 미재현).
+    # 따라서 실제 대기 대신 타이머 예약 여부·간격을 확인하고 timeout을 직접
+    # 발화시켜 디바운스 자체를 결정적으로 검증한다.
+    ed = MarkdownEditor()
+    toc = TocPanel(ed)
+    assert toc._entries == []
+    ed.setPlainText("# Heading")
+    assert toc._timer.isActive()  # 디바운스 타이머가 예약됨
+    assert toc._timer.interval() == 300
+    assert toc._entries == []  # 타이머가 실제로 발화하기 전까지는 갱신되지 않는다
+    toc._timer.timeout.emit()  # 디바운스 만료를 결정적으로 시뮬레이션
+    assert [e.text for e in toc._entries] == ["Heading"]
+
+
+def test_toc_empty_document(qapp):
+    ed = MarkdownEditor()
+    toc = TocPanel(ed)
+    assert toc._entries == []
+    assert toc._tree.topLevelItemCount() == 0
+
+
+# --- WP-MD3 Part C: SectionContentPanel 통합 (4케이스) ---
+
+
+def test_panel_ctrl_f_opens_search_bar(qapp):
+    from daedalus.view.editors.body_editor import SectionContentPanel
+
+    panel = SectionContentPanel()
+    comp = _make_comp("findable text")
+    panel.show_body(comp)
+
+    assert panel._search_bar.isHidden()
+    QTest.keyClick(panel._w_content, Qt.Key.Key_F, Qt.KeyboardModifier.ControlModifier)
+    assert not panel._search_bar.isHidden()
+
+
+def test_panel_preview_mode_disables_search_and_toc(qapp):
+    from daedalus.view.editors.body_editor import SectionContentPanel
+
+    panel = SectionContentPanel()
+    comp = _make_comp("some text")
+    panel.show_body(comp)
+    QTest.keyClick(panel._w_content, Qt.Key.Key_F, Qt.KeyboardModifier.ControlModifier)
+    assert not panel._search_bar.isHidden()
+
+    _find_toolbar_button(panel._md_toolbar, "👁").click()
+    assert panel._search_bar.isHidden()  # 프리뷰 진입 시 찾기 바 닫힘
+    assert not panel._md_toolbar._btn_toc.isEnabled()  # TOC 버튼 비활성
+
+
+def test_panel_show_body_closes_search_bar(qapp):
+    from daedalus.view.editors.body_editor import SectionContentPanel
+
+    panel = SectionContentPanel()
+    comp1 = _make_comp("first foo")
+    panel.show_body(comp1)
+    QTest.keyClick(panel._w_content, Qt.Key.Key_F, Qt.KeyboardModifier.ControlModifier)
+    assert not panel._search_bar.isHidden()
+
+    comp2 = _make_comp("second")
+    panel.show_body(comp2)
+    assert panel._search_bar.isHidden()
+
+
+def test_panel_show_body_refreshes_toc(qapp):
+    from daedalus.view.editors.body_editor import SectionContentPanel
+
+    panel = SectionContentPanel()
+    comp1 = _make_comp("# First Doc")
+    panel.show_body(comp1)
+    assert [e.text for e in panel._toc_panel._entries] == ["First Doc"]
+
+    comp2 = _make_comp("# Second Doc")
+    panel.show_body(comp2)
+    assert [e.text for e in panel._toc_panel._entries] == ["Second Doc"]
