@@ -2,6 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+# render_markdown은 마이그레이션 전용 헬퍼 — 패키지 스타 재수출에서 제외
+# (직접 경로 import는 가능: from daedalus.model.fsm.section import render_markdown)
+__all__ = ["Section", "EventDef"]
+
 
 @dataclass(eq=False)
 class Section:

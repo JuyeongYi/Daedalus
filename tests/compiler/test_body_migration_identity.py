@@ -100,8 +100,10 @@ def _legacy_compile_agent(agent: AgentDefinition, sections: list[Section]) -> st
 
 def _four_level_tree() -> list[Section]:
     h4 = Section("H4-Leaf", "leaf content")
-    h3_empty = Section("H3-Empty", "")  # 빈 content 섹션
-    h3 = Section("H3-Mid", "mid content", children=[h4, h3_empty])
+    # 빈 content 섹션을 형제 사이(중간)에 둔다 — 트리 말단이면 빈 content 회귀의
+    # 여분 개행이 끝에 몰려 strip에 흡수되어 게이트가 못 잡는다 (리뷰 지적).
+    h3_empty = Section("H3-Empty", "")
+    h3 = Section("H3-Mid", "mid content", children=[h3_empty, h4])
     h2 = Section("H2-Sub", "sub content", children=[h3])
     h1 = Section("H1-Top", "top content", children=[h2])
     return [h1]
