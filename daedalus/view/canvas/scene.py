@@ -4,7 +4,7 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import TYPE_CHECKING, Callable
 
-from PySide6.QtCore import QPointF, Qt, Signal
+from PySide6.QtCore import QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import QAction, QColor, QKeyEvent, QPen
 from PySide6.QtWidgets import (
     QGraphicsLineItem,
@@ -63,6 +63,12 @@ if TYPE_CHECKING:
 _BG_COLOR = QColor("#12122a")
 _DRAG_LINE_COLOR = QColor("#4488ff")
 
+# 캔버스 이동 범위 — 좁으면 노드를 그 밖으로 옮길 수도, 스크롤할 수도 없다.
+# 넉넉히 시작하고 노드가 가장자리에 접근하면 _grow_scene_rect가 확장한다(단조 증가 —
+# 축소하면 스크롤 위치가 튄다).
+_INITIAL_SCENE_RECT = QRectF(-20000, -20000, 40000, 40000)
+_SCENE_MARGIN = 4000.0  # 아이템 경계에서 확보할 여백
+
 
 class FsmScene(QGraphicsScene):
     """FSM 노드 편집 씬."""
@@ -85,7 +91,7 @@ class FsmScene(QGraphicsScene):
         self._state_counter = 0
         self._target_fsm: StateMachine | None = None  # AgentFsmScene만 설정 — 모델 동기화 대상
         self.setBackgroundBrush(_BG_COLOR)
-        self.setSceneRect(-2000, -2000, 4000, 4000)
+        self.setSceneRect(_INITIAL_SCENE_RECT)
 
         self._connecting = False
         self._connect_source: StateNodeItem | None = None
@@ -131,6 +137,23 @@ class FsmScene(QGraphicsScene):
         for edge in self._edge_items.values():
             edge.update_path()
         self._rebuild_refs()
+        self.grow_scene_rect()
+
+    def grow_scene_rect(self) -> None:
+        """아이템이 가장자리에 접근하면 씬 범위를 넓힌다 (확장 전용).
+
+        범위가 고정이면 노드를 그 밖으로 옮길 수도, 그쪽으로 스크롤할 수도 없다.
+        축소는 하지 않는다 — 스크롤 위치가 튀기 때문.
+        """
+        items_rect = self.itemsBoundingRect()
+        if items_rect.isEmpty():
+            return
+        needed = items_rect.adjusted(
+            -_SCENE_MARGIN, -_SCENE_MARGIN, _SCENE_MARGIN, _SCENE_MARGIN,
+        )
+        current = self.sceneRect()
+        if not current.contains(needed):
+            self.setSceneRect(current.united(needed))
 
     def update_edges_for_node(self, node: StateNodeItem) -> None:
         """노드 드래그 중 연결된 엣지 경로를 실시간 갱신."""
@@ -140,6 +163,7 @@ class FsmScene(QGraphicsScene):
         for edge in self._ref_edge_items.values():
             if edge.source_node is node:
                 edge.update_path()
+        self.grow_scene_rect()
 
     def handle_node_moved(
         self, node: StateNodeItem, old_pos: QPointF, new_pos: QPointF

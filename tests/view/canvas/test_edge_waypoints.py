@@ -108,15 +108,20 @@ def test_edge_with_multiple_waypoints_passes_through_all(qapp):
 def test_handles_hidden_when_edge_not_selected(qapp):
     edge, tvm, a, b = _make_edge(waypoints=[(100.0, 50.0)])
     assert len(edge._handles) == 1
-    assert edge._handles[0].isVisible() is False
+    # 새 정책: 숨기지 않고 흐리게 (숨기면 Qt가 마우스 그랩·선택을 잃는다)
+    assert edge._handles[0].isVisible() is True
+    assert edge._handles[0].opacity() < 1.0
 
 
 def test_handles_visible_when_edge_selected(qapp):
     edge, tvm, a, b = _make_edge(waypoints=[(100.0, 50.0)])
     edge.setSelected(True)
     assert edge._handles[0].isVisible() is True
+    assert edge._handles[0].opacity() == 1.0
     edge.setSelected(False)
-    assert edge._handles[0].isVisible() is False
+    # 비선택 시에도 표시는 유지하고 흐리게만 (숨기면 그랩·선택을 잃는다)
+    assert edge._handles[0].isVisible() is True
+    assert edge._handles[0].opacity() < 1.0
 
 
 def test_handle_position_matches_waypoint(qapp):
@@ -349,7 +354,9 @@ def test_handle_drag_via_real_mouse_events(qapp):
 
     _send_mouse(view, QEvent.Type.MouseButtonPress, handle_pos,
                 button=Qt.MouseButton.LeftButton, buttons=Qt.MouseButton.LeftButton)
-    assert edge.isSelected(), "핸들 press가 엣지 선택을 해제하면 안 된다"
+    # press 시 Qt 단일 클릭 규칙으로 엣지 선택은 풀리고 핸들이 선택된다 —
+    # 핸들이 계속 보이므로(흐리게 정책) 그랩이 유지되어 드래그가 성립한다.
+    assert edge._handles[0].isVisible()
     _send_mouse(view, QEvent.Type.MouseMove, target_pos,
                 button=Qt.MouseButton.NoButton, buttons=Qt.MouseButton.LeftButton)
     _send_mouse(view, QEvent.Type.MouseButtonRelease, target_pos,
@@ -445,3 +452,56 @@ def test_two_point_path_unchanged(qapp):
     scene._rebuild()
     path = scene._edge_items[tvm].path()
     assert path.elementCount() == 4  # moveTo + cubicTo 3요소 — 단일 구간
+
+
+def test_handle_click_after_drag_does_not_jump(qapp):
+    """핸들을 한 번 드래그한 뒤 다른 핸들/노드를 클릭해도 좌표가 튀지 않는다.
+
+    사용자 보고: 웨이포인트 이동 후 다른 대상을 선택하면 왼쪽 위로 팍 튐.
+    원인은 press에서 super를 우회해 Qt가 드래그 기준 좌표를 기록하지 못한 것.
+    """
+    from PySide6.QtCore import QEvent, QPointF as _QP, Qt
+
+    view, scene, vm, tvm = _view_scene_with_waypoint(qapp)
+    tvm.waypoints.append((360.0, 220.0))
+    scene._rebuild()
+    edge = scene._edge_items[tvm]
+    edge.setSelected(True)
+    qapp.processEvents()
+
+    # 1차: 첫 핸들 드래그
+    _send_mouse(view, QEvent.Type.MouseButtonPress, _QP(300, 150),
+                button=Qt.MouseButton.LeftButton, buttons=Qt.MouseButton.LeftButton)
+    _send_mouse(view, QEvent.Type.MouseMove, _QP(330, 120),
+                button=Qt.MouseButton.NoButton, buttons=Qt.MouseButton.LeftButton)
+    _send_mouse(view, QEvent.Type.MouseButtonRelease, _QP(330, 120),
+                button=Qt.MouseButton.LeftButton, buttons=Qt.MouseButton.NoButton)
+    qapp.processEvents()
+    moved = list(tvm.waypoints)
+    assert moved[0] != (300.0, 150.0), "1차 드래그가 반영되지 않았다"
+
+    # 2차: 다른 핸들을 클릭만 — 어떤 좌표도 변하면 안 된다
+    _send_mouse(view, QEvent.Type.MouseButtonPress, _QP(360, 220),
+                button=Qt.MouseButton.LeftButton, buttons=Qt.MouseButton.LeftButton)
+    _send_mouse(view, QEvent.Type.MouseButtonRelease, _QP(360, 220),
+                button=Qt.MouseButton.LeftButton, buttons=Qt.MouseButton.NoButton)
+    qapp.processEvents()
+    assert list(tvm.waypoints) == moved, f"클릭만 했는데 좌표가 튀었다: {tvm.waypoints}"
+    view.hide()
+
+
+def test_handles_stay_visible_but_dim_when_edge_unselected(qapp):
+    """핸들은 항상 표시하되 비선택 시 흐리게 — 숨기면 마우스 그랩을 잃는다."""
+    view, scene, vm, tvm = _view_scene_with_waypoint(qapp)
+    edge = scene._edge_items[tvm]
+
+    edge.setSelected(False)
+    qapp.processEvents()
+    handle = edge._handles[0]
+    assert handle.isVisible(), "숨기면 드래그·Delete 대상이 사라진다"
+    assert handle.opacity() < 1.0, "비선택 상태에서는 흐려야 한다"
+
+    edge.setSelected(True)
+    qapp.processEvents()
+    assert handle.opacity() == 1.0
+    view.hide()

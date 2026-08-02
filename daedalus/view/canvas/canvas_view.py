@@ -73,7 +73,9 @@ class FsmCanvasView(QGraphicsView):
     def __init__(self, scene: FsmScene) -> None:
         super().__init__(scene)
         self.setRenderHint(QPainter.RenderHint.Antialiasing)
-        self.setDragMode(QGraphicsView.DragMode.NoDrag)
+        # 빈 영역 좌클릭 드래그 = 러버밴드 다중 선택. 아이템 위에서 시작하면 Qt가
+        # 알아서 아이템 이동으로 처리한다. 패닝은 중클릭/Alt+좌클릭이라 충돌 없음.
+        self.setDragMode(QGraphicsView.DragMode.RubberBandDrag)
         self.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
         self.setViewportUpdateMode(QGraphicsView.ViewportUpdateMode.FullViewportUpdate)
         self.setAcceptDrops(True)

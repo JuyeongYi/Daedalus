@@ -37,6 +37,7 @@ _HIT_WIDTH = 12.0        # 마우스 클릭 히트 영역
 _HANDLE_R = 5.0
 _HANDLE_COLOR = QColor("#88aaff")     # 선택 엣지 색과 통일 (핸들은 엣지 선택 중에만 표시)
 _HANDLE_BORDER = QColor("#222222")
+_HANDLE_IDLE_OPACITY = 0.35  # 엣지 비선택 시 — 숨기면 그랩을 잃으므로 흐리게만
 _SEGMENT_SAMPLES = 24  # 최근접 구간 판정용 곡선 샘플 수
 _PORT_TANGENT_MIN = 60.0  # 포트 진출입 접선 최소 길이 (수평 진입 인상 유지)
 
@@ -206,13 +207,21 @@ class TransitionEdgeItem(QGraphicsPathItem):
             if sc is not None:
                 sc.removeItem(handle)
 
-        visible = self.isSelected()
+        # 핸들은 **항상 표시**하고, 엣지 비선택 시에는 흐리게만 그린다.
+        # setVisible(False)로 숨기면 Qt가 마우스 그랩과 선택 가능성까지 잃는데,
+        # press 시점에는 선택 상태가 아직 갱신되기 전이라 "선택됐을 때만 표시"
+        # 조건으로는 이 순서 문제를 피할 수 없다 — 숨기는 순간 드래그가 죽고,
+        # 우회하려 super를 건너뛰면 Qt가 드래그 기준 좌표를 잃어 다음 이동이
+        # 왼쪽 위로 튄다(사용자 보고 2건이 같은 뿌리였다). 투명도는 마우스
+        # 처리에 영향을 주지 않으므로 잡음만 줄이고 기능은 지킨다.
+        active = self.isSelected() or any(h.isSelected() for h in self._handles)
         for i, handle in enumerate(self._handles):
             handle.set_index(i)
             pt = QPointF(*waypoints[i])
             if handle.pos() != pt:
                 handle.setPos(pt)
-            handle.setVisible(visible)
+            handle.setVisible(True)
+            handle.setOpacity(1.0 if active else _HANDLE_IDLE_OPACITY)
 
     def itemChange(self, change: QGraphicsItem.GraphicsItemChange, value: Any) -> Any:
         if change == QGraphicsItem.GraphicsItemChange.ItemSelectedHasChanged:
@@ -357,36 +366,26 @@ class WaypointHandleItem(QGraphicsEllipseItem):
             # 이 itemChange로 되돌아오는 재진입은 좌표 수렴으로 2단계에서 멈춘다
             # (의도된 설계 — 리뷰 확인).
             self._edge.update_waypoint_preview(self._index, self.pos())
+        elif change == QGraphicsItem.GraphicsItemChange.ItemSelectedHasChanged:
+            # 핸들 선택 변화도 표시 조건에 반영 — 엣지 선택이 풀린 뒤에도
+            # 선택된 핸들은 남아야 드래그·Delete 대상이 유지된다.
+            self._edge._sync_handles()
         return super().itemChange(change, value)
 
     def mousePressEvent(self, event) -> None:
         if event is None:
             return
-        if event.button() == Qt.MouseButton.LeftButton:
-            # 기본(super) 선택 로직을 타지 않는다 — 단일 클릭 선택 규칙이 엣지
-            # 선택을 해제하면 _sync_handles가 핸들을 숨겨 마우스 그랩이 소실되고
-            # 드래그가 무산된다 (리뷰 결함 1: "선택 시 표시"와 "드래그"의 상호
-            # 무효화). 대신 엣지 선택을 유지하고 자신을 선택(Delete 대상)한다.
-            self._drag_start = self.pos()
-            self._edge.setSelected(True)
-            self.setSelected(True)
-            event.accept()
-            return
+        # super를 반드시 호출한다 — Qt가 여기서 드래그 기준 좌표를 기록하므로,
+        # 우회하면 다음 이동이 스테일 오프셋으로 계산돼 아이템이 화면 왼쪽 위로
+        # 튄다(사용자 보고). 선택이 풀려도 _sync_handles가 "핸들 자신이 선택됨"
+        # 조건으로 핸들을 계속 표시하므로 그랩은 유지된다.
         self._drag_start = self.pos()
         super().mousePressEvent(event)
 
     def mouseReleaseEvent(self, event) -> None:
         if event is None:
             return
-        if event.button() != Qt.MouseButton.LeftButton:
-            super().mouseReleaseEvent(event)
-            self._drag_start = None
-            return
-        # press와 대칭으로 기본(super) 처리를 타지 않는다 — 기본 release의 클릭
-        # 선택 정리가 press에서 세운 선택(엣지+핸들)을 전부 해제해, 이어지는
-        # Delete가 대상을 잃는다 (리뷰 결함 2의 후반부). 그랩은 release 처리
-        # 종료와 함께 Qt가 해제한다.
-        event.accept()
+        super().mouseReleaseEvent(event)
         if self._drag_start is not None and self._drag_start != self.pos():
             sc: Any = self.scene()
             if sc is not None and hasattr(sc, "handle_waypoint_moved"):
