@@ -79,11 +79,22 @@ def _demo_project() -> PluginProject:
     )
     worker = AgentDefinition(fsm=worker_fsm, name="worker", description="작업 에이전트")
 
-    return PluginProject(
+    project = PluginProject(
         name="my-plugin",
         skills=[init_skill, cleanup_skill, rules_skill, validate_skill, ref_skill],
         agents=[worker],
     )
+    # 데모 워크플로 배치 — 빈 캔버스 첫인상 방지 (WP-EP 이후 EntryPoint 마커가
+    # 없으므로 placement가 없으면 캔버스가 완전히 비어 보인다)
+    p_init = SimpleState(name="init", skill_ref=init_skill)
+    p_worker = SimpleState(name="worker", skill_ref=worker)
+    p_cleanup = SimpleState(name="cleanup", skill_ref=cleanup_skill)
+    project.graph.states.extend([p_init, p_worker, p_cleanup])
+    project.graph.transitions.extend([
+        Transition(source=p_init, target=p_worker),
+        Transition(source=p_worker, target=p_cleanup),
+    ])
+    return project
 
 
 def _excepthook(exc_type: type, exc_value: BaseException, exc_tb: object) -> None:

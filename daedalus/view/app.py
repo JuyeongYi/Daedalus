@@ -226,8 +226,8 @@ class MainWindow(QMainWindow):
         from daedalus.view.widgets.preset_picker import set_hook_name_provider
         set_hook_name_provider(lambda p=project: [h.name for h in p.hook_library])
         # 프로젝트 그래프(워크플로 백킹 머신) → 캔버스 VM 재구성 (버그 1: 저장된
-        # 노드 연결 복원). EntryPoint 마커 + placement 노드 + 전이를 graph_layout
-        # 좌표로 배치한다. _load_agent_fsm 미러링.
+        # 노드 연결 복원). placement 노드 + 전이를 graph_layout 좌표로 배치한다
+        # (WP-EP: EntryPoint는 그리지 않음). _load_agent_fsm 미러링.
         self._load_project_graph()
 
     def _load_project_graph(self) -> None:

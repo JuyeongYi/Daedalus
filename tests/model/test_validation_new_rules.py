@@ -560,3 +560,28 @@ def test_validate_project_injects_root_path():
     dup_errors = [e for e in errors if e.rule == "duplicate_state_name"]
     assert len(dup_errors) == 1
     assert dup_errors[0].path == ("agent:worker",)
+
+
+def test_skip_rules_not_propagated_to_submachine():
+    """skip_rules는 최상위 머신에만 적용 — sub_machine 재귀에는 전파되지 않는다."""
+    inner1 = SimpleState(name="i1")
+    inner_orphan = SimpleState(name="inner-orphan")
+    sub = StateMachine(
+        name="sub", initial_state=inner1, states=[inner1, inner_orphan],
+        final_states=[inner1],
+    )
+    comp = CompositeState(name="comp", sub_machine=sub)
+    outer = StateMachine(name="outer", initial_state=comp, states=[comp], final_states=[comp])
+
+    errors = Validator.validate(outer, skip_rules=frozenset({"unreachable_state"}))
+    assert any(e.rule == "unreachable_state" for e in errors)
+
+
+def test_skip_rules_unknown_name_raises():
+    """skip_rules의 미지 규칙명은 조용한 no-op이 아니라 ValueError."""
+    import pytest
+
+    s = SimpleState(name="s")
+    sm = StateMachine(name="m", initial_state=s, states=[s], final_states=[s])
+    with pytest.raises(ValueError):
+        Validator.validate(sm, skip_rules=frozenset({"unreachable_states"}))

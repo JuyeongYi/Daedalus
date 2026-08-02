@@ -89,6 +89,11 @@ CC_BUILTIN_TOOLS: frozenset[str] = frozenset({
 })
 
 
+# skip_rules로 생략을 지원하는 규칙 집합 — 이름 오타/규칙 리네임이 조용한
+# no-op이 되지 않도록 알려진 이름만 허용한다.
+SKIPPABLE_RULES: frozenset[str] = frozenset({"unreachable_state"})
+
+
 class Validator:
     @staticmethod
     def validate(
@@ -109,6 +114,9 @@ class Validator:
           재귀(sub_machine/Region)에는 **전파하지 않는다** — 호출부(validate_project)가
           프로젝트 그래프 자체에만 적용하도록 재귀 호출에는 넘기지 않는다.
         """
+        unknown = skip_rules - SKIPPABLE_RULES
+        if unknown:
+            raise ValueError(f"skip_rules에 지원되지 않는 규칙: {sorted(unknown)}")
         errors: list[ValidationError] = []
         errors.extend(Validator._check_initial_in_states(sm, path))
         errors.extend(Validator._check_final_in_states(sm, path))
