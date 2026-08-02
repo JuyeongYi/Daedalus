@@ -1,154 +1,61 @@
 from __future__ import annotations
 
-from daedalus.model.fsm.section import Section
 
-
-def _tree() -> tuple[list[Section], Section, Section, Section, Section]:
-    """4-level test tree.
-
-    Overview
-    Setup
-      Requirements
-        System Reqs
-      Installation
-    Usage
-    """
-    sys_reqs = Section("System Reqs")
-    reqs = Section("Requirements", children=[sys_reqs])
-    install = Section("Installation")
-    setup = Section("Setup", children=[reqs, install])
-    overview = Section("Overview")
-    usage = Section("Usage")
-    roots = [overview, setup, usage]
-    return roots, setup, reqs, sys_reqs, install
-
-
-def test_find_path_root():
-    from daedalus.view.editors.body_editor import find_path
-    roots, setup, *_ = _tree()
-    assert find_path(setup, roots) == [setup]
-
-
-def test_find_path_nested():
-    from daedalus.view.editors.body_editor import find_path
-    roots, setup, reqs, sys_reqs, _ = _tree()
-    assert find_path(sys_reqs, roots) == [setup, reqs, sys_reqs]
-
-
-def test_find_path_not_found():
-    from daedalus.view.editors.body_editor import find_path
-    roots, *_ = _tree()
-    orphan = Section("Orphan")
-    assert find_path(orphan, roots) is None
-
-
-def test_section_depth_root():
-    from daedalus.view.editors.body_editor import section_depth
-    roots, setup, *_ = _tree()
-    assert section_depth(setup, roots) == 0
-
-
-def test_section_depth_nested():
-    from daedalus.view.editors.body_editor import section_depth
-    roots, _, _, sys_reqs, _ = _tree()
-    assert section_depth(sys_reqs, roots) == 2
-
-
-def test_section_depth_not_found():
-    from daedalus.view.editors.body_editor import section_depth
-    roots, *_ = _tree()
-    orphan = Section("Orphan")
-    assert section_depth(orphan, roots) == -1
-
-
-def test_section_tree_builds_items(qapp):
-    from daedalus.view.editors.body_editor import SectionTree
-    roots, *_ = _tree()
-    tree = SectionTree(roots)
-    assert tree.tree_widget().topLevelItemCount() == 3
-
-
-def test_section_tree_min_width(qapp):
-    from daedalus.view.editors.body_editor import SectionTree
-    tree = SectionTree([])
-    assert tree.minimumWidth() >= 100
-
-
-def test_section_tree_add_sibling(qapp):
-    from daedalus.view.editors.body_editor import SectionTree
-    roots = [Section("A")]
-    tree = SectionTree(roots)
-    tree.add_sibling(roots[0])
-    assert len(roots) == 2
-    assert roots[1].title == "새 섹션"
-
-
-def test_section_tree_add_child(qapp):
-    from daedalus.view.editors.body_editor import SectionTree
-    roots = [Section("A")]
-    tree = SectionTree(roots)
-    tree.add_child(roots[0])
-    assert len(roots[0].children) == 1
-    assert roots[0].children[0].title == "새 하위 섹션"
-
-
-def test_section_tree_add_child_depth_limit(qapp):
-    from daedalus.view.editors.body_editor import SectionTree
-    d3 = Section("D3")
-    d2 = Section("D2", children=[d3])
-    d1 = Section("D1", children=[d2])
-    d0 = Section("D0", children=[d1])
-    roots = [d0]
-    tree = SectionTree(roots)
-    tree.add_child(d3)  # depth 3 → child would be depth 4 → blocked
-    assert len(d3.children) == 0
-
-
-def test_section_tree_delete(qapp):
-    from daedalus.view.editors.body_editor import SectionTree
-    child = Section("Child")
-    parent = Section("Parent", children=[child])
-    roots = [parent]
-    tree = SectionTree(roots)
-    tree.delete_section(child)
-    assert len(parent.children) == 0
-
-
-def test_section_tree_select_by_section(qapp):
-    from daedalus.view.editors.body_editor import SectionTree
-    roots, setup, reqs, *_ = _tree()
-    tree = SectionTree(roots)
-    tree.select_section(reqs)
-    sel = tree.tree_widget().currentItem()
-    assert sel is not None
-    assert sel.text(0) == "Requirements"
+def _make_declarative(body: str = ""):
+    from daedalus.model.plugin.skill import DeclarativeSkill
+    return DeclarativeSkill(name="K", description="d", body=body)
 
 
 def test_section_content_panel_show(qapp):
     from daedalus.view.editors.body_editor import SectionContentPanel
     panel = SectionContentPanel()
-    section = Section("Title", content="Body text")
-    panel.show_section(section, ["Root", "Title"])
-    assert panel.current_section() is section
+    comp = _make_declarative("Body text")
+    panel.show_body(comp)
+    assert panel.current_component() is comp
 
 
-def test_section_content_panel_saves_title(qapp):
+def test_section_content_panel_loads_body_into_editor(qapp):
     from daedalus.view.editors.body_editor import SectionContentPanel
     panel = SectionContentPanel()
-    section = Section("Old")
-    panel.show_section(section, ["Old"])
-    panel._w_title.setText("New")
-    panel._save_title()
-    assert section.title == "New"
+    comp = _make_declarative("# Title\n\nHello")
+    panel.show_body(comp)
+    assert panel._w_content.toPlainText() == "# Title\n\nHello"
 
 
-def test_section_content_panel_saves_content(qapp):
+def test_section_content_panel_saves_body_on_typing(qapp):
     from daedalus.view.editors.body_editor import SectionContentPanel
     panel = SectionContentPanel()
-    section = Section("T", content="old")
-    panel.show_section(section, ["T"])
+    comp = _make_declarative("old")
+    panel.show_body(comp)
     panel._w_content.setPlainText("new")
-    assert section.content == "new"
+    assert comp.body == "new"
+
+
+def test_section_content_panel_emits_content_changed_on_typing(qapp):
+    from daedalus.view.editors.body_editor import SectionContentPanel
+    panel = SectionContentPanel()
+    comp = _make_declarative("")
+    panel.show_body(comp)
+
+    fired: list[int] = []
+    panel.content_changed.connect(lambda: fired.append(1))
+    panel._w_content.setPlainText("typed")
+    assert fired == [1]
+    assert comp.body == "typed"
+
+
+def test_section_content_panel_show_body_does_not_emit_content_changed(qapp):
+    """show_body 로드 시 blockSignals로 write-back이 억제되어야 한다(편집 시작 시
+    본문이 조용히 재기록되는 것을 방지)."""
+    from daedalus.view.editors.body_editor import SectionContentPanel
+    panel = SectionContentPanel()
+    comp = _make_declarative("preset")
+
+    fired: list[int] = []
+    panel.content_changed.connect(lambda: fired.append(1))
+    panel.show_body(comp)
+    assert fired == []
+    assert comp.body == "preset"
 
 
 def test_variable_popup_has_entries(qapp):
@@ -158,53 +65,3 @@ def test_variable_popup_has_entries(qapp):
     entries = load_variables()
     popup = VariablePopup(entries)
     assert isinstance(popup, QFrame)
-
-
-def test_breadcrumb_set_current_root(qapp):
-    from daedalus.view.editors.body_editor import BreadcrumbNav
-    roots, setup, *_ = _tree()
-    nav = BreadcrumbNav(roots)
-    nav.set_current(setup)
-    # Level 0 행만 존재 (루트 형제 나열)
-    assert nav.level_count() == 1
-
-
-def test_breadcrumb_set_current_nested(qapp):
-    from daedalus.view.editors.body_editor import BreadcrumbNav
-    roots, setup, reqs, sys_reqs, _ = _tree()
-    nav = BreadcrumbNav(roots)
-    nav.set_current(sys_reqs)
-    # Level 0 (roots), Level 1 (setup children), Level 2 (reqs children)
-    assert nav.level_count() == 3
-
-
-def test_breadcrumb_chip_count_per_level(qapp):
-    from daedalus.view.editors.body_editor import BreadcrumbNav
-    roots, setup, reqs, sys_reqs, _ = _tree()
-    nav = BreadcrumbNav(roots)
-    nav.set_current(reqs)
-    # Level 0: 3 chips (Overview, Setup, Usage)
-    # Level 1: 2 chips (Requirements, Installation)
-    assert nav.chip_count(0) == 3
-    assert nav.chip_count(1) == 2
-
-
-def test_breadcrumb_section_selected_signal(qapp):
-    from daedalus.view.editors.body_editor import BreadcrumbNav
-    roots, setup, reqs, *_ = _tree()
-    nav = BreadcrumbNav(roots)
-    nav.set_current(setup)
-    assert hasattr(nav, "section_selected")
-
-
-def test_breadcrumb_add_requested_signal_exists(qapp):
-    from daedalus.view.editors.body_editor import BreadcrumbNav
-    nav = BreadcrumbNav([])
-    assert hasattr(nav, "section_add_requested")
-
-
-def test_breadcrumb_set_current_none(qapp):
-    from daedalus.view.editors.body_editor import BreadcrumbNav
-    nav = BreadcrumbNav([Section("A")])
-    nav.set_current(None)
-    assert nav.level_count() == 0

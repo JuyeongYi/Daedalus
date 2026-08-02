@@ -104,23 +104,16 @@ def test_skill_editor_has_splitter(qapp):
     assert splitter is not None
 
 
-def test_skill_editor_has_breadcrumb(qapp):
+def test_skill_editor_has_content_panel(qapp):
+    """WP-SB: SectionTree/BreadcrumbNav는 제거되고 본문 body 편집 패널만 남는다."""
     from daedalus.view.editors.skill_editor import SkillEditor
-    from daedalus.view.editors.body_editor import BreadcrumbNav
+    from daedalus.view.editors.body_editor import SectionContentPanel
     comp = _make_procedural()
-    comp.sections = [Section("S1"), Section("S2")]
+    comp.body = "# S1\n\ncontent"
     editor = SkillEditor(comp)
-    nav = editor.findChild(BreadcrumbNav)
-    assert nav is not None
-
-
-def test_skill_editor_has_section_tree(qapp):
-    from daedalus.view.editors.skill_editor import SkillEditor
-    from daedalus.view.editors.body_editor import SectionTree
-    comp = _make_procedural()
-    editor = SkillEditor(comp)
-    tree = editor.findChild(SectionTree)
-    assert tree is not None
+    panel = editor.findChild(SectionContentPanel)
+    assert panel is not None
+    assert panel.current_component() is comp
 
 
 def test_frontmatter_panel_transfer(qapp):

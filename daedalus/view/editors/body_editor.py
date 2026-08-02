@@ -1,4 +1,9 @@
-"""공용 섹션 편집 위젯 — SectionTree, BreadcrumbNav, SectionContentPanel, VariablePopup."""
+"""공용 본문 편집 위젯 — SectionContentPanel(단일 마크다운 body 편집), VariablePopup.
+
+WP-SB: 수동 섹션 트리 편집(SectionTree/BreadcrumbNav)은 마크다운 에디터
+(WP-MD1/MD2)로 대체되어 제거됐다 — 본문 구조의 단일 진실은 이제 컴포넌트의
+``body: str`` 필드(마크다운 텍스트) 하나다.
+"""
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
@@ -6,193 +11,25 @@ from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
-    QLineEdit,
     QPushButton,
     QStackedWidget,
     QTextBrowser,
-    QTreeWidget,
-    QTreeWidgetItem,
     QVBoxLayout,
     QWidget,
 )
 
-from daedalus.model.fsm.section import Section
 from daedalus.view.widgets.markdown_editor import MarkdownEditor, MarkdownToolbar
-
-MAX_DEPTH = 3  # 0-indexed; 4 levels total (H1–H4)
-
-
-def find_path(target: Section, roots: list[Section]) -> list[Section] | None:
-    """루트부터 target까지의 조상 경로를 반환. 못 찾으면 None."""
-    for root in roots:
-        result = _search(target, root, [])
-        if result is not None:
-            return result
-    return None
-
-
-def _search(
-    target: Section, current: Section, ancestors: list[Section],
-) -> list[Section] | None:
-    path = ancestors + [current]
-    if current is target:
-        return path
-    for child in current.children:
-        result = _search(target, child, path)
-        if result is not None:
-            return result
-    return None
-
-
-def section_depth(target: Section, roots: list[Section]) -> int:
-    """target의 깊이 (루트=0). 못 찾으면 -1."""
-    path = find_path(target, roots)
-    return len(path) - 1 if path is not None else -1
-
-
-_ROLE_SECTION = Qt.ItemDataRole.UserRole
-
-
-class SectionTree(QWidget):
-    """섹션 트리 — 전체 구조를 한눈에 보여주는 사이드바 위젯."""
-
-    section_selected = Signal(object, list)  # (Section, path: list[str])
-    structure_changed = Signal()
-    add_root_requested = Signal()
-
-    def __init__(self, sections: list[Section], parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-        self._sections = sections
-        self.setMinimumWidth(100)
-
-        lay = QVBoxLayout(self)
-        lay.setContentsMargins(6, 8, 6, 6)
-        lay.setSpacing(4)
-
-        hdr = QLabel("Sections")
-        lay.addWidget(hdr)
-
-        self._tree = QTreeWidget()
-        self._tree.setHeaderHidden(True)
-        self._tree.setRootIsDecorated(True)
-        self._tree.itemClicked.connect(self._on_item_clicked)
-        lay.addWidget(self._tree, 1)
-
-        add_btn = QPushButton("＋ 섹션 추가")
-        add_btn.clicked.connect(lambda: self.add_root_requested.emit())
-        lay.addWidget(add_btn)
-
-        self._rebuild()
-
-    def tree_widget(self) -> QTreeWidget:
-        return self._tree
-
-    def set_sections(self, sections: list[Section]) -> None:
-        self._sections = sections
-        self._rebuild()
-
-    def select_section(self, target: Section) -> None:
-        item = self._find_item(target)
-        if item is not None:
-            self._tree.setCurrentItem(item)
-
-    def add_sibling(self, after: Section) -> None:
-        path = find_path(after, self._sections)
-        if path is None:
-            return
-        new = Section(title="새 섹션")
-        if len(path) == 1:
-            idx = self._sections.index(after)
-            self._sections.insert(idx + 1, new)
-        else:
-            parent = path[-2]
-            idx = parent.children.index(after)
-            parent.children.insert(idx + 1, new)
-        self._rebuild()
-        self.structure_changed.emit()
-
-    def add_child(self, parent: Section) -> None:
-        depth = section_depth(parent, self._sections)
-        if depth < 0 or depth >= MAX_DEPTH:
-            return
-        child = Section(title="새 하위 섹션")
-        parent.children.append(child)
-        self._rebuild()
-        self.structure_changed.emit()
-
-    def delete_section(self, target: Section) -> None:
-        path = find_path(target, self._sections)
-        if path is None:
-            return
-        if len(path) == 1:
-            if target in self._sections:
-                self._sections.remove(target)
-        else:
-            parent = path[-2]
-            if target in parent.children:
-                parent.children.remove(target)
-        self._rebuild()
-        self.structure_changed.emit()
-
-    def _rebuild(self) -> None:
-        self._tree.clear()
-        for section in self._sections:
-            item = self._make_item(section)
-            self._tree.addTopLevelItem(item)
-            self._populate_children(item, section)
-        self._tree.expandAll()
-
-    def _make_item(self, section: Section) -> QTreeWidgetItem:
-        item = QTreeWidgetItem()
-        item.setText(0, section.title)
-        item.setData(0, _ROLE_SECTION, section)
-        return item
-
-    def _populate_children(self, parent_item: QTreeWidgetItem, section: Section) -> None:
-        for child in section.children:
-            child_item = self._make_item(child)
-            parent_item.addChild(child_item)
-            self._populate_children(child_item, child)
-
-    def _on_item_clicked(self, item: QTreeWidgetItem, _column: int) -> None:
-        # 자식이 있는 항목 클릭 시 자동 확장
-        if item.childCount() > 0 and not item.isExpanded():
-            self._tree.expandItem(item)
-        section: Section | None = item.data(0, _ROLE_SECTION)
-        if section is None:
-            return
-        path = find_path(section, self._sections)
-        if path is not None:
-            self.section_selected.emit(section, [s.title for s in path])
-
-    def _find_item(
-        self, target: Section, parent: QTreeWidgetItem | None = None
-    ) -> QTreeWidgetItem | None:
-        if parent is None:
-            for i in range(self._tree.topLevelItemCount()):
-                result = self._find_item(target, self._tree.topLevelItem(i))
-                if result is not None:
-                    return result
-            return None
-        if parent.data(0, _ROLE_SECTION) is target:
-            return parent
-        for i in range(parent.childCount()):
-            result = self._find_item(target, parent.child(i))
-            if result is not None:
-                return result
-        return None
 
 
 class SectionContentPanel(QWidget):
-    """섹션 타이틀 + 본문 편집 패널."""
+    """컴포넌트 본문(body) 편집 패널 — 마크다운 에디터/프리뷰 + 변수 삽입."""
 
     variable_insert_requested = Signal()
-    add_child_requested = Signal()
     content_changed = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self._section: Section | None = None
+        self._component: object | None = None
 
         lay = QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
@@ -205,28 +42,15 @@ class SectionContentPanel(QWidget):
         tb_lay.setSpacing(6)
 
         tb_lay.addStretch()
-        self._btn_add_child = QPushButton("＋ 하위 섹션")
-        self._btn_add_child.clicked.connect(self.add_child_requested)
-        tb_lay.addWidget(self._btn_add_child)
         self._btn_variable = QPushButton("{ } 변수 삽입")
         self._btn_variable.clicked.connect(self.variable_insert_requested)
         tb_lay.addWidget(self._btn_variable)
 
         lay.addWidget(toolbar)
 
-        # --- 타이틀 인라인 편집 ---
-        title_area = QWidget()
-        ta_lay = QVBoxLayout(title_area)
-        ta_lay.setContentsMargins(12, 8, 12, 4)
-        self._w_title = QLineEdit()
-        self._w_title.setPlaceholderText("섹션 타이틀")
-        self._w_title.editingFinished.connect(self._save_title)
-        ta_lay.addWidget(self._w_title)
-        lay.addWidget(title_area)
-
         # --- 서식 툴바 ---
         self._w_content = MarkdownEditor()
-        self._w_content.textChanged.connect(self._save_content)
+        self._w_content.textChanged.connect(self._save_body)
         self._md_toolbar = MarkdownToolbar(self._w_content)
         self._md_toolbar.preview_toggled.connect(self._on_preview_toggled)
         lay.addWidget(self._md_toolbar)
@@ -243,22 +67,16 @@ class SectionContentPanel(QWidget):
         self._content_stack.addWidget(self._w_preview)  # page 1: 프리뷰
         lay.addWidget(self._content_stack, 1)
 
-    def current_section(self) -> Section | None:
-        return self._section
+    def current_component(self) -> object | None:
+        return self._component
 
-    def set_title_locked(self, locked: bool) -> None:
-        """타이틀 필드 잠금/해제. 계약 섹션은 타이틀 변경 불가."""
-        self._w_title.setReadOnly(locked)
-        self._btn_add_child.setVisible(not locked)
-
-    def show_section(self, section: Section, path: list[str], title_locked: bool = False) -> None:
-        self._section = section
-        self._w_title.setText(section.title)
-        self.set_title_locked(title_locked)
+    def show_body(self, component: object) -> None:
+        """component.body를 에디터에 표시(blockSignals로 write-back 억제)."""
+        self._component = component
         self._md_toolbar.set_preview_checked(False)
         self._content_stack.setCurrentIndex(0)
         self._w_content.blockSignals(True)
-        self._w_content.setPlainText(section.content)
+        self._w_content.setPlainText(getattr(component, "body", ""))
         self._w_content.blockSignals(False)
 
     def _on_preview_toggled(self, checked: bool) -> None:
@@ -273,14 +91,9 @@ class SectionContentPanel(QWidget):
     def insert_variable(self, var_name: str) -> None:
         self._w_content.insertPlainText(var_name)
 
-    def _save_title(self) -> None:
-        if self._section is not None:
-            self._section.title = self._w_title.text().strip() or self._section.title
-            self.content_changed.emit()
-
-    def _save_content(self) -> None:
-        if self._section is not None:
-            self._section.content = self._w_content.toPlainText()
+    def _save_body(self) -> None:
+        if self._component is not None:
+            self._component.body = self._w_content.toPlainText()  # type: ignore[attr-defined]
             self.content_changed.emit()
 
 
@@ -338,122 +151,3 @@ class VariablePopup(QFrame):
     def _emit(self, name: str) -> None:
         self.variable_selected.emit(name)
         self.hide()
-
-
-class BreadcrumbNav(QWidget):
-    """브레드크럼브 칩 네비게이션 — 레벨별 형제 섹션을 칩으로 나열."""
-
-    section_selected = Signal(object, list)        # (Section, path_titles)
-    section_add_requested = Signal(object, int)    # (parent_or_None, depth)
-    structure_changed = Signal()
-
-    def __init__(
-        self,
-        sections: list[Section],
-        parent: QWidget | None = None,
-    ) -> None:
-        super().__init__(parent)
-        self._sections = sections
-        self._current: Section | None = None
-        self._level_rows: list[QWidget] = []
-
-        self._layout = QVBoxLayout(self)
-        self._layout.setContentsMargins(4, 4, 4, 0)
-        self._layout.setSpacing(2)
-
-    def set_sections(self, sections: list[Section]) -> None:
-        self._sections = sections
-        if self._current is not None:
-            path = find_path(self._current, self._sections)
-            if path is None:
-                self._current = None
-        self._rebuild()
-
-    def set_current(self, section: Section | None) -> None:
-        self._current = section
-        self._rebuild()
-
-    def level_count(self) -> int:
-        return len(self._level_rows)
-
-    def chip_count(self, level: int) -> int:
-        """level번째 행의 섹션 칩 수 (+ 버튼 제외)."""
-        if level < 0 or level >= len(self._level_rows):
-            return 0
-        row = self._level_rows[level]
-        return row.property("chip_count") or 0
-
-    def _rebuild(self) -> None:
-        for row in self._level_rows:
-            self._layout.removeWidget(row)
-            row.deleteLater()
-        self._level_rows.clear()
-
-        if self._current is None or not self._sections:
-            return
-
-        path = find_path(self._current, self._sections)
-        if path is None:
-            return
-
-        # Build level info: (siblings_list, parent_section_or_None, depth)
-        siblings_at_level: list[tuple[list[Section], Section | None, int]] = []
-        # Level 0: root siblings
-        siblings_at_level.append((self._sections, None, 0))
-        # Level 1..N: children of each ancestor
-        for i, node in enumerate(path[:-1]):
-            siblings_at_level.append((node.children, node, i + 1))
-
-        for siblings, parent_section, depth in siblings_at_level:
-            selected = path[depth] if depth < len(path) else None
-            row = self._make_row(siblings, selected, parent_section, depth)
-            self._layout.addWidget(row)
-            self._level_rows.append(row)
-
-    def _make_row(
-        self,
-        siblings: list[Section],
-        selected: Section | None,
-        parent_section: Section | None,
-        depth: int,
-    ) -> QWidget:
-        row = QWidget()
-        row_lay = QHBoxLayout(row)
-        row_lay.setContentsMargins(depth * 12, 0, 0, 0)
-        row_lay.setSpacing(4)
-
-        chip_count = 0
-        for section in siblings:
-            is_selected = section is selected
-            has_children = bool(section.children)
-            label = section.title
-            if is_selected and has_children:
-                label += " ▼"
-
-            btn = QPushButton(label)
-            btn.setCheckable(True)
-            btn.setChecked(is_selected)
-            btn.clicked.connect(
-                lambda _c, s=section: self._on_chip_clicked(s),
-            )
-            row_lay.addWidget(btn)
-            chip_count += 1
-
-        row_lay.addStretch()
-
-        add_btn = QPushButton("+")
-        add_btn.setFixedWidth(28)
-        add_btn.clicked.connect(
-            lambda: self.section_add_requested.emit(parent_section, depth),
-        )
-        row_lay.addWidget(add_btn)
-
-        row.setProperty("chip_count", chip_count)
-        return row
-
-    def _on_chip_clicked(self, section: Section) -> None:
-        self._current = section
-        path = find_path(section, self._sections)
-        if path is not None:
-            self.section_selected.emit(section, [s.title for s in path])
-        self._rebuild()

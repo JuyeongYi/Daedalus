@@ -1038,7 +1038,7 @@ class MarkdownToolbar(QWidget):
         """프리뷰(👁) 버튼 체크 상태를 외부에서 리셋할 때 쓰는 공개 API.
 
         `checked`가 현재 상태와 다르면 `toggled` 시그널이 발생해 `preview_toggled`도
-        함께 방출된다(호출자가 이를 감안해야 함 — `SectionContentPanel.show_section`은
+        함께 방출된다(호출자가 이를 감안해야 함 — `SectionContentPanel.show_body`는
         이 방출로 스택이 편집 모드로 복귀하는 것을 활용한다).
         """
         self._btn_preview.setChecked(checked)

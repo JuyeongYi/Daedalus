@@ -9,13 +9,18 @@ from PySide6.QtGui import QColor, QFont, QTextCursor, QTextDocument
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QPushButton
 
-from daedalus.model.fsm.section import Section
+from daedalus.model.plugin.skill import DeclarativeSkill
 from daedalus.view.widgets.markdown_editor import (
     MARKDOWN_PALETTE,
     MarkdownEditor,
     MarkdownHighlighter,
     MarkdownToolbar,
 )
+
+
+def _make_comp(body: str = "") -> DeclarativeSkill:
+    """SectionContentPanel.show_body 테스트용 최소 컴포넌트."""
+    return DeclarativeSkill(name="T", description="d", body=body)
 
 
 def _find_toolbar_button(toolbar: MarkdownToolbar, text: str) -> QPushButton:
@@ -234,15 +239,15 @@ def test_section_content_panel_typing_updates_content(qapp):
     from daedalus.view.editors.body_editor import SectionContentPanel
 
     panel = SectionContentPanel()
-    section = Section("T", content="old")
-    panel.show_section(section, ["T"])
+    comp = _make_comp("old")
+    panel.show_body(comp)
 
     received = []
     panel.content_changed.connect(lambda: received.append(True))
 
     panel._w_content.setPlainText("new content")
 
-    assert section.content == "new content"
+    assert comp.body == "new content"
     assert received
 
 
@@ -432,8 +437,8 @@ def test_panel_preview_toggle_switches_stack_and_renders_heading(qapp):
     from daedalus.view.editors.body_editor import SectionContentPanel
 
     panel = SectionContentPanel()
-    section = Section("T", content="# 제목")
-    panel.show_section(section, ["T"])
+    comp = _make_comp("# 제목")
+    panel.show_body(comp)
 
     _find_toolbar_button(panel._md_toolbar, "👁").click()
 
@@ -447,8 +452,8 @@ def test_panel_preview_toggle_off_restores_editor_and_content(qapp):
     from daedalus.view.editors.body_editor import SectionContentPanel
 
     panel = SectionContentPanel()
-    section = Section("T", content="본문 내용")
-    panel.show_section(section, ["T"])
+    comp = _make_comp("본문 내용")
+    panel.show_body(comp)
 
     btn = _find_toolbar_button(panel._md_toolbar, "👁")
     btn.click()
@@ -458,17 +463,17 @@ def test_panel_preview_toggle_off_restores_editor_and_content(qapp):
     assert panel._w_content.toPlainText() == "본문 내용"
 
 
-def test_panel_show_section_resets_preview(qapp):
+def test_panel_show_body_resets_preview(qapp):
     from daedalus.view.editors.body_editor import SectionContentPanel
 
     panel = SectionContentPanel()
-    section1 = Section("A", content="a")
-    panel.show_section(section1, ["A"])
+    comp1 = _make_comp("a")
+    panel.show_body(comp1)
     _find_toolbar_button(panel._md_toolbar, "👁").click()
     assert panel._content_stack.currentIndex() == 1
 
-    section2 = Section("B", content="b")
-    panel.show_section(section2, ["B"])
+    comp2 = _make_comp("b")
+    panel.show_body(comp2)
     assert panel._content_stack.currentIndex() == 0
     assert not _find_toolbar_button(panel._md_toolbar, "👁").isChecked()
 
@@ -507,8 +512,8 @@ def test_preview_toggle_disables_variable_button(qapp):
     from daedalus.view.editors.body_editor import SectionContentPanel
 
     panel = SectionContentPanel()
-    section = Section("T", content="body")
-    panel.show_section(section, ["T"])
+    comp = _make_comp("body")
+    panel.show_body(comp)
     panel._md_toolbar._btn_preview.click()
     assert not panel._btn_variable.isEnabled()
     panel._md_toolbar._btn_preview.click()
