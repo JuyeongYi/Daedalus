@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import pytest
-from PyQt6.QtWidgets import QFrame, QScrollArea, QWidget
+from PySide6.QtWidgets import QFrame, QScrollArea, QWidget
 
 from daedalus.model.fsm.section import Section
 
@@ -97,7 +97,7 @@ def test_skill_editor_changed_signal_exists(qapp):
 
 def test_skill_editor_has_splitter(qapp):
     from daedalus.view.editors.skill_editor import SkillEditor
-    from PyQt6.QtWidgets import QSplitter
+    from PySide6.QtWidgets import QSplitter
     comp = _make_procedural()
     editor = SkillEditor(comp)
     splitter = editor.findChild(QSplitter)
@@ -144,13 +144,13 @@ def test_skill_editor_transfer_smoke(qapp):
     fsm = StateMachine(name="f", states=[s], initial_state=s)
     comp = TransferSkill(fsm=fsm, name="Validate", description="검증")
     editor = SkillEditor(comp)  # must not raise
-    from PyQt6.QtWidgets import QWidget
+    from PySide6.QtWidgets import QWidget
     assert isinstance(editor, QWidget)
 
 
 def test_node_item_port_color_from_event_def(qapp):
     """EventDef.color가 StateNodeItem 포트 색상에 반영되는지 확인."""
-    from PyQt6.QtGui import QColor
+    from PySide6.QtGui import QColor
     from daedalus.model.fsm.section import EventDef
     from daedalus.model.fsm.state import SimpleState
     from daedalus.model.fsm.machine import StateMachine
@@ -188,7 +188,7 @@ def test_node_item_exit_point_style(qapp):
 
 
 def test_entry_point_no_input_port(qapp):
-    from PyQt6.QtCore import QPointF
+    from PySide6.QtCore import QPointF
     from daedalus.model.fsm.pseudo import EntryPoint
     from daedalus.view.viewmodel.state_vm import StateViewModel
     from daedalus.view.canvas.node_item import StateNodeItem
@@ -199,7 +199,7 @@ def test_entry_point_no_input_port(qapp):
 
 
 def test_exit_point_no_output_port(qapp):
-    from PyQt6.QtCore import QPointF
+    from PySide6.QtCore import QPointF
     from daedalus.model.fsm.pseudo import ExitPoint
     from daedalus.view.viewmodel.state_vm import StateViewModel
     from daedalus.view.canvas.node_item import StateNodeItem
@@ -217,7 +217,7 @@ def test_when_to_use_loads_into_panel(qapp):
     """when_to_use가 패널에 로드된다 (감사 1-2 로드 버그)."""
     from daedalus.view.editors.skill_editor import _FrontmatterPanel
     from daedalus.model.plugin.enums import SkillField
-    from PyQt6.QtWidgets import QTextEdit, QLineEdit
+    from PySide6.QtWidgets import QTextEdit, QLineEdit
     comp = _make_procedural()
     comp.when_to_use = "복잡한 작업에 사용하세요"
     panel = _FrontmatterPanel(comp)
@@ -235,7 +235,7 @@ def test_combo_field_writes_back_to_config(qapp):
     """model 콤보 변경이 config.model에 반영된다."""
     from daedalus.view.editors.skill_editor import _FrontmatterPanel
     from daedalus.model.plugin.enums import SkillField, ModelType
-    from PyQt6.QtWidgets import QComboBox
+    from PySide6.QtWidgets import QComboBox
     comp = _make_procedural()
     panel = _FrontmatterPanel(comp)
 
@@ -252,7 +252,7 @@ def test_checkbox_field_writes_back(qapp):
     """bool 필드(disable_model_invocation) 토글이 config에 반영된다."""
     from daedalus.view.editors.skill_editor import _FrontmatterPanel, _OptionalRow
     from daedalus.model.plugin.enums import SkillField
-    from PyQt6.QtWidgets import QCheckBox
+    from PySide6.QtWidgets import QCheckBox
     comp = _make_procedural()
     panel = _FrontmatterPanel(comp)
 
@@ -465,7 +465,7 @@ def test_writeback_survives_panel_rebuild(qapp):
     """write-back된 값이 패널 재생성 후에도 다시 로드된다 (왕복)."""
     from daedalus.view.editors.skill_editor import _FrontmatterPanel
     from daedalus.model.plugin.enums import SkillField, ModelType
-    from PyQt6.QtWidgets import QComboBox
+    from PySide6.QtWidgets import QComboBox
     comp = _make_procedural()
     panel = _FrontmatterPanel(comp)
 
@@ -522,7 +522,7 @@ def test_frontmatter_panel_agent_combo_default_value(qapp):
     """에이전트 패널 MODEL 콤보박스 기본값이 'inherit'으로 표시된다."""
     from daedalus.view.editors.skill_editor import _FrontmatterPanel
     from daedalus.model.plugin.enums import AgentField
-    from PyQt6.QtWidgets import QComboBox
+    from PySide6.QtWidgets import QComboBox
     comp = _make_agent()
     panel = _FrontmatterPanel(comp)
 
@@ -537,7 +537,7 @@ def test_frontmatter_panel_agent_max_turns_spinbox_writeback(qapp):
     """에이전트 패널 MAX_TURNS QSpinBox write-back — int 값이 config에 기록된다."""
     from daedalus.view.editors.skill_editor import _FrontmatterPanel, _OptionalRow
     from daedalus.model.plugin.enums import AgentField
-    from PyQt6.QtWidgets import QSpinBox
+    from PySide6.QtWidgets import QSpinBox
     comp = _make_agent()
     panel = _FrontmatterPanel(comp)
 

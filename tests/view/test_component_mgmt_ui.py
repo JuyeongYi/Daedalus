@@ -138,7 +138,7 @@ class TestTabTitleSync:
 class TestDuplicateNameRejection:
     def test_rename_rejected_when_duplicate(self, qapp, monkeypatch):
         """_on_component_renamed: 중복 이름이면 원본 이름으로 원복."""
-        from PyQt6.QtWidgets import QMessageBox
+        from PySide6.QtWidgets import QMessageBox
         monkeypatch.setattr(QMessageBox, "warning", staticmethod(lambda *a, **kw: None))
 
         window = MainWindow()

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PyQt6.QtWidgets import QFormLayout, QLabel, QLineEdit, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QFormLayout, QLabel, QLineEdit, QVBoxLayout, QWidget
 
 from daedalus.view.viewmodel.state_vm import StateViewModel, TransitionViewModel
 from daedalus.view.commands.state_commands import RenameStateCmd

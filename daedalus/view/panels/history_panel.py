@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from typing import Callable
 
-from PyQt6.QtGui import QColor
-from PyQt6.QtWidgets import QListWidget, QListWidgetItem, QVBoxLayout, QWidget
+from PySide6.QtGui import QColor
+from PySide6.QtWidgets import QListWidget, QListWidgetItem, QVBoxLayout, QWidget
 
 from daedalus.view.commands.base import CommandStack
 

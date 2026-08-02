@@ -5,8 +5,8 @@ import os
 from pathlib import Path
 from typing import Callable
 
-from PyQt6.QtCore import pyqtSignal
-from PyQt6.QtWidgets import QCheckBox, QLabel, QVBoxLayout, QWidget
+from PySide6.QtCore import Signal
+from PySide6.QtWidgets import QCheckBox, QLabel, QVBoxLayout, QWidget
 
 
 class PresetPicker(QWidget):
@@ -18,7 +18,7 @@ class PresetPicker(QWidget):
     names_provider가 주어지면 그 결과를 우선 사용한다.
     """
 
-    selection_changed = pyqtSignal()
+    selection_changed = Signal()
 
     def __init__(
         self,

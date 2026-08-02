@@ -3,9 +3,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from PyQt6.QtCore import QPointF, QRectF, Qt
-from PyQt6.QtGui import QBrush, QColor, QFont, QPainter, QPen
-from PyQt6.QtWidgets import QGraphicsItem, QStyleOptionGraphicsItem, QWidget
+from PySide6.QtCore import QPointF, QRectF, Qt
+from PySide6.QtGui import QBrush, QColor, QFont, QPainter, QPen
+from PySide6.QtWidgets import QGraphicsItem, QStyleOptionGraphicsItem, QWidget
 
 from daedalus.model.fsm.pseudo import EntryPoint, ExitPoint
 from daedalus.model.fsm.section import EventDef

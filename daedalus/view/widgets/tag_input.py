@@ -1,8 +1,8 @@
 # daedalus/view/widgets/tag_input.py
 from __future__ import annotations
 
-from PyQt6.QtCore import pyqtSignal
-from PyQt6.QtWidgets import (
+from PySide6.QtCore import Signal
+from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -15,7 +15,7 @@ from PyQt6.QtWidgets import (
 class _TagChip(QWidget):
     """개별 태그 칩 — 이름 + x 버튼."""
 
-    remove_requested = pyqtSignal(str)
+    remove_requested = Signal(str)
 
     def __init__(self, name: str, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -37,7 +37,7 @@ class _TagChip(QWidget):
 class TagInput(QWidget):
     """태그 입력 위젯 — list[str] 편집. Enter로 추가, x로 제거."""
 
-    tags_changed = pyqtSignal()
+    tags_changed = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)

@@ -1,8 +1,8 @@
 """ValidationPanel 통합 테스트 — F7 액션, 검증 흐름 (WP-J)."""
 from __future__ import annotations
 
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QKeySequence
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QKeySequence
 
 from daedalus.model.fsm.machine import StateMachine
 from daedalus.model.fsm.pseudo import EntryPoint, ExitPoint

@@ -1,7 +1,7 @@
 # daedalus/view/widgets/combo_widgets.py
 from __future__ import annotations
 
-from PyQt6.QtWidgets import QComboBox
+from PySide6.QtWidgets import QComboBox
 
 from daedalus.model.plugin.enums import (
     AgentColor,

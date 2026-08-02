@@ -1,5 +1,5 @@
 # daedalus/compiler/emit.py
-"""model → 마크다운 텍스트 생성 (순수 — 파일시스템·PyQt 무관).
+"""model → 마크다운 텍스트 생성 (순수 — 파일시스템·Qt 무관).
 
 여기서는 문자열만 만든다. 파일 쓰기·게이트는 project_compiler.py가 담당한다.
 출력은 결정적이다 (같은 모델 → 같은 문자열, LF 줄바꿈).

@@ -12,7 +12,7 @@ field_matrix.py(model)에서 분리된 위젯 선택 책임을 담는다. 위젯
 """
 from __future__ import annotations
 
-from PyQt6.QtWidgets import QCheckBox, QLineEdit, QSpinBox, QTextEdit, QWidget
+from PySide6.QtWidgets import QCheckBox, QLineEdit, QSpinBox, QTextEdit, QWidget
 
 from daedalus.model.plugin.enums import AgentField, SkillField
 from daedalus.view.widgets.combo_widgets import (

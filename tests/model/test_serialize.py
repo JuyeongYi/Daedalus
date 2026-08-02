@@ -317,7 +317,7 @@ def test_dangling_skill_ref_becomes_none():
 
 
 def test_serialize_is_pyqt_free():
-    """serialize.py(및 daedalus.model)가 PyQt6 없이 import 가능해야 한다."""
+    """serialize.py(및 daedalus.model)가 PySide6 없이 import 가능해야 한다."""
     import subprocess
     import sys
 
@@ -325,8 +325,8 @@ def test_serialize_is_pyqt_free():
         "import builtins\n"
         "_real = builtins.__import__\n"
         "def _blocked(name, *a, **k):\n"
-        "    if name == 'PyQt6' or name.startswith('PyQt6.'):\n"
-        "        raise ImportError('PyQt6 import blocked for purity test')\n"
+        "    if name == 'PySide6' or name.startswith('PySide6.'):\n"
+        "        raise ImportError('PySide6 import blocked for purity test')\n"
         "    return _real(name, *a, **k)\n"
         "builtins.__import__ = _blocked\n"
         "from daedalus.model.serialize import serialize_project, deserialize_project\n"
@@ -337,7 +337,7 @@ def test_serialize_is_pyqt_free():
     )
     result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
     assert result.returncode == 0, (
-        f"PyQt6 차단 하에 serialize import 실패:\n"
+        f"PySide6 차단 하에 serialize import 실패:\n"
         f"STDOUT: {result.stdout}\nSTDERR: {result.stderr}"
     )
     assert "OK" in result.stdout

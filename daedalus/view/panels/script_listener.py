@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from typing import Callable
 
-from PyQt6.QtGui import QFont
-from PyQt6.QtWidgets import (
+from PySide6.QtGui import QFont
+from PySide6.QtWidgets import (
     QHBoxLayout,
     QPushButton,
     QTextEdit,

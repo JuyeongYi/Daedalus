@@ -4,9 +4,9 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import TYPE_CHECKING, Callable
 
-from PyQt6.QtCore import QPointF, Qt, pyqtSignal
-from PyQt6.QtGui import QAction, QColor, QKeyEvent, QPen
-from PyQt6.QtWidgets import (
+from PySide6.QtCore import QPointF, Qt, Signal
+from PySide6.QtGui import QAction, QColor, QKeyEvent, QPen
+from PySide6.QtWidgets import (
     QGraphicsLineItem,
     QGraphicsScene,
     QGraphicsSceneContextMenuEvent,
@@ -63,7 +63,7 @@ _DRAG_LINE_COLOR = QColor("#4488ff")
 class FsmScene(QGraphicsScene):
     """FSM 노드 편집 씬."""
 
-    node_double_clicked = pyqtSignal(object)  # skill_ref
+    node_double_clicked = Signal(object)  # skill_ref
 
     def __init__(
         self,
@@ -899,7 +899,7 @@ class AgentFsmScene(FsmScene):
     def _change_exit_point_color(self, model) -> None:
         from daedalus.view.commands.exit_point_commands import ChangeExitPointColorCmd
         from daedalus.view.editors.skill_editor import _ColorPickerPopup
-        from PyQt6.QtGui import QCursor
+        from PySide6.QtGui import QCursor
 
         view = self.views()[0] if self.views() else None
         popup = _ColorPickerPopup(parent=view)

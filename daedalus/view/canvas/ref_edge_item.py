@@ -2,9 +2,9 @@
 """참조 스킬 연결선 — 상하 방향, Transfer Skill 부여 불가."""
 from __future__ import annotations
 
-from PyQt6.QtCore import QPointF, QRectF, Qt
-from PyQt6.QtGui import QColor, QPainter, QPainterPath, QPainterPathStroker, QPen
-from PyQt6.QtWidgets import QGraphicsPathItem, QStyleOptionGraphicsItem, QWidget
+from PySide6.QtCore import QPointF, QRectF, Qt
+from PySide6.QtGui import QColor, QPainter, QPainterPath, QPainterPathStroker, QPen
+from PySide6.QtWidgets import QGraphicsPathItem, QStyleOptionGraphicsItem, QWidget
 
 from daedalus.view.canvas.node_item import StateNodeItem
 from daedalus.view.canvas.ref_node_item import ReferenceNodeItem

@@ -1,9 +1,9 @@
 # daedalus/view/panels/registry_panel.py
 from __future__ import annotations
 
-from PyQt6.QtCore import QMimeData, QPoint, Qt, pyqtSignal
-from PyQt6.QtGui import QColor, QDrag
-from PyQt6.QtWidgets import (
+from PySide6.QtCore import QMimeData, QPoint, Qt, Signal
+from PySide6.QtGui import QColor, QDrag
+from PySide6.QtWidgets import (
     QAbstractItemView,
     QHBoxLayout,
     QLabel,
@@ -64,9 +64,9 @@ class _DraggableList(QListWidget):
 class _RegistrySection(QWidget):
     """레이블 + 리스트 + "+" 버튼을 묶은 레지스트리 섹션."""
 
-    add_requested = pyqtSignal()
-    item_double_clicked = pyqtSignal(object)
-    delete_requested = pyqtSignal(object)  # component
+    add_requested = Signal()
+    item_double_clicked = Signal(object)
+    delete_requested = Signal(object)  # component
 
     def __init__(self, label: str, color: QColor, no_place: bool = False, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -152,9 +152,9 @@ class _RegistrySection(QWidget):
 class RegistryPanel(QWidget):
     """스킬/에이전트 레지스트리 팔레트."""
 
-    component_double_clicked = pyqtSignal(object)
-    new_component_requested = pyqtSignal(str)  # kind: "procedural"|"declarative"|"transfer"|"agent"|"delegation_*"
-    component_delete_requested = pyqtSignal(object)  # component
+    component_double_clicked = Signal(object)
+    new_component_requested = Signal(str)  # kind: "procedural"|"declarative"|"transfer"|"agent"|"delegation_*"
+    component_delete_requested = Signal(object)  # component
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)

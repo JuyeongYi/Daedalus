@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QColor, QStandardItem, QStandardItemModel
-from PyQt6.QtWidgets import QHBoxLayout, QPushButton, QTreeView, QVBoxLayout, QWidget
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QColor, QStandardItem, QStandardItemModel
+from PySide6.QtWidgets import QHBoxLayout, QPushButton, QTreeView, QVBoxLayout, QWidget
 
 from daedalus.model.plugin.skill import DeclarativeSkill, ProceduralSkill
 from daedalus.model.project import PluginProject
@@ -17,7 +17,7 @@ _ROLE_COMPONENT = Qt.ItemDataRole.UserRole + 1
 class ProjectTreePanel(QWidget):
     """프로젝트 트리뷰 + 스킬 타입 필터 토글."""
 
-    component_double_clicked = pyqtSignal(object)
+    component_double_clicked = Signal(object)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)

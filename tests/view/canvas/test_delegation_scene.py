@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import pytest
-from PyQt6.QtCore import QPointF
+from PySide6.QtCore import QPointF
 
 from daedalus.model.fsm.machine import StateMachine
 from daedalus.model.fsm.pseudo import EntryPoint, ExitPoint

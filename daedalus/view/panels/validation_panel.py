@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from typing import Callable
 
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QColor
-from PyQt6.QtWidgets import (
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor
+from PySide6.QtWidgets import (
     QLabel,
     QTableWidget,
     QTableWidgetItem,
@@ -105,7 +105,7 @@ class ValidationPanel(QWidget):
 
         sev_item = QTableWidgetItem(icon)
         sev_item.setForeground(fg)
-        sev_item.setTextAlignment(int(Qt.AlignmentFlag.AlignCenter))
+        sev_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
         sev_item.setData(Qt.ItemDataRole.UserRole, err)
         self._table.setItem(row, _COL_SEVERITY, sev_item)
 

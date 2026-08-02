@@ -18,7 +18,7 @@ pytest는 `python -m pytest`로 실행한다 (`pytest` 직접 실행 시 command
 
 **컴파일러 패턴:** 순수 모델(model/) → 컴파일러(compiler/) → 플러그인 파일
 
-현재 구현 범위: **model/ + view/ + compiler/** (FSM 코어 + 플러그인 메타데이터 + PyQt6 에디터 + SKILL.md/agent .md 생성).
+현재 구현 범위: **model/ + view/ + compiler/** (FSM 코어 + 플러그인 메타데이터 + PySide6 에디터 + SKILL.md/agent .md 생성).
 
 ```
 daedalus/
@@ -50,14 +50,14 @@ daedalus/
 │   │   ├── hook_presets.py # BUILTIN_HOOK_PRESETS (복사용 훅 템플릿) + preset_copy
 │   │   └── field_matrix.py # FieldRule(emit 포함), SKILL_FIELD_MATRIX, AGENT_FIELD_MATRIX (스킬/에이전트 유형별 프론트매터 필드 규칙)
 │   ├── project.py           # PluginProject (최상위 컨테이너, name+description+version — plugin.json 매니페스트 소스), ReferencePlacement, tool_shelf, hook_library, blackboard(최상위), graph(워크플로 백킹 머신)+graph_layout
-│   │                       # + rename_component(project, component, new_name) — 이름 변경 + 문자열 참조 3종 일괄 갱신 (PyQt 무관)
+│   │                       # + rename_component(project, component, new_name) — 이름 변경 + 문자열 참조 3종 일괄 갱신 (Qt 무관)
 │   │                       # + remove_component(project, component) → list[str] — 모델 정리 (graph placement, skill_ref None화, 위임 agent_ref None화 등)
 │   ├── serialize.py         # serialize_project/deserialize_project (모델↔JSON dict, 안정 ID 기반)
 │   └── validation.py        # Validator + ValidationError + WARNING_RULES + is_warning (머신 규칙 19종 + 프로젝트 규칙 12종, 재귀)
-├── compiler/         # 순수 모델 → 플러그인 파일 (PyQt 무관)
+├── compiler/         # 순수 모델 → 플러그인 파일 (Qt 무관)
 │   ├── emit.py             # compile_skill/compile_agent/compile_hooks_json — model → SKILL.md/agent .md/hooks.json 텍스트 (결정적, LF)
 │   └── project_compiler.py # compile_project(project, out_dir) → CompileResult (검증 게이트 + 파일 쓰기)
-└── view/             # PyQt6 기반 노드 에디터
+└── view/             # PySide6 기반 노드 에디터
     ├── app.py              # 메인 윈도우 (Ctrl+N "새 프로젝트"(기본 이름 "new-plugin"), F7 "프로젝트 검증", Ctrl+B "컴파일", 파일→"프로젝트 속성...", 도구→"훅 라이브러리...")
     │                       # 컴포넌트 이름 변경: _FrontmatterPanel.renamed → _on_component_renamed (중복 거부 + rename_component 호출 + 탭 타이틀 동기화)
     │                       # 컴포넌트 삭제: 레지스트리 우클릭 → _on_delete_component (확인 다이얼로그 + remove_component + 탭 닫기 + notify)
@@ -126,7 +126,7 @@ daedalus/
 ### 안정 ID + 직렬화 (serialize.py)
 
 - **안정 ID:** `State`(베이스)/`Transition`/`StateMachine`/`Region`/`Variable`/`Skill`(베이스)/`AgentDefinition`/`DelegationDef`(베이스)에 `id: str = field(default_factory=lambda: uuid4().hex, kw_only=True)`. kw_only로 다중 상속 필드 순서 제약을 회피한다. eq=False 클래스는 identity 동등성/해시를 유지(id는 `__eq__`/`__hash__` 무관)하고, 값 동등성 클래스(Variable/Skill/Agent/Delegation)는 `compare=False`로 값 비교에서 제외한다.
-- **직렬화 원칙:** `serialize_project`/`deserialize_project`는 JSON 호환 dict(`"format": 1` 버전 키)를 만든다. **소유 객체는 인라인, 참조는 ID 문자열로 평탄화**한다 — Transition.source/target(state id), SimpleState.skill_ref·Transition.skill_ref(component id), StateMachine.initial_state/final_states(state id), Delegation.agent_ref(agent id). 다형성은 `kind` property를 태그로 재사용. enum은 `.value`↔타입 복원. 역직렬화는 2-pass(객체 생성+id 레지스트리 → 참조 해소)이고 dangling id는 None+경고. `Blackboard.parent`는 ID가 아니라 sub_machine 소유 구조로 재연결한다. serialize.py는 순수 모델(PyQt 무관).
+- **직렬화 원칙:** `serialize_project`/`deserialize_project`는 JSON 호환 dict(`"format": 1` 버전 키)를 만든다. **소유 객체는 인라인, 참조는 ID 문자열로 평탄화**한다 — Transition.source/target(state id), SimpleState.skill_ref·Transition.skill_ref(component id), StateMachine.initial_state/final_states(state id), Delegation.agent_ref(agent id). 다형성은 `kind` property를 태그로 재사용. enum은 `.value`↔타입 복원. 역직렬화는 2-pass(객체 생성+id 레지스트리 → 참조 해소)이고 dangling id는 None+경고. `Blackboard.parent`는 ID가 아니라 sub_machine 소유 구조로 재연결한다. serialize.py는 순수 모델(Qt 무관).
 - **프로젝트 그래프 직렬화:** `serialize_project`는 `graph`(`_ser_machine` 재사용)와 `graph_layout`을 왕복한다. 그래프 placement의 skill_ref는 component id로 평탄화되고, 역직렬화 시 pass1에서 등록된 skills/agents를 pass2가 해소한다(그래프 `_deser_machine`은 pass1에서 호출). 하위 호환: `"graph"` 키 부재(구버전 파일) → `_make_project_graph()`로 빈 그래프 생성(경고 없음). graph.blackboard.parent는 역직렬화 시 프로젝트 블랙보드로 재연결.
 - `AgentDefinition.graph_layout`/`PluginProject.graph_layout`의 키는 state.name이 아니라 **state.id**다 (이름 변경 시 레이아웃 유실 방지).
 
@@ -143,7 +143,7 @@ class FieldRule:
     emit: FieldEmit = FieldEmit.FRONTMATTER  # 컴파일러 배출 위치 (FRONTMATTER/BODY/INVOCATION/SETTINGS)
 ```
 
-`field_matrix.py`는 순수 모델(PyQt 무관)이다. 편집 위젯 매핑은 view 측 `daedalus/view/editors/field_widgets.py`의 `FIELD_WIDGETS: dict[SkillField, type[QWidget]]`(1차원, kind 무관)과 `AGENT_FIELD_WIDGETS: dict[AgentField, type[QWidget]]`로 분리되어 있다. 프론트매터 키는 `SkillField.frontmatter_key` property가 제공한다 (kebab-case, `WHEN_TO_USE`는 None — description/본문 합류는 컴파일러 정책). `AgentField.frontmatter_key`는 전 멤버 kebab-case 변환. FIXED 필드는 편집기 비노출이며 `fixed_value`는 컴파일러 출력 시 강제(config에 미기록). `AGENT_FIELD_MATRIX`는 에이전트 전용 1차원 매트릭스.
+`field_matrix.py`는 순수 모델(Qt 무관)이다. 편집 위젯 매핑은 view 측 `daedalus/view/editors/field_widgets.py`의 `FIELD_WIDGETS: dict[SkillField, type[QWidget]]`(1차원, kind 무관)과 `AGENT_FIELD_WIDGETS: dict[AgentField, type[QWidget]]`로 분리되어 있다. 프론트매터 키는 `SkillField.frontmatter_key` property가 제공한다 (kebab-case, `WHEN_TO_USE`는 None — description/본문 합류는 컴파일러 정책). `AgentField.frontmatter_key`는 전 멤버 kebab-case 변환. FIXED 필드는 편집기 비노출이며 `fixed_value`는 컴파일러 출력 시 강제(config에 미기록). `AGENT_FIELD_MATRIX`는 에이전트 전용 1차원 매트릭스.
 
 ### FieldType (통합 타입)
 
@@ -305,7 +305,7 @@ dataclass(값 동등성, unhashable) 유지 — 컬렉션 멤버십에는 list/`
 
 ## 컴파일러 (compiler/)
 
-`compile_project(project, out_dir) → CompileResult`. 순수 stdlib(PyQt 무관, import 순수성 테스트로 고정).
+`compile_project(project, out_dir) → CompileResult`. 순수 stdlib(Qt 무관, import 순수성 테스트로 고정).
 
 **출력 구조 (CC 플러그인 규약):**
 - `<out>/.claude-plugin/plugin.json` — 플러그인 매니페스트 (항상 생성 — 이게 없으면 산출 디렉토리를 CC 플러그인으로 설치할 수 없다)

@@ -154,7 +154,7 @@ def test_section_content_panel_saves_content(qapp):
 def test_variable_popup_has_entries(qapp):
     from daedalus.view.editors.body_editor import VariablePopup
     from daedalus.view.editors.variable_loader import load_variables
-    from PyQt6.QtWidgets import QFrame
+    from PySide6.QtWidgets import QFrame
     entries = load_variables()
     popup = VariablePopup(entries)
     assert isinstance(popup, QFrame)

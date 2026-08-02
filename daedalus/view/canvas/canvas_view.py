@@ -1,8 +1,8 @@
 # daedalus/view/canvas/canvas_view.py
 from __future__ import annotations
 
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import (
+from PySide6.QtCore import Qt
+from PySide6.QtGui import (
     QDragEnterEvent,
     QDropEvent,
     QMouseEvent,
@@ -12,7 +12,7 @@ from PyQt6.QtGui import (
     QWheelEvent,
     QResizeEvent,
 )
-from PyQt6.QtWidgets import QGraphicsView, QWidget
+from PySide6.QtWidgets import QGraphicsView, QWidget
 
 from daedalus.view.canvas.scene import FsmScene
 

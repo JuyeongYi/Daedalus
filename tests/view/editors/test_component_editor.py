@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import pytest
-from PyQt6.QtWidgets import QSplitter, QWidget
+from PySide6.QtWidgets import QSplitter, QWidget
 
 
 def _make_procedural():
@@ -110,7 +110,7 @@ def test_variable_popup_opens_at_button_global_pos(qapp):
 
     회귀: 패널 상대 좌표를 move()에 넘기면 화면 좌상단 근처에 떴다.
     """
-    from PyQt6.QtCore import QPoint
+    from PySide6.QtCore import QPoint
     from daedalus.view.editors.component_editor import ComponentEditor
     comp = _make_declarative()
     editor = ComponentEditor(comp)

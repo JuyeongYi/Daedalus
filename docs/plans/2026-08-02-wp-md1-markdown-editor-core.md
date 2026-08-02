@@ -39,7 +39,7 @@ QOwnNotes의 에디터). 아키텍처가 우리와 같은 세계(QPlainTextEdit 
 
 하이라이팅 규칙과 편집 동작은 qmarkdowntextedit
 (https://github.com/pbek/qmarkdowntextedit, MIT License,
-Copyright (c) 2014-2026 Patrizio Bekerle)의 설계를 PyQt6로 포팅했다.
+Copyright (c) 2014-2026 Patrizio Bekerle)의 설계를 PySide6로 포팅했다.
 """
 ```
 

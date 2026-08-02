@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from PyQt6.QtCore import QPointF
-from PyQt6.QtWidgets import QTabWidget
+from PySide6.QtCore import QPointF
+from PySide6.QtWidgets import QTabWidget
 
 from daedalus.model.fsm.machine import StateMachine
 from daedalus.model.fsm.pseudo import EntryPoint, ExitPoint
@@ -131,9 +131,9 @@ def test_agent_fsm_scene_delete_state_guard_blocks_entry_point(qapp):
 
 def test_agent_fsm_scene_delete_key_does_not_remove_entry_point(qapp):
     """Delete 키를 눌러도 EntryPoint는 삭제되지 않아야 한다."""
-    from PyQt6.QtCore import Qt
-    from PyQt6.QtGui import QKeyEvent
-    from PyQt6.QtWidgets import QApplication
+    from PySide6.QtCore import Qt
+    from PySide6.QtGui import QKeyEvent
+    from PySide6.QtWidgets import QApplication
     from daedalus.model.fsm.pseudo import EntryPoint
     from daedalus.view.canvas.scene import AgentFsmScene
     from daedalus.view.viewmodel.project_vm import ProjectViewModel
@@ -254,8 +254,8 @@ def test_migrate_fsm_removes_orphan_from_final_states(qapp):
 
 def test_agent_fsm_scene_delete_key_preserves_last_exit_point_in_multi_select(qapp):
     """두 개 ExitPoint를 모두 선택해 Delete해도 마지막 하나는 살아남아야 한다."""
-    from PyQt6.QtCore import Qt
-    from PyQt6.QtGui import QKeyEvent
+    from PySide6.QtCore import Qt
+    from PySide6.QtGui import QKeyEvent
     from daedalus.model.fsm.pseudo import EntryPoint
     from daedalus.model.fsm.machine import StateMachine
     from daedalus.view.canvas.scene import AgentFsmScene

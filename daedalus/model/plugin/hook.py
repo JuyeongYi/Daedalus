@@ -1,5 +1,5 @@
 # daedalus/model/plugin/hook.py
-"""훅(Hook) 모델 — CC lifecycle hooks 정의 (순수 모델, PyQt 무관).
+"""훅(Hook) 모델 — CC lifecycle hooks 정의 (순수 모델, Qt 무관).
 
 훅은 두 곳에서 쓰인다:
   1. 에이전트 SETTINGS → `<out>/hooks/hooks.json` (CC settings hooks 스키마).
