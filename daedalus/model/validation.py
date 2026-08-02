@@ -81,6 +81,10 @@ WARNING_RULES: frozenset[str] = frozenset({
     "dangling_blackboard_ref",
     "orphan_blackboard_field",
     "invalid_blackboard_field_type",
+    # 파일 참조(files/) 경고 — WP-FR. 검사 로직은 Validator가 아니라
+    # compiler/project_compiler.py 소관(검증기는 파일시스템 무접근 순수성
+    # 유지)이지만, is_warning 판정 일관성을 위해 여기 등록한다.
+    "dangling_file_ref",
 })
 
 

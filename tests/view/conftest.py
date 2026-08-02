@@ -24,3 +24,5 @@ def _reset_hook_name_provider():
     )
     set_tool_candidate_provider(None)
     set_blackboard_candidate_provider(None)
+    from daedalus.view.widgets.markdown_editor import set_files_root_provider
+    set_files_root_provider(None)

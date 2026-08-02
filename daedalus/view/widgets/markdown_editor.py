@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from pathlib import Path, PurePosixPath
+from typing import Callable
 
 from PySide6.QtCore import QEvent, QTimer, Qt, Signal
 from PySide6.QtGui import (
@@ -417,6 +419,48 @@ class _SlashMenu(QListWidget):
         self.setCurrentItem(item)
         self._editor._confirm_slash_item()
         self._editor.setFocus()
+
+
+# --- files/ 루트 제공자 (WP-FR) — TagInput의 도구/블랙보드 후보 제공자와 동일한
+# 패턴. app이 `_current_path` 변화에 맞춰 등록하고, MarkdownEditor의 드롭 치환이
+# 조회한다. None이면(미저장 프로젝트 등) 드롭 치환이 비활성화되고 기본 동작으로
+# 흐른다.
+_FILES_ROOT_PROVIDER: Callable[[], str | None] | None = None
+
+
+def set_files_root_provider(provider: Callable[[], str | None] | None) -> None:
+    """MarkdownEditor 드롭 치환이 참조할 현재 프로젝트 files/ 루트 제공자를 등록한다."""
+    global _FILES_ROOT_PROVIDER
+    _FILES_ROOT_PROVIDER = provider
+
+
+def get_files_root() -> str | None:
+    """등록된 제공자에서 현재 files/ 루트 경로를 가져온다 (없으면 None)."""
+    if _FILES_ROOT_PROVIDER is not None:
+        return _FILES_ROOT_PROVIDER()
+    return None
+
+
+def _file_ref_token(local_path: str, files_root: str) -> str | None:
+    """local_path가 files_root 하위 파일이면 참조 토큰을 계산한다. 아니면 None.
+
+    토큰은 ``${CLAUDE_PLUGIN_ROOT}/files/<상대경로>`` 고정 — CC 공식 문서
+    (plugins-reference §Environment variables)가 스킬/에이전트 본문 어디서나
+    치환됨을 명시한다. 경로 구분자는 POSIX(``/``)로 정규화한다.
+
+    경로에 공백이 있으면 마크다운 관례대로 ``<...>``로 감싼다 — 감싸지 않으면
+    컴파일러의 참조 스캐너가 공백에서 끊어 자기가 만든 토큰을 dangling으로
+    오탐한다(리뷰 지적: Part B/C 자기모순).
+    """
+    try:
+        rel = Path(local_path).resolve().relative_to(Path(files_root).resolve())
+    except ValueError:
+        return None
+    if str(rel) == ".":
+        return None  # files_root 자체가 드롭된 경우 — 삽입 대상 아님
+    posix_rel = PurePosixPath(rel.as_posix())
+    token = f"${{CLAUDE_PLUGIN_ROOT}}/files/{posix_rel}"
+    return f"<{token}>" if " " in str(posix_rel) else token
 
 
 class MarkdownEditor(QPlainTextEdit):
@@ -950,6 +994,78 @@ class MarkdownEditor(QPlainTextEdit):
         toggle_cursor.setPosition(block.position() + m.end(2), QTextCursor.MoveMode.KeepAnchor)
         toggle_cursor.insertText(new_char)
         return True
+
+    # --- 파일 드롭 치환 (WP-FR) ---
+
+    def _collect_file_ref_tokens(self, mime) -> list[str]:
+        """mime의 file URL 중 현재 files/ 루트 하위인 것만 토큰으로 변환한다.
+
+        files 밖 파일·비파일 mime은 빈 리스트를 반환 — 호출부가 기존
+        QPlainTextEdit 기본 처리(super())로 흘려보낸다.
+        """
+        if mime is None or not mime.hasUrls():
+            return []
+        files_root = get_files_root()
+        if not files_root:
+            return []
+        tokens: list[str] = []
+        for url in mime.urls():
+            if not url.isLocalFile():
+                continue
+            token = _file_ref_token(url.toLocalFile(), files_root)
+            if token is not None:
+                tokens.append(token)
+        return tokens
+
+    def _non_file_ref_urls(self, mime) -> list[str]:
+        """토큰으로 변환되지 **않은** URL의 원문 목록 (혼합 드롭 보존용)."""
+        if mime is None or not mime.hasUrls():
+            return []
+        files_root = get_files_root()
+        rest: list[str] = []
+        for url in mime.urls():
+            if url.isLocalFile() and files_root and _file_ref_token(
+                url.toLocalFile(), files_root
+            ):
+                continue
+            rest.append(url.toString())
+        return rest
+
+    def dragEnterEvent(self, event) -> None:  # noqa: N802 (Qt override)
+        if self._collect_file_ref_tokens(event.mimeData()):
+            event.acceptProposedAction()
+            return
+        super().dragEnterEvent(event)
+
+    def dragMoveEvent(self, event) -> None:  # noqa: N802 (Qt override)
+        if self._collect_file_ref_tokens(event.mimeData()):
+            event.acceptProposedAction()
+            return
+        super().dragMoveEvent(event)
+
+    def dropEvent(self, event) -> None:  # noqa: N802 (Qt override)
+        """files/ 하위 file URL은 드롭 지점에 참조 토큰을 삽입(복수면 줄바꿈
+        구분)하고, 그 외(일반 텍스트 드래그 등)는 기존 QPlainTextEdit 동작으로
+        흘린다.
+
+        files 안팎이 섞인 드롭이면 밖 파일의 URL도 함께 남긴다 — 안쪽 토큰만
+        넣고 바깥을 버리면 master가 삽입하던 내용이 조용히 사라진다(리뷰 지적).
+        """
+        tokens = self._collect_file_ref_tokens(event.mimeData())
+        if not tokens:
+            super().dropEvent(event)
+            return
+        tokens = tokens + self._non_file_ref_urls(event.mimeData())
+        drop_point = self.cursorForPosition(event.position().toPoint())
+        edit_cursor = self.textCursor()
+        edit_cursor.setPosition(drop_point.position())
+        edit_cursor.beginEditBlock()
+        edit_cursor.insertText("\n".join(tokens))
+        edit_cursor.endEditBlock()
+        result_cursor = self.textCursor()
+        result_cursor.setPosition(edit_cursor.position())
+        self.setTextCursor(result_cursor)
+        event.acceptProposedAction()
 
 
 _SEARCH_MATCH_BG = QColor("#665522")

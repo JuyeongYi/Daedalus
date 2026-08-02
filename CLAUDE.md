@@ -59,7 +59,9 @@ daedalus/
 │   └── validation.py        # Validator + ValidationError + WARNING_RULES + is_warning (머신 규칙 20종 + 프로젝트 규칙 14종, 재귀)
 ├── compiler/         # 순수 모델 → 플러그인 파일 (Qt 무관)
 │   ├── emit.py             # compile_skill/compile_agent/compile_hooks_json — model → SKILL.md/agent .md/hooks.json 텍스트 (결정적, LF)
-│   └── project_compiler.py # compile_project(project, out_dir) → CompileResult (검증 게이트 + 파일 쓰기)
+│   └── project_compiler.py # compile_project(project, out_dir, files_dir=None) → CompileResult (검증 게이트 + 파일 쓰기)
+│                           # files_dir(WP-FR, 선택): 실존 디렉토리면 <out>/files/ 정렬 순회 복사(_copy_files_tree, 심볼릭 링크 미추종) +
+│                           #   dangling_file_ref 스캔(_scan_dangling_file_refs). 생략 시 기존 산출 완전 불변(하위 호환).
 └── view/             # PySide6 기반 노드 에디터
     ├── app.py              # 메인 윈도우 (Ctrl+N "새 프로젝트"(기본 이름 "new-plugin"), F7 "프로젝트 검증", Ctrl+B "컴파일", 파일→"프로젝트 속성...", 도구→"훅 라이브러리...")
     │                       # 컴포넌트 이름 변경: _FrontmatterPanel.renamed → _on_component_renamed (중복 거부 + rename_component 호출 + 탭 타이틀 동기화)
@@ -68,6 +70,9 @@ daedalus/
     │                       # 탭 구조(WP-BB): 인덱스 0=프로젝트 FSM 캔버스, 1=블랙보드 편집(BlackboardPanel, 상주·닫기 불가) 고정 2개 — _close_tab이 두
     │                       #   인덱스 모두 거부, load_project의 탭 정리 루프는 인덱스 2부터 닫는다. set_project가 blackboard_panel.set_project(project) +
     │                       #   tag_input.set_blackboard_candidate_provider(blackboard_candidate_strings로 바인딩)를 배선.
+    │                       # 파일 독(WP-FR): _setup_docks가 FilePanel을 "파일" 독으로 배치하고 markdown_editor.set_files_root_provider(lambda: self._file_panel.files_root())를
+    │                       #   등록. _sync_files_root(_current_path 기준 project_dir/files 재계산)를 _save_to_path/open_path/_new_project 끝에서 호출.
+    │                       #   _compile_project_dialog는 _current_path 기준 files_dir를 compile_project에 전달(미저장이면 None).
     ├── canvas/             # GraphicsView/Scene, NodeItem, EdgeItem, RefNodeItem, RefEdgeItem, sync(VM→모델 동기화 — Qt 무관)
     │                       # 엣지 리루트(WP-ER): TransitionEdgeItem.update_path가 TransitionViewModel.waypoints(경유점)를 경유하는
     │                       #   구간별 베지어 곡선을 그린다. 선택 시 자식 WaypointHandleItem(작은 원)을 표시 — 더블클릭/컨텍스트 메뉴로
@@ -100,8 +105,10 @@ daedalus/
     │                       # 입력 경로 편집(WP-IC): 기존 skill_editor._TransferOnPanel(transfer_on 편집 위젯, list[EventDef] 범용)을 그대로
     │                       #   재사용해 ProceduralSkill/DeclarativeSkill(SkillEditor 우측 패널)과 AgentDefinition(agent_editor Content 탭
     │                       #   우측 패널, _entry_paths_panel)에 "⇤ 입력 경로" 패널을 추가 — transfer_on(출력 이벤트) 편집과 대칭 위치·패턴.
-    ├── panels/             # TreePanel, PropertyPanel, RegistryPanel, HistoryPanel, ValidationPanel (F7 검증 결과)
+    ├── panels/             # TreePanel, PropertyPanel, RegistryPanel, HistoryPanel, ValidationPanel (F7 검증 결과), FilePanel(WP-FR)
     │                       # RegistryPanel: component_delete_requested 시그널 + _RegistrySection 우클릭 "삭제" 컨텍스트 메뉴
+    │                       # FilePanel(WP-FR): QTreeView + QFileSystemModel(root=<project_dir>/files). files/ 부재 시 안내+생성 버튼, 새로고침 버튼.
+    │                       #   set_project_dir(path|None) — 저장/열기/새 프로젝트 시 app이 호출. files_root()가 실존 시에만 경로 문자열 반환(provider 단일 진실).
     │                       # PropertyPanel.show_state(WP-BB): reads/writes TagInput 2개 — get_blackboard_candidates()로 자동완성 후보(호출 시점
     │                       #   스냅샷, get_tool_candidates와 동일 정책), tags_changed → state.reads/writes 직접 기록(커맨드화 범위 밖) + notify. 프로젝트
     │                       #   캔버스 placement와 에이전트 FSM 상태(agent_editor 그래프 탭에 임베드된 PropertyPanel) 양쪽에서 동일하게 편집 가능.
@@ -121,6 +128,10 @@ daedalus/
                             #   ALLOWED_TOOLS/TOOLS/DISALLOWED_TOOLS 필드 생성 시 후보를 부착(_wire_tool_candidates) — PATHS/SKILLS/MCP_SERVERS는 제외
                             #   set_blackboard_candidate_provider/get_blackboard_candidates(WP-BB, 동일 provider 패턴)는 State.reads/writes TagInput
                             #   (PropertyPanel)의 "클래스"/"클래스.필드" 후보 — app.py의 set_project가 blackboard_candidate_strings(project)를 등록.
+                            #   파일 드롭 치환(WP-FR): markdown_editor.set_files_root_provider/get_files_root(동일 provider 패턴) — MarkdownEditor.
+                            #   dragEnterEvent/dragMoveEvent/dropEvent가 mime의 file URL 중 현재 files/ 루트 하위인 것만 _file_ref_token으로
+                            #   변환해 드롭 지점에 삽입(복수 파일=줄바꿈 구분). files 밖·비파일 mime은 super()로 흘려 기존 QPlainTextEdit
+                            #   기본 드롭(텍스트 드래그 등)을 보존한다. app.py의 _setup_docks가 등록.
 ```
 
 ## 핵심 개념
@@ -398,6 +409,18 @@ ParallelState.region 재귀)를 쓰며, project.skills(fsm)/project.agents(fsm +
 
 훅은 CC lifecycle hooks의 설계 모델이다. `hook.py`의 `HookDef`(name·event·matcher·command·timeout, 안정 ID)가 단일 진실이고 `PluginProject.hook_library`에 모인다(tool_shelf와 동일 shelf 패턴). `HookEvent`는 CC 9종 이벤트(PreToolUse/PostToolUse/UserPromptSubmit/SessionStart/SessionEnd/Stop/SubagentStop/Notification/PreCompact). `ComponentConfig.hooks: dict`는 **이름 참조**다 — 키=hook_library의 HookDef.name, 값=오버라이드(빈 dict면 정의 그대로). `hook_presets.py`의 `BUILTIN_HOOK_PRESETS`(6종)는 복사해 출발점으로 쓰는 템플릿이며 `preset_copy`로 새 id 사본을 만든다. 컴파일러는 참조된 훅을 모아 `<out>/hooks/hooks.json`(CC settings hooks 스키마: matcher는 Pre/PostToolUse만, timeout은 있을 때만, 이벤트 키=HookEvent 선언 순서, 같은 이벤트 복수 훅=라이브러리 순서)을 생성하고, 스킬 프론트매터에는 `hooks: [이름, …]` 목록만 표기한다. UI는 `editors/hook_editor.HookLibraryDialog`(도구 메뉴) + `widgets/preset_picker`의 `set_hook_name_provider`로 HookPresetPicker가 hook_library 이름을 동적 표시한다.
 
+### 파일 참조 (files/) — WP-FR
+
+플러그인에 동봉할 파일(템플릿·체크리스트·데이터)을 프로젝트 옆 `files/` 폴더에 두면 트리로 보이고, 컴파일 시 산출물 하위로 그대로 복사되고, 마크다운 에디터에 드래그하면 참조 경로로 치환된다. 별도 모델 계층은 없다 — files/의 단일 진실은 파일시스템 자체이고, 프로젝트 저장 경로(`_current_path`)가 유일한 배선 지점이다.
+
+- **소스 위치:** 프로젝트 저장 파일 옆(`<dir>/my.daedalus.json` + `<dir>/files/A/c.txt`). 미저장 프로젝트(`_current_path`가 None)는 기능이 비활성화되어 안내만 표시한다.
+- **산출 위치:** `<out>/files/A/c.txt` — 구조 그대로 복사.
+- **참조 토큰(확정):** `${CLAUDE_PLUGIN_ROOT}/files/A/c.txt` — CC 공식 문서(plugins-reference §Environment variables)가 스킬/에이전트 본문 어디서나 치환됨을 명시한다(`$PLUGIN_DIR`는 표준에 없음). 경로 구분자는 POSIX(`/`)로 정규화한다.
+- **FilePanel(view/panels/file_panel.py):** `QTreeView` + `QFileSystemModel`(root = `<project_dir>/files`). files/ 부재 시 안내 라벨 + "files 폴더 만들기" 버튼, 새로고침 버튼(루트 생성 직후 재바인딩용). `app.py`가 독 위젯 "파일"로 배치하고 `_sync_files_root`(저장/열기/새 프로젝트 등 `_current_path` 변경 지점마다 호출)로 `set_project_dir`을 갱신한다. 드래그 소스는 `QFileSystemModel` 기본 mime(file URL) 그대로 사용.
+- **드롭 치환(widgets/markdown_editor.py):** `MarkdownEditor.dragEnterEvent`/`dragMoveEvent`/`dropEvent`가 mime의 file URL 중 현재 files/ 루트 하위인 것만 `_file_ref_token`으로 변환해 드롭 지점에 삽입(복수 파일이면 줄바꿈 구분). files 밖 파일·비파일 mime(일반 텍스트 드래그 등)은 토큰 후보가 없으므로 그대로 `super()`로 흘러 기존 QPlainTextEdit 기본 드롭 동작을 보존한다. 루트 주입은 TagInput의 도구/블랙보드 후보와 동일한 provider 패턴 — `set_files_root_provider(callable)`/`get_files_root()`(모듈 전역, app이 `_sync_files_root`에서 `lambda: self._file_panel.files_root()`로 등록).
+- **컴파일 복사(compiler/project_compiler.py):** `compile_project(project, out_dir, files_dir=None)` — files_dir가 실존 디렉토리면 게이트 통과 후(에러 시엔 복사도 스킵) `<out>/files/`로 정렬 순회 복사(`_copy_files_tree`, 결정적, 심볼릭 링크 미추종 — 디렉토리는 재귀 안 함·파일은 복사 안 함)한다. 기존 `<out>/files/`는 복사 전 삭제(out 전체가 아니라 files/만 — 스테일 잔존 방지). `CompileResult.copied_files`에 복사된 파일 경로 목록을 담는다. files_dir 생략(None) 시 기존 산출 파일/문자열이 완전히 불변이라 하위 호환이며, 헤드리스 `compile_project` 직접 호출부는 변경 없이 그대로 동작한다. `app._compile_project_dialog`가 `_current_path` 기준 `<project_dir>/files`를 전달.
+- **dangling_file_ref 경고:** `_scan_dangling_file_refs`가 files_dir 지정 시(None이면 스캔 생략) 스킬/에이전트(로컬 스킬 포함) body에서 `${CLAUDE_PLUGIN_ROOT}/files/<경로>` 패턴을 스캔해 files_dir에 실존하지 않는 참조를 `dangling_file_ref` 경고로 `CompileResult.warnings`에 추가한다(게이트 차단 아님). Validator가 아니라 컴파일러 소관 — 검증기는 파일시스템 무접근 순수성을 유지한다. `is_warning` 판정 일관성을 위해 rule 이름은 `validation.py`의 `WARNING_RULES`에도 등록했다(실제 emit은 project_compiler.py — `tests/model/test_validation_severity.py`의 소스 introspection 완전성 테스트는 `_EXTERNALLY_EMITTED_RULES`로 이 예외를 명시).
+
 ### 전략 패턴 (Guard / Action 공통)
 
 ```
@@ -455,7 +478,7 @@ dataclass(값 동등성, unhashable) 유지 — 컬렉션 멤버십에는 list/`
 
 ## 컴파일러 (compiler/)
 
-`compile_project(project, out_dir) → CompileResult`. 순수 stdlib(Qt 무관, import 순수성 테스트로 고정).
+`compile_project(project, out_dir, files_dir=None) → CompileResult`. 순수 stdlib(Qt 무관, import 순수성 테스트로 고정).
 
 **출력 구조 (CC 플러그인 규약):**
 - `<out>/.claude-plugin/plugin.json` — 플러그인 매니페스트 (항상 생성 — 이게 없으면 산출 디렉토리를 CC 플러그인으로 설치할 수 없다)
@@ -498,6 +521,7 @@ dataclass(값 동등성, unhashable) 유지 — 컬렉션 멤버십에는 list/`
     - **TransferSkill**: local이 아니고 **project에 placement가 1개 이상**일 때 본문 끝에 "## 진행 기록" 헤딩 + `_TRANSFER_PROGRESS_NOTE`(전이 중 note 기록 지시)를 배출한다(진행 파일이 존재하지 않는 프로젝트에서의 고아 지시 방지).
     - **SessionStart 훅 합성**: `PluginProject.emit_progress_hook: bool = True`(직렬화 왕복, 구버전 키 부재 시 기본 True)이고 프로젝트 그래프에 placement가 1개 이상이면, `compile_hooks_json`이 `hook_library`를 오염시키지 않고 컴파일 시점에 SessionStart 이벤트에 진행 상태 주입 커맨드(`cat state/__progress__.json 2>/dev/null || true`)를 합성해 합류시킨다(사용자 정의 SessionStart 훅 뒤에 이어붙어 공존). `emit_progress_hook=False`이거나 placement가 0개면 합성 훅 미배출. 토글은 프로젝트 속성 다이얼로그의 "세션 시작 시 진행 상태 자동 주입 (SessionStart 훅)" 체크박스. 합성 커맨드는 POSIX 셸 전제(`cat`/`||`) — 비POSIX 환경에서는 토글로 끄는 것이 대응책(훅 프리셋과 동일한 전제).
 13. **진입 맥락 + 호출 계약 (WP-IC)**: 배치된 전역 `ProceduralSkill`/`DeclarativeSkill`에서 incoming 전이가 1개 이상이면, `_entry_context_section`이 "## 작업 재개" 프리앰블 뒤·본문 앞에 "## 진입 맥락" 단락을 배출한다("`state/__progress__.json`의 `prev`를 확인하고 아래에서 해당 출처 항목을 따르라" 도입 + entry_paths 선언 순서의 포트별 그룹[`### 경로: <name>` + EventDef.description, 기본 경로 `### 기본 경로`는 항상 마지막] + 그룹 안 출처 이름순 항목["- `<출처>`에서 [조건]로 진입", 전이 스킬(TransferSkill) 지침 수행 문구·에이전트 출처의 "위임 완료 후" 문구 합류]). incoming이 있는 포트만 배출, entry_paths에 없는 target_port(rename 고아)는 기본 경로로 수렴. incoming 0개 배치·미배치·로컬은 산출 변화 없음. `compile_agent`는 `caller_contracts`(잠금 계약 카드)가 비어있지 않으면 본문 뒤에 "## 호출 계약" 단락(각 Section을 `### <title>` + content로 선언 순서 나열)을 배출한다(기존 컴파일 산출 누락 해소).
+14. **files/ 복사 + dangling_file_ref 경고 (WP-FR)**: `files_dir`가 실존 디렉토리면(게이트 통과 시에만) `_copy_files_tree`가 `<out>/files/`로 정렬 순회 복사한다(결정적, 심볼릭 링크 미추종 — 디렉토리는 재귀 안 함·파일은 복사 안 함). 기존 `<out>/files/`는 복사 전 삭제(out 전체가 아니라 files/만). 복사된 파일 경로는 `CompileResult.copied_files`에 담긴다. `files_dir`가 주어지면(실존 여부 무관) `_scan_dangling_file_refs`가 전역 스킬·에이전트·로컬 스킬 body에서 `${CLAUDE_PLUGIN_ROOT}/files/<경로>` 참조 토큰을 스캔해 files_dir에 실존하지 않으면 `dangling_file_ref` 경고를 `CompileResult.warnings`에 추가한다(게이트 차단 아님). `files_dir` 생략(None) 시 복사·스캔 모두 생략되어 기존 산출 파일/문자열이 완전히 불변(하위 호환).
 
 출력은 결정적(같은 모델 → 같은 텍스트), LF 줄바꿈, UTF-8(BOM 없음). 텍스트 생성(`compile_skill`/`compile_agent`)은 파일시스템과 분리되어 문자열 단위 테스트 가능.
 

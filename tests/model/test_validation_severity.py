@@ -52,6 +52,15 @@ _WARN_RULES = frozenset({
     "hook_matcher_without_tool_event",
     "dangling_blackboard_ref",
     "orphan_blackboard_field",
+    "dangling_file_ref",  # WP-FR — 아래 _EXTERNALLY_EMITTED_RULES 참조
+})
+
+# validation.py 밖(컴파일러 등)에서 emit되지만 WARNING_RULES에는 등록된 규칙 —
+# is_warning 판정 일관성을 위해 등록하되, _emitted_rules_from_source() 소스
+# introspection 대상에서는 제외한다(검증기는 파일시스템 무접근 순수성을
+# 유지하므로 이 rule 문자열이 validation.py 안에 나타나지 않는다).
+_EXTERNALLY_EMITTED_RULES = frozenset({
+    "dangling_file_ref",  # daedalus/compiler/project_compiler.py 소관 (WP-FR)
 })
 
 
@@ -82,7 +91,8 @@ def test_every_emitted_rule_is_classified():
         f"등급을 지정하라"
     )
     # 역방향: 분류표에 있으나 더 이상 emit되지 않는 유령 규칙도 검출
-    ghost = classified - emitted
+    # (컴파일러 등 validation.py 밖에서 emit되는 규칙은 제외 — 위 참조)
+    ghost = classified - emitted - _EXTERNALLY_EMITTED_RULES
     assert not ghost, f"emit되지 않는 유령 규칙: {sorted(ghost)}"
 
 

@@ -4,8 +4,8 @@ from dataclasses import dataclass
 
 import pytest
 
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor, QFont, QTextCursor, QTextDocument
+from PySide6.QtCore import QMimeData, QPointF, Qt, QUrl
+from PySide6.QtGui import QColor, QDragEnterEvent, QDropEvent, QFont, QTextCursor, QTextDocument
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QPushButton
 
@@ -17,6 +17,7 @@ from daedalus.view.widgets.markdown_editor import (
     MarkdownToolbar,
     SearchBar,
     TocPanel,
+    set_files_root_provider,
 )
 
 
@@ -819,3 +820,178 @@ def test_multiline_selection_prefill_skipped(qapp):
     bar = SearchBar(ed)
     bar.open(prefill="line one\u2029line two")
     assert bar._search_edit.text() == ""
+
+
+# --- 파일 드롭 치환 (WP-FR Part B) ---
+
+
+def _drop_event_at(ed: MarkdownEditor, cursor_pos: int, mime: QMimeData) -> QDropEvent:
+    """ed의 cursor_pos 위치에 해당하는 화면 좌표에서 드롭 이벤트를 합성한다."""
+    cursor = ed.textCursor()
+    cursor.setPosition(cursor_pos)
+    ed.setTextCursor(cursor)
+    rect = ed.cursorRect()
+    pos = QPointF(rect.left(), rect.top() + 2)
+    return QDropEvent(
+        pos, Qt.DropAction.CopyAction, mime,
+        Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier,
+    )
+
+
+def _prepare_editor(qapp, text: str = "hello world") -> MarkdownEditor:
+    ed = MarkdownEditor()
+    ed.setPlainText(text)
+    ed.resize(400, 100)
+    return ed
+
+
+def test_drop_file_under_files_root_inserts_token(qapp, tmp_path):
+    """files/ 하위(중첩 경로) 파일 URL 드롭 → 토큰 경로가 커서 위치에 삽입."""
+    files_root = tmp_path / "files"
+    nested = files_root / "A"
+    nested.mkdir(parents=True)
+    target = nested / "c.txt"
+    target.write_text("x", encoding="utf-8")
+    set_files_root_provider(lambda: str(files_root))
+
+    ed = _prepare_editor(qapp)
+    mime = QMimeData()
+    mime.setUrls([QUrl.fromLocalFile(str(target))])
+    event = _drop_event_at(ed, 5, mime)
+    ed.dropEvent(event)
+
+    assert event.isAccepted()
+    assert ed.toPlainText() == "hello${CLAUDE_PLUGIN_ROOT}/files/A/c.txt world"
+
+
+def test_drop_multiple_files_joined_by_newline(qapp, tmp_path):
+    """복수 파일 드롭 → 줄바꿈으로 구분된 토큰이 삽입된다."""
+    files_root = tmp_path / "files"
+    files_root.mkdir()
+    f1 = files_root / "a.txt"
+    f2 = files_root / "b.txt"
+    f1.write_text("1", encoding="utf-8")
+    f2.write_text("2", encoding="utf-8")
+    set_files_root_provider(lambda: str(files_root))
+
+    ed = _prepare_editor(qapp, text="")
+    mime = QMimeData()
+    mime.setUrls([QUrl.fromLocalFile(str(f1)), QUrl.fromLocalFile(str(f2))])
+    event = _drop_event_at(ed, 0, mime)
+    ed.dropEvent(event)
+
+    assert ed.toPlainText() == (
+        "${CLAUDE_PLUGIN_ROOT}/files/a.txt\n${CLAUDE_PLUGIN_ROOT}/files/b.txt"
+    )
+
+
+def test_drop_file_outside_files_root_falls_through(qapp, tmp_path):
+    """files/ 밖 파일은 토큰으로 치환하지 않는다(기존 기본 처리로 흘림)."""
+    files_root = tmp_path / "files"
+    files_root.mkdir()
+    outside = tmp_path / "outside.txt"
+    outside.write_text("x", encoding="utf-8")
+    set_files_root_provider(lambda: str(files_root))
+
+    ed = _prepare_editor(qapp)
+    mime = QMimeData()
+    mime.setUrls([QUrl.fromLocalFile(str(outside))])
+    event = _drop_event_at(ed, 5, mime)
+    ed.dropEvent(event)
+
+    assert "${CLAUDE_PLUGIN_ROOT}" not in ed.toPlainText()
+
+
+def test_drop_without_files_root_provider_falls_through(qapp, tmp_path):
+    """files 루트 제공자가 없으면(미저장 프로젝트) 토큰 치환을 하지 않는다."""
+    target = tmp_path / "c.txt"
+    target.write_text("x", encoding="utf-8")
+    # provider 미등록 상태(conftest autouse가 None으로 초기화해 둠)
+
+    ed = _prepare_editor(qapp)
+    mime = QMimeData()
+    mime.setUrls([QUrl.fromLocalFile(str(target))])
+    event = _drop_event_at(ed, 5, mime)
+    ed.dropEvent(event)
+
+    assert "${CLAUDE_PLUGIN_ROOT}" not in ed.toPlainText()
+
+
+def test_drop_plain_text_still_works(qapp):
+    """files 무관 일반 텍스트 드롭 — 기존 QPlainTextEdit 기본 동작 유지."""
+    ed = _prepare_editor(qapp)
+    mime = QMimeData()
+    mime.setText("XYZ")
+    event = _drop_event_at(ed, 5, mime)
+    ed.dropEvent(event)
+
+    assert ed.toPlainText() == "helloXYZ world"
+
+
+def test_drag_enter_accepts_when_file_under_root(qapp, tmp_path):
+    """files/ 하위 파일 URL이 있으면 dragEnterEvent가 즉시 수락한다."""
+    files_root = tmp_path / "files"
+    files_root.mkdir()
+    target = files_root / "c.txt"
+    target.write_text("x", encoding="utf-8")
+    set_files_root_provider(lambda: str(files_root))
+
+    ed = _prepare_editor(qapp)
+    mime = QMimeData()
+    mime.setUrls([QUrl.fromLocalFile(str(target))])
+    event = QDragEnterEvent(
+        ed.cursorRect().topLeft(), Qt.DropAction.CopyAction, mime,
+        Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier,
+    )
+    ed.dragEnterEvent(event)
+    assert event.isAccepted()
+
+
+def test_drop_space_path_wraps_in_angle_brackets(qapp, tmp_path):
+    """공백 있는 경로는 <...>로 감싸 삽입 — 컴파일러 스캐너 오탐 방지."""
+    from PySide6.QtCore import QMimeData, QPointF, QUrl
+    from PySide6.QtGui import QDropEvent
+
+    from daedalus.view.widgets.markdown_editor import set_files_root_provider
+
+    files = tmp_path / "files"
+    files.mkdir()
+    target = files / "with space.txt"
+    target.write_text("x", encoding="utf-8")
+    set_files_root_provider(lambda: str(files))
+
+    ed = MarkdownEditor()
+    mime = QMimeData()
+    mime.setUrls([QUrl.fromLocalFile(str(target))])
+    ed.dropEvent(QDropEvent(
+        QPointF(1, 1), Qt.DropAction.CopyAction, mime,
+        Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier,
+    ))
+    assert ed.toPlainText().strip() == "<${CLAUDE_PLUGIN_ROOT}/files/with space.txt>"
+
+
+def test_mixed_drop_keeps_outside_urls(qapp, tmp_path):
+    """files 안팎이 섞인 드롭에서 바깥 URL이 조용히 사라지지 않는다."""
+    from PySide6.QtCore import QMimeData, QPointF, QUrl
+    from PySide6.QtGui import QDropEvent
+
+    from daedalus.view.widgets.markdown_editor import set_files_root_provider
+
+    files = tmp_path / "files"
+    files.mkdir()
+    inside = files / "a.txt"
+    inside.write_text("x", encoding="utf-8")
+    outside = tmp_path / "outside.txt"
+    outside.write_text("y", encoding="utf-8")
+    set_files_root_provider(lambda: str(files))
+
+    ed = MarkdownEditor()
+    mime = QMimeData()
+    mime.setUrls([QUrl.fromLocalFile(str(inside)), QUrl.fromLocalFile(str(outside))])
+    ed.dropEvent(QDropEvent(
+        QPointF(1, 1), Qt.DropAction.CopyAction, mime,
+        Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier,
+    ))
+    text = ed.toPlainText()
+    assert "${CLAUDE_PLUGIN_ROOT}/files/a.txt" in text
+    assert "outside.txt" in text
