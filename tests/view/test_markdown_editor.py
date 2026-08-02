@@ -760,3 +760,62 @@ def test_panel_show_body_refreshes_toc(qapp):
     comp2 = _make_comp("# Second Doc")
     panel.show_body(comp2)
     assert [e.text for e in panel._toc_panel._entries] == ["Second Doc"]
+
+
+# --- 리뷰 후속 회귀 (WP-MD3 결함 1~4 잠금) ---
+
+
+def test_search_matches_refresh_after_external_edit(qapp):
+    """검색 바가 열린 채 문서를 편집해도 스테일 오프셋으로 엉뚱한 구간을
+    치환하지 않는다 (리뷰 결함 1)."""
+    ed = MarkdownEditor()
+    ed.setPlainText("foo bar foo")
+    bar = SearchBar(ed)
+    bar.open()
+    bar._search_edit.setText("foo")
+    # 에디터에서 직접 편집 — 맨 앞에 XXXXX 삽입
+    cursor = ed.textCursor()
+    cursor.setPosition(0)
+    cursor.insertText("XXXXX")
+    ed.setTextCursor(cursor)
+    bar._replace_edit.setText("ZZZ")
+    bar.replace_current()
+    text = ed.toPlainText()
+    assert text.startswith("XXXXX")          # 사용자가 친 텍스트 무사
+    assert text == "XXXXXZZZ bar foo"        # 실제 foo가 치환됨
+
+
+def test_search_anchor_uses_selection_start(qapp):
+    """단어를 선택하고 열면 그 단어가 현재 일치가 된다 (리뷰 결함 2 —
+    선택 '끝' 앵커는 문서 첫 일치로 튀었다)."""
+    ed = MarkdownEditor()
+    ed.setPlainText("alpha beta alpha")
+    cursor = ed.textCursor()
+    cursor.setPosition(11)
+    cursor.setPosition(16, QTextCursor.MoveMode.KeepAnchor)
+    ed.setTextCursor(cursor)
+    bar = SearchBar(ed)
+    bar.open(prefill="alpha")
+    assert bar._count_label.text() == "2/2"
+
+
+def test_close_bar_noop_when_hidden(qapp):
+    """숨어 있는 바의 close_bar는 아무것도 하지 않는다 (리뷰 결함 3 —
+    show_body 경유 호출이 포커스/셀렉션을 건드리지 않게)."""
+    ed = MarkdownEditor()
+    ed.setPlainText("x")
+    bar = SearchBar(ed)
+    from PySide6.QtWidgets import QTextEdit as _QTE
+    sel = _QTE.ExtraSelection()
+    sel.cursor = ed.textCursor()
+    ed.setExtraSelections([sel])
+    bar.close_bar()  # 숨김 상태 — no-op이어야 한다
+    assert len(ed.extraSelections()) == 1
+
+
+def test_multiline_selection_prefill_skipped(qapp):
+    """여러 줄 선택(U+2029 포함) 프리필은 생략된다 (리뷰 결함 4)."""
+    ed = MarkdownEditor()
+    bar = SearchBar(ed)
+    bar.open(prefill="line one\u2029line two")
+    assert bar._search_edit.text() == ""

@@ -970,6 +970,10 @@ class SearchBar(QWidget):
         self._editor = editor
         self._matches: list[tuple[int, int]] = []
         self._current: int = -1
+        # 문서 편집 시 정수 오프셋 매치가 스테일 — dirty 표시 후 다음 조작
+        # 진입 시 재수집한다 (스테일 오프셋으로 엉뚱한 구간을 치환하는 결함 방지).
+        self._matches_dirty = False
+        self._editor.textChanged.connect(self._mark_matches_dirty)
 
         lay = QHBoxLayout(self)
         lay.setContentsMargins(6, 4, 6, 4)
@@ -1045,6 +1049,8 @@ class SearchBar(QWidget):
         직전 호출이 옮겨 둔 커서를 앵커로 다시 검색해 한 칸 더 건너뛰는 버그가 된다).
         값이 그대로면(빈 prefill 포함, 재오픈 등) 여기서 명시적으로 1회 실행한다.
         """
+        if " " in prefill:
+            prefill = ""  # 여러 줄 선택(U+2029 문단 구분자) — 프리필 생략
         self.show()
         changed = bool(prefill) and self._search_edit.text() != prefill
         if changed:
@@ -1055,7 +1061,13 @@ class SearchBar(QWidget):
             self._perform_search()
 
     def close_bar(self) -> None:
-        """바를 숨기고 하이라이트를 지운 뒤 에디터로 포커스를 돌려준다."""
+        """바를 숨기고 하이라이트를 지운 뒤 에디터로 포커스를 돌려준다.
+
+        이미 숨어 있으면 아무것도 하지 않는다 — show_body 등 경유 호출이
+        포커스를 훔치지 않게 (리뷰 지적 3).
+        """
+        if self.isHidden():
+            return
         self.hide()
         self._matches = []
         self._current = -1
@@ -1112,9 +1124,25 @@ class SearchBar(QWidget):
                 return i
         return 0
 
-    def _perform_search(self) -> None:
-        anchor = self._editor.textCursor().position()
+    def _mark_matches_dirty(self) -> None:
+        self._matches_dirty = True
+
+    def _ensure_fresh_matches(self) -> bool:
+        """편집으로 스테일된 매치를 재수집한다. 재수집했으면 True."""
+        if not self._matches_dirty:
+            return False
+        self._matches_dirty = False
+        anchor = self._editor.textCursor().selectionStart()
         self._matches = self._collect_matches()
+        self._current = self._nearest_match_index(anchor) if self._matches else -1
+        return True
+
+    def _perform_search(self) -> None:
+        # 앵커는 선택 "시작" — 선택 끝을 쓰면 프리필된 그 단어를 건너뛰고
+        # 다음/첫 일치로 튄다 (리뷰 지적 2).
+        anchor = self._editor.textCursor().selectionStart()
+        self._matches = self._collect_matches()
+        self._matches_dirty = False
         if not self._matches:
             self._current = -1
             self._update_highlights()
@@ -1134,15 +1162,20 @@ class SearchBar(QWidget):
         self._update_count_label()
 
     def search_next(self) -> None:
+        refreshed = self._ensure_fresh_matches()
         if not self._matches:
             return
-        self._current = (self._current + 1) % len(self._matches)
+        if not refreshed:
+            # 재수집 직후에는 커서 기준 최근접 일치가 이미 current — 건너뛰지 않는다
+            self._current = (self._current + 1) % len(self._matches)
         self._select_current()
 
     def search_prev(self) -> None:
+        refreshed = self._ensure_fresh_matches()
         if not self._matches:
             return
-        self._current = (self._current - 1) % len(self._matches)
+        if not refreshed:
+            self._current = (self._current - 1) % len(self._matches)
         self._select_current()
 
     def _update_highlights(self) -> None:
@@ -1168,6 +1201,7 @@ class SearchBar(QWidget):
 
     def replace_current(self) -> None:
         """현재 일치 1건을 치환하고 다음 일치로 이동한다."""
+        self._ensure_fresh_matches()
         if not self._matches or self._current < 0:
             return
         start, end = self._matches[self._current]
@@ -1181,6 +1215,7 @@ class SearchBar(QWidget):
         new_pos = start + len(replacement)
 
         self._matches = self._collect_matches()
+        self._matches_dirty = False
         if self._matches:
             self._current = self._nearest_match_index(new_pos)
             self._select_current()
@@ -1194,6 +1229,7 @@ class SearchBar(QWidget):
 
     def replace_all(self) -> None:
         """전체 일치를 1 undo 단위로 치환하고 치환 건수를 일치 수 라벨에 표시한다."""
+        self._ensure_fresh_matches()
         if not self._matches:
             return
         count = len(self._matches)
