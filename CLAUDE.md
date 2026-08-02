@@ -31,11 +31,12 @@ daedalus/
 │   │   ├── action.py       # Action(name, execution, output_variable)
 │   │   ├── state.py        # State(ABC, reads/writes: list[str] 블랙보드 접근 선언 — WP-BB, "Class"/"Class.field" 문자열 참조), SimpleState, CompositeState, ParallelState, Region
 │   │   ├── pseudo.py       # ChoiceState, TerminateState, EntryPoint, ExitPoint
-│   │   ├── transition.py   # Transition + TransitionType
+│   │   ├── transition.py   # Transition(target_port: str = "" — WP-IC 입력 포트 참조, 빈 값=기본 포트) + TransitionType
 │   │   ├── join.py         # JoinStrategy (병렬 조인 전략 — 순수 FSM 개념, policy.py가 re-export)
 │   │   ├── blackboard.py   # Blackboard, DynamicClass, DynamicField(FieldType 사용), FIELD_TYPE_TO_JSON_SCHEMA
 │   │   ├── section.py      # Section(자유 콘텐츠 계층 — AgentDefinition.caller_contracts 잠금 계약 카드 전용, WP-SB로 스킬/에이전트 본문에서는 퇴역),
-│   │   │                   #   EventDef(TransferOn 출력 이벤트), render_markdown(WP-SB 구버전 sections→body 마이그레이션 헬퍼)
+│   │   │                   #   EventDef(TransferOn 출력 이벤트 + WP-IC entry_paths 입력 포트 정의 공용 — name/color/description),
+│   │   │                   #   render_markdown(WP-SB 구버전 sections→body 마이그레이션 헬퍼)
 │   │   └── machine.py      # StateMachine
 │   ├── plugin/       # Claude 플러그인 메타데이터
 │   │   ├── enums.py        # ModelType, EffortLevel, SkillContext, PermissionMode, AgentField, FieldEmit 등
@@ -55,7 +56,7 @@ daedalus/
 │   │                       # + rename_component(project, component, new_name) — 이름 변경 + 문자열 참조 3종 일괄 갱신 (Qt 무관)
 │   │                       # + remove_component(project, component) → list[str] — 모델 정리 (graph placement, skill_ref None화, 위임 agent_ref None화 등)
 │   ├── serialize.py         # serialize_project/deserialize_project (모델↔JSON dict, 안정 ID 기반)
-│   └── validation.py        # Validator + ValidationError + WARNING_RULES + is_warning (머신 규칙 19종 + 프로젝트 규칙 14종, 재귀)
+│   └── validation.py        # Validator + ValidationError + WARNING_RULES + is_warning (머신 규칙 20종 + 프로젝트 규칙 14종, 재귀)
 ├── compiler/         # 순수 모델 → 플러그인 파일 (Qt 무관)
 │   ├── emit.py             # compile_skill/compile_agent/compile_hooks_json — model → SKILL.md/agent .md/hooks.json 텍스트 (결정적, LF)
 │   └── project_compiler.py # compile_project(project, out_dir) → CompileResult (검증 게이트 + 파일 쓰기)
@@ -70,6 +71,12 @@ daedalus/
     ├── canvas/             # GraphicsView/Scene, NodeItem, EdgeItem, RefNodeItem, RefEdgeItem, sync(VM→모델 동기화 — Qt 무관)
     │                       # node_badges: badges_for(component)(뱃지 로직) + state_access_badges(state)(WP-BB — State.reads/writes → ✏쓰기/📖읽기
     │                       #   뱃지, 선언 있을 때만 렌더). NodeItem.paint가 badges_for(ref)+state_access_badges(model)를 합류해 렌더.
+    │                       # 입력 포트(WP-IC): NodeItem._input_event_defs()가 skill_ref.entry_paths를 읽어 입력 포트 수(max(1, len))·
+    │                       #   라벨(EventDef.color, 출력 포트와 대칭 — 포트 오른쪽·본체 안·좌측 정렬)을 렌더. input_port_scene_pos(port_name)이
+    │                       #   이름으로 포트 위치를 조회하므로 EdgeItem.update_path가 Transition.target_port로 도착점을 앵커 — 같은
+    │                       #   target_port를 향하는 여러 전이는 자연히 한 점에 수렴한다(incoming edge 개수 기반 팬아웃은 폐지).
+    │                       #   scene.end_transition_drag가 드롭 지점에서 nearest_input_port_name으로 스냅해 target_port를 기록(포트
+    │                       #   1개면 빈 값 유지 — 하위 호환).
     ├── commands/           # Undo/Redo 커맨드 (state, transition, section, exit_point)
     ├── editors/            # 속성 편집기 (skill, agent, delegation, hook, body, component, variable_loader, catalogue_loader, field_widgets, project_properties, blackboard_editor)
     │                       # catalogue_loader: 도구/MCP 카탈로그 로더(WP-TM) — ~/.daedalus/catalogue/*.json(글로벌) + <프로젝트>/.daedalus/catalogue/*.json(프로젝트, 이름 충돌 시 우선)
@@ -83,6 +90,9 @@ daedalus/
     │                       #   목록(＋/삭제/더블클릭 이름변경), 우: description(QLineEdit) + 필드 테이블(name/FieldType/CollectionType/required/default,
     │                       #   ＋필드/필드 삭제). 편집은 project.blackboard.class_definitions를 직접 갱신 + notify(structure 채널 — undo 커맨드화 범위
     │                       #   밖, hook_editor 폼 정책과 동일). blackboard_candidate_strings(project)가 "클래스"+"클래스.필드" 후보 문자열을 만든다.
+    │                       # 입력 경로 편집(WP-IC): 기존 skill_editor._TransferOnPanel(transfer_on 편집 위젯, list[EventDef] 범용)을 그대로
+    │                       #   재사용해 ProceduralSkill/DeclarativeSkill(SkillEditor 우측 패널)과 AgentDefinition(agent_editor Content 탭
+    │                       #   우측 패널, _entry_paths_panel)에 "⇤ 입력 경로" 패널을 추가 — transfer_on(출력 이벤트) 편집과 대칭 위치·패턴.
     ├── panels/             # TreePanel, PropertyPanel, RegistryPanel, HistoryPanel, ValidationPanel (F7 검증 결과)
     │                       # RegistryPanel: component_delete_requested 시그널 + _RegistrySection 우클릭 "삭제" 컨텍스트 메뉴
     │                       # PropertyPanel.show_state(WP-BB): reads/writes TagInput 2개 — get_blackboard_candidates()로 자동완성 후보(호출 시점
@@ -176,6 +186,49 @@ daedalus/
 - `render_markdown(sections, depth=1) -> str`(section.py): 구버전(sections 트리) 파일을 로드할 때 `body`로 평탄화하는 단방향 마이그레이션 헬퍼. `serialize.py`의 `_deser_body`가 `body` 키 부재 + `sections` 키 존재 시에만 호출한다(경고 없음 — 정상 마이그레이션 경로).
 - `EventDef`: TransferOn 스킬의 출력 이벤트 정의. 노드 출력 포트에 대응 (`name`, `color`, `description`)
 
+### 입력 포트 (entry_paths / target_port) — WP-IC
+
+- **입력 상태**(어떤 상태로부터 전이) ≠ **입력 포트**(이 상태에 이 경로로 접근) — 출력 쪽은
+  `transfer_on`(출력 포트)이 있었지만 입력 쪽은 뷰 전용 렌더뿐 모델 개념이 없었다. 도착 스킬이
+  자기가 어디서·어떤 경로로 진입했는지 서술할 수 있도록 입력 포트를 모델·캔버스·컴파일러
+  전 계층에 추가했다.
+- **모델:** `entry_paths: list[EventDef] = field(default_factory=list)` —
+  `ProceduralSkill`/`DeclarativeSkill`/`AgentDefinition` 공용(`TransferSkill`은 입출력 1개
+  고정이라 대상 아님). 빈 리스트 = 기본 포트 1개(암묵, 이름 없음) — 기존 파일·기존 렌더와
+  하위 호환. `Transition.target_port: str = ""` — entry_paths의 EventDef 이름을 문자열로
+  참조(빈 값=기본 포트, rename 고아는 `dangling_target_port`가 검출). 직렬화는 둘 다 왕복하고
+  구버전 키 부재 시 기본값(경고 없음).
+- **캔버스 렌더·수렴(Part B):** `StateNodeItem._input_event_defs()`가 skill_ref.entry_paths를
+  읽어 입력 포트 수(`max(1, len(entry_paths))`)와 라벨(EventDef.color, 출력 포트와 대칭 —
+  포트 오른쪽·본체 안·좌측 정렬)을 렌더한다. `input_port_scene_pos(port_name)`이 이름으로
+  포트 위치를 조회하므로 `TransitionEdgeItem.update_path`가 `Transition.target_port`로 도착점을
+  앵커한다 — **같은 target_port를 향하는 여러 전이는 자연히 한 점에 수렴**한다(구버전의
+  incoming edge 개수 기반 팬아웃 방식은 폐지). `FsmScene.end_transition_drag`가 드롭 지점에서
+  `nearest_input_port_name`으로 가장 가까운 포트에 스냅해 target_port를 기록한다(**선언된
+  entry_paths가 없을 때만 빈 값** — 선언이 1개라도 있으면 그 이름을 기록해 1개 선언이
+  no-op이 되지 않게 한다. 리뷰 반영).
+- **편집 UI:** 기존 `_TransferOnPanel`(transfer_on 편집, `list[EventDef]` 범용 위젯)을 그대로
+  재사용해 ProceduralSkill/DeclarativeSkill/AgentDefinition 에디터에 "⇤ 입력 경로" 패널을
+  추가했다 — transfer_on(출력 이벤트) 편집과 대칭 위치·패턴(입력 경로 기본색 `#44aa88` —
+  출력 포트 기본색과 시각 구분). **에이전트의 entry_paths는 캔버스 렌더·수렴과
+  dangling_target_port 검증에만 쓰이고 컴파일 산출에는 반영되지 않는다**(진입 맥락 단락은
+  스킬 한정 — 에이전트 .md 반영은 후속 후보).
+- **컴파일러(Part C):** 배치된 전역 ProceduralSkill/DeclarativeSkill에서 incoming 전이가 1개
+  이상이면 "## 작업 재개" 프리앰블 뒤·본문 앞에 `_entry_context_section`이 "## 진입 맥락"
+  단락을 배출한다. entry_paths 선언 순서로 포트별 그룹(`### 경로: <name>` + EventDef.description,
+  기본 경로는 `### 기본 경로`로 항상 마지막)을 만들고, 그룹 안에서는 출처 이름순으로 항목을
+  나열한다("- `<출처>`에서 [조건]로 진입" — 조건은 `_transition_condition` 재사용, 전이에
+  TransferSkill이 있으면 지침 수행 문구 합류, 출처가 에이전트 placement면 "에이전트 `X`의
+  위임 완료 후 … (이때 `prev`는 위임을 시작한 스킬 — `Y`)" — 규약상 prev에는 에이전트가
+  아니라 위임 스킬 이름이 남으므로 병기해야 prev로 항목을 특정할 수 있다. 도입부에도
+  에이전트 복귀 시 prev 의미 안내 1문장). entry_paths에 없는 target_port(rename 고아)는
+  기본 경로로 수렴한다. incoming 0개 배치·미배치·로컬 스킬은 산출 변화 없음(하위 호환).
+  동일 출처가 서로 다른 두 포트로 진입하는 경우 prev만으로는 그룹을 특정할 수 없는 한계가
+  남아 있다 — 진행 규약에 포트를 싣는 것(`prev_port` 등)은 후속 후보.
+- **검증:** `dangling_target_port` — target_port가 비어있지 않은데 타깃 skill_ref의
+  entry_paths 이름 집합에 없으면 경고(`trigger_unknown_event`의 입력판). 타깃이 skill_ref
+  없는 상태면 스킵.
+
 ### PluginProject.graph = 워크플로 백킹 머신
 
 - **역할:** 프로젝트 캔버스(탭 0)의 노드/전이를 담는 정식 `StateMachine`. 각 캔버스 노드는 "정식 FSM 상태"이며 백킹 머신에 들어가 **직렬화·컴파일·검증의 단일 진실**이 된다 (캔버스 VM은 그 투영). 이전에는 fsm=None 경로로 도메인 모델에 들어가지 않아 저장/컴파일에서 누락됐다.
@@ -252,7 +305,7 @@ ComponentConfig(ABC)          # model, effort, hooks 공통 필드
 
 `ValidationError.is_warning` property — 규칙이 경고 등급이면 True, 에러 등급이면 False. `WARNING_RULES: frozenset[str]` 모듈 상수가 경고 등급 규칙 집합을 단일 진실로 보유 (view에서 rule 이름 하드코딩 금지). `invalid_component_name`은 빈 이름=에러/불일치=경고를 `is_warning`에서 메시지 내용으로 세분화한다.
 
-#### 머신 수준 (19규칙명)
+#### 머신 수준 (20규칙명)
 
 | 규칙 | 설명 |
 |------|------|
@@ -272,6 +325,7 @@ ComponentConfig(ABC)          # model, effort, hooks 공통 필드
 | `unreachable_state` | initial_state + 모든 EntryPoint에서 전이 그래프로 도달 불가 상태 경고 (스킬/에이전트 FSM 대상. 프로젝트 그래프 자체는 WP-EP로 스킵 — 아래 "프로젝트 그래프 검증" 참조) |
 | `invalid_data_map_source` | Transition.data_map의 key가 source.outputs에 없으면 경고 (pseudo 상태 스킵) |
 | `trigger_unknown_event` | CompletionEvent trigger.name이 source 출력 이벤트 집합에 없으면 경고 (EventDef rename 고아 전이 검출) |
+| `dangling_target_port` | Transition.target_port가 비어있지 않은데 타깃 skill_ref의 entry_paths 이름 집합에 없으면 경고 (trigger_unknown_event의 입력판, WP-IC — 타깃이 skill_ref 없는 상태면 스킵) |
 | `transition_type_consistency` | INTERNAL/SELF 타입인데 `source is not target`이면 에러 |
 | `choice_completeness` | ChoiceState outgoing 0개=에러, 무가드 2개 이상=에러(else 중복/비결정) |
 | `choice_completeness_missing_else` | ChoiceState 무가드(else) 전이 0개=경고 (LLM 해석 결정성 저하) |
@@ -413,12 +467,13 @@ dataclass(값 동등성, unhashable) 유지 — 컬렉션 멤버십에는 list/`
     것/쓰는 것" 문구를 추가하고 파일 목록을 관련 클래스만으로 좁힌다. 합집합이 비면(또는 component 미지정)
     기존 전 클래스 일반 안내 그대로 — 하위 호환, 접근 선언 0개 프로젝트의 산출 문자열은 불변이다.
 11. **요구 환경 자동 언급 (WP-TM)**: `_mcp_servers_from_tools(tools)`가 도구 문자열 목록에서 `mcp__<server>__` 접두의 서버 이름 집합을 추출한다(이름순 정렬 — 결정적). 스킬은 `skill.config.allowed_tools`를 스캔해 서버가 있으면(local 여부·project 인수 여부와 무관) "다음 단계" 단락 앞에 신규 "## 요구 환경" 단락(`_mcp_requirement_section_skill`)을 배출한다(없으면 단락 생략). 에이전트는 `config.tools`에서 추출한 서버를 기존 SETTINGS "요구 환경" 단락(`_settings_note_agent`, 7번 항목)의 `mcp_servers` 선언과 합쳐 하나의 "MCP 서버 연결" 줄로 병합한다(중복 없음).
-12. **작업 재개 (WP-RS)** — 저장 단위는 **플러그인 FSM(프로젝트 그래프 배치)의 위치**다(스킬 내부 FSM 상태는 다루지 않음 — 사용자 확정 설계). 규약 파일 `state/__progress__.json`(`plugin`/`current`/`completed`/`note`/`updated`).
-    - **재개 프리앰블**: 프로젝트 그래프에 배치된 전역 `ProceduralSkill`/`DeclarativeSkill`(로컬 스킬·미배치·에이전트 .md 제외)에 한해, `_resume_preamble_section`이 프론트매터 직후·본문 앞에 "## 작업 재개" 단락(현재 스킬 이름 삽입 + 파일 없을 때 생성 규칙)을 배출한다. Declarative 포함 이유: 배치되면 "다음 단계"를 받으므로 갱신 규칙이 빠지면 진행 사슬이 끊긴다. placement 판정은 "다음 단계"(6-b번 항목)와 동일한 `_graph_placements`(skill_ref identity) 로직을 공유한다.
-    - **다음 단계 갱신 규칙**: 배치 스킬의 "다음 단계" 단락 끝에 `_PROGRESS_UPDATE_NOTE`(완료 시 `completed`/`current`/`note`/`updated` 갱신 + 에이전트 위임 전이는 2단 갱신: 위임 직전 에이전트 이름, 완료 후 후속 스킬)가 합류한다.
+12. **작업 재개 (WP-RS)** — 저장 단위는 **플러그인 FSM(프로젝트 그래프 배치)의 위치**다(스킬 내부 FSM 상태는 다루지 않음 — 사용자 확정 설계). 규약 파일 `state/__progress__.json`(`plugin`/`current`/`completed`/`note`/`prev`/`updated` — `prev`는 WP-IC에서 추가된 직전 출처 스킬 이름 필드).
+    - **재개 프리앰블**: 프로젝트 그래프에 배치된 전역 `ProceduralSkill`/`DeclarativeSkill`(로컬 스킬·미배치·에이전트 .md 제외)에 한해, `_resume_preamble_section`이 프론트매터 직후·본문 앞에 "## 작업 재개" 단락(현재 스킬 이름 삽입 + 파일 없을 때 생성 규칙, JSON 예시에 `"prev": ""` 포함)을 배출한다. Declarative 포함 이유: 배치되면 "다음 단계"를 받으므로 갱신 규칙이 빠지면 진행 사슬이 끊긴다. placement 판정은 "다음 단계"(6-b번 항목)와 동일한 `_graph_placements`(skill_ref identity) 로직을 공유한다.
+    - **다음 단계 갱신 규칙**: 배치 스킬의 "다음 단계" 단락 끝에 `_PROGRESS_UPDATE_NOTE`(완료 시 `completed`/`current`/`note`/`updated` 갱신 + `prev`에 자신(이 스킬 이름)을 기록[WP-IC] + 에이전트 위임 전이는 2단 갱신: 위임 직전 에이전트 이름, 완료 후 후속 스킬로 — 이때도 `prev`는 위임한 스킬 이름)이 합류한다.
     - **터미널 배치**: **placement의 실제 outgoing 전이가 0개**인 배치는 "다음 단계" 대신 `_progress_terminal_section`이 "## 작업 완료" 단락(자신을 `completed`에 추가 + `current`를 `"done"`으로)을 배출한다. 판정은 "다음 단계 문구 생성 실패"가 아니다 — outgoing 타깃이 빈 상태(skill_ref=None)뿐이라 문구가 안 나와도 터미널이 아니며 이때는 아무 단락도 배출하지 않는다.
     - **TransferSkill**: local이 아니고 **project에 placement가 1개 이상**일 때 본문 끝에 "## 진행 기록" 헤딩 + `_TRANSFER_PROGRESS_NOTE`(전이 중 note 기록 지시)를 배출한다(진행 파일이 존재하지 않는 프로젝트에서의 고아 지시 방지).
     - **SessionStart 훅 합성**: `PluginProject.emit_progress_hook: bool = True`(직렬화 왕복, 구버전 키 부재 시 기본 True)이고 프로젝트 그래프에 placement가 1개 이상이면, `compile_hooks_json`이 `hook_library`를 오염시키지 않고 컴파일 시점에 SessionStart 이벤트에 진행 상태 주입 커맨드(`cat state/__progress__.json 2>/dev/null || true`)를 합성해 합류시킨다(사용자 정의 SessionStart 훅 뒤에 이어붙어 공존). `emit_progress_hook=False`이거나 placement가 0개면 합성 훅 미배출. 토글은 프로젝트 속성 다이얼로그의 "세션 시작 시 진행 상태 자동 주입 (SessionStart 훅)" 체크박스. 합성 커맨드는 POSIX 셸 전제(`cat`/`||`) — 비POSIX 환경에서는 토글로 끄는 것이 대응책(훅 프리셋과 동일한 전제).
+13. **진입 맥락 + 호출 계약 (WP-IC)**: 배치된 전역 `ProceduralSkill`/`DeclarativeSkill`에서 incoming 전이가 1개 이상이면, `_entry_context_section`이 "## 작업 재개" 프리앰블 뒤·본문 앞에 "## 진입 맥락" 단락을 배출한다("`state/__progress__.json`의 `prev`를 확인하고 아래에서 해당 출처 항목을 따르라" 도입 + entry_paths 선언 순서의 포트별 그룹[`### 경로: <name>` + EventDef.description, 기본 경로 `### 기본 경로`는 항상 마지막] + 그룹 안 출처 이름순 항목["- `<출처>`에서 [조건]로 진입", 전이 스킬(TransferSkill) 지침 수행 문구·에이전트 출처의 "위임 완료 후" 문구 합류]). incoming이 있는 포트만 배출, entry_paths에 없는 target_port(rename 고아)는 기본 경로로 수렴. incoming 0개 배치·미배치·로컬은 산출 변화 없음. `compile_agent`는 `caller_contracts`(잠금 계약 카드)가 비어있지 않으면 본문 뒤에 "## 호출 계약" 단락(각 Section을 `### <title>` + content로 선언 순서 나열)을 배출한다(기존 컴파일 산출 누락 해소).
 
 출력은 결정적(같은 모델 → 같은 텍스트), LF 줄바꿈, UTF-8(BOM 없음). 텍스트 생성(`compile_skill`/`compile_agent`)은 파일시스템과 분리되어 문자열 단위 테스트 가능.
 

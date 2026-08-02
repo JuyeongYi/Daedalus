@@ -51,3 +51,6 @@ class Transition:
     # 데이터
     data_map: dict[str, str] = field(default_factory=dict)
     skill_ref: TransferSkill | None = None
+    # WP-IC — 타깃 입력 포트 이름(target.skill_ref.entry_paths의 EventDef.name 참조).
+    # 빈 값 = 기본 포트. rename 고아는 Validator(dangling_target_port)가 검출한다.
+    target_port: str = ""

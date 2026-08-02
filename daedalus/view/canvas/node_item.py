@@ -40,7 +40,6 @@ class StateNodeItem(QGraphicsItem):
     ) -> None:
         super().__init__(parent)
         self._state_vm = state_vm
-        self._input_count: int = 1
         self._ref_count: int = 0  # 하단 참조 포트 수
         self._show_call_agents = show_call_agents
         self.setPos(state_vm.x, state_vm.y)
@@ -100,11 +99,20 @@ class StateNodeItem(QGraphicsItem):
             return list(ref.output_events)  # type: ignore[union-attr]
         return []
 
-    def set_input_count(self, n: int) -> None:
-        """Scene이 incoming edge 수를 알려줄 때 호출."""
-        if self._input_count != n:
-            self._input_count = max(1, n)
-            self._sync_height()
+    def _input_event_defs(self) -> list[EventDef]:
+        """WP-IC — skill_ref.entry_paths에서 EventDef 목록 반환.
+
+        빈 리스트 = 기본 포트 1개(암묵, 이름 없음) — 기존 렌더와 호환.
+        """
+        model = self._state_vm.model
+        if not hasattr(model, "skill_ref"):
+            return []
+        ref = model.skill_ref  # type: ignore[union-attr]
+        if ref is None:
+            return []
+        if hasattr(ref, "entry_paths"):
+            return list(ref.entry_paths)  # type: ignore[union-attr]
+        return []
 
     def set_ref_count(self, n: int) -> None:
         """하단 참조 포트 수 설정."""
@@ -114,7 +122,7 @@ class StateNodeItem(QGraphicsItem):
 
     def _height(self) -> float:
         n_out = max(1, len(self._output_events())) + len(self._call_agent_defs())
-        n_in = max(1, self._input_count)
+        n_in = max(1, len(self._input_event_defs()))
         n = max(n_out, n_in)
         port_area = _PORT_SPACING * n + _PORT_PAD * 2
         return _HEADER_H + max(44.0, port_area)
@@ -225,14 +233,26 @@ class StateNodeItem(QGraphicsItem):
         # 뱃지가 전부 사라진 노드의 잔존 툴팁도 함께 갱신
         self.setToolTip("\n".join(f"{emoji} {tip}" for emoji, tip in badge_list))
 
-        # 입력 포트 (좌측)
+        # 입력 포트 (좌측) — WP-IC: entry_paths 기반, 라벨은 출력 포트와 대칭
+        # (포트 오른쪽·본체 안, 좌측 정렬, EventDef.color 사용).
         if not self._is_entry_point():
-            n_in = max(1, self._input_count)
-            painter.setPen(QPen(QColor("#333"), 1))
-            painter.setBrush(QBrush(QColor("#888")))
+            in_defs = self._input_event_defs()
+            n_in = max(1, len(in_defs))
             for ii in range(n_in):
                 iy = self._port_y(ii, n_in)
+                port_color = QColor(in_defs[ii].color) if in_defs else QColor("#888")
+                painter.setPen(QPen(QColor("#333"), 1))
+                painter.setBrush(QBrush(port_color))
                 painter.drawEllipse(QPointF(0.0, iy), _PORT_R, _PORT_R)
+                if in_defs:
+                    lbl_rect = QRectF(_PORT_R + 6, iy - 7, _W - _PORT_R - 10, 14)
+                    painter.setPen(QPen(port_color.lighter(140)))
+                    painter.setFont(QFont("Segoe UI", 7))
+                    painter.drawText(
+                        lbl_rect,
+                        Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,
+                        in_defs[ii].name,
+                    )
 
         # 출력 포트 — transfer_on + call_agent
         if not self._is_exit_point():
@@ -298,9 +318,45 @@ class StateNodeItem(QGraphicsItem):
         i = self.output_port_index(event_name, is_agent_call)
         return self.mapToScene(QPointF(_W, self._output_port_y(i, n)))
 
-    def input_port_scene_pos(self, index: int = 0) -> QPointF:
-        n = max(1, self._input_count)
-        return self.mapToScene(QPointF(0.0, self._port_y(index, n)))
+    def input_port_index(self, port_name: str = "") -> int:
+        """WP-IC — port_name → entry_paths 인덱스.
+
+        target_port가 빈 값이거나 entry_paths에 없는 이름이면 기본(첫) 포트(0).
+        """
+        paths = self._input_event_defs()
+        if not paths or not port_name:
+            return 0
+        names = [p.name for p in paths]
+        try:
+            return names.index(port_name)
+        except ValueError:
+            return 0
+
+    def input_port_scene_pos(self, port_name: str = "") -> QPointF:
+        """WP-IC — 이름으로 입력 포트 위치 조회. 같은 port_name은 같은 점에 수렴한다."""
+        n = max(1, len(self._input_event_defs()))
+        i = self.input_port_index(port_name)
+        return self.mapToScene(QPointF(0.0, self._port_y(i, n)))
+
+    def nearest_input_port_name(self, local_pos: QPointF) -> str:
+        """WP-IC — 드롭 지점(local 좌표)에서 가장 가까운 입력 포트 이름으로 스냅.
+
+        선언된 entry_paths가 없으면 빈 값(기본 포트, 하위 호환). 선언이 1개라도
+        있으면 그 이름을 기록한다 — 1개 선언이 no-op이 되지 않게 (리뷰 지적 d).
+        """
+        paths = self._input_event_defs()
+        if not paths:
+            return ""
+        n = len(paths)
+        best_i = 0
+        best_dist: float | None = None
+        for i in range(n):
+            y = self._port_y(i, n)
+            dist = abs(local_pos.y() - y)
+            if best_dist is None or dist < best_dist:
+                best_dist = dist
+                best_i = i
+        return paths[best_i].name
 
     def _ref_port_x(self, i: int, n: int) -> float:
         """i번째 하단 참조 포트의 x좌표."""

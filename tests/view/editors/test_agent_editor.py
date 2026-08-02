@@ -100,6 +100,24 @@ def test_agent_editor_content_tab_has_frontmatter_panel(qapp):
     assert panel is not None
 
 
+def test_agent_editor_content_tab_has_entry_paths_panel(qapp):
+    """WP-IC — Content 탭에 입력 경로(entry_paths) 편집 패널이 포함되어야 한다."""
+    from daedalus.view.editors.agent_editor import AgentEditor
+    from daedalus.view.editors.skill_editor import _TransferOnPanel
+    editor = AgentEditor(_make_agent())
+    assert hasattr(editor, "_entry_paths_panel")
+    assert isinstance(editor._entry_paths_panel, _TransferOnPanel)
+
+
+def test_agent_editor_entry_paths_editable(qapp):
+    """입력 경로 패널에서 항목 추가 시 agent.entry_paths에 반영된다."""
+    from daedalus.view.editors.agent_editor import AgentEditor
+    agent = _make_agent()
+    editor = AgentEditor(agent)
+    editor._entry_paths_panel._on_add_event()
+    assert len(agent.entry_paths) == 1
+
+
 def test_agent_fsm_scene_delete_state_guard_blocks_entry_point(qapp):
     """AgentFsmScene._delete_state를 직접 호출해도 EntryPoint는 삭제되지 않아야 한다."""
     from daedalus.model.fsm.pseudo import EntryPoint

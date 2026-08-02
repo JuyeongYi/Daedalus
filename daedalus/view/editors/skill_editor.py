@@ -869,6 +869,9 @@ class SkillEditor(QWidget):
         from daedalus.view.editors.component_editor import ComponentEditor
 
         right_widgets: list[QWidget] = []
+        # WP-IC — 입력 경로(entry_paths) 편집: transfer_on(출력 이벤트)과 대칭 위치·패턴.
+        if isinstance(component, (ProceduralSkill, DeclarativeSkill)):
+            right_widgets.append(_TransferOnPanel(component.entry_paths, title="⇤ 입력 경로", default_color="#44aa88"))
         if isinstance(component, ProceduralSkill):
             right_widgets.append(_TransferOnPanel(component.transfer_on, title="⇄ Transfer On"))
             if show_call_agents:

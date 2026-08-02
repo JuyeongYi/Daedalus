@@ -124,25 +124,9 @@ class FsmScene(QGraphicsScene):
                     edge = TransitionEdgeItem(tvm, src, tgt)
                     self.addItem(edge)
                     self._edge_items[tvm] = edge
-        self._sync_input_ports()
         for edge in self._edge_items.values():
             edge.update_path()
         self._rebuild_refs()
-
-    def _sync_input_ports(self) -> None:
-        """각 노드의 incoming edge 수와 edge별 input index를 할당."""
-        target_groups: dict[StateNodeItem, list[TransitionEdgeItem]] = defaultdict(list)
-        for edge in self._edge_items.values():
-            target_groups[edge.target_node].append(edge)
-        for node in self._node_items.values():
-            edges = target_groups.get(node, [])
-            edges.sort(key=lambda e: (
-                e.transition_vm.source_vm.model.name,
-                e.transition_vm.model.trigger.name if e.transition_vm.model.trigger else "",
-            ))
-            node.set_input_count(len(edges))
-            for i, edge in enumerate(edges):
-                edge.set_input_index(i)
 
     def update_edges_for_node(self, node: StateNodeItem) -> None:
         """노드 드래그 중 연결된 엣지 경로를 실시간 갱신."""
@@ -255,10 +239,15 @@ class FsmScene(QGraphicsScene):
                     for t in self._project_vm.transition_vms
                 )
                 if not duplicate:
+                    # WP-IC — 드롭 지점에서 가장 가까운 입력 포트에 스냅.
+                    target_port = target.nearest_input_port_name(
+                        target.mapFromScene(scene_pos)
+                    )
                     model = Transition(
                         source=src_vm.model,
                         target=tgt_vm.model,
                         trigger=CompletionEvent(name=event_name),
+                        target_port=target_port,
                     )
                     tvm = TransitionViewModel(
                         model=model, source_vm=src_vm, target_vm=tgt_vm

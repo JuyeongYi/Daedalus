@@ -102,14 +102,13 @@ def test_rebuild_adds_and_removes_edge_items(qapp):
 
 
 # ---------------------------------------------------------------------------
-# _sync_input_ports 정렬
+# WP-IC — 입력 포트 수렴 (target_port 기반)
 # ---------------------------------------------------------------------------
 
-def test_sync_input_ports_assigns_indices_sorted(qapp):
-    """동일 타깃으로 들어오는 엣지들이 (source 이름, trigger 이름)으로 정렬되어 index 부여."""
+def test_edges_to_same_target_port_converge(qapp):
+    """entry_paths 없는(기본 포트) 타깃으로 들어오는 엣지 2개는 같은 점에 수렴한다."""
     vm = ProjectViewModel()
     scene = FsmScene(vm)
-    # 타깃 t, 소스 z/a (이름 역순으로 추가) → 정렬 후 a가 index 0
     t = StateViewModel(model=SimpleState(name="t"), x=400, y=0)
     z = StateViewModel(model=SimpleState(name="zsrc"), x=0, y=0)
     a = StateViewModel(model=SimpleState(name="asrc"), x=0, y=100)
@@ -124,15 +123,15 @@ def test_sync_input_ports_assigns_indices_sorted(qapp):
     )
     vm.transition_vms.extend([tz, ta])
 
-    scene._rebuild()  # _sync_input_ports 포함
+    scene._rebuild()
 
     edge_z = scene._edge_items[tz]
     edge_a = scene._edge_items[ta]
-    # asrc < zsrc → asrc 엣지가 index 0
-    assert edge_a._input_index == 0
-    assert edge_z._input_index == 1
-    # 타깃 노드 입력 포트 수는 2
-    assert scene._node_items[t]._input_count == 2
+    # 서로 다른 두 엣지의 **실제 렌더 경로 끝점**이 한 점에 수렴해야 한다
+    # (리뷰 지적: 같은 함수를 두 번 부르는 동어반복 단언은 어떤 회귀도 못 잡음)
+    end_z = edge_z.path().currentPosition()
+    end_a = edge_a.path().currentPosition()
+    assert end_z == end_a
 
 
 # ---------------------------------------------------------------------------
@@ -154,7 +153,7 @@ def test_transition_drag_creates_transition(qapp):
     vm.notify()
 
     node_b = scene._node_items[bvm]
-    drop_pt = node_b.input_port_scene_pos(0)
+    drop_pt = node_b.input_port_scene_pos("")
 
     scene.begin_transition_drag(scene._node_items[avm], "done")
     assert scene._connecting is True
@@ -184,7 +183,7 @@ def test_transition_drag_to_self_is_rejected(qapp):
     vm.notify()
 
     node_a = scene._node_items[avm]
-    drop_pt = node_a.input_port_scene_pos(0)
+    drop_pt = node_a.input_port_scene_pos("")
 
     scene.begin_transition_drag(node_a, "done")
     scene.end_transition_drag(drop_pt)
