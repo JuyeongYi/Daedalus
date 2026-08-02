@@ -46,3 +46,50 @@ def test_tag_input_changed_signal(qapp):
     w.tags_changed.connect(lambda: called.append(1))
     w.add_tag("Read")
     assert len(called) == 1
+
+
+def test_tag_input_set_candidates_stores_list(qapp):
+    from daedalus.view.widgets.tag_input import TagInput
+    w = TagInput()
+    w.set_candidates(["Read", "Bash", "mcp__playwright__browser_click"])
+    assert w.get_candidates() == ["Read", "Bash", "mcp__playwright__browser_click"]
+
+
+def test_tag_input_completer_attached_and_filters_case_insensitive(qapp):
+    from daedalus.view.widgets.tag_input import TagInput
+    w = TagInput()
+    w.set_candidates(["Bash(git *)", "Read", "mcp__playwright__browser_click"])
+    completer = w._input.completer()
+    assert completer is not None
+
+    completer.setCompletionPrefix("bash")
+    assert completer.completionCount() == 1
+
+    completer.setCompletionPrefix("MCP__")
+    assert completer.completionCount() == 1
+
+
+def test_tag_input_set_candidates_replaces_previous_completer(qapp):
+    from daedalus.view.widgets.tag_input import TagInput
+    w = TagInput()
+    w.set_candidates(["Read"])
+    w.set_candidates(["Write", "Edit"])
+    assert w.get_candidates() == ["Write", "Edit"]
+    completer = w._input.completer()
+    completer.setCompletionPrefix("Read")
+    assert completer.completionCount() == 0
+
+
+def test_tool_candidate_provider_default_empty(qapp):
+    from daedalus.view.widgets.tag_input import get_tool_candidates, set_tool_candidate_provider
+    set_tool_candidate_provider(None)
+    assert get_tool_candidates() == []
+
+
+def test_tool_candidate_provider_registered(qapp):
+    from daedalus.view.widgets.tag_input import get_tool_candidates, set_tool_candidate_provider
+    set_tool_candidate_provider(lambda: ["Read", "Agent(worker)"])
+    try:
+        assert get_tool_candidates() == ["Read", "Agent(worker)"]
+    finally:
+        set_tool_candidate_provider(None)

@@ -97,6 +97,14 @@ _LIST_FIELDS: set[SkillField | AgentField] = {
     AgentField.MCP_SERVERS,
 }
 
+# 도구/에이전트 카탈로그 자동완성을 받는 필드 집합 (WP-TM Part B).
+# PATHS/SKILLS/MCP_SERVERS는 도구 권한 문자열이 아니므로 제외.
+_TOOL_CANDIDATE_FIELDS: set[SkillField | AgentField] = {
+    SkillField.ALLOWED_TOOLS,
+    AgentField.TOOLS,
+    AgentField.DISALLOWED_TOOLS,
+}
+
 
 _COLOR_PRESETS = [
     "#4488ff", "#cc3333", "#cc8800", "#44aa44",
@@ -250,6 +258,7 @@ class _FrontmatterPanel(QScrollArea):
 
                 widget = widget_map[fld]()
                 self._apply_value(widget, config, component, fld, rule)
+                self._wire_tool_candidates(fld, widget)
                 self._field_widgets[fld] = widget
                 self._connect_widget_signal(fld, widget)
 
@@ -342,6 +351,18 @@ class _FrontmatterPanel(QScrollArea):
                 widget.setText(" ".join(current) if current else "")
             elif current is not None:
                 widget.setText(str(current))
+
+    @staticmethod
+    def _wire_tool_candidates(fld: SkillField | AgentField, widget: QWidget) -> None:
+        """ALLOWED_TOOLS/TOOLS/DISALLOWED_TOOLS TagInput에 동적 후보를 부착한다.
+
+        후보는 app.py가 프로젝트 로드 시 등록한 제공자(카탈로그+빌트인+
+        Agent(이름))에서 조회한다 — 생성 시점 스냅샷(HookPresetPicker의
+        refresh()와 달리 실시간 갱신은 하지 않음).
+        """
+        from daedalus.view.widgets.tag_input import TagInput, get_tool_candidates
+        if fld in _TOOL_CANDIDATE_FIELDS and isinstance(widget, TagInput):
+            widget.set_candidates(get_tool_candidates())
 
     @staticmethod
     def _read_widget_value(fld: SkillField | AgentField, widget: QWidget) -> object:
