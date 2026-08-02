@@ -830,7 +830,12 @@ class MainWindow(QMainWindow):
     def _on_scene_selection(self) -> None:
         if self._fsm_scene is None:
             return
-        selected = self._fsm_scene.selectedItems()
+        try:
+            selected = self._fsm_scene.selectedItems()
+        except RuntimeError:
+            # 씬의 C++ 객체가 이미 파괴된 뒤 지연 발화된 시그널 — 무시
+            # (agent_editor._on_graph_selection과 동일 가드).
+            return
         if len(selected) == 1:
             item = selected[0]
             if isinstance(item, StateNodeItem):

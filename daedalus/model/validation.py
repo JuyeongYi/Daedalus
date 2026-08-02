@@ -1389,6 +1389,15 @@ class Validator:
                 Validator._scan_state_access(fsm, _make_checker((f"skill:{skill.name}",)))
         for agent in project.agents:
             Validator._scan_state_access(agent.fsm, _make_checker((f"agent:{agent.name}",)))
+            # 에이전트 로컬 스킬 FSM도 검사 — dangling_hook_ref 전례 (리뷰 지적:
+            # 제외하면 orphan이 오탐, dangling이 미검출된다)
+            for local in getattr(agent, "skills", None) or []:
+                local_fsm = getattr(local, "fsm", None)
+                if local_fsm is not None:
+                    Validator._scan_state_access(
+                        local_fsm,
+                        _make_checker((f"agent:{agent.name}", f"skill:{local.name}")),
+                    )
         graph = getattr(project, "graph", None)
         if graph is not None:
             Validator._scan_state_access(graph, _make_checker(("project",)))
@@ -1417,6 +1426,10 @@ class Validator:
                 Validator._scan_state_access(fsm, _collect)
         for agent in project.agents:
             Validator._scan_state_access(agent.fsm, _collect)
+            for local in getattr(agent, "skills", None) or []:
+                local_fsm = getattr(local, "fsm", None)
+                if local_fsm is not None:
+                    Validator._scan_state_access(local_fsm, _collect)
         graph = getattr(project, "graph", None)
         if graph is not None:
             Validator._scan_state_access(graph, _collect)

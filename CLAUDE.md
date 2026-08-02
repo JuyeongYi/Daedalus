@@ -312,9 +312,9 @@ ComponentConfig(ABC)          # model, effort, hooks 공통 필드
 
 블랙보드 접근 선언 검증(`dangling_blackboard_ref`/`orphan_blackboard_field`, WP-BB): 상태
 reads/writes 순회는 `Validator._scan_state_access(sm, visit)` 공용 헬퍼(CompositeState.sub_machine/
-ParallelState.region 재귀)를 쓰며, project.skills(fsm)/project.agents(fsm)/project.graph 세
-축을 모두 검사한다(도구/훅 규칙과 마찬가지로 에이전트 로컬 스킬의 FSM은 별도 축이라 포함되지
-않음 — `dangling_tool_ref`와 동일 전례).
+ParallelState.region 재귀)를 쓰며, project.skills(fsm)/project.agents(fsm + **에이전트 로컬
+스킬 fsm**)/project.graph 네 축을 모두 검사한다(`dangling_hook_ref` 전례 — 로컬 스킬을
+제외하면 orphan이 오탐, dangling이 미검출된다).
 
 ### 훅 (HookDef / hook_library)
 

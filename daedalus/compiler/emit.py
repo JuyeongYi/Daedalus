@@ -876,8 +876,14 @@ def _blackboard_section(project, component=None) -> list[str]:
         if writes:
             intro_lines.append(f"이 {subject} 쓰는 것: " + ", ".join(f"`{w}`" for w in sorted(writes)))
 
+        # 총론(디렉토리·스키마 설명)은 선언 유무와 무관하게 유지 — 선언은
+        # "덧붙이는" 정보이지 총론을 대체하지 않는다 (리뷰 지적 1).
         return [
             "## 공유 상태 (블랙보드)",
+            (
+                "이 워크플로의 컨텍스트 간 공유 상태는 작업 폴더의 `state/` 디렉토리에 JSON 파일로\n"
+                "유지한다. 각 파일의 구조는 플러그인의 `schemas/schemas.json`에 정의된 스키마를 따른다."
+            ),
             "\n".join(intro_lines),
             "\n".join(lines),
             rule_lines,

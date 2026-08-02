@@ -167,3 +167,27 @@ def test_description_less_class_no_suffix():
     text = compile_skill(project.skills[0], project=project)
     assert "`Plain` → `state/Plain.json`" in text
     assert "`Plain` → `state/Plain.json` —" not in text
+
+
+def test_declared_branch_keeps_overview_paragraph():
+    """선언이 있어도 총론(디렉토리·schemas.json 안내)은 유지된다 (리뷰 지적 1)."""
+    from daedalus.model.fsm.blackboard import DynamicClass, DynamicField
+    from daedalus.model.fsm.machine import StateMachine
+    from daedalus.model.fsm.state import SimpleState
+    from daedalus.model.fsm.variable import FieldType
+    from daedalus.model.plugin.skill import ProceduralSkill
+    from daedalus.model.project import PluginProject
+    from daedalus.compiler.emit import compile_skill
+
+    s = SimpleState(name="s")
+    s.writes = ["Findings.files"]
+    fsm = StateMachine(name="f", initial_state=s, states=[s], final_states=[s])
+    skill = ProceduralSkill(fsm=fsm, name="alpha", description="d")
+    project = PluginProject(name="p", skills=[skill])
+    project.blackboard.class_definitions.append(DynamicClass(
+        name="Findings", description="",
+        fields=[DynamicField(name="files", field_type=FieldType.LIST)],
+    ))
+    text = compile_skill(skill, project=project)
+    assert "schemas/schemas.json" in text          # 총론 유지
+    assert "쓰는 것" in text                        # 선언 문구 병존
