@@ -167,3 +167,21 @@ def test_transition_drag_default_port_keeps_empty_target_port(qapp):
     assert created[0].model.target_port == ""
 
     view.deleteLater()
+
+
+def test_single_declared_port_snap_records_name(qapp):
+    """선언된 입력 경로가 1개여도 스냅이 그 이름을 기록한다 (리뷰 지적 d —
+    1개 선언이 no-op이 되면 포트 설명이 산출 어디에도 나오지 않는다)."""
+    from PySide6.QtCore import QPointF
+
+    from daedalus.model.fsm.section import EventDef
+
+    vm = ProjectViewModel()
+    scene = FsmScene(vm)
+    skill = _make_skill("t")
+    skill.entry_paths = [EventDef("only", description="유일 경로")]
+    t = StateViewModel(model=SimpleState(name="t", skill_ref=skill), x=0, y=0)
+    vm.state_vms.append(t)
+    scene._rebuild()
+    node = scene._node_items[t]
+    assert node.nearest_input_port_name(QPointF(0.0, 50.0)) == "only"

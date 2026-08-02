@@ -127,12 +127,11 @@ def test_edges_to_same_target_port_converge(qapp):
 
     edge_z = scene._edge_items[tz]
     edge_a = scene._edge_items[ta]
-    node_t = scene._node_items[t]
-    # 둘 다 target_port="" (기본 포트) → 같은 입력 포트 점에 수렴
-    assert node_t.input_port_scene_pos("") == node_t.input_port_scene_pos("")
-    tgt_pos_z = edge_z._target_node.input_port_scene_pos(tz.model.target_port)
-    tgt_pos_a = edge_a._target_node.input_port_scene_pos(ta.model.target_port)
-    assert tgt_pos_z == tgt_pos_a
+    # 서로 다른 두 엣지의 **실제 렌더 경로 끝점**이 한 점에 수렴해야 한다
+    # (리뷰 지적: 같은 함수를 두 번 부르는 동어반복 단언은 어떤 회귀도 못 잡음)
+    end_z = edge_z.path().currentPosition()
+    end_a = edge_a.path().currentPosition()
+    assert end_z == end_a
 
 
 # ---------------------------------------------------------------------------

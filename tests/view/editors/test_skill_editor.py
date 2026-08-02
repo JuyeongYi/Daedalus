@@ -65,7 +65,9 @@ def test_entry_paths_panel_present_for_procedural(qapp):
     comp = _make_procedural()
     editor = SkillEditor(comp)
     panels = editor.findChildren(_TransferOnPanel)
-    assert len(panels) >= 2
+    # transfer_on + call_agents + entry_paths = 3개 — 입력 경로 패널을 제거하면
+    # 실패해야 한다 (리뷰 오탐 지적: >= 2는 패널 제거를 못 잡았음)
+    assert len(panels) >= 3
 
 
 def test_entry_paths_panel_present_for_declarative(qapp):

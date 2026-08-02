@@ -341,12 +341,13 @@ class StateNodeItem(QGraphicsItem):
     def nearest_input_port_name(self, local_pos: QPointF) -> str:
         """WP-IC — 드롭 지점(local 좌표)에서 가장 가까운 입력 포트 이름으로 스냅.
 
-        렌더된 포트가 1개(entry_paths 없음/1개)면 빈 값을 유지한다(하위 호환).
+        선언된 entry_paths가 없으면 빈 값(기본 포트, 하위 호환). 선언이 1개라도
+        있으면 그 이름을 기록한다 — 1개 선언이 no-op이 되지 않게 (리뷰 지적 d).
         """
         paths = self._input_event_defs()
-        n = max(1, len(paths))
-        if n <= 1:
+        if not paths:
             return ""
+        n = len(paths)
         best_i = 0
         best_dist: float | None = None
         for i in range(n):

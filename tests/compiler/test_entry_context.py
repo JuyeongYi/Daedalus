@@ -301,3 +301,40 @@ def test_caller_contracts_section_omitted_when_empty():
     agent = _make_agent_with_contracts([])
     text = compile_agent(agent)
     assert "## 호출 계약" not in text
+
+
+def test_agent_origin_mentions_delegator_for_prev_matching():
+    """에이전트 출처 항목에 위임 시작 스킬을 병기 + 도입부에 복귀 안내 (리뷰 지적 f —
+    규약상 prev에는 에이전트가 아니라 위임 스킬 이름이 남으므로 병기 없이는
+    prev로 항목을 특정할 수 없다)."""
+    from daedalus.model.fsm.event import CompletionEvent
+    from daedalus.model.fsm.machine import StateMachine
+    from daedalus.model.fsm.state import SimpleState
+    from daedalus.model.fsm.transition import Transition
+    from daedalus.model.plugin.agent import AgentDefinition
+    from daedalus.model.project import PluginProject
+    from daedalus.compiler.emit import compile_skill
+
+    def _proc(name):
+        s = SimpleState(name="s")
+        fsm = StateMachine(name=f"{name}_f", initial_state=s, states=[s], final_states=[s])
+        from daedalus.model.plugin.skill import ProceduralSkill
+        return ProceduralSkill(fsm=fsm, name=name, description="d")
+
+    beta = _proc("beta")
+    a_s = SimpleState(name="a")
+    worker = AgentDefinition(
+        fsm=StateMachine(name="af", initial_state=a_s, states=[a_s], final_states=[a_s]),
+        name="worker", description="d")
+    project = PluginProject(name="p", skills=[beta], agents=[worker])
+    pb = SimpleState(name="beta", skill_ref=beta)
+    pw = SimpleState(name="worker", skill_ref=worker)
+    project.graph.states.extend([pb, pw])
+    project.graph.transitions.extend([
+        Transition(source=pb, target=pw, trigger=CompletionEvent(name="needs-work")),
+        Transition(source=pw, target=pb, trigger=CompletionEvent(name="done")),
+    ])
+
+    text = compile_skill(beta, project=project)
+    assert "에이전트 위임에서 복귀한 경우" in text
+    assert "위임을 시작한 스킬 — `beta`" in text

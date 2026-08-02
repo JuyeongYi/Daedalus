@@ -809,11 +809,14 @@ def _entry_source_ref_name(t) -> str:
     return getattr(ref, "name", "") or t.source.name
 
 
-def _entry_item_line(t) -> str:
+def _entry_item_line(t, project) -> str:
     """진입 맥락 그룹 안 출처별 항목 한 줄.
 
     "- `<출처>`에서 [<조건>]로 진입" + (TransferSkill이 있으면 지침 수행 문구 합류).
-    출처가 에이전트 placement면 "에이전트 `X`의 위임 완료 후" 문구로 대체한다.
+    출처가 에이전트 placement면 "에이전트 `X`의 위임 완료 후" 문구로 대체하고,
+    위임을 시작한 스킬 이름을 병기한다 — 규약상 `prev`에는 에이전트가 아니라
+    위임 스킬 이름이 남으므로, 병기 없이는 prev로 이 항목을 특정할 수 없다
+    (리뷰 지적 f).
     """
     ref = getattr(t.source, "skill_ref", None)
     name = getattr(ref, "name", "") or t.source.name
@@ -821,6 +824,14 @@ def _entry_item_line(t) -> str:
     cond_str = f" [{cond}]" if cond else ""
     if isinstance(ref, AgentDefinition):
         line = f"- 에이전트 `{name}`의 위임 완료 후{cond_str}로 진입"
+        delegators = sorted({
+            getattr(getattr(tr.source, "skill_ref", None), "name", "")
+            for tr in getattr(project.graph, "transitions", [])
+            if tr.target is t.source
+        } - {""})
+        if delegators:
+            names = ", ".join(f"`{d}`" for d in delegators)
+            line += f" (이때 `prev`는 위임을 시작한 스킬 — {names})"
     else:
         line = f"- `{name}`에서{cond_str}로 진입"
     if t.skill_ref is not None:
@@ -840,7 +851,11 @@ def _entry_context_section(component, project) -> list[str]:
         return []
     blocks: list[str] = [
         "## 진입 맥락",
-        "`state/__progress__.json`의 `prev`를 확인하고 아래에서 해당 출처 항목을 따르라.",
+        (
+            "`state/__progress__.json`의 `prev`를 확인하고 아래에서 해당 출처 항목을 따르라. "
+            "에이전트 위임에서 복귀한 경우 `prev`에는 에이전트가 아니라 위임을 시작한 "
+            "스킬 이름이 남아 있다."
+        ),
     ]
     for name, desc, transitions in groups:
         heading = f"### 경로: {name}" if name is not None else "### 기본 경로"
@@ -848,7 +863,7 @@ def _entry_context_section(component, project) -> list[str]:
         if desc:
             blocks.append(desc)
         ordered = sorted(transitions, key=_entry_source_ref_name)
-        blocks.append("\n".join(_entry_item_line(t) for t in ordered))
+        blocks.append("\n".join(_entry_item_line(t, project) for t in ordered))
     return blocks
 
 

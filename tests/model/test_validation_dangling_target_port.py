@@ -78,7 +78,7 @@ def test_dangling_target_port_skips_target_without_skill_ref():
     assert not any(e.rule == "dangling_target_port" for e in errors)
 
 
-def test_dangling_target_port_skips_no_entry_paths_declared():
+def test_dangling_target_port_warns_when_no_entry_paths_declared():
     """entry_paths가 아예 빈 스킬(기본 포트 1개)에 target_port를 지정해도
     entry_paths 이름 집합이 비어 있으므로 dangling으로 경고한다."""
     skill = _procedural("t", entry_paths=[])

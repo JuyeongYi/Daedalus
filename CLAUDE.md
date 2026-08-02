@@ -204,19 +204,27 @@ daedalus/
   포트 위치를 조회하므로 `TransitionEdgeItem.update_path`가 `Transition.target_port`로 도착점을
   앵커한다 — **같은 target_port를 향하는 여러 전이는 자연히 한 점에 수렴**한다(구버전의
   incoming edge 개수 기반 팬아웃 방식은 폐지). `FsmScene.end_transition_drag`가 드롭 지점에서
-  `nearest_input_port_name`으로 가장 가까운 포트에 스냅해 target_port를 기록한다(렌더된 포트가
-  1개면 빈 값 유지 — 하위 호환).
+  `nearest_input_port_name`으로 가장 가까운 포트에 스냅해 target_port를 기록한다(**선언된
+  entry_paths가 없을 때만 빈 값** — 선언이 1개라도 있으면 그 이름을 기록해 1개 선언이
+  no-op이 되지 않게 한다. 리뷰 반영).
 - **편집 UI:** 기존 `_TransferOnPanel`(transfer_on 편집, `list[EventDef]` 범용 위젯)을 그대로
   재사용해 ProceduralSkill/DeclarativeSkill/AgentDefinition 에디터에 "⇤ 입력 경로" 패널을
-  추가했다 — transfer_on(출력 이벤트) 편집과 대칭 위치·패턴.
+  추가했다 — transfer_on(출력 이벤트) 편집과 대칭 위치·패턴(입력 경로 기본색 `#44aa88` —
+  출력 포트 기본색과 시각 구분). **에이전트의 entry_paths는 캔버스 렌더·수렴과
+  dangling_target_port 검증에만 쓰이고 컴파일 산출에는 반영되지 않는다**(진입 맥락 단락은
+  스킬 한정 — 에이전트 .md 반영은 후속 후보).
 - **컴파일러(Part C):** 배치된 전역 ProceduralSkill/DeclarativeSkill에서 incoming 전이가 1개
   이상이면 "## 작업 재개" 프리앰블 뒤·본문 앞에 `_entry_context_section`이 "## 진입 맥락"
   단락을 배출한다. entry_paths 선언 순서로 포트별 그룹(`### 경로: <name>` + EventDef.description,
   기본 경로는 `### 기본 경로`로 항상 마지막)을 만들고, 그룹 안에서는 출처 이름순으로 항목을
   나열한다("- `<출처>`에서 [조건]로 진입" — 조건은 `_transition_condition` 재사용, 전이에
   TransferSkill이 있으면 지침 수행 문구 합류, 출처가 에이전트 placement면 "에이전트 `X`의
-  위임 완료 후" 문구). entry_paths에 없는 target_port(rename 고아)는 기본 경로로 수렴한다.
-  incoming 0개 배치·미배치·로컬 스킬은 산출 변화 없음(하위 호환).
+  위임 완료 후 … (이때 `prev`는 위임을 시작한 스킬 — `Y`)" — 규약상 prev에는 에이전트가
+  아니라 위임 스킬 이름이 남으므로 병기해야 prev로 항목을 특정할 수 있다. 도입부에도
+  에이전트 복귀 시 prev 의미 안내 1문장). entry_paths에 없는 target_port(rename 고아)는
+  기본 경로로 수렴한다. incoming 0개 배치·미배치·로컬 스킬은 산출 변화 없음(하위 호환).
+  동일 출처가 서로 다른 두 포트로 진입하는 경우 prev만으로는 그룹을 특정할 수 없는 한계가
+  남아 있다 — 진행 규약에 포트를 싣는 것(`prev_port` 등)은 후속 후보.
 - **검증:** `dangling_target_port` — target_port가 비어있지 않은데 타깃 skill_ref의
   entry_paths 이름 집합에 없으면 경고(`trigger_unknown_event`의 입력판). 타깃이 skill_ref
   없는 상태면 스킵.
