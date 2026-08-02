@@ -48,6 +48,8 @@ _WARN_RULES = frozenset({
     "dangling_hook_ref",
     "empty_hook_command",
     "hook_matcher_without_tool_event",
+    "dangling_blackboard_ref",
+    "orphan_blackboard_field",
 })
 
 

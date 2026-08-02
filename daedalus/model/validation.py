@@ -76,6 +76,9 @@ WARNING_RULES: frozenset[str] = frozenset({
     "dangling_hook_ref",
     "empty_hook_command",
     "hook_matcher_without_tool_event",
+    # 블랙보드(blackboard) 경고 — WP-BB
+    "dangling_blackboard_ref",
+    "orphan_blackboard_field",
 })
 
 
@@ -829,6 +832,9 @@ class Validator:
         errors.extend(Validator._check_empty_hook_command(project))
         errors.extend(Validator._check_hook_matcher_event(project))
         errors.extend(Validator._check_dangling_hook_refs(project))
+        # 블랙보드(blackboard) 규칙 — WP-BB
+        errors.extend(Validator._check_dangling_blackboard_refs(project))
+        errors.extend(Validator._check_orphan_blackboard_fields(project))
         return errors
 
     # ------------------------------------------------------------------
@@ -1322,4 +1328,117 @@ class Validator:
                     subject=placement,
                 ))
 
+        return errors
+
+    # ------------------------------------------------------------------
+    # 블랙보드(blackboard) 규칙 2종 — WP-BB Part E
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _scan_state_access(sm: StateMachine, visit) -> None:
+        """머신(재귀 — sub_machine/Region 포함)의 모든 상태에 visit(state)를 적용한다.
+
+        dangling_blackboard_ref/orphan_blackboard_field가 공유하는 순회 로직.
+        """
+        for state in sm.states:
+            visit(state)
+            if isinstance(state, CompositeState):
+                Validator._scan_state_access(state.sub_machine, visit)
+            elif isinstance(state, ParallelState):
+                for region in state.regions:
+                    Validator._scan_state_access(region.sub_machine, visit)
+
+    @staticmethod
+    def _check_dangling_blackboard_refs(project) -> list[ValidationError]:
+        """dangling_blackboard_ref — 상태 reads/writes의 "Class"/"Class.field" 문자열
+        참조가 프로젝트 최상위 블랙보드 class_definitions에 실존하는지 검사.
+
+        미존재 → 경고(subject=해당 상태). 빈 문자열은 스킵. 모든 머신(skill.fsm/
+        agent.fsm, 재귀)과 프로젝트 그래프의 상태를 검사한다.
+        """
+        classes = getattr(project.blackboard, "class_definitions", None) or []
+        known_classes = {c.name for c in classes}
+        known_fields = {f"{c.name}.{fld.name}" for c in classes for fld in c.fields}
+
+        errors: list[ValidationError] = []
+
+        def _make_checker(path: tuple[str, ...]):
+            def _visit(state) -> None:
+                for ref in list(getattr(state, "reads", None) or []) + list(
+                    getattr(state, "writes", None) or []
+                ):
+                    if not ref:
+                        continue
+                    valid = ref in known_fields if "." in ref else ref in known_classes
+                    if not valid:
+                        errors.append(ValidationError(
+                            rule="dangling_blackboard_ref",
+                            message=(
+                                f"상태 '{state.name}'의 블랙보드 참조 '{ref}'이 "
+                                f"프로젝트 블랙보드에 없습니다."
+                            ),
+                            source=state.name,
+                            subject=state,
+                            path=path,
+                        ))
+            return _visit
+
+        for skill in project.skills:
+            fsm = getattr(skill, "fsm", None)
+            if fsm is not None:
+                Validator._scan_state_access(fsm, _make_checker((f"skill:{skill.name}",)))
+        for agent in project.agents:
+            Validator._scan_state_access(agent.fsm, _make_checker((f"agent:{agent.name}",)))
+        graph = getattr(project, "graph", None)
+        if graph is not None:
+            Validator._scan_state_access(graph, _make_checker(("project",)))
+
+        return errors
+
+    @staticmethod
+    def _check_orphan_blackboard_fields(project) -> list[ValidationError]:
+        """orphan_blackboard_field — 어떤 상태의 reads/writes에도 등장하지 않는
+        블랙보드 필드를 경고. 클래스 전체 참조("Class")는 그 클래스의 모든 필드를
+        커버한 것으로 간주한다. 프로젝트 전체에 접근 선언이 하나도 없으면 스킵
+        (선언 기능 미사용 프로젝트에 경고 폭주 방지)."""
+        classes = getattr(project.blackboard, "class_definitions", None) or []
+        if not classes:
+            return []
+
+        declared: set[str] = set()
+
+        def _collect(state) -> None:
+            declared.update(getattr(state, "reads", None) or [])
+            declared.update(getattr(state, "writes", None) or [])
+
+        for skill in project.skills:
+            fsm = getattr(skill, "fsm", None)
+            if fsm is not None:
+                Validator._scan_state_access(fsm, _collect)
+        for agent in project.agents:
+            Validator._scan_state_access(agent.fsm, _collect)
+        graph = getattr(project, "graph", None)
+        if graph is not None:
+            Validator._scan_state_access(graph, _collect)
+
+        if not declared:
+            return []  # 접근 선언 기능 자체를 쓰지 않는 프로젝트 — 스킵
+
+        errors: list[ValidationError] = []
+        for cls in classes:
+            if cls.name in declared:
+                continue  # 클래스 전체 참조 — 모든 필드 커버
+            for fld in cls.fields:
+                field_ref = f"{cls.name}.{fld.name}"
+                if field_ref in declared:
+                    continue
+                errors.append(ValidationError(
+                    rule="orphan_blackboard_field",
+                    message=(
+                        f"블랙보드 필드 '{field_ref}'을 참조하는 상태(reads/writes)가 "
+                        f"없습니다."
+                    ),
+                    source=field_ref,
+                    subject=fld,
+                ))
         return errors
