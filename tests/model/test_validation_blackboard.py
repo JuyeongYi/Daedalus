@@ -211,3 +211,42 @@ def test_local_skill_declaration_prevents_orphan_false_positive():
     local_state.reads = ["Findings.files"]
     errors = Validator.validate_project(project)
     assert not any(e.rule == "orphan_blackboard_field" for e in errors)
+
+
+# ── WP-BT: 블랙보드 필드 타입 제한 (스칼라 4종) ──
+
+
+def test_invalid_blackboard_field_type_warns_on_legacy():
+    """구버전 파일의 list/json/any/number 필드 → 경고 (로드·컴파일은 계속)."""
+    from daedalus.model.fsm.blackboard import DynamicClass, DynamicField
+    from daedalus.model.fsm.variable import FieldType
+    from daedalus.model.project import PluginProject
+
+    project = PluginProject(name="p")
+    project.blackboard.class_definitions.append(DynamicClass(
+        name="Legacy", description="",
+        fields=[DynamicField(name="blob", field_type=FieldType.JSON),
+                DynamicField(name="ok", field_type=FieldType.STRING)],
+    ))
+    errors = Validator.validate_project(project)
+    hits = [e for e in errors if e.rule == "invalid_blackboard_field_type"]
+    assert len(hits) == 1
+    assert hits[0].source == "Legacy.blob"
+    assert hits[0].is_warning
+
+
+def test_scalar_field_types_no_warning():
+    from daedalus.model.fsm.blackboard import (
+        BLACKBOARD_FIELD_TYPES, CollectionType, DynamicClass, DynamicField,
+    )
+    from daedalus.model.project import PluginProject
+
+    project = PluginProject(name="p")
+    project.blackboard.class_definitions.append(DynamicClass(
+        name="Ok", description="",
+        fields=[DynamicField(name=f"f{i}", field_type=t,
+                             collection=CollectionType.LIST if i == 0 else CollectionType.NONE)
+                for i, t in enumerate(BLACKBOARD_FIELD_TYPES)],
+    ))
+    errors = Validator.validate_project(project)
+    assert not any(e.rule == "invalid_blackboard_field_type" for e in errors)

@@ -26,7 +26,12 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from daedalus.model.fsm.blackboard import CollectionType, DynamicClass, DynamicField
+from daedalus.model.fsm.blackboard import (
+    BLACKBOARD_FIELD_TYPES,
+    CollectionType,
+    DynamicClass,
+    DynamicField,
+)
 from daedalus.model.fsm.variable import FieldType
 from daedalus.model.project import PluginProject
 from daedalus.view.widgets.combo_widgets import CollectionTypeComboBox, FieldTypeComboBox
@@ -222,7 +227,10 @@ class BlackboardPanel(QWidget):
         name_item = QTableWidgetItem(fld.name)
         self._table.setItem(row, 0, name_item)
 
-        type_combo = FieldTypeComboBox()
+        # 블랙보드 필드는 스칼라 원소 타입만 (WP-BT) — 컨테이너 형상은 컬렉션
+        # 콤보가 전담. 구버전 파일의 legacy 타입은 "(legacy)" 항목으로 표시 유지.
+        type_combo = FieldTypeComboBox(members=BLACKBOARD_FIELD_TYPES)
+        type_combo.ensure_member(fld.field_type)
         idx = type_combo.findData(fld.field_type)
         if idx >= 0:
             type_combo.setCurrentIndex(idx)

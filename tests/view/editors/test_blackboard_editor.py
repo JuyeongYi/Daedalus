@@ -203,3 +203,47 @@ def test_set_project_none_disables_panel(qapp):
     panel.set_project(None)
     assert not panel.isEnabled()
     assert panel._list.count() == 0
+
+
+# ── WP-BT: 타입 콤보 제한 ──
+
+
+def test_field_type_combo_offers_scalar_types_only(qapp):
+    """블랙보드 필드 타입 콤보는 스칼라 4종만 노출한다 (list/json/any/number 소멸)."""
+    from daedalus.model.fsm.blackboard import (
+        BLACKBOARD_FIELD_TYPES, DynamicClass, DynamicField,
+    )
+    from daedalus.model.fsm.variable import FieldType
+    from daedalus.model.project import PluginProject
+    from daedalus.view.editors.blackboard_editor import BlackboardPanel
+
+    project = PluginProject(name="p")
+    project.blackboard.class_definitions.append(DynamicClass(
+        name="C", description="",
+        fields=[DynamicField(name="x", field_type=FieldType.STRING)]))
+    panel = BlackboardPanel()
+    panel.set_project(project)
+    panel._list.setCurrentRow(0)
+    combo = panel._table.cellWidget(0, 1)
+    items = {combo.itemData(i) for i in range(combo.count())}
+    assert items == set(BLACKBOARD_FIELD_TYPES)
+
+
+def test_field_type_combo_keeps_legacy_value_visible(qapp):
+    """구버전 legacy 타입 필드는 "(legacy)" 항목으로 표시 유지 — 다른 칸 편집이
+    타입을 몰래 바꾸지 않는다."""
+    from daedalus.model.fsm.blackboard import DynamicClass, DynamicField
+    from daedalus.model.fsm.variable import FieldType
+    from daedalus.model.project import PluginProject
+    from daedalus.view.editors.blackboard_editor import BlackboardPanel
+
+    project = PluginProject(name="p")
+    project.blackboard.class_definitions.append(DynamicClass(
+        name="C", description="",
+        fields=[DynamicField(name="blob", field_type=FieldType.JSON)]))
+    panel = BlackboardPanel()
+    panel.set_project(project)
+    panel._list.setCurrentRow(0)
+    combo = panel._table.cellWidget(0, 1)
+    assert combo.currentData() is FieldType.JSON
+    assert "(legacy)" in combo.currentText()

@@ -98,12 +98,25 @@ class AgentColorComboBox(QComboBox):
 
 
 class FieldTypeComboBox(QComboBox):
-    """블랙보드 필드 타입 콤보박스 — string/int/float/number/bool/list/json/any."""
+    """필드 타입 콤보박스.
 
-    def __init__(self, parent=None) -> None:
+    members가 주어지면 그 부분집합만 노출한다 — 블랙보드 필드는 스칼라 원소
+    타입만 허용(BLACKBOARD_FIELD_TYPES, 컨테이너 형상은 CollectionType 전담 —
+    type=list × collection=list 같은 무의미 조합 차단).
+    `ensure_member(t)`는 목록에 없는 기존 값(구버전 파일의 legacy 타입)을
+    "(legacy)" 표기로 임시 추가해, 다른 칸 편집이 타입을 몰래 바꾸지 않게 한다.
+    """
+
+    def __init__(self, parent=None, members: tuple[FieldType, ...] | None = None) -> None:
         super().__init__(parent)
-        for t in FieldType:
+        for t in (members if members is not None else tuple(FieldType)):
             self.addItem(t.value, t)
+
+    def ensure_member(self, t: FieldType) -> None:
+        for i in range(self.count()):
+            if self.itemData(i) is t:
+                return
+        self.addItem(f"{t.value} (legacy)", t)
 
 
 class CollectionTypeComboBox(QComboBox):
