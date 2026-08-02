@@ -7,6 +7,7 @@ from daedalus.model.fsm.machine import StateMachine
 from daedalus.model.fsm.pseudo import EntryPoint
 from daedalus.model.plugin.agent import AgentDefinition
 from daedalus.model.plugin.delegation import DelegationDef
+from daedalus.model.plugin.enums import BuildTarget
 from daedalus.model.plugin.hook import HookDef
 from daedalus.model.plugin.skill import Skill
 from daedalus.model.plugin.tool import Tool
@@ -71,6 +72,10 @@ class PluginProject:
     # 않는다(compiler/emit.py의 compile_hooks_json이 컴파일 시점에 합성).
     # 구버전 프로젝트 파일(키 부재)은 True로 취급(deserialize_project).
     emit_progress_hook: bool = True
+    # WP-TG — 빌드 타깃: 마켓플레이스 플러그인(기본) / 로컬 플러그인(.claude/ 반입형).
+    # 프로젝트 생성 시 선택하고 프로젝트 속성에서 변경 가능. 구버전 프로젝트 파일
+    # (키 부재)은 MARKETPLACE로 취급(deserialize_project) — 하위 호환 게이트.
+    build_target: BuildTarget = BuildTarget.MARKETPLACE
 
     def __post_init__(self) -> None:
         # 블랙보드 스코핑 — 프로젝트 그래프 FSM의 blackboard를 최상위 블랙보드의
