@@ -53,6 +53,8 @@ _WARN_RULES = frozenset({
     "dangling_blackboard_ref",
     "orphan_blackboard_field",
     "dangling_file_ref",  # WP-FR — 아래 _EXTERNALLY_EMITTED_RULES 참조
+    "mcp_agent_in_marketplace_build",  # WP-TG
+    "plugin_root_in_local_build",  # WP-TG
 })
 
 # validation.py 밖(컴파일러 등)에서 emit되지만 WARNING_RULES에는 등록된 규칙 —
