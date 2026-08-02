@@ -1586,6 +1586,133 @@ def compile_plugin_manifest(project) -> str:
     return text
 
 
+# ─────────────────────────── 로컬 빌드 (WP-TG) ───────────────────────────
+
+# LOCAL 빌드에서 files/ 참조만 치환한다 — files/ 외 용도의 ${CLAUDE_PLUGIN_ROOT}는
+# 그대로 두고 검증 규칙(plugin_root_in_local_build)이 경고한다.
+_LOCAL_FILE_REF_FROM = "${CLAUDE_PLUGIN_ROOT}/files/"
+_LOCAL_FILE_REF_TO = "${CLAUDE_PROJECT_DIR}/files/"
+
+
+def substitute_local_file_refs(text: str) -> str:
+    """LOCAL 빌드 산출 텍스트에서 ``${CLAUDE_PLUGIN_ROOT}/files/`` →
+    ``${CLAUDE_PROJECT_DIR}/files/``로 치환한다.
+
+    본문 저장 정본은 마켓플레이스 형태 하나이며(WP-FR 재작업 없음), 이 치환은
+    LOCAL 빌드 산출 시점에만 적용된다 — MARKETPLACE 산출 문자열은 불변.
+    """
+    return text.replace(_LOCAL_FILE_REF_FROM, _LOCAL_FILE_REF_TO)
+
+
+def compile_install_md(project) -> str:
+    """LOCAL 빌드 동봉 INSTALL.md — 산출 구조 설명 + 설치 스크립트 사용법 +
+    hooks 수동 병합 안내 (결정적, LF, 끝 개행 1개)."""
+    name = getattr(project, "name", "") or "(이름 없음)"
+    lines = [
+        f"# {name} — 로컬 플러그인 설치",
+        "",
+        (
+            "이 디렉토리는 Claude Code 플러그인 마켓플레이스 형식이 아니라, 대상 "
+            "프로젝트의 `.claude/`로 반입하는 로컬 빌드 산출물이다."
+        ),
+        "",
+        "## 산출 구조",
+        "",
+        "- `skills/` — 대상 프로젝트의 `.claude/skills/`로 복사",
+        "- `agents/` — 대상 프로젝트의 `.claude/agents/`로 복사",
+        (
+            "- `files/` — 대상 프로젝트 루트의 `files/`로 복사 (스킬/에이전트 본문이 "
+            "`${CLAUDE_PROJECT_DIR}/files/...`로 참조)"
+        ),
+        "- `hooks/hooks.json` — 설치 스크립트가 복사하지 않는다. 아래 안내를 따라 수동 병합하라.",
+        "",
+        "## 설치",
+        "",
+        "PowerShell:",
+        "",
+        "```powershell",
+        "./install.ps1 <대상 프로젝트 경로>",
+        "```",
+        "",
+        "POSIX 셸:",
+        "",
+        "```bash",
+        "./install.sh <대상 프로젝트 경로>",
+        "```",
+        "",
+        (
+            "두 스크립트 모두 `skills/*` → `<대상>/.claude/skills/`, "
+            "`agents/*.md` → `<대상>/.claude/agents/`, `files/*` → `<대상>/files/`를 "
+            "복사한다 (기존 동명 파일은 덮어쓴다)."
+        ),
+        "",
+        "## hooks.json 수동 병합",
+        "",
+        (
+            "`hooks/hooks.json`이 존재하면, 대상 프로젝트의 `.claude/settings.json`의 "
+            "`hooks` 섹션에 그 내용을 직접 병합하라. 자동 병합은 기존 설정을 파괴할 "
+            "위험이 있어 수행하지 않는다."
+        ),
+        "",
+    ]
+    return _join_blocks(["\n".join(lines)])
+
+
+# install.ps1/install.sh — 프로젝트 내용과 무관한 결정적 상수 텍스트.
+# 동작: 인자(대상 프로젝트 경로) 필수, 미지정 시 사용법 출력 후 종료. skills/agents/files
+# 복사(기존 파일 덮어씀 경고 후 진행). hooks/hooks.json은 복사하지 않고 수동 병합 안내.
+_INSTALL_PS1 = """\
+param([string]$Target)
+if (-not $Target) {
+  Write-Host "사용법: .\\install.ps1 <대상 프로젝트 경로>"
+  exit 1
+}
+$src = $PSScriptRoot
+if (-not (Test-Path $Target)) { Write-Error "대상 경로 없음: $Target"; exit 1 }
+Write-Host "설치 대상: $Target (기존 동명 파일은 덮어씀)"
+New-Item -ItemType Directory -Force "$Target\\.claude\\skills" | Out-Null
+New-Item -ItemType Directory -Force "$Target\\.claude\\agents" | Out-Null
+if (Test-Path "$src\\skills") { Copy-Item -Recurse -Force "$src\\skills\\*" "$Target\\.claude\\skills\\" }
+if (Test-Path "$src\\agents") { Copy-Item -Recurse -Force "$src\\agents\\*" "$Target\\.claude\\agents\\" }
+if (Test-Path "$src\\files") {
+  New-Item -ItemType Directory -Force "$Target\\files" | Out-Null
+  Copy-Item -Recurse -Force "$src\\files\\*" "$Target\\files\\"
+}
+Write-Host "완료. hooks/hooks.json이 있으면 .claude/settings.json에 수동 병합하라."
+"""
+
+_INSTALL_SH = """\
+#!/usr/bin/env bash
+set -euo pipefail
+if [ $# -lt 1 ]; then echo "사용법: ./install.sh <대상 프로젝트 경로>"; exit 1; fi
+TARGET="$1"
+SRC="$(cd "$(dirname "$0")" && pwd)"
+[ -d "$TARGET" ] || { echo "대상 경로 없음: $TARGET"; exit 1; }
+echo "설치 대상: $TARGET (기존 동명 파일은 덮어씀)"
+mkdir -p "$TARGET/.claude/skills" "$TARGET/.claude/agents"
+[ -d "$SRC/skills" ] && cp -rf "$SRC/skills/." "$TARGET/.claude/skills/"
+[ -d "$SRC/agents" ] && cp -rf "$SRC/agents/." "$TARGET/.claude/agents/"
+if [ -d "$SRC/files" ]; then mkdir -p "$TARGET/files"; cp -rf "$SRC/files/." "$TARGET/files/"; fi
+echo "완료. hooks/hooks.json이 있으면 .claude/settings.json에 수동 병합하라."
+"""
+
+
+def compile_install_ps1() -> str:
+    """LOCAL 빌드 동봉 install.ps1 (PowerShell, 결정적, LF)."""
+    text = _INSTALL_PS1.replace("\r\n", "\n").replace("\r", "\n")
+    if not text.endswith("\n"):
+        text += "\n"
+    return text
+
+
+def compile_install_sh() -> str:
+    """LOCAL 빌드 동봉 install.sh (POSIX 셸, 결정적, LF)."""
+    text = _INSTALL_SH.replace("\r\n", "\n").replace("\r", "\n")
+    if not text.endswith("\n"):
+        text += "\n"
+    return text
+
+
 # ─────────────────────────── 블록 결합 ───────────────────────────
 
 
