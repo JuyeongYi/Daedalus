@@ -388,3 +388,60 @@ def test_delete_on_handle_removes_waypoint_not_transition(qapp):
     assert tvm.waypoints == []
     assert tvm in vm.transition_vms, "Delete가 전이까지 지우면 안 된다"
     view.hide()
+
+
+# ── 경유점 라우팅 (S자 스파게티 방지) ──
+
+
+def test_waypoint_path_does_not_zigzag(qapp):
+    """경유점 구간에 포트 규칙(오른쪽 진출/왼쪽 진입)을 적용하면 매 구간이
+    S자로 튄다 — 중간 경유점은 진행 방향 접선을 써야 한다."""
+    from PySide6.QtCore import QPointF as _QP
+
+    from daedalus.view.canvas.edge_item import TransitionEdgeItem
+
+    points = [_QP(640, 17), _QP(500, 300), _QP(250, 350), _QP(-5, 217)]
+    path = TransitionEdgeItem._waypoint_path(points)
+    xs = [path.pointAtPercent(i / 300).x() for i in range(301)]
+    dirs = [1 if xs[i + 1] > xs[i] else -1 for i in range(len(xs) - 1)]
+    flips = sum(1 for i in range(len(dirs) - 1) if dirs[i] != dirs[i + 1])
+    # 구 방식은 6회(경유점마다 왕복). 접선 방식은 포트 진출입 2회 수준.
+    assert flips <= 3, f"경로가 지그재그로 튄다 (방향 반전 {flips}회)"
+
+
+def test_waypoint_path_passes_through_waypoints(qapp):
+    from PySide6.QtCore import QPointF as _QP
+
+    from daedalus.view.canvas.edge_item import TransitionEdgeItem
+
+    points = [_QP(0, 0), _QP(200, 150), _QP(400, -50), _QP(600, 0)]
+    path = TransitionEdgeItem._waypoint_path(points)
+    samples = [path.pointAtPercent(i / 400) for i in range(401)]
+    for wp in points[1:-1]:
+        dist = min(((s.x() - wp.x()) ** 2 + (s.y() - wp.y()) ** 2) ** 0.5 for s in samples)
+        assert dist < 2.0, f"경유점 {wp} 통과 실패 (최근접 {dist:.2f})"
+
+
+def test_two_point_path_unchanged(qapp):
+    """경유점이 없으면 기존 포트 규칙 경로 그대로 (하위 호환)."""
+    from PySide6.QtCore import QPointF as _QP
+    from PySide6.QtGui import QPainterPath
+
+    from daedalus.view.canvas.edge_item import TransitionEdgeItem
+
+    p1, p2 = _QP(0, 0), _QP(300, 100)
+    expected = QPainterPath(p1)
+    TransitionEdgeItem._add_curve_segment(expected, p1, p2)
+    vm = ProjectViewModel()
+    scene = FsmScene(vm)
+    a = StateViewModel(model=SimpleState(name="a"), x=0, y=0)
+    b = StateViewModel(model=SimpleState(name="b"), x=300, y=100)
+    vm.state_vms.extend([a, b])
+    tvm = TransitionViewModel(
+        model=Transition(source=a.model, target=b.model, trigger=CompletionEvent(name="done")),
+        source_vm=a, target_vm=b,
+    )
+    vm.transition_vms.append(tvm)
+    scene._rebuild()
+    path = scene._edge_items[tvm].path()
+    assert path.elementCount() == 4  # moveTo + cubicTo 3요소 — 단일 구간
