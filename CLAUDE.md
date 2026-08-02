@@ -68,7 +68,7 @@ daedalus/
     ├── panels/             # TreePanel, PropertyPanel, RegistryPanel, HistoryPanel, ValidationPanel (F7 검증 결과)
     │                       # RegistryPanel: component_delete_requested 시그널 + _RegistrySection 우클릭 "삭제" 컨텍스트 메뉴
     ├── viewmodel/          # ProjectViewModel(notify structure/content 채널), StateViewModel (모델↔뷰 중간 계층)
-    └── widgets/            # ComboWidgets, TagInput, PresetPicker
+    └── widgets/            # ComboWidgets, TagInput, PresetPicker, markdown_editor(MarkdownHighlighter+MarkdownEditor — 하이브리드 마크다운 하이라이팅·편집, SectionContentPanel 본문에 통합)
 ```
 
 ## 핵심 개념

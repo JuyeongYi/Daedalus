@@ -8,7 +8,6 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QPushButton,
-    QTextEdit,
     QTreeWidget,
     QTreeWidgetItem,
     QVBoxLayout,
@@ -16,6 +15,7 @@ from PySide6.QtWidgets import (
 )
 
 from daedalus.model.fsm.section import Section
+from daedalus.view.widgets.markdown_editor import MarkdownEditor
 
 MAX_DEPTH = 3  # 0-indexed; 4 levels total (H1–H4)
 
@@ -223,7 +223,7 @@ class SectionContentPanel(QWidget):
         lay.addWidget(title_area)
 
         # --- 본문 텍스트 ---
-        self._w_content = QTextEdit()
+        self._w_content = MarkdownEditor()
         self._w_content.textChanged.connect(self._save_content)
         lay.addWidget(self._w_content, 1)
 
