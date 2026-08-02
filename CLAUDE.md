@@ -52,7 +52,7 @@ daedalus/
 │   │   ├── hook.py         # HookDef + HookEvent(CC 9종) (hook_library 훅 단일 진실)
 │   │   ├── hook_presets.py # BUILTIN_HOOK_PRESETS (복사용 훅 템플릿) + preset_copy
 │   │   └── field_matrix.py # FieldRule(emit 포함), SKILL_FIELD_MATRIX, AGENT_FIELD_MATRIX (스킬/에이전트 유형별 프론트매터 필드 규칙)
-│   ├── project.py           # PluginProject (최상위 컨테이너, name+description+version — plugin.json 매니페스트 소스), ReferencePlacement, tool_shelf, hook_library, blackboard(최상위), graph(워크플로 백킹 머신)+graph_layout, emit_progress_hook(WP-RS SessionStart 진행 상태 훅 토글, 기본 True)
+│   ├── project.py           # PluginProject (최상위 컨테이너, name+description+version — plugin.json 매니페스트 소스), ReferencePlacement, tool_shelf, hook_library, blackboard(최상위), graph(워크플로 백킹 머신)+graph_layout+edge_layout(WP-ER 엣지 웨이포인트, 키: Transition.id), emit_progress_hook(WP-RS SessionStart 진행 상태 훅 토글, 기본 True)
 │   │                       # + rename_component(project, component, new_name) — 이름 변경 + 문자열 참조 3종 일괄 갱신 (Qt 무관)
 │   │                       # + remove_component(project, component) → list[str] — 모델 정리 (graph placement, skill_ref None화, 위임 agent_ref None화 등)
 │   ├── serialize.py         # serialize_project/deserialize_project (모델↔JSON dict, 안정 ID 기반)
@@ -69,6 +69,9 @@ daedalus/
     │                       #   인덱스 모두 거부, load_project의 탭 정리 루프는 인덱스 2부터 닫는다. set_project가 blackboard_panel.set_project(project) +
     │                       #   tag_input.set_blackboard_candidate_provider(blackboard_candidate_strings로 바인딩)를 배선.
     ├── canvas/             # GraphicsView/Scene, NodeItem, EdgeItem, RefNodeItem, RefEdgeItem, sync(VM→모델 동기화 — Qt 무관)
+    │                       # 엣지 리루트(WP-ER): TransitionEdgeItem.update_path가 TransitionViewModel.waypoints(경유점)를 경유하는
+    │                       #   구간별 베지어 곡선을 그린다. 선택 시 자식 WaypointHandleItem(작은 원)을 표시 — 더블클릭/컨텍스트 메뉴로
+    │                       #   추가(nearest_segment_index), 드래그 이동, 우클릭/Delete로 제거. FsmScene/AgentFsmScene 공용.
     │                       # node_badges: badges_for(component)(뱃지 로직) + state_access_badges(state)(WP-BB — State.reads/writes → ✏쓰기/📖읽기
     │                       #   뱃지, 선언 있을 때만 렌더). NodeItem.paint가 badges_for(ref)+state_access_badges(model)를 합류해 렌더.
     │                       # 입력 포트(WP-IC): NodeItem._input_event_defs()가 skill_ref.entry_paths를 읽어 입력 포트 수(max(1, len))·
@@ -77,7 +80,7 @@ daedalus/
     │                       #   target_port를 향하는 여러 전이는 자연히 한 점에 수렴한다(incoming edge 개수 기반 팬아웃은 폐지).
     │                       #   scene.end_transition_drag가 드롭 지점에서 nearest_input_port_name으로 스냅해 target_port를 기록(포트
     │                       #   1개면 빈 값 유지 — 하위 호환).
-    ├── commands/           # Undo/Redo 커맨드 (state, transition, section, exit_point)
+    ├── commands/           # Undo/Redo 커맨드 (state, transition — Add/Move/Remove/ClearWaypointsCmd(WP-ER) 포함, section, exit_point)
     ├── editors/            # 속성 편집기 (skill, agent, delegation, hook, body, component, variable_loader, catalogue_loader, field_widgets, project_properties, blackboard_editor)
     │                       # catalogue_loader: 도구/MCP 카탈로그 로더(WP-TM) — ~/.daedalus/catalogue/*.json(글로벌) + <프로젝트>/.daedalus/catalogue/*.json(프로젝트, 이름 충돌 시 우선)
     │                       #   병합. 파일 1개=항목 1개(CatalogueEntry: name=파일명 stem, description, tools="tool" 키, mcp="mcp" 키). expanded_mcp()가 mcp 항목을
@@ -248,6 +251,15 @@ daedalus/
 - **placement:** 배치된 스킬/에이전트는 `SimpleState(skill_ref=...)`로 그래프에 들어간다 (에이전트도 SimpleState로, CompositeState 승격 없음). `FsmScene.set_project`가 `_target_fsm = project.graph`로 배선해 Create/Delete/Transition 커맨드가 그래프에 동기화된다 (undo/redo 일관). `AgentFsmScene`은 `_target_fsm`을 에이전트 FSM으로 별도 설정.
 - **graph_layout:** `dict[str, list[float]]` — 키는 **state.id** (AgentDefinition.graph_layout과 동일 규약, 이름 변경 안전). 저장 직전 `app._save_graph_layout`이 VM 좌표를 기록, 로드 시 `app._load_project_graph`가 graph+graph_layout으로 캔버스 VM을 재구성(`agent_editor._load_agent_fsm` 미러링). EntryPoint는 캔버스 VM이 없으므로 `graph_layout`에도 그 키가 기록되지 않는다(WP-EP).
 - **블랙보드 배선:** `project.graph.blackboard.parent = project.blackboard` — `PluginProject.__post_init__`(생성 경로)과 `deserialize_project`(역직렬화 생성 경로) 양쪽에서 보장.
+
+### 연결선 리루트 — 엣지 웨이포인트 (WP-ER)
+
+- **역할:** 루프 전이 등 노드를 가로질러 그려지는 엣지를 사용자가 손으로 정리할 수 있도록 경유점(waypoint)을 추가·드래그·제거하는 기능. 자동 라우팅(장애물 회피 등)은 비목표 — v1은 수동 경유점만.
+- **저장 모델:** `PluginProject.edge_layout`/`AgentDefinition.edge_layout: dict[str, list[list[float]]]` — 키는 **Transition.id**(graph_layout의 state.id 규약과 동일), 값은 `[x, y]` 목록(소스→타깃 순서). 웨이포인트는 뷰 관심사이므로 fsm 모델(Transition)에는 넣지 않는다. `remove_component`가 배치 삭제 시 연결 전이와 함께 `edge_layout`의 해당 키도 정리한다(graph_layout 정리와 동일 위치).
+- **뷰 모델:** `TransitionViewModel.waypoints: list[tuple[float, float]]`(기본 빈 리스트, 뷰 전용). 저장 직전 `app._save_graph_layout`/`agent_editor._save_graph_layout`이 `transition_vms`를 순회해 `project.edge_layout`/`agent.edge_layout`에 기록하고, 로드 시 `app._load_project_graph`/`agent_editor._load_agent_fsm`이 `edge_layout.get(trans.id, [])`로 `TransitionViewModel(waypoints=...)`를 복원한다(graph_layout과 완전히 동일한 저장/복원 시점 미러링).
+- **렌더 (`edge_item.py`):** `TransitionEdgeItem.update_path`가 `_route_points()`(소스 포트 → waypoints → 타깃 포트)를 구해 각 구간을 기존과 동일한 베지어 곡선(`_add_curve_segment`)으로 잇는다. 각 구간의 끝점이 정확히 경유점이므로 경로가 그 점을 통과함이 보장된다. 경유점이 없으면 구간이 하나뿐이라 기존 렌더와 완전히 동일(하위 호환 — 회귀 판정은 `test_edge_paint.py`/`test_input_ports.py`/`test_scene_rebuild.py` 무수정 통과). 화살촉·라벨은 `path.length()`/`percentAtLength()` 기반 기존 로직 그대로(전체 경로 기준이라 마지막 구간 근방에 자연히 위치).
+- **상호작용:** 엣지 더블클릭 또는 컨텍스트 메뉴 "경유점 추가" → `edge.nearest_segment_index(scene_pos)`(구간별 곡선을 샘플링해 최근접 구간 판정) 위치에 삽입. `TransitionEdgeItem`이 선택된 동안에만 자식 `WaypointHandleItem`(작은 원, 포트 색 계열 `#88aaff`)을 표시(`_sync_handles`, `itemChange(ItemSelectedHasChanged)`에서 갱신) — 엣지는 절대 이동하지 않으므로(pos()가 항상 원점) 자식 로컬 좌표가 곧 씬 좌표다. 핸들은 Qt 기본 `ItemIsMovable`로 드래그되고 `itemChange(ItemPositionHasChanged)`가 실시간 미리보기(`edge.update_waypoint_preview`, undo 없음)를 반영하며, release 시 `scene.handle_waypoint_moved`가 undo 가능한 커맨드를 커밋한다(노드 드래그의 `update_edges_for_node`↔`handle_node_moved` 관례와 동일 결). 핸들 우클릭 "경유점 제거" 또는 핸들 선택 후 Delete, 엣지 컨텍스트 메뉴 "경유점 모두 제거"(직선 복원)도 제공.
+- **undo:** `AddWaypointCmd`/`MoveWaypointCmd`/`RemoveWaypointCmd`/`ClearWaypointsCmd`(`view/commands/transition_commands.py`) — `MoveStateCmd`와 동일한 관례로 `TransitionViewModel.waypoints`를 직접 변경(모델 sync_fn 불필요, 저장 시점에만 project.edge_layout으로 평탄화). `FsmScene`(프로젝트 캔버스)과 `AgentFsmScene`(에이전트 캔버스) 양쪽에서 동일하게 동작 — 오버라이드 불필요.
 
 ### 안정 ID + 직렬화 (serialize.py)
 
