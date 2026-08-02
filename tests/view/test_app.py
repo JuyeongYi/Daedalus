@@ -99,6 +99,6 @@ def test_close_tab_triggers_close_event_cleanup(qapp):
         "scene.close()(씬 리스너 해제)가 실행되어야 한다"
     )
     # 탭이 실제로 제거되었는지 확인
-    assert window._tabs.count() == 1
+    assert window._tabs.count() == 2  # Project FSM + 블랙보드 탭만 남음
     assert "my_agent" not in window._open_tabs
     window.close()

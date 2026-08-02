@@ -42,6 +42,7 @@ from daedalus.view.panels.validation_panel import ValidationPanel
 from daedalus.view.viewmodel.project_vm import ProjectViewModel
 
 _FSM_TAB_INDEX = 0  # 프로젝트 FSM 캔버스는 항상 탭 0
+_BLACKBOARD_TAB_INDEX = 1  # 블랙보드 편집 탭은 항상 탭 1 (WP-BB — 닫기 불가 고정 탭)
 
 
 class MainWindow(QMainWindow):
@@ -82,10 +83,17 @@ class MainWindow(QMainWindow):
         fsm_view = FsmCanvasView(self._fsm_scene)
         self._fsm_scene.selectionChanged.connect(self._on_scene_selection)
         self._tabs.addTab(fsm_view, "Project FSM")
-        # 탭 0의 닫기 버튼 숨김
+
+        # 블랙보드 편집 탭 — 항상 탭 1, 닫을 수 없음 (WP-BB)
+        from daedalus.view.editors.blackboard_editor import BlackboardPanel
+        self._blackboard_panel = BlackboardPanel(on_notify_fn=self._project_vm.notify)
+        self._tabs.addTab(self._blackboard_panel, "🗂 블랙보드")
+
+        # 탭 0/1의 닫기 버튼 숨김 (고정 탭)
         tab_bar = self._tabs.tabBar()
         if tab_bar is not None:
-            tab_bar.setTabButton(0, tab_bar.ButtonPosition.RightSide, None)
+            tab_bar.setTabButton(_FSM_TAB_INDEX, tab_bar.ButtonPosition.RightSide, None)
+            tab_bar.setTabButton(_BLACKBOARD_TAB_INDEX, tab_bar.ButtonPosition.RightSide, None)
 
         # 프로젝트 VM 변경 시 레지스트리 dim 갱신
         self._project_vm.add_listener(self._on_project_vm_changed)
@@ -221,6 +229,7 @@ class MainWindow(QMainWindow):
     def set_project(self, project: PluginProject) -> None:
         self._project = project
         self._registry_panel.set_project(project)
+        self._blackboard_panel.set_project(project)
         if self._fsm_scene is not None:
             self._fsm_scene.set_project(project)
         # HookPresetPicker가 이 프로젝트의 hook_library 이름을 동적으로 표시하도록 연결.
@@ -304,8 +313,8 @@ class MainWindow(QMainWindow):
         열린 에디터 탭을 닫고, 프로젝트 VM(캔버스 상태)을 비운 뒤
         레지스트리/씬을 새 프로젝트로 재구성한다.
         """
-        # 1) 열린 에디터 탭 정리 (Project FSM 탭 0 제외, 역순 제거)
-        for index in range(self._tabs.count() - 1, _FSM_TAB_INDEX, -1):
+        # 1) 열린 에디터 탭 정리 (Project FSM 탭 0 + 블랙보드 탭 1 제외, 역순 제거)
+        for index in range(self._tabs.count() - 1, _BLACKBOARD_TAB_INDEX, -1):
             self._close_tab(index)
         self._open_tabs.clear()
 
@@ -757,8 +766,8 @@ class MainWindow(QMainWindow):
         self._register_component(factories[kind]())
 
     def _close_tab(self, index: int) -> None:
-        if index == _FSM_TAB_INDEX:
-            return  # Project FSM은 닫을 수 없음
+        if index in (_FSM_TAB_INDEX, _BLACKBOARD_TAB_INDEX):
+            return  # Project FSM / 블랙보드는 닫을 수 없음
         widget = self._tabs.widget(index)
         name = next((n for n, i in self._open_tabs.items() if i == index), None)
         if name:

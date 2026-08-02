@@ -56,10 +56,10 @@ def test_open_clears_existing_tabs(qapp, tmp_path):
 
     # 에디터 탭 하나 열기
     window._open_component(project.agents[0])
-    assert window._tabs.count() == 2
+    assert window._tabs.count() == 3  # Project FSM + 블랙보드 + agent 탭
 
     window.open_path(path)
-    assert window._tabs.count() == 1  # Project FSM 탭만 남음
+    assert window._tabs.count() == 2  # Project FSM + 블랙보드 탭만 남음
     assert window._open_tabs == {}
 
     window.close()
