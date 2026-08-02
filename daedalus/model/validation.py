@@ -61,6 +61,7 @@ WARNING_RULES: frozenset[str] = frozenset({
     "unreachable_state",
     "invalid_data_map_source",
     "trigger_unknown_event",
+    "dangling_target_port",
     # WP-M FSM 의미론 경고
     "choice_completeness_missing_else",
     "parallel_join_count",
@@ -138,6 +139,7 @@ class Validator:
             errors.extend(Validator._check_unreachable_state(sm, path))
         errors.extend(Validator._check_invalid_data_map_source(sm.transitions, path))
         errors.extend(Validator._check_trigger_unknown_event(sm, path))
+        errors.extend(Validator._check_dangling_target_port(sm, path))
         # WP-M FSM 의미론 규칙
         errors.extend(Validator._check_transition_type_consistency(sm.transitions, path))
         errors.extend(Validator._check_choice_completeness(sm, path))
@@ -648,6 +650,44 @@ class Validator:
                         f"출력 이벤트 집합 {sorted(known_events)}에 없습니다."
                     ),
                     source=f"{source.name}->{t.target.name}",
+                    subject=t,
+                    path=path,
+                ))
+        return errors
+
+    @staticmethod
+    def _check_dangling_target_port(
+        sm: StateMachine,
+        path: tuple[str, ...] = (),
+    ) -> list[ValidationError]:
+        """dangling_target_port — trigger_unknown_event의 입력판(WP-IC).
+
+        Transition.target_port가 비어 있지 않은데 타깃 skill_ref의 entry_paths
+        이름 집합에 없으면 경고 (EventDef rename 고아 전이 검출). 타깃이
+        skill_ref 없는 상태(EntryPoint 등)면 스킵.
+        """
+        from daedalus.model.fsm.state import SimpleState
+
+        errors: list[ValidationError] = []
+        for t in sm.transitions:
+            if not t.target_port:
+                continue
+            target = t.target
+            if not isinstance(target, SimpleState) or target.skill_ref is None:
+                continue
+            entry_paths = getattr(target.skill_ref, "entry_paths", None)
+            if entry_paths is None:
+                continue
+            known_names = {e.name for e in entry_paths}
+            if t.target_port not in known_names:
+                errors.append(ValidationError(
+                    rule="dangling_target_port",
+                    message=(
+                        f"전이 '{t.source.name}' → '{target.name}': "
+                        f"target_port '{t.target_port}'가 타깃의 입력 경로 "
+                        f"집합 {sorted(known_names)}에 없습니다."
+                    ),
+                    source=f"{t.source.name}->{target.name}",
                     subject=t,
                     path=path,
                 ))
