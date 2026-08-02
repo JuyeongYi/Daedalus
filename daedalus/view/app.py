@@ -226,13 +226,19 @@ class MainWindow(QMainWindow):
         from daedalus.view.widgets.preset_picker import set_hook_name_provider
         set_hook_name_provider(lambda p=project: [h.name for h in p.hook_library])
         # 프로젝트 그래프(워크플로 백킹 머신) → 캔버스 VM 재구성 (버그 1: 저장된
-        # 노드 연결 복원). EntryPoint 마커 + placement 노드 + 전이를 graph_layout
-        # 좌표로 배치한다. _load_agent_fsm 미러링.
+        # 노드 연결 복원). placement 노드 + 전이를 graph_layout 좌표로 배치한다
+        # (WP-EP: EntryPoint는 그리지 않음). _load_agent_fsm 미러링.
         self._load_project_graph()
 
     def _load_project_graph(self) -> None:
         """project.graph + graph_layout으로부터 캔버스 VM(state_vms/transition_vms)을
         재구성한다. 기존 VM은 비우고 새로 채운다 (중복 방지). notify로 캔버스 갱신.
+
+        WP-EP: CC 플러그인에는 단일 진입점이 없다(user_invocable 스킬은 전부
+        독립 시작 가능) — 합성 EntryPoint("start")는 모델(graph.initial_state)에는
+        여전히 존재하지만 프로젝트 캔버스에는 **그리지 않는다**. EntryPoint에
+        닿는 전이(구버전 파일의 시작 전이 포함)도 VM이 없으므로 자연히 스킵된다
+        (경고 없음). 에이전트 캔버스(_load_agent_fsm)는 이 WP의 영향을 받지 않는다.
         """
         from daedalus.model.fsm.pseudo import EntryPoint
         from daedalus.view.viewmodel.state_vm import StateViewModel, TransitionViewModel
@@ -245,14 +251,12 @@ class MainWindow(QMainWindow):
         self._project_vm.state_vms.clear()
         self._project_vm.transition_vms.clear()
 
-        entries = [s for s in graph.states if isinstance(s, EntryPoint)]
-        others = [s for s in graph.states if not isinstance(s, EntryPoint)]
-        ordered = entries + others
+        placements = [s for s in graph.states if not isinstance(s, EntryPoint)]
 
         saved = self._project.graph_layout  # 키: state.id (안정 식별자)
         x = 0.0
         vm_map: dict[str, StateViewModel] = {}
-        for state in ordered:
+        for state in placements:
             if state.id in saved:
                 sx, sy = saved[state.id]
                 vm = StateViewModel(model=state, x=sx, y=sy)
@@ -263,6 +267,7 @@ class MainWindow(QMainWindow):
             x += 220.0
 
         for trans in graph.transitions:
+            # source/target이 EntryPoint면 vm_map에 없어 자연히 스킵된다.
             src_vm = vm_map.get(trans.source.id)
             tgt_vm = vm_map.get(trans.target.id)
             if src_vm and tgt_vm:

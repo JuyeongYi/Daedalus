@@ -119,16 +119,52 @@ def test_empty_graph_validation_skipped():
 
 
 def test_graph_with_placement_validated_with_project_path():
-    """placement가 있으면 머신 규칙이 path=('project',)로 적용된다."""
+    """placement가 있으면 머신 규칙이 path=('project',)로 적용된다.
+
+    unreachable_state는 WP-EP로 프로젝트 그래프에서 스킵되므로, 동일 스킬의
+    중복 배치(no_duplicate_skill_ref)로 머신 규칙 적용 자체를 확인한다.
+    """
     a = _mk_proc("a")
     p = PluginProject(name="proj", skills=[a])
-    sa = SimpleState(name="a", skill_ref=a)
-    p.graph.states.append(sa)
-    # 도달 불가 상태를 만들어 unreachable_state 경고 유도 (EntryPoint→a 전이 없음)
+    sa1 = SimpleState(name="a1", skill_ref=a)
+    sa2 = SimpleState(name="a2", skill_ref=a)
+    p.graph.states += [sa1, sa2]
     errors = Validator.validate_project(p)
     project_errors = [e for e in errors if e.path and e.path[0] == "project"]
     assert project_errors, "placement 있는 그래프는 머신 규칙이 적용되어야 한다"
-    assert any(e.rule == "unreachable_state" for e in project_errors)
+    assert any(e.rule == "no_duplicate_skill_ref" for e in project_errors)
+
+
+def test_graph_orphan_placement_no_unreachable_warning():
+    """WP-EP: 고아 배치(전이 0개)가 있어도 unreachable_state 경고가 나오지 않는다.
+
+    CC 플러그인 의미론상 프로젝트 그래프의 모든 배치는 독립 시작점(user_invocable
+    스킬 등)이라 "EntryPoint에서 도달 불가"가 성립하지 않는다.
+    """
+    a = _mk_proc("a")
+    p = PluginProject(name="proj", skills=[a])
+    sa = SimpleState(name="a", skill_ref=a)
+    p.graph.states.append(sa)  # EntryPoint→a 전이 없음 (고아 배치)
+    errors = Validator.validate_project(p)
+    assert not any(e.rule == "unreachable_state" for e in errors)
+
+
+def test_agent_fsm_unreachable_state_still_warns_via_validate_project():
+    """WP-EP: skip_rules는 재귀(에이전트 sub_machine)에 전파되지 않는다 —
+    에이전트 FSM 내부의 unreachable_state는 project 검증에서도 여전히 경고로 잡힌다.
+    """
+    entry = EntryPoint(name="entry")
+    orphan = SimpleState(name="orphan")   # 도달 불가
+    done = ExitPoint(name="done")
+    afsm = StateMachine(
+        name="a_fsm", states=[entry, orphan, done],
+        initial_state=entry, final_states=[done],
+    )
+    agent = AgentDefinition(fsm=afsm, name="agent", description="A.")
+    p = PluginProject(name="proj", agents=[agent])
+    errors = Validator.validate_project(p)
+    agent_errors = [e for e in errors if e.path and e.path[0] == "agent:agent"]
+    assert any(e.rule == "unreachable_state" for e in agent_errors)
 
 
 # ─────────────────────── 컴파일: 다음 단계 (버그 2) ───────────────────────

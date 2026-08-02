@@ -89,16 +89,34 @@ CC_BUILTIN_TOOLS: frozenset[str] = frozenset({
 })
 
 
+# skip_rules로 생략을 지원하는 규칙 집합 — 이름 오타/규칙 리네임이 조용한
+# no-op이 되지 않도록 알려진 이름만 허용한다.
+SKIPPABLE_RULES: frozenset[str] = frozenset({"unreachable_state"})
+
+
 class Validator:
     @staticmethod
-    def validate(sm: StateMachine) -> list[ValidationError]:
-        return Validator._validate_machine(sm)
+    def validate(
+        sm: StateMachine,
+        skip_rules: frozenset[str] = frozenset(),
+    ) -> list[ValidationError]:
+        return Validator._validate_machine(sm, skip_rules=skip_rules)
 
     @staticmethod
     def _validate_machine(
         sm: StateMachine,
         path: tuple[str, ...] = (),
+        skip_rules: frozenset[str] = frozenset(),
     ) -> list[ValidationError]:
+        """머신 수준 규칙을 검증한다.
+
+        skip_rules: 이름이 속한 규칙 검사를 생략한다(기본값 빈 집합 — 하위 호환).
+          재귀(sub_machine/Region)에는 **전파하지 않는다** — 호출부(validate_project)가
+          프로젝트 그래프 자체에만 적용하도록 재귀 호출에는 넘기지 않는다.
+        """
+        unknown = skip_rules - SKIPPABLE_RULES
+        if unknown:
+            raise ValueError(f"skip_rules에 지원되지 않는 규칙: {sorted(unknown)}")
         errors: list[ValidationError] = []
         errors.extend(Validator._check_initial_in_states(sm, path))
         errors.extend(Validator._check_final_in_states(sm, path))
@@ -113,7 +131,8 @@ class Validator:
         # 신규 머신 수준 규칙
         errors.extend(Validator._check_transition_endpoints(sm, path))
         errors.extend(Validator._check_duplicate_state_name(sm, path))
-        errors.extend(Validator._check_unreachable_state(sm, path))
+        if "unreachable_state" not in skip_rules:
+            errors.extend(Validator._check_unreachable_state(sm, path))
         errors.extend(Validator._check_invalid_data_map_source(sm.transitions, path))
         errors.extend(Validator._check_trigger_unknown_event(sm, path))
         # WP-M FSM 의미론 규칙
@@ -785,9 +804,15 @@ class Validator:
             ))
         # 프로젝트 워크플로 그래프 — placement가 하나라도 있을 때만 머신 규칙 적용.
         # 빈 캔버스(EntryPoint 하나뿐)는 검증 스킵 (경고 폭주 방지).
+        # unreachable_state는 스킵한다(WP-EP): CC 플러그인 의미론상 프로젝트
+        # 그래프의 모든 배치는 user_invocable 스킬 등으로 독립 시작 가능해
+        # "도달 불가"가 성립하지 않는다. 재귀(에이전트 sub_machine)에는 전파되지
+        # 않으므로 에이전트 FSM 내부의 unreachable_state는 기존대로 검사된다.
         graph = getattr(project, "graph", None)
         if graph is not None and Validator._graph_has_placements(graph):
-            errors.extend(Validator._validate_machine(graph, path=("project",)))
+            errors.extend(Validator._validate_machine(
+                graph, path=("project",), skip_rules=frozenset({"unreachable_state"}),
+            ))
         errors.extend(Validator._check_dangling_delegation_refs(project))
         errors.extend(Validator._check_unregistered_delegations(project))
         # 신규 프로젝트 수준 규칙
