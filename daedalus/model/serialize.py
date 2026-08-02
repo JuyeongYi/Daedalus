@@ -157,6 +157,8 @@ def serialize_project(project: PluginProject) -> dict:
         # skill_ref는 _ser_machine이 component id로 평탄화 → 역직렬화 2-pass가 해소.
         "graph": _ser_machine(project.graph),
         "graph_layout": {k: list(v) for k, v in project.graph_layout.items()},
+        # WP-RS Part B — 구버전 파일(키 부재)은 역직렬화 시 기본 True로 취급.
+        "emit_progress_hook": project.emit_progress_hook,
     }
 
 
@@ -686,6 +688,8 @@ def deserialize_project(
         blackboard=blackboard,
         graph=graph,
         graph_layout={k: list(v) for k, v in data.get("graph_layout", {}).items()},
+        # WP-RS Part B — 구버전 파일(키 부재) → 기본 True.
+        emit_progress_hook=data.get("emit_progress_hook", True),
     )
 
     # ── pass 2: 모든 참조(state/skill/agent id) 해소 ──

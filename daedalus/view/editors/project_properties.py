@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 from PySide6.QtWidgets import (
+    QCheckBox,
     QDialog,
     QDialogButtonBox,
     QFormLayout,
@@ -45,6 +46,13 @@ class ProjectPropertiesDialog(QDialog):
         self._version_edit = QLineEdit(project.version)
         form.addRow("버전:", self._version_edit)
 
+        self._emit_progress_hook_cb = QCheckBox()
+        self._emit_progress_hook_cb.setChecked(project.emit_progress_hook)
+        form.addRow(
+            "세션 시작 시 진행 상태 자동 주입 (SessionStart 훅):",
+            self._emit_progress_hook_cb,
+        )
+
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         )
@@ -57,3 +65,4 @@ class ProjectPropertiesDialog(QDialog):
         project.name = self._name_edit.text()
         project.description = self._description_edit.text()
         project.version = self._version_edit.text()
+        project.emit_progress_hook = self._emit_progress_hook_cb.isChecked()

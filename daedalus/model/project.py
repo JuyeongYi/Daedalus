@@ -62,6 +62,11 @@ class PluginProject:
     graph: StateMachine = field(default_factory=_make_project_graph)
     # 그래프 노드 위치 — 키는 state.id (AgentDefinition.graph_layout과 동일 규약, 이름 변경 안전).
     graph_layout: dict[str, list[float]] = field(default_factory=dict)
+    # WP-RS Part B — 세션 시작 시 진행 상태(state/__progress__.json) 자동 주입 SessionStart
+    # 훅을 컴파일 시점에 합성 배출할지 여부. 기본 True. hook_library를 오염시키지
+    # 않는다(compiler/emit.py의 compile_hooks_json이 컴파일 시점에 합성).
+    # 구버전 프로젝트 파일(키 부재)은 True로 취급(deserialize_project).
+    emit_progress_hook: bool = True
 
     def __post_init__(self) -> None:
         # 블랙보드 스코핑 — 프로젝트 그래프 FSM의 blackboard를 최상위 블랙보드의

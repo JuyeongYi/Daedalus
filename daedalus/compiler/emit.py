@@ -1159,6 +1159,15 @@ def _hook_command_entry(hook: HookDef) -> dict[str, Any]:
     return entry
 
 
+# WP-RS Part B: SessionStart에 합성 배출되는 진행 상태 주입 훅.
+# hook_library를 오염시키지 않는다 — hooks.json 합류는 컴파일 시점에만 합성된다.
+_PROGRESS_SESSION_START_COMMAND = 'cat state/__progress__.json 2>/dev/null || true'
+
+
+def _progress_hook_entry() -> dict[str, Any]:
+    return {"type": "command", "command": _PROGRESS_SESSION_START_COMMAND}
+
+
 def compile_hooks_json(project) -> str | None:
     """프로젝트가 참조하는 HookDef를 모아 CC settings hooks.json 텍스트로.
 
@@ -1168,7 +1177,13 @@ def compile_hooks_json(project) -> str | None:
     - matcher는 도구 이벤트(Pre/PostToolUse)에서만 출력. 그 외 이벤트는 matcher 생략.
     - 같은 이벤트의 복수 훅은 hook_library 선언 순서로 정렬(결정적).
     - 이벤트 키 순서는 HookEvent 선언 순서(결정적).
-    참조가 없거나 라이브러리에 매칭되는 훅이 없으면 None(파일 생성 안 함).
+
+    WP-RS Part B: `project.emit_progress_hook`(기본 True)이고 프로젝트 그래프에
+    placement가 1개 이상이면 SessionStart 이벤트에 진행 상태 주입 커맨드를
+    합성해 합류시킨다(hook_library에는 기록하지 않음 — 순수 컴파일 시점 합성).
+    사용자 정의 SessionStart 훅이 있으면 그 뒤에 공존한다.
+
+    참조된 라이브러리 훅도 없고 합성 진행 훅도 없으면 None(파일 생성 안 함).
 
     LF·UTF-8 보장 텍스트(끝 개행 1개). json.loads 왕복 가능.
     """
@@ -1176,7 +1191,12 @@ def compile_hooks_json(project) -> str | None:
     by_name = {h.name: h for h in library}
     referenced = _collect_referenced_hook_names(project)
     resolved = [by_name[n] for n in referenced if n in by_name]
-    if not resolved:
+
+    emit_progress = bool(getattr(project, "emit_progress_hook", True)) and bool(
+        _graph_placements_any(project)
+    )
+
+    if not resolved and not emit_progress:
         return None
 
     # 이벤트 → HookDef 목록 (라이브러리 선언 순서 유지, 결정적).
@@ -1188,9 +1208,7 @@ def compile_hooks_json(project) -> str | None:
 
     hooks_obj: dict[str, Any] = {}
     for event in HookEvent:  # 선언 순서 = 결정적 이벤트 키 순서
-        bucket = event_buckets.get(event)
-        if not bucket:
-            continue
+        bucket = event_buckets.get(event) or []
         groups: list[dict[str, Any]] = []
         for hook in bucket:
             group: dict[str, Any] = {}
@@ -1198,13 +1216,28 @@ def compile_hooks_json(project) -> str | None:
                 group["matcher"] = hook.matcher
             group["hooks"] = [_hook_command_entry(hook)]
             groups.append(group)
-        hooks_obj[event.value] = groups
+        if event is HookEvent.SESSION_START and emit_progress:
+            # 사용자 정의 SessionStart 훅 뒤에 합성 훅을 이어붙인다(공존).
+            groups.append({"hooks": [_progress_hook_entry()]})
+        if groups:
+            hooks_obj[event.value] = groups
 
     text = json.dumps({"hooks": hooks_obj}, ensure_ascii=False, indent=2)
     text = text.replace("\r\n", "\n").replace("\r", "\n")
     if not text.endswith("\n"):
         text += "\n"
     return text
+
+
+def _graph_placements_any(project) -> bool:
+    """프로젝트 그래프에 EntryPoint 외 노드(placement)가 하나라도 있으면 True.
+
+    Validator._graph_has_placements와 동일한 판정(빈 그래프는 placement 없음).
+    """
+    graph = getattr(project, "graph", None)
+    if graph is None:
+        return False
+    return any(not isinstance(s, EntryPoint) for s in graph.states)
 
 
 # ─────────────────────────── schemas.json (블랙보드) ───────────────────────────
