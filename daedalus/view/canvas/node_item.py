@@ -19,7 +19,9 @@ _PORT_SPACING = 22.0
 _PORT_PAD = 12.0
 
 _TYPE_STYLE: dict[str | None, tuple[str, str, str, str]] = {
-    "procedural_skill": ("#1a2a1a", "#4a8a4a", "PROCEDURAL", "⚙"),
+    # 헤더 라벨 "PROCEDURAL"은 형용사라 어색 — 배치는 플러그인 FSM의 상태이므로
+    # STATE로 표기 (사용자 확정). 종류 구분은 색·아이콘이 담당.
+    "procedural_skill": ("#1a2a1a", "#4a8a4a", "STATE", "⚙"),
     "declarative_skill": ("#2a2a1a", "#8a8a4a", "DECLARATIVE", "📄"),
     "agent":             ("#2a1a1a", "#8a4a4a", "AGENT",       "🤖"),
     "team_spawn":        ("#1a1a2a", "#7755aa", "DELEGATION",  "👥"),
