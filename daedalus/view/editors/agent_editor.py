@@ -349,9 +349,15 @@ class AgentEditor(QWidget):
         self._tabs.setCurrentIndex(idx)
 
     def _build_content_tab(self) -> QWidget:
-        """Content 탭: ComponentEditor + caller_contracts 우측 패널."""
+        """Content 탭: ComponentEditor + entry_paths/caller_contracts 우측 패널."""
         from daedalus.view.editors.component_editor import ComponentEditor
-        from daedalus.view.editors.skill_editor import _ContractPanel
+        from daedalus.view.editors.skill_editor import _ContractPanel, _TransferOnPanel
+
+        # WP-IC — 입력 경로(entry_paths) 편집: transfer_on 편집과 대칭 위치·패턴.
+        self._entry_paths_panel = _TransferOnPanel(
+            self._agent.entry_paths, title="⇤ 입력 경로",
+        )
+        self._entry_paths_panel.transfer_on_changed.connect(self._on_model_changed)
 
         self._caller_contract_panel = _ContractPanel(
             "🔒 입력 프로시저", self._agent.caller_contracts,
@@ -360,7 +366,7 @@ class AgentEditor(QWidget):
 
         self._component_editor = ComponentEditor(
             self._agent,
-            right_widgets=[self._caller_contract_panel],
+            right_widgets=[self._entry_paths_panel, self._caller_contract_panel],
             on_notify_fn=self._on_model_changed,
         )
 

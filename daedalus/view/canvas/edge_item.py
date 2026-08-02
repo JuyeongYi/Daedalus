@@ -38,7 +38,6 @@ class TransitionEdgeItem(QGraphicsPathItem):
         self._transition_vm = transition_vm
         self._source_node = source_node
         self._target_node = target_node
-        self._input_index: int = 0
         self.setFlag(QGraphicsPathItem.GraphicsItemFlag.ItemIsSelectable)
         self.setZValue(-1)
         self.update_path()
@@ -55,18 +54,20 @@ class TransitionEdgeItem(QGraphicsPathItem):
     def target_node(self) -> StateNodeItem:
         return self._target_node
 
-    def set_input_index(self, index: int) -> None:
-        self._input_index = index
-
     def update_path(self) -> None:
-        """출력/입력 포트 위치 기반 베지어 경로."""
+        """출력/입력 포트 위치 기반 베지어 경로.
+
+        WP-IC: 입력 포트 위치는 target_port(이름) 기준으로 조회한다 —
+        같은 target_port를 향하는 여러 전이는 자연히 한 점에 수렴한다.
+        """
         self.prepareGeometryChange()
         trigger = self._transition_vm.model.trigger
         event_name = trigger.name if trigger is not None else "done"
 
         is_agent_call = self._source_node.is_agent_call_event(event_name)
         src_pt = self._source_node.output_port_scene_pos(event_name, is_agent_call)
-        tgt_pt = self._target_node.input_port_scene_pos(self._input_index)
+        target_port = self._transition_vm.model.target_port
+        tgt_pt = self._target_node.input_port_scene_pos(target_port)
 
         if tgt_pt.x() < src_pt.x():
             # 역방향 — 더 크게 휘어짐
