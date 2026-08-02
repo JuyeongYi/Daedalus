@@ -357,7 +357,7 @@ SLASH_CATALOG: list[SlashItem] = [
     SlashItem("번호 리스트", "번호 리스트 number ordered list ol", "1. "),
     SlashItem("체크리스트", "체크리스트 check task checklist todo", "- [ ] "),
     SlashItem("인용", "인용 quote blockquote", "> "),
-    SlashItem("인라인 코드", "인라인 코드 inline backtick tick", "``", 1),
+    SlashItem("인라인 코드", "인라인 코드 inline code backtick tick", "``", 1),
     SlashItem("코드 블록", "코드 블록 code block fence", "```\n\n```", 4),
     SlashItem("구분선", "구분선 hr divider horizontal rule", "---\n"),
     SlashItem("링크", "링크 link url", "[](url)", 6),
@@ -458,17 +458,32 @@ _HEADING_DIGIT_KEYS: dict[int, int] = {
 }
 _HEADING_DIGIT_TEXT: dict[str, int] = {str(v): v for v in range(7)}
 
+# Ctrl+Shift+숫자의 실제 이벤트 값(Windows 실측): key()에는 **shift된 기호**가,
+# text()에는 **shift 안 된 숫자**가 온다 — 합성 이벤트(QTest)와 정반대라 테스트만
+# 보면 잡히지 않는다. 두 방향을 모두 담아 실경로·합성 경로·타 배열을 함께 커버한다.
 _MARKER_SHORTCUT_KEYS: dict[int, str] = {
+    # 실제 Windows 경로 (US/한국어 배열)
+    Qt.Key.Key_Ampersand: "1. ",   # Ctrl+Shift+7
+    Qt.Key.Key_Asterisk: "- ",     # Ctrl+Shift+8
+    Qt.Key.Key_ParenLeft: "- [ ] ",  # Ctrl+Shift+9
+    Qt.Key.Key_Greater: "> ",      # Ctrl+Shift+.
+    # 합성 이벤트/키맵퍼가 숫자 키코드를 그대로 주는 환경
     Qt.Key.Key_7: "1. ",
     Qt.Key.Key_8: "- ",
     Qt.Key.Key_9: "- [ ] ",
     Qt.Key.Key_Period: "> ",
 }
 _MARKER_SHORTCUT_TEXT: dict[str, str] = {
-    "&": "1. ",     # Shift+7 (US 배열)
-    "*": "- ",      # Shift+8
-    "(": "- [ ] ",  # Shift+9
-    ">": "> ",      # Shift+.
+    # 실제 Windows 경로가 주는 text
+    "7": "1. ",
+    "8": "- ",
+    "9": "- [ ] ",
+    ".": "> ",
+    # US 배열 shift 기호가 text로 오는 환경
+    "&": "1. ",
+    "*": "- ",
+    "(": "- [ ] ",
+    ">": "> ",
 }
 
 
@@ -906,7 +921,9 @@ class MarkdownEditor(QPlainTextEdit):
             if block.text().strip() == "":
                 self._code_block_insert_empty(block)
             else:
-                self._code_block_toggle_range(doc, block.blockNumber(), block.blockNumber())
+                self._code_block_toggle_range(
+                    doc, block.blockNumber(), block.blockNumber(), keep_caret=True,
+                )
             return
 
         start_pos = min(cursor.selectionStart(), cursor.selectionEnd())
@@ -933,17 +950,22 @@ class MarkdownEditor(QPlainTextEdit):
         result_cursor.setPosition(start + len("```\n"))
         self.setTextCursor(result_cursor)
 
-    def _code_block_toggle_range(self, doc, start_block_num: int, end_block_num: int) -> None:
+    def _code_block_toggle_range(
+        self, doc, start_block_num: int, end_block_num: int, *, keep_caret: bool = False,
+    ) -> None:
         if self._code_block_try_unwrap(doc, start_block_num, end_block_num):
             return
-        self._code_block_wrap(doc, start_block_num, end_block_num)
+        self._code_block_wrap(doc, start_block_num, end_block_num, keep_caret=keep_caret)
 
-    def _code_block_wrap(self, doc, start_block_num: int, end_block_num: int) -> None:
+    def _code_block_wrap(
+        self, doc, start_block_num: int, end_block_num: int, *, keep_caret: bool = False,
+    ) -> None:
         """[start_block_num, end_block_num] 줄들을 펜스로 감싼다(줄 경계 확장 후 호출됨).
 
-        새 펜스 블록 전체(여는/닫는 펜스 포함)를 선택 상태로 남긴다 — `_toggle_wrap`과
-        동일한 관례로, 같은 단축키를 즉시 재입력하면 `_code_block_try_unwrap`의
-        "선택 자체가 펜스" 분기가 곧바로 벗겨낸다(왕복 토글).
+        선택이 있었으면 새 펜스 블록 전체를 선택 상태로 남긴다(`_toggle_wrap` 관례).
+        선택이 없었으면(keep_caret) **캐럿을 원래 줄 안에 보존**한다 —
+        `set_heading_level`/`toggle_line_marker`의 커서 보존 관례와 통일(리뷰 지적).
+        어느 쪽이든 재입력 시 안쪽 판정이 벗겨내므로 왕복 토글은 유지된다.
         """
         start_block = doc.findBlockByNumber(start_block_num)
         end_block = doc.findBlockByNumber(end_block_num)
@@ -960,13 +982,25 @@ class MarkdownEditor(QPlainTextEdit):
         edit_cursor.endEditBlock()
 
         result_cursor = self.textCursor()
-        result_cursor.setPosition(start)
-        result_cursor.setPosition(start + len(new_text), QTextCursor.MoveMode.KeepAnchor)
+        if keep_caret:
+            # 여는 펜스(```\n = 4자) 다음이 원래 첫 줄의 시작
+            result_cursor.setPosition(min(start + 4, len(self.toPlainText())))
+        else:
+            result_cursor.setPosition(start)
+            result_cursor.setPosition(
+                start + len(new_text), QTextCursor.MoveMode.KeepAnchor,
+            )
         self.setTextCursor(result_cursor)
 
     def _code_block_try_unwrap(self, doc, start_block_num: int, end_block_num: int) -> bool:
         """이미 펜스로 감싸져 있으면 벗기고 True. 두 형태를 인식한다:
-        선택이 펜스 줄 자체를 포함하는 경우, 선택 바로 밖에 펜스 줄이 있는 경우.
+        선택이 펜스 줄 자체를 포함하는 경우, 선택이 펜스 **안쪽**에 있는 경우.
+
+        안쪽 판정은 인접 줄 텍스트 매칭이 아니라 하이라이터의 블록 상태
+        (`MarkdownHighlighter._STATE_CODE_FENCE`, `_indent_width_for`와 동일 신호)로
+        한다 — 인접 줄만 보면 위 블록의 **닫는** 펜스와 아래 블록의 **여는** 펜스를
+        감싸는 쌍으로 오인해, 사이에 있는 평문을 코드로 빨아들이며 두 블록을
+        합쳐 버린다(리뷰 결함 D2).
         """
         start_block = doc.findBlockByNumber(start_block_num)
         end_block = doc.findBlockByNumber(end_block_num)
@@ -979,14 +1013,46 @@ class MarkdownEditor(QPlainTextEdit):
             self._code_block_unwrap(doc, start_block_num, end_block_num)
             return True
 
-        if start_block_num > 0 and end_block_num < doc.blockCount() - 1:
-            before = doc.findBlockByNumber(start_block_num - 1)
-            after = doc.findBlockByNumber(end_block_num + 1)
-            if _FENCE_OPEN_RE.match(before.text()) and _FENCE_CLOSE_RE.match(after.text()):
-                self._code_block_unwrap(doc, start_block_num - 1, end_block_num + 1)
-                return True
+        span = self._enclosing_fence_span(doc, start_block_num, end_block_num)
+        if span is not None:
+            self._code_block_unwrap(doc, span[0], span[1])
+            return True
 
         return False
+
+    @staticmethod
+    def _enclosing_fence_span(doc, start_block_num: int, end_block_num: int):
+        """선택 줄들이 모두 한 펜스 블록 **안쪽**이면 (여는 줄, 닫는 줄) 반환.
+
+        판정 기준은 블록 상태다: 펜스 안쪽 줄과 여는 펜스 줄은 FENCE 상태이고,
+        닫는 펜스 줄은 NONE으로 돌아간다.
+        """
+        fence = MarkdownHighlighter._STATE_CODE_FENCE
+        for n in range(start_block_num, end_block_num + 1):
+            block = doc.findBlockByNumber(n)
+            if block.userState() != fence or _FENCE_OPEN_RE.match(block.text()):
+                return None  # 펜스 밖이거나 여는 펜스 줄 자체 — 안쪽이 아니다
+
+        open_num = start_block_num
+        while open_num >= 0:
+            block = doc.findBlockByNumber(open_num)
+            if _FENCE_OPEN_RE.match(block.text()) and block.userState() == fence:
+                break
+            open_num -= 1
+        else:
+            return None
+        if open_num < 0:
+            return None
+
+        close_num = end_block_num + 1
+        while close_num < doc.blockCount():
+            block = doc.findBlockByNumber(close_num)
+            if _FENCE_CLOSE_RE.match(block.text()):
+                return (open_num, close_num)
+            if block.userState() != fence:
+                return None
+            close_num += 1
+        return None
 
     def _code_block_unwrap(self, doc, fence_open_num: int, fence_close_num: int) -> None:
         """fence_open_num/fence_close_num 줄(펜스 자체)을 제거하고 안쪽 내용만 남긴다."""
@@ -1561,7 +1627,7 @@ class SearchBar(QWidget):
 class MarkdownToolbar(QWidget):
     """서식 툴바 — `MarkdownEditor` 공개 API에 배선된 버튼 행.
 
-    `H1 H2 H3 │ B I S │ • 1. ☑ │ " 🔗 │ ☰ 👁` — ☰(TOC 토글)·👁(프리뷰)는
+    `H1 H2 H3 │ B I S │ <> {} │ • 1. ☑ │ " 🔗 │ ☰ 👁` — ☰(TOC 토글)·👁(프리뷰)는
     문서를 건드리지 않고 각각 `toc_toggled`/`preview_toggled` 시그널만 방출한다
     (TOC 패널 표시/숨김·프리뷰 자체는 `SectionContentPanel` 소관).
     """

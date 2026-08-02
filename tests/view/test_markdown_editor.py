@@ -361,17 +361,19 @@ def test_slash_menu_not_opened_mid_line(qapp):
 
 
 def test_slash_menu_filters_by_keyword(qapp):
+    """'co'는 code 키워드를 가진 두 항목(인라인 코드·코드 블록)에 매칭된다.
+    (카탈로그 내용에 과결합되지 않도록 '무엇이 걸러지는가'로 단언)"""
     ed = MarkdownEditor()
     QTest.keyClicks(ed, "/")
     QTest.keyClicks(ed, "co")
-    assert ed._slash_menu.count() == 1
-    assert ed._slash_menu.item(0).text() == "코드 블록"
+    labels = [ed._slash_menu.item(i).text() for i in range(ed._slash_menu.count())]
+    assert labels == ["인라인 코드", "코드 블록"]
 
 
 def test_slash_menu_enter_confirms_code_block(qapp):
     ed = MarkdownEditor()
     QTest.keyClicks(ed, "/")
-    QTest.keyClicks(ed, "co")
+    QTest.keyClicks(ed, "fence")  # 코드 블록만 매칭 (순서 의존 제거)
     QTest.keyClick(ed, Qt.Key.Key_Return)
     assert ed.toPlainText() == "```\n\n```"
     assert ed.textCursor().position() == 4
@@ -1239,3 +1241,88 @@ def test_slash_menu_inline_code_item_inserts_backtick_pair(qapp):
     QTest.keyClick(ed, Qt.Key.Key_Return)
     assert ed.toPlainText() == "``"
     assert ed.textCursor().position() == 1
+
+
+# ── 리뷰 반영 회귀 (D1 실키코드 · D2 인접 펜스 · 캐럿 보존) ──
+
+
+def _native_key_event(key, text, *, ctrl=True, shift=False):
+    """실제 Windows가 주는 형태의 키 이벤트 — key()에는 shift된 기호,
+    text()에는 shift 안 된 숫자가 온다(리뷰 실측). QTest 합성은 이 조합을
+    만들지 못해 key() 경로가 죽어도 통과해 버린다."""
+    from PySide6.QtCore import QEvent
+    from PySide6.QtGui import QKeyEvent
+
+    mods = Qt.KeyboardModifier.ControlModifier
+    if shift:
+        mods |= Qt.KeyboardModifier.ShiftModifier
+    return QKeyEvent(QEvent.Type.KeyPress, key, mods, text)
+
+
+def test_marker_shortcuts_with_native_key_codes(qapp):
+    """Ctrl+Shift+7/8/9/.의 실제 키코드(Key_Ampersand 등)로 동작해야 한다 (결함 D1)."""
+    cases = [
+        (Qt.Key.Key_Ampersand, "7", "1. item"),
+        (Qt.Key.Key_Asterisk, "8", "- item"),
+        (Qt.Key.Key_ParenLeft, "9", "- [ ] item"),
+        (Qt.Key.Key_Greater, ".", "> item"),
+    ]
+    for key, text, expected in cases:
+        ed = MarkdownEditor()
+        ed.setPlainText("item")
+        ed.keyPressEvent(_native_key_event(key, text, shift=True))
+        assert ed.toPlainText() == expected, f"{key} 실키코드 경로 실패"
+
+
+def test_heading_shortcuts_with_native_key_codes(qapp):
+    """Ctrl+1~6/0도 실경로 키코드로 동작한다."""
+    ed = MarkdownEditor()
+    ed.setPlainText("title")
+    ed.keyPressEvent(_native_key_event(Qt.Key.Key_3, "3"))
+    assert ed.toPlainText() == "### title"
+    ed.keyPressEvent(_native_key_event(Qt.Key.Key_0, "0"))
+    assert ed.toPlainText() == "title"
+
+
+def test_code_block_does_not_merge_adjacent_fences(qapp):
+    """두 코드 블록 사이 평문에서 토글해도 인접 블록이 파괴되지 않는다 (결함 D2).
+
+    인접 줄 텍스트 매칭은 위 블록의 닫는 펜스와 아래 블록의 여는 펜스를
+    감싸는 쌍으로 오인해 평문을 코드로 빨아들이고 두 블록을 합쳤다.
+    """
+    fence = "```"
+    ed = MarkdownEditor()
+    ed.setPlainText(f"{fence}\nfoo\n{fence}\nPLAIN\n{fence}\nbar\n{fence}")
+    cursor = ed.textCursor()
+    cursor.setPosition(ed.document().findBlockByNumber(3).position())
+    ed.setTextCursor(cursor)
+    ed.toggle_code_block()
+    out = ed.toPlainText()
+    assert "PLAIN" in out, "평문이 사라졌다"
+    assert "foo" in out and "bar" in out
+    assert out.count(fence) == 6, f"펜스 쌍이 깨졌다: {out!r}"
+
+
+def test_code_block_unwraps_from_inside_middle_line(qapp):
+    """펜스 안쪽 가운데 줄에서 토글하면 중첩이 아니라 언랩된다."""
+    fence = "```"
+    ed = MarkdownEditor()
+    ed.setPlainText(f"{fence}\na\nb\nc\n{fence}")
+    cursor = ed.textCursor()
+    cursor.setPosition(ed.document().findBlockByNumber(2).position())
+    ed.setTextCursor(cursor)
+    ed.toggle_code_block()
+    assert ed.toPlainText() == "a\nb\nc"
+
+
+def test_code_block_without_selection_keeps_caret(qapp):
+    """선택 없이 감싸면 캐럿을 보존한다 (set_heading_level 관례와 통일)."""
+    ed = MarkdownEditor()
+    ed.setPlainText("hello")
+    cursor = ed.textCursor()
+    cursor.setPosition(2)
+    ed.setTextCursor(cursor)
+    ed.toggle_code_block()
+    assert ed.toPlainText() == "```\nhello\n```"
+    assert not ed.textCursor().hasSelection(), "캐럿만 있었는데 전체가 선택됐다"
+    assert ed.textCursor().block().text() == "hello"
