@@ -7,6 +7,7 @@ from PySide6.QtCore import QPointF, QRectF, Qt
 from PySide6.QtGui import QBrush, QColor, QFont, QPainter, QPen
 from PySide6.QtWidgets import QGraphicsItem, QStyleOptionGraphicsItem, QWidget
 
+from daedalus.view.canvas.draggable import DraggableItemMixin
 from daedalus.view.viewmodel.state_vm import ReferenceViewModel
 
 _W = 160.0
@@ -19,7 +20,7 @@ _BORDER = QColor("#66aaaa")
 _HEADER_LABEL = "📖 REFERENCE"
 
 
-class ReferenceNodeItem(QGraphicsItem):
+class ReferenceNodeItem(DraggableItemMixin, QGraphicsItem):
     """참조 스킬 노드 — 컴팩트 카드, 상단 포트, 점선 테두리."""
 
     def __init__(
@@ -31,12 +32,34 @@ class ReferenceNodeItem(QGraphicsItem):
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsMovable)
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable)
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemSendsGeometryChanges)
-        self._drag_start_pos: QPointF | None = None
         self._dragging_link = False
 
     @property
     def ref_vm(self) -> ReferenceViewModel:
         return self._ref_vm
+
+    def vm_position(self) -> QPointF:
+        """WP-DM — DraggableItemMixin 구현."""
+        return QPointF(self._ref_vm.x, self._ref_vm.y)
+
+    def make_move_command(self, old: QPointF, new: QPointF) -> Any:
+        """WP-DM — DraggableItemMixin 구현. 씬이 없으면 sync_fn을 얻을 수 없어 None."""
+        sc: Any = self.scene()
+        if sc is None:
+            return None
+        from daedalus.view.commands.reference_commands import MoveRefCmd
+
+        return MoveRefCmd(
+            self._ref_vm,
+            old_x=old.x(), old_y=old.y(),
+            new_x=new.x(), new_y=new.y(),
+            sync_fn=sc._sync_refs_to_model,
+        )
+
+    def fallback_apply_move(self, new: QPointF) -> None:
+        """WP-DM — 씬 없는 환경 폴백: vm 좌표 직접 갱신 (기존 동작 보존)."""
+        self._ref_vm.x = new.x()
+        self._ref_vm.y = new.y()
 
     def boundingRect(self) -> QRectF:
         return QRectF(-_PORT_R, -_PORT_R, _W + _PORT_R * 2, _H + _PORT_R * 2)
@@ -115,7 +138,7 @@ class ReferenceNodeItem(QGraphicsItem):
                     sc.begin_ref_link_drag(self)
                 event.accept()
                 return
-        self._drag_start_pos = self.pos()
+        self.begin_drag()
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event) -> None:
@@ -140,15 +163,7 @@ class ReferenceNodeItem(QGraphicsItem):
             event.accept()
             return
         super().mouseReleaseEvent(event)
-        if self._drag_start_pos is not None and self._drag_start_pos != self.pos():
-            sc = self.scene()
-            if sc is not None and hasattr(sc, "handle_ref_node_moved"):
-                sc.handle_ref_node_moved(self, self._drag_start_pos, self.pos())
-            else:
-                # 씬 없는 환경 fallback — vm 좌표 직접 갱신
-                self._ref_vm.x = self.pos().x()
-                self._ref_vm.y = self.pos().y()
-        self._drag_start_pos = None
+        self.end_drag()
 
     def mouseDoubleClickEvent(self, event) -> None:
         if event is None:

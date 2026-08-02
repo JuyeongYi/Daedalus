@@ -21,7 +21,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from daedalus.view.canvas.draggable import DraggableItemMixin
 from daedalus.view.canvas.node_item import StateNodeItem
+from daedalus.view.commands.transition_commands import MoveWaypointCmd
 from daedalus.view.viewmodel.state_vm import TransitionViewModel
 
 _EDGE_COLOR = QColor("#6674cc")
@@ -154,6 +156,16 @@ class TransitionEdgeItem(QGraphicsPathItem):
 
     # --- WP-ER 경유점 편집 ---
 
+    def handle_at(self, index: int) -> "WaypointHandleItem | None":
+        """index에 해당하는 경유점 핸들 아이템 반환 (WP-DM).
+
+        scene.handle_waypoint_moved가 handle_items_moved에 위임할 때 쓴다.
+        범위 밖이면 None.
+        """
+        if 0 <= index < len(self._handles):
+            return self._handles[index]
+        return None
+
     def nearest_segment_index(self, scene_pos: QPointF) -> int:
         """scene_pos에 가장 가까운 구간의 0-based 인덱스.
 
@@ -181,7 +193,12 @@ class TransitionEdgeItem(QGraphicsPathItem):
         """드래그 중 실시간 미리보기 — undo 커맨드 없이 vm에 직접 반영.
 
         노드 드래그 중 update_edges_for_node가 하는 역할과 동일한 결의 실시간
-        갱신. 커밋(undo 가능)은 release 시 scene.handle_waypoint_moved가 한다.
+        갱신. 커밋(undo 가능)은 release 시 scene.handle_items_moved가 한다
+        (WP-DM 이전에는 handle_waypoint_moved였다).
+
+        주의: 이 실시간 갱신 때문에 release 시점의 vm 좌표는 이미 새 값이다 —
+        함께 드래그된(passenger) 웨이포인트의 구 위치는 press 시점 스냅샷
+        (FsmScene.snapshot_drag_positions)에서 가져와야 한다.
         """
         waypoints = self._transition_vm.waypoints
         if 0 <= index < len(waypoints):
@@ -326,13 +343,13 @@ class TransitionEdgeItem(QGraphicsPathItem):
         painter.drawPolygon(QPolygonF([to_pt, left, right]))
 
 
-class WaypointHandleItem(QGraphicsEllipseItem):
+class WaypointHandleItem(DraggableItemMixin, QGraphicsEllipseItem):
     """엣지 경유점(waypoint) 편집 핸들 — 소유 엣지가 선택된 동안에만 표시.
 
     TransitionEdgeItem의 자식 아이템(setParentItem)으로, 엣지 자신은 절대
     이동하지 않으므로(pos()가 항상 원점) 자식 로컬 좌표 == 씬 좌표다.
     드래그는 Qt 기본 ItemIsMovable로 처리하고, itemChange로 실시간 미리보기를
-    반영하며, release 시 scene.handle_waypoint_moved로 undo 가능한 커맨드를
+    반영하며, release 시 scene.handle_items_moved(WP-DM)로 undo 가능한 커맨드를
     커밋한다(TransitionEdgeItem/ReferenceNodeItem 드래그 관례와 동일).
     """
 
@@ -340,7 +357,6 @@ class WaypointHandleItem(QGraphicsEllipseItem):
         super().__init__(-_HANDLE_R, -_HANDLE_R, _HANDLE_R * 2, _HANDLE_R * 2)
         self._edge = edge
         self._index = index
-        self._drag_start: QPointF | None = None
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsMovable)
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable)
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemSendsGeometryChanges)
@@ -359,6 +375,21 @@ class WaypointHandleItem(QGraphicsEllipseItem):
 
     def set_index(self, index: int) -> None:
         self._index = index
+
+    def vm_position(self) -> QPointF:
+        """WP-DM — DraggableItemMixin 구현. 인덱스가 범위 밖이면(방어) pos() 반환."""
+        waypoints = self._edge.transition_vm.waypoints
+        if 0 <= self._index < len(waypoints):
+            return QPointF(*waypoints[self._index])
+        return self.pos()
+
+    def make_move_command(self, old: QPointF, new: QPointF) -> MoveWaypointCmd:
+        """WP-DM — DraggableItemMixin 구현."""
+        return MoveWaypointCmd(
+            self._edge.transition_vm, self._index,
+            old_x=old.x(), old_y=old.y(),
+            new_x=new.x(), new_y=new.y(),
+        )
 
     def itemChange(self, change: QGraphicsItem.GraphicsItemChange, value: Any) -> Any:
         if change == QGraphicsItem.GraphicsItemChange.ItemPositionHasChanged:
@@ -379,17 +410,11 @@ class WaypointHandleItem(QGraphicsEllipseItem):
         # 우회하면 다음 이동이 스테일 오프셋으로 계산돼 아이템이 화면 왼쪽 위로
         # 튄다(사용자 보고). 선택이 풀려도 _sync_handles가 "핸들 자신이 선택됨"
         # 조건으로 핸들을 계속 표시하므로 그랩은 유지된다.
-        self._drag_start = self.pos()
+        self.begin_drag()
         super().mousePressEvent(event)
 
     def mouseReleaseEvent(self, event) -> None:
         if event is None:
             return
         super().mouseReleaseEvent(event)
-        if self._drag_start is not None and self._drag_start != self.pos():
-            sc: Any = self.scene()
-            if sc is not None and hasattr(sc, "handle_waypoint_moved"):
-                sc.handle_waypoint_moved(
-                    self._edge, self._index, self._drag_start, self.pos()
-                )
-        self._drag_start = None
+        self.end_drag()

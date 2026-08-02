@@ -9,7 +9,9 @@ from PySide6.QtWidgets import QGraphicsItem, QStyleOptionGraphicsItem, QWidget
 
 from daedalus.model.fsm.pseudo import EntryPoint, ExitPoint
 from daedalus.model.fsm.section import EventDef
+from daedalus.view.canvas.draggable import DraggableItemMixin
 from daedalus.view.canvas.node_badges import badges_for, state_access_badges
+from daedalus.view.commands.state_commands import MoveStateCmd
 from daedalus.view.viewmodel.state_vm import StateViewModel
 
 _W = 160.0
@@ -33,7 +35,7 @@ _TYPE_STYLE: dict[str | None, tuple[str, str, str, str]] = {
 }
 
 
-class StateNodeItem(QGraphicsItem):
+class StateNodeItem(DraggableItemMixin, QGraphicsItem):
     """캔버스 위의 스킬/에이전트 노드."""
 
     def __init__(
@@ -48,7 +50,6 @@ class StateNodeItem(QGraphicsItem):
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsMovable)
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable)
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemSendsGeometryChanges)
-        self._drag_start_pos: QPointF | None = None
         self._dragging_connection = False
         self._drag_event_name: str | None = None
         self._sync_height()
@@ -56,6 +57,18 @@ class StateNodeItem(QGraphicsItem):
     @property
     def state_vm(self) -> StateViewModel:
         return self._state_vm
+
+    def vm_position(self) -> QPointF:
+        """WP-DM — DraggableItemMixin 구현."""
+        return QPointF(self._state_vm.x, self._state_vm.y)
+
+    def make_move_command(self, old: QPointF, new: QPointF) -> MoveStateCmd:
+        """WP-DM — DraggableItemMixin 구현."""
+        return MoveStateCmd(
+            self._state_vm,
+            old_x=old.x(), old_y=old.y(),
+            new_x=new.x(), new_y=new.y(),
+        )
 
     def _event_defs(self) -> list[EventDef]:
         """skill_ref에서 EventDef 목록 반환.
@@ -424,7 +437,7 @@ class StateNodeItem(QGraphicsItem):
                     sc.begin_transition_drag(self, event_name, is_agent_call)
                 event.accept()
                 return
-        self._drag_start_pos = self.pos()
+        self.begin_drag()
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event) -> None:
@@ -458,7 +471,4 @@ class StateNodeItem(QGraphicsItem):
             event.accept()
             return
         super().mouseReleaseEvent(event)
-        if self._drag_start_pos is not None and self._drag_start_pos != self.pos():
-            if sc is not None and hasattr(sc, "handle_node_moved"):
-                sc.handle_node_moved(self, self._drag_start_pos, self.pos())
-        self._drag_start_pos = None
+        self.end_drag()
