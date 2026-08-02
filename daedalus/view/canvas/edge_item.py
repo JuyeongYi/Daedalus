@@ -38,6 +38,7 @@ _HANDLE_R = 5.0
 _HANDLE_COLOR = QColor("#88aaff")     # 선택 엣지 색과 통일 (핸들은 엣지 선택 중에만 표시)
 _HANDLE_BORDER = QColor("#222222")
 _SEGMENT_SAMPLES = 24  # 최근접 구간 판정용 곡선 샘플 수
+_PORT_TANGENT_MIN = 60.0  # 포트 진출입 접선 최소 길이 (수평 진입 인상 유지)
 
 
 class TransitionEdgeItem(QGraphicsPathItem):
@@ -90,18 +91,51 @@ class TransitionEdgeItem(QGraphicsPathItem):
         같은 target_port를 향하는 여러 전이는 자연히 한 점에 수렴한다.
 
         WP-ER: transition_vm.waypoints가 있으면 소스 포트 → 경유점들 → 타깃
-        포트 순으로 각 구간을 기존과 동일한 베지어 곡선으로 잇는다(각 구간의
-        끝점이 정확히 경유점을 지나므로 경로가 경유점을 통과함이 보장된다).
-        경유점이 없으면 구간이 하나뿐이라 기존 렌더와 완전히 동일하다(하위 호환).
+        포트 순으로 잇는다. 경유점이 없으면 기존 렌더와 완전히 동일하다(하위 호환).
         """
         self.prepareGeometryChange()
         points = self._route_points()
 
-        path = QPainterPath(points[0])
-        for p1, p2 in zip(points, points[1:]):
-            self._add_curve_segment(path, p1, p2)
+        if len(points) == 2:
+            path = QPainterPath(points[0])
+            self._add_curve_segment(path, points[0], points[1])
+        else:
+            path = self._waypoint_path(points)
         self.setPath(path)
         self._sync_handles()
+
+    @staticmethod
+    def _waypoint_path(points: list[QPointF]) -> QPainterPath:
+        """경유점을 지나는 매끄러운 경로.
+
+        포트 규칙(출력은 오른쪽으로 나가고 입력은 왼쪽으로 들어온다)은 **양 끝
+        구간에만** 적용하고, 중간 경유점에서는 진행 방향 접선(Catmull-Rom)을
+        쓴다. 경유점마다 포트 규칙을 적용하면 매 구간이 오른쪽으로 나갔다
+        왼쪽으로 되돌아오는 S자 루프가 되어 경로가 스파게티가 된다.
+        """
+        n = len(points)
+        tangents: list[QPointF] = []
+        for i, p in enumerate(points):
+            if i == 0:
+                # 소스 포트 — 수평 오른쪽으로 진출
+                k = max(abs(points[1].x() - p.x()) * 0.5, _PORT_TANGENT_MIN)
+                tangents.append(QPointF(k, 0.0))
+            elif i == n - 1:
+                # 타깃 포트 — 수평 왼쪽에서 진입
+                k = max(abs(p.x() - points[i - 1].x()) * 0.5, _PORT_TANGENT_MIN)
+                tangents.append(QPointF(k, 0.0))
+            else:
+                d = points[i + 1] - points[i - 1]
+                tangents.append(QPointF(d.x() * 0.5, d.y() * 0.5))
+
+        path = QPainterPath(points[0])
+        for i in range(n - 1):
+            p1, p2 = points[i], points[i + 1]
+            t1, t2 = tangents[i], tangents[i + 1]
+            ctrl1 = QPointF(p1.x() + t1.x() / 3.0, p1.y() + t1.y() / 3.0)
+            ctrl2 = QPointF(p2.x() - t2.x() / 3.0, p2.y() - t2.y() / 3.0)
+            path.cubicTo(ctrl1, ctrl2, p2)
+        return path
 
     @staticmethod
     def _add_curve_segment(path: QPainterPath, p1: QPointF, p2: QPointF) -> None:
