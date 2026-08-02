@@ -18,7 +18,12 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from daedalus.view.widgets.markdown_editor import MarkdownEditor, MarkdownToolbar
+from daedalus.view.widgets.markdown_editor import (
+    MarkdownEditor,
+    MarkdownToolbar,
+    SearchBar,
+    TocPanel,
+)
 
 
 class SectionContentPanel(QWidget):
@@ -53,9 +58,15 @@ class SectionContentPanel(QWidget):
         self._w_content.textChanged.connect(self._save_body)
         self._md_toolbar = MarkdownToolbar(self._w_content)
         self._md_toolbar.preview_toggled.connect(self._on_preview_toggled)
+        self._md_toolbar.toc_toggled.connect(self._on_toc_toggled)
         lay.addWidget(self._md_toolbar)
 
-        # --- 본문(에디터/프리뷰 스택) ---
+        # --- 찾기/바꾸기 바 (기본 숨김) ---
+        self._search_bar = SearchBar(self._w_content)
+        self._w_content.search_requested.connect(self._search_bar.open)
+        lay.addWidget(self._search_bar)
+
+        # --- 본문(에디터/프리뷰 스택) + TOC 사이드바(기본 숨김) ---
         self._w_preview = QTextBrowser()
         self._w_preview.setOpenExternalLinks(False)
         self._w_preview.setStyleSheet(
@@ -65,7 +76,17 @@ class SectionContentPanel(QWidget):
         self._content_stack = QStackedWidget()
         self._content_stack.addWidget(self._w_content)  # page 0: 편집
         self._content_stack.addWidget(self._w_preview)  # page 1: 프리뷰
-        lay.addWidget(self._content_stack, 1)
+
+        self._toc_panel = TocPanel(self._w_content)
+        self._toc_panel.setFixedWidth(180)
+        self._toc_panel.hide()
+
+        body_row = QHBoxLayout()
+        body_row.setContentsMargins(0, 0, 0, 0)
+        body_row.setSpacing(0)
+        body_row.addWidget(self._content_stack, 1)
+        body_row.addWidget(self._toc_panel)
+        lay.addLayout(body_row, 1)
 
     def current_component(self) -> object | None:
         return self._component
@@ -75,18 +96,25 @@ class SectionContentPanel(QWidget):
         self._component = component
         self._md_toolbar.set_preview_checked(False)
         self._content_stack.setCurrentIndex(0)
+        self._search_bar.close_bar()
         self._w_content.blockSignals(True)
         self._w_content.setPlainText(getattr(component, "body", ""))
         self._w_content.blockSignals(False)
+        # TOC는 blockSignals로 억제된 textChanged를 못 받으므로 문서 전환 시 직접 갱신한다
+        self._toc_panel.refresh()
 
     def _on_preview_toggled(self, checked: bool) -> None:
         # 변수 삽입도 숨은 문서를 조용히 바꾸는 경로 — 프리뷰 중 잠근다
         self._btn_variable.setEnabled(not checked)
         if checked:
+            self._search_bar.close_bar()
             self._w_preview.document().setMarkdown(self._w_content.toPlainText())
             self._content_stack.setCurrentIndex(1)
         else:
             self._content_stack.setCurrentIndex(0)
+
+    def _on_toc_toggled(self, checked: bool) -> None:
+        self._toc_panel.setVisible(checked)
 
     def insert_variable(self, var_name: str) -> None:
         self._w_content.insertPlainText(var_name)
