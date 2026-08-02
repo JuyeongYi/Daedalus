@@ -8,6 +8,8 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QPushButton,
+    QStackedWidget,
+    QTextBrowser,
     QTreeWidget,
     QTreeWidgetItem,
     QVBoxLayout,
@@ -15,7 +17,7 @@ from PySide6.QtWidgets import (
 )
 
 from daedalus.model.fsm.section import Section
-from daedalus.view.widgets.markdown_editor import MarkdownEditor
+from daedalus.view.widgets.markdown_editor import MarkdownEditor, MarkdownToolbar
 
 MAX_DEPTH = 3  # 0-indexed; 4 levels total (H1–H4)
 
@@ -222,10 +224,24 @@ class SectionContentPanel(QWidget):
         ta_lay.addWidget(self._w_title)
         lay.addWidget(title_area)
 
-        # --- 본문 텍스트 ---
+        # --- 서식 툴바 ---
         self._w_content = MarkdownEditor()
         self._w_content.textChanged.connect(self._save_content)
-        lay.addWidget(self._w_content, 1)
+        self._md_toolbar = MarkdownToolbar(self._w_content)
+        self._md_toolbar.preview_toggled.connect(self._on_preview_toggled)
+        lay.addWidget(self._md_toolbar)
+
+        # --- 본문(에디터/프리뷰 스택) ---
+        self._w_preview = QTextBrowser()
+        self._w_preview.setOpenExternalLinks(False)
+        self._w_preview.setStyleSheet(
+            "QTextBrowser { background-color: #1e1e32; color: #cccccc; border: none; }",
+        )
+
+        self._content_stack = QStackedWidget()
+        self._content_stack.addWidget(self._w_content)  # page 0: 편집
+        self._content_stack.addWidget(self._w_preview)  # page 1: 프리뷰
+        lay.addWidget(self._content_stack, 1)
 
     def current_section(self) -> Section | None:
         return self._section
@@ -239,9 +255,18 @@ class SectionContentPanel(QWidget):
         self._section = section
         self._w_title.setText(section.title)
         self.set_title_locked(title_locked)
+        self._md_toolbar.set_preview_checked(False)
+        self._content_stack.setCurrentIndex(0)
         self._w_content.blockSignals(True)
         self._w_content.setPlainText(section.content)
         self._w_content.blockSignals(False)
+
+    def _on_preview_toggled(self, checked: bool) -> None:
+        if checked:
+            self._w_preview.document().setMarkdown(self._w_content.toPlainText())
+            self._content_stack.setCurrentIndex(1)
+        else:
+            self._content_stack.setCurrentIndex(0)
 
     def insert_variable(self, var_name: str) -> None:
         self._w_content.insertPlainText(var_name)

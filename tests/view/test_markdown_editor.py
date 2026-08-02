@@ -421,3 +421,51 @@ def test_toolbar_preview_button_emits_signal(qapp):
     toolbar.preview_toggled.connect(received.append)
     _find_toolbar_button(toolbar, "👁").click()
     assert received == [True]
+
+
+# --- WP-MD2 Part D: 프리뷰 토글 + 패널 통합 (3케이스) ---
+
+
+def test_panel_preview_toggle_switches_stack_and_renders_heading(qapp):
+    from daedalus.view.editors.body_editor import SectionContentPanel
+
+    panel = SectionContentPanel()
+    section = Section("T", content="# 제목")
+    panel.show_section(section, ["T"])
+
+    _find_toolbar_button(panel._md_toolbar, "👁").click()
+
+    assert panel._content_stack.currentIndex() == 1
+    rendered_text = panel._w_preview.document().toPlainText()
+    assert "#" not in rendered_text
+    assert "제목" in rendered_text
+
+
+def test_panel_preview_toggle_off_restores_editor_and_content(qapp):
+    from daedalus.view.editors.body_editor import SectionContentPanel
+
+    panel = SectionContentPanel()
+    section = Section("T", content="본문 내용")
+    panel.show_section(section, ["T"])
+
+    btn = _find_toolbar_button(panel._md_toolbar, "👁")
+    btn.click()
+    assert panel._content_stack.currentIndex() == 1
+    btn.click()
+    assert panel._content_stack.currentIndex() == 0
+    assert panel._w_content.toPlainText() == "본문 내용"
+
+
+def test_panel_show_section_resets_preview(qapp):
+    from daedalus.view.editors.body_editor import SectionContentPanel
+
+    panel = SectionContentPanel()
+    section1 = Section("A", content="a")
+    panel.show_section(section1, ["A"])
+    _find_toolbar_button(panel._md_toolbar, "👁").click()
+    assert panel._content_stack.currentIndex() == 1
+
+    section2 = Section("B", content="b")
+    panel.show_section(section2, ["B"])
+    assert panel._content_stack.currentIndex() == 0
+    assert not _find_toolbar_button(panel._md_toolbar, "👁").isChecked()
