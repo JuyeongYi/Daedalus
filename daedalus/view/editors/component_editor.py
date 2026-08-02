@@ -3,8 +3,8 @@ from __future__ import annotations
 
 from typing import Callable
 
-from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtWidgets import (
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtWidgets import (
     QHBoxLayout,
     QInputDialog,
     QMessageBox,
@@ -43,7 +43,7 @@ _RIGHT_CHILD_MIN_H = 60
 class ComponentEditor(QWidget):
     """재사용 복합 에디터 — 좌(SectionTree+Frontmatter) | 중(Breadcrumb+Content) | 우(옵션)."""
 
-    changed = pyqtSignal()
+    changed = Signal()
 
     def __init__(
         self,
@@ -191,7 +191,7 @@ class ComponentEditor(QWidget):
         if self._var_popup.isVisible():
             self._var_popup.hide()
             return
-        from PyQt6.QtCore import QPoint
+        from PySide6.QtCore import QPoint
         btn = self._content_panel._btn_variable
         # VariablePopup은 Qt.Popup 플래그의 최상위 창 — move()는 전역 좌표를 받는다.
         # (패널 상대 좌표를 넘기면 화면 좌상단 근처에 떠 버린다.)

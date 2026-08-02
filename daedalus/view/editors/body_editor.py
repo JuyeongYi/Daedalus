@@ -1,8 +1,8 @@
 """공용 섹션 편집 위젯 — SectionTree, BreadcrumbNav, SectionContentPanel, VariablePopup."""
 from __future__ import annotations
 
-from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtWidgets import (
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -54,9 +54,9 @@ _ROLE_SECTION = Qt.ItemDataRole.UserRole
 class SectionTree(QWidget):
     """섹션 트리 — 전체 구조를 한눈에 보여주는 사이드바 위젯."""
 
-    section_selected = pyqtSignal(object, list)  # (Section, path: list[str])
-    structure_changed = pyqtSignal()
-    add_root_requested = pyqtSignal()
+    section_selected = Signal(object, list)  # (Section, path: list[str])
+    structure_changed = Signal()
+    add_root_requested = Signal()
 
     def __init__(self, sections: list[Section], parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -77,7 +77,7 @@ class SectionTree(QWidget):
         lay.addWidget(self._tree, 1)
 
         add_btn = QPushButton("＋ 섹션 추가")
-        add_btn.clicked.connect(self.add_root_requested.emit)
+        add_btn.clicked.connect(lambda: self.add_root_requested.emit())
         lay.addWidget(add_btn)
 
         self._rebuild()
@@ -184,9 +184,9 @@ class SectionTree(QWidget):
 class SectionContentPanel(QWidget):
     """섹션 타이틀 + 본문 편집 패널."""
 
-    variable_insert_requested = pyqtSignal()
-    add_child_requested = pyqtSignal()
-    content_changed = pyqtSignal()
+    variable_insert_requested = Signal()
+    add_child_requested = Signal()
+    content_changed = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -260,7 +260,7 @@ class SectionContentPanel(QWidget):
 class VariablePopup(QFrame):
     """변수 선택 팝업 — 클릭 시 variable_selected 시그널 방출."""
 
-    variable_selected = pyqtSignal(str)
+    variable_selected = Signal(str)
 
     def __init__(
         self,
@@ -316,9 +316,9 @@ class VariablePopup(QFrame):
 class BreadcrumbNav(QWidget):
     """브레드크럼브 칩 네비게이션 — 레벨별 형제 섹션을 칩으로 나열."""
 
-    section_selected = pyqtSignal(object, list)        # (Section, path_titles)
-    section_add_requested = pyqtSignal(object, int)    # (parent_or_None, depth)
-    structure_changed = pyqtSignal()
+    section_selected = Signal(object, list)        # (Section, path_titles)
+    section_add_requested = Signal(object, int)    # (parent_or_None, depth)
+    structure_changed = Signal()
 
     def __init__(
         self,

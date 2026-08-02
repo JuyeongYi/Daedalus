@@ -1,5 +1,5 @@
 # daedalus/model/serialize.py
-"""프로젝트 모델 ↔ JSON 호환 dict 직렬화 계층 (순수 모델 — PyQt 무관).
+"""프로젝트 모델 ↔ JSON 호환 dict 직렬화 계층 (순수 모델 — Qt 무관).
 
 원칙
 ----

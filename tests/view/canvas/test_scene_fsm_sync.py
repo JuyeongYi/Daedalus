@@ -1,5 +1,5 @@
 """AgentFsmScene이 agent.fsm 모델을 동기화하는지 검증."""
-from PyQt6.QtCore import QPointF
+from PySide6.QtCore import QPointF
 
 from daedalus.model.fsm.event import CompletionEvent
 from daedalus.model.fsm.machine import StateMachine
@@ -124,8 +124,8 @@ def test_drop_skill_syncs_to_agent_fsm(qapp):
 
 
 def _delete_key_event():
-    from PyQt6.QtCore import QEvent, Qt
-    from PyQt6.QtGui import QKeyEvent
+    from PySide6.QtCore import QEvent, Qt
+    from PySide6.QtGui import QKeyEvent
     return QKeyEvent(
         QEvent.Type.KeyPress, Qt.Key.Key_Delete, Qt.KeyboardModifier.NoModifier
     )

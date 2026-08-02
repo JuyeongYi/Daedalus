@@ -1,7 +1,7 @@
 import sys
 import traceback
 
-from PyQt6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication
 
 from daedalus.model.fsm.machine import StateMachine
 from daedalus.model.fsm.section import Section
@@ -87,7 +87,7 @@ def _demo_project() -> PluginProject:
 
 
 def _excepthook(exc_type: type, exc_value: BaseException, exc_tb: object) -> None:
-    """PyQt 시그널 핸들러 포함 모든 미처리 예외를 전체 출력."""
+    """Qt 시그널 핸들러 포함 모든 미처리 예외를 전체 출력."""
     traceback.print_exception(exc_type, exc_value, exc_tb)  # type: ignore[arg-type]
 
 

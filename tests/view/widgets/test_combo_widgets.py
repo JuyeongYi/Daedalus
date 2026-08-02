@@ -1,7 +1,7 @@
 # tests/view/widgets/test_combo_widgets.py
 from __future__ import annotations
 
-from PyQt6.QtWidgets import QComboBox
+from PySide6.QtWidgets import QComboBox
 
 
 def test_model_combo_has_choices(qapp):

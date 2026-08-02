@@ -18,7 +18,7 @@ def test_field_widgets_covers_all_matrix_fields(qapp):
 
 def test_field_widgets_values_are_widget_types(qapp):
     """매핑 값은 인스턴스화 가능한 QWidget 서브클래스여야 한다."""
-    from PyQt6.QtWidgets import QWidget
+    from PySide6.QtWidgets import QWidget
 
     for fld, cls in FIELD_WIDGETS.items():
         assert isinstance(cls, type), f"{fld.value} 매핑이 타입이 아님"

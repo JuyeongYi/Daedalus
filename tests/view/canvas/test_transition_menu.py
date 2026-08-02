@@ -5,7 +5,7 @@ FsmScene/AgentFsmScene가 동일 메서드를 공유하며(중복 제거),
 """
 from __future__ import annotations
 
-from PyQt6.QtWidgets import QMenu
+from PySide6.QtWidgets import QMenu
 
 from daedalus.model.fsm.event import CompletionEvent
 from daedalus.model.fsm.machine import StateMachine

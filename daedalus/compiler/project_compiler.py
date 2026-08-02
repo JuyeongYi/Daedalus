@@ -1,5 +1,5 @@
 # daedalus/compiler/project_compiler.py
-"""프로젝트 컴파일 — 게이트 + 파일 쓰기 (순수 stdlib, PyQt 무관).
+"""프로젝트 컴파일 — 게이트 + 파일 쓰기 (순수 stdlib, Qt 무관).
 
 CC 플러그인 출력 구조:
     <out>/.claude-plugin/plugin.json            # 플러그인 매니페스트 (항상 생성)

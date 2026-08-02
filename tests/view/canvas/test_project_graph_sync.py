@@ -1,5 +1,5 @@
 """WP-Q: 프로젝트 캔버스(FsmScene)가 project.graph에 동기화 + 로드 재구성."""
-from PyQt6.QtCore import QPointF
+from PySide6.QtCore import QPointF
 
 from daedalus.model.fsm.event import CompletionEvent
 from daedalus.model.fsm.machine import StateMachine

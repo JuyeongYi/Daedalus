@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from PyQt6.QtCore import QPointF, QRectF
-from PyQt6.QtGui import (
+from PySide6.QtCore import QPointF, QRectF
+from PySide6.QtGui import (
     QColor,
     QFont,
     QPainter,
@@ -10,7 +10,7 @@ from PyQt6.QtGui import (
     QPen,
     QPolygonF,
 )
-from PyQt6.QtWidgets import QGraphicsPathItem, QStyleOptionGraphicsItem, QWidget
+from PySide6.QtWidgets import QGraphicsPathItem, QStyleOptionGraphicsItem, QWidget
 
 from daedalus.view.canvas.node_item import StateNodeItem
 from daedalus.view.viewmodel.state_vm import TransitionViewModel

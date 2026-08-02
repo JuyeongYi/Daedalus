@@ -3,9 +3,9 @@ from __future__ import annotations
 
 from typing import Callable
 
-from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QColor
-from PyQt6.QtWidgets import (
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QColor
+from PySide6.QtWidgets import (
     QCheckBox,
     QFrame,
     QGraphicsOpacityEffect,
@@ -107,7 +107,7 @@ _COLOR_PRESETS = [
 class _OptionalRow(QWidget):
     """체크박스 ON/OFF로 선택적 프론트매터 필드를 표시/비활성화."""
 
-    toggled = pyqtSignal(bool)
+    toggled = Signal(bool)
 
     def __init__(
         self,
@@ -151,12 +151,12 @@ class _OptionalRow(QWidget):
 class _FrontmatterPanel(QScrollArea):
     """좌측 패널 — SKILL_FIELD_MATRIX 기반 프론트매터 편집."""
 
-    changed = pyqtSignal()
+    changed = Signal()
     # 텍스트 키스트로크 전용 채널 — description / when_to_use 타이핑.
     # 무거운 structure 리스너를 우회하기 위해 별도 시그널로 분리한다.
-    content_changed = pyqtSignal()
+    content_changed = Signal()
     # 이름 변경 시 발화 — (component, old_name, new_name). 중복 방지 및 참조 갱신용.
-    renamed = pyqtSignal(object, str, str)
+    renamed = Signal(object, str, str)
 
     def __init__(
         self,
@@ -254,7 +254,7 @@ class _FrontmatterPanel(QScrollArea):
                 self._connect_widget_signal(fld, widget)
 
                 if rule.visibility == FieldVisibility.REQUIRED:
-                    from PyQt6.QtWidgets import QComboBox as _QCB
+                    from PySide6.QtWidgets import QComboBox as _QCB
                     if isinstance(widget, _QCB):
                         row = QHBoxLayout()
                         row.addWidget(QLabel(fld.value))
@@ -302,7 +302,7 @@ class _FrontmatterPanel(QScrollArea):
     @staticmethod
     def _apply_value(widget, config, component, fld: SkillField | AgentField, rule) -> None:
         """현재 값(config / component)을 위젯에 채운다."""
-        from PyQt6.QtWidgets import QComboBox, QCheckBox, QLineEdit, QSpinBox, QTextEdit
+        from PySide6.QtWidgets import QComboBox, QCheckBox, QLineEdit, QSpinBox, QTextEdit
         from daedalus.view.widgets.tag_input import TagInput
         from daedalus.view.widgets.preset_picker import PresetPicker
         current = _FrontmatterPanel._get_current(config, component, fld)
@@ -346,7 +346,7 @@ class _FrontmatterPanel(QScrollArea):
     @staticmethod
     def _read_widget_value(fld: SkillField | AgentField, widget: QWidget) -> object:
         """위젯의 현재 표시값을 추출한다 (시그널 연결과 재체크 복원이 공유)."""
-        from PyQt6.QtWidgets import QComboBox, QCheckBox, QLineEdit, QSpinBox, QTextEdit
+        from PySide6.QtWidgets import QComboBox, QCheckBox, QLineEdit, QSpinBox, QTextEdit
         from daedalus.view.widgets.tag_input import TagInput
         from daedalus.view.widgets.preset_picker import PresetPicker
 
@@ -368,7 +368,7 @@ class _FrontmatterPanel(QScrollArea):
 
     def _connect_widget_signal(self, fld: SkillField | AgentField, widget: QWidget) -> None:
         """위젯 타입에 맞는 시그널을 공용 핸들러에 연결한다."""
-        from PyQt6.QtWidgets import QComboBox, QCheckBox, QLineEdit, QSpinBox, QTextEdit
+        from PySide6.QtWidgets import QComboBox, QCheckBox, QLineEdit, QSpinBox, QTextEdit
         from daedalus.view.widgets.tag_input import TagInput
         from daedalus.view.widgets.preset_picker import PresetPicker
 
@@ -502,7 +502,7 @@ class _FrontmatterPanel(QScrollArea):
 class _ColorPickerPopup(QFrame):
     """8색 프리셋 팔레트 팝업 (모달 아님)."""
 
-    color_selected = pyqtSignal(str)
+    color_selected = Signal(str)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -531,8 +531,8 @@ class _ColorPickerPopup(QFrame):
 class _EventCard(QFrame):
     """TransferOn 패널의 이벤트 한 항목 카드."""
 
-    delete_requested = pyqtSignal(object)   # EventDef
-    changed = pyqtSignal()
+    delete_requested = Signal(object)   # EventDef
+    changed = Signal()
 
     def __init__(
         self,
@@ -652,7 +652,7 @@ class _EventCard(QFrame):
 class _ContractCard(QFrame):
     """계약 섹션 카드 — 타이틀 잠금, 내용 편집 가능."""
 
-    changed = pyqtSignal()
+    changed = Signal()
 
     def __init__(self, section: Section, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -689,7 +689,7 @@ class _ContractCard(QFrame):
 class _ContractPanel(QScrollArea):
     """잠금 계약 섹션 패널 — 인라인 편집 카드 목록 (스크롤 지원)."""
 
-    contract_changed = pyqtSignal()
+    contract_changed = Signal()
 
     def __init__(
         self,
@@ -760,7 +760,7 @@ class _ContractPanel(QScrollArea):
 class _TransferOnPanel(QScrollArea):
     """TransferOn / AgentCall 이벤트 카드 목록 (스크롤 지원)."""
 
-    transfer_on_changed = pyqtSignal()
+    transfer_on_changed = Signal()
 
     def __init__(
         self,
@@ -835,7 +835,7 @@ class _TransferOnPanel(QScrollArea):
 class SkillEditor(QWidget):
     """스킬/에이전트 편집기 — ComponentEditor + 타입별 우측 패널."""
 
-    skill_changed = pyqtSignal()
+    skill_changed = Signal()
 
     def __init__(
         self,

@@ -1,5 +1,5 @@
 # daedalus/model/plugin/field_matrix.py
-"""스킬 프론트매터 필드 규칙 매트릭스 (순수 도메인 모델 — PyQt 무관).
+"""스킬 프론트매터 필드 규칙 매트릭스 (순수 도메인 모델 — Qt 무관).
 
 FieldRule은 visibility + 값만 관리한다. 편집 위젯 선택은 view 레이어의
 `daedalus.view.editors.field_widgets.FIELD_WIDGETS`로 분리되어 있다.

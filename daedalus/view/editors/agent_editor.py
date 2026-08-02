@@ -3,9 +3,9 @@ from __future__ import annotations
 
 from typing import Callable
 
-from PyQt6.QtCore import Qt, QTimer, pyqtSignal
-from PyQt6.QtGui import QCloseEvent, QColor
-from PyQt6.QtWidgets import (
+from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtGui import QCloseEvent, QColor
+from PySide6.QtWidgets import (
     QHBoxLayout,
     QInputDialog,
     QMessageBox,
@@ -24,7 +24,7 @@ from daedalus.view.panels.registry_panel import _RegistrySection
 class AgentEditor(QWidget):
     """AgentDefinition 편집기 — Graph / Content(+Config) 탭."""
 
-    agent_changed = pyqtSignal()
+    agent_changed = Signal()
 
     def __init__(
         self,

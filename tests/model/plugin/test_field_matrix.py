@@ -131,11 +131,11 @@ def test_model_default_is_inherit():
 
 
 def test_field_matrix_is_pyqt_free():
-    """field_matrix(및 daedalus.model 전체)가 PyQt6 없이 import 가능해야 한다.
+    """field_matrix(및 daedalus.model 전체)가 PySide6 없이 import 가능해야 한다.
 
-    builtins.__import__를 후킹해 'PyQt6'를 import하려는 순간 ImportError를 던지는
+    builtins.__import__를 후킹해 'PySide6'를 import하려는 순간 ImportError를 던지는
     하위 프로세스에서, daedalus.model.plugin.field_matrix를 import한다. model/
-    어디서도 PyQt6가 import되지 않음을 CI 수준에서 고정한다.
+    어디서도 PySide6가 import되지 않음을 CI 수준에서 고정한다.
     """
     import subprocess
     import sys
@@ -144,8 +144,8 @@ def test_field_matrix_is_pyqt_free():
         "import builtins\n"
         "_real = builtins.__import__\n"
         "def _blocked(name, *a, **k):\n"
-        "    if name == 'PyQt6' or name.startswith('PyQt6.'):\n"
-        "        raise ImportError('PyQt6 import blocked for purity test')\n"
+        "    if name == 'PySide6' or name.startswith('PySide6.'):\n"
+        "        raise ImportError('PySide6 import blocked for purity test')\n"
         "    return _real(name, *a, **k)\n"
         "builtins.__import__ = _blocked\n"
         "import daedalus.model.plugin.field_matrix  # noqa: F401\n"
@@ -160,7 +160,7 @@ def test_field_matrix_is_pyqt_free():
         text=True,
     )
     assert result.returncode == 0, (
-        f"PyQt6 차단 하에 daedalus.model import 실패:\n"
+        f"PySide6 차단 하에 daedalus.model import 실패:\n"
         f"STDOUT: {result.stdout}\nSTDERR: {result.stderr}"
     )
     assert "OK" in result.stdout

@@ -1,5 +1,5 @@
 # tests/compiler/builders.py
-"""컴파일러 테스트용 모델 빌더 (순수 — PyQt 무관)."""
+"""컴파일러 테스트용 모델 빌더 (순수 — Qt 무관)."""
 from __future__ import annotations
 
 from daedalus.model.fsm.event import CompletionEvent

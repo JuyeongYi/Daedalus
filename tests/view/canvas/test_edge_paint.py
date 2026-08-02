@@ -5,8 +5,8 @@ paint()가 예외 없이 그려지는지, update_path()가 경로를 구성하�
 """
 from __future__ import annotations
 
-from PyQt6.QtCore import QPointF
-from PyQt6.QtGui import QImage, QPainter
+from PySide6.QtCore import QPointF
+from PySide6.QtGui import QImage, QPainter
 
 from daedalus.model.fsm.event import CompletionEvent
 from daedalus.model.fsm.transition import Transition
