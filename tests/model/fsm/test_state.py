@@ -29,6 +29,23 @@ def test_simple_state():
     assert s.inputs == []
     assert s.outputs == []
     assert s.custom_events == {}
+    assert s.reads == []
+    assert s.writes == []
+
+
+def test_state_access_declarations_settable():
+    """WP-BB Part A: reads/writes — "Class"/"Class.field" 문자열 참조."""
+    s = SimpleState(name="review", reads=["TaskState"], writes=["ReviewFindings.files"])
+    assert s.reads == ["TaskState"]
+    assert s.writes == ["ReviewFindings.files"]
+
+
+def test_state_access_declarations_default_independent():
+    """default_factory=list — 인스턴스 간 리스트 공유 없음."""
+    a = SimpleState(name="a")
+    b = SimpleState(name="b")
+    a.reads.append("X")
+    assert b.reads == []
 
 
 def test_simple_state_with_actions():
