@@ -213,7 +213,7 @@ def test_install_ps1_content_deterministic_and_handles_args():
     assert "\r" not in text
     assert text.endswith("\n")
     assert "Target" in text
-    assert "사용법" in text  # 인자 미지정 시 사용법 출력
+    assert "Usage:" in text  # 인자 미지정 시 사용법 출력 (ASCII — 콘솔 인코딩 안전)
     assert ".claude\\skills" in text
     assert ".claude\\agents" in text
     assert "files" in text
@@ -226,9 +226,36 @@ def test_install_sh_content_deterministic_and_handles_args():
     assert "\r" not in text
     assert text.endswith("\n")
     assert text.startswith("#!/usr/bin/env bash")
-    assert "사용법" in text  # 인자 미지정 시 사용법 출력
+    assert "Usage:" in text  # 인자 미지정 시 사용법 출력 (ASCII — 콘솔 인코딩 안전)
     assert ".claude/skills" in text
     assert ".claude/agents" in text
     assert "files" in text
     assert "hooks" in text
     assert text == compile_install_sh()  # 결정적
+
+
+# ── 리뷰 반영 회귀 (schemas 복사 · ASCII 메시지) ──
+
+
+def test_local_install_docs_and_scripts_cover_schemas():
+    """schemas/도 설치 대상에 포함된다 — 본문이 schemas/schemas.json을 가리키는데
+    설치 경로에서 유실되던 문제 (리뷰 지적 A)."""
+    from daedalus.compiler.emit import (
+        compile_install_md, compile_install_ps1, compile_install_sh,
+    )
+    from daedalus.model.project import PluginProject
+
+    md = compile_install_md(PluginProject(name="p"))
+    assert "schemas" in md
+    ps1 = compile_install_ps1()
+    sh = compile_install_sh()
+    assert "schemas" in ps1 and "schemas" in sh
+
+
+def test_install_scripts_messages_are_ascii():
+    """스크립트 출력 메시지는 ASCII — Windows PowerShell 5.1(cp949)에서
+    한국어가 깨지던 문제 (리뷰 지적 B). 산출은 BOM 없는 UTF-8 규약 유지."""
+    from daedalus.compiler.emit import compile_install_ps1, compile_install_sh
+
+    for text in (compile_install_ps1(), compile_install_sh()):
+        assert text.isascii(), "설치 스크립트에 비ASCII 문자가 있으면 콘솔에서 깨진다"

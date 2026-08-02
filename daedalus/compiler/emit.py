@@ -1624,6 +1624,10 @@ def compile_install_md(project) -> str:
             "- `files/` — 대상 프로젝트 루트의 `files/`로 복사 (스킬/에이전트 본문이 "
             "`${CLAUDE_PROJECT_DIR}/files/...`로 참조)"
         ),
+        (
+            "- `schemas/schemas.json` — 블랙보드 스키마. 스킬/에이전트 본문이 이 파일을 "
+            "가리키므로 대상 프로젝트 루트의 `schemas/`로 함께 복사된다."
+        ),
         "- `hooks/hooks.json` — 설치 스크립트가 복사하지 않는다. 아래 안내를 따라 수동 병합하라.",
         "",
         "## 설치",
@@ -1642,8 +1646,8 @@ def compile_install_md(project) -> str:
         "",
         (
             "두 스크립트 모두 `skills/*` → `<대상>/.claude/skills/`, "
-            "`agents/*.md` → `<대상>/.claude/agents/`, `files/*` → `<대상>/files/`를 "
-            "복사한다 (기존 동명 파일은 덮어쓴다)."
+            "`agents/*.md` → `<대상>/.claude/agents/`, `files/*` → `<대상>/files/`, "
+            "`schemas/*` → `<대상>/schemas/`를 복사한다 (기존 동명 파일은 덮어쓴다)."
         ),
         "",
         "## hooks.json 수동 병합",
@@ -1664,12 +1668,12 @@ def compile_install_md(project) -> str:
 _INSTALL_PS1 = """\
 param([string]$Target)
 if (-not $Target) {
-  Write-Host "사용법: .\\install.ps1 <대상 프로젝트 경로>"
+  Write-Host "Usage: .\\install.ps1 <target project path>"
   exit 1
 }
 $src = $PSScriptRoot
-if (-not (Test-Path $Target)) { Write-Error "대상 경로 없음: $Target"; exit 1 }
-Write-Host "설치 대상: $Target (기존 동명 파일은 덮어씀)"
+if (-not (Test-Path $Target)) { Write-Error "Target path not found: $Target"; exit 1 }
+Write-Host "Installing into: $Target (existing files are overwritten)"
 New-Item -ItemType Directory -Force "$Target\\.claude\\skills" | Out-Null
 New-Item -ItemType Directory -Force "$Target\\.claude\\agents" | Out-Null
 if (Test-Path "$src\\skills") { Copy-Item -Recurse -Force "$src\\skills\\*" "$Target\\.claude\\skills\\" }
@@ -1678,22 +1682,27 @@ if (Test-Path "$src\\files") {
   New-Item -ItemType Directory -Force "$Target\\files" | Out-Null
   Copy-Item -Recurse -Force "$src\\files\\*" "$Target\\files\\"
 }
-Write-Host "완료. hooks/hooks.json이 있으면 .claude/settings.json에 수동 병합하라."
+if (Test-Path "$src\\schemas") {
+  New-Item -ItemType Directory -Force "$Target\\schemas" | Out-Null
+  Copy-Item -Recurse -Force "$src\\schemas\\*" "$Target\\schemas\\"
+}
+Write-Host "Done. If hooks/hooks.json exists, merge it into .claude/settings.json manually."
 """
 
 _INSTALL_SH = """\
 #!/usr/bin/env bash
 set -euo pipefail
-if [ $# -lt 1 ]; then echo "사용법: ./install.sh <대상 프로젝트 경로>"; exit 1; fi
+if [ $# -lt 1 ]; then echo "Usage: ./install.sh <target project path>"; exit 1; fi
 TARGET="$1"
 SRC="$(cd "$(dirname "$0")" && pwd)"
-[ -d "$TARGET" ] || { echo "대상 경로 없음: $TARGET"; exit 1; }
-echo "설치 대상: $TARGET (기존 동명 파일은 덮어씀)"
+[ -d "$TARGET" ] || { echo "Target path not found: $TARGET"; exit 1; }
+echo "Installing into: $TARGET (existing files are overwritten)"
 mkdir -p "$TARGET/.claude/skills" "$TARGET/.claude/agents"
 [ -d "$SRC/skills" ] && cp -rf "$SRC/skills/." "$TARGET/.claude/skills/"
 [ -d "$SRC/agents" ] && cp -rf "$SRC/agents/." "$TARGET/.claude/agents/"
 if [ -d "$SRC/files" ]; then mkdir -p "$TARGET/files"; cp -rf "$SRC/files/." "$TARGET/files/"; fi
-echo "완료. hooks/hooks.json이 있으면 .claude/settings.json에 수동 병합하라."
+if [ -d "$SRC/schemas" ]; then mkdir -p "$TARGET/schemas"; cp -rf "$SRC/schemas/." "$TARGET/schemas/"; fi
+echo "Done. If hooks/hooks.json exists, merge it into .claude/settings.json manually."
 """
 
 

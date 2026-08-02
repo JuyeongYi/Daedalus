@@ -1614,6 +1614,14 @@ class Validator:
                 f"에이전트 '{agent.name}'", agent, getattr(agent, "body", ""),
                 (f"agent:{agent.name}",),
             )
+            # 잠금 계약 카드도 agent .md에 그대로 배출되므로 함께 검사한다
+            # (리뷰 지적 C — body만 보면 계약 카드의 죽은 경로를 놓친다)
+            for contract in getattr(agent, "caller_contracts", None) or []:
+                _scan(
+                    f"에이전트 '{agent.name}'의 호출 계약 '{contract.title}'",
+                    agent, getattr(contract, "content", ""),
+                    (f"agent:{agent.name}",),
+                )
             for local in getattr(agent, "skills", None) or []:
                 _scan(
                     f"에이전트 '{agent.name}'의 로컬 스킬 '{local.name}'",

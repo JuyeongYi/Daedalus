@@ -135,3 +135,49 @@ def test_plugin_root_checks_agent_and_local_skill_bodies():
         "에이전트 'worker'",
         "에이전트 'worker'의 로컬 스킬 'local-helper'",
     }
+
+
+def test_plugin_root_in_caller_contract_flagged():
+    """호출 계약 카드의 비-files ${CLAUDE_PLUGIN_ROOT}도 잡는다 (리뷰 지적 C —
+    계약 카드도 agent .md에 그대로 배출된다)."""
+    from daedalus.model.fsm.machine import StateMachine
+    from daedalus.model.fsm.section import Section
+    from daedalus.model.fsm.state import SimpleState
+    from daedalus.model.plugin.agent import AgentDefinition
+    from daedalus.model.plugin.enums import BuildTarget
+    from daedalus.model.project import PluginProject
+    from daedalus.model.validation import Validator
+
+    s = SimpleState(name="a")
+    agent = AgentDefinition(
+        fsm=StateMachine(name="af", initial_state=s, states=[s], final_states=[s]),
+        name="worker", description="d", body="본문\n",
+    )
+    agent.caller_contracts.append(
+        Section(title="caller: x", content="스크립트: ${CLAUDE_PLUGIN_ROOT}/bin/run.sh")
+    )
+    project = PluginProject(name="p", agents=[agent], build_target=BuildTarget.LOCAL)
+    errors = Validator.validate_project(project)
+    assert any(e.rule == "plugin_root_in_local_build" for e in errors)
+
+
+def test_files_ref_in_caller_contract_not_flagged():
+    from daedalus.model.fsm.machine import StateMachine
+    from daedalus.model.fsm.section import Section
+    from daedalus.model.fsm.state import SimpleState
+    from daedalus.model.plugin.agent import AgentDefinition
+    from daedalus.model.plugin.enums import BuildTarget
+    from daedalus.model.project import PluginProject
+    from daedalus.model.validation import Validator
+
+    s = SimpleState(name="a")
+    agent = AgentDefinition(
+        fsm=StateMachine(name="af", initial_state=s, states=[s], final_states=[s]),
+        name="worker", description="d", body="",
+    )
+    agent.caller_contracts.append(
+        Section(title="caller: x", content="참조: ${CLAUDE_PLUGIN_ROOT}/files/a.md")
+    )
+    project = PluginProject(name="p", agents=[agent], build_target=BuildTarget.LOCAL)
+    errors = Validator.validate_project(project)
+    assert not any(e.rule == "plugin_root_in_local_build" for e in errors)

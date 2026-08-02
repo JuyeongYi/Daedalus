@@ -152,17 +152,19 @@ def _plan_outputs(project) -> tuple[list[_PlannedOutput], list[ValidationError]]
                 subject=subject,
             ))
 
-    # 프로젝트 이름 — plugin.json의 name(플러그인 식별자)이 되므로 컴포넌트와
-    # 동일 규약을 컴파일 게이트에서 에러로 강제한다.
+    # 프로젝트 이름 — 마켓플레이스 빌드에서 plugin.json의 name(플러그인 식별자)이
+    # 되므로 컴포넌트와 동일 규약을 컴파일 게이트에서 에러로 강제한다. 로컬 빌드도
+    # 같은 규약을 적용한다(타깃을 오가며 새 에러가 튀지 않도록 — 산출 이름·문서
+    # 제목에 그대로 쓰인다).
     if not _OUTPUT_NAME_RE.match(project.name or ""):
         errors.append(ValidationError(
             rule="compile_invalid_component_name",
             message=(
                 f"프로젝트 '{project.name}'의 이름이 규약 '^[a-z0-9][a-z0-9-]*$'에 "
-                f"맞지 않습니다. 컴파일 시에는 이름 규약이 필수입니다 — "
-                f"plugin.json의 name(플러그인 식별자)이 되므로 CC 플러그인 로더가 "
-                f"받지 않는 산출물이 생깁니다. 파일 → 프로젝트 속성…에서 이름을 "
-                f"변경하세요."
+                f"맞지 않습니다. 컴파일 시에는 이름 규약이 필수입니다 — 마켓플레이스 "
+                f"빌드에서는 plugin.json의 name(플러그인 식별자)이 되어 CC 플러그인 "
+                f"로더가 받지 않는 산출물이 생깁니다. 파일 → 프로젝트 속성…에서 "
+                f"이름을 변경하세요."
             ),
             source=project.name,
             subject=project,
