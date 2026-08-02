@@ -3,12 +3,32 @@
 
 이동 가능한 아이템 3종(StateNodeItem/ReferenceNodeItem/WaypointHandleItem)이
 공통 믹스인(DraggableItemMixin) + 씬 단일 진입점(handle_items_moved)을 통해
-일관되게 동작하는지 검증한다. 러버밴드 다중 선택 시 Qt는 선택된 이동 가능
-아이템을 전부 화면에서 함께 움직이지만 release 이벤트는 잡은(grabbed) 아이템
-하나에만 배달된다 — 합성 setPos()/핸들러 직접 호출로는 이 비대칭을 재현할 수
-없으므로, 반드시 실제 QMouseEvent를 뷰포트에 보내는 방식으로 검증한다
-(tests/view/canvas/test_canvas_interaction.py, test_edge_waypoints.py의
-_send_mouse 패턴 참조 — 합성 이벤트가 실제 경로를 우회해 통과한 전례가 있다).
+일관되게 동작하는지 검증한다.
+
+실측으로 확인한 정확한 고장 메커니즘(master): 세 아이템 모두 mouseMoveEvent에서
+super()를 호출하므로 드래그 "도중"에는 Qt가 선택된 모든 이동 가능 아이템을
+이미 정상적으로 함께 옮긴다 — 이 단계는 버그가 아니다. 진짜 고장은 release
+"이후"다: release 이벤트가 잡은(grabbed) 아이템 하나에만 배달되므로, 구
+handle_node_moved/handle_ref_node_moved는 그 하나만 커맨드로 만들어 vm.x/y를
+갱신한다. 그 직후 `_project_vm.execute()` → notify → 씬 `_rebuild()`가
+`item.setPos(vm.x, vm.y)`로 화면 좌표를 vm 기준으로 재계산하는데, 커맨드를
+못 받은 함께-드래그된(passenger) 아이템은 vm.x/y가 갱신된 적이 없어 원래
+좌표로 스냅백된다 — "무엇을 잡았느냐에 따라 튕기는 대상이 달라지는" 증상.
+
+따라서 검증은 반드시 release 완료(+ qapp.processEvents()) 후, **vm 좌표**
+(StateViewModel.x/y, ReferenceViewModel.x/y, project.reference_placements,
+TransitionViewModel.waypoints)로 해야 한다 — 화면 좌표(item.pos())나 드래그
+"도중" 상태를 검사하면 이 스냅백 버그가 있어도 통과해버린다(Qt가 이미 다
+옮겨놨으므로). 합성 setPos()/핸들러 직접 호출로도 이 release-이후 경로를
+재현할 수 없으므로, 반드시 실제 QMouseEvent를 뷰포트에 보내는 방식으로
+press→move→release 전체를 거친다(tests/view/canvas/test_canvas_interaction.py,
+test_edge_waypoints.py의 _send_mouse 패턴 참조 — 합성 이벤트가 실제 경로를
+우회해 통과한 전례가 있다).
+
+교차검증: 이 테스트들을 WP-DM 이전(master, eeea4b0) 캔버스 코드에 그대로
+돌려 정확히 이 스냅백 패턴으로 실패하는 것을 확인했다 — 예를 들어 상태
+노드를 잡으면 함께 선택된 레퍼런스 노드(r1)만 원좌표에 고정되고, 레퍼런스
+노드를 잡으면 상태 노드(a)와 다른 레퍼런스 노드(r2)가 원좌표에 고정된다.
 """
 from __future__ import annotations
 
