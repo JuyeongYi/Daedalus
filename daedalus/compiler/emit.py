@@ -647,6 +647,21 @@ def _invoke_phrase(ref, name: str) -> str:
     return f"`{name}` 스킬을 인보크하라"
 
 
+def _graph_placements(component, project) -> list:
+    """component가 project.graph에 SimpleState로 배치된 노드 목록(identity 비교).
+
+    "다음 단계" 단락(버그 2)과 WP-RS 작업 재개 단락이 공유하는 placement 판정
+    로직의 단일 진실.
+    """
+    graph = getattr(project, "graph", None)
+    if graph is None:
+        return []
+    return [
+        s for s in graph.states
+        if getattr(s, "skill_ref", None) is component
+    ]
+
+
 def _next_steps_section(component, project) -> list[str]:
     """project.graph에서 component placement의 outgoing 전이를 모아 "## 다음 단계"
     단락 블록을 생성한다 (버그 2). outgoing이 없으면 빈 목록(단락 생략).
@@ -654,16 +669,10 @@ def _next_steps_section(component, project) -> list[str]:
     component는 전역 스킬 객체. 그래프에서 skill_ref가 identity로 일치하는
     SimpleState placement를 찾고, 그 placement에서 나가는 전이를 서술한다.
     """
-    graph = getattr(project, "graph", None)
-    if graph is None:
-        return []
-    # 이 컴포넌트의 placement(들) — identity 비교
-    placements = [
-        s for s in graph.states
-        if getattr(s, "skill_ref", None) is component
-    ]
+    placements = _graph_placements(component, project)
     if not placements:
         return []
+    graph = project.graph
     lines: list[str] = []
     for placement in placements:
         for t in graph.transitions:
@@ -680,6 +689,58 @@ def _next_steps_section(component, project) -> list[str]:
         "## 다음 단계",
         "이 스킬 완료 후 다음 조건에 따라 워크플로를 이어가라:",
         "\n".join(lines),
+    ]
+
+
+# ─────────────────────────── 작업 재개 (WP-RS) ───────────────────────────
+
+# state/__progress__.json 규약 — 플러그인 FSM(프로젝트 그래프)의 진행 위치를 담는
+# 단일 파일. 스킬 내부 FSM 상태는 기록하지 않는다(사용자 확정 설계).
+
+_PROGRESS_UPDATE_NOTE = (
+    "전이 시 `state/__progress__.json`을 갱신하라 — 이 스킬을 `completed`에 추가하고 "
+    "`current`를 다음 대상으로, `note`에 인계 한 줄을, `updated`에 현재 시각(ISO8601)을 "
+    "남겨라. 에이전트에게 위임하는 전이는 두 번 갱신한다: 위임 직전 `current`를 에이전트 "
+    "이름으로, 위임 완료 후 후속 스킬 이름으로."
+)
+
+_TRANSFER_PROGRESS_NOTE = (
+    "이 전이 스킬 실행 중에는 `state/__progress__.json`의 `note`에 전이 맥락을 기록하라."
+)
+
+
+def _resume_preamble_section(project, skill_name: str) -> list[str]:
+    """WP-RS Part A-1: 재개 프리앰블 — 프론트매터 직후, 본문 앞에 배출된다.
+
+    프로젝트 그래프에 배치된 전역 ProceduralSkill에만 배출된다(게이트는 호출부).
+    """
+    plugin_name = getattr(project, "name", "")
+    body = "\n".join([
+        "시작 전에 `state/__progress__.json`을 확인하라.",
+        (
+            f"- `current`가 이 스킬(`{skill_name}`)이면: `note`를 참고해 중단 지점부터 "
+            "이어서 진행하라."
+        ),
+        "- `current`가 다른 스킬이면: 워크플로 위치가 그쪽이다 — 진행을 멈추고 사용자에게 확인하라.",
+        (
+            "- 파일이 없으면: "
+            f'`{{"plugin": "{plugin_name}", "current": "{skill_name}", "completed": [], '
+            '"note": "", "updated": "<현재 시각 ISO8601>"}`'
+            "로 생성하고 진행하라."
+        ),
+    ])
+    return ["## 작업 재개", body]
+
+
+def _progress_terminal_section() -> list[str]:
+    """WP-RS Part A-3: 터미널 배치(outgoing 0개) — "다음 단계" 대신 배출된다."""
+    return [
+        "## 작업 완료",
+        (
+            "이 스킬이 워크플로의 마지막 단계다. 완료 시 `state/__progress__.json`에서 "
+            "이 스킬을 `completed`에 추가하고 `current`를 `\"done\"`으로 바꾼 뒤, "
+            "`note`에 결과 요약을, `updated`에 현재 시각(ISO8601)을 남겨라."
+        ),
     ]
 
 
@@ -814,10 +875,36 @@ def compile_skill(
 
     blocks: list[str] = [_frontmatter_block(fm_lines)]
 
+    # 작업 재개 프리앰블(WP-RS) — 프론트매터 직후, 본문 앞. 프로젝트 그래프에
+    # 배치된 전역 Procedural/Declarative 스킬에 배출(미배치·로컬은 없음).
+    # Declarative 포함 이유: 배치되면 "다음 단계"를 받는데 갱신 규칙이 빠지면
+    # 그 노드에서 진행 사슬이 끊긴다 (리뷰 지적 ①).
+    progress_placements: list = []
+    if (
+        project is not None
+        and not local
+        and isinstance(skill, (ProceduralSkill, DeclarativeSkill))
+    ):
+        progress_placements = _graph_placements(skill, project)
+    if progress_placements:
+        blocks.extend(_resume_preamble_section(project, skill.name))
+
     # 본문(body)
     body_block = _body_block(getattr(skill, "body", ""))
     if body_block is not None:
         blocks.append(body_block)
+
+    # TransferSkill: 전이 도중 중단 대비 note (본문 끝, 로컬 스킬은 제외).
+    # 진행 파일을 만드는 배치 스킬이 하나도 없는 프로젝트에서는 고아 지시가
+    # 되므로 placement 존재를 게이트로 건다 (리뷰 지적 ②).
+    if (
+        isinstance(skill, TransferSkill)
+        and not local
+        and project is not None
+        and _graph_placements_any(project)
+    ):
+        blocks.append("## 진행 기록")
+        blocks.append(_TRANSFER_PROGRESS_NOTE)
 
     # ProceduralSkill — FSM 절차 + 위임 + tool_shelf
     if isinstance(skill, ProceduralSkill):
@@ -841,8 +928,25 @@ def compile_skill(
 
     # 프로젝트 그래프 기반 "다음 단계" (버그 2) — 전역 스킬에 한함.
     # 로컬 스킬(에이전트 소유)은 프로젝트 그래프 placement 대상이 아니다.
+    # WP-RS: 배치 스킬이면 다음 단계 단락 끝에 진행 상태 갱신 규칙을 합류시키고,
+    # outgoing이 없는 터미널 배치면 "다음 단계" 대신 "작업 완료"를 배출한다.
+    # 터미널 판정은 "다음 단계 문구 생성 실패"가 아니라 **placement의 실제
+    # outgoing 전이 부재**다 — 타깃이 빈 상태(skill_ref=None)뿐이라 문구가 안
+    # 나와도 중간 스킬은 터미널이 아니다 (리뷰 차단 지적).
     if project is not None and not local:
-        blocks.extend(_next_steps_section(skill, project))
+        next_blocks = _next_steps_section(skill, project)
+        has_outgoing = any(
+            t.source is p
+            for p in progress_placements
+            for t in getattr(project.graph, "transitions", [])
+        )
+        if next_blocks:
+            if progress_placements:
+                next_blocks = list(next_blocks)
+                next_blocks[-1] = next_blocks[-1] + "\n\n" + _PROGRESS_UPDATE_NOTE
+            blocks.extend(next_blocks)
+        elif progress_placements and not has_outgoing:
+            blocks.extend(_progress_terminal_section())
 
     return _join_blocks(blocks)
 
@@ -1081,6 +1185,15 @@ def _hook_command_entry(hook: HookDef) -> dict[str, Any]:
     return entry
 
 
+# WP-RS Part B: SessionStart에 합성 배출되는 진행 상태 주입 훅.
+# hook_library를 오염시키지 않는다 — hooks.json 합류는 컴파일 시점에만 합성된다.
+_PROGRESS_SESSION_START_COMMAND = 'cat state/__progress__.json 2>/dev/null || true'
+
+
+def _progress_hook_entry() -> dict[str, Any]:
+    return {"type": "command", "command": _PROGRESS_SESSION_START_COMMAND}
+
+
 def compile_hooks_json(project) -> str | None:
     """프로젝트가 참조하는 HookDef를 모아 CC settings hooks.json 텍스트로.
 
@@ -1090,7 +1203,13 @@ def compile_hooks_json(project) -> str | None:
     - matcher는 도구 이벤트(Pre/PostToolUse)에서만 출력. 그 외 이벤트는 matcher 생략.
     - 같은 이벤트의 복수 훅은 hook_library 선언 순서로 정렬(결정적).
     - 이벤트 키 순서는 HookEvent 선언 순서(결정적).
-    참조가 없거나 라이브러리에 매칭되는 훅이 없으면 None(파일 생성 안 함).
+
+    WP-RS Part B: `project.emit_progress_hook`(기본 True)이고 프로젝트 그래프에
+    placement가 1개 이상이면 SessionStart 이벤트에 진행 상태 주입 커맨드를
+    합성해 합류시킨다(hook_library에는 기록하지 않음 — 순수 컴파일 시점 합성).
+    사용자 정의 SessionStart 훅이 있으면 그 뒤에 공존한다.
+
+    참조된 라이브러리 훅도 없고 합성 진행 훅도 없으면 None(파일 생성 안 함).
 
     LF·UTF-8 보장 텍스트(끝 개행 1개). json.loads 왕복 가능.
     """
@@ -1098,7 +1217,12 @@ def compile_hooks_json(project) -> str | None:
     by_name = {h.name: h for h in library}
     referenced = _collect_referenced_hook_names(project)
     resolved = [by_name[n] for n in referenced if n in by_name]
-    if not resolved:
+
+    emit_progress = bool(getattr(project, "emit_progress_hook", True)) and bool(
+        _graph_placements_any(project)
+    )
+
+    if not resolved and not emit_progress:
         return None
 
     # 이벤트 → HookDef 목록 (라이브러리 선언 순서 유지, 결정적).
@@ -1110,9 +1234,7 @@ def compile_hooks_json(project) -> str | None:
 
     hooks_obj: dict[str, Any] = {}
     for event in HookEvent:  # 선언 순서 = 결정적 이벤트 키 순서
-        bucket = event_buckets.get(event)
-        if not bucket:
-            continue
+        bucket = event_buckets.get(event) or []
         groups: list[dict[str, Any]] = []
         for hook in bucket:
             group: dict[str, Any] = {}
@@ -1120,13 +1242,30 @@ def compile_hooks_json(project) -> str | None:
                 group["matcher"] = hook.matcher
             group["hooks"] = [_hook_command_entry(hook)]
             groups.append(group)
-        hooks_obj[event.value] = groups
+        if event is HookEvent.SESSION_START and emit_progress:
+            # 사용자 정의 SessionStart 훅 뒤에 합성 훅을 이어붙인다(공존).
+            groups.append({"hooks": [_progress_hook_entry()]})
+        if groups:
+            hooks_obj[event.value] = groups
 
     text = json.dumps({"hooks": hooks_obj}, ensure_ascii=False, indent=2)
     text = text.replace("\r\n", "\n").replace("\r", "\n")
     if not text.endswith("\n"):
         text += "\n"
     return text
+
+
+def _graph_placements_any(project) -> bool:
+    """프로젝트 그래프에 EntryPoint 외 노드(placement)가 하나라도 있으면 True.
+
+    판정의 단일 진실은 Validator._graph_has_placements — 복붙 드리프트 방지를
+    위해 위임한다 (리뷰 지적 ⑦).
+    """
+    graph = getattr(project, "graph", None)
+    if graph is None:
+        return False
+    from daedalus.model.validation import Validator
+    return Validator._graph_has_placements(graph)
 
 
 # ─────────────────────────── schemas.json (블랙보드) ───────────────────────────

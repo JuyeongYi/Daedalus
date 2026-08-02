@@ -13,6 +13,7 @@ def test_dialog_initial_values_match_project(qapp):
     assert dialog._name_edit.text() == "my-plugin"
     assert dialog._description_edit.text() == "desc"
     assert dialog._version_edit.text() == "1.0.0"
+    assert dialog._emit_progress_hook_cb.isChecked() is True  # 기본 True
 
 
 def test_apply_to_updates_project(qapp):
@@ -27,6 +28,20 @@ def test_apply_to_updates_project(qapp):
     assert project.name == "new-name"
     assert project.description == "new desc"
     assert project.version == "2.0.0"
+
+
+def test_dialog_reflects_emit_progress_hook_false(qapp):
+    project = PluginProject(name="p", emit_progress_hook=False)
+    dialog = ProjectPropertiesDialog(project)
+    assert dialog._emit_progress_hook_cb.isChecked() is False
+
+
+def test_apply_to_updates_emit_progress_hook(qapp):
+    project = PluginProject(name="p")
+    dialog = ProjectPropertiesDialog(project)
+    dialog._emit_progress_hook_cb.setChecked(False)
+    dialog.apply_to(project)
+    assert project.emit_progress_hook is False
 
 
 def test_apply_to_does_not_enforce_name_convention(qapp):
