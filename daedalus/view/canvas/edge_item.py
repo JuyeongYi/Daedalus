@@ -59,6 +59,11 @@ class TransitionEdgeItem(QGraphicsPathItem):
 
         WP-IC: 입력 포트 위치는 target_port(이름) 기준으로 조회한다 —
         같은 target_port를 향하는 여러 전이는 자연히 한 점에 수렴한다.
+
+        WP-ER: transition_vm.waypoints가 있으면 소스 포트 → 경유점들 → 타깃
+        포트 순으로 각 구간을 기존과 동일한 베지어 곡선으로 잇는다(각 구간의
+        끝점이 정확히 경유점을 지나므로 경로가 경유점을 통과함이 보장된다).
+        경유점이 없으면 구간이 하나뿐이라 기존 렌더와 완전히 동일하다(하위 호환).
         """
         self.prepareGeometryChange()
         trigger = self._transition_vm.model.trigger
@@ -69,19 +74,27 @@ class TransitionEdgeItem(QGraphicsPathItem):
         target_port = self._transition_vm.model.target_port
         tgt_pt = self._target_node.input_port_scene_pos(target_port)
 
-        if tgt_pt.x() < src_pt.x():
-            # 역방향 — 더 크게 휘어짐
-            dx = abs(tgt_pt.x() - src_pt.x()) * 0.8 + 80
-            ctrl1 = QPointF(src_pt.x() + dx, src_pt.y())
-            ctrl2 = QPointF(tgt_pt.x() - dx, tgt_pt.y())
-        else:
-            dx = abs(tgt_pt.x() - src_pt.x()) * 0.5
-            ctrl1 = QPointF(src_pt.x() + dx, src_pt.y())
-            ctrl2 = QPointF(tgt_pt.x() - dx, tgt_pt.y())
+        waypoints = self._transition_vm.waypoints
+        points = [src_pt] + [QPointF(x, y) for x, y in waypoints] + [tgt_pt]
 
-        path = QPainterPath(src_pt)
-        path.cubicTo(ctrl1, ctrl2, tgt_pt)
+        path = QPainterPath(points[0])
+        for p1, p2 in zip(points, points[1:]):
+            self._add_curve_segment(path, p1, p2)
         self.setPath(path)
+
+    @staticmethod
+    def _add_curve_segment(path: QPainterPath, p1: QPointF, p2: QPointF) -> None:
+        """p1(현재 경로 끝점)에서 p2까지 기존 스타일의 베지어 구간을 잇는다."""
+        if p2.x() < p1.x():
+            # 역방향 — 더 크게 휘어짐
+            dx = abs(p2.x() - p1.x()) * 0.8 + 80
+            ctrl1 = QPointF(p1.x() + dx, p1.y())
+            ctrl2 = QPointF(p2.x() - dx, p2.y())
+        else:
+            dx = abs(p2.x() - p1.x()) * 0.5
+            ctrl1 = QPointF(p1.x() + dx, p1.y())
+            ctrl2 = QPointF(p2.x() - dx, p2.y())
+        path.cubicTo(ctrl1, ctrl2, p2)
 
     def shape(self) -> QPainterPath:
         """히트 영역을 시각적 두께보다 넓게 설정해 우클릭 편의성 향상."""
