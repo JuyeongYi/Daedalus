@@ -7,6 +7,7 @@ Copyright (c) 2014-2026 Patrizio Bekerle)의 설계를 PySide6로 포팅했다.
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import (
@@ -17,7 +18,7 @@ from PySide6.QtGui import (
     QTextCursor,
     QTextDocument,
 )
-from PySide6.QtWidgets import QPlainTextEdit, QWidget
+from PySide6.QtWidgets import QListWidget, QListWidgetItem, QPlainTextEdit, QWidget
 
 MARKDOWN_PALETTE: dict[str, QColor] = {
     "text": QColor("#cccccc"),
@@ -322,6 +323,88 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         self.setFormat(bracket_end, m.end() - bracket_end, self._fmt_link_url)
 
 
+@dataclass(frozen=True)
+class SlashItem:
+    """슬래시 메뉴 항목 — 표시/필터/삽입 스니펫을 묶는다."""
+
+    label: str        # 표시 텍스트 (예: "제목 1")
+    keywords: str      # 필터 매칭 대상 (label + 영문 별칭)
+    snippet: str       # 삽입 텍스트
+    cursor_back: int = 0  # 삽입 후 커서를 끝에서 뒤로 물릴 문자 수
+
+
+SLASH_CATALOG: list[SlashItem] = [
+    SlashItem("제목 1", "제목 1 h1 heading", "# "),
+    SlashItem("제목 2", "제목 2 h2 heading", "## "),
+    SlashItem("제목 3", "제목 3 h3 heading", "### "),
+    SlashItem("불릿 리스트", "불릿 리스트 list bullet ul", "- "),
+    SlashItem("번호 리스트", "번호 리스트 number ordered list ol", "1. "),
+    SlashItem("체크리스트", "체크리스트 check task checklist todo", "- [ ] "),
+    SlashItem("인용", "인용 quote blockquote", "> "),
+    SlashItem("코드 블록", "코드 블록 code block fence", "```\n\n```", 4),
+    SlashItem("구분선", "구분선 hr divider horizontal rule", "---\n"),
+    SlashItem("링크", "링크 link url", "[](url)", 6),
+]
+
+_SLASH_ITEM_ROLE = Qt.ItemDataRole.UserRole
+_SLASH_ROW_HEIGHT = 24
+_SLASH_MAX_VISIBLE_ROWS = 8
+_SLASH_MENU_WIDTH = 180
+
+
+class _SlashMenu(QListWidget):
+    """`/` 슬래시 메뉴 — 에디터 viewport의 자식 오버레이(Qt.Popup 아님).
+
+    포커스는 에디터가 계속 보유한다(오프스크린 테스트를 위해).
+    """
+
+    def __init__(self, editor: "MarkdownEditor") -> None:
+        super().__init__(editor.viewport())
+        self._editor = editor
+        self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.setFrameShape(QListWidget.Shape.NoFrame)
+        self.setStyleSheet(
+            "QListWidget { background-color: #252540; color: #ccc; "
+            "border: 1px solid #3a3a5c; }"
+            "QListWidget::item { padding: 2px 8px; }"
+            "QListWidget::item:selected { background-color: #334; color: #88aaff; }"
+        )
+        self.itemClicked.connect(self._on_item_clicked)
+        self.hide()
+
+    def populate(self, items: list[SlashItem]) -> None:
+        self.clear()
+        for item in items:
+            list_item = QListWidgetItem(item.label)
+            list_item.setData(_SLASH_ITEM_ROLE, item)
+            self.addItem(list_item)
+        if self.count() > 0:
+            self.setCurrentRow(0)
+        self._resize_to_contents()
+
+    def _resize_to_contents(self) -> None:
+        visible_rows = min(max(self.count(), 1), _SLASH_MAX_VISIBLE_ROWS)
+        self.setFixedWidth(_SLASH_MENU_WIDTH)
+        self.setFixedHeight(_SLASH_ROW_HEIGHT * visible_rows + 4)
+
+    def selected_item(self) -> SlashItem | None:
+        current = self.currentItem()
+        if current is None:
+            return None
+        return current.data(_SLASH_ITEM_ROLE)
+
+    def move_selection(self, delta: int) -> None:
+        if self.count() == 0:
+            return
+        row = (self.currentRow() + delta) % self.count()
+        self.setCurrentRow(row)
+
+    def _on_item_clicked(self, item: QListWidgetItem) -> None:
+        self.setCurrentItem(item)
+        self._editor._confirm_slash_item()
+        self._editor.setFocus()
+
+
 class MarkdownEditor(QPlainTextEdit):
     """마크다운 본문 에디터 — 하이라이팅 + 리스트/인용 이어쓰기 + 서식 단축키."""
 
@@ -337,10 +420,49 @@ class MarkdownEditor(QPlainTextEdit):
         )
         self.setTabChangesFocus(False)
         self._highlighter = MarkdownHighlighter(self.document(), _BASE_POINT_SIZE)
+        self._slash_menu = _SlashMenu(self)
+        self._slash_start: int | None = None
 
     # --- 키 입력 ---
 
     def keyPressEvent(self, event) -> None:  # noqa: N802 (Qt override)
+        """`/` 슬래시 메뉴가 열려 있으면 ↑/↓/Enter/Tab/Esc를 메뉴가 소비하고,
+        그 외 키는 평소대로 처리한 뒤 슬래시 메뉴 상태(필터/닫힘)를 동기화한다.
+        메뉴가 닫혀 있었다면 처리 후 `/` 입력으로 새로 열릴 조건인지 확인한다.
+        """
+        # 메뉴가 열려 있는지는 위젯의 실제 화면 가시성(isVisible)이 아니라
+        # 논리 상태(_slash_start)로 판단한다 — 그래야 top-level이 show()되지
+        # 않은 오프스크린 테스트에서도 정상 동작한다.
+        menu_was_open = self._slash_start is not None
+        if menu_was_open and self._handle_slash_menu_key(event):
+            return
+
+        self._dispatch_key(event)
+
+        if menu_was_open:
+            self._sync_slash_menu_after_edit()
+        else:
+            self._maybe_open_slash_menu(event)
+
+    def _handle_slash_menu_key(self, event) -> bool:
+        """슬래시 메뉴가 열린 동안 소비하는 키 5종. 소비했으면 True."""
+        key = event.key()
+        if key == Qt.Key.Key_Escape:
+            self._close_slash_menu()
+            return True
+        if key == Qt.Key.Key_Up:
+            self._slash_menu.move_selection(-1)
+            return True
+        if key == Qt.Key.Key_Down:
+            self._slash_menu.move_selection(1)
+            return True
+        if key in (Qt.Key.Key_Return, Qt.Key.Key_Enter, Qt.Key.Key_Tab):
+            self._confirm_slash_item()
+            return True
+        return False
+
+    def _dispatch_key(self, event) -> None:
+        """기존 Enter/Tab/서식 단축키 분기 — 슬래시 메뉴와 무관한 원래 동작."""
         key = event.key()
         mods = event.modifiers()
 
@@ -376,6 +498,88 @@ class MarkdownEditor(QPlainTextEdit):
             return
 
         super().keyPressEvent(event)
+
+    # --- `/` 슬래시 메뉴 ---
+
+    def _maybe_open_slash_menu(self, event) -> None:
+        """방금 처리된 키가 여는 조건을 만족하는 `/`였으면 메뉴를 연다.
+
+        조건: 커서 앞(같은 블록)이 공백뿐(빈 문자열 포함).
+        """
+        if event.text() != "/":
+            return
+        cursor = self.textCursor()
+        block = cursor.block()
+        col = cursor.positionInBlock()  # '/' 삽입 직후이므로 col-1이 슬래시 위치
+        prefix = block.text()[: col - 1]
+        if prefix.strip() != "":
+            return
+        self._slash_start = cursor.position() - 1
+        self._open_slash_menu()
+
+    def _open_slash_menu(self) -> None:
+        self._slash_menu.populate(SLASH_CATALOG)
+        self._position_slash_menu()
+        self._slash_menu.show()
+        self._slash_menu.raise_()
+
+    def _position_slash_menu(self) -> None:
+        rect = self.cursorRect()
+        self._slash_menu.move(rect.bottomLeft())
+
+    def _close_slash_menu(self) -> None:
+        self._slash_menu.hide()
+        self._slash_start = None
+
+    def _sync_slash_menu_after_edit(self) -> None:
+        """필터 재계산 또는 닫힘 조건(커서가 슬래시 앞으로/슬래시 삭제됨) 처리."""
+        if self._slash_start is None:
+            return
+        cursor = self.textCursor()
+        pos = cursor.position()
+        doc_text = self.toPlainText()
+        if (
+            pos <= self._slash_start
+            or self._slash_start >= len(doc_text)
+            or doc_text[self._slash_start] != "/"
+        ):
+            self._close_slash_menu()
+            return
+        filter_text = doc_text[self._slash_start + 1 : pos]
+        if "\n" in filter_text:
+            self._close_slash_menu()
+            return
+        self._filter_slash_menu(filter_text)
+        self._position_slash_menu()
+
+    def _filter_slash_menu(self, filter_text: str) -> None:
+        needle = filter_text.lower()
+        if needle == "":
+            matched = list(SLASH_CATALOG)
+        else:
+            matched = [item for item in SLASH_CATALOG if needle in item.keywords.lower()]
+        self._slash_menu.populate(matched)
+
+    def _confirm_slash_item(self) -> None:
+        item = self._slash_menu.selected_item()
+        if item is None:
+            # 매치 0개 -> Enter/Tab 무동작(메뉴 유지)
+            return
+        start = self._slash_start
+        end = self.textCursor().position()
+        self._close_slash_menu()
+        if start is None:
+            return
+        edit_cursor = self.textCursor()
+        edit_cursor.setPosition(start)
+        edit_cursor.setPosition(end, QTextCursor.MoveMode.KeepAnchor)
+        edit_cursor.beginEditBlock()
+        edit_cursor.insertText(item.snippet)
+        edit_cursor.endEditBlock()
+        new_pos = edit_cursor.position() - item.cursor_back
+        result_cursor = self.textCursor()
+        result_cursor.setPosition(new_pos)
+        self.setTextCursor(result_cursor)
 
     # --- Enter: 리스트/인용 이어쓰기 ---
 
@@ -655,6 +859,8 @@ class MarkdownEditor(QPlainTextEdit):
     # --- 체크박스 클릭 토글 ---
 
     def mousePressEvent(self, event) -> None:  # noqa: N802 (Qt override)
+        if event.button() == Qt.MouseButton.LeftButton and self._slash_start is not None:
+            self._close_slash_menu()
         if event.button() == Qt.MouseButton.LeftButton:
             hit_cursor = self.cursorForPosition(event.position().toPoint())
             block = hit_cursor.block()
@@ -665,6 +871,10 @@ class MarkdownEditor(QPlainTextEdit):
                     event.accept()
                     return
         super().mousePressEvent(event)
+
+    def focusOutEvent(self, event) -> None:  # noqa: N802 (Qt override)
+        self._close_slash_menu()
+        super().focusOutEvent(event)
 
     def _checkbox_range(self, block) -> tuple[int, int] | None:
         m = _TASK_CHECK_RE.match(block.text())

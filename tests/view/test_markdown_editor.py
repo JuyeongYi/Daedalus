@@ -312,3 +312,58 @@ def test_toggle_line_marker_ordered_renumber(qapp):
     ed.setTextCursor(cursor)
     ed.toggle_line_marker("1. ")
     assert ed.toPlainText() == "1. a\n2. b\n3. c"
+
+
+# --- WP-MD2 Part B: `/` 슬래시 메뉴 (6케이스) ---
+
+
+def test_slash_menu_opens_on_empty_line(qapp):
+    ed = MarkdownEditor()
+    QTest.keyClicks(ed, "/")
+    assert ed.toPlainText() == "/"
+    assert ed._slash_start is not None
+
+
+def test_slash_menu_not_opened_mid_line(qapp):
+    ed = MarkdownEditor()
+    ed.setPlainText("abc")
+    _set_cursor_at_end(ed)
+    QTest.keyClicks(ed, "/")
+    assert ed.toPlainText() == "abc/"
+    assert ed._slash_start is None
+
+
+def test_slash_menu_filters_by_keyword(qapp):
+    ed = MarkdownEditor()
+    QTest.keyClicks(ed, "/")
+    QTest.keyClicks(ed, "co")
+    assert ed._slash_menu.count() == 1
+    assert ed._slash_menu.item(0).text() == "코드 블록"
+
+
+def test_slash_menu_enter_confirms_code_block(qapp):
+    ed = MarkdownEditor()
+    QTest.keyClicks(ed, "/")
+    QTest.keyClicks(ed, "co")
+    QTest.keyClick(ed, Qt.Key.Key_Return)
+    assert ed.toPlainText() == "```\n\n```"
+    assert ed.textCursor().position() == 4
+    assert ed._slash_start is None
+
+
+def test_slash_menu_esc_closes_keeps_text(qapp):
+    ed = MarkdownEditor()
+    QTest.keyClicks(ed, "/")
+    QTest.keyClicks(ed, "co")
+    QTest.keyClick(ed, Qt.Key.Key_Escape)
+    assert ed._slash_start is None
+    assert ed.toPlainText() == "/co"
+
+
+def test_slash_menu_backspace_deletes_slash_closes(qapp):
+    ed = MarkdownEditor()
+    QTest.keyClicks(ed, "/")
+    assert ed._slash_start is not None
+    QTest.keyClick(ed, Qt.Key.Key_Backspace)
+    assert ed._slash_start is None
+    assert ed.toPlainText() == ""
