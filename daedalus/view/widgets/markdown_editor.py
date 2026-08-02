@@ -357,6 +357,7 @@ SLASH_CATALOG: list[SlashItem] = [
     SlashItem("번호 리스트", "번호 리스트 number ordered list ol", "1. "),
     SlashItem("체크리스트", "체크리스트 check task checklist todo", "- [ ] "),
     SlashItem("인용", "인용 quote blockquote", "> "),
+    SlashItem("인라인 코드", "인라인 코드 inline code backtick tick", "``", 1),
     SlashItem("코드 블록", "코드 블록 code block fence", "```\n\n```", 4),
     SlashItem("구분선", "구분선 hr divider horizontal rule", "---\n"),
     SlashItem("링크", "링크 link url", "[](url)", 6),
@@ -439,6 +440,67 @@ def get_files_root() -> str | None:
     if _FILES_ROOT_PROVIDER is not None:
         return _FILES_ROOT_PROVIDER()
     return None
+
+
+
+# --- 단축키 판정 (Ctrl+숫자 / Ctrl+Shift+기호, 플랫폼 키맵 차이 대응) ---
+# 일부 플랫폼/키보드 배열에서는 Ctrl+Shift+숫자 조합이 event.key()로 오지 않고
+# event.text()로 shift된 기호 문자가 오는 경우가 있다 — key()/text() 양쪽을 보고
+# 판정해 견고성을 확보한다(WP-MK).
+_HEADING_DIGIT_KEYS: dict[int, int] = {
+    Qt.Key.Key_0: 0,
+    Qt.Key.Key_1: 1,
+    Qt.Key.Key_2: 2,
+    Qt.Key.Key_3: 3,
+    Qt.Key.Key_4: 4,
+    Qt.Key.Key_5: 5,
+    Qt.Key.Key_6: 6,
+}
+_HEADING_DIGIT_TEXT: dict[str, int] = {str(v): v for v in range(7)}
+
+# Ctrl+Shift+숫자의 실제 이벤트 값(Windows 실측): key()에는 **shift된 기호**가,
+# text()에는 **shift 안 된 숫자**가 온다 — 합성 이벤트(QTest)와 정반대라 테스트만
+# 보면 잡히지 않는다. 두 방향을 모두 담아 실경로·합성 경로·타 배열을 함께 커버한다.
+_MARKER_SHORTCUT_KEYS: dict[int, str] = {
+    # 실제 Windows 경로 (US/한국어 배열)
+    Qt.Key.Key_Ampersand: "1. ",   # Ctrl+Shift+7
+    Qt.Key.Key_Asterisk: "- ",     # Ctrl+Shift+8
+    Qt.Key.Key_ParenLeft: "- [ ] ",  # Ctrl+Shift+9
+    Qt.Key.Key_Greater: "> ",      # Ctrl+Shift+.
+    # 합성 이벤트/키맵퍼가 숫자 키코드를 그대로 주는 환경
+    Qt.Key.Key_7: "1. ",
+    Qt.Key.Key_8: "- ",
+    Qt.Key.Key_9: "- [ ] ",
+    Qt.Key.Key_Period: "> ",
+}
+_MARKER_SHORTCUT_TEXT: dict[str, str] = {
+    # 실제 Windows 경로가 주는 text
+    "7": "1. ",
+    "8": "- ",
+    "9": "- [ ] ",
+    ".": "> ",
+    # US 배열 shift 기호가 text로 오는 환경
+    "&": "1. ",
+    "*": "- ",
+    "(": "- [ ] ",
+    ">": "> ",
+}
+
+
+def _heading_digit_from_event(event) -> int | None:
+    """Ctrl+0~6 대응 헤딩 레벨을 event.key()/event.text() 양쪽으로 판정한다."""
+    digit = _HEADING_DIGIT_KEYS.get(event.key())
+    if digit is not None:
+        return digit
+    return _HEADING_DIGIT_TEXT.get(event.text())
+
+
+def _line_marker_from_event(event) -> str | None:
+    """Ctrl+Shift+7/8/9/. 대응 마커를 event.key()/event.text() 양쪽으로 판정한다."""
+    marker = _MARKER_SHORTCUT_KEYS.get(event.key())
+    if marker is not None:
+        return marker
+    return _MARKER_SHORTCUT_TEXT.get(event.text())
 
 
 def _file_ref_token(local_path: str, files_root: str) -> str | None:
@@ -563,6 +625,22 @@ class MarkdownEditor(QPlainTextEdit):
         if ctrl and not shift and key == Qt.Key.Key_F:
             self.search_requested.emit(self.textCursor().selectedText())
             return
+        if ctrl and not shift and (key == Qt.Key.Key_QuoteLeft or event.text() == "`"):
+            self.toggle_inline_code()
+            return
+        if ctrl and shift and key == Qt.Key.Key_C:
+            self.toggle_code_block()
+            return
+        if ctrl and not shift:
+            digit = _heading_digit_from_event(event)
+            if digit is not None:
+                self.set_heading_level(digit)
+                return
+        if ctrl and shift:
+            marker = _line_marker_from_event(event)
+            if marker is not None:
+                self.toggle_line_marker(marker)
+                return
 
         super().keyPressEvent(event)
 
@@ -832,6 +910,173 @@ class MarkdownEditor(QPlainTextEdit):
             result_cursor.setPosition(pos + 1)
             self.setTextCursor(result_cursor)
 
+    # --- 코드 인용 (인라인 / 블록) ---
+
+    def _toggle_code_block(self) -> None:
+        cursor = self.textCursor()
+        doc = self.document()
+
+        if not cursor.hasSelection():
+            block = cursor.block()
+            if block.text().strip() == "":
+                self._code_block_insert_empty(block)
+            else:
+                self._code_block_toggle_range(
+                    doc, block.blockNumber(), block.blockNumber(), keep_caret=True,
+                )
+            return
+
+        start_pos = min(cursor.selectionStart(), cursor.selectionEnd())
+        end_pos = max(cursor.selectionStart(), cursor.selectionEnd())
+        start_block_num = doc.findBlock(start_pos).blockNumber()
+        end_block = doc.findBlock(end_pos)
+        end_block_num = end_block.blockNumber()
+        if end_block_num > start_block_num and end_pos == end_block.position():
+            end_block_num -= 1
+
+        self._code_block_toggle_range(doc, start_block_num, end_block_num)
+
+    def _code_block_insert_empty(self, block) -> None:
+        """빈 줄에서 호출 — 빈 펜스 3줄을 삽입하고 커서를 가운데 줄에 둔다."""
+        start = block.position()
+        end = start + len(block.text())
+        edit_cursor = QTextCursor(self.document())
+        edit_cursor.setPosition(start)
+        edit_cursor.setPosition(end, QTextCursor.MoveMode.KeepAnchor)
+        edit_cursor.beginEditBlock()
+        edit_cursor.insertText("```\n\n```")
+        edit_cursor.endEditBlock()
+        result_cursor = self.textCursor()
+        result_cursor.setPosition(start + len("```\n"))
+        self.setTextCursor(result_cursor)
+
+    def _code_block_toggle_range(
+        self, doc, start_block_num: int, end_block_num: int, *, keep_caret: bool = False,
+    ) -> None:
+        if self._code_block_try_unwrap(doc, start_block_num, end_block_num):
+            return
+        self._code_block_wrap(doc, start_block_num, end_block_num, keep_caret=keep_caret)
+
+    def _code_block_wrap(
+        self, doc, start_block_num: int, end_block_num: int, *, keep_caret: bool = False,
+    ) -> None:
+        """[start_block_num, end_block_num] 줄들을 펜스로 감싼다(줄 경계 확장 후 호출됨).
+
+        선택이 있었으면 새 펜스 블록 전체를 선택 상태로 남긴다(`_toggle_wrap` 관례).
+        선택이 없었으면(keep_caret) **캐럿을 원래 줄 안에 보존**한다 —
+        `set_heading_level`/`toggle_line_marker`의 커서 보존 관례와 통일(리뷰 지적).
+        어느 쪽이든 재입력 시 안쪽 판정이 벗겨내므로 왕복 토글은 유지된다.
+        """
+        start_block = doc.findBlockByNumber(start_block_num)
+        end_block = doc.findBlockByNumber(end_block_num)
+        start = start_block.position()
+        end = end_block.position() + len(end_block.text())
+        lines = [doc.findBlockByNumber(n).text() for n in range(start_block_num, end_block_num + 1)]
+        new_text = "```\n" + "\n".join(lines) + "\n```"
+
+        edit_cursor = QTextCursor(doc)
+        edit_cursor.setPosition(start)
+        edit_cursor.setPosition(end, QTextCursor.MoveMode.KeepAnchor)
+        edit_cursor.beginEditBlock()
+        edit_cursor.insertText(new_text)
+        edit_cursor.endEditBlock()
+
+        result_cursor = self.textCursor()
+        if keep_caret:
+            # 여는 펜스(```\n = 4자) 다음이 원래 첫 줄의 시작
+            result_cursor.setPosition(min(start + 4, len(self.toPlainText())))
+        else:
+            result_cursor.setPosition(start)
+            result_cursor.setPosition(
+                start + len(new_text), QTextCursor.MoveMode.KeepAnchor,
+            )
+        self.setTextCursor(result_cursor)
+
+    def _code_block_try_unwrap(self, doc, start_block_num: int, end_block_num: int) -> bool:
+        """이미 펜스로 감싸져 있으면 벗기고 True. 두 형태를 인식한다:
+        선택이 펜스 줄 자체를 포함하는 경우, 선택이 펜스 **안쪽**에 있는 경우.
+
+        안쪽 판정은 인접 줄 텍스트 매칭이 아니라 하이라이터의 블록 상태
+        (`MarkdownHighlighter._STATE_CODE_FENCE`, `_indent_width_for`와 동일 신호)로
+        한다 — 인접 줄만 보면 위 블록의 **닫는** 펜스와 아래 블록의 **여는** 펜스를
+        감싸는 쌍으로 오인해, 사이에 있는 평문을 코드로 빨아들이며 두 블록을
+        합쳐 버린다(리뷰 결함 D2).
+        """
+        start_block = doc.findBlockByNumber(start_block_num)
+        end_block = doc.findBlockByNumber(end_block_num)
+
+        if (
+            end_block_num > start_block_num
+            and _FENCE_OPEN_RE.match(start_block.text())
+            and _FENCE_CLOSE_RE.match(end_block.text())
+        ):
+            self._code_block_unwrap(doc, start_block_num, end_block_num)
+            return True
+
+        span = self._enclosing_fence_span(doc, start_block_num, end_block_num)
+        if span is not None:
+            self._code_block_unwrap(doc, span[0], span[1])
+            return True
+
+        return False
+
+    @staticmethod
+    def _enclosing_fence_span(doc, start_block_num: int, end_block_num: int):
+        """선택 줄들이 모두 한 펜스 블록 **안쪽**이면 (여는 줄, 닫는 줄) 반환.
+
+        판정 기준은 블록 상태다: 펜스 안쪽 줄과 여는 펜스 줄은 FENCE 상태이고,
+        닫는 펜스 줄은 NONE으로 돌아간다.
+        """
+        fence = MarkdownHighlighter._STATE_CODE_FENCE
+        for n in range(start_block_num, end_block_num + 1):
+            block = doc.findBlockByNumber(n)
+            if block.userState() != fence or _FENCE_OPEN_RE.match(block.text()):
+                return None  # 펜스 밖이거나 여는 펜스 줄 자체 — 안쪽이 아니다
+
+        open_num = start_block_num
+        while open_num >= 0:
+            block = doc.findBlockByNumber(open_num)
+            if _FENCE_OPEN_RE.match(block.text()) and block.userState() == fence:
+                break
+            open_num -= 1
+        else:
+            return None
+        if open_num < 0:
+            return None
+
+        close_num = end_block_num + 1
+        while close_num < doc.blockCount():
+            block = doc.findBlockByNumber(close_num)
+            if _FENCE_CLOSE_RE.match(block.text()):
+                return (open_num, close_num)
+            if block.userState() != fence:
+                return None
+            close_num += 1
+        return None
+
+    def _code_block_unwrap(self, doc, fence_open_num: int, fence_close_num: int) -> None:
+        """fence_open_num/fence_close_num 줄(펜스 자체)을 제거하고 안쪽 내용만 남긴다."""
+        open_block = doc.findBlockByNumber(fence_open_num)
+        close_block = doc.findBlockByNumber(fence_close_num)
+        start = open_block.position()
+        end = close_block.position() + len(close_block.text())
+        inner_lines = [
+            doc.findBlockByNumber(n).text() for n in range(fence_open_num + 1, fence_close_num)
+        ]
+        new_text = "\n".join(inner_lines)
+
+        edit_cursor = QTextCursor(doc)
+        edit_cursor.setPosition(start)
+        edit_cursor.setPosition(end, QTextCursor.MoveMode.KeepAnchor)
+        edit_cursor.beginEditBlock()
+        edit_cursor.insertText(new_text)
+        edit_cursor.endEditBlock()
+
+        result_cursor = self.textCursor()
+        result_cursor.setPosition(start)
+        result_cursor.setPosition(start + len(new_text), QTextCursor.MoveMode.KeepAnchor)
+        self.setTextCursor(result_cursor)
+
     # --- 공개 편집 API (툴바/슬래시 메뉴용) ---
 
     def toggle_wrap(self, prefix: str, suffix: str) -> None:
@@ -956,6 +1201,20 @@ class MarkdownEditor(QPlainTextEdit):
             result_cursor = self.textCursor()
             result_cursor.setPosition(block.position() + new_pos)
             self.setTextCursor(result_cursor)
+
+    def toggle_inline_code(self) -> None:
+        """선택을 인라인 코드(`` ` ``)로 감싸기/벗기기. `toggle_wrap` 재사용."""
+        self._toggle_wrap("`", "`")
+
+    def toggle_code_block(self) -> None:
+        """선택 줄들(선택 없으면 현재 줄)을 코드 펜스(```)로 감싸기/벗기기.
+
+        선택이 있으면 걸친 모든 줄 전체를 줄 단위로 감싼다(줄 중간 선택도 그 줄
+        전체 포함). 이미 펜스로 감싸져 있으면 벗긴다. 선택이 없으면 현재 줄이
+        비어 있을 때만 빈 펜스 3줄을 삽입하고 커서를 가운데 줄에 둔다(그 외엔
+        현재 줄을 펜스로 감싼다). 언어 태그는 넣지 않는다(v1). 1 undo 단위.
+        """
+        self._toggle_code_block()
 
     # --- 체크박스 클릭 토글 ---
 
@@ -1368,7 +1627,7 @@ class SearchBar(QWidget):
 class MarkdownToolbar(QWidget):
     """서식 툴바 — `MarkdownEditor` 공개 API에 배선된 버튼 행.
 
-    `H1 H2 H3 │ B I S │ • 1. ☑ │ " 🔗 │ ☰ 👁` — ☰(TOC 토글)·👁(프리뷰)는
+    `H1 H2 H3 │ B I S │ <> {} │ • 1. ☑ │ " 🔗 │ ☰ 👁` — ☰(TOC 토글)·👁(프리뷰)는
     문서를 건드리지 않고 각각 `toc_toggled`/`preview_toggled` 시그널만 방출한다
     (TOC 패널 표시/숨김·프리뷰 자체는 `SectionContentPanel` 소관).
     """
@@ -1387,19 +1646,22 @@ class MarkdownToolbar(QWidget):
         lay.setContentsMargins(4, 2, 4, 2)
         lay.setSpacing(2)
 
-        self._add_button(lay, "H1", "제목 1", lambda: self._apply_heading(1))
-        self._add_button(lay, "H2", "제목 2", lambda: self._apply_heading(2))
-        self._add_button(lay, "H3", "제목 3", lambda: self._apply_heading(3))
+        self._add_button(lay, "H1", "제목 1 (Ctrl+1)", lambda: self._apply_heading(1))
+        self._add_button(lay, "H2", "제목 2 (Ctrl+2)", lambda: self._apply_heading(2))
+        self._add_button(lay, "H3", "제목 3 (Ctrl+3)", lambda: self._apply_heading(3))
         self._add_separator(lay)
         self._add_button(lay, "B", "굵게 (Ctrl+B)", lambda: self._apply_wrap("**", "**"))
         self._add_button(lay, "I", "기울임 (Ctrl+I)", lambda: self._apply_wrap("*", "*"))
         self._add_button(lay, "S", "취소선 (Ctrl+Shift+X)", lambda: self._apply_wrap("~~", "~~"))
         self._add_separator(lay)
-        self._add_button(lay, "•", "불릿 리스트", lambda: self._apply_marker("- "))
-        self._add_button(lay, "1.", "번호 리스트", lambda: self._apply_marker("1. "))
-        self._add_button(lay, "☑", "체크리스트", lambda: self._apply_marker("- [ ] "))
+        self._add_button(lay, "<>", "인라인 코드 (Ctrl+`)", self._apply_inline_code)
+        self._add_button(lay, "{}", "코드 블록 (Ctrl+Shift+C)", self._apply_code_block)
         self._add_separator(lay)
-        self._add_button(lay, "\"", "인용", lambda: self._apply_marker("> "))
+        self._add_button(lay, "•", "불릿 리스트 (Ctrl+Shift+8)", lambda: self._apply_marker("- "))
+        self._add_button(lay, "1.", "번호 리스트 (Ctrl+Shift+7)", lambda: self._apply_marker("1. "))
+        self._add_button(lay, "☑", "체크리스트 (Ctrl+Shift+9)", lambda: self._apply_marker("- [ ] "))
+        self._add_separator(lay)
+        self._add_button(lay, "\"", "인용 (Ctrl+Shift+.)", lambda: self._apply_marker("> "))
         self._add_button(lay, "🔗", "링크 (Ctrl+K)", self._apply_link)
         self._add_separator(lay)
         self._btn_toc = self._add_button(
@@ -1451,6 +1713,14 @@ class MarkdownToolbar(QWidget):
 
     def _apply_marker(self, marker: str) -> None:
         self._editor.toggle_line_marker(marker)
+        self._editor.setFocus()
+
+    def _apply_inline_code(self) -> None:
+        self._editor.toggle_inline_code()
+        self._editor.setFocus()
+
+    def _apply_code_block(self) -> None:
+        self._editor.toggle_code_block()
         self._editor.setFocus()
 
     def _apply_link(self) -> None:
