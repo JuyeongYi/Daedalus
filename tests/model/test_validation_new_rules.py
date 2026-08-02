@@ -585,3 +585,15 @@ def test_skip_rules_unknown_name_raises():
     sm = StateMachine(name="m", initial_state=s, states=[s], final_states=[s])
     with pytest.raises(ValueError):
         Validator.validate(sm, skip_rules=frozenset({"unreachable_states"}))
+
+
+def test_unregistered_delegation_detected_in_project_graph():
+    """프로젝트 캔버스에만 배치된 미등록 위임도 unregistered_delegation이 잡는다."""
+    from daedalus.model.plugin.delegation import DynamicWorkflowDef
+
+    deleg = DynamicWorkflowDef(name="wf", description="d", objective="do it")
+    project = PluginProject(name="p")  # delegations에 미등록
+    project.graph.states.append(SimpleState(name="wf", skill_ref=deleg))
+
+    errors = Validator.validate_project(project)
+    assert any(e.rule == "unregistered_delegation" for e in errors)

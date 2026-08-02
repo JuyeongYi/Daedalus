@@ -1232,4 +1232,7 @@ def _deser_delegation(d: dict, reg: _Registry) -> Any:
     else:
         deleg = TeamSpawnDef(name=name, description=desc, id=did, wait_mode=wait,
                              composition=composition, guidance=guidance)
+    # pass2 참조 해소용 등록 — placement의 skill_ref가 위임을 가리킬 수 있다.
+    # (미등록 시 위임 배치가 저장/로드에서 전부 dangling → None으로 유실된다.)
+    reg.components[did] = deleg
     return deleg

@@ -45,6 +45,7 @@ daedalus/
 │   │   ├── skill.py        # Skill(ABC), ProceduralSkill, DeclarativeSkill, TransferSkill, ReferenceSkill
 │   │   ├── agent.py        # AgentDefinition
 │   │   ├── delegation.py   # DelegationDef(CompositionMode/guidance 포함) + TeamSpawnDef/DynamicWorkflowDef/AgoraDispatchDef (CC 위임 노드)
+│   │   │                   # (deprecated — 신규 생성 UI 제거, 기존 프로젝트 호환용 존치. 권장 경로: 스킬 본문에 위임 지시 서술)
 │   │   ├── tool.py         # Tool(ABC) + BuiltinTool/MCPTool/UserDefinedTool (tool_shelf 도구 단일 진실)
 │   │   ├── hook.py         # HookDef + HookEvent(CC 9종) (hook_library 훅 단일 진실)
 │   │   ├── hook_presets.py # BUILTIN_HOOK_PRESETS (복사용 훅 템플릿) + preset_copy
@@ -326,7 +327,7 @@ dataclass(값 동등성, unhashable) 유지 — 컬렉션 멤버십에는 list/`
 3. **본문**: `sections` 트리 → 마크다운 헤딩(루트 H1, 깊이별 `#`/`##`/…, 최대 H6).
 4. **ProceduralSkill FSM → 절차 단락**: initial_state부터 전이 BFS 순서로 번호 매긴 상태 목록(시작/종료 표지),
    각 SimpleState skill_ref는 "skill 이름 사용", CompositeState는 "에이전트 X에 위임", 전이별 트리거/가드 조건 + transfer_on 출력 이벤트.
-5. **위임 노드**: 스펙 4절 문구(TeamSpawn/DynamicWorkflow/AgoraDispatch 도구 호출 지침) + 1-b절 GUIDED(유도문 + teammates/phases "힌트" 격하 + guidance).
+5. **위임 노드** (deprecated — 신규 생성 UI 없음, 기존 위임의 컴파일 산출은 존치): 스펙 4절 문구(TeamSpawn/DynamicWorkflow/AgoraDispatch 도구 호출 지침) + 1-b절 GUIDED(유도문 + teammates/phases "힌트" 격하 + guidance).
    wait/forget 의미론 + 공통 전제(팀/워크플로 도구·Agora `.mcp.json`) 단락.
 6. **tool_shelf**: 참조 문서 단락으로만(실행 코드 생성은 Tier 2).
 6-b. **다음 단계 (project.graph 기반)**: `compile_skill(skill, project=...)`이 `project.graph`에서 그 스킬 placement(skill_ref identity 일치)의 outgoing 전이를 모아 SKILL.md 본문 끝에 **"## 다음 단계"** 단락을 배출한다(버그 2 — 인보크/전이 문구 누락 해소). 형식: 스킬 타깃은 `- [<조건>] → \`<skill>\` 스킬을 인보크하라`, 에이전트 타깃은 `에이전트 \`X\`에게 위임하라` + **그 에이전트 placement의 outgoing을 한 단계 인라인**("위임 완료 후: [조건] → \`C\` 스킬을 인보크하라" — 에이전트는 별도 컨텍스트라 자기 .md에 호출자 지침을 담을 수 없으므로 호출자 스킬 쪽에 후속 지시를 둔다). 조건은 `_transition_condition`(트리거+가드) 재사용, 무가드·무트리거 전이는 "무조건". outgoing 0개면 단락 생략. **에이전트 .md / 로컬 스킬에는 다음 단계 단락 없음**(전역 스킬 + project 인수 있을 때만). EntryPoint outgoing(시작 스킬)은 v1에서 스킬별 단락에 영향 없음.

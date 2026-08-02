@@ -62,16 +62,27 @@ class _DraggableList(QListWidget):
 
 
 class _RegistrySection(QWidget):
-    """레이블 + 리스트 + "+" 버튼을 묶은 레지스트리 섹션."""
+    """레이블 + 리스트 + "+" 버튼을 묶은 레지스트리 섹션.
+
+    no_add=True면 "+" 버튼을 만들지 않는다 (신규 생성이 격하된 종류 — delegation).
+    """
 
     add_requested = Signal()
     item_double_clicked = Signal(object)
     delete_requested = Signal(object)  # component
 
-    def __init__(self, label: str, color: QColor, no_place: bool = False, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        label: str,
+        color: QColor,
+        no_place: bool = False,
+        no_add: bool = False,
+        parent: QWidget | None = None,
+    ) -> None:
         super().__init__(parent)
         self._color = color
         self._no_place = no_place
+        self._no_add = no_add
 
         lay = QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
@@ -82,10 +93,11 @@ class _RegistrySection(QWidget):
         hdr.setSpacing(2)
         hdr.addWidget(QLabel(label))
         hdr.addStretch()
-        btn = QPushButton("+")
-        btn.setFixedSize(20, 20)
-        btn.clicked.connect(self.add_requested)
-        hdr.addWidget(btn)
+        if not no_add:
+            btn = QPushButton("+")
+            btn.setFixedSize(20, 20)
+            btn.clicked.connect(self.add_requested)
+            hdr.addWidget(btn)
         lay.addLayout(hdr)
 
         self._list = _DraggableList()
@@ -153,7 +165,7 @@ class RegistryPanel(QWidget):
     """스킬/에이전트 레지스트리 팔레트."""
 
     component_double_clicked = Signal(object)
-    new_component_requested = Signal(str)  # kind: "procedural"|"declarative"|"transfer"|"agent"|"delegation_*"
+    new_component_requested = Signal(str)  # kind: "procedural"|"declarative"|"transfer"|"agent" (delegation은 deprecated — 생성 UI 없음)
     component_delete_requested = Signal(object)  # component
 
     def __init__(self, parent: QWidget | None = None) -> None:
@@ -171,7 +183,7 @@ class RegistryPanel(QWidget):
             "transfer": _RegistrySection("⚡ TRANSFER", QColor("#88aacc"), no_place=True),
             "reference": _RegistrySection("📖 REFERENCE", QColor("#66aaaa")),
             "agent": _RegistrySection("🤖 AGENTS", QColor("#cc8888")),
-            "delegation": _RegistrySection("🛰 DELEGATION", QColor("#aa9955")),
+            "delegation": _RegistrySection("🛰 DELEGATION (deprecated)", QColor("#aa9955"), no_add=True),
         }
         for kind, section in self._sections.items():
             section.add_requested.connect(lambda k=kind: self.new_component_requested.emit(k))
@@ -193,6 +205,7 @@ class RegistryPanel(QWidget):
         for section in self._sections.values():
             section.clear()
         if self._project is None:
+            self._sections["delegation"].setVisible(False)
             return
         for skill in self._project.skills:
             placed = id(skill) in self._placed_ids
@@ -210,3 +223,5 @@ class RegistryPanel(QWidget):
         for deleg in self._project.delegations:
             # 위임 정의는 복수 배치 허용 — placed dim 없이 항상 드래그 가능
             self._sections["delegation"].add_item(deleg, placed=False)
+        # deprecated — 신규 생성 불가. 기존 위임 보유 프로젝트만 섹션을 노출한다.
+        self._sections["delegation"].setVisible(bool(self._project.delegations))

@@ -727,13 +727,11 @@ class MainWindow(QMainWindow):
         "transfer": "새 Transfer Skill",
         "reference": "새 Reference Skill",
         "agent": "새 Agent",
-        "delegation": "새 Delegation",
     }
 
     def _on_new_component(self, kind: str) -> None:
-        if kind == "delegation":
-            self._on_new_delegation()
-            return
+        if kind not in self._COMPONENT_TITLES:
+            return  # delegation 등 생성이 격하된 종류 — 프로그램적 발화 방어
         name = self._ask_unique_name(self._COMPONENT_TITLES.get(kind, "새 컴포넌트"))
         if name is None:
             return
@@ -745,32 +743,6 @@ class MainWindow(QMainWindow):
             "agent": lambda: AgentDefinition(fsm=self._make_agent_fsm(name), name=name, description=""),  # type: ignore[arg-type]
         }
         self._register_component(factories[kind]())
-
-    def _on_new_delegation(self) -> None:
-        """위임 정의 생성: kind 선택 → 이름 입력 → 등록."""
-        from daedalus.model.plugin.delegation import AgoraDispatchDef, DynamicWorkflowDef, TeamSpawnDef
-        from daedalus.view.editors.delegation_editor import DELEGATION_KIND_TITLES
-        items = list(DELEGATION_KIND_TITLES.values())
-        item, ok = QInputDialog.getItem(
-            self, "위임 종류 선택", "종류:", items, 0, False
-        )
-        if not ok or not item:
-            return
-        # item → kind 역매핑
-        kind = next(k for k, v in DELEGATION_KIND_TITLES.items() if v == item)
-        name = self._ask_unique_name(f"새 {item}")
-        if name is None:
-            return
-        factories = {
-            "team_spawn": lambda: TeamSpawnDef(name=name, description=""),
-            "dynamic_workflow": lambda: DynamicWorkflowDef(name=name, description=""),
-            "agora_dispatch": lambda: AgoraDispatchDef(name=name, description=""),
-        }
-        deleg = factories[kind]()
-        if self._project is None:
-            return
-        self._project.delegations.append(deleg)
-        self._registry_panel.set_project(self._project)
 
     def _close_tab(self, index: int) -> None:
         if index == _FSM_TAB_INDEX:
