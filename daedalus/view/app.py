@@ -302,6 +302,30 @@ class MainWindow(QMainWindow):
                     model=trans, source_vm=src_vm, target_vm=tgt_vm
                 )
                 self._project_vm.transition_vms.append(tvm)
+
+        # 참조 노드 복원 — 선재 결함 수정: 참조 배치는 저장(라이브 sync)만 되고
+        # 로드 복원 경로가 없어 캔버스에서 사라졌고, 이후 참조 편집 시
+        # sync_refs_to_model이 (빈 VM 기준으로) 로드분을 통째로 소실시켰다.
+        from daedalus.view.viewmodel.state_vm import (
+            ReferenceLinkViewModel,
+            ReferenceViewModel,
+        )
+        self._project_vm.reference_vms.clear()
+        self._project_vm.reference_links.clear()
+        skills_by_name = {s.name: s for s in self._project.skills}
+        vms_by_name = {svm.model.name: svm for svm in self._project_vm.state_vms}
+        for rp in getattr(self._project, "reference_placements", None) or []:
+            ref_skill = skills_by_name.get(rp.skill_name)
+            if ref_skill is None:
+                continue  # dangling_string_reference가 F7에서 짚는다
+            rvm = ReferenceViewModel(model=ref_skill, x=rp.x, y=rp.y)
+            self._project_vm.reference_vms.append(rvm)
+            for state_name in rp.connected_states:
+                svm = vms_by_name.get(state_name)
+                if svm is not None:
+                    self._project_vm.reference_links.append(
+                        ReferenceLinkViewModel(state_vm=svm, reference_vm=rvm)
+                    )
         self._project_vm.notify()
 
     def _save_graph_layout(self) -> None:
