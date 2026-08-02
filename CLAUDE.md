@@ -83,7 +83,11 @@ daedalus/
     │                       #   병합. 파일 1개=항목 1개(CatalogueEntry: name=파일명 stem, description, tools="tool" 키, mcp="mcp" 키). expanded_mcp()가 mcp 항목을
     │                       #   mcp__<entry.name>__<도구>로 확장(이미 mcp__ 접두면 그대로). candidate_strings(entries, project)가 CC_BUILTIN_TOOLS(정렬)+카탈로그 tool/expanded_mcp+
     │                       #   프로젝트 에이전트 Agent(이름)을 합성(중복 제거)해 TagInput 자동완성 후보를 만든다. 파싱 실패/스키마 불일치 파일은 stderr 경고 후 스킵.
-    │                       # body: SectionContentPanel = MarkdownToolbar + QStackedWidget(0=MarkdownEditor 편집, 1=QTextBrowser 프리뷰 — setMarkdown 1회 렌더, show_body(component)가 편집 모드로 리셋, 프리뷰 중 편집 버튼·변수 삽입 잠금)
+    │                       # body: SectionContentPanel = MarkdownToolbar + SearchBar(찾기/바꾸기 바, WP-MD3, 기본 숨김) + QStackedWidget(0=MarkdownEditor 편집,
+    │                       #   1=QTextBrowser 프리뷰 — setMarkdown 1회 렌더) + TocPanel(TOC 사이드바, WP-MD3, 기본 숨김, 폭 180px) 가로 배치.
+    │                       #   MarkdownEditor.search_requested → search_bar.open(prefill), MarkdownToolbar.toc_toggled → toc_panel 표시/숨김.
+    │                       #   show_body(component)가 편집 모드로 리셋 + 찾기 바 닫힘 + TOC 즉시 재파싱(refresh() — blockSignals로 억제된
+    │                       #   textChanged를 TOC가 못 받으므로 명시 호출), 프리뷰 중 편집 버튼·변수 삽입·TOC 토글 잠금 + 찾기 바 닫힘.
     │                       # WP-SB: 수동 섹션 트리 편집(SectionTree/BreadcrumbNav, find_path/section_depth/MAX_DEPTH)은 마크다운 에디터로 대체되어 제거 —
     │                       #   component_editor.ComponentEditor는 좌(FrontmatterPanel) | 중(SectionContentPanel, component.body 단일 편집) | 우(옵션) 2~3분할로 단순화
     │                       # blackboard_editor.py(WP-BB): BlackboardPanel(QWidget) — 프로젝트 최상위 블랙보드(class_definitions) 편집 상주 탭. 좌: 클래스
@@ -100,7 +104,14 @@ daedalus/
     │                       #   캔버스 placement와 에이전트 FSM 상태(agent_editor 그래프 탭에 임베드된 PropertyPanel) 양쪽에서 동일하게 편집 가능.
     ├── viewmodel/          # ProjectViewModel(notify structure/content 채널), StateViewModel (모델↔뷰 중간 계층)
     └── widgets/            # ComboWidgets, TagInput, PresetPicker, markdown_editor(MarkdownHighlighter+MarkdownEditor — 하이브리드 마크다운 하이라이팅·편집, SectionContentPanel 본문에 통합
-                            #   + `/` 슬래시 메뉴(_SlashMenu — 에디터 viewport 자식 오버레이, Qt.Popup 아님) + MarkdownToolbar(서식 버튼 행 + 프리뷰 토글 시그널))
+                            #   + `/` 슬래시 메뉴(_SlashMenu — 에디터 viewport 자식 오버레이, Qt.Popup 아님) + MarkdownToolbar(서식 버튼 행 + toc_toggled/preview_toggled 시그널))
+                            #   찾기/바꾸기 + TOC(WP-MD3, 마크다운 에디터 마일스톤 마감): SearchBar(QLineEdit 검색·바꾸기 + 이전/다음 + Aa 대소문자
+                            #   토글 + 일치 수 라벨 — 평문 부분 문자열 매칭, QTextDocument.find 미사용. search_next/prev는 랩어라운드, replace_current는
+                            #   치환 후 다음 일치로 이동, replace_all은 beginEditBlock/endEditBlock로 1 undo 단위. MarkdownEditor.search_requested
+                            #   (Ctrl+F, 선택 텍스트 프리필)로 열리고 Esc(eventFilter)로 닫히며 닫을 때 ExtraSelections를 지운다) +
+                            #   TocPanel(QTreeWidget — ATX 헤딩을 레벨별로 계층화, 코드 펜스 내부는 MarkdownHighlighter._STATE_CODE_FENCE
+                            #   블록 상태로 판별해 제외. textChanged마다 300ms 디바운스(QTimer) 후 재파싱, 구조 불변 시 트리 재구성 생략.
+                            #   클릭 시 setTextCursor+centerCursor로 점프. refresh()로 디바운스 우회 즉시 재파싱 — 문서 전환용)
                             #   TagInput(WP-TM): set_candidates(list[str])로 QCompleter(부분 일치·대소문자 무시) 부착. 모듈 수준
                             #   set_tool_candidate_provider/get_tool_candidates(HookPresetPicker의 set_hook_name_provider 패턴)로 동적 후보 주입 —
                             #   app.py의 set_project가 프로젝트 로드 시 catalogue_loader.candidate_strings(...)를 등록. skill_editor._FrontmatterPanel이
@@ -181,7 +192,7 @@ daedalus/
 
 ### 본문(body) / Section / EventDef
 
-- **본문의 단일 진실은 `body: str`(단일 마크다운 문자열)** — `ProceduralSkill`/`DeclarativeSkill`/`TransferSkill`/`ReferenceSkill`/`AgentDefinition` 전부 동일 필드(WP-SB, 기본값 `""`). 마크다운 에디터(WP-MD1/MD2)가 헤딩·리스트·슬래시 메뉴를 네이티브로 다루면서 수동 섹션 트리 편집의 존재 의의가 사라져 단일 텍스트로 통일했다.
+- **본문의 단일 진실은 `body: str`(단일 마크다운 문자열)** — `ProceduralSkill`/`DeclarativeSkill`/`TransferSkill`/`ReferenceSkill`/`AgentDefinition` 전부 동일 필드(WP-SB, 기본값 `""`). 마크다운 에디터(WP-MD1/MD2/MD3, **완료** — 코어 위젯+오버레이 UX+찾기/바꾸기+TOC)가 헤딩·리스트·슬래시 메뉴를 네이티브로 다루면서 수동 섹션 트리 편집의 존재 의의가 사라져 단일 텍스트로 통일했다.
 - `Section`(`model/fsm/section.py`)은 자유 콘텐츠 계층(H1–H6, `children: list[Section]` 재귀 트리) 자체는 그대로 남아 있으나, 이제 **`AgentDefinition.caller_contracts`(잠금 계약 카드) 전용**이다 — 호출 계약 카드는 `_ContractPanel`/`_ContractCard`(skill_editor.py)와 `commands/section_commands.py`(scene.py의 call_agent 연결 시 자동 추가/제거)가 계속 사용한다.
 - `render_markdown(sections, depth=1) -> str`(section.py): 구버전(sections 트리) 파일을 로드할 때 `body`로 평탄화하는 단방향 마이그레이션 헬퍼. `serialize.py`의 `_deser_body`가 `body` 키 부재 + `sections` 키 존재 시에만 호출한다(경고 없음 — 정상 마이그레이션 경로).
 - `EventDef`: TransferOn 스킬의 출력 이벤트 정의. 노드 출력 포트에 대응 (`name`, `color`, `description`)
