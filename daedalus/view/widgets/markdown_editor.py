@@ -9,7 +9,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import (
     QColor,
     QFont,
@@ -18,7 +18,15 @@ from PySide6.QtGui import (
     QTextCursor,
     QTextDocument,
 )
-from PySide6.QtWidgets import QListWidget, QListWidgetItem, QPlainTextEdit, QWidget
+from PySide6.QtWidgets import (
+    QFrame,
+    QHBoxLayout,
+    QListWidget,
+    QListWidgetItem,
+    QPlainTextEdit,
+    QPushButton,
+    QWidget,
+)
 
 MARKDOWN_PALETTE: dict[str, QColor] = {
     "text": QColor("#cccccc"),
@@ -893,3 +901,91 @@ class MarkdownEditor(QPlainTextEdit):
         toggle_cursor.setPosition(block.position() + m.end(2), QTextCursor.MoveMode.KeepAnchor)
         toggle_cursor.insertText(new_char)
         return True
+
+
+class MarkdownToolbar(QWidget):
+    """서식 툴바 — `MarkdownEditor` 공개 API에 배선된 버튼 행.
+
+    `H1 H2 H3 │ B I S │ • 1. ☑ │ " 🔗 │ 👁` — 프리뷰 버튼(👁)만 예외로
+    `preview_toggled` 시그널을 방출할 뿐 문서를 건드리지 않는다(프리뷰 자체는
+    `SectionContentPanel` 소관).
+    """
+
+    preview_toggled = Signal(bool)
+
+    _BUTTON_WIDTH = 30
+
+    def __init__(self, editor: MarkdownEditor, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._editor = editor
+
+        lay = QHBoxLayout(self)
+        lay.setContentsMargins(4, 2, 4, 2)
+        lay.setSpacing(2)
+
+        self._add_button(lay, "H1", "제목 1", lambda: self._apply_heading(1))
+        self._add_button(lay, "H2", "제목 2", lambda: self._apply_heading(2))
+        self._add_button(lay, "H3", "제목 3", lambda: self._apply_heading(3))
+        self._add_separator(lay)
+        self._add_button(lay, "B", "굵게 (Ctrl+B)", lambda: self._apply_wrap("**", "**"))
+        self._add_button(lay, "I", "기울임 (Ctrl+I)", lambda: self._apply_wrap("*", "*"))
+        self._add_button(lay, "S", "취소선 (Ctrl+Shift+X)", lambda: self._apply_wrap("~~", "~~"))
+        self._add_separator(lay)
+        self._add_button(lay, "•", "불릿 리스트", lambda: self._apply_marker("- "))
+        self._add_button(lay, "1.", "번호 리스트", lambda: self._apply_marker("1. "))
+        self._add_button(lay, "☑", "체크리스트", lambda: self._apply_marker("- [ ] "))
+        self._add_separator(lay)
+        self._add_button(lay, "\"", "인용", lambda: self._apply_marker("> "))
+        self._add_button(lay, "🔗", "링크 (Ctrl+K)", self._apply_link)
+        self._add_separator(lay)
+        self._btn_preview = self._add_button(
+            lay, "👁", "미리보기 전환", self._on_preview_toggled, checkable=True,
+        )
+        lay.addStretch(1)
+
+    def _add_button(
+        self,
+        lay: QHBoxLayout,
+        text: str,
+        tooltip: str,
+        handler,
+        *,
+        checkable: bool = False,
+    ) -> QPushButton:
+        btn = QPushButton(text)
+        btn.setFlat(True)
+        btn.setFixedWidth(self._BUTTON_WIDTH)
+        btn.setToolTip(tooltip)
+        btn.setCheckable(checkable)
+        if checkable:
+            btn.toggled.connect(handler)
+        else:
+            btn.clicked.connect(handler)
+        lay.addWidget(btn)
+        return btn
+
+    def _add_separator(self, lay: QHBoxLayout) -> None:
+        sep = QFrame()
+        sep.setFrameShape(QFrame.Shape.VLine)
+        sep.setFrameShadow(QFrame.Shadow.Sunken)
+        lay.addWidget(sep)
+
+    def _apply_heading(self, level: int) -> None:
+        self._editor.set_heading_level(level)
+        self._editor.setFocus()
+
+    def _apply_wrap(self, prefix: str, suffix: str) -> None:
+        self._editor.toggle_wrap(prefix, suffix)
+        self._editor.setFocus()
+
+    def _apply_marker(self, marker: str) -> None:
+        self._editor.toggle_line_marker(marker)
+        self._editor.setFocus()
+
+    def _apply_link(self) -> None:
+        self._editor.insert_link()
+        self._editor.setFocus()
+
+    def _on_preview_toggled(self, checked: bool) -> None:
+        self.preview_toggled.emit(checked)
+        self._editor.setFocus()

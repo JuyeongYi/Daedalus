@@ -5,13 +5,22 @@ from dataclasses import dataclass
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QFont, QTextCursor, QTextDocument
 from PySide6.QtTest import QTest
+from PySide6.QtWidgets import QPushButton
 
 from daedalus.model.fsm.section import Section
 from daedalus.view.widgets.markdown_editor import (
     MARKDOWN_PALETTE,
     MarkdownEditor,
     MarkdownHighlighter,
+    MarkdownToolbar,
 )
+
+
+def _find_toolbar_button(toolbar: MarkdownToolbar, text: str) -> QPushButton:
+    for btn in toolbar.findChildren(QPushButton):
+        if btn.text() == text:
+            return btn
+    raise AssertionError(f"toolbar button {text!r} not found")
 
 
 def _make_doc(text: str) -> QTextDocument:
@@ -367,3 +376,48 @@ def test_slash_menu_backspace_deletes_slash_closes(qapp):
     QTest.keyClick(ed, Qt.Key.Key_Backspace)
     assert ed._slash_start is None
     assert ed.toPlainText() == ""
+
+
+# --- WP-MD2 Part C: 서식 툴바 (4케이스) ---
+
+
+def test_toolbar_bold_button_wraps_selection(qapp):
+    ed = MarkdownEditor()
+    ed.setPlainText("hello")
+    cursor = ed.textCursor()
+    cursor.select(QTextCursor.SelectionType.Document)
+    ed.setTextCursor(cursor)
+    toolbar = MarkdownToolbar(ed)
+    _find_toolbar_button(toolbar, "B").click()
+    assert ed.toPlainText() == "**hello**"
+
+
+def test_toolbar_h2_button_applies_and_removes(qapp):
+    ed = MarkdownEditor()
+    ed.setPlainText("title")
+    toolbar = MarkdownToolbar(ed)
+    btn = _find_toolbar_button(toolbar, "H2")
+    btn.click()
+    assert ed.toPlainText() == "## title"
+    btn.click()
+    assert ed.toPlainText() == "title"
+
+
+def test_toolbar_checklist_button_toggles(qapp):
+    ed = MarkdownEditor()
+    ed.setPlainText("todo")
+    toolbar = MarkdownToolbar(ed)
+    btn = _find_toolbar_button(toolbar, "☑")
+    btn.click()
+    assert ed.toPlainText() == "- [ ] todo"
+    btn.click()
+    assert ed.toPlainText() == "todo"
+
+
+def test_toolbar_preview_button_emits_signal(qapp):
+    ed = MarkdownEditor()
+    toolbar = MarkdownToolbar(ed)
+    received = []
+    toolbar.preview_toggled.connect(received.append)
+    _find_toolbar_button(toolbar, "👁").click()
+    assert received == [True]
