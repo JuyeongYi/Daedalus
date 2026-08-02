@@ -718,9 +718,10 @@ def _next_steps_section(component, project) -> list[str]:
 
 _PROGRESS_UPDATE_NOTE = (
     "전이 시 `state/__progress__.json`을 갱신하라 — 이 스킬을 `completed`에 추가하고 "
-    "`current`를 다음 대상으로, `note`에 인계 한 줄을, `updated`에 현재 시각(ISO8601)을 "
-    "남겨라. 에이전트에게 위임하는 전이는 두 번 갱신한다: 위임 직전 `current`를 에이전트 "
-    "이름으로, 위임 완료 후 후속 스킬 이름으로."
+    "`current`를 다음 대상으로, `prev`에 자신(이 스킬 이름)을, `note`에 인계 한 줄을, "
+    "`updated`에 현재 시각(ISO8601)을 남겨라. 에이전트에게 위임하는 전이는 두 번 갱신한다: "
+    "위임 직전 `current`를 에이전트 이름으로, 위임 완료 후 후속 스킬 이름으로(이때도 `prev`는 "
+    "위임한 스킬 이름으로 남긴다)."
 )
 
 _TRANSFER_PROGRESS_NOTE = (
@@ -732,6 +733,7 @@ def _resume_preamble_section(project, skill_name: str) -> list[str]:
     """WP-RS Part A-1: 재개 프리앰블 — 프론트매터 직후, 본문 앞에 배출된다.
 
     프로젝트 그래프에 배치된 전역 ProceduralSkill에만 배출된다(게이트는 호출부).
+    WP-IC: JSON 예시에 `prev`(직전 출처 스킬 이름) 필드를 포함한다.
     """
     plugin_name = getattr(project, "name", "")
     body = "\n".join([
@@ -744,11 +746,110 @@ def _resume_preamble_section(project, skill_name: str) -> list[str]:
         (
             "- 파일이 없으면: "
             f'`{{"plugin": "{plugin_name}", "current": "{skill_name}", "completed": [], '
-            '"note": "", "updated": "<현재 시각 ISO8601>"}`'
+            '"note": "", "prev": "", "updated": "<현재 시각 ISO8601>"}`'
             "로 생성하고 진행하라."
         ),
     ])
     return ["## 작업 재개", body]
+
+
+# ─────────────────────────── 진입 맥락 (WP-IC) ───────────────────────────
+
+
+def _entry_incoming_transitions(component, project) -> list:
+    """component의 project.graph placement로 들어오는 전이 목록.
+
+    출처(source)의 skill_ref가 없는 상태(EntryPoint 등 의사 상태·빈 상태)에서
+    오는 전이는 "출처"로 서술할 대상이 없으므로 제외한다.
+    """
+    graph = getattr(project, "graph", None)
+    if graph is None:
+        return []
+    placements = _graph_placements(component, project)
+    if not placements:
+        return []
+    placement_ids = {id(p) for p in placements}
+    return [
+        t for t in graph.transitions
+        if id(t.target) in placement_ids
+        and getattr(t.source, "skill_ref", None) is not None
+    ]
+
+
+def _entry_context_groups(component, project) -> list[tuple[str | None, str, list]]:
+    """(포트 이름 또는 None(기본 경로), EventDef.description, 전이 목록) 튜플 리스트.
+
+    정렬: 포트는 entry_paths 선언 순서(기본 경로 마지막). 그룹 내 전이는 호출부가
+    출처 이름순으로 정렬한다. incoming이 있는 포트만 배출.
+    """
+    incoming = _entry_incoming_transitions(component, project)
+    if not incoming:
+        return []
+    entry_paths = getattr(component, "entry_paths", None) or []
+    name_set = {e.name for e in entry_paths}
+    groups: dict[str, list] = {}
+    for t in incoming:
+        # target_port가 entry_paths에 없는 이름(dangling)이면 기본 경로로 수렴
+        # (캔버스 렌더의 "이름 불일치 → 기본 포트" 규칙과 동일한 관용).
+        key = t.target_port if t.target_port in name_set else ""
+        groups.setdefault(key, []).append(t)
+
+    ordered: list[tuple[str | None, str, list]] = []
+    for edef in entry_paths:
+        if edef.name in groups:
+            ordered.append((edef.name, edef.description, groups[edef.name]))
+    if "" in groups:
+        ordered.append((None, "", groups[""]))
+    return ordered
+
+
+def _entry_source_ref_name(t) -> str:
+    """정렬용 — 전이 출처의 표시 이름(skill_ref.name)."""
+    ref = getattr(t.source, "skill_ref", None)
+    return getattr(ref, "name", "") or t.source.name
+
+
+def _entry_item_line(t) -> str:
+    """진입 맥락 그룹 안 출처별 항목 한 줄.
+
+    "- `<출처>`에서 [<조건>]로 진입" + (TransferSkill이 있으면 지침 수행 문구 합류).
+    출처가 에이전트 placement면 "에이전트 `X`의 위임 완료 후" 문구로 대체한다.
+    """
+    ref = getattr(t.source, "skill_ref", None)
+    name = getattr(ref, "name", "") or t.source.name
+    cond = _transition_condition(t)
+    cond_str = f" [{cond}]" if cond else ""
+    if isinstance(ref, AgentDefinition):
+        line = f"- 에이전트 `{name}`의 위임 완료 후{cond_str}로 진입"
+    else:
+        line = f"- `{name}`에서{cond_str}로 진입"
+    if t.skill_ref is not None:
+        desc = f"(`{t.skill_ref.description}`)" if t.skill_ref.description else ""
+        line += f": 전이 스킬 `{t.skill_ref.name}`{desc}의 지침을 수행한 상태다"
+    return line
+
+
+def _entry_context_section(component, project) -> list[str]:
+    """WP-IC Part C-1: "## 진입 맥락" 단락 — 작업 재개 프리앰블 뒤·본문 앞.
+
+    배치된 전역 ProceduralSkill/DeclarativeSkill에서 incoming 전이가 1개 이상일
+    때만 배출(게이트는 호출부). incoming이 없으면 빈 리스트(단락 생략, 하위 호환).
+    """
+    groups = _entry_context_groups(component, project)
+    if not groups:
+        return []
+    blocks: list[str] = [
+        "## 진입 맥락",
+        "`state/__progress__.json`의 `prev`를 확인하고 아래에서 해당 출처 항목을 따르라.",
+    ]
+    for name, desc, transitions in groups:
+        heading = f"### 경로: {name}" if name is not None else "### 기본 경로"
+        blocks.append(heading)
+        if desc:
+            blocks.append(desc)
+        ordered = sorted(transitions, key=_entry_source_ref_name)
+        blocks.append("\n".join(_entry_item_line(t) for t in ordered))
+    return blocks
 
 
 def _progress_terminal_section() -> list[str]:
@@ -982,6 +1083,9 @@ def compile_skill(
         progress_placements = _graph_placements(skill, project)
     if progress_placements:
         blocks.extend(_resume_preamble_section(project, skill.name))
+        # 진입 맥락(WP-IC) — 작업 재개 프리앰블 뒤·본문 앞. incoming 전이가
+        # 없으면 _entry_context_section이 빈 리스트를 반환(단락 생략).
+        blocks.extend(_entry_context_section(skill, project))
 
     # 본문(body)
     body_block = _body_block(getattr(skill, "body", ""))
@@ -1152,6 +1256,25 @@ def _settings_note_agent(agent: AgentDefinition) -> list[str]:
     return blocks
 
 
+def _caller_contracts_section(agent: AgentDefinition) -> list[str]:
+    """WP-IC Part C-3: caller_contracts(잠금 계약 카드)를 "## 호출 계약" 단락으로.
+
+    각 Section을 `### <title>` + content로 선언 순서대로 나열. 비어 있으면
+    빈 리스트(단락 생략) — 기존 누락 해소(caller_contracts는 지금까지 컴파일
+    산출에 반영되지 않았다).
+    """
+    contracts = getattr(agent, "caller_contracts", None) or []
+    if not contracts:
+        return []
+    blocks: list[str] = ["## 호출 계약"]
+    for sec in contracts:
+        blocks.append(f"### {sec.title}")
+        content = (sec.content or "").strip()
+        if content:
+            blocks.append(content)
+    return blocks
+
+
 def compile_agent(agent: AgentDefinition, project=None) -> str:
     """에이전트 → agent .md 텍스트 (LF, BOM 없음, 결정적)."""
     fm_lines = _frontmatter_lines_agent(agent)
@@ -1161,6 +1284,9 @@ def compile_agent(agent: AgentDefinition, project=None) -> str:
     body_block = _body_block(agent.body)
     if body_block is not None:
         blocks.append(body_block)
+
+    # 호출 계약(WP-IC) — 본문 뒤, 기존 누락 해소.
+    blocks.extend(_caller_contracts_section(agent))
 
     # 호출 파라미터(INVOCATION)
     blocks.extend(_invocation_section_agent(agent))
