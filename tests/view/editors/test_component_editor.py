@@ -50,29 +50,25 @@ def test_three_column_with_right_widgets(qapp):
     assert root_splitter.count() == 3  # left + center + right
 
 
-def test_left_splitter_has_tree_and_frontmatter(qapp):
-    """좌측 수직 스플리터에 SectionTree + FrontmatterPanel."""
+def test_left_has_frontmatter(qapp):
+    """좌측에 FrontmatterPanel이 배치된다 (WP-SB: SectionTree 제거)."""
     from daedalus.view.editors.component_editor import ComponentEditor
-    from daedalus.view.editors.body_editor import SectionTree
     from daedalus.view.editors.skill_editor import _FrontmatterPanel
     comp = _make_procedural()
     editor = ComponentEditor(comp)
-    tree = editor.findChild(SectionTree)
     fm = editor.findChild(_FrontmatterPanel)
-    assert tree is not None
     assert fm is not None
 
 
-def test_center_has_breadcrumb_and_content(qapp):
-    """중앙에 BreadcrumbNav + SectionContentPanel."""
+def test_center_has_content_panel(qapp):
+    """중앙에 SectionContentPanel(본문 body 편집)이 배치된다 (WP-SB: BreadcrumbNav 제거)."""
     from daedalus.view.editors.component_editor import ComponentEditor
-    from daedalus.view.editors.body_editor import BreadcrumbNav, SectionContentPanel
+    from daedalus.view.editors.body_editor import SectionContentPanel
     comp = _make_procedural()
     editor = ComponentEditor(comp)
-    nav = editor.findChild(BreadcrumbNav)
     cp = editor.findChild(SectionContentPanel)
-    assert nav is not None
     assert cp is not None
+    assert cp.current_component() is comp
 
 
 def test_changed_signal(qapp):
@@ -92,7 +88,7 @@ def test_right_widgets_in_vertical_splitter(qapp):
     t2 = _TransferOnPanel(comp.call_agents, default_color="#8a4a4a", multiline_desc=True)
     editor = ComponentEditor(comp, right_widgets=[t1, t2])
     splitters = editor.findChildren(QSplitter)
-    assert len(splitters) >= 3
+    assert len(splitters) >= 2
 
 
 def test_on_notify_callback(qapp):
@@ -130,15 +126,13 @@ def test_variable_popup_opens_at_button_global_pos(qapp):
 # notify 채널 분리 — 텍스트 키스트로크가 structure 리스너를 깨우지 않는다
 # ---------------------------------------------------------------------------
 
-def test_section_content_typing_routes_to_content_scope(qapp):
-    """섹션 content 타이핑 → ProjectViewModel.notify(scope='content')만 호출.
+def test_body_typing_routes_to_content_scope(qapp):
+    """본문(body) 타이핑 → ProjectViewModel.notify(scope='content')만 호출.
 
     structure 리스너(캔버스 _rebuild 등)는 키스트로크마다 돌지 않아야 한다.
     """
     from daedalus.view.viewmodel.project_vm import ProjectViewModel
-    from daedalus.model.fsm.section import Section
     comp = _make_declarative()
-    comp.sections.append(Section(title="Sec", content=""))
 
     pvm = ProjectViewModel()
     struct: list[int] = []
@@ -149,15 +143,15 @@ def test_section_content_typing_routes_to_content_scope(qapp):
     from daedalus.view.editors.component_editor import ComponentEditor
     editor = ComponentEditor(comp, on_notify_fn=pvm.notify)
 
-    # 섹션 content 변경 시뮬레이션
-    editor._on_content_changed()
+    # 본문 타이핑 시뮬레이션
+    editor._content_panel._w_content.setPlainText("타이핑 중")
 
     assert content == [1], "content 리스너가 호출되어야 한다"
-    assert struct == [], "structure 리스너는 content 타이핑에 호출되면 안 된다"
+    assert struct == [], "structure 리스너는 본문 타이핑에 호출되면 안 된다"
 
 
-def test_structure_change_routes_to_structure_scope(qapp):
-    """섹션 구조 변경 → structure 채널 (기본). content 리스너 미호출."""
+def test_default_scope_routes_to_structure_scope(qapp):
+    """기본 scope(구조 변경)는 structure 채널로 라우팅된다. content 리스너 미호출."""
     from daedalus.view.viewmodel.project_vm import ProjectViewModel
     comp = _make_declarative()
 
@@ -170,7 +164,7 @@ def test_structure_change_routes_to_structure_scope(qapp):
     from daedalus.view.editors.component_editor import ComponentEditor
     editor = ComponentEditor(comp, on_notify_fn=pvm.notify)
 
-    editor._on_structure_changed()
+    editor._on_model_changed()
 
     assert struct == [1], "structure 리스너가 호출되어야 한다"
     assert content == [], "content 리스너는 구조 변경에 호출되면 안 된다"

@@ -22,13 +22,11 @@ class AgentDefinition(PluginComponent, WorkflowComponent):
     필드 순서 (dataclass MRO):
       fsm (required, WorkflowComponent)
       name, description (required, PluginComponent)
-      config, execution_policy, sections, skills (default)
+      config, execution_policy, body, skills (default)
     """
     config: AgentConfig = field(default_factory=AgentConfig)
     execution_policy: ExecutionPolicy = field(default_factory=ExecutionPolicy)
-    sections: list[Section] = field(
-        default_factory=lambda: [Section(title="instruction")]
-    )
+    body: str = ""
     skills: list[ProceduralSkill | TransferSkill | ReferenceSkill] = field(default_factory=list)
     reference_placements: list = field(default_factory=list)  # list[ReferencePlacement]
     caller_contracts: list[Section] = field(default_factory=list)

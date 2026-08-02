@@ -6,7 +6,7 @@ from daedalus.model.plugin.skill import Skill, ProceduralSkill, DeclarativeSkill
 from daedalus.model.plugin.config import ProceduralSkillConfig, DeclarativeSkillConfig, TransferSkillConfig
 from daedalus.model.fsm.machine import StateMachine
 from daedalus.model.fsm.state import SimpleState
-from daedalus.model.fsm.section import Section, EventDef
+from daedalus.model.fsm.section import EventDef
 
 
 def test_plugin_component_is_abstract():
@@ -46,11 +46,11 @@ def test_declarative_skill():
     skill = DeclarativeSkill(
         name="api-conventions",
         description="API 컨벤션",
-        sections=[Section("Instructions", content="RESTful 패턴을 사용하라.")],
+        body="RESTful 패턴을 사용하라.",
         config=DeclarativeSkillConfig(),
     )
     assert skill.name == "api-conventions"
-    assert skill.sections[0].content == "RESTful 패턴을 사용하라."
+    assert skill.body == "RESTful 패턴을 사용하라."
     assert isinstance(skill, Skill)
     assert not isinstance(skill, WorkflowComponent)
 
@@ -68,11 +68,10 @@ def test_procedural_skill_output_events_default():
     assert skill.output_events == ["done"]
 
 
-def test_procedural_skill_sections_default():
+def test_procedural_skill_body_default():
     fsm = _make_fsm()
     skill = ProceduralSkill(fsm=fsm, name="S", description="d")
-    assert len(skill.sections) == 1
-    assert skill.sections[0].title == "Instructions"
+    assert skill.body == ""
 
 
 def test_procedural_skill_transfer_on_default():
@@ -92,10 +91,9 @@ def test_procedural_skill_output_events_via_property():
     assert skill.output_events == ["done", "error", "retry"]
 
 
-def test_declarative_skill_sections_default():
+def test_declarative_skill_body_default():
     skill = DeclarativeSkill(name="api-conventions", description="API 컨벤션")
-    assert len(skill.sections) == 1
-    assert skill.sections[0].title == "Instructions"
+    assert skill.body == ""
 
 
 def test_transfer_skill():
@@ -114,11 +112,10 @@ def test_transfer_skill_no_transfer_on():
     assert not hasattr(skill, "transfer_on")
 
 
-def test_transfer_skill_sections_default():
+def test_transfer_skill_body_default():
     fsm = _make_fsm()
     skill = TransferSkill(fsm=fsm, name="T", description="d")
-    assert len(skill.sections) == 1
-    assert skill.sections[0].title == "Instructions"
+    assert skill.body == ""
 
 
 def test_procedural_skill_when_to_use_default():
@@ -134,8 +131,10 @@ def test_declarative_skill_when_to_use_default():
 
 
 def test_skill_has_no_content_field():
-    """본문의 단일 진실 공급원은 sections — content 필드 부재 고정 (감사 2-8)."""
+    """본문의 단일 진실 공급원은 body(단일 마크다운 문자열) — 별도 content 필드 부재 고정
+    (감사 2-8, WP-SB로 sections 트리에서 body 문자열로 갱신)."""
     import dataclasses
     for cls in (ProceduralSkill, DeclarativeSkill, TransferSkill, ReferenceSkill):
         names = {f.name for f in dataclasses.fields(cls)}
         assert "content" not in names, cls.__name__
+        assert "body" in names, cls.__name__

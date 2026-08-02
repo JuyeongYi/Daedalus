@@ -44,7 +44,7 @@ from daedalus.model.fsm.pseudo import (
     ExitPoint,
     TerminateState,
 )
-from daedalus.model.fsm.section import EventDef, Section
+from daedalus.model.fsm.section import EventDef, Section, render_markdown
 from daedalus.model.fsm.state import (
     CompositeState,
     ParallelState,
@@ -519,7 +519,7 @@ def _ser_skill(s: Any) -> dict:
         "name": s.name,
         "description": s.description,
         "when_to_use": s.when_to_use,
-        "sections": [_ser_section(sec) for sec in s.sections],
+        "body": s.body,
         "config": _ser_config(s.config),
     }
     if isinstance(s, (ProceduralSkill, TransferSkill)):
@@ -539,7 +539,7 @@ def _ser_agent(a: AgentDefinition) -> dict:
         "fsm": _ser_machine(a.fsm),
         "config": _ser_config(a.config),
         "execution_policy": _ser_policy(a.execution_policy),
-        "sections": [_ser_section(s) for s in a.sections],
+        "body": a.body,
         # 로컬 스킬 — 소유 인라인
         "skills": [_ser_skill(s) for s in a.skills],
         "reference_placements": [
@@ -1018,6 +1018,20 @@ def _deser_section(d: dict) -> Section:
     )
 
 
+def _deser_body(d: dict) -> str:
+    """스킬/에이전트 본문 역직렬화 (WP-SB).
+
+    ``body`` 키가 있으면 그대로 사용. 없고 ``sections`` 키가 있으면(구버전
+    파일) ``render_markdown``으로 평탄화한다 — 정상 마이그레이션 경로이므로
+    경고 없음. 둘 다 없으면 빈 문자열.
+    """
+    if "body" in d:
+        return d.get("body") or ""
+    if "sections" in d:
+        return render_markdown([_deser_section(s) for s in d["sections"]])
+    return ""
+
+
 def _deser_eventdef(d: dict) -> EventDef:
     return EventDef(
         name=d.get("name", ""),
@@ -1105,7 +1119,7 @@ def _deser_skill(d: dict, reg: _Registry) -> Any:
     name = d.get("name", "")
     desc = d.get("description", "")
     config = _deser_config(d["config"]) if d.get("config") else None
-    sections = [_deser_section(s) for s in d.get("sections", [])]
+    body = _deser_body(d)
 
     skill: Any
     if kind == "procedural_skill":
@@ -1113,7 +1127,7 @@ def _deser_skill(d: dict, reg: _Registry) -> Any:
         skill = ProceduralSkill(
             fsm=fsm, name=name, description=desc, id=sid,
             config=config or ProceduralSkillConfig(),
-            sections=sections,
+            body=body,
             transfer_on=[_deser_eventdef(e) for e in d.get("transfer_on", [])],
             call_agents=[_deser_eventdef(e) for e in d.get("call_agents", [])],
         )
@@ -1122,19 +1136,19 @@ def _deser_skill(d: dict, reg: _Registry) -> Any:
         skill = TransferSkill(
             fsm=fsm, name=name, description=desc, id=sid,
             config=config or TransferSkillConfig(),
-            sections=sections,
+            body=body,
         )
     elif kind == "declarative_skill":
         skill = DeclarativeSkill(
             name=name, description=desc, id=sid,
             config=config or DeclarativeSkillConfig(),
-            sections=sections,
+            body=body,
         )
     elif kind == "reference_skill":
         skill = ReferenceSkill(
             name=name, description=desc, id=sid,
             config=config or ReferenceSkillConfig(),
-            sections=sections,
+            body=body,
         )
     else:
         skill = DeclarativeSkill(name=name, description=desc, id=sid)
@@ -1156,7 +1170,7 @@ def _deser_agent(d: dict, reg: _Registry) -> AgentDefinition:
         id=sid,
         config=_deser_config(d["config"]) if d.get("config") else AgentConfig(),
         execution_policy=_deser_policy(d.get("execution_policy")),
-        sections=[_deser_section(s) for s in d.get("sections", [])],
+        body=_deser_body(d),
         skills=skills,
         reference_placements=[
             _deser_ref_placement(r) for r in d.get("reference_placements", [])

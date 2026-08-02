@@ -1,12 +1,12 @@
 # tests/compiler/test_body.py
-"""본문(sections 트리 + FSM 절차 서술) 테스트."""
+"""본문(body 단일 마크다운 문자열 + FSM 절차 서술) 테스트 (WP-SB)."""
 from __future__ import annotations
 
 from daedalus.compiler.emit import compile_skill
 from daedalus.model.fsm.event import CompletionEvent
 from daedalus.model.fsm.guard import Guard
 from daedalus.model.fsm.machine import StateMachine
-from daedalus.model.fsm.section import EventDef, Section
+from daedalus.model.fsm.section import EventDef
 from daedalus.model.fsm.state import SimpleState
 from daedalus.model.fsm.strategy import ExpressionEvaluation
 from daedalus.model.fsm.transition import Transition
@@ -15,32 +15,28 @@ from daedalus.model.plugin.config import ProceduralSkillConfig
 from tests.compiler.builders import make_procedural
 
 
-# ─────────────────────── sections 트리 헤딩 깊이 ───────────────────────
+# ─────────────────────── body 배출 ───────────────────────
 
 
-def test_section_heading_depth():
+def test_body_multi_heading_emitted_verbatim():
+    """body에 담긴 여러 헤딩 레벨의 마크다운이 그대로 배출된다 (구조는 사용자 책임)."""
     skill = make_procedural(
-        sections=[
-            Section("Top", "root content", [
-                Section("Mid", "mid content", [
-                    Section("Leaf", "leaf content"),
-                ]),
-            ]),
-        ]
+        body="# Top\n\nroot content\n\n## Mid\n\nmid content\n\n### Leaf\n\nleaf content"
     )
     text = compile_skill(skill)
     assert "# Top" in text
     assert "## Mid" in text
     assert "### Leaf" in text
-    # 내용 출력
     assert "root content" in text
     assert "leaf content" in text
 
 
-def test_section_empty_content_emits_heading_only():
-    skill = make_procedural(sections=[Section("Heading", "")])
+def test_body_blank_omits_block():
+    """body가 공백뿐이면 본문 블록 자체가 생략된다."""
+    skill = make_procedural(body="   \n\n  ")
     text = compile_skill(skill)
-    assert "# Heading" in text
+    # 프론트매터 뒤에 바로 절차 단락이 오고, 빈 본문 블록으로 인한 잉여 공백이 없다.
+    assert "---\n\n## 워크플로 절차" in text
 
 
 # ─────────────────────── FSM 절차 서술 ───────────────────────

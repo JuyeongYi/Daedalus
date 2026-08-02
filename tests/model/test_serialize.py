@@ -54,11 +54,10 @@ def test_skill_id_excluded_from_equality():
     """Skill의 id는 compare=False라 값 동등성 비교에서 제외된다."""
     import dataclasses
 
-    # 동일 sections 객체를 공유시켜 다른 필드를 동등하게 만든 뒤,
+    # body 기본값("")까지 포함해 다른 필드가 전부 동등한 두 인스턴스를 만든 뒤,
     # id만 차이나게 해도 == 가 성립함을 확인.
-    shared_sections = [DeclarativeSkill(name="z", description="d").sections[0]]
-    a = DeclarativeSkill(name="x", description="d", sections=shared_sections)
-    b = DeclarativeSkill(name="x", description="d", sections=shared_sections)
+    a = DeclarativeSkill(name="x", description="d")
+    b = DeclarativeSkill(name="x", description="d")
     assert a.id != b.id
     assert a == b  # id가 달라도 값 동등
 
@@ -457,3 +456,80 @@ def test_delegation_placement_survives_round_trip():
     assert len(placements) == 1
     assert placements[0].skill_ref is restored.delegations[0]
     assert not warnings
+
+
+# ─────────────────────── WP-SB: body 단일 마크다운화 ───────────────────────
+
+
+def test_skill_body_roundtrip():
+    """ProceduralSkill.body(단일 마크다운 문자열)가 왕복 후에도 그대로 보존된다."""
+    s = SimpleState(name="s")
+    fsm = StateMachine(name="f", initial_state=s, states=[s])
+    skill = ProceduralSkill(fsm=fsm, name="proc", description="d", body="# Title\n\n본문 내용")
+    p = PluginProject(name="P", skills=[skill])
+    p2 = _roundtrip(p)
+    assert p2.skills[0].body == "# Title\n\n본문 내용"
+
+
+def test_agent_body_roundtrip():
+    """AgentDefinition.body가 왕복 후에도 그대로 보존된다."""
+    entry = EntryPoint(name="e")
+    afsm = StateMachine(name="af", initial_state=entry, states=[entry])
+    agent = AgentDefinition(fsm=afsm, name="ag", description="d", body="에이전트 본문")
+    p = PluginProject(name="P", agents=[agent])
+    p2 = _roundtrip(p)
+    assert p2.agents[0].body == "에이전트 본문"
+
+
+def test_legacy_sections_migrated_to_body_without_warning():
+    """body 키 없이 sections 키만 있는 구버전 파일은 render_markdown으로 평탄화되어
+    body에 담긴다 — 정상 마이그레이션 경로라 경고가 없어야 한다."""
+    skill = DeclarativeSkill(name="kb", description="d")
+    p = PluginProject(name="P", skills=[skill])
+    data = serialize_project(p)
+
+    skill_d = next(s for s in data["skills"] if s["name"] == "kb")
+    del skill_d["body"]
+    skill_d["sections"] = [
+        {"title": "Top", "content": "root", "children": [
+            {"title": "Mid", "content": "mid", "children": []},
+        ]},
+    ]
+
+    warnings: list[str] = []
+    p2 = deserialize_project(data, collect_warnings=warnings)
+    kb2 = next(s for s in p2.skills if s.name == "kb")
+    assert kb2.body == "# Top\n\nroot\n\n## Mid\n\nmid"
+    assert not warnings
+
+
+def test_missing_body_and_sections_defaults_to_empty():
+    """body/sections 둘 다 없는 dict는 빈 문자열로 취급된다."""
+    skill = DeclarativeSkill(name="kb", description="d")
+    p = PluginProject(name="P", skills=[skill])
+    data = serialize_project(p)
+    skill_d = next(s for s in data["skills"] if s["name"] == "kb")
+    del skill_d["body"]
+
+    p2 = deserialize_project(data)
+    kb2 = next(s for s in p2.skills if s.name == "kb")
+    assert kb2.body == ""
+
+
+def test_caller_contracts_roundtrip_unchanged():
+    """WP-SB는 caller_contracts(list[Section] 잠금 계약 카드)를 건드리지 않는다 —
+    왕복 후에도 title/content가 그대로 보존된다."""
+    from daedalus.model.fsm.section import Section
+
+    entry = EntryPoint(name="e")
+    afsm = StateMachine(name="af", initial_state=entry, states=[entry])
+    agent = AgentDefinition(
+        fsm=afsm, name="ag", description="d",
+        caller_contracts=[Section(title="caller: proc (done)", content="입력 내용")],
+    )
+    p = PluginProject(name="P", agents=[agent])
+    p2 = _roundtrip(p)
+    ag2 = p2.agents[0]
+    assert len(ag2.caller_contracts) == 1
+    assert ag2.caller_contracts[0].title == "caller: proc (done)"
+    assert ag2.caller_contracts[0].content == "입력 내용"

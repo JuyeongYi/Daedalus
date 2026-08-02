@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from daedalus.model.fsm.machine import StateMachine
-from daedalus.model.fsm.section import EventDef, Section
+from daedalus.model.fsm.section import EventDef
 from daedalus.model.fsm.state import SimpleState
 from daedalus.model.plugin.config import ProceduralSkillConfig
 from daedalus.model.plugin.skill import ProceduralSkill
@@ -19,7 +19,7 @@ def _make_skill(name: str = "demo-skill", fsm: StateMachine | None = None) -> Pr
         name=name,
         description="d",
         config=ProceduralSkillConfig(),
-        sections=[Section("Instructions", "do it")],
+        body="# Instructions\n\ndo it",
         transfer_on=[EventDef("done")],
     )
 

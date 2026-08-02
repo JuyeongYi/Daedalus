@@ -109,7 +109,7 @@ def test_component_config_shared_fields():
 # --- WP-H: AgentConfig 감사 테스트 ---
 
 def test_agent_config_no_initial_prompt_field():
-    """본문 단일 진실은 AgentDefinition.sections — initial_prompt 필드 부재 고정 (감사 2-5)."""
+    """본문 단일 진실은 AgentDefinition.body — initial_prompt 필드 부재 고정 (감사 2-5)."""
     import dataclasses
     names = {f.name for f in dataclasses.fields(AgentConfig)}
     assert "initial_prompt" not in names, "AgentConfig에 initial_prompt 필드가 잔존함"

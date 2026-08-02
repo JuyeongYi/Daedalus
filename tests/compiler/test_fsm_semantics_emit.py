@@ -7,7 +7,7 @@ from daedalus.model.fsm.guard import Guard
 from daedalus.model.fsm.join import JoinStrategy
 from daedalus.model.fsm.machine import StateMachine
 from daedalus.model.fsm.pseudo import ChoiceState
-from daedalus.model.fsm.section import EventDef, Section
+from daedalus.model.fsm.section import EventDef
 from daedalus.model.fsm.state import ParallelState, Region, SimpleState
 from daedalus.model.fsm.strategy import ExpressionEvaluation
 from daedalus.model.fsm.transition import Transition
@@ -19,7 +19,7 @@ def _proc(fsm: StateMachine) -> ProceduralSkill:
     return ProceduralSkill(
         fsm=fsm, name="my-skill", description="d", when_to_use="x",
         config=ProceduralSkillConfig(),
-        sections=[Section("Instructions", "Do it.")],
+        body="# Instructions\n\nDo it.",
         transfer_on=[EventDef("done")],
     )
 
