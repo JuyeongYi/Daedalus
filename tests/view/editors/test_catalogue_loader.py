@@ -3,12 +3,29 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from daedalus.view.editors.catalogue_loader import (
     CatalogueEntry,
     candidate_strings,
     expanded_mcp,
     load_catalogue,
 )
+
+
+@pytest.fixture(autouse=True)
+def _isolated_home(tmp_path_factory, monkeypatch):
+    """실제 ~/.daedalus 격리 — 모든 테스트가 빈 가짜 홈에서 돈다.
+
+    이게 없으면 개발자 머신에 글로벌 카탈로그가 있는 순간(이 기능의 핵심 사용
+    시나리오다) 스위트가 깨진다. 개별 테스트의 monkeypatch가 다시 덮을 수 있다.
+    """
+    fake_home = tmp_path_factory.mktemp("home")
+    monkeypatch.setattr(
+        "daedalus.view.editors.catalogue_loader.Path.home",
+        lambda: fake_home,
+    )
+    yield
 
 
 def _write_entry(dir_path, name: str, data: dict) -> None:
@@ -168,3 +185,23 @@ def test_candidate_strings_dedupes():
     )
     candidates = candidate_strings([entry_a, entry_b])
     assert candidates.count("Read") == 1
+
+
+def test_home_dir_injection_parameter(tmp_path):
+    """home_dir 주입 파라미터 — Path.home() 몽키패치 없이도 격리 가능."""
+    _write_entry(
+        tmp_path / "h" / ".daedalus" / "catalogue", "injected", {"tool": ["Read"]}
+    )
+    entries = load_catalogue(home_dir=tmp_path / "h")
+    assert [e.name for e in entries] == ["injected"]
+    assert entries[0].source == "global"
+
+
+def test_non_string_elements_file_is_skipped(tmp_path, capsys):
+    """tool/mcp 배열의 비문자열 원소 → 파일 단위 스킵 + 경고 (쓰레기 후보 방지)."""
+    _write_entry(
+        tmp_path / ".daedalus" / "catalogue", "bad-elems", {"mcp": [123, True]}
+    )
+    entries = load_catalogue(project_dir=tmp_path)
+    assert entries == []
+    assert "bad-elems" in capsys.readouterr().err

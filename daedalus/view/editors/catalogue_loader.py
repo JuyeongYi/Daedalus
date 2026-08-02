@@ -27,15 +27,20 @@ class CatalogueEntry:
     source: Literal["global", "project"]
 
 
-def load_catalogue(project_dir: Path | None = None) -> list[CatalogueEntry]:
+def load_catalogue(
+    project_dir: Path | None = None,
+    home_dir: Path | None = None,
+) -> list[CatalogueEntry]:
     """글로벌 + 프로젝트 카탈로그를 병합해 반환한다.
 
     이름(파일명 stem) 충돌 시 프로젝트 항목이 글로벌 항목을 덮는다.
     두 위치 모두 디렉토리가 없으면 해당 레벨은 빈 목록.
+    home_dir는 테스트용 주입점 — None이면 실제 홈(Path.home()).
     """
     merged: dict[str, CatalogueEntry] = {}
 
-    global_dir = Path.home() / ".daedalus" / "catalogue"
+    base_home = home_dir if home_dir is not None else Path.home()
+    global_dir = base_home / ".daedalus" / "catalogue"
     for entry in _load_dir(global_dir, "global"):
         merged[entry.name] = entry
 
@@ -68,11 +73,15 @@ def _load_entry_file(path: Path, source: Literal["global", "project"]) -> Catalo
         mcp = data.get("mcp", [])
         if not isinstance(tools, list) or not isinstance(mcp, list):
             raise ValueError("'tool'/'mcp' 키는 문자열 배열이어야 함")
+        if not all(isinstance(t, str) for t in tools) or not all(
+            isinstance(m, str) for m in mcp
+        ):
+            raise ValueError("'tool'/'mcp' 항목은 문자열이어야 함")
         return CatalogueEntry(
             name=path.stem,
             description=str(data.get("description", "")),
-            tools=tuple(str(t) for t in tools),
-            mcp=tuple(str(m) for m in mcp),
+            tools=tuple(tools),
+            mcp=tuple(mcp),
             source=source,
         )
     except Exception as exc:  # noqa: BLE001 — 파싱 실패 파일은 경고 후 스킵(하네스 중단 금지)
