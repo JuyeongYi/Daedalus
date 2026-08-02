@@ -39,7 +39,7 @@ daedalus/
 │   │   │                   #   render_markdown(WP-SB 구버전 sections→body 마이그레이션 헬퍼)
 │   │   └── machine.py      # StateMachine
 │   ├── plugin/       # Claude 플러그인 메타데이터
-│   │   ├── enums.py        # ModelType, EffortLevel, SkillContext, PermissionMode, AgentField, FieldEmit 등
+│   │   ├── enums.py        # ModelType, EffortLevel, SkillContext, PermissionMode, AgentField, FieldEmit, BuildTarget(WP-TG) 등
 │   │   ├── policy.py       # ExecutionPolicy (병렬 서브에이전트). JoinStrategy는 fsm/join.py에서 re-export(하위 호환)
 │   │   ├── config.py       # ComponentConfig(ABC), SkillConfig(ABC), ProceduralSkillConfig,
 │   │   │                   # DeclarativeSkillConfig, TransferSkillConfig, ReferenceSkillConfig, AgentConfig
@@ -52,18 +52,18 @@ daedalus/
 │   │   ├── hook.py         # HookDef + HookEvent(CC 9종) (hook_library 훅 단일 진실)
 │   │   ├── hook_presets.py # BUILTIN_HOOK_PRESETS (복사용 훅 템플릿) + preset_copy
 │   │   └── field_matrix.py # FieldRule(emit 포함), SKILL_FIELD_MATRIX, AGENT_FIELD_MATRIX (스킬/에이전트 유형별 프론트매터 필드 규칙)
-│   ├── project.py           # PluginProject (최상위 컨테이너, name+description+version — plugin.json 매니페스트 소스), ReferencePlacement, tool_shelf, hook_library, blackboard(최상위), graph(워크플로 백킹 머신)+graph_layout+edge_layout(WP-ER 엣지 웨이포인트, 키: Transition.id), emit_progress_hook(WP-RS SessionStart 진행 상태 훅 토글, 기본 True)
+│   ├── project.py           # PluginProject (최상위 컨테이너, name+description+version — plugin.json 매니페스트 소스), ReferencePlacement, tool_shelf, hook_library, blackboard(최상위), graph(워크플로 백킹 머신)+graph_layout+edge_layout(WP-ER 엣지 웨이포인트, 키: Transition.id), emit_progress_hook(WP-RS SessionStart 진행 상태 훅 토글, 기본 True), build_target(WP-TG 빌드 타깃 — MARKETPLACE/LOCAL, 기본 MARKETPLACE)
 │   │                       # + rename_component(project, component, new_name) — 이름 변경 + 문자열 참조 3종 일괄 갱신 (Qt 무관)
 │   │                       # + remove_component(project, component) → list[str] — 모델 정리 (graph placement, skill_ref None화, 위임 agent_ref None화 등)
 │   ├── serialize.py         # serialize_project/deserialize_project (모델↔JSON dict, 안정 ID 기반)
-│   └── validation.py        # Validator + ValidationError + WARNING_RULES + is_warning (머신 규칙 20종 + 프로젝트 규칙 14종, 재귀)
+│   └── validation.py        # Validator + ValidationError + WARNING_RULES + is_warning (머신 규칙 20종 + 프로젝트 규칙 16종, 재귀)
 ├── compiler/         # 순수 모델 → 플러그인 파일 (Qt 무관)
 │   ├── emit.py             # compile_skill/compile_agent/compile_hooks_json — model → SKILL.md/agent .md/hooks.json 텍스트 (결정적, LF)
 │   └── project_compiler.py # compile_project(project, out_dir, files_dir=None) → CompileResult (검증 게이트 + 파일 쓰기)
 │                           # files_dir(WP-FR, 선택): 실존 디렉토리면 <out>/files/ 정렬 순회 복사(_copy_files_tree, 심볼릭 링크 미추종) +
 │                           #   dangling_file_ref 스캔(_scan_dangling_file_refs). 생략 시 기존 산출 완전 불변(하위 호환).
 └── view/             # PySide6 기반 노드 에디터
-    ├── app.py              # 메인 윈도우 (Ctrl+N "새 프로젝트"(기본 이름 "new-plugin"), F7 "프로젝트 검증", Ctrl+B "컴파일", 파일→"프로젝트 속성...", 도구→"훅 라이브러리...")
+    ├── app.py              # 메인 윈도우 (Ctrl+N "새 프로젝트"(기본 이름 "new-plugin", 빌드 타깃 선택 다이얼로그 — WP-TG `_prompt_build_target`, 취소 시 생성 취소), F7 "프로젝트 검증", Ctrl+B "컴파일", 파일→"프로젝트 속성...", 도구→"훅 라이브러리...")
     │                       # 컴포넌트 이름 변경: _FrontmatterPanel.renamed → _on_component_renamed (중복 거부 + rename_component 호출 + 탭 타이틀 동기화)
     │                       # 컴포넌트 삭제: 레지스트리 우클릭 → _on_delete_component (확인 다이얼로그 + remove_component + 탭 닫기 + notify)
     │                       # 프로젝트 속성: _edit_project_properties → ProjectPropertiesDialog(name/description/version + emit_progress_hook 체크박스, 이름 규약 미강제)
@@ -263,6 +263,15 @@ daedalus/
 - **graph_layout:** `dict[str, list[float]]` — 키는 **state.id** (AgentDefinition.graph_layout과 동일 규약, 이름 변경 안전). 저장 직전 `app._save_graph_layout`이 VM 좌표를 기록, 로드 시 `app._load_project_graph`가 graph+graph_layout으로 캔버스 VM을 재구성(`agent_editor._load_agent_fsm` 미러링). EntryPoint는 캔버스 VM이 없으므로 `graph_layout`에도 그 키가 기록되지 않는다(WP-EP).
 - **블랙보드 배선:** `project.graph.blackboard.parent = project.blackboard` — `PluginProject.__post_init__`(생성 경로)과 `deserialize_project`(역직렬화 생성 경로) 양쪽에서 보장.
 
+### BuildTarget = 빌드 타깃 (마켓플레이스 / 로컬 플러그인) (WP-TG)
+
+- **배경:** MCP를 쓰는 에이전트는 CC 정책상 마켓플레이스 플러그인으로 배포할 수 없다(`mcpServers` 등 프론트매터 미지원) — 사람들이 파일 복사로 우회하는 문제를 프로젝트 수준 빌드 타깃으로 해결한다(로컬 에이전트 타입안은 폐기, 이 설계가 상위 개념).
+- **모델:** `model/plugin/enums.py`의 `BuildTarget(Enum)`: `MARKETPLACE`(기본) / `LOCAL`. `PluginProject.build_target: BuildTarget = BuildTarget.MARKETPLACE`.
+- **직렬화:** `.value` 왕복. 구버전 파일(키 부재)·미지 값은 `MARKETPLACE`로 조용히 폴백(경고 없음) — 하위 호환 게이트.
+- **생성 흐름:** `app._new_project`(Ctrl+N)가 이름 결정 전에 `QInputDialog.getItem`으로 "마켓플레이스 플러그인"/"로컬 플러그인"을 고르게 한다(`_prompt_build_target`). 취소하면 새 프로젝트 생성 자체가 취소된다(기존 프로젝트 유지). 표시 문구·enum 매핑은 `view/editors/project_properties.py`의 `BUILD_TARGET_LABELS`가 단일 진실(app.py가 재사용). `ProjectPropertiesDialog`에도 콤보로 노출해 생성 후 변경 가능.
+- **컴파일:** MARKETPLACE는 현행과 바이트 동일(하위 호환 게이트) — `plugin.json` 생성. LOCAL은 `compiler/project_compiler.py`의 컴파일 정책 13번 항목 참조(`.claude-plugin/` 미생성, `INSTALL.md`/`install.ps1`/`install.sh` 동봉, `${CLAUDE_PLUGIN_ROOT}/files/` → `${CLAUDE_PROJECT_DIR}/files/` 치환).
+- **검증:** `mcp_agent_in_marketplace_build`/`plugin_root_in_local_build` — Validator 프로젝트 수준 규칙 표 참조.
+
 ### 연결선 리루트 — 엣지 웨이포인트 (WP-ER)
 
 - **역할:** 루프 전이 등 노드를 가로질러 그려지는 엣지를 사용자가 손으로 정리할 수 있도록 경유점(waypoint)을 추가·드래그·제거하는 기능. 자동 라우팅(장애물 회피 등)은 비목표 — v1은 수동 경유점만.
@@ -376,7 +385,7 @@ ComponentConfig(ABC)          # model, effort, hooks 공통 필드
 
 **프로젝트 그래프 검증:** `validate_project`는 `project.graph`도 머신 규칙으로 검증하며 root path는 `("project",)`다. 단 그래프에 placement(EntryPoint 외 노드)가 0개면 검증을 스킵(`_graph_has_placements`) — 빈 캔버스 경고 폭주 방지. `transfer_on_not_empty` 같은 컴포넌트 수준 규칙은 머신 검증에 없으므로 무관. **`unreachable_state`는 `skip_rules={"unreachable_state"}`로 스킵된다(WP-EP)** — CC 플러그인 의미론상 프로젝트 그래프의 모든 배치는 user_invocable 스킬 등으로 독립 시작 가능해 "EntryPoint에서 도달 불가"가 성립하지 않는다. skip_rules는 재귀에 전파되지 않으므로 에이전트 sub_machine 내부의 `unreachable_state`는 기존대로 검사된다.
 
-#### 프로젝트 수준 (14종)
+#### 프로젝트 수준 (16종)
 
 `Validator.validate_project(project)` — 전체 FSM 검증 후 추가:
 
@@ -396,6 +405,8 @@ ComponentConfig(ABC)          # model, effort, hooks 공통 필드
 | `dangling_hook_ref` | config.hooks 키가 hook_library에 없으면 경고 (스킬·에이전트·에이전트 로컬 스킬 전부 검사) |
 | `dangling_blackboard_ref` | State.reads/writes의 `"Class"`/`"Class.field"` 문자열 참조가 프로젝트 최상위 블랙보드 class_definitions에 없으면 경고 (재귀 — sub_machine/Region + 프로젝트 그래프 포함, 빈 문자열은 스킵) |
 | `orphan_blackboard_field` | 블랙보드 필드 중 어떤 상태의 reads/writes에도 등장하지 않으면 경고 (클래스 전체 참조는 그 필드 전부 커버로 간주, 프로젝트 전체에 접근 선언이 하나도 없으면 스킵 — 경고 폭주 방지) |
+| `mcp_agent_in_marketplace_build` | `project.build_target == MARKETPLACE`인데 에이전트 config.tools에 `mcp__` 도구가 있거나 mcp_servers 선언이 있으면 경고 (CC는 플러그인 배포 에이전트의 MCP 사용을 미지원 — LOCAL 빌드면 무경고, WP-TG) |
+| `plugin_root_in_local_build` | `project.build_target == LOCAL`인데 스킬/에이전트(로컬 스킬 포함) 본문에 files/ 참조 이외 용도의 `${CLAUDE_PLUGIN_ROOT}`가 남아 있으면 경고 (files/ 참조는 컴파일이 자동 치환하므로 제외, WP-TG) |
 
 도구 모델(`tool.py`): `Tool(PluginComponent, ABC)` 단일 진실 + `BuiltinTool`/`MCPTool`/`UserDefinedTool`. shelf = 프로젝트(`PluginProject.tool_shelf`) 소유, FSM은 `Tool.name` 문자열로 참조(fsm/는 plugin 무관 — 객체 참조 금지, Validator가 실존 검증). `CC_BUILTIN_TOOLS`는 validation.py 모듈 frozenset(Read/Write/Edit/Bash/Glob/Grep/WebFetch/WebSearch/Agent/Task/TodoWrite/NotebookEdit/SlashCommand/PowerShell).
 
@@ -480,11 +491,13 @@ dataclass(값 동등성, unhashable) 유지 — 컬렉션 멤버십에는 list/`
 
 `compile_project(project, out_dir, files_dir=None) → CompileResult`. 순수 stdlib(Qt 무관, import 순수성 테스트로 고정).
 
-**출력 구조 (CC 플러그인 규약):**
-- `<out>/.claude-plugin/plugin.json` — 플러그인 매니페스트 (항상 생성 — 이게 없으면 산출 디렉토리를 CC 플러그인으로 설치할 수 없다)
+**출력 구조 (CC 플러그인 규약, `project.build_target == MARKETPLACE` — 기본):**
+- `<out>/.claude-plugin/plugin.json` — 플러그인 매니페스트 (MARKETPLACE에서 항상 생성 — 이게 없으면 산출 디렉토리를 CC 플러그인으로 설치할 수 없다)
 - `<out>/skills/<skill-name>/SKILL.md` — 전역 스킬 4종 전부 (Declarative/Reference도 SKILL.md)
 - `<out>/skills/<agent-name>--<skill-name>/SKILL.md` — 에이전트 로컬 스킬 (`--` 결합은 충돌 무결하지 **않음** — 이름 규약이 연속 하이픈을 허용하므로 게이트가 사전 경로 집합 검사로 충돌 시 거부)
 - `<out>/agents/<agent-name>.md` — 에이전트
+
+**`build_target == LOCAL`(WP-TG)일 때 출력 구조 차이:** `skills/`·`agents/`·`files/`·`hooks/hooks.json`은 동일 레이아웃이지만 `<out>/.claude-plugin/plugin.json`은 생성하지 않고(디렉토리 자체가 없음) 대신 `<out>/INSTALL.md`·`<out>/install.ps1`·`<out>/install.sh`가 동봉된다. 상세는 컴파일 정책 15번 항목 참조.
 
 **컴파일 정책 (확정):**
 1. **프론트매터**: 해당 kind 매트릭스에서 `emit==FRONTMATTER`인 필드만. 키는 `frontmatter_key`(kebab-case).
@@ -522,6 +535,9 @@ dataclass(값 동등성, unhashable) 유지 — 컬렉션 멤버십에는 list/`
     - **SessionStart 훅 합성**: `PluginProject.emit_progress_hook: bool = True`(직렬화 왕복, 구버전 키 부재 시 기본 True)이고 프로젝트 그래프에 placement가 1개 이상이면, `compile_hooks_json`이 `hook_library`를 오염시키지 않고 컴파일 시점에 SessionStart 이벤트에 진행 상태 주입 커맨드(`cat state/__progress__.json 2>/dev/null || true`)를 합성해 합류시킨다(사용자 정의 SessionStart 훅 뒤에 이어붙어 공존). `emit_progress_hook=False`이거나 placement가 0개면 합성 훅 미배출. 토글은 프로젝트 속성 다이얼로그의 "세션 시작 시 진행 상태 자동 주입 (SessionStart 훅)" 체크박스. 합성 커맨드는 POSIX 셸 전제(`cat`/`||`) — 비POSIX 환경에서는 토글로 끄는 것이 대응책(훅 프리셋과 동일한 전제).
 13. **진입 맥락 + 호출 계약 (WP-IC)**: 배치된 전역 `ProceduralSkill`/`DeclarativeSkill`에서 incoming 전이가 1개 이상이면, `_entry_context_section`이 "## 작업 재개" 프리앰블 뒤·본문 앞에 "## 진입 맥락" 단락을 배출한다("`state/__progress__.json`의 `prev`를 확인하고 아래에서 해당 출처 항목을 따르라" 도입 + entry_paths 선언 순서의 포트별 그룹[`### 경로: <name>` + EventDef.description, 기본 경로 `### 기본 경로`는 항상 마지막] + 그룹 안 출처 이름순 항목["- `<출처>`에서 [조건]로 진입", 전이 스킬(TransferSkill) 지침 수행 문구·에이전트 출처의 "위임 완료 후" 문구 합류]). incoming이 있는 포트만 배출, entry_paths에 없는 target_port(rename 고아)는 기본 경로로 수렴. incoming 0개 배치·미배치·로컬은 산출 변화 없음. `compile_agent`는 `caller_contracts`(잠금 계약 카드)가 비어있지 않으면 본문 뒤에 "## 호출 계약" 단락(각 Section을 `### <title>` + content로 선언 순서 나열)을 배출한다(기존 컴파일 산출 누락 해소).
 14. **files/ 복사 + dangling_file_ref 경고 (WP-FR)**: `files_dir`가 실존 디렉토리면(게이트 통과 시에만) `_copy_files_tree`가 `<out>/files/`로 정렬 순회 복사한다(결정적, 심볼릭 링크 미추종 — 디렉토리는 재귀 안 함·파일은 복사 안 함). 기존 `<out>/files/`는 복사 전 삭제(out 전체가 아니라 files/만). 복사된 파일 경로는 `CompileResult.copied_files`에 담긴다. `files_dir`가 주어지면(실존 여부 무관) `_scan_dangling_file_refs`가 전역 스킬·에이전트·로컬 스킬 body에서 `${CLAUDE_PLUGIN_ROOT}/files/<경로>` 참조 토큰을 스캔해 files_dir에 실존하지 않으면 `dangling_file_ref` 경고를 `CompileResult.warnings`에 추가한다(게이트 차단 아님). `files_dir` 생략(None) 시 복사·스캔 모두 생략되어 기존 산출 파일/문자열이 완전히 불변(하위 호환).
+15. **빌드 타깃 — LOCAL 빌드 (WP-TG)**: `project.build_target`(기본 `MARKETPLACE`)에 따라 `_plan_outputs`의 산출 계획이 갈린다.
+    - **MARKETPLACE**(기본): 현행과 **바이트 동일** — 하위 호환 게이트(기존 산출 문자열/파일 전부 불변).
+    - **LOCAL**: `.claude-plugin/plugin.json`을 계획에서 제외하고, 대신 `INSTALL.md`(`compile_install_md`, 산출 구조 설명 + 설치 스크립트 사용법 + hooks 수동 병합 안내)·`install.ps1`/`install.sh`(`compile_install_ps1`/`compile_install_sh`, 프로젝트 내용과 무관한 결정적 상수 텍스트 — 대상 경로 인자 필수·미지정 시 사용법 출력, skills/agents/files 복사, hooks.json은 복사하지 않고 수동 병합 안내만 출력)를 계획에 추가한다. 스킬/에이전트/로컬 스킬 본문 산출 텍스트는 쓰기 직전 `substitute_local_file_refs`가 `${CLAUDE_PLUGIN_ROOT}/files/` → `${CLAUDE_PROJECT_DIR}/files/`만 치환한다(본문 저장 정본은 마켓플레이스 형태 하나 그대로, files/ 외 용도의 `${CLAUDE_PLUGIN_ROOT}`는 미치환 — `plugin_root_in_local_build` 검증 경고 대상). 프로젝트 이름 규약 게이트·`hooks/hooks.json`·`schemas/schemas.json` 산출 조건은 빌드 타깃과 무관하게 기존 그대로 적용된다.
 
 출력은 결정적(같은 모델 → 같은 텍스트), LF 줄바꿈, UTF-8(BOM 없음). 텍스트 생성(`compile_skill`/`compile_agent`)은 파일시스템과 분리되어 문자열 단위 테스트 가능.
 
