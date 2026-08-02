@@ -9,7 +9,7 @@ from PySide6.QtWidgets import QGraphicsItem, QStyleOptionGraphicsItem, QWidget
 
 from daedalus.model.fsm.pseudo import EntryPoint, ExitPoint
 from daedalus.model.fsm.section import EventDef
-from daedalus.view.canvas.node_badges import badges_for
+from daedalus.view.canvas.node_badges import badges_for, state_access_badges
 from daedalus.view.viewmodel.state_vm import StateViewModel
 
 _W = 160.0
@@ -213,9 +213,9 @@ class StateNodeItem(QGraphicsItem):
         painter.setFont(font)
         painter.drawText(name_rect, Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop, self._state_vm.model.name)
 
-        # 뱃지 행 (프론트매터 enum/bool 시각화)
+        # 뱃지 행 (프론트매터 enum/bool 시각화 + WP-BB 상태 접근 선언)
         ref_for_badge = model.skill_ref if hasattr(model, "skill_ref") else model  # type: ignore[union-attr]
-        badge_list = badges_for(ref_for_badge)
+        badge_list = badges_for(ref_for_badge) + state_access_badges(model)
         if badge_list:
             badge_text = " ".join(emoji for emoji, _ in badge_list)
             badge_rect = QRectF(4, _HEADER_H + 22, _W - 8, 16)

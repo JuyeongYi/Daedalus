@@ -252,6 +252,61 @@ def test_migrate_fsm_removes_orphan_from_final_states(qapp):
     assert exit_done in fsm.final_states, "exit_done은 final_states에 남아있어야 한다"
 
 
+def test_agent_editor_has_embedded_property_panel(qapp):
+    """WP-BB Part C-1: 에이전트 그래프 탭에 PropertyPanel이 임베드된다."""
+    from daedalus.view.editors.agent_editor import AgentEditor
+    from daedalus.view.panels.property_panel import PropertyPanel
+
+    editor = AgentEditor(_make_agent())
+    graph_tab = editor._tabs.widget(0)
+    panel = graph_tab.findChild(PropertyPanel)
+    assert panel is not None
+    assert panel is editor._property_panel
+
+
+def test_agent_graph_selection_shows_state_in_property_panel(qapp):
+    """에이전트 FSM 캔버스에서 노드를 선택하면 임베드 PropertyPanel에 표시된다."""
+    from daedalus.view.canvas.node_item import StateNodeItem
+    from daedalus.view.editors.agent_editor import AgentEditor
+
+    agent = _make_agent()
+    editor = AgentEditor(agent)
+    entry_vm = editor._graph_vm.state_vms[0]
+
+    node_item = next(
+        item for item in editor._graph_scene.items()
+        if isinstance(item, StateNodeItem) and item.state_vm is entry_vm
+    )
+    node_item.setSelected(True)
+    editor._on_graph_selection()
+
+    assert editor._property_panel._title.text() == "PROPERTIES — SimpleState"
+
+
+def test_agent_graph_state_access_declarations_editable_via_property_panel(qapp):
+    """WP-BB Part C-1: 에이전트 FSM 상태도 같은 경로(PropertyPanel)로 reads/writes 편집 가능."""
+    from daedalus.view.canvas.node_item import StateNodeItem
+    from daedalus.view.editors.agent_editor import AgentEditor
+    from daedalus.view.widgets.tag_input import TagInput
+
+    agent = _make_agent()
+    editor = AgentEditor(agent)
+    entry_vm = editor._graph_vm.state_vms[0]
+
+    node_item = next(
+        item for item in editor._graph_scene.items()
+        if isinstance(item, StateNodeItem) and item.state_vm is entry_vm
+    )
+    node_item.setSelected(True)
+    editor._on_graph_selection()
+
+    inputs = editor._property_panel.findChildren(TagInput)
+    assert len(inputs) == 2
+    reads_input = inputs[0]
+    reads_input.add_tag("TaskState")
+    assert entry_vm.model.reads == ["TaskState"]
+
+
 def test_agent_fsm_scene_delete_key_preserves_last_exit_point_in_multi_select(qapp):
     """두 개 ExitPoint를 모두 선택해 Delete해도 마지막 하나는 살아남아야 한다."""
     from PySide6.QtCore import Qt

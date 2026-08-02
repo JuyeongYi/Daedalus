@@ -5,6 +5,7 @@ from PySide6.QtWidgets import QFormLayout, QLabel, QLineEdit, QVBoxLayout, QWidg
 from daedalus.view.viewmodel.state_vm import StateViewModel, TransitionViewModel
 from daedalus.view.commands.state_commands import RenameStateCmd
 from daedalus.view.viewmodel.project_vm import ProjectViewModel
+from daedalus.view.widgets.tag_input import TagInput, get_blackboard_candidates
 
 
 class PropertyPanel(QWidget):
@@ -39,6 +40,24 @@ class PropertyPanel(QWidget):
         self._form.addRow("x", QLabel(f"{state_vm.x:.0f}"))
         self._form.addRow("y", QLabel(f"{state_vm.y:.0f}"))
 
+        # WP-BB Part C-1 — 상태 접근 선언(reads/writes). 자동완성 후보는 프로젝트
+        # 블랙보드의 "클래스"/"클래스.필드" 전체(호출 시점 스냅샷).
+        reads_input = TagInput()
+        reads_input.set_candidates(get_blackboard_candidates())
+        reads_input.set_tags(state_vm.model.reads)
+        reads_input.tags_changed.connect(
+            lambda: self._save_access(state_vm, "reads", reads_input)
+        )
+        self._form.addRow("reads", reads_input)
+
+        writes_input = TagInput()
+        writes_input.set_candidates(get_blackboard_candidates())
+        writes_input.set_tags(state_vm.model.writes)
+        writes_input.tags_changed.connect(
+            lambda: self._save_access(state_vm, "writes", writes_input)
+        )
+        self._form.addRow("writes", writes_input)
+
     def show_transition(self, transition_vm: TransitionViewModel) -> None:
         self._clear_form()
         self._title.setText("PROPERTIES — Transition")
@@ -62,3 +81,9 @@ class PropertyPanel(QWidget):
         old_name = state_vm.model.name
         if new_name and new_name != old_name:
             self._project_vm.execute(RenameStateCmd(state_vm, old_name, new_name))
+
+    def _save_access(self, state_vm: StateViewModel, attr: str, widget: TagInput) -> None:
+        """reads/writes TagInput write-back — 커맨드화 범위 밖(모델 직접 기록,
+        블랙보드/훅 shelf 폼과 동일 정책) + notify로 뱃지·검증 갱신을 알린다."""
+        setattr(state_vm.model, attr, widget.get_tags())
+        self._project_vm.notify()

@@ -533,3 +533,38 @@ def test_caller_contracts_roundtrip_unchanged():
     assert len(ag2.caller_contracts) == 1
     assert ag2.caller_contracts[0].title == "caller: proc (done)"
     assert ag2.caller_contracts[0].content == "입력 내용"
+
+
+# ─────────────────────── WP-BB: 상태 접근 선언(reads/writes) ───────────────────────
+
+
+def test_state_access_declarations_roundtrip():
+    """State.reads/writes가 왕복 후에도 그대로 보존된다."""
+    s = SimpleState(name="review", reads=["TaskState"], writes=["ReviewFindings.files"])
+    fsm = StateMachine(name="f", initial_state=s, states=[s])
+    skill = ProceduralSkill(fsm=fsm, name="proc", description="d")
+    p = PluginProject(name="P", skills=[skill])
+    p2 = _roundtrip(p)
+    s2 = p2.skills[0].fsm.states[0]
+    assert s2.reads == ["TaskState"]
+    assert s2.writes == ["ReviewFindings.files"]
+
+
+def test_state_access_declarations_missing_keys_default_to_empty():
+    """구버전 파일(reads/writes 키 부재)은 빈 리스트로 취급되고 경고가 없다."""
+    s = SimpleState(name="x")
+    fsm = StateMachine(name="f", initial_state=s, states=[s])
+    skill = ProceduralSkill(fsm=fsm, name="proc", description="d")
+    p = PluginProject(name="P", skills=[skill])
+    data = serialize_project(p)
+
+    state_d = data["skills"][0]["fsm"]["states"][0]
+    del state_d["reads"]
+    del state_d["writes"]
+
+    warnings: list[str] = []
+    p2 = deserialize_project(data, collect_warnings=warnings)
+    s2 = p2.skills[0].fsm.states[0]
+    assert s2.reads == []
+    assert s2.writes == []
+    assert not warnings

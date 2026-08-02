@@ -31,6 +31,10 @@ class State(ABC):
     custom_events: dict[str, list[Action]] = field(default_factory=dict)
     inputs: list[Variable] = field(default_factory=list)
     outputs: list[Variable] = field(default_factory=list)
+    # WP-BB — 상태 접근 선언. "Class" 또는 "Class.field" 문자열 참조(Tool 관례와
+    # 동일 — 블랙보드 객체 참조 금지, fsm 레이어 순수성 유지). 실존은 Validator가 검증.
+    reads: list[str] = field(default_factory=list)
+    writes: list[str] = field(default_factory=list)
 
     @property
     @abstractmethod

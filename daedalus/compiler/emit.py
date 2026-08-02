@@ -290,6 +290,24 @@ def _describe_trigger(trigger: object) -> str:
     return f"이벤트 '{name}'" if name else ""
 
 
+def _describe_access(state: State) -> str:
+    """WP-BB Part D-1: 상태의 reads/writes 접근 선언을 절차 서술 접미사로.
+
+    형식: " (읽기: `A.x`, `B` / 쓰기: `A.y`)". 각각 이름순 정렬(결정적).
+    선언이 없으면 빈 문자열(문구 생략 — 하위 호환 불변).
+    """
+    reads = sorted(getattr(state, "reads", None) or [])
+    writes = sorted(getattr(state, "writes", None) or [])
+    if not reads and not writes:
+        return ""
+    parts: list[str] = []
+    if reads:
+        parts.append("읽기: " + ", ".join(f"`{r}`" for r in reads))
+    if writes:
+        parts.append("쓰기: " + ", ".join(f"`{w}`" for w in writes))
+    return " (" + " / ".join(parts) + ")"
+
+
 def _transition_condition(t) -> str:
     """전이 조건 문구(트리거 + 가드)를 조합."""
     parts: list[str] = []
@@ -430,6 +448,7 @@ def _fsm_procedure_blocks(sm: StateMachine) -> list[str]:
             head += f" — 의사 상태({state.kind})."
         else:
             head += "."
+        head += _describe_access(state)
         lines.append(head)
 
         # 나가는 전이 — 출구 조건
@@ -780,17 +799,97 @@ def _mcp_requirement_section_skill(skill: Skill) -> list[str]:
 # ─────────────────────────── 블랙보드 사용 지침 단락 ───────────────────────────
 
 
-def _blackboard_section(project) -> list[str]:
+def _collect_state_access(sm: StateMachine) -> tuple[set[str], set[str]]:
+    """머신(재귀 — sub_machine/Region 포함)의 모든 상태 reads/writes 합집합."""
+    reads: set[str] = set()
+    writes: set[str] = set()
+    for state in sm.states:
+        reads.update(getattr(state, "reads", None) or [])
+        writes.update(getattr(state, "writes", None) or [])
+        if isinstance(state, CompositeState):
+            r, w = _collect_state_access(state.sub_machine)
+            reads.update(r)
+            writes.update(w)
+        elif isinstance(state, ParallelState):
+            for region in state.regions:
+                r, w = _collect_state_access(region.sub_machine)
+                reads.update(r)
+                writes.update(w)
+    return reads, writes
+
+
+def _component_access_union(component, project) -> tuple[set[str], set[str]]:
+    """component(스킬/에이전트) 자체 FSM(재귀) + 프로젝트 그래프 placement의
+    reads/writes 선언 합집합 (WP-BB Part D-2)."""
+    reads: set[str] = set()
+    writes: set[str] = set()
+    fsm = getattr(component, "fsm", None)
+    if fsm is not None:
+        reads, writes = _collect_state_access(fsm)
+    for placement in _graph_placements(component, project):
+        reads.update(getattr(placement, "reads", None) or [])
+        writes.update(getattr(placement, "writes", None) or [])
+    return reads, writes
+
+
+def _blackboard_section(project, component=None) -> list[str]:
     """프로젝트 최상위 블랙보드 class_definitions → '## 공유 상태 (블랙보드)' 블록.
 
     정의가 없으면 빈 리스트 (단락 생략).
+
+    component가 주어지고 그 접근 선언(자체 FSM 재귀 + 그래프 placement) 합집합이
+    비어 있지 않으면, "이 스킬/에이전트가 읽는 것/쓰는 것"을 명시하고 파일
+    목록을 관련 클래스만으로 좁힌다. component가 없거나 합집합이 비면 기존
+    동작(전 클래스 일반 안내) 그대로 — 하위 호환, 기존 산출 문자열 불변.
     """
     bb = getattr(project, "blackboard", None)
     classes = getattr(bb, "class_definitions", None) or []
     if not classes:
         return []
 
-    lines: list[str] = []
+    reads: set[str] = set()
+    writes: set[str] = set()
+    if component is not None:
+        reads, writes = _component_access_union(component, project)
+    union = reads | writes
+
+    rule_lines = (
+        "규칙:\n"
+        "- 파일을 수정하기 전에 반드시 현재 내용을 읽어라 (읽기-수정-쓰기).\n"
+        "- 파일이 없으면 스키마에 맞는 초기 객체로 생성하라.\n"
+        "- 스키마의 required 필드는 항상 채워라."
+    )
+
+    if union:
+        relevant_names = {ref.split(".", 1)[0] for ref in union}
+        relevant_classes = [c for c in classes if c.name in relevant_names]
+        lines: list[str] = []
+        for cls in relevant_classes:
+            desc = f" — {cls.description}" if cls.description else ""
+            lines.append(f"- `{cls.name}` → `state/{cls.name}.json`{desc}")
+
+        # 주어+조사 — "스킬이"(받침 있음)/"에이전트가"(받침 없음).
+        subject = "에이전트가" if isinstance(component, AgentDefinition) else "스킬이"
+        intro_lines: list[str] = []
+        if reads:
+            intro_lines.append(f"이 {subject} 읽는 것: " + ", ".join(f"`{r}`" for r in sorted(reads)))
+        if writes:
+            intro_lines.append(f"이 {subject} 쓰는 것: " + ", ".join(f"`{w}`" for w in sorted(writes)))
+
+        # 총론(디렉토리·스키마 설명)은 선언 유무와 무관하게 유지 — 선언은
+        # "덧붙이는" 정보이지 총론을 대체하지 않는다 (리뷰 지적 1).
+        return [
+            "## 공유 상태 (블랙보드)",
+            (
+                "이 워크플로의 컨텍스트 간 공유 상태는 작업 폴더의 `state/` 디렉토리에 JSON 파일로\n"
+                "유지한다. 각 파일의 구조는 플러그인의 `schemas/schemas.json`에 정의된 스키마를 따른다."
+            ),
+            "\n".join(intro_lines),
+            "\n".join(lines),
+            rule_lines,
+        ]
+
+    lines = []
     for cls in classes:
         desc = f" — {cls.description}" if cls.description else ""
         lines.append(f"- `{cls.name}` → `state/{cls.name}.json`{desc}")
@@ -802,12 +901,7 @@ def _blackboard_section(project) -> list[str]:
             "유지한다. 각 파일의 구조는 플러그인의 `schemas/schemas.json`에 정의된 스키마를 따른다."
         ),
         "\n".join(lines),
-        (
-            "규칙:\n"
-            "- 파일을 수정하기 전에 반드시 현재 내용을 읽어라 (읽기-수정-쓰기).\n"
-            "- 파일이 없으면 스키마에 맞는 초기 객체로 생성하라.\n"
-            "- 스키마의 required 필드는 항상 채워라."
-        ),
+        rule_lines,
     ]
 
 
@@ -920,7 +1014,7 @@ def compile_skill(
         if project is not None:
             blocks.extend(_tool_shelf_section(project))
         if project is not None and not local:
-            blocks.extend(_blackboard_section(project))
+            blocks.extend(_blackboard_section(project, skill))
 
     # 요구 환경(MCP 서버 자동 언급) — allowed_tools의 mcp__ 접두에서 추출.
     # project 유무와 무관(스킬 자체 config만 참조), "다음 단계" 단락 앞.
@@ -1087,7 +1181,7 @@ def compile_agent(agent: AgentDefinition, project=None) -> str:
 
     if project is not None:
         blocks.extend(_tool_shelf_section(project))
-        blocks.extend(_blackboard_section(project))
+        blocks.extend(_blackboard_section(project, agent))
 
     return _join_blocks(blocks)
 
@@ -1125,6 +1219,7 @@ def _describe_agent_fsm(agent: AgentDefinition) -> list[str]:
             head += f": 에이전트 '{state.name}'에 위임한다."
         else:
             head += "."
+        head += _describe_access(state)
         lines.append(head)
         is_choice = isinstance(state, ChoiceState)
         for t in sm.transitions:

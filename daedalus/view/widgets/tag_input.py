@@ -136,3 +136,23 @@ def get_tool_candidates() -> list[str]:
     if _TOOL_CANDIDATE_PROVIDER is not None:
         return list(_TOOL_CANDIDATE_PROVIDER())
     return []
+
+
+# 상태 접근 선언(reads/writes) TagInput의 후보 제공자 — app.py가 프로젝트 로드 시
+# 설정한다(WP-BB). 프로젝트 블랙보드의 "클래스" + "클래스.필드" 전체를 반환한다.
+# 호출 시점 스냅샷(생성 시 1회 조회) — 블랙보드 변경 시 실시간 갱신은 하지 않는다
+# (get_tool_candidates와 동일한 정책).
+_BLACKBOARD_CANDIDATE_PROVIDER: Callable[[], list[str]] | None = None
+
+
+def set_blackboard_candidate_provider(provider: Callable[[], list[str]] | None) -> None:
+    """reads/writes TagInput이 표시할 블랙보드 클래스/필드 후보 제공자를 등록한다."""
+    global _BLACKBOARD_CANDIDATE_PROVIDER
+    _BLACKBOARD_CANDIDATE_PROVIDER = provider
+
+
+def get_blackboard_candidates() -> list[str]:
+    """등록된 동적 제공자에서 블랙보드 클래스/필드 후보 목록을 가져온다 (없으면 빈 목록)."""
+    if _BLACKBOARD_CANDIDATE_PROVIDER is not None:
+        return list(_BLACKBOARD_CANDIDATE_PROVIDER())
+    return []

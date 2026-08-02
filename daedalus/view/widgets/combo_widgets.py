@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from PySide6.QtWidgets import QComboBox
 
+from daedalus.model.fsm.blackboard import CollectionType
+from daedalus.model.fsm.variable import FieldType
 from daedalus.model.plugin.enums import (
     AgentColor,
     AgentIsolation,
@@ -93,3 +95,21 @@ class AgentColorComboBox(QComboBox):
         super().__init__(parent)
         for c in AgentColor:
             self.addItem(c.value)
+
+
+class FieldTypeComboBox(QComboBox):
+    """블랙보드 필드 타입 콤보박스 — string/int/float/number/bool/list/json/any."""
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        for t in FieldType:
+            self.addItem(t.value, t)
+
+
+class CollectionTypeComboBox(QComboBox):
+    """블랙보드 필드 컬렉션 콤보박스 — none/list/set."""
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        for c in CollectionType:
+            self.addItem(c.value, c)

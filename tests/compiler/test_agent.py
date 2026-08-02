@@ -65,3 +65,20 @@ def test_agent_sections_emitted():
     text = compile_agent(agent)
     assert "# instruction" in text
     assert "Do agent work." in text
+
+
+def test_agent_fsm_shows_access_declarations():
+    """WP-BB Part D-1: 에이전트 내부 워크플로 서술에도 접근 선언이 붙는다."""
+    agent = make_agent()
+    work = next(s for s in agent.fsm.states if s.name == "work")
+    work.reads = ["TaskState"]
+    work.writes = ["ReviewFindings.files"]
+    text = compile_agent(agent)
+    assert "(읽기: `TaskState` / 쓰기: `ReviewFindings.files`)" in text
+
+
+def test_agent_fsm_no_access_declaration_no_suffix():
+    agent = make_agent()
+    text = compile_agent(agent)
+    assert "읽기:" not in text
+    assert "쓰기:" not in text

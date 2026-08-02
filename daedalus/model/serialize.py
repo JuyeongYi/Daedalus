@@ -365,6 +365,9 @@ def _ser_state_common(s: State) -> dict:
         "custom_events": {k: _ser_actions(v) for k, v in s.custom_events.items()},
         "inputs": [_ser_variable(v) for v in s.inputs],
         "outputs": [_ser_variable(v) for v in s.outputs],
+        # WP-BB — 상태 접근 선언 (블랙보드 "Class"/"Class.field" 문자열 참조).
+        "reads": list(s.reads),
+        "writes": list(s.writes),
     }
 
 
@@ -889,6 +892,9 @@ def _apply_state_common(s: State, d: dict) -> None:
     }
     s.inputs = [_deser_variable(v) for v in d.get("inputs", [])]
     s.outputs = [_deser_variable(v) for v in d.get("outputs", [])]
+    # WP-BB — 구버전 파일(키 부재) → 빈 리스트 (경고 없음).
+    s.reads = list(d.get("reads", []))
+    s.writes = list(d.get("writes", []))
 
 
 def _deser_state(d: dict, reg: _Registry, parent_bb: Blackboard | None) -> State:
