@@ -699,7 +699,9 @@ def _next_steps_section(component, project) -> list[str]:
 
 _PROGRESS_UPDATE_NOTE = (
     "전이 시 `state/__progress__.json`을 갱신하라 — 이 스킬을 `completed`에 추가하고 "
-    "`current`를 다음 대상으로, `note`에 인계 한 줄을 남겨라."
+    "`current`를 다음 대상으로, `note`에 인계 한 줄을, `updated`에 현재 시각(ISO8601)을 "
+    "남겨라. 에이전트에게 위임하는 전이는 두 번 갱신한다: 위임 직전 `current`를 에이전트 "
+    "이름으로, 위임 완료 후 후속 스킬 이름으로."
 )
 
 _TRANSFER_PROGRESS_NOTE = (
@@ -722,7 +724,8 @@ def _resume_preamble_section(project, skill_name: str) -> list[str]:
         "- `current`가 다른 스킬이면: 워크플로 위치가 그쪽이다 — 진행을 멈추고 사용자에게 확인하라.",
         (
             "- 파일이 없으면: "
-            f'`{{"plugin": "{plugin_name}", "current": "{skill_name}", "completed": [], ...}}`'
+            f'`{{"plugin": "{plugin_name}", "current": "{skill_name}", "completed": [], '
+            '"note": "", "updated": "<현재 시각 ISO8601>"}`'
             "로 생성하고 진행하라."
         ),
     ])
@@ -734,8 +737,9 @@ def _progress_terminal_section() -> list[str]:
     return [
         "## 작업 완료",
         (
-            "이 스킬이 워크플로의 마지막 단계다. 완료 시 `state/__progress__.json`의 "
-            '`current`를 `"done"`으로 바꾸고 `note`에 결과 요약을 남겨라.'
+            "이 스킬이 워크플로의 마지막 단계다. 완료 시 `state/__progress__.json`에서 "
+            "이 스킬을 `completed`에 추가하고 `current`를 `\"done\"`으로 바꾼 뒤, "
+            "`note`에 결과 요약을, `updated`에 현재 시각(ISO8601)을 남겨라."
         ),
     ]
 
@@ -872,9 +876,15 @@ def compile_skill(
     blocks: list[str] = [_frontmatter_block(fm_lines)]
 
     # 작업 재개 프리앰블(WP-RS) — 프론트매터 직후, 본문 앞. 프로젝트 그래프에
-    # 배치된 전역 ProceduralSkill에만 배출(미배치·로컬·다른 스킬 종류는 없음).
+    # 배치된 전역 Procedural/Declarative 스킬에 배출(미배치·로컬은 없음).
+    # Declarative 포함 이유: 배치되면 "다음 단계"를 받는데 갱신 규칙이 빠지면
+    # 그 노드에서 진행 사슬이 끊긴다 (리뷰 지적 ①).
     progress_placements: list = []
-    if project is not None and not local and isinstance(skill, ProceduralSkill):
+    if (
+        project is not None
+        and not local
+        and isinstance(skill, (ProceduralSkill, DeclarativeSkill))
+    ):
         progress_placements = _graph_placements(skill, project)
     if progress_placements:
         blocks.extend(_resume_preamble_section(project, skill.name))
@@ -884,8 +894,16 @@ def compile_skill(
     if body_block is not None:
         blocks.append(body_block)
 
-    # TransferSkill: 전이 도중 중단 대비 note (본문 끝, 로컬 스킬은 제외)
-    if isinstance(skill, TransferSkill) and not local:
+    # TransferSkill: 전이 도중 중단 대비 note (본문 끝, 로컬 스킬은 제외).
+    # 진행 파일을 만드는 배치 스킬이 하나도 없는 프로젝트에서는 고아 지시가
+    # 되므로 placement 존재를 게이트로 건다 (리뷰 지적 ②).
+    if (
+        isinstance(skill, TransferSkill)
+        and not local
+        and project is not None
+        and _graph_placements_any(project)
+    ):
+        blocks.append("## 진행 기록")
         blocks.append(_TRANSFER_PROGRESS_NOTE)
 
     # ProceduralSkill — FSM 절차 + 위임 + tool_shelf
@@ -910,16 +928,24 @@ def compile_skill(
 
     # 프로젝트 그래프 기반 "다음 단계" (버그 2) — 전역 스킬에 한함.
     # 로컬 스킬(에이전트 소유)은 프로젝트 그래프 placement 대상이 아니다.
-    # WP-RS: 배치된 ProceduralSkill이면 다음 단계 단락 끝에 진행 상태 갱신 규칙을
-    # 합류시키고, outgoing이 없는 터미널 배치면 "다음 단계" 대신 "작업 완료"를 배출한다.
+    # WP-RS: 배치 스킬이면 다음 단계 단락 끝에 진행 상태 갱신 규칙을 합류시키고,
+    # outgoing이 없는 터미널 배치면 "다음 단계" 대신 "작업 완료"를 배출한다.
+    # 터미널 판정은 "다음 단계 문구 생성 실패"가 아니라 **placement의 실제
+    # outgoing 전이 부재**다 — 타깃이 빈 상태(skill_ref=None)뿐이라 문구가 안
+    # 나와도 중간 스킬은 터미널이 아니다 (리뷰 차단 지적).
     if project is not None and not local:
         next_blocks = _next_steps_section(skill, project)
+        has_outgoing = any(
+            t.source is p
+            for p in progress_placements
+            for t in getattr(project.graph, "transitions", [])
+        )
         if next_blocks:
             if progress_placements:
                 next_blocks = list(next_blocks)
                 next_blocks[-1] = next_blocks[-1] + "\n\n" + _PROGRESS_UPDATE_NOTE
             blocks.extend(next_blocks)
-        elif progress_placements:
+        elif progress_placements and not has_outgoing:
             blocks.extend(_progress_terminal_section())
 
     return _join_blocks(blocks)
@@ -1232,12 +1258,14 @@ def compile_hooks_json(project) -> str | None:
 def _graph_placements_any(project) -> bool:
     """프로젝트 그래프에 EntryPoint 외 노드(placement)가 하나라도 있으면 True.
 
-    Validator._graph_has_placements와 동일한 판정(빈 그래프는 placement 없음).
+    판정의 단일 진실은 Validator._graph_has_placements — 복붙 드리프트 방지를
+    위해 위임한다 (리뷰 지적 ⑦).
     """
     graph = getattr(project, "graph", None)
     if graph is None:
         return False
-    return any(not isinstance(s, EntryPoint) for s in graph.states)
+    from daedalus.model.validation import Validator
+    return Validator._graph_has_placements(graph)
 
 
 # ─────────────────────────── schemas.json (블랙보드) ───────────────────────────

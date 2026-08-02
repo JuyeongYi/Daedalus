@@ -128,21 +128,34 @@ def test_local_skill_no_resume_sections():
 
 
 def test_transfer_skill_has_progress_note():
+    # 진행 파일을 만드는 배치 스킬이 있는 프로젝트에서만 note 배출 (고아 지시 방지)
+    project, _, _ = _placed_pair()
     edge = make_transfer("edge-skill")
-    text = compile_skill(edge)
+    text = compile_skill(edge, project=project)
+    assert "## 진행 기록" in text
     assert "state/__progress__.json" in text
     assert "전이 맥락을 기록하라" in text
 
 
 def test_local_transfer_skill_no_progress_note():
+    project, _, _ = _placed_pair()
     edge = make_transfer("edge-skill")
-    text = compile_skill(edge, local=True)
+    text = compile_skill(edge, local=True, project=project)
     assert "전이 맥락을 기록하라" not in text
 
 
-def test_transfer_skill_note_after_body():
+def test_transfer_skill_note_requires_placements():
+    """placement 0개 프로젝트/프로젝트 없음 → note 미배출 (리뷰 지적 ②)."""
     edge = make_transfer("edge-skill")
-    text = compile_skill(edge)
+    assert "전이 맥락을 기록하라" not in compile_skill(edge)
+    empty = PluginProject(name="p", skills=[edge])
+    assert "전이 맥락을 기록하라" not in compile_skill(edge, project=empty)
+
+
+def test_transfer_skill_note_after_body():
+    project, _, _ = _placed_pair()
+    edge = make_transfer("edge-skill")
+    text = compile_skill(edge, project=project)
     body_idx = text.index("Run on edge.")
     note_idx = text.index("전이 맥락을 기록하라")
     assert body_idx < note_idx
@@ -257,3 +270,58 @@ def test_compile_skill_deterministic_across_calls():
     text1 = compile_skill(a, project=project)
     text2 = compile_skill(a, project=project)
     assert text1 == text2
+
+
+# ── 리뷰 반영 회귀 (차단 결함 + 사소 지적 잠금) ──
+
+
+def test_middle_skill_with_unrenderable_next_is_not_terminal():
+    """outgoing 타깃이 빈 상태(skill_ref=None)뿐이어도 중간 스킬은 터미널이 아니다.
+
+    리뷰 차단 결함: 터미널 판정이 '다음 단계 문구 생성 실패'로 구현되면 이 경우
+    "작업 완료"를 오배출해 워크플로 중간에서 current="done"을 쓰게 만든다.
+    """
+    a = make_procedural(name="a")
+    b = make_procedural(name="b")
+    project = PluginProject(name="p", skills=[a, b])
+    sa = SimpleState(name="a", skill_ref=a)
+    mid = SimpleState(name="State_1")  # 캔버스 "빈 상태 추가" 경로
+    sb = SimpleState(name="b", skill_ref=b)
+    project.graph.states += [sa, mid, sb]
+    project.graph.transitions += [
+        Transition(source=sa, target=mid, trigger=CompletionEvent(name="done")),
+        Transition(source=mid, target=sb, trigger=CompletionEvent(name="done")),
+    ]
+    text = compile_skill(a, project=project)
+    assert "## 작업 완료" not in text
+
+
+def test_placed_declarative_gets_progress_sections():
+    """배치된 DeclarativeSkill도 프리앰블+갱신 규칙을 받는다 (진행 사슬 단절 방지)."""
+    d = make_declarative(name="know")
+    b = make_procedural(name="b")
+    project = PluginProject(name="p", skills=[d, b])
+    sd = SimpleState(name="know", skill_ref=d)
+    sb = SimpleState(name="b", skill_ref=b)
+    project.graph.states += [sd, sb]
+    project.graph.transitions.append(
+        Transition(source=sd, target=sb, trigger=CompletionEvent(name="done"))
+    )
+    text = compile_skill(d, project=project)
+    assert "## 작업 재개" in text
+    assert "`completed`에 추가하고" in text
+
+
+def test_update_rule_mentions_two_phase_agent_update():
+    """에이전트 경유 전이의 2단 갱신(위임 직전/완료 후) 문구 (리뷰 지적 ③)."""
+    project, a, _ = _placed_pair()
+    text = compile_skill(a, project=project)
+    assert "두 번 갱신" in text
+
+
+def test_terminal_section_adds_self_to_completed():
+    """터미널 완료 단락도 자신을 completed에 추가한다 (리뷰 지적 ⑤)."""
+    project, c = _placed_terminal()
+    text = compile_skill(c, project=project)
+    assert "## 작업 완료" in text
+    assert "`completed`에 추가" in text
