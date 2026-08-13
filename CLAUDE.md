@@ -94,7 +94,8 @@ daedalus/
     │                       #   WaypointHandleItem)의 공통 수명주기. 서브클래스는 mousePressEvent에서 begin_drag(), mouseReleaseEvent에서
     │                       #   end_drag()를 호출하고 vm_position()/make_move_command()를 구현한다(ABC 아님 — Qt 메타클래스와 충돌.
     │                       #   믹스인을 QGraphicsItem 앞에 둔다). 상세는 "캔버스 드래그 이동" 항목 참조.
-    ├── commands/           # Undo/Redo 커맨드 (state, transition — Add/Move/Remove/ClearWaypointsCmd(WP-ER) 포함, section, exit_point)
+    ├── commands/           # Undo/Redo 커맨드 (state, transition — Add/Move/Remove/ClearWaypointsCmd(WP-ER) 포함, section, exit_point,
+    │                       #   component — Create/RenameComponentCmd(WP-CE 1차). 삭제는 remove_component의 정리 범위가 넓어 미커맨드화)
     ├── editors/            # 속성 편집기 (skill, agent, delegation, hook, body, body_documents, component, variable_loader, catalogue_loader, field_widgets, project_properties, blackboard_editor)
     │                       # catalogue_loader: 도구/MCP 카탈로그 로더(WP-TM) — ~/.daedalus/catalogue/*.json(글로벌) + <프로젝트>/.daedalus/catalogue/*.json(프로젝트, 이름 충돌 시 우선)
     │                       #   병합. 파일 1개=항목 1개(CatalogueEntry: name=파일명 stem, description, tools="tool" 키, mcp="mcp" 키). expanded_mcp()가 mcp 항목을
@@ -386,15 +387,19 @@ daedalus/
 - **도구 래핑:** `service._wrap`이 `functools.wraps`로 감싸므로 원본 시그니처·타입힌트·docstring이
   보존되고 SDK가 그로부터 입력 스키마를 만든다. 래퍼를 `(**kwargs)`로만 노출하면 **도구에 인자가
   없는 것으로 보여 CC가 값을 넘길 방법이 사라진다**(`test_tool_schema_exposes_arguments`가 고정).
-- **편집은 전부 CommandStack 경유**(`place_component`/`create_state`/`move_state`/`rename_state`/
-  `delete_state`/`connect_states`/`disconnect_states`/`undo`/`redo`) — 사용자가 Ctrl+Z로 되돌릴 수
-  있다. `delete_state`는 연결 전이까지 `MacroCommand`로 묶어 1 undo 단위. **본문(`set_component_body`)만
-  예외적으로 컴포넌트의 QTextDocument에 적용**하는데, 우회가 아니라 본문 전용 undo 스택(WP-BU)에
-  정확히 올리는 경로다.
-- **아직 노출하지 않은 편집:** 프론트매터·블랙보드·훅·프로젝트 속성 등 폼 편집은 **현재 커맨드를
-  거치지 않고 모델에 직접 쓰므로**(커맨드화된 편집은 캔버스 구조 25종뿐) 도구 표면에 넣지 않았다.
-  WP-CE에서 커맨드화한 뒤 `TOOL_NAMES`에 합류시킨다 — 그 시점부터는 커맨드를 만들기만 하면
-  자동으로 AI에 노출된다.
+- **편집은 전부 CommandStack 경유**(`create_skill`/`create_agent`/`rename_component`/
+  `place_component`/`create_state`/`move_state`/`rename_state`/`delete_state`/`connect_states`/
+  `disconnect_states`/`undo`/`redo`) — 사용자가 Ctrl+Z로 되돌릴 수 있다. `delete_state`는 연결
+  전이까지 `MacroCommand`로 묶어 1 undo 단위. **본문(`set_component_body`)만 예외적으로 컴포넌트의
+  QTextDocument에 적용**하는데, 우회가 아니라 본문 전용 undo 스택(WP-BU)에 정확히 올리는 경로다.
+- **`set_component_description`은 아직 undo되지 않는다** — 프론트매터 편집 전반이 WP-CE에서
+  커맨드화될 때 함께 옮겨간다. 도구 docstring에 그 사실을 적어 두었다.
+- **아직 노출하지 않은 편집:** 블랙보드·훅·프로젝트 속성·나머지 프론트매터 필드는 **현재 커맨드를
+  거치지 않고 모델에 직접 쓰므로** 도구 표면에 넣지 않았다. WP-CE에서 커맨드화한 뒤 `TOOL_NAMES`에
+  합류시킨다 — 그 시점부터는 커맨드를 만들기만 하면 자동으로 AI에 노출된다.
+- **컴포넌트 삭제는 의도적으로 빠져 있다:** `remove_component`가 그래프 placement·skill_ref
+  None화·위임 참조·graph_layout·edge_layout까지 훑어 정리하므로, 되돌리려면 그 정리 내역 전부를
+  기록·복원해야 한다. 부분 복원 커맨드는 없느니만 못하므로 WP-CE 본편으로 미뤘다(GUI 삭제는 종전대로 동작).
 - **연결 방법:** 도구 메뉴 → "MCP 서버 정보..."가 접속 주소와 `.mcp.json` 스니펫
   (`{"mcpServers": {"daedalus": {"type": "http", "url": "http://127.0.0.1:8787/mcp"}}}`)을 보여준다.
 

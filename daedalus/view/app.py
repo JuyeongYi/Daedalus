@@ -650,11 +650,14 @@ class MainWindow(QMainWindow):
             component.name = old_name  # type: ignore[union-attr]
             return
 
-        from daedalus.model.project import rename_component
         # component.name은 _save_name에서 renamed 발화 전에 아직 old_name임.
-        # rename_component가 old_name → new_name으로 변경 + 참조 갱신을 수행한다.
-        rename_component(self._project, component, new_name)
-        self._project_vm.notify()
+        # RenameComponentCmd가 old_name → new_name 변경 + 참조 갱신을 수행하고,
+        # undo 시 같은 함수를 옛 이름으로 불러 대칭으로 되돌린다 (WP-CE).
+        from daedalus.view.commands.component_commands import RenameComponentCmd
+
+        self._project_vm.execute(
+            RenameComponentCmd(self._project, component, old_name, new_name)
+        )
 
     # --- 컴포넌트 삭제 ---
 
@@ -841,20 +844,15 @@ class MainWindow(QMainWindow):
         )
 
     def _register_component(self, component: object) -> None:
-        from daedalus.model.plugin.delegation import DelegationDef
+        """컴포넌트를 프로젝트에 등록한다 (WP-CE — 커맨드 경유라 Ctrl+Z로 되돌아간다).
+
+        리스트 추가와 블랙보드 스코핑 배선은 CreateComponentCmd가 전담한다.
+        """
         if self._project is None:
             return
-        if isinstance(component, AgentDefinition):
-            self._project.agents.append(component)
-        elif isinstance(component, DelegationDef):
-            self._project.delegations.append(component)
-        else:
-            self._project.skills.append(component)
-        # 블랙보드 스코핑 배선 — 새로 생성한 컴포넌트의 FSM 블랙보드를 프로젝트
-        # 블랙보드의 자식으로 연결한다 (생성 경로의 책임, 마이그레이션 없음).
-        fsm = getattr(component, "fsm", None)
-        if fsm is not None and fsm.blackboard.parent is None:
-            fsm.blackboard.parent = self._project.blackboard
+        from daedalus.view.commands.component_commands import CreateComponentCmd
+
+        self._project_vm.execute(CreateComponentCmd(self._project, component))
         self._registry_panel.set_project(self._project)
 
     _COMPONENT_TITLES = {

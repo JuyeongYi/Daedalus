@@ -161,6 +161,83 @@ def test_set_component_body_updates_model_and_document(tools, window):
     assert window._project_vm.command_stack.can_undo is False
 
 
+# --- 컴포넌트 생성/이름변경 (WP-CE 1차) ---
+
+
+@pytest.mark.parametrize(
+    "kind,expected",
+    [
+        ("procedural", "procedural_skill"),
+        ("declarative", "declarative_skill"),
+        ("transfer", "transfer_skill"),
+        ("reference", "reference_skill"),
+    ],
+)
+def test_create_skill_each_kind(tools, window, kind, expected):
+    tools.create_skill(f"s-{kind}", kind=kind)
+    comp = next(s for s in window._project.skills if s.name == f"s-{kind}")
+    assert comp.kind == expected
+
+
+def test_create_skill_is_undoable(tools, window):
+    tools.create_skill("temp", kind="declarative")
+    assert any(s.name == "temp" for s in window._project.skills)
+
+    tools.undo()
+    assert not any(s.name == "temp" for s in window._project.skills)
+
+
+def test_created_procedural_skill_gets_blackboard_parent(tools, window):
+    """생성 경로가 블랙보드 스코핑을 배선해야 한다."""
+    tools.create_skill("with-fsm", kind="procedural")
+    comp = next(s for s in window._project.skills if s.name == "with-fsm")
+    assert comp.fsm.blackboard.parent is window._project.blackboard
+
+
+def test_create_agent_has_entry_and_exit(tools, window):
+    tools.create_agent("worker", description="작업자")
+    agent = next(a for a in window._project.agents if a.name == "worker")
+    names = {s.name for s in agent.fsm.states}
+    assert "entry" in names and "done" in names
+
+    tools.undo()
+    assert not any(a.name == "worker" for a in window._project.agents)
+
+
+def test_create_skill_rejects_duplicate_name(tools):
+    with pytest.raises(ValueError, match="이미"):
+        tools.create_skill("init", kind="declarative")
+
+
+def test_create_skill_rejects_unknown_kind(tools):
+    with pytest.raises(ValueError, match="알 수 없는"):
+        tools.create_skill("x", kind="nonsense")
+
+
+def test_rename_component_updates_references_and_undoes(tools, window):
+    """문자열 참조까지 대칭으로 되돌아와야 한다."""
+    agent_skill = next(s for s in window._project.skills if s.name == "init")
+    tools.create_agent("helper")
+    agent_skill.config.agent = "helper"
+
+    tools.rename_component("helper", "assistant")
+    assert agent_skill.config.agent == "assistant"
+
+    tools.undo()
+    assert agent_skill.config.agent == "helper"
+
+
+def test_rename_to_existing_name_rejected(tools):
+    with pytest.raises(ValueError, match="이미"):
+        tools.rename_component("init", "rules")
+
+
+def test_set_component_description(tools, window):
+    tools.set_component_description("rules", "새 설명")
+    comp = next(s for s in window._project.skills if s.name == "rules")
+    assert comp.description == "새 설명"
+
+
 # --- 이력 ---
 
 

@@ -260,6 +260,78 @@ class DaedalusTools:
     # 편집 도구 (CommandStack 경유 — 사용자가 Ctrl+Z로 되돌릴 수 있다)
     # ------------------------------------------------------------------
 
+    def _reject_duplicate_name(self, name: str) -> None:
+        if any(getattr(c, "name", None) == name for c in self._components()):
+            raise ValueError(f"'{name}' 이름의 컴포넌트가 이미 있습니다.")
+
+    def create_skill(
+        self, name: str, kind: str = "procedural", description: str = ""
+    ) -> dict[str, Any]:
+        """스킬을 만든다.
+
+        kind: procedural(작업 지침·자체 FSM) / declarative(배경 지식) /
+        transfer(전이 시 실행되는 보조 지침) / reference(참조 문서).
+        """
+        from daedalus.model.plugin.skill import (
+            DeclarativeSkill,
+            ProceduralSkill,
+            ReferenceSkill,
+            TransferSkill,
+        )
+
+        self._reject_duplicate_name(name)
+        win = self._window
+        factories = {
+            "procedural": lambda: ProceduralSkill(
+                fsm=win._make_fsm(name), name=name, description=description
+            ),
+            "declarative": lambda: DeclarativeSkill(name=name, description=description),
+            "transfer": lambda: TransferSkill(
+                fsm=win._make_fsm(name), name=name, description=description
+            ),
+            "reference": lambda: ReferenceSkill(name=name, description=description),
+        }
+        if kind not in factories:
+            raise ValueError(
+                f"알 수 없는 스킬 종류 '{kind}'. 사용 가능: {', '.join(factories)}"
+            )
+        win._register_component(factories[kind]())
+        return {"created": name, "kind": kind}
+
+    def create_agent(self, name: str, description: str = "") -> dict[str, Any]:
+        """에이전트를 만든다 — 별도 컨텍스트의 상태 기계(EntryPoint/ExitPoint 포함)."""
+        from daedalus.model.plugin.agent import AgentDefinition
+
+        self._reject_duplicate_name(name)
+        win = self._window
+        agent = AgentDefinition(
+            fsm=win._make_agent_fsm(name), name=name, description=description
+        )
+        win._register_component(agent)
+        return {"created": name, "kind": "agent"}
+
+    def rename_component(self, name: str, new_name: str) -> dict[str, Any]:
+        """컴포넌트 이름을 바꾼다 — 문자열 참조도 함께 갱신된다."""
+        from daedalus.view.commands.component_commands import RenameComponentCmd
+
+        comp = self._find_component(name)
+        self._reject_duplicate_name(new_name)
+        self._vm.execute(RenameComponentCmd(self._project, comp, name, new_name))
+        self._window._registry_panel.set_project(self._project)
+        return {"renamed": name, "to": new_name}
+
+    def set_component_description(self, name: str, description: str) -> dict[str, Any]:
+        """컴포넌트 설명을 바꾼다.
+
+        아직 커맨드가 아니다 — 프론트매터 편집 전반이 WP-CE에서 커맨드화될 때
+        함께 옮겨간다. 그때까지 이 편집만은 Ctrl+Z로 되돌아가지 않는다.
+        """
+        comp = self._find_component(name)
+        old = getattr(comp, "description", "")
+        comp.description = description
+        self._vm.notify()
+        return {"component": name, "old": old, "new": description}
+
     def place_component(self, name: str, x: float = 0.0, y: float = 0.0) -> dict[str, Any]:
         """스킬/에이전트를 프로젝트 캔버스에 배치한다."""
         from daedalus.model.fsm.state import SimpleState

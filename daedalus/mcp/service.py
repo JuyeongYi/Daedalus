@@ -26,7 +26,11 @@ TOOL_NAMES = (
     "get_history",
     "validate_project",
     "compile_preview",
-    # 편집 — 전부 undo 가능
+    # 편집 — 전부 undo 가능 (set_component_description만 예외, WP-CE 대기)
+    "create_skill",
+    "create_agent",
+    "rename_component",
+    "set_component_description",
     "place_component",
     "create_state",
     "move_state",
