@@ -110,7 +110,7 @@ def test_wrapped_tool_preserves_signature(service):
     """
     wrapped = service._wrap(service._tools.move_state)
     params = inspect.signature(wrapped).parameters
-    assert list(params) == ["name", "x", "y"]
+    assert list(params) == ["name", "x", "y", "agent"]
 
 
 def test_wrapped_tool_docstring_survives(service):

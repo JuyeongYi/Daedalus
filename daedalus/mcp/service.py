@@ -29,6 +29,7 @@ TOOL_NAMES = (
     # 편집 — 전부 undo 가능 (set_component_description만 예외, WP-CE 대기)
     "create_skill",
     "create_agent",
+    "add_agent_call",
     "rename_component",
     "set_component_description",
     "place_component",

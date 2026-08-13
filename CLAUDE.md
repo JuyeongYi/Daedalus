@@ -404,6 +404,20 @@ daedalus/
   `set_transition`은 None=건드리지 않음, ""=지움 규약이다.
 - **블랙보드(WP-CE):** `create_blackboard_class`(스칼라 4종 + collection none/list/set 검증)/
   `set_state_access`(노드의 reads/writes 선언 → 캔버스 뱃지 + 컴파일 산출 구체화).
+- **에이전트 호출은 캔버스와 같은 규칙을 강제한다(WP-CE).** 초기 구현은 스킬→에이전트를 그냥
+  직결시켰는데, 캔버스는 그걸 **막는다**(`FsmScene`: 에이전트 노드 입력은 call_agent 포트에서만,
+  call_agent 포트는 에이전트로만). 같은 조작인데 경로에 따라 결과가 달라지면 협업 도구로 실격이라
+  `connect_states`가 동일 규칙을 검사하고, 연결 시 callee의 `caller_contracts`에 계약 카드
+  (`caller: <스킬> (<포트>)`)를 `MacroCommand`로 함께 만든다. 포트는 `add_agent_call(skill, event)`로
+  먼저 만든다. **제목 규약은 `FsmScene._callee_section_title`과 반드시 같아야 한다** — 어긋나면
+  같은 연결에 계약 카드가 둘 생긴다.
+- **에이전트 내부 FSM 편집(WP-CE):** 편집 도구는 `agent: str = ""` 인자를 받는다. 비면 프로젝트
+  캔버스, 이름을 주면 그 에이전트의 내부 FSM이다(`_scope`가 (뷰모델, 백킹 FSM)을 고른다).
+  **에이전트 편집기가 닫혀 있으면 탭을 연다** — 커맨드가 `AgentEditor._graph_vm`(별도 뷰모델·별도
+  CommandStack)을 다루므로 에디터가 살아 있어야 화면에 반영된다. AI가 만지는 순간 사용자 화면에도
+  그 탭이 열리는데, 무엇이 바뀌는지 보이므로 협업 관점에서 바람직하다.
+  `create_skill(..., agent=...)`은 로컬 스킬을 만든다(procedural/transfer만, 블랙보드 parent는
+  소유 에이전트 FSM). `_find_component(name, agent=...)`가 로컬 스킬을 우선 조회한다.
 - **아직 노출하지 않은 편집:** 훅 라이브러리·프로젝트 속성·나머지 프론트매터 필드는 **현재 커맨드를
   거치지 않고 모델에 직접 쓰므로** 도구 표면에 넣지 않았다. WP-CE 본편에서 커맨드화한 뒤 `TOOL_NAMES`에
   합류시킨다 — 그 시점부터는 커맨드를 만들기만 하면 자동으로 AI에 노출된다.

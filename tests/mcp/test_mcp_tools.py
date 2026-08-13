@@ -369,6 +369,115 @@ def test_set_state_access_declares_reads_writes(tools, window):
     assert state.reads == [] and state.writes == []
 
 
+# --- 에이전트 호출 규칙 (캔버스와 동일해야 한다) ---
+
+
+@pytest.fixture
+def with_agent(tools, window):
+    """init(procedural) 배치 + worker(agent) 배치."""
+    tools.create_agent("worker")
+    tools.place_component("init", x=0, y=0)
+    tools.place_component("worker", x=200, y=0)
+    return window
+
+
+def test_agent_connection_requires_call_port(tools, with_agent):
+    """에이전트 노드로 그냥 직결하면 거부돼야 한다 — 캔버스가 막는 것과 같은 규칙."""
+    with pytest.raises(ValueError, match="호출 포트 이름이 필요"):
+        tools.connect_states("init", "worker")
+
+
+def test_agent_connection_rejects_undeclared_port(tools, with_agent):
+    with pytest.raises(ValueError, match="호출 포트가 없습니다"):
+        tools.connect_states("init", "worker", trigger="nope")
+
+
+def test_add_agent_call_then_connect_creates_contract(tools, with_agent):
+    """포트를 만든 뒤 연결하면 callee의 caller_contracts에 계약 카드가 생긴다."""
+    tools.add_agent_call("init", "delegate", description="작업 위임")
+    result = tools.connect_states("init", "worker", trigger="delegate")
+    assert result["agent_call"] is True
+
+    agent = next(a for a in with_agent._project.agents if a.name == "worker")
+    titles = [s.title for s in agent.caller_contracts]
+    assert "caller: init (delegate)" in titles
+
+    # 전이와 계약 카드가 한 undo 단위로 함께 사라져야 한다
+    tools.undo()
+    assert with_agent._project_vm.transition_vms == []
+    assert agent.caller_contracts == []
+
+
+def test_call_port_cannot_target_non_agent(tools, with_agent):
+    """call_agent 포트는 에이전트로만 나갈 수 있다."""
+    tools.add_agent_call("init", "delegate")
+    tools.place_component("rules", x=400, y=0)
+    with pytest.raises(ValueError, match="에이전트가 아닌"):
+        tools.connect_states("init", "rules", trigger="delegate")
+
+
+def test_add_agent_call_rejects_non_procedural(tools):
+    with pytest.raises(ValueError, match="ProceduralSkill이 아닙니다"):
+        tools.add_agent_call("rules", "x")
+
+
+def test_add_agent_call_is_undoable(tools, window):
+    tools.add_agent_call("init", "delegate")
+    comp = next(s for s in window._project.skills if s.name == "init")
+    assert [e.name for e in comp.call_agents] == ["delegate"]
+    tools.undo()
+    assert comp.call_agents == []
+
+
+# --- 에이전트 내부 FSM 편집 ---
+
+
+def test_edit_inside_agent_fsm(tools, window):
+    """agent 인자로 편집 범위가 에이전트 내부 FSM으로 바뀐다."""
+    tools.create_agent("worker")
+    tools.create_state("step-a", x=10, y=20, agent="worker")
+
+    agent = next(a for a in window._project.agents if a.name == "worker")
+    assert any(s.name == "step-a" for s in agent.fsm.states)
+    # 프로젝트 캔버스는 건드리지 않는다
+    assert window._project_vm.get_state_vm("step-a") is None
+
+
+def test_connect_inside_agent_fsm(tools, window):
+    tools.create_agent("worker")
+    tools.create_state("a", agent="worker")
+    tools.create_state("b", agent="worker")
+    tools.connect_states("a", "b", agent="worker")
+
+    agent = next(a for a in window._project.agents if a.name == "worker")
+    assert any(
+        t.source.name == "a" and t.target.name == "b" for t in agent.fsm.transitions
+    )
+
+
+def test_create_local_skill(tools, window):
+    tools.create_agent("worker")
+    tools.create_skill("inner", kind="procedural", agent="worker")
+
+    agent = next(a for a in window._project.agents if a.name == "worker")
+    assert [s.name for s in agent.skills] == ["inner"]
+    # 로컬 스킬은 전역 목록에 없다
+    assert not any(s.name == "inner" for s in window._project.skills)
+    # 블랙보드는 소유 에이전트 FSM의 자식으로 스코핑된다
+    assert agent.skills[0].fsm.blackboard.parent is agent.fsm.blackboard
+
+
+def test_local_skill_rejects_declarative(tools, window):
+    tools.create_agent("worker")
+    with pytest.raises(ValueError, match="procedural / transfer"):
+        tools.create_skill("x", kind="declarative", agent="worker")
+
+
+def test_scope_rejects_non_agent(tools):
+    with pytest.raises(ValueError, match="에이전트가 아닙니다"):
+        tools.create_state("x", agent="rules")
+
+
 # --- 이력 ---
 
 
