@@ -111,6 +111,9 @@ def main() -> None:
 
     window = MainWindow()
     window.set_project(_demo_project())
+    # 앱이 켜지면 CC와 협업할 MCP 서버도 함께 뜬다 (WP-MCP). MainWindow.__init__이
+    # 아니라 여기서 시작하는 이유는 테스트가 MainWindow를 다수 생성하기 때문이다.
+    window.start_mcp_service()
     window.show()
 
     sys.exit(app.exec())

@@ -62,6 +62,11 @@ daedalus/
 │   └── project_compiler.py # compile_project(project, out_dir, files_dir=None) → CompileResult (검증 게이트 + 파일 쓰기)
 │                           # files_dir(WP-FR, 선택): 실존 디렉토리면 <out>/files/ 정렬 순회 복사(_copy_files_tree, 심볼릭 링크 미추종) +
 │                           #   dangling_file_ref 스캔(_scan_dangling_file_refs). 생략 시 기존 산출 완전 불변(하위 호환).
+├── mcp/              # 앱 내장 MCP 서버 (WP-MCP) — CC와 협업하는 창구
+│   ├── endpoint.py         # 접속 정보(~/.daedalus/mcp-endpoint.json) + 포트 탐색 + .mcp.json 스니펫 (Qt 무관 순수)
+│   ├── invoker.py          # MainThreadInvoker — uvicorn 워커 스레드 → Qt 메인 스레드 마샬링(시그널+Event, 타임아웃)
+│   ├── tools.py            # DaedalusTools — 도구 구현(읽기 6종 + 편집 10종). 메인 스레드 실행 전제
+│   └── service.py          # DaedalusMCPService — MCPServer 구성(_server_factory가 mcp 1.x/2.x 흡수) + uvicorn 데몬 스레드 수명주기
 └── view/             # PySide6 기반 노드 에디터
     ├── app.py              # 메인 윈도우 (Ctrl+N "새 프로젝트"(기본 이름 "new-plugin", 빌드 타깃 선택 다이얼로그 — WP-TG `_prompt_build_target`, 취소 시 생성 취소), F7 "프로젝트 검증", Ctrl+B "컴파일", 파일→"프로젝트 속성...", 도구→"훅 라이브러리...")
     │                       # 컴포넌트 이름 변경: _FrontmatterPanel.renamed → _on_component_renamed (중복 거부 + rename_component 호출 + 탭 타이틀 동기화)
@@ -355,6 +360,43 @@ daedalus/
 - **검증 함정:** 왕복 없이 undo만 확인하면 고장이 있어도 통과한다 — 반드시 **다른 컴포넌트로
   전환했다 복귀한 뒤** undo를 검증해야 한다(`tests/view/editors/test_body_documents.py`).
   타이핑 시뮬레이션도 `setPlainText`가 아니라 `QTextCursor.insertText`여야 한다(전자는 undo 스택을 지운다).
+
+### 앱 내장 MCP 서버 (WP-MCP)
+
+- **성격:** "CC가 쓰는 도구 모음"이 아니라 **사람이 GUI에서 작업하는 중에 CC가 같은 프로젝트를
+  함께 보고 함께 만지는 통로**다. 그래서 CC는 사용자의 현재 선택을 알 수 있고(`get_selection`),
+  CC의 편집은 사용자의 undo 스택에 들어가며, 스크립트 리스너에 사람 편집과 같은 형식으로 남는다.
+- **전송이 HTTP인 이유:** stdio는 **클라이언트가 서버 프로세스를 실행하는** 모델이라 이미 떠 있는
+  GUI에 나중에 붙을 수 없다. Streamable HTTP면 앱이 먼저 켜져 서버를 열어두고 CC가 원할 때
+  접속하는 순서가 그대로 성립한다. 바인딩은 항상 `127.0.0.1` — 로컬 전용이므로 TLS를 얹지 않는다.
+- **기동 지점:** `MainWindow.__init__`이 아니라 **`__main__.main`이 `window.start_mcp_service()`를
+  호출**한다. 테스트가 MainWindow를 수십 개 만들기 때문에 자동 기동하면 포트가 서로 충돌한다.
+  종료는 `MainWindow.closeEvent` → `service.stop()`.
+- **포트:** 기본 `8787`(`endpoint.DEFAULT_PORT`). 점유돼 있으면 위로 훑어 비어 있는 포트를 쓰고
+  실제 포트를 `~/.daedalus/mcp-endpoint.json`에 기록한다. `.mcp.json`은 정적 파일이라 고정 포트를
+  가리키므로, 여러 창을 띄우면 결과적으로 "먼저 켜진 인스턴스"가 협업 대상이 된다(의도된 동작).
+  저장 경로가 바뀌면 `_sync_files_root`가 접속 정보의 project 필드도 갱신한다(배선 지점 1개 유지).
+- **스레드:** uvicorn이 데몬 스레드에서 돌고, 도구 핸들러는 `MainThreadInvoker`(시그널 +
+  `threading.Event`)로 Qt 메인 스레드에 넘겨 실행한다. 위젯·뷰모델을 워커 스레드에서 만지면
+  Qt가 깨지기 때문. 모달 다이얼로그로 루프가 막히면 무한 대기 대신 `TimeoutError`(기본 15초).
+- **SDK 호환:** mcp 2.0에서 `FastMCP`가 `MCPServer`로 대체됐다. `service._server_factory()`가
+  import 성공 여부로 클래스를 고른다 — 두 클래스는 여기서 쓰는 표면(`name`/`instructions`
+  생성자 인자, `add_tool`, `streamable_http_app`)이 동일하다. **주의: `list_tools`는 1.x에서
+  코루틴, 2.x에서 동기 함수다**(테스트의 `_list_tools` 헬퍼가 흡수).
+- **도구 래핑:** `service._wrap`이 `functools.wraps`로 감싸므로 원본 시그니처·타입힌트·docstring이
+  보존되고 SDK가 그로부터 입력 스키마를 만든다. 래퍼를 `(**kwargs)`로만 노출하면 **도구에 인자가
+  없는 것으로 보여 CC가 값을 넘길 방법이 사라진다**(`test_tool_schema_exposes_arguments`가 고정).
+- **편집은 전부 CommandStack 경유**(`place_component`/`create_state`/`move_state`/`rename_state`/
+  `delete_state`/`connect_states`/`disconnect_states`/`undo`/`redo`) — 사용자가 Ctrl+Z로 되돌릴 수
+  있다. `delete_state`는 연결 전이까지 `MacroCommand`로 묶어 1 undo 단위. **본문(`set_component_body`)만
+  예외적으로 컴포넌트의 QTextDocument에 적용**하는데, 우회가 아니라 본문 전용 undo 스택(WP-BU)에
+  정확히 올리는 경로다.
+- **아직 노출하지 않은 편집:** 프론트매터·블랙보드·훅·프로젝트 속성 등 폼 편집은 **현재 커맨드를
+  거치지 않고 모델에 직접 쓰므로**(커맨드화된 편집은 캔버스 구조 25종뿐) 도구 표면에 넣지 않았다.
+  WP-CE에서 커맨드화한 뒤 `TOOL_NAMES`에 합류시킨다 — 그 시점부터는 커맨드를 만들기만 하면
+  자동으로 AI에 노출된다.
+- **연결 방법:** 도구 메뉴 → "MCP 서버 정보..."가 접속 주소와 `.mcp.json` 스니펫
+  (`{"mcpServers": {"daedalus": {"type": "http", "url": "http://127.0.0.1:8787/mcp"}}}`)을 보여준다.
 
 ### 안정 ID + 직렬화 (serialize.py)
 
