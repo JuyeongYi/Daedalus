@@ -241,6 +241,11 @@ class MainWindow(QMainWindow):
     # --- 프로젝트 ---
 
     def set_project(self, project: PluginProject) -> None:
+        # 본문 문서 캐시는 이전 프로젝트의 컴포넌트에 묶여 있다 — 프로젝트가
+        # 바뀌면 통째로 버린다 (WP-BU).
+        from daedalus.view.editors import body_documents
+        body_documents.registry().clear()
+
         self._project = project
         self._registry_panel.set_project(project)
         self._blackboard_panel.set_project(project)
@@ -700,6 +705,7 @@ class MainWindow(QMainWindow):
 
         # 에이전트 삭제 시 로컬 스킬 탭도 닫아야 함 — 미리 수집
         local_skill_ids: set[str] = set()
+        local_skills: list[object] = []
         if isinstance(component, AgentDefinition):
             fsm = getattr(component, "fsm", None)
             if fsm is not None:
@@ -709,6 +715,15 @@ class MainWindow(QMainWindow):
                         sid = getattr(state.skill_ref, "id", None)
                         if sid is not None:
                             local_skill_ids.add(sid)
+                            local_skills.append(state.skill_ref)
+
+        # 본문 문서 캐시 정리 — 삭제된 컴포넌트(+로컬 스킬)의 undo 이력을
+        # 들고 있을 이유가 없다 (WP-BU).
+        from daedalus.view.editors import body_documents
+        docs = body_documents.registry()
+        docs.discard(component)
+        for local in local_skills:
+            docs.discard(local)
 
         # 모델 정리
         remove_component(self._project, component)

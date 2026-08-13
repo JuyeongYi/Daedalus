@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from daedalus.view.editors import body_documents
 from daedalus.view.widgets.markdown_editor import (
     MarkdownEditor,
     MarkdownToolbar,
@@ -92,13 +93,20 @@ class SectionContentPanel(QWidget):
         return self._component
 
     def show_body(self, component: object) -> None:
-        """component.body를 에디터에 표시(blockSignals로 write-back 억제)."""
+        """컴포넌트의 본문 문서를 에디터에 붙인다 (WP-BU).
+
+        setPlainText로 내용만 갈아끼우면 그 문서의 undo 이력이 지워져, 다른
+        컴포넌트를 잠깐 열었다 돌아오면 본문 되돌리기가 불가능해진다. 대신
+        컴포넌트별 QTextDocument를 레지스트리에서 받아 통째로 교체하므로
+        본문마다 독립적인 undo 스택이 탭을 옮겨다녀도 유지된다.
+        """
         self._component = component
         self._md_toolbar.set_preview_checked(False)
         self._content_stack.setCurrentIndex(0)
         self._search_bar.close_bar()
+        doc = body_documents.registry().document_for(component)
         self._w_content.blockSignals(True)
-        self._w_content.setPlainText(getattr(component, "body", ""))
+        self._w_content.attach_document(doc)
         self._w_content.blockSignals(False)
         # TOC는 blockSignals로 억제된 textChanged를 못 받으므로 문서 전환 시 직접 갱신한다
         self._toc_panel.refresh()

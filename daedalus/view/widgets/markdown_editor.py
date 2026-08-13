@@ -542,8 +542,25 @@ class MarkdownEditor(QPlainTextEdit):
         )
         self.setTabChangesFocus(False)
         self._highlighter = MarkdownHighlighter(self.document(), _BASE_POINT_SIZE)
+        # 하이라이터의 부모를 에디터로 옮긴다 (WP-BU). QSyntaxHighlighter는 생성 시
+        # 넘긴 문서를 부모로 삼는데, attach_document가 문서를 교체하면 이전 문서가
+        # 파괴되면서 그 자식인 하이라이터까지 함께 삭제된다("Internal C++ object
+        # (MarkdownHighlighter) already deleted").
+        self._highlighter.setParent(self)
         self._slash_menu = _SlashMenu(self)
         self._slash_start: int | None = None
+
+    def attach_document(self, doc: QTextDocument) -> None:
+        """문서를 교체하고 하이라이터를 새 문서로 옮긴다 (WP-BU).
+
+        ``setDocument``만 호출하면 하이라이터는 이전 문서에 붙은 채로 남아
+        새 문서의 하이라이팅이 죽는다. ``setDocument``는 virtual이 아니라
+        오버라이드로는 Qt 내부 호출까지 잡을 수 없으므로 명시적 메서드로 둔다.
+        """
+        if doc is self.document():
+            return
+        self.setDocument(doc)
+        self._highlighter.setDocument(doc)
 
     # --- 키 입력 ---
 
