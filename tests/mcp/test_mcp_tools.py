@@ -238,6 +238,137 @@ def test_set_component_description(tools, window):
     assert comp.description == "새 설명"
 
 
+# --- 포트/전이 의미론 (WP-CE) ---
+
+
+def test_set_transfer_on_defines_output_ports(tools, window):
+    tools.set_transfer_on(
+        "init",
+        [{"name": "ok", "description": "성공"}, {"name": "fail", "color": "#ff4444"}],
+    )
+    comp = next(s for s in window._project.skills if s.name == "init")
+    assert [e.name for e in comp.transfer_on] == ["ok", "fail"]
+    assert comp.transfer_on[0].description == "성공"
+    assert comp.transfer_on[1].color == "#ff4444"
+
+    # ProceduralSkill의 기본 transfer_on은 [EventDef("done")] — undo는 그 기본값으로 돌아간다
+    tools.undo()
+    assert [e.name for e in comp.transfer_on] == ["done"]
+
+
+def test_set_transfer_on_accepts_bare_strings(tools, window):
+    tools.set_transfer_on("init", ["a", "b"])
+    comp = next(s for s in window._project.skills if s.name == "init")
+    assert [e.name for e in comp.transfer_on] == ["a", "b"]
+
+
+def test_set_entry_paths_defines_input_ports(tools, window):
+    tools.set_entry_paths("rules", [{"name": "from-init"}])
+    comp = next(s for s in window._project.skills if s.name == "rules")
+    assert [e.name for e in comp.entry_paths] == ["from-init"]
+
+
+def test_connect_states_with_trigger_and_guard(tools, window):
+    tools.create_state("a")
+    tools.create_state("b")
+    tools.connect_states("a", "b", trigger="gpu", guard="GPU 시간이 최대일 때")
+
+    tvm = window._project_vm.transition_vms[0]
+    assert tvm.model.trigger.name == "gpu"
+    assert tvm.model.guard.evaluation.prompt == "GPU 시간이 최대일 때"
+
+
+def test_set_transition_updates_existing_edge(tools, window):
+    tools.create_state("a")
+    tools.create_state("b")
+    tools.connect_states("a", "b")
+    tools.set_transition("a", "b", trigger="done", target_port="main")
+
+    trans = window._project_vm.transition_vms[0].model
+    assert trans.trigger.name == "done"
+    assert trans.target_port == "main"
+
+    # 한 undo로 두 속성이 함께 되돌아온다 (MacroCommand)
+    tools.undo()
+    assert trans.trigger is None
+    assert trans.target_port == ""
+
+
+def test_set_transition_none_leaves_untouched(tools, window):
+    tools.create_state("a")
+    tools.create_state("b")
+    tools.connect_states("a", "b", trigger="keep")
+    tools.set_transition("a", "b", target_port="p")
+
+    trans = window._project_vm.transition_vms[0].model
+    assert trans.trigger.name == "keep"  # None이었으므로 유지
+    assert trans.target_port == "p"
+
+
+def test_set_transition_empty_string_clears(tools, window):
+    tools.create_state("a")
+    tools.create_state("b")
+    tools.connect_states("a", "b", trigger="gone")
+    tools.set_transition("a", "b", trigger="")
+
+    assert window._project_vm.transition_vms[0].model.trigger is None
+
+
+# --- 블랙보드 ---
+
+
+def test_create_blackboard_class(tools, window):
+    tools.create_blackboard_class(
+        "PerfMeasurement",
+        description="측정치",
+        fields=[
+            {"name": "frame_ms", "type": "float", "required": True},
+            {"name": "draw_calls", "type": "int"},
+        ],
+    )
+    classes = window._project.blackboard.class_definitions
+    assert [c.name for c in classes] == ["PerfMeasurement"]
+    assert [f.name for f in classes[0].fields] == ["frame_ms", "draw_calls"]
+    assert classes[0].fields[0].required is True
+
+    tools.undo()
+    assert window._project.blackboard.class_definitions == []
+
+
+def test_create_blackboard_class_rejects_container_type(tools):
+    """블랙보드 필드는 스칼라 4종만 — 컨테이너는 collection이 전담한다."""
+    with pytest.raises(ValueError, match="쓸 수 없습니다"):
+        tools.create_blackboard_class("X", fields=[{"name": "f", "type": "list"}])
+
+
+def test_create_blackboard_class_accepts_collection(tools, window):
+    from daedalus.model.fsm.blackboard import CollectionType
+
+    tools.create_blackboard_class(
+        "X", fields=[{"name": "tags", "type": "string", "collection": "list"}]
+    )
+    cls = window._project.blackboard.class_definitions[0]
+    assert cls.fields[0].collection is CollectionType.LIST
+
+
+def test_create_blackboard_class_rejects_duplicate(tools):
+    tools.create_blackboard_class("Dup")
+    with pytest.raises(ValueError, match="이미"):
+        tools.create_blackboard_class("Dup")
+
+
+def test_set_state_access_declares_reads_writes(tools, window):
+    tools.create_state("n")
+    tools.set_state_access("n", reads=["PerfTarget"], writes=["PerfMeasurement.frame_ms"])
+
+    state = window._project_vm.get_state_vm("n").model
+    assert state.reads == ["PerfTarget"]
+    assert state.writes == ["PerfMeasurement.frame_ms"]
+
+    tools.undo()
+    assert state.reads == [] and state.writes == []
+
+
 # --- 이력 ---
 
 

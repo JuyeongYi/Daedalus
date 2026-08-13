@@ -389,8 +389,21 @@ class DaedalusTools:
         self._vm.execute(MacroCommand(children=children, description=f"상태 '{name}' 삭제"))
         return {"deleted": name, "removed_transitions": removed}
 
-    def connect_states(self, source: str, target: str) -> dict[str, Any]:
-        """두 노드를 전이로 잇는다."""
+    def connect_states(
+        self,
+        source: str,
+        target: str,
+        trigger: str = "",
+        guard: str = "",
+        target_port: str = "",
+    ) -> dict[str, Any]:
+        """두 노드를 전이로 잇는다.
+
+        trigger: 출발 스킬의 출력 이벤트(transfer_on) 이름. 분기가 여러 갈래일 때
+        이 값이 있어야 어느 경로인지 표현되고 캔버스 포트도 갈라진다.
+        guard: 전이 조건 서술(LLM이 판정할 자연어). 빈 값이면 가드 없음.
+        target_port: 도착 스킬의 입력 경로(entry_paths) 이름.
+        """
         from daedalus.model.fsm.transition import Transition
         from daedalus.view.commands.transition_commands import CreateTransitionCmd
         from daedalus.view.viewmodel.state_vm import TransitionViewModel
@@ -398,9 +411,275 @@ class DaedalusTools:
         src = self._find_state_vm(source)
         tgt = self._find_state_vm(target)
         trans = Transition(source=src.model, target=tgt.model)
+        if trigger:
+            trans.trigger = self._make_trigger(trigger)
+        if guard:
+            trans.guard = self._make_guard(guard)
+        if target_port:
+            trans.target_port = target_port
         tvm = TransitionViewModel(model=trans, source_vm=src, target_vm=tgt)
         self._vm.execute(CreateTransitionCmd(self._vm, tvm, fsm=self._project.graph))
-        return {"connected": [source, target]}
+        return {
+            "connected": [source, target],
+            "trigger": trigger or None,
+            "guard": guard or None,
+            "target_port": target_port or None,
+        }
+
+    @staticmethod
+    def _make_trigger(name: str):
+        from daedalus.model.fsm.event import CompletionEvent
+
+        return CompletionEvent(name=name)
+
+    @staticmethod
+    def _make_guard(condition: str):
+        from daedalus.model.fsm.guard import Guard
+        from daedalus.model.fsm.strategy import LLMEvaluation
+
+        return Guard(evaluation=LLMEvaluation(prompt=condition))
+
+    def _find_transition_vm(self, source: str, target: str) -> Any:
+        src = self._find_state_vm(source)
+        for tvm in self._vm.get_transitions_for(src):
+            if tvm.source_vm is src and tvm.target_vm.model.name == target:
+                return tvm
+        raise ValueError(f"'{source}' → '{target}' 전이가 없습니다.")
+
+    def set_transition(
+        self,
+        source: str,
+        target: str,
+        trigger: str | None = None,
+        guard: str | None = None,
+        target_port: str | None = None,
+    ) -> dict[str, Any]:
+        """이미 있는 전이에 트리거·가드·입력 포트를 설정한다.
+
+        None을 넘긴 항목은 건드리지 않는다. 빈 문자열("")을 넘기면 그 항목을 지운다.
+        """
+        from daedalus.view.commands.attr_commands import SetAttrCmd
+        from daedalus.view.commands.base import MacroCommand
+
+        tvm = self._find_transition_vm(source, target)
+        trans = tvm.model
+        cmds: list[Any] = []
+        if trigger is not None:
+            cmds.append(
+                SetAttrCmd(
+                    trans,
+                    "trigger",
+                    self._make_trigger(trigger) if trigger else None,
+                    label=f"전이 '{source}→{target}' 트리거: {trigger or '(없음)'}",
+                    script=f'set_transition("{source}", "{target}", trigger="{trigger}")',
+                )
+            )
+        if guard is not None:
+            cmds.append(
+                SetAttrCmd(
+                    trans,
+                    "guard",
+                    self._make_guard(guard) if guard else None,
+                    label=f"전이 '{source}→{target}' 가드 설정",
+                    script=f'set_transition("{source}", "{target}", guard="{guard}")',
+                )
+            )
+        if target_port is not None:
+            cmds.append(
+                SetAttrCmd(
+                    trans,
+                    "target_port",
+                    target_port,
+                    label=f"전이 '{source}→{target}' 입력 포트: {target_port or '(기본)'}",
+                    script=f'set_transition("{source}", "{target}", target_port="{target_port}")',
+                )
+            )
+        if not cmds:
+            return {"transition": [source, target], "changed": []}
+        self._vm.execute(
+            cmds[0]
+            if len(cmds) == 1
+            else MacroCommand(children=cmds, description=f"전이 '{source}→{target}' 설정")
+        )
+        return {
+            "transition": [source, target],
+            "trigger": trigger,
+            "guard": guard,
+            "target_port": target_port,
+        }
+
+    # --- 포트 (출력 이벤트 / 입력 경로) ---
+
+    @staticmethod
+    def _make_event_defs(events: list[dict[str, Any]]) -> list[Any]:
+        from daedalus.model.fsm.section import EventDef
+
+        out = []
+        for spec in events:
+            if isinstance(spec, str):
+                out.append(EventDef(name=spec))
+                continue
+            name = spec.get("name")
+            if not name:
+                raise ValueError("각 이벤트에는 name이 필요합니다.")
+            kwargs: dict[str, Any] = {"name": name}
+            if spec.get("description"):
+                kwargs["description"] = spec["description"]
+            if spec.get("color"):
+                kwargs["color"] = spec["color"]
+            out.append(EventDef(**kwargs))
+        return out
+
+    def set_transfer_on(self, name: str, events: list[dict[str, Any]]) -> dict[str, Any]:
+        """스킬/에이전트의 **출력 포트**를 정의한다.
+
+        events: [{"name": "gpu", "description": "GPU 병목", "color": "#ff8844"}, ...]
+        분기가 여러 갈래인 노드는 여기에 갈래를 선언해야 캔버스 포트가 갈라지고,
+        각 전이의 trigger로 어느 갈래인지 지정할 수 있다.
+        """
+        from daedalus.view.commands.attr_commands import SetAttrCmd
+
+        comp = self._find_component(name)
+        defs = self._make_event_defs(events)
+        self._vm.execute(
+            SetAttrCmd(
+                comp,
+                "transfer_on",
+                defs,
+                label=f"'{name}' 출력 포트 {len(defs)}개 설정",
+                script=f'set_transfer_on("{name}", {[d.name for d in defs]})',
+            )
+        )
+        return {"component": name, "transfer_on": [d.name for d in defs]}
+
+    def set_entry_paths(self, name: str, events: list[dict[str, Any]]) -> dict[str, Any]:
+        """스킬/에이전트의 **입력 포트**를 정의한다 (어떤 경로로 이 노드에 들어왔는지).
+
+        events 형식은 set_transfer_on과 같다. 전이 쪽에서는 target_port로 지목한다.
+        """
+        from daedalus.view.commands.attr_commands import SetAttrCmd
+
+        comp = self._find_component(name)
+        defs = self._make_event_defs(events)
+        self._vm.execute(
+            SetAttrCmd(
+                comp,
+                "entry_paths",
+                defs,
+                label=f"'{name}' 입력 경로 {len(defs)}개 설정",
+                script=f'set_entry_paths("{name}", {[d.name for d in defs]})',
+            )
+        )
+        return {"component": name, "entry_paths": [d.name for d in defs]}
+
+    # --- 블랙보드 ---
+
+    def create_blackboard_class(
+        self, name: str, description: str = "", fields: list[dict[str, Any]] | None = None
+    ) -> dict[str, Any]:
+        """프로젝트 블랙보드에 공유 상태 클래스를 만든다.
+
+        fields: [{"name": "frame_ms", "type": "float", "required": true,
+                  "collection": "none", "default": null}, ...]
+        타입은 string/int/float/bool 4종만 허용된다 — 컨테이너 형상은 collection
+        (none/list/set)이 전담한다("문자열 목록" = string × list).
+        """
+        from daedalus.model.fsm.blackboard import (
+            BLACKBOARD_FIELD_TYPES,
+            CollectionType,
+            DynamicClass,
+            DynamicField,
+        )
+        from daedalus.model.fsm.variable import FieldType
+        from daedalus.view.commands.attr_commands import AppendToListCmd
+
+        blackboard = self._project.blackboard
+        if any(c.name == name for c in blackboard.class_definitions):
+            raise ValueError(f"블랙보드에 '{name}' 클래스가 이미 있습니다.")
+
+        allowed = {t.value: t for t in BLACKBOARD_FIELD_TYPES}
+        built: list[Any] = []
+        for spec in fields or []:
+            fname = spec.get("name")
+            if not fname:
+                raise ValueError("각 필드에는 name이 필요합니다.")
+            raw_type = str(spec.get("type", "string")).lower()
+            if raw_type not in allowed:
+                raise ValueError(
+                    f"필드 '{fname}'의 타입 '{raw_type}'은 블랙보드에서 쓸 수 없습니다. "
+                    f"사용 가능: {', '.join(sorted(allowed))}"
+                )
+            raw_coll = str(spec.get("collection", "none")).lower()
+            try:
+                collection = CollectionType(raw_coll)
+            except ValueError:
+                raise ValueError(
+                    f"필드 '{fname}'의 collection '{raw_coll}'이 올바르지 않습니다. "
+                    "사용 가능: none, list, set"
+                ) from None
+            built.append(
+                DynamicField(
+                    name=fname,
+                    field_type=FieldType(allowed[raw_type].value),
+                    collection=collection,
+                    default=spec.get("default"),
+                    required=bool(spec.get("required", False)),
+                )
+            )
+
+        cls = DynamicClass(name=name, description=description, fields=built)
+        self._vm.execute(
+            AppendToListCmd(
+                blackboard.class_definitions,
+                cls,
+                label=f"블랙보드 클래스 '{name}' 생성",
+                script=f'create_blackboard_class("{name}", fields={[f.name for f in built]})',
+            )
+        )
+        self._window._blackboard_panel.set_project(self._project)
+        return {"created": name, "fields": [f.name for f in built]}
+
+    def set_state_access(
+        self, node: str, reads: list[str] | None = None, writes: list[str] | None = None
+    ) -> dict[str, Any]:
+        """캔버스 노드가 읽고 쓰는 블랙보드 경로를 선언한다.
+
+        "클래스" 또는 "클래스.필드" 문자열을 쓴다. 선언하면 캔버스에 📖/✏ 뱃지가
+        붙고, 컴파일된 SKILL.md의 절차·블랙보드 단락이 그 클래스로 좁혀진다.
+        """
+        from daedalus.view.commands.attr_commands import SetAttrCmd
+        from daedalus.view.commands.base import MacroCommand
+
+        svm = self._find_state_vm(node)
+        cmds: list[Any] = []
+        if reads is not None:
+            cmds.append(
+                SetAttrCmd(
+                    svm.model,
+                    "reads",
+                    list(reads),
+                    label=f"'{node}' 읽기 선언",
+                    script=f'set_state_access("{node}", reads={list(reads)})',
+                )
+            )
+        if writes is not None:
+            cmds.append(
+                SetAttrCmd(
+                    svm.model,
+                    "writes",
+                    list(writes),
+                    label=f"'{node}' 쓰기 선언",
+                    script=f'set_state_access("{node}", writes={list(writes)})',
+                )
+            )
+        if not cmds:
+            return {"node": node, "changed": []}
+        self._vm.execute(
+            cmds[0]
+            if len(cmds) == 1
+            else MacroCommand(children=cmds, description=f"'{node}' 블랙보드 접근 선언")
+        )
+        return {"node": node, "reads": reads, "writes": writes}
 
     def disconnect_states(self, source: str, target: str) -> dict[str, Any]:
         """두 노드 사이의 전이를 지운다."""

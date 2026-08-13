@@ -95,7 +95,10 @@ daedalus/
     │                       #   end_drag()를 호출하고 vm_position()/make_move_command()를 구현한다(ABC 아님 — Qt 메타클래스와 충돌.
     │                       #   믹스인을 QGraphicsItem 앞에 둔다). 상세는 "캔버스 드래그 이동" 항목 참조.
     ├── commands/           # Undo/Redo 커맨드 (state, transition — Add/Move/Remove/ClearWaypointsCmd(WP-ER) 포함, section, exit_point,
-    │                       #   component — Create/RenameComponentCmd(WP-CE 1차). 삭제는 remove_component의 정리 범위가 넓어 미커맨드화)
+    │                       #   component — Create/RenameComponentCmd(WP-CE 1차). 삭제는 remove_component의 정리 범위가 넓어 미커맨드화,
+    │                       #   attr — SetAttrCmd/AppendToListCmd/RemoveFromListCmd(WP-CE 범용 폼 편집. 편집마다 클래스를 만들지 않고
+    │                       #     "속성 하나 바꾸기"+"리스트 넣고 빼기" 둘로 환원한다. SetAttrCmd는 최초 execute에서만 old를 잡는다 —
+    │                       #     redo가 old를 덮으면 undo가 깨진다. 값은 복사하지 않으므로 호출자가 새 객체를 넘겨야 한다))
     ├── editors/            # 속성 편집기 (skill, agent, delegation, hook, body, body_documents, component, variable_loader, catalogue_loader, field_widgets, project_properties, blackboard_editor)
     │                       # catalogue_loader: 도구/MCP 카탈로그 로더(WP-TM) — ~/.daedalus/catalogue/*.json(글로벌) + <프로젝트>/.daedalus/catalogue/*.json(프로젝트, 이름 충돌 시 우선)
     │                       #   병합. 파일 1개=항목 1개(CatalogueEntry: name=파일명 stem, description, tools="tool" 키, mcp="mcp" 키). expanded_mcp()가 mcp 항목을
@@ -394,8 +397,15 @@ daedalus/
   QTextDocument에 적용**하는데, 우회가 아니라 본문 전용 undo 스택(WP-BU)에 정확히 올리는 경로다.
 - **`set_component_description`은 아직 undo되지 않는다** — 프론트매터 편집 전반이 WP-CE에서
   커맨드화될 때 함께 옮겨간다. 도구 docstring에 그 사실을 적어 두었다.
-- **아직 노출하지 않은 편집:** 블랙보드·훅·프로젝트 속성·나머지 프론트매터 필드는 **현재 커맨드를
-  거치지 않고 모델에 직접 쓰므로** 도구 표면에 넣지 않았다. WP-CE에서 커맨드화한 뒤 `TOOL_NAMES`에
+- **포트·분기 의미론(WP-CE):** `set_transfer_on`(출력 포트)/`set_entry_paths`(입력 포트)/
+  `set_transition`(기존 전이의 trigger·guard·target_port)/`connect_states`의 trigger·guard·
+  target_port 인자. **구조(노드+선)만 만들면 분기가 표현되지 않는다** — 여러 갈래로 나가는 노드는
+  transfer_on에 갈래를 선언하고 각 전이에 trigger를 물려야 캔버스 포트가 갈라지고 라벨이 보인다.
+  `set_transition`은 None=건드리지 않음, ""=지움 규약이다.
+- **블랙보드(WP-CE):** `create_blackboard_class`(스칼라 4종 + collection none/list/set 검증)/
+  `set_state_access`(노드의 reads/writes 선언 → 캔버스 뱃지 + 컴파일 산출 구체화).
+- **아직 노출하지 않은 편집:** 훅 라이브러리·프로젝트 속성·나머지 프론트매터 필드는 **현재 커맨드를
+  거치지 않고 모델에 직접 쓰므로** 도구 표면에 넣지 않았다. WP-CE 본편에서 커맨드화한 뒤 `TOOL_NAMES`에
   합류시킨다 — 그 시점부터는 커맨드를 만들기만 하면 자동으로 AI에 노출된다.
 - **컴포넌트 삭제는 의도적으로 빠져 있다:** `remove_component`가 그래프 placement·skill_ref
   None화·위임 참조·graph_layout·edge_layout까지 훑어 정리하므로, 되돌리려면 그 정리 내역 전부를
