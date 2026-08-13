@@ -6,7 +6,17 @@ build-backend = "setuptools.build_meta"
 name = "daedalus"
 version = "0.1.0"
 requires-python = ">=3.12"
-dependencies = ["PySide6>=6.6", "pyyaml>=6.0"]
+dependencies = [
+    "PySide6>=6.6",
+    "pyyaml>=6.0",
+    # 앱 내장 MCP 서버 (WP-MCP) — GUI가 켜질 때 함께 뜬다.
+    # 1.x(FastMCP)와 2.x(MCPServer) 양쪽을 service._server_factory가 흡수한다.
+    "mcp>=1.9",
+    "uvicorn>=0.30",
+]
+
+[project.scripts]
+daedalus = "daedalus.__main__:main"
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]

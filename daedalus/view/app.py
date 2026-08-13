@@ -63,6 +63,10 @@ class MainWindow(QMainWindow):
         self._active_stack = self._project_vm.command_stack
         self._active_notify = self._project_vm.notify
         self._initialized = False  # setup 완료 전 시그널 발화 방어용
+        # MCP 서버는 여기서 자동으로 띄우지 않는다 (WP-MCP) — 테스트가 MainWindow를
+        # 수십 개 만들기 때문에, 실제 앱 실행 경로(__main__.main)에서만
+        # start_mcp_service()로 기동한다.
+        self._mcp_service: object | None = None
 
         self._setup_central()
         self._setup_docks()
@@ -210,6 +214,9 @@ class MainWindow(QMainWindow):
             self._hook_lib_action = QAction("훅 라이브러리...", self)
             self._hook_lib_action.triggered.connect(self._open_hook_library)
             tools_menu.addAction(self._hook_lib_action)
+            self._mcp_info_action = QAction("MCP 서버 정보...", self)
+            self._mcp_info_action.triggered.connect(self._show_mcp_info)
+            tools_menu.addAction(self._mcp_info_action)
 
         view_menu = menubar.addMenu("View")
         if view_menu is None:
@@ -393,9 +400,17 @@ class MainWindow(QMainWindow):
     # --- 저장 / 열기 ---
 
     def _sync_files_root(self) -> None:
-        """FilePanel의 root를 `_current_path` 기준으로 재설정한다 (WP-FR)."""
+        """FilePanel의 root를 `_current_path` 기준으로 재설정한다 (WP-FR).
+
+        MCP 접속 정보의 프로젝트 경로도 같이 갱신한다 (WP-MCP) — CC가 지금 어떤
+        프로젝트에 붙어 있는지 알 수 있도록. `_current_path`가 바뀌는 지점이
+        여기 하나로 모여 있어 배선 지점도 하나로 유지된다.
+        """
         project_dir = Path(self._current_path).parent if self._current_path else None
         self._file_panel.set_project_dir(project_dir)
+        service = self._mcp_service
+        if service is not None:
+            service.update_project_path(self._current_path)  # type: ignore[attr-defined]
 
     def _update_title(self) -> None:
         base = "Daedalus — FSM Plugin Designer"
@@ -1020,6 +1035,62 @@ class MainWindow(QMainWindow):
             # 인지하게 두지 않는다.
             self._validation_panel.set_errors(result.warnings)
             self._show_validation_dock()
+
+    # --- MCP 서버 (WP-MCP) ---
+
+    def start_mcp_service(self) -> None:
+        """앱과 함께 MCP 서버를 띄운다 — 실제 실행 경로에서만 호출된다.
+
+        __init__에서 자동으로 시작하지 않는 이유: 테스트가 MainWindow를 수십 개
+        만들기 때문에 매번 포트를 잡으면 서로 충돌한다.
+        """
+        from daedalus.mcp.service import DaedalusMCPService
+
+        service = DaedalusMCPService(self)
+        self._mcp_service = service
+        port = service.start()
+        if port is None:
+            self._status_label.setText(f"MCP 서버 시작 실패 — {service.error}")
+        else:
+            self._status_label.setText(f"MCP 서버 대기 중 — {service.url}")
+
+    def _show_mcp_info(self) -> None:
+        """도구 메뉴 — 접속 주소와 .mcp.json 설정 조각을 보여준다."""
+        from daedalus.mcp import endpoint
+
+        service = self._mcp_service
+        if service is None or not getattr(service, "running", False):
+            reason = getattr(service, "error", None) if service is not None else None
+            QMessageBox.information(
+                self,
+                "MCP 서버",
+                "MCP 서버가 실행 중이 아닙니다."
+                + (f"\n\n{reason}" if reason else ""),
+            )
+            return
+
+        port = service.port
+        text = (
+            f"접속 주소: {service.url}\n\n"
+            "Claude Code에서 쓰려면 프로젝트의 .mcp.json에 아래를 넣으세요:\n\n"
+            f"{endpoint.mcp_json_snippet(port)}\n\n"
+            f"접속 정보 파일: {endpoint.ENDPOINT_PATH}"
+        )
+        box = QMessageBox(self)
+        box.setWindowTitle("MCP 서버")
+        box.setText("Claude Code와 협업할 준비가 되었습니다.")
+        box.setDetailedText(text)
+        box.exec()
+
+    def closeEvent(self, event) -> None:  # noqa: N802 (Qt override)
+        """앱이 닫히면 MCP 서버도 함께 내린다."""
+        service = self._mcp_service
+        if service is not None:
+            try:
+                service.stop()  # type: ignore[attr-defined]
+            except Exception:  # noqa: BLE001 — 종료 경로를 막지 않는다
+                pass
+        super().closeEvent(event)
 
     def _open_hook_library(self) -> None:
         """도구 메뉴 — 훅 라이브러리 편집 다이얼로그를 연다."""
