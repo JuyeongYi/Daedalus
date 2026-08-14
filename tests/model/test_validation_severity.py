@@ -56,6 +56,7 @@ _WARN_RULES = frozenset({
     "mcp_agent_in_marketplace_build",  # WP-TG
     "plugin_root_in_local_build",  # WP-TG
     "unsupported_agent_field_in_marketplace_build",  # WP-LA
+    "hook_matcher_matches_nothing",  # WP-HS
 })
 
 # validation.py 밖(컴파일러 등)에서 emit되지만 WARNING_RULES에는 등록된 규칙 —

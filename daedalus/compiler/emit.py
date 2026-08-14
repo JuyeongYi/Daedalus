@@ -63,7 +63,12 @@ from daedalus.model.plugin.field_matrix import (
     SKILL_FIELD_MATRIX,
     FieldRule,
 )
-from daedalus.model.plugin.hook import HookDef, HookEvent
+from daedalus.model.plugin.hook import (
+    HOOK_SCRIPT_DIR,
+    HOOK_SCRIPT_REF_PREFIX,
+    HookDef,
+    HookEvent,
+)
 from daedalus.model.plugin.skill import (
     DeclarativeSkill,
     ProceduralSkill,
@@ -1550,11 +1555,58 @@ def _collect_referenced_hook_names(project) -> list[str]:
 
 # WP-RS Part B: SessionStart에 합성 배출되는 진행 상태 주입 훅.
 # hook_library를 오염시키지 않는다 — hooks.json 합류는 컴파일 시점에만 합성된다.
+# WP-HS: 다른 훅과 같은 규칙으로 스크립트 파일이 되고, hooks.json에는 경로만 남는다.
 _PROGRESS_SESSION_START_COMMAND = 'cat state/__progress__.json 2>/dev/null || true'
+_PROGRESS_SCRIPT_NAME = "__progress__.sh"
+_PROGRESS_SCRIPT_REF = f"{HOOK_SCRIPT_REF_PREFIX}{_PROGRESS_SCRIPT_NAME}"
 
 
 def _progress_hook_entry() -> dict[str, Any]:
-    return {"type": "command", "command": _PROGRESS_SESSION_START_COMMAND}
+    return {"type": "command", "command": _PROGRESS_SCRIPT_REF}
+
+
+def compile_hook_scripts(project) -> list[tuple[str, str]]:
+    """훅 스크립트 파일 — [(``hooks/scripts/`` 기준 상대경로, 내용), …] (WP-HS).
+
+    커맨드는 아무리 짧아도 파일로 나간다 — hooks.json에는 루트 기반 경로만
+    남는다. 참조된 훅만 대상이며(hooks.json에 실리는 것과 같은 집합), 진행 상태
+    합성 훅도 같은 규칙으로 파일이 된다.
+
+    반환 순서는 결정적이다(라이브러리 선언 순서 → 훅 내 핸들러 순서).
+    같은 파일명이 둘 나오면 나중 것이 앞의 것을 덮으므로 **먼저 선언된 훅이
+    이긴다** — 이름 충돌은 `duplicate_hook_script`가 컴파일 게이트에서 잡는다.
+    """
+    library = getattr(project, "hook_library", None) or []
+    referenced = set(_collect_referenced_hook_names(project))
+
+    out: list[tuple[str, str]] = []
+    seen: set[str] = set()
+    for hook in library:
+        if hook.name not in referenced:
+            continue
+        for filename, body in hook.script_files():
+            if filename in seen:
+                continue
+            seen.add(filename)
+            out.append((filename, _script_text(body)))
+
+    if _should_emit_progress_hook(project) and _PROGRESS_SCRIPT_NAME not in seen:
+        out.append((_PROGRESS_SCRIPT_NAME, _script_text(_PROGRESS_SESSION_START_COMMAND)))
+    return out
+
+
+def _script_text(body: str) -> str:
+    """스크립트 본문을 파일 텍스트로 — LF 고정, 끝 개행 1개."""
+    text = (body or "").replace("\r\n", "\n").replace("\r", "\n")
+    if not text.endswith("\n"):
+        text += "\n"
+    return text
+
+
+def _should_emit_progress_hook(project) -> bool:
+    return bool(getattr(project, "emit_progress_hook", True)) and bool(
+        _graph_placements_any(project)
+    )
 
 
 def compile_hooks_json(project) -> str | None:
@@ -1581,9 +1633,7 @@ def compile_hooks_json(project) -> str | None:
     referenced = _collect_referenced_hook_names(project)
     resolved = [by_name[n] for n in referenced if n in by_name]
 
-    emit_progress = bool(getattr(project, "emit_progress_hook", True)) and bool(
-        _graph_placements_any(project)
-    )
+    emit_progress = _should_emit_progress_hook(project)
 
     if not resolved and not emit_progress:
         return None
@@ -1608,6 +1658,8 @@ def compile_hooks_json(project) -> str | None:
             hooks_obj[event.value] = groups
 
     text = json.dumps({"hooks": hooks_obj}, ensure_ascii=False, indent=2)
+    # 스크립트 참조의 ${ROOT}를 빌드 타깃에 맞는 CC 변수로 확장한다 (WP-HS/WP-RT).
+    text = expand_root_token(text, project)
     text = text.replace("\r\n", "\n").replace("\r", "\n")
     if not text.endswith("\n"):
         text += "\n"

@@ -15,11 +15,11 @@ def _library() -> list[HookDef]:
     return [
         HookDef(name="fmt-on-edit", description="포맷", event=HookEvent.POST_TOOL_USE,
                 matcher="Edit|Write",
-                handlers=[CommandHook(command="run-formatter", timeout=30)]),
+                handlers=[CommandHook(script="run-formatter", timeout=30)]),
         HookDef(name="notify-stop", description="알림", event=HookEvent.STOP,
-                handlers=[CommandHook(command="notify")]),
+                handlers=[CommandHook(script="notify")]),
         HookDef(name="guard-bash", description="차단", event=HookEvent.PRE_TOOL_USE,
-                matcher="Bash", handlers=[CommandHook(command="guard")]),
+                matcher="Bash", handlers=[CommandHook(script="guard")]),
     ]
 
 
@@ -49,18 +49,18 @@ def test_hooks_json_schema_roundtrip():
     post = hooks["PostToolUse"]
     assert post == [{
         "matcher": "Edit|Write",
-        "hooks": [{"type": "command", "command": "run-formatter", "timeout": 30}],
+        "hooks": [{"type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/fmt-on-edit.sh", "timeout": 30}],
     }]
 
     # Stop: matcher 미지정 + timeout 없음
     stop = hooks["Stop"]
-    assert stop == [{"hooks": [{"type": "command", "command": "notify"}]}]
+    assert stop == [{"hooks": [{"type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/notify-stop.sh"}]}]
 
 
 def test_hooks_json_matcher_omitted_when_event_ignores_it():
     """matcher를 받지 않는 이벤트(스키마 명시)에서는 출력에서 생략된다."""
     lib = [HookDef(name="h", description="d", event=HookEvent.CWD_CHANGED,
-                   matcher="Edit", handlers=[CommandHook(command="c")])]
+                   matcher="Edit", handlers=[CommandHook(script="c")])]
     proj = PluginProject(name="p", agents=[_agent_with_hooks(["h"])], hook_library=lib)
     obj = json.loads(compile_hooks_json(proj))
     assert "matcher" not in obj["hooks"]["CwdChanged"][0]
@@ -92,14 +92,14 @@ def test_hooks_json_none_when_ref_dangling():
 def test_hooks_json_same_event_multiple_hooks_library_order():
     """같은 이벤트의 복수 훅은 라이브러리 선언 순서로 정렬."""
     lib = [
-        HookDef(name="a", description="d", event=HookEvent.PRE_TOOL_USE, matcher="Bash", handlers=[CommandHook(command="ca")]),
-        HookDef(name="b", description="d", event=HookEvent.PRE_TOOL_USE, matcher="Read", handlers=[CommandHook(command="cb")]),
+        HookDef(name="a", description="d", event=HookEvent.PRE_TOOL_USE, matcher="Bash", handlers=[CommandHook(script="ca")]),
+        HookDef(name="b", description="d", event=HookEvent.PRE_TOOL_USE, matcher="Read", handlers=[CommandHook(script="cb")]),
     ]
     # 에이전트는 역순으로 참조하지만 출력은 라이브러리 순서(a, b)
     proj = PluginProject(name="p", agents=[_agent_with_hooks(["b", "a"])], hook_library=lib)
     obj = json.loads(compile_hooks_json(proj))
     pre = obj["hooks"]["PreToolUse"]
-    assert [g["hooks"][0]["command"] for g in pre] == ["ca", "cb"]
+    assert [g["hooks"][0]["command"].rsplit("/", 1)[-1] for g in pre] == ["a.sh", "b.sh"]
 
 
 # ── 프론트매터 hooks 표기 ──

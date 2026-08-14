@@ -34,7 +34,7 @@ def _hook(name="h", **kw) -> HookDef:
         description=kw.get("description", ""),
         event=kw.get("event", HookEvent.PRE_TOOL_USE),
         matcher=kw.get("matcher", ""),
-        handlers=kw.get("handlers", [CommandHook(command="./a.sh")]),
+        handlers=kw.get("handlers", [CommandHook(script="./a.sh")]),
     )
 
 
@@ -161,7 +161,7 @@ def test_event_label_marks_special_events():
 
 def test_handler_list_shows_all_handlers(panel):
     panel._project.hook_library.append(
-        _hook("a", handlers=[CommandHook(command="x"), AgentHook(prompt="y")])
+        _hook("a", handlers=[CommandHook(script="x"), AgentHook(prompt="y")])
     )
     panel._reload_list()
     assert panel._handler_list.count() == 2
@@ -185,7 +185,7 @@ def test_add_handler_of_each_type(panel, kind):
 
 def test_delete_handler(panel):
     panel._project.hook_library.append(
-        _hook("a", handlers=[CommandHook(command="x"), AgentHook(prompt="y")])
+        _hook("a", handlers=[CommandHook(script="x"), AgentHook(prompt="y")])
     )
     panel._reload_list()
     panel._handler_list.setCurrentRow(0)
@@ -199,7 +199,7 @@ def test_handler_form_writes_back_command_fields(panel):
 
     form = panel._handler_form
     assert form is not None
-    form._command.setPlainText("./run.sh")
+    form._script.setPlainText("./run.sh")
     form._timeout.setValue(12)
     form._condition.setText("Bash(git *)")
     form._status.setText("검사 중")
@@ -207,7 +207,7 @@ def test_handler_form_writes_back_command_fields(panel):
     form._run_async.setChecked(True)
 
     handler = panel._project.hook_library[0].handlers[0]
-    assert handler.command == "./run.sh"
+    assert handler.script == "./run.sh"
     assert handler.timeout == 12
     assert handler.condition == "Bash(git *)"
     assert handler.status_message == "검사 중"
@@ -248,15 +248,15 @@ def test_handler_form_writes_back_mcp_fields(panel):
 def test_switching_handler_rebuilds_form(panel):
     """타입마다 필드가 달라 폼을 갈아끼운다 — 이전 타입의 위젯이 남으면 안 된다."""
     panel._project.hook_library.append(
-        _hook("a", handlers=[CommandHook(command="x"), HttpHook(url="https://y")])
+        _hook("a", handlers=[CommandHook(script="x"), HttpHook(url="https://y")])
     )
     panel._reload_list()
 
     panel._handler_list.setCurrentRow(0)
-    assert hasattr(panel._handler_form, "_command")
+    assert hasattr(panel._handler_form, "_script")
     panel._handler_list.setCurrentRow(1)
     assert hasattr(panel._handler_form, "_url")
-    assert not hasattr(panel._handler_form, "_command")
+    assert not hasattr(panel._handler_form, "_script")
 
 
 # --- 프론트매터 내보내기 ---

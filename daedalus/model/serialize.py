@@ -202,6 +202,10 @@ def _deser_hook_handler(d: dict):
         if f.name == "shell":
             value = _to_enum(HookShell, value, HookShell.DEFAULT)
         kwargs[f.name] = value
+    # WP-HS: 커맨드 훅의 인라인 `command`가 스크립트 본문 `script`가 됐다.
+    # 구버전 핸들러 dict는 그 값을 옮겨 온다(정상 마이그레이션 경로).
+    if "script" not in kwargs and "command" in d:
+        kwargs["script"] = d["command"] or ""
     return cls(**kwargs, id=d.get("id") or _new_id())
 
 
@@ -229,7 +233,7 @@ def _deser_hook(d: dict) -> HookDef:
     if raw is None:
         legacy_command = d.get("command") or ""
         handlers = (
-            [CommandHook(command=legacy_command, timeout=d.get("timeout"))]
+            [CommandHook(script=legacy_command, timeout=d.get("timeout"))]
             if legacy_command or d.get("timeout") is not None
             else []
         )

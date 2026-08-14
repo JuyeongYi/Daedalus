@@ -37,6 +37,7 @@ from pathlib import Path, PurePosixPath
 
 from daedalus.compiler.emit import (
     compile_agent,
+    compile_hook_scripts,
     compile_hooks_json,
     compile_install_md,
     compile_install_ps1,
@@ -47,6 +48,7 @@ from daedalus.compiler.emit import (
     expand_root_token,
 )
 from daedalus.model.plugin.enums import BuildTarget
+from daedalus.model.plugin.hook import HOOK_SCRIPT_DIR
 from daedalus.model.plugin.skill import Skill
 from daedalus.model.validation import ValidationError, Validator
 
@@ -120,14 +122,20 @@ class _PlannedOutput:
     rel_path: PurePosixPath          # out_dir 기준 상대 경로 (충돌 키)
     label: str                       # 사람이 읽는 원인 컴포넌트 표지
     subject: object                  # 노드 점프용 모델 객체
-    kind: str                        # "skill" | "agent" | "local_skill"
+    kind: str                        # "skill" | "agent" | "local_skill" | "hook_script" | …
     component: object                # 컴파일 대상 (skill/agent)
     agent: object | None = None      # local_skill일 때 소유 에이전트
+    script_name: str = ""            # hook_script일 때 파일명 (WP-HS)
 
 
 def _is_local_build(project) -> bool:
     """project.build_target이 LOCAL이면 True (구버전 파일/속성 부재 → MARKETPLACE, WP-TG)."""
     return getattr(project, "build_target", BuildTarget.MARKETPLACE) is BuildTarget.LOCAL
+
+
+def _hook_script_bodies(project) -> dict[str, str]:
+    """훅 스크립트 파일명 → 내용 (WP-HS). 계획과 쓰기가 같은 원본을 본다."""
+    return dict(compile_hook_scripts(project))
 
 
 def _plan_outputs(project) -> tuple[list[_PlannedOutput], list[ValidationError]]:
@@ -226,6 +234,17 @@ def _plan_outputs(project) -> tuple[list[_PlannedOutput], list[ValidationError]]
             kind="hooks_json",
             component=project,
         ))
+        # 훅 스크립트 — 커맨드는 아무리 짧아도 파일로 나가고 hooks.json에는
+        # 루트 기반 경로만 남는다 (WP-HS).
+        for filename, _body in compile_hook_scripts(project):
+            plan.append(_PlannedOutput(
+                rel_path=PurePosixPath(HOOK_SCRIPT_DIR) / filename,
+                label=f"훅 스크립트 {filename}",
+                subject=project,
+                kind="hook_script",
+                component=project,
+                script_name=filename,
+            ))
 
     # schemas.json (블랙보드 class_definitions) — 정의가 있을 때만 계획에 합류.
     # 고정 경로 'schemas/schemas.json'이라 컴포넌트 산출(skills/·agents/)과 충돌
@@ -435,6 +454,8 @@ def compile_project(
             text = compile_agent(item.component, project=project)
         elif item.kind == "hooks_json":
             text = compile_hooks_json(project) or ""
+        elif item.kind == "hook_script":
+            text = _hook_script_bodies(project).get(item.script_name, "")
         elif item.kind == "schemas_json":
             text = compile_schemas_json(project) or ""
         elif item.kind == "plugin_manifest":

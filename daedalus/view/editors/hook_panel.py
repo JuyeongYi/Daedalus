@@ -48,6 +48,7 @@ from daedalus.model.plugin.hook import (
     HttpHook,
     McpToolHook,
     PromptHook,
+    mcp_matcher_matches_nothing,
 )
 from daedalus.model.plugin.hook_presets import BUILTIN_HOOK_PRESETS, preset_copy
 
@@ -75,8 +76,16 @@ class _HandlerForm(QWidget):
         self._on_changed = on_changed
         self._loading = True
 
-        lay = QFormLayout(self)
+        # QFormLayout을 위젯에 직접 걸면 남는 세로 공간이 행들에 균등 배분돼
+        # 한 줄짜리 입력이 제멋대로 늘어난다. VBox로 감싸고 끝에 스트레치를 둬서
+        # 폼은 자기 크기만 쓰고 남는 공간은 스트레치가 흡수하게 한다.
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        lay = QFormLayout()
         lay.setContentsMargins(0, 0, 0, 0)
+        lay.setLabelAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        lay.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
+        outer.addLayout(lay)
 
         self._build_type_fields(lay)
 
@@ -98,7 +107,14 @@ class _HandlerForm(QWidget):
         self._status.textChanged.connect(self._save)
         lay.addRow("statusMessage", self._status)
 
+        outer.addStretch()
         self._loading = False
+
+    def set_script_ref(self, text: str) -> None:
+        """command 훅의 스크립트 산출 경로 미리보기를 갱신한다 (WP-HS)."""
+        label = getattr(self, "_script_ref", None)
+        if label is not None:
+            label.setText(text)
 
     # ── 타입별 필드 ──
 
@@ -107,10 +123,22 @@ class _HandlerForm(QWidget):
         self._fields: dict[str, QWidget] = {}
 
         if isinstance(h, CommandHook):
-            self._command = QPlainTextEdit(h.command)
-            self._command.setFixedHeight(64)
-            self._command.textChanged.connect(self._save)
-            lay.addRow("command *", self._command)
+            # 커맨드는 아무리 짧아도 파일로 나간다(WP-HS) — 여기 쓴 내용이
+            # hooks/scripts/<이름>으로 저장되고 hooks.json에는 경로만 남는다.
+            self._script = QPlainTextEdit(h.script)
+            self._script.setMinimumHeight(120)
+            self._script.textChanged.connect(self._save)
+            lay.addRow("스크립트 *", self._script)
+
+            self._script_name = QLineEdit(h.script_name)
+            self._script_name.setPlaceholderText("파일명(확장자 제외) — 비우면 훅 이름")
+            self._script_name.textChanged.connect(self._save)
+            lay.addRow("파일명", self._script_name)
+
+            self._script_ref = QLabel()
+            self._script_ref.setStyleSheet("color: #888;")
+            self._script_ref.setWordWrap(True)
+            lay.addRow("경로", self._script_ref)
 
             self._args = QLineEdit(" ".join(h.args))
             self._args.setPlaceholderText("args — 공백 구분 (exec 형태로 넘길 때만)")
@@ -211,7 +239,8 @@ class _HandlerForm(QWidget):
         h.status_message = self._status.text()
 
         if isinstance(h, CommandHook):
-            h.command = self._command.toPlainText()
+            h.script = self._script.toPlainText()
+            h.script_name = self._script_name.text()
             h.args = self._args.text().split()
             h.shell = self._shell.currentData()
             h.run_async = self._run_async.isChecked()
@@ -311,7 +340,9 @@ class HookLibraryPanel(QWidget):
         form.addRow("event *", self._event)
 
         self._matcher = QLineEdit()
-        self._matcher.setPlaceholderText("matcher — 이벤트별 패턴 (도구명·에이전트명·파일명 등)")
+        self._matcher.setPlaceholderText(
+            "matcher — 이벤트별 패턴. MCP 도구는 mcp__<서버>__<도구>, 서버 전체는 mcp__<서버>__.*"
+        )
         self._matcher.textChanged.connect(self._save_head)
         form.addRow("matcher", self._matcher)
         lay.addLayout(form)
@@ -440,7 +471,15 @@ class HookLibraryPanel(QWidget):
         if hook is None:
             self._matcher_note.setText("")
         elif supported:
-            self._matcher_note.setText("")
+            # MCP 도구 매칭의 함정: 서버 이름까지만 쓰면 정규식이 아니라 정확한
+            # 문자열로 비교돼 아무것도 맞지 않는다(CC hooks#match-mcp-tools).
+            if mcp_matcher_matches_nothing(hook.matcher):
+                self._matcher_note.setText(
+                    f"⚠ '{hook.matcher.strip()}'는 어떤 MCP 도구와도 맞지 않습니다 — "
+                    f"'{hook.matcher.strip()}__.*'처럼 도구 부분을 붙이세요."
+                )
+            else:
+                self._matcher_note.setText("")
         elif hook.matcher:
             self._matcher_note.setText(
                 f"⚠ {hook.event.value}는 matcher를 받지 않습니다 — "
@@ -458,6 +497,7 @@ class HookLibraryPanel(QWidget):
         hook.event = self._event.currentData()
         hook.matcher = self._matcher.text()
         self._sync_matcher_state(hook)
+        self._sync_script_ref()  # 훅 이름이 스크립트 파일명이 된다
         self._refresh_current_label()
         self._notify()
 
@@ -556,6 +596,19 @@ class HookLibraryPanel(QWidget):
             return
         self._handler_form = _HandlerForm(handler, self._on_handler_changed)
         self._handler_form_holder.addWidget(self._handler_form)
+        self._sync_script_ref()
+
+    def _sync_script_ref(self) -> None:
+        """스크립트가 어느 경로로 나갈지 보여준다 (WP-HS).
+
+        파일명은 훅 이름·shell·같은 훅의 command 핸들러 수에 따라 달라지므로,
+        결과를 직접 보여주지 않으면 사용자가 예측할 수 없다.
+        """
+        form, hook = self._handler_form, self._current_hook()
+        if form is None or hook is None:
+            return
+        row = self._handler_list.currentRow()
+        form.set_script_ref(hook.script_refs().get(row, ""))
 
     def _on_handler_changed(self) -> None:
         row = self._handler_list.currentRow()
@@ -563,6 +616,7 @@ class HookLibraryPanel(QWidget):
         item = self._handler_list.item(row)
         if handler is not None and item is not None:
             item.setText(f"{handler.kind}  ·  {handler.summary()}")
+        self._sync_script_ref()
         self._refresh_current_label()
         self._notify()
 

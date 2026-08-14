@@ -21,9 +21,9 @@ def _sample_library() -> list[HookDef]:
     return [
         HookDef(name="fmt", description="포맷", event=HookEvent.POST_TOOL_USE,
                 matcher="Edit|Write",
-                handlers=[CommandHook(command="fmt", timeout=30)]),
+                handlers=[CommandHook(script="fmt", timeout=30)]),
         HookDef(name="notify", description="알림", event=HookEvent.STOP,
-                handlers=[CommandHook(command="notify")]),
+                handlers=[CommandHook(script="notify")]),
     ]
 
 
@@ -38,7 +38,7 @@ def test_hook_library_roundtrip_json():
     fmt = by_name["fmt"]
     assert fmt.event is HookEvent.POST_TOOL_USE
     assert fmt.matcher == "Edit|Write"
-    assert fmt.handlers[0].command == "fmt"
+    assert fmt.handlers[0].script == "fmt"
     assert fmt.handlers[0].timeout == 30
     assert fmt.id == proj.hook_library[0].id  # id 보존
     assert fmt.handlers[0].id == proj.hook_library[0].handlers[0].id
@@ -53,7 +53,7 @@ def test_all_handler_types_roundtrip():
     """다섯 타입 전부 왕복해야 한다 — 하나라도 빠지면 저장 시 조용히 사라진다."""
     hooks = [
         HookDef(name="a", description="", handlers=[CommandHook(
-            command="run", args=["-x"], shell=HookShell.BASH,
+            script="run", args=["-x"], shell=HookShell.BASH,
             run_async=True, async_rewake=True,
             condition="Bash(git *)", status_message="검사 중", timeout=7,
         )]),
@@ -80,7 +80,7 @@ def test_all_handler_types_roundtrip():
 def test_multiple_handlers_roundtrip_in_order():
     proj = PluginProject(name="p", hook_library=[HookDef(
         name="multi", description="",
-        handlers=[CommandHook(command="a"), AgentHook(prompt="b"), PromptHook(prompt="c")],
+        handlers=[CommandHook(script="a"), AgentHook(prompt="b"), PromptHook(prompt="c")],
     )])
     out = deserialize_project(json.loads(json.dumps(serialize_project(proj))))
     assert [h.kind for h in out.hook_library[0].handlers] == ["command", "agent", "prompt"]
@@ -98,7 +98,7 @@ def test_legacy_command_hook_migrated_on_load():
     out = deserialize_project(data)
     handler = out.hook_library[0].handlers[0]
     assert handler.kind == "command"
-    assert handler.command == "legacy-fmt"
+    assert handler.script == "legacy-fmt"
     assert handler.timeout == 11
 
 

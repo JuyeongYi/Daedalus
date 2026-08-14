@@ -117,7 +117,7 @@ def test_local_build_hooks_json_still_generated(tmp_path):
 
     hook = HookDef(
         name="fmt-on-edit", description="포맷", event=HookEvent.POST_TOOL_USE,
-        handlers=[CommandHook(command="run-formatter")],
+        handlers=[CommandHook(script="run-formatter")],
     )
     skill = make_procedural(name="my-skill")
     skill.config.hooks = {"fmt-on-edit": {}}

@@ -153,7 +153,7 @@ def test_create_hook_command_shortcut(tools, window):
     """command 인자는 핸들러 하나짜리 훅을 만드는 지름길이다."""
     tools.create_hook("h", command="x")
     handler = window._project.hook_library[0].handlers[0]
-    assert handler.kind == "command" and handler.command == "x"
+    assert handler.kind == "command" and handler.script == "x"
     assert handler.timeout is None
 
 
@@ -209,11 +209,11 @@ def test_update_hook_changes_fields(tools, window):
     )
 
     hook = window._project.hook_library[0]
-    assert hook.handlers[0].command == "new"
+    assert hook.handlers[0].script == "new"
     assert hook.event is HookEvent.POST_TOOL_USE
 
     tools.undo()
-    assert hook.handlers[0].command == "old"
+    assert hook.handlers[0].script == "old"
     assert hook.event is HookEvent.PRE_TOOL_USE
 
 
@@ -226,7 +226,7 @@ def test_update_hook_clears_matcher_with_empty_string(tools, window):
 def test_update_hook_omitted_handlers_are_untouched(tools, window):
     tools.create_hook("h", command="keep")
     tools.update_hook("h", matcher="Bash")
-    assert window._project.hook_library[0].handlers[0].command == "keep"
+    assert window._project.hook_library[0].handlers[0].script == "keep"
 
 
 def test_update_hook_unknown_name(tools):

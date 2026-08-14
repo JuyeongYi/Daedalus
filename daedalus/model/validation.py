@@ -78,6 +78,7 @@ WARNING_RULES: frozenset[str] = frozenset({
     "dangling_hook_ref",
     "empty_hook_command",
     "hook_matcher_without_tool_event",
+    "hook_matcher_matches_nothing",
     # 블랙보드(blackboard) 경고 — WP-BB
     "dangling_blackboard_ref",
     "orphan_blackboard_field",
@@ -1171,16 +1172,33 @@ class Validator:
         스키마 기준이다 — CC 이벤트 대부분이 matcher를 받고, 받지 않는 것은
         `NO_MATCHER_EVENTS`에 모아 두었다.
         """
-        from daedalus.model.plugin.hook import MATCHER_EVENTS
+        from daedalus.model.plugin.hook import (
+            MATCHER_EVENTS,
+            mcp_matcher_matches_nothing,
+        )
         errors: list[ValidationError] = []
         for hook in getattr(project, "hook_library", []):
-            if hook.matcher.strip() and hook.event not in MATCHER_EVENTS:
+            if not hook.matcher.strip():
+                continue
+            if hook.event not in MATCHER_EVENTS:
                 errors.append(ValidationError(
                     rule="hook_matcher_without_tool_event",
                     message=(
                         f"훅 '{hook.name}'의 matcher '{hook.matcher}'는 "
                         f"event '{hook.event.value}'에서 무시됩니다 — "
                         f"이 이벤트는 matcher를 받지 않습니다."
+                    ),
+                    source=hook.name,
+                    subject=hook,
+                ))
+            elif mcp_matcher_matches_nothing(hook.matcher):
+                errors.append(ValidationError(
+                    rule="hook_matcher_matches_nothing",
+                    message=(
+                        f"훅 '{hook.name}'의 matcher '{hook.matcher}'는 어떤 MCP "
+                        f"도구와도 맞지 않습니다 — 서버 이름까지만 쓰면 정규식이 "
+                        f"아니라 정확한 문자열로 비교됩니다. 서버 전체를 잡으려면 "
+                        f"'{hook.matcher.strip()}__.*'처럼 도구 부분을 붙이세요."
                     ),
                     source=hook.name,
                     subject=hook,

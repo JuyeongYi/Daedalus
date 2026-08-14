@@ -1138,7 +1138,10 @@ class DaedalusTools:
             allowed = ", ".join(sorted(HOOK_HANDLER_TYPES))
             raise ValueError(f"알 수 없는 훅 핸들러 타입 '{kind}'. 사용 가능: {allowed}")
 
-        # CC 산출 키 → 파이썬 필드명 (예약어 회피 때문에 이름이 다르다)
+        # CC 산출 키 → 파이썬 필드명 (예약어 회피 때문에 이름이 다르다).
+        # `command`는 CC 산출에서 스크립트 **경로**이지만 입력으로는 스크립트
+        # **본문**을 받는다(WP-HS) — 커맨드는 아무리 짧아도 파일로 나가고,
+        # 경로는 컴파일러가 정한다.
         aliases = {
             "if": "condition",
             "statusMessage": "status_message",
@@ -1147,6 +1150,8 @@ class DaedalusTools:
             "continueOnBlock": "continue_on_block",
             "allowedEnvVars": "allowed_env_vars",
             "input": "tool_input",
+            "command": "script",
+            "scriptName": "script_name",
         }
         from dataclasses import fields as dc_fields
 
@@ -1187,17 +1192,24 @@ class DaedalusTools:
         구조는 CC settings hooks 스키마 그대로다 — 이벤트 + 선택적 matcher +
         핸들러 목록.
 
-        handlers: [{"type": "command", "command": "./check.sh", "timeout": 5}, ...]
-        핸들러 타입 5종: command(command/args/shell/async/asyncRewake) /
+        handlers: [{"type": "command", "command": "echo hi", "timeout": 5}, ...]
+        핸들러 타입 5종: command(command/scriptName/args/shell/async/asyncRewake) /
         prompt(prompt/model/continueOnBlock) / agent(prompt/model) /
         http(url/headers/allowedEnvVars) / mcp_tool(server/tool/input).
         모든 타입이 timeout, if, statusMessage를 공통으로 받는다.
 
-        command 인자는 편의용 지름길이다 — handlers 대신 주면 command 핸들러
-        하나를 만든다.
+        **command 훅의 `command`는 스크립트 본문이다**(WP-HS). 아무리 짧아도
+        `hooks/scripts/<이름>.sh` 파일로 나가고, hooks.json에는 루트 기반 경로만
+        남는다 — 인라인 셸 문자열은 쓰지 않는다. 파일명은 `scriptName`으로 정하고
+        비우면 훅 이름에서 만든다.
 
-        event는 CC 훅 이벤트 31종 중 하나(get_project의 hook_events 참조).
-        matcher는 이벤트가 받을 때만 의미가 있다.
+        command 인자(핸들러 밖)는 편의용 지름길이다 — handlers 대신 주면 command
+        핸들러 하나를 만든다.
+
+        event는 CC 훅 이벤트 31종 중 하나(list_hook_events 참조).
+        matcher는 이벤트가 받을 때만 의미가 있다. MCP 도구를 매칭하려면
+        `mcp__<서버>__<도구>` 형태를 쓰고, 서버 전체는 `mcp__<서버>__.*`처럼
+        `.*`를 붙여야 한다 — 서버 이름까지만 쓰면 아무것도 맞지 않는다.
 
         훅은 라이브러리에 정의만 해 두는 것이고, 실제로 배출되려면
         set_component_hooks로 스킬/에이전트가 이름으로 참조해야 한다.

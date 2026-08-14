@@ -172,7 +172,7 @@ def test_hooks_json_default_emits_session_start():
     assert "SessionStart" in obj["hooks"]
     entry = obj["hooks"]["SessionStart"][0]["hooks"][0]
     assert entry["type"] == "command"
-    assert "state/__progress__.json" in entry["command"]
+    assert entry["command"].endswith("/hooks/scripts/__progress__.sh")
 
 
 def test_hooks_json_none_when_emit_progress_hook_false():
@@ -190,7 +190,7 @@ def test_hooks_json_none_when_no_placements():
 def test_hooks_json_coexists_with_user_session_start_hook():
     user_hook = HookDef(
         name="greet", description="인사", event=HookEvent.SESSION_START,
-        handlers=[CommandHook(command="echo hi")],
+        handlers=[CommandHook(script="echo hi")],
     )
     agent = make_agent("worker")
     agent.config.hooks = {"greet": {}}
@@ -202,11 +202,11 @@ def test_hooks_json_coexists_with_user_session_start_hook():
     obj = json.loads(text)
     groups = obj["hooks"]["SessionStart"]
     commands = [g["hooks"][0]["command"] for g in groups]
-    assert "echo hi" in commands
-    assert any("state/__progress__.json" in c for c in commands)
+    assert any(c.endswith("/greet.sh") for c in commands)
+    assert any(c.endswith("/__progress__.sh") for c in commands)
     # 사용자 훅이 먼저, 합성 진행 훅이 뒤에 이어붙는다.
-    assert commands.index("echo hi") < next(
-        i for i, c in enumerate(commands) if "state/__progress__.json" in c
+    assert next(i for i, c in enumerate(commands) if c.endswith("/greet.sh")) < next(
+        i for i, c in enumerate(commands) if c.endswith("/__progress__.sh")
     )
 
 

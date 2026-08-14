@@ -75,8 +75,8 @@ def test_hook_id_unique_and_kw_only():
 
 
 def test_hook_id_excluded_from_equality():
-    a = HookDef(name="x", description="d", handlers=[CommandHook(command="c")])
-    b = HookDef(name="x", description="d", handlers=[CommandHook(command="c")])
+    a = HookDef(name="x", description="d", handlers=[CommandHook(script="c")])
+    b = HookDef(name="x", description="d", handlers=[CommandHook(script="c")])
     assert a == b  # id만 다름
 
 
@@ -84,26 +84,70 @@ def test_hook_id_excluded_from_equality():
 
 
 def test_command_handler_json():
-    h = CommandHook(command="./check.sh", timeout=5)
-    assert h.to_json() == {"type": "command", "command": "./check.sh", "timeout": 5}
+    """command 값은 스크립트 **경로**다 — 본문은 파일로 나간다 (WP-HS)."""
+    h = CommandHook(script="echo hi", timeout=5)
+    assert h.to_json("${ROOT}/hooks/scripts/a.sh") == {
+        "type": "command", "command": "${ROOT}/hooks/scripts/a.sh", "timeout": 5,
+    }
 
 
 def test_command_handler_optional_keys_omitted():
     """빈 값 키를 내보내면 hooks.json이 잡음으로 채워진다."""
-    assert CommandHook(command="x").to_json() == {"type": "command", "command": "x"}
+    assert CommandHook(script="x").to_json("p") == {"type": "command", "command": "p"}
 
 
 def test_command_handler_full():
     h = CommandHook(
-        command="run", args=["--a"], shell=HookShell.POWERSHELL,
+        script="run", args=["--a"], shell=HookShell.POWERSHELL,
         run_async=True, async_rewake=True, timeout=3,
         condition="Bash(git *)", status_message="검사 중",
     )
-    assert h.to_json() == {
-        "type": "command", "command": "run", "args": ["--a"],
+    assert h.to_json("p.ps1") == {
+        "type": "command", "command": "p.ps1", "args": ["--a"],
         "shell": "powershell", "async": True, "asyncRewake": True,
         "timeout": 3, "if": "Bash(git *)", "statusMessage": "검사 중",
     }
+
+
+def test_command_extension_follows_shell():
+    assert CommandHook().extension == ".sh"
+    assert CommandHook(shell=HookShell.BASH).extension == ".sh"
+    assert CommandHook(shell=HookShell.POWERSHELL).extension == ".ps1"
+
+
+def test_script_files_named_after_hook():
+    hook = HookDef(name="guard-bash", description="", handlers=[CommandHook(script="x")])
+    assert hook.script_files() == [("guard-bash.sh", "x")]
+
+
+def test_script_files_numbered_when_multiple_commands():
+    hook = HookDef(name="h", description="", handlers=[
+        CommandHook(script="a"), CommandHook(script="b"),
+    ])
+    assert [n for n, _ in hook.script_files()] == ["h-1.sh", "h-2.sh"]
+
+
+def test_explicit_script_name_wins():
+    hook = HookDef(name="h", description="", handlers=[
+        CommandHook(script="a", script_name="custom"),
+    ])
+    assert hook.script_files() == [("custom.sh", "a")]
+
+
+def test_script_name_sanitized_from_hook_name():
+    """이름은 자유 문자열이라 경로 구분자·상위 참조가 섞일 수 있다."""
+    hook = HookDef(name="../evil name", description="", handlers=[CommandHook(script="x")])
+    filename = hook.script_files()[0][0]
+    assert "/" not in filename and "\\" not in filename and ".." not in filename
+
+
+def test_script_refs_map_only_command_handlers():
+    hook = HookDef(name="h", description="", handlers=[
+        AgentHook(prompt="a"), CommandHook(script="b"),
+    ])
+    refs = hook.script_refs()
+    assert list(refs) == [1]
+    assert refs[1] == "${ROOT}/hooks/scripts/h.sh"
 
 
 def test_prompt_handler_json():
@@ -147,11 +191,11 @@ def test_handler_kinds_are_schema_type_values():
 def test_hook_group_json_with_matcher():
     hook = HookDef(
         name="h", description="", event=HookEvent.PRE_TOOL_USE, matcher="Bash",
-        handlers=[CommandHook(command="./a.sh")],
+        handlers=[CommandHook(script="./a.sh")],
     )
     assert hook.to_json() == {
         "matcher": "Bash",
-        "hooks": [{"type": "command", "command": "./a.sh"}],
+        "hooks": [{"type": "command", "command": "${ROOT}/hooks/scripts/h.sh"}],
     }
 
 
@@ -159,7 +203,7 @@ def test_matcher_dropped_for_events_that_ignore_it():
     """무시되는 키를 내보내면 설정한 사람은 걸린 줄 안다."""
     hook = HookDef(
         name="h", description="", event=HookEvent.CWD_CHANGED, matcher="x",
-        handlers=[CommandHook(command="./a.sh")],
+        handlers=[CommandHook(script="./a.sh")],
     )
     assert "matcher" not in hook.to_json()
 
@@ -167,7 +211,7 @@ def test_matcher_dropped_for_events_that_ignore_it():
 def test_multiple_handlers_in_one_group():
     hook = HookDef(
         name="h", description="", event=HookEvent.STOP,
-        handlers=[CommandHook(command="a"), AgentHook(prompt="b")],
+        handlers=[CommandHook(script="a"), AgentHook(prompt="b")],
     )
     assert [x["type"] for x in hook.to_json()["hooks"]] == ["command", "agent"]
 

@@ -33,7 +33,7 @@ BUILTIN_HOOK_PRESETS: list[HookDef] = [
         event=HookEvent.POST_TOOL_USE,
         matcher="Edit|Write",
         handlers=[CommandHook(
-            command='echo "$CLAUDE_TOOL_FILE" | xargs -r your-formatter',
+            script='echo "$CLAUDE_TOOL_FILE" | xargs -r your-formatter',
             timeout=30,
         )],
     ),
@@ -43,7 +43,7 @@ BUILTIN_HOOK_PRESETS: list[HookDef] = [
         event=HookEvent.PRE_TOOL_USE,
         matcher="Bash",
         handlers=[CommandHook(
-            command="your-guard-script  # 위험 패턴이면 비정상 종료(exit 2)로 차단",
+            script="your-guard-script  # 위험 패턴이면 비정상 종료(exit 2)로 차단",
             timeout=10,
             status_message="Bash 명령 검사 중…",
         )],
@@ -53,7 +53,7 @@ BUILTIN_HOOK_PRESETS: list[HookDef] = [
         description="작업 완료 시 데스크톱/슬랙 알림을 보낸다.",
         event=HookEvent.STOP,
         handlers=[CommandHook(
-            command='your-notify-script "Claude 작업이 완료되었습니다"',
+            script='your-notify-script "Claude 작업이 완료되었습니다"',
             run_async=True,
         )],
     ),
@@ -62,7 +62,7 @@ BUILTIN_HOOK_PRESETS: list[HookDef] = [
         description="세션 시작 시 프로젝트 컨텍스트를 주입한다.",
         event=HookEvent.SESSION_START,
         handlers=[CommandHook(
-            command="cat .claude/session-context.md  # stdout이 컨텍스트로 주입됨",
+            script="cat .claude/session-context.md  # stdout이 컨텍스트로 주입됨",
         )],
     ),
     HookDef(
@@ -70,7 +70,7 @@ BUILTIN_HOOK_PRESETS: list[HookDef] = [
         description="컴팩트 직전 작업 상태를 파일로 저장한다.",
         event=HookEvent.PRE_COMPACT,
         handlers=[CommandHook(
-            command="your-snapshot-script  # state/ 폴더에 진행 상태 백업",
+            script="your-snapshot-script  # state/ 폴더에 진행 상태 백업",
             timeout=20,
         )],
     ),
@@ -79,7 +79,7 @@ BUILTIN_HOOK_PRESETS: list[HookDef] = [
         description="사용자 프롬프트 제출을 감사 로그에 기록한다.",
         event=HookEvent.USER_PROMPT_SUBMIT,
         handlers=[CommandHook(
-            command="your-audit-logger  # stdin으로 프롬프트 페이로드 수신",
+            script="your-audit-logger  # stdin으로 프롬프트 페이로드 수신",
         )],
     ),
     # --- command 이외 핸들러 타입의 출발점 (WP-HK) ---

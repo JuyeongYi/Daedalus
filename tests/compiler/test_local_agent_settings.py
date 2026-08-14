@@ -60,7 +60,7 @@ def _hook(name="guard", event=HookEvent.PRE_TOOL_USE, **kw) -> HookDef:
         event=event,
         matcher=kw.get("matcher", ""),
         handlers=[CommandHook(
-            command=kw.get("command", "./scripts/check.sh"),
+            script=kw.get("command", "./scripts/check.sh"),
             timeout=kw.get("timeout"),
         )],
     )
@@ -76,11 +76,13 @@ def test_local_build_emits_hooks_frontmatter():
     project = _local_project(agent, [hook])
 
     fm = _frontmatter(compile_agent(agent, project=project))
+    # command는 스크립트 경로다(WP-HS). ${ROOT}는 파일 쓰기 직전에 확장되므로
+    # compile_agent 단독 산출에는 중립 토큰이 남아 있다(test_build_target이 확장을 고정).
     assert fm["hooks"] == {
         "PreToolUse": [
             {
                 "matcher": "Bash",
-                "hooks": [{"type": "command", "command": "./scripts/validate.sh"}],
+                "hooks": [{"type": "command", "command": "${ROOT}/hooks/scripts/guard.sh"}],
             }
         ]
     }
