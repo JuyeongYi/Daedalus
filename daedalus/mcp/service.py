@@ -28,6 +28,7 @@ TOOL_NAMES = (
     "compile_preview",
     "list_hook_events",
     "hook_frontmatter_preview",
+    "list_component_fields",
     # 편집 — 전부 undo 가능
     "create_skill",
     "create_agent",
@@ -36,6 +37,7 @@ TOOL_NAMES = (
     "rename_component",
     "set_component_description",
     "set_component_when_to_use",
+    "set_component_field",
     "set_project_properties",
     "place_component",
     "create_state",

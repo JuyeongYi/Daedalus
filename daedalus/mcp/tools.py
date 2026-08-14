@@ -1121,13 +1121,18 @@ class DaedalusTools:
 
     @staticmethod
     def _hook_summary(hook: Any) -> dict[str, Any]:
+        # 그룹 단위로 만들어야 command 훅의 스크립트 경로가 채워진다 — 핸들러를
+        # 개별로 to_json()하면 경로를 모르므로 command가 빈 값으로 나온다.
+        group = hook.to_json()
         return {
             "name": hook.name,
             "event": getattr(hook.event, "value", str(hook.event)),
             "matcher": hook.matcher,
             "description": getattr(hook, "description", ""),
             # CC 스키마 그대로의 핸들러 목록 — 이 값이 hooks.json에 그대로 나간다
-            "handlers": [h.to_json() for h in hook.handlers],
+            "handlers": group["hooks"],
+            # 경로만 보면 무엇이 실행되는지 알 수 없다. 스크립트 본문도 함께 준다.
+            "scripts": dict(hook.script_files()),
         }
 
     @staticmethod
@@ -1411,6 +1416,161 @@ class DaedalusTools:
         for agent in project.agents:
             owners.extend(getattr(agent, "skills", []) or [])
         return owners
+
+    # --- 프론트매터 필드 ---
+
+    @staticmethod
+    def _config_field_types(config: Any) -> dict[str, Any]:
+        """config 클래스의 필드 이름 → 선언 타입.
+
+        `from __future__ import annotations` 때문에 dataclass의 `f.type`은 문자열이라
+        쓸 수 없다 — `get_type_hints`로 실제 타입 객체를 얻는다.
+        """
+        from typing import get_type_hints
+
+        try:
+            return get_type_hints(type(config))
+        except Exception:  # noqa: BLE001 — 힌트를 못 얻어도 편집은 막지 않는다
+            return {}
+
+    @staticmethod
+    def _coerce_field_value(target: Any, value: Any, field: str) -> Any:
+        """입력 값을 config 필드의 선언 타입으로 맞춘다.
+
+        MCP로 오는 값은 JSON이라 문자열/리스트/불리언뿐이다. enum 필드는 값
+        문자열로 받아 멤버로 바꾸고, 틀리면 허용 목록을 알려준다 — 조용히
+        문자열이 들어가면 컴파일 산출이 이상해질 때까지 드러나지 않는다.
+        """
+        import enum
+        from typing import get_args, get_origin
+
+        args = [a for a in get_args(target) if a is not type(None)]
+        if args:
+            target = args[0]
+        origin = get_origin(target)
+
+        if origin in (list, set):
+            if not isinstance(value, (list, tuple)):
+                raise ValueError(f"'{field}'는 목록이어야 합니다.")
+            return [str(v) for v in value]
+        if isinstance(target, type) and issubclass(target, enum.Enum):
+            try:
+                return target(value)
+            except ValueError:
+                allowed = ", ".join(str(m.value) for m in target)
+                raise ValueError(
+                    f"'{field}'의 값 '{value}'이 올바르지 않습니다. 사용 가능: {allowed}"
+                ) from None
+        if target is bool:
+            return bool(value)
+        if target is int:
+            return int(value)
+        return value
+
+    def list_component_fields(self, name: str, agent: str = "") -> dict[str, Any]:
+        """이 컴포넌트가 받는 프론트매터 필드와 현재 값.
+
+        스킬과 에이전트는 받는 필드가 다르고, 스킬은 종류(procedural/declarative/
+        transfer/reference)마다 또 다르다. 짐작으로 set_component_field를 부르지
+        않도록 실제 목록을 돌려준다. `emit`은 그 필드가 어디로 나가는지다
+        (frontmatter / body / settings).
+        """
+        import enum
+        from typing import get_args
+
+        from daedalus.model.plugin.agent import AgentDefinition
+        from daedalus.model.plugin.field_matrix import (
+            AGENT_FIELD_MATRIX,
+            SKILL_FIELD_MATRIX,
+        )
+
+        comp = self._find_component(name, agent=agent)
+        config = getattr(comp, "config", None)
+        if config is None:
+            raise ValueError(f"'{name}'에는 config가 없습니다.")
+
+        if isinstance(comp, AgentDefinition):
+            matrix = AGENT_FIELD_MATRIX
+        else:
+            matrix = SKILL_FIELD_MATRIX.get(self._skill_matrix_key(comp, agent), {})
+
+        hints = self._config_field_types(config)
+        out: list[dict[str, Any]] = []
+        for fld, rule in matrix.items():
+            attr = fld.value
+            if not hasattr(config, attr):
+                continue
+            current = getattr(config, attr)
+            entry: dict[str, Any] = {
+                "field": attr,
+                "frontmatter_key": fld.frontmatter_key,
+                "emit": rule.emit.value,
+                "visibility": rule.visibility.value,
+                "current": getattr(current, "value", current),
+            }
+            target = hints.get(attr)
+            args = [a for a in get_args(target) if a is not type(None)]
+            base = args[0] if args else target
+            if isinstance(base, type) and issubclass(base, enum.Enum):
+                entry["choices"] = [str(m.value) for m in base]
+            out.append(entry)
+        return {"component": comp.name, "kind": self._component_kind(comp), "fields": out}
+
+    @staticmethod
+    def _skill_matrix_key(comp: Any, agent: str) -> str:
+        """SKILL_FIELD_MATRIX의 키 — 로컬 스킬은 local_ 접두를 쓴다."""
+        kind = str(getattr(comp, "kind", "")).replace("_skill", "")
+        if agent and kind in ("procedural", "transfer"):
+            return f"local_{kind}"
+        return kind
+
+    def set_component_field(
+        self, name: str, field: str, value: Any, agent: str = ""
+    ) -> dict[str, Any]:
+        """스킬/에이전트 프론트매터 필드 하나를 설정한다.
+
+        field는 `list_component_fields`가 돌려주는 이름(model / tools /
+        permission_mode / allowed_tools / …). value는 JSON 값이며 enum 필드는 값
+        문자열로 준다(예: model="sonnet", permission_mode="acceptEdits").
+        목록 필드는 배열로 준다.
+
+        description / when_to_use / hooks는 전용 도구를 쓴다.
+        """
+        from daedalus.view.commands.attr_commands import SetAttrCmd
+
+        comp = self._find_component(name, agent=agent)
+        config = getattr(comp, "config", None)
+        if config is None:
+            raise ValueError(f"'{name}'에는 config가 없습니다.")
+        if field == "hooks":
+            raise ValueError("훅 참조는 set_component_hooks를 쓰세요.")
+        if not hasattr(config, field):
+            known = [
+                f["field"] for f in self.list_component_fields(name, agent=agent)["fields"]
+            ]
+            raise ValueError(
+                f"'{self._component_kind(comp)}'에는 '{field}' 필드가 없습니다. "
+                f"사용 가능: {', '.join(known)}"
+            )
+
+        hints = self._config_field_types(config)
+        coerced = self._coerce_field_value(hints.get(field), value, field)
+        old = getattr(config, field)
+        self._vm.execute(
+            SetAttrCmd(
+                config,
+                field,
+                coerced,
+                label=f"'{name}' {field} 변경",
+                script=f'set_component_field("{name}", "{field}", ...)',
+            )
+        )
+        return {
+            "component": comp.name,
+            "field": field,
+            "old": getattr(old, "value", old),
+            "new": getattr(coerced, "value", coerced),
+        }
 
     def set_component_hooks(
         self, name: str, hooks: list[str], agent: str = ""
