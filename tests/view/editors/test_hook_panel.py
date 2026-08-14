@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import pytest
+from PySide6.QtCore import QPoint
 
 from daedalus.model.plugin.hook import (
     AgentHook,
@@ -275,14 +276,50 @@ def test_handler_toolbar_sits_above_the_list(panel):
     assert toolbar_index < list_index
 
 
-def test_handler_area_absorbs_extra_space(panel):
-    """스페이서가 없으면 훅이 없을 때 위젯들이 위아래로 흩어진다."""
+def test_handler_box_ends_with_a_spacer(panel):
+    """스페이서가 없으면 훅이 없을 때 위젯들이 위아래로 흩어진다.
+
+    빈 레이아웃에 stretch를 주는 것으로는 부족하다 — sizeHint가 0이라 여분을
+    나눌 대상으로 잡히지 않는다. 마지막 항목이 실제 스페이서여야 한다.
+    """
     box_layout = panel._handlers_box.layout()
-    holder_index = next(
-        i for i in range(box_layout.count())
-        if box_layout.itemAt(i).layout() is panel._handler_form_holder
+    last = box_layout.itemAt(box_layout.count() - 1)
+    assert last.spacerItem() is not None
+    assert box_layout.stretch(box_layout.count() - 1) == 1
+
+
+def test_widgets_hug_the_top_when_library_is_empty(panel, qapp):
+    """실제 배치로 확인한다 — 레이아웃 구조만 봐서는 흩어짐을 놓친다.
+
+    훅이 하나도 없을 때 툴바가 그룹박스 한참 아래로 밀려 있었다(실측 ~400px).
+    """
+    panel.resize(900, 1000)
+    panel.show()
+    qapp.processEvents()
+    try:
+        box = panel._handlers_box
+        combo_top = panel._handler_type.mapTo(box, QPoint(0, 0)).y()
+        list_top = panel._handler_list.mapTo(box, QPoint(0, 0)).y()
+
+        assert combo_top < 60, f"툴바가 그룹박스 상단에서 {combo_top}px 아래에 있다"
+        assert list_top - combo_top < 80, "툴바와 목록 사이가 벌어졌다"
+    finally:
+        panel.hide()
+
+
+def test_toolbar_and_list_stay_adjacent(panel):
+    """툴바와 목록 사이에 늘어나는 것이 끼면 안 된다."""
+    box_layout = panel._handlers_box.layout()
+    items = [box_layout.itemAt(i) for i in range(box_layout.count())]
+    toolbar_index = next(
+        i for i, it in enumerate(items)
+        if it.layout() is not None and it.layout().indexOf(panel._handler_type) >= 0
     )
-    assert box_layout.stretch(holder_index) == 1
+    list_index = next(
+        i for i, it in enumerate(items) if it.widget() is panel._handler_list
+    )
+    assert list_index == toolbar_index + 1
+    assert box_layout.stretch(toolbar_index) == 0
 
 
 def test_switching_handler_rebuilds_form(panel):

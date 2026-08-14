@@ -407,10 +407,13 @@ class HookLibraryPanel(QWidget):
         self._handler_list.currentRowChanged.connect(self._on_handler_row_changed)
         lay.addWidget(self._handler_list)
 
-        # holder가 남는 세로 공간을 흡수한다 — 안 그러면 훅이 없을 때(폼이 비었을
-        # 때) 남는 공간이 위 위젯들에 균등 배분돼 위아래로 흩어진다.
         self._handler_form_holder = QVBoxLayout()
-        lay.addLayout(self._handler_form_holder, 1)
+        lay.addLayout(self._handler_form_holder)
+
+        # 명시적 스페이서가 남는 세로 공간을 흡수한다. 빈 QVBoxLayout에 stretch를
+        # 줘 봐야 소용없다 — sizeHint가 0이라 여분을 나눌 대상으로 잡히지 않고,
+        # 남는 공간이 위 위젯들에 흩어진다(툴바와 목록이 따로 떠 보였다).
+        lay.addStretch(1)
         self._handler_form: _HandlerForm | None = None
         return box
 
