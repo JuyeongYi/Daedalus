@@ -19,7 +19,8 @@ def test_agent_invocation_section_lists_non_default_invocation_fields():
     )
     text = compile_agent(agent)
     assert "## 호출 파라미터" in text
-    assert "max-turns`: 10" in text
+    # 키 이름은 CC가 실제로 읽는 camelCase (WP-LA에서 확정)
+    assert "maxTurns`: 10" in text
     assert "background`: True" in text
     assert "isolation`: worktree" in text
 

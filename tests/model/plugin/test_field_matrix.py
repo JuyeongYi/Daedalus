@@ -238,15 +238,14 @@ def test_agent_field_frontmatter_key_kebab_case():
         key = af.frontmatter_key
         assert key is not None, f"{af} frontmatter_key가 None"
         assert "_" not in key, f"{af} frontmatter_key에 underscore 잔존: {key!r}"
-        assert key == af.value.replace("_", "-"), (
-            f"{af} frontmatter_key 불일치: {key!r} != {af.value.replace('_', '-')!r}"
-        )
+        assert "-" not in key, f"{af} frontmatter_key는 camelCase여야 한다: {key!r}"
 
-    # 대표 케이스 명시 단언
-    assert AgentField.PERMISSION_MODE.frontmatter_key == "permission-mode"
-    assert AgentField.DISALLOWED_TOOLS.frontmatter_key == "disallowed-tools"
-    assert AgentField.MCP_SERVERS.frontmatter_key == "mcp-servers"
-    assert AgentField.MAX_TURNS.frontmatter_key == "max-turns"
+    # 대표 케이스 명시 단언 — CC 공식 sub-agents 문서의 필드 표와 일치해야 한다.
+    # 스킬 프론트매터(allowed-tools 등 kebab-case)와 규약이 다르므로 유추 금지.
+    assert AgentField.PERMISSION_MODE.frontmatter_key == "permissionMode"
+    assert AgentField.DISALLOWED_TOOLS.frontmatter_key == "disallowedTools"
+    assert AgentField.MCP_SERVERS.frontmatter_key == "mcpServers"
+    assert AgentField.MAX_TURNS.frontmatter_key == "maxTurns"
     assert AgentField.NAME.frontmatter_key == "name"
 
 

@@ -161,9 +161,9 @@ def test_agent_frontmatter_selects_emit_frontmatter_only():
     fm = _frontmatter(compile_agent(agent))
     assert "name: worker" in fm
     assert "color: blue" in fm
-    assert "permission-mode: acceptEdits" in fm
+    assert "permissionMode: acceptEdits" in fm
     # INVOCATION 필드는 프론트매터에 없음
-    assert "max-turns:" not in fm
+    assert "maxTurns:" not in fm
     assert "isolation:" not in fm
 
 
@@ -171,7 +171,7 @@ def test_agent_permission_mode_default_omitted():
     agent = make_agent()
     agent.config = AgentConfig(model=ModelType.SONNET)  # permission default
     fm = _frontmatter(compile_agent(agent))
-    assert "permission-mode:" not in fm
+    assert "permissionMode:" not in fm
 
 
 def test_agent_model_inherit_omitted():

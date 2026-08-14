@@ -17,7 +17,7 @@ from daedalus.model.fsm.strategy import (
 )
 from daedalus.model.fsm.transition import Transition
 from daedalus.model.fsm.variable import VariableScope
-from daedalus.model.plugin.enums import BuildTarget
+from daedalus.model.plugin.enums import BuildTarget, PermissionMode
 
 
 @dataclass
@@ -89,6 +89,8 @@ WARNING_RULES: frozenset[str] = frozenset({
     # 빌드 타깃(build_target) 경고 — WP-TG
     "mcp_agent_in_marketplace_build",
     "plugin_root_in_local_build",
+    # WP-LA — 플러그인 서브에이전트가 무시하는 프론트매터 필드
+    "unsupported_agent_field_in_marketplace_build",
 })
 
 
@@ -887,6 +889,7 @@ class Validator:
         errors.extend(Validator._check_blackboard_field_types(project))
         # 빌드 타깃(build_target) 규칙 — WP-TG
         errors.extend(Validator._check_mcp_agent_in_marketplace_build(project))
+        errors.extend(Validator._check_unsupported_agent_fields(project))
         errors.extend(Validator._check_plugin_root_in_local_build(project))
         return errors
 
@@ -1573,6 +1576,45 @@ class Validator:
                     subject=agent,
                     path=(f"agent:{agent.name}",),
                 ))
+        return errors
+
+    @staticmethod
+    def _check_unsupported_agent_fields(project) -> list[ValidationError]:
+        """unsupported_agent_field_in_marketplace_build — MARKETPLACE 빌드인데
+        에이전트가 `hooks` 또는 기본값 아닌 `permissionMode`를 쓰면 경고 (WP-LA).
+
+        CC는 **보안상 플러그인 서브에이전트의 `hooks`/`mcpServers`/
+        `permissionMode` 프론트매터를 무시한다** — 값이 나가긴 해도 아무 일도
+        일어나지 않으므로, 설계자가 걸어 둔 제약이 조용히 사라진다. MCP는 이미
+        `mcp_agent_in_marketplace_build`가 짚으므로 여기서는 나머지 둘만 본다
+        (같은 에이전트에 경고가 둘 겹치지 않게).
+        """
+        build_target = getattr(project, "build_target", BuildTarget.MARKETPLACE)
+        if build_target is not BuildTarget.MARKETPLACE:
+            return []
+        errors: list[ValidationError] = []
+        for agent in getattr(project, "agents", []):
+            cfg = getattr(agent, "config", None)
+            unsupported: list[str] = []
+            if getattr(cfg, "hooks", None):
+                unsupported.append("hooks")
+            mode = getattr(cfg, "permission_mode", None)
+            if mode is not None and mode is not PermissionMode.DEFAULT:
+                unsupported.append(f"permissionMode({mode.value})")
+            if not unsupported:
+                continue
+            errors.append(ValidationError(
+                rule="unsupported_agent_field_in_marketplace_build",
+                message=(
+                    f"에이전트 '{agent.name}'의 {', '.join(unsupported)}는 "
+                    f"마켓플레이스 플러그인에서 무시됩니다 — CC는 보안상 플러그인 "
+                    f"서브에이전트의 hooks/mcpServers/permissionMode 프론트매터를 "
+                    f"적용하지 않습니다. 로컬 플러그인 빌드로 전환하세요."
+                ),
+                source=agent.name,
+                subject=agent,
+                path=(f"agent:{agent.name}",),
+            ))
         return errors
 
     @staticmethod

@@ -110,6 +110,36 @@ def _yaml_list(values: list[Any]) -> str:
     return f"[{items}]"
 
 
+def _yaml_block_lines(value: Any, indent: int = 0) -> list[str]:
+    """중첩 dict/list를 블록 스타일 YAML 줄 목록으로 (WP-LA).
+
+    flow-style(`_yaml_list`)로는 표현할 수 없는 프론트매터 값 — 에이전트의
+    ``hooks``(이벤트 → 그룹 → 훅 3단 중첩) 전용이다. 다루는 값은 dict/list/
+    스칼라뿐이고, 스칼라 표기는 `_yaml_scalar`를 그대로 쓴다(단일 진실).
+    """
+    pad = " " * indent
+    lines: list[str] = []
+    if isinstance(value, dict):
+        for key, val in value.items():
+            if isinstance(val, (dict, list)) and val:
+                lines.append(f"{pad}{key}:")
+                lines.extend(_yaml_block_lines(val, indent + 2))
+            else:
+                lines.append(f"{pad}{key}: {_yaml_scalar(_enum_value(val))}")
+    elif isinstance(value, list):
+        for item in value:
+            if isinstance(item, (dict, list)) and item:
+                sub = _yaml_block_lines(item, indent + 2)
+                # 첫 줄만 "- "로 끌어올리고 나머지는 그 들여쓰기를 유지한다
+                lines.append(f"{pad}- {sub[0].lstrip()}")
+                lines.extend(sub[1:])
+            else:
+                lines.append(f"{pad}- {_yaml_scalar(_enum_value(item))}")
+    else:
+        lines.append(f"{pad}{_yaml_scalar(_enum_value(value))}")
+    return lines
+
+
 def _config_default(config: ComponentConfig | None, attr: str) -> Any:
     """config 클래스의 선언 기본값(단일 진실)을 반환. 없으면 sentinel."""
     if config is None:
@@ -1242,22 +1272,106 @@ def _invocation_section_agent(agent: AgentDefinition) -> list[str]:
     return blocks
 
 
-def _settings_note_agent(agent: AgentDefinition) -> list[str]:
+def _is_local_build(project) -> bool:
+    """프로젝트 빌드 타깃이 LOCAL인가. project 미지정이면 MARKETPLACE 취급(하위 호환)."""
+    if project is None:
+        return False
+    from daedalus.model.plugin.enums import BuildTarget
+
+    return getattr(project, "build_target", None) is BuildTarget.LOCAL
+
+
+def _agent_mcp_server_names(agent: AgentDefinition) -> list[str]:
+    """에이전트가 필요로 하는 MCP 서버 이름 (선언 + tools의 mcp__ 접두 추출).
+
+    `_settings_note_agent`와 같은 합집합 규칙을 쓴다 — 본문 언급과 프론트매터
+    배출이 서로 다른 목록을 말하면 안 된다.
+    """
+    config = agent.config
+    declared = set(getattr(config, "mcp_servers", None) or ())
+    from_tools = set(_mcp_servers_from_tools(getattr(config, "tools", None)))
+    return sorted(declared | from_tools)
+
+
+def _agent_hook_groups(agent: AgentDefinition, project) -> dict[str, Any]:
+    """에이전트가 참조하는 훅을 CC hooks 스키마(이벤트 → 그룹 목록)로.
+
+    구조는 `compile_hooks_json`이 만드는 것과 같다 — 서브에이전트 프론트매터의
+    `hooks`가 settings.json의 `hooks`와 동일한 형식을 쓰기 때문이다.
+    라이브러리에 없는 이름은 조용히 빠진다(`dangling_hook_ref`가 잡는다).
+    """
+    referenced = list(getattr(agent.config, "hooks", None) or {})
+    if not referenced or project is None:
+        return {}
+    wanted = set(referenced)
+    library = getattr(project, "hook_library", None) or []
+
+    buckets: dict[HookEvent, list[HookDef]] = {}
+    for hook in library:  # 라이브러리 선언 순서 = 결정적
+        if hook.name in wanted:
+            buckets.setdefault(hook.event, []).append(hook)
+
+    out: dict[str, Any] = {}
+    for event in HookEvent:  # 선언 순서 = 결정적 이벤트 키 순서
+        groups: list[dict[str, Any]] = []
+        for hook in buckets.get(event) or []:
+            group: dict[str, Any] = {}
+            if event in TOOL_MATCH_EVENTS and hook.matcher:
+                group["matcher"] = hook.matcher
+            group["hooks"] = [_hook_command_entry(hook)]
+            groups.append(group)
+        if groups:
+            out[event.value] = groups
+    return out
+
+
+def _local_settings_frontmatter_lines(agent: AgentDefinition, project) -> list[str]:
+    """LOCAL 빌드에서만 나가는 에이전트 프론트매터 줄 — hooks / mcpServers (WP-LA).
+
+    CC는 **플러그인 서브에이전트의 `hooks`/`mcpServers`/`permissionMode`를 보안상
+    무시한다**. `.claude/agents/`에 반입되는 LOCAL 빌드에서만 실제로 동작하므로,
+    이 두 필드는 여기서만 배출한다(`permissionMode`는 매트릭스가 이미 프론트매터로
+    내보내고 있어 별도 처리하지 않는다 — 마켓플레이스 빌드에서 무시된다는 사실은
+    `unsupported_agent_field_in_marketplace_build` 경고가 알린다).
+    """
+    if not _is_local_build(project):
+        return []
+
+    lines: list[str] = []
+    hook_groups = _agent_hook_groups(agent, project)
+    if hook_groups:
+        lines.append(f"{AgentField.HOOKS.frontmatter_key}:")
+        lines.extend(_yaml_block_lines(hook_groups, 2))
+    servers = _agent_mcp_server_names(agent)
+    if servers:
+        # 이름 참조 형태(리스트) — 이미 세션에 설정된 서버를 가리킨다.
+        # 인라인 정의는 모델에 서버 설정 자체가 없으므로 지원 범위 밖이다.
+        lines.append(f"{AgentField.MCP_SERVERS.frontmatter_key}:")
+        lines.extend(_yaml_block_lines(servers, 2))
+    return lines
+
+
+def _settings_note_agent(agent: AgentDefinition, project=None) -> list[str]:
     """SETTINGS emit 필드(hooks/mcp_servers)를 요구 환경 언급 단락으로 (v0 산출 제외).
 
     WP-TM Part C: config.tools의 mcp__ 접두에서 추출한 서버 이름도 명시적
     mcp_servers 선언과 합쳐(중복 제거, 이름순) 같은 단락에 담는다 — 별도
     "## 요구 환경" 단락을 또 만들지 않는다.
+
+    WP-LA: LOCAL 빌드에서는 이 둘이 프론트매터로 **실제 배출**되므로(설정을
+    직접 들고 가므로) 이 언급 단락을 내지 않는다 — 같은 사실을 두 번 말하는
+    데다, "설정 파일을 생성하지 않음"이라는 문구가 거짓이 된다.
     """
+    if _is_local_build(project):
+        return []
+
     config = agent.config
     needs: list[str] = []
     hooks = getattr(config, "hooks", None)
     if hooks:
         names = ", ".join(str(n) for n in hooks)
         needs.append(f"lifecycle hooks: {names} (hooks/hooks.json 생성됨)")
-    mcp_declared = set(getattr(config, "mcp_servers", None) or ())
-    mcp_from_tools = set(_mcp_servers_from_tools(getattr(config, "tools", None)))
-    mcp_all = sorted(mcp_declared | mcp_from_tools)
+    mcp_all = _agent_mcp_server_names(agent)
     if mcp_all:
         names = ", ".join(mcp_all)
         needs.append(f"MCP 서버 연결: {names} (`.mcp.json`)")
@@ -1293,6 +1407,8 @@ def _caller_contracts_section(agent: AgentDefinition) -> list[str]:
 def compile_agent(agent: AgentDefinition, project=None) -> str:
     """에이전트 → agent .md 텍스트 (LF, BOM 없음, 결정적)."""
     fm_lines = _frontmatter_lines_agent(agent)
+    # LOCAL 빌드에서만 hooks/mcpServers가 프론트매터로 나간다 (WP-LA)
+    fm_lines.extend(_local_settings_frontmatter_lines(agent, project))
     blocks: list[str] = [_frontmatter_block(fm_lines)]
 
     # 본문(body)
@@ -1305,8 +1421,8 @@ def compile_agent(agent: AgentDefinition, project=None) -> str:
 
     # 호출 파라미터(INVOCATION)
     blocks.extend(_invocation_section_agent(agent))
-    # 요구 환경(SETTINGS 언급)
-    blocks.extend(_settings_note_agent(agent))
+    # 요구 환경(SETTINGS 언급) — LOCAL 빌드는 프론트매터가 대신하므로 생략된다
+    blocks.extend(_settings_note_agent(agent, project))
 
     # 에이전트 FSM 절차 (ExitPoint 출구 의미 포함)
     blocks.extend(_describe_agent_fsm(agent))

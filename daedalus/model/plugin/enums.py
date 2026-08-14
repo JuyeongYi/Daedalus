@@ -140,6 +140,13 @@ class AgentField(Enum):
 
     @property
     def frontmatter_key(self) -> str:
-        """CC agent .md 실제 키 케이싱(camelCase 여부) 확정은 컴파일러 WP 정책 —
-        여기서는 kebab-case 기준값만 제공."""
-        return self.value.replace("_", "-")
+        """CC 서브에이전트 프론트매터의 실제 키 — **camelCase** (WP-LA에서 확정).
+
+        공식 sub-agents 문서의 필드 표 기준(2026-08 확인): `disallowedTools`,
+        `permissionMode`, `maxTurns`, `mcpServers`. 단일 단어 필드는 그대로다.
+        이전에는 케이싱이 미확정이라 kebab-case를 잠정값으로 썼는데, 그 키들은
+        CC가 인식하지 못해 **조용히 무시**된다 — 스킬 프론트매터(`allowed-tools`
+        등 kebab-case)와 규약이 다르므로 한쪽을 보고 다른 쪽을 유추하면 안 된다.
+        """
+        head, *rest = self.value.split("_")
+        return head + "".join(word.capitalize() for word in rest)
