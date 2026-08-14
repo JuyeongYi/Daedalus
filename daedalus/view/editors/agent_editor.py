@@ -382,6 +382,8 @@ class AgentEditor(QWidget):
             self._agent,
             right_widgets=[self._entry_paths_panel, self._caller_contract_panel],
             on_notify_fn=self._on_model_changed,
+            # 빌드 타깃이 지원하지 않는 필드를 잠그기 위해 전달 (WP-EL)
+            build_target=getattr(self._project, "build_target", None),
         )
 
         return self._component_editor

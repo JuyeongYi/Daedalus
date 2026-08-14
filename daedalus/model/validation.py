@@ -104,6 +104,16 @@ CC_BUILTIN_TOOLS: frozenset[str] = frozenset({
 })
 
 
+# CC가 **플러그인 스킬에서만 치환하는** 변수 (공식 skills 문서의 치환 표).
+# 프로젝트 설치(LOCAL) 빌드는 플러그인이 아니므로 이 변수들은 리터럴로 남는다.
+# ${CLAUDE_PROJECT_DIR}/${CLAUDE_SKILL_DIR}은 플러그인 여부와 무관하게 치환되므로
+# 여기 넣지 않는다 — LOCAL에서 files/를 가리키는 정상 경로다.
+PLUGIN_ONLY_VARIABLES: tuple[str, ...] = (
+    "${CLAUDE_PLUGIN_ROOT}",
+    "${CLAUDE_PLUGIN_DATA}",
+)
+
+
 # skip_rules로 생략을 지원하는 규칙 집합 — 이름 오타/규칙 리네임이 조용한
 # no-op이 되지 않도록 알려진 이름만 허용한다.
 SKIPPABLE_RULES: frozenset[str] = frozenset({"unreachable_state"})
@@ -1589,18 +1599,28 @@ class Validator:
         `mcp_agent_in_marketplace_build`가 짚으므로 여기서는 나머지 둘만 본다
         (같은 에이전트에 경고가 둘 겹치지 않게).
         """
+        from daedalus.model.plugin.enums import AgentField
+        from daedalus.model.plugin.field_matrix import agent_field_supported
+
         build_target = getattr(project, "build_target", BuildTarget.MARKETPLACE)
         if build_target is not BuildTarget.MARKETPLACE:
             return []
+        # MCP(mcp_servers)는 아래 규칙에서 제외한다 — 같은 에이전트에 경고가 둘
+        # 겹치지 않도록 mcp_agent_in_marketplace_build가 전담한다.
+        checked = [AgentField.HOOKS, AgentField.PERMISSION_MODE]
         errors: list[ValidationError] = []
         for agent in getattr(project, "agents", []):
             cfg = getattr(agent, "config", None)
             unsupported: list[str] = []
-            if getattr(cfg, "hooks", None):
-                unsupported.append("hooks")
-            mode = getattr(cfg, "permission_mode", None)
-            if mode is not None and mode is not PermissionMode.DEFAULT:
-                unsupported.append(f"permissionMode({mode.value})")
+            for afield in checked:
+                if agent_field_supported(afield, build_target):
+                    continue  # 지원되면 문제 없음(집합이 바뀌면 자동으로 따라간다)
+                if afield is AgentField.HOOKS and getattr(cfg, "hooks", None):
+                    unsupported.append("hooks")
+                elif afield is AgentField.PERMISSION_MODE:
+                    mode = getattr(cfg, "permission_mode", None)
+                    if mode is not None and mode is not PermissionMode.DEFAULT:
+                        unsupported.append(f"permissionMode({mode.value})")
             if not unsupported:
                 continue
             errors.append(ValidationError(
@@ -1620,9 +1640,15 @@ class Validator:
     @staticmethod
     def _check_plugin_root_in_local_build(project) -> list[ValidationError]:
         """plugin_root_in_local_build — build_target=LOCAL인데 스킬/에이전트(로컬
-        스킬 포함) 본문에 files/ 참조 이외 용도의 ``${CLAUDE_PLUGIN_ROOT}``가 남아
-        있으면 경고. files/ 참조(``${CLAUDE_PLUGIN_ROOT}/files/``)는 컴파일이
-        ``${CLAUDE_PROJECT_DIR}/files/``로 자동 치환하므로 검사에서 제외한다.
+        스킬 포함) 본문에 **플러그인 전용 변수**가 남아 있으면 경고.
+
+        CC는 `${CLAUDE_PLUGIN_ROOT}`와 `${CLAUDE_PLUGIN_DATA}`를 **플러그인
+        스킬에서만 치환한다**(공식 skills 문서의 치환 표). 프로젝트 설치 빌드는
+        플러그인이 아니므로 이 변수들이 리터럴 문자열 그대로 남는다.
+
+        files/ 참조(``${CLAUDE_PLUGIN_ROOT}/files/``)는 컴파일이
+        ``${CLAUDE_PROJECT_DIR}/files/``로 자동 치환하므로 검사에서 제외한다 —
+        `${CLAUDE_PROJECT_DIR}`는 플러그인 여부와 무관하게 치환된다(v2.1.196+).
         """
         build_target = getattr(project, "build_target", BuildTarget.MARKETPLACE)
         if build_target is not BuildTarget.LOCAL:
@@ -1633,18 +1659,20 @@ class Validator:
             text = body or ""
             # files/ 참조는 컴파일이 자동 치환하므로 제거한 나머지에서만 검사.
             remaining = text.replace("${CLAUDE_PLUGIN_ROOT}/files/", "")
-            if "${CLAUDE_PLUGIN_ROOT}" in remaining:
-                errors.append(ValidationError(
-                    rule="plugin_root_in_local_build",
-                    message=(
-                        f"{label}의 본문에 '${{CLAUDE_PLUGIN_ROOT}}'가 files/ 참조 "
-                        f"이외 용도로 남아 있습니다 — 로컬 빌드에서는 이 경로가 "
-                        f"유효하지 않습니다."
-                    ),
-                    source=label,
-                    subject=subject,
-                    path=path,
-                ))
+            for var in PLUGIN_ONLY_VARIABLES:
+                if var in remaining:
+                    errors.append(ValidationError(
+                        rule="plugin_root_in_local_build",
+                        message=(
+                            f"{label}의 본문에 '{var}'가 남아 있습니다 — 이 변수는 "
+                            f"플러그인 스킬에서만 치환되므로, 프로젝트 설치 빌드에서는 "
+                            f"문자열 그대로 남습니다. "
+                            f"'${{CLAUDE_PROJECT_DIR}}'나 '${{CLAUDE_SKILL_DIR}}'를 쓰세요."
+                        ),
+                        source=label,
+                        subject=subject,
+                        path=path,
+                    ))
 
         for skill in getattr(project, "skills", []):
             _scan(

@@ -24,9 +24,15 @@ from daedalus.model.plugin.enums import BuildTarget
 from daedalus.model.project import PluginProject
 
 # 빌드 타깃 콤보 표시 문구 — BuildTarget과 1:1 (WP-TG).
+#
+# LOCAL을 "로컬 플러그인"이 아니라 "프로젝트 설치"로 부른다: 이 산출물은 CC가
+# 플러그인으로 취급하지 않는다(서브에이전트 스코프로 치면 plugin이 아니라
+# project다). 정확히 그래서 hooks/mcpServers/permissionMode 제약이 풀리므로,
+# 이름에 "플러그인"이 남아 있으면 왜 규칙이 다른지가 가려진다. enum 값(`local`)은
+# 저장 포맷 호환을 위해 그대로 둔다.
 BUILD_TARGET_LABELS: list[tuple[BuildTarget, str]] = [
     (BuildTarget.MARKETPLACE, "마켓플레이스 플러그인"),
-    (BuildTarget.LOCAL, "로컬 플러그인"),
+    (BuildTarget.LOCAL, "프로젝트 설치 (.claude/ 반입)"),
 ]
 
 

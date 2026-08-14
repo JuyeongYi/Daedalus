@@ -1197,13 +1197,23 @@ def compile_skill(
 # ─────────────────────────── 공개: compile_agent ───────────────────────────
 
 
-def _frontmatter_lines_agent(agent: AgentDefinition) -> list[str]:
-    """에이전트 프론트매터 줄 목록 (emit==FRONTMATTER 만)."""
+def _frontmatter_lines_agent(agent: AgentDefinition, project=None) -> list[str]:
+    """에이전트 프론트매터 줄 목록 (emit==FRONTMATTER 만).
+
+    마켓플레이스 빌드에서는 CC가 무시하는 필드(`permissionMode` 등)를 아예 내지
+    않는다 — 값이 파일에 남아 있으면 걸린 줄 알지만 실제로는 아무 일도 일어나지
+    않기 때문이다(WP-EL). 판정의 단일 진실은 `agent_field_supported`.
+    """
+    from daedalus.model.plugin.field_matrix import agent_field_supported
+
+    build_target = _build_target(project)
     config = agent.config
     lines: list[str] = []
     for afield in AgentField:
         rule = AGENT_FIELD_MATRIX[afield]
         if rule.emit is not FieldEmit.FRONTMATTER:
+            continue
+        if not agent_field_supported(afield, build_target):
             continue
         key = afield.frontmatter_key
 
@@ -1280,13 +1290,20 @@ def _invocation_section_agent(agent: AgentDefinition) -> list[str]:
     return blocks
 
 
-def _is_local_build(project) -> bool:
-    """프로젝트 빌드 타깃이 LOCAL인가. project 미지정이면 MARKETPLACE 취급(하위 호환)."""
-    if project is None:
-        return False
+def _build_target(project):
+    """프로젝트 빌드 타깃. project 미지정이면 MARKETPLACE 취급(하위 호환)."""
     from daedalus.model.plugin.enums import BuildTarget
 
-    return getattr(project, "build_target", None) is BuildTarget.LOCAL
+    if project is None:
+        return BuildTarget.MARKETPLACE
+    return getattr(project, "build_target", None) or BuildTarget.MARKETPLACE
+
+
+def _is_local_build(project) -> bool:
+    """프로젝트 빌드 타깃이 LOCAL인가. project 미지정이면 MARKETPLACE 취급(하위 호환)."""
+    from daedalus.model.plugin.enums import BuildTarget
+
+    return _build_target(project) is BuildTarget.LOCAL
 
 
 def _agent_mcp_server_names(agent: AgentDefinition) -> list[str]:
@@ -1414,7 +1431,7 @@ def _caller_contracts_section(agent: AgentDefinition) -> list[str]:
 
 def compile_agent(agent: AgentDefinition, project=None) -> str:
     """에이전트 → agent .md 텍스트 (LF, BOM 없음, 결정적)."""
-    fm_lines = _frontmatter_lines_agent(agent)
+    fm_lines = _frontmatter_lines_agent(agent, project)
     # LOCAL 빌드에서만 hooks/mcpServers가 프론트매터로 나간다 (WP-LA)
     fm_lines.extend(_local_settings_frontmatter_lines(agent, project))
     blocks: list[str] = [_frontmatter_block(fm_lines)]

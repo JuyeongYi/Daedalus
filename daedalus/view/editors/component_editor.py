@@ -41,6 +41,7 @@ class ComponentEditor(QWidget):
         on_notify_fn: Callable[[], None] | None = None,
         skill_kind: str | None = None,
         parent: QWidget | None = None,
+        build_target=None,
     ) -> None:
         super().__init__(parent)
         self._component = component
@@ -55,7 +56,9 @@ class ComponentEditor(QWidget):
         root_splitter = QSplitter(Qt.Orientation.Horizontal)
 
         # --- 좌측: FrontmatterPanel ---
-        self._fm = _FrontmatterPanel(component, skill_kind=skill_kind)
+        self._fm = _FrontmatterPanel(
+            component, skill_kind=skill_kind, build_target=build_target,
+        )
         self._fm.setMinimumWidth(_LEFT_MIN_W)
         self._fm.changed.connect(self._on_model_changed)
         # description / when_to_use 키스트로크 → content 채널

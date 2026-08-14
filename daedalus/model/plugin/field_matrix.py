@@ -19,6 +19,7 @@ from daedalus.model.plugin.enums import (
     AgentColor,
     AgentField,
     AgentIsolation,
+    BuildTarget,
     FieldEmit,
     FieldVisibility,
     MemoryScope,
@@ -185,3 +186,29 @@ AGENT_FIELD_MATRIX: dict[AgentField, FieldRule] = {
     AgentField.MCP_SERVERS:      FieldRule(O, emit=FieldEmit.SETTINGS),
 }
 # fmt: on
+
+
+# CC는 **보안상 플러그인 서브에이전트의 이 필드들을 무시한다**(공식 sub-agents
+# 문서: "plugin subagents don't support the hooks, mcpServers, or permissionMode
+# frontmatter fields. These fields are ignored when loading agents from a plugin.").
+#
+# 값이 파일에 남아 있어도 아무 일이 일어나지 않는다 — 설계자가 걸어 둔 제약이
+# 조용히 사라진다. 그래서 마켓플레이스 빌드에서는 편집기가 잠그고(view), 컴파일러도
+# 배출하지 않으며(compiler), 값이 설정돼 있으면 검증이 경고한다(validation).
+# 세 계층이 같은 집합을 봐야 어긋나지 않으므로 여기가 단일 진실이다.
+MARKETPLACE_UNSUPPORTED_AGENT_FIELDS: frozenset[AgentField] = frozenset({
+    AgentField.HOOKS,
+    AgentField.MCP_SERVERS,
+    AgentField.PERMISSION_MODE,
+})
+
+
+def agent_field_supported(field: AgentField, build_target: BuildTarget) -> bool:
+    """이 빌드 타깃에서 해당 에이전트 필드가 실제로 동작하는가.
+
+    LOCAL(.claude/agents/ 반입)에서는 전부 동작한다 — 플러그인이 아니므로
+    플러그인 제약을 받지 않는다.
+    """
+    if build_target is BuildTarget.MARKETPLACE:
+        return field not in MARKETPLACE_UNSUPPORTED_AGENT_FIELDS
+    return True

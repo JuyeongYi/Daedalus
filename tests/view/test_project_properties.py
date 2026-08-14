@@ -129,8 +129,13 @@ def test_new_project_default_target_is_marketplace(qapp, monkeypatch):
 
 
 def test_new_project_local_target_selected(qapp, monkeypatch):
+    from daedalus.view.editors.project_properties import BUILD_TARGET_LABELS
+
+    # 라벨 문구가 바뀌어도(WP-EL: "로컬 플러그인" → "프로젝트 설치") 깨지지 않도록
+    # 상수에서 가져온다 — 이 테스트가 검증하는 것은 선택 결과이지 문구가 아니다.
+    local_label = dict(BUILD_TARGET_LABELS)[BuildTarget.LOCAL]
     window = MainWindow()
-    _stub_build_target_dialog(monkeypatch, "로컬 플러그인")
+    _stub_build_target_dialog(monkeypatch, local_label)
     window._new_project()
     assert window._project is not None
     assert window._project.build_target is BuildTarget.LOCAL

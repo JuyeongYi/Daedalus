@@ -161,12 +161,27 @@ def test_agent_frontmatter_selects_emit_frontmatter_only():
     fm = _frontmatter(compile_agent(agent))
     assert "name: worker" in fm
     assert "color: blue" in fm
-    assert "permissionMode: acceptEdits" in fm
     # WP-FF: 이 둘도 CC 서브에이전트 프론트매터 필드다
     assert "maxTurns: 5" in fm
     assert "isolation: worktree" in fm
-    # SETTINGS 필드는 LOCAL 빌드에서만 나간다(WP-LA) — project 없이는 마켓플레이스
+    # WP-EL: permissionMode/hooks/mcpServers는 플러그인 서브에이전트에서 무시되므로
+    # 마켓플레이스 빌드(= project 없이 호출한 이 경로)에서는 배출하지 않는다
+    assert "permissionMode" not in fm
     assert "hooks:" not in fm and "mcpServers:" not in fm
+
+
+def test_agent_frontmatter_emits_permission_mode_in_local_build():
+    from daedalus.model.plugin.enums import BuildTarget
+    from daedalus.model.project import PluginProject
+
+    agent = make_agent()
+    agent.config = AgentConfig(permission_mode=PermissionMode.ACCEPT_EDITS)
+    project = PluginProject(
+        name="p", agents=[agent], build_target=BuildTarget.LOCAL,
+    )
+
+    fm = _frontmatter(compile_agent(agent, project=project))
+    assert "permissionMode: acceptEdits" in fm
 
 
 def test_agent_permission_mode_default_omitted():

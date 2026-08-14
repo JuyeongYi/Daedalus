@@ -171,9 +171,15 @@ class _FrontmatterPanel(QScrollArea):
         component: ProceduralSkill | DeclarativeSkill | TransferSkill | ReferenceSkill | AgentDefinition,
         skill_kind: str | None = None,
         parent: QWidget | None = None,
+        build_target=None,
     ) -> None:
         super().__init__(parent)
         self._component = component
+        # 빌드 타깃에 따라 CC가 무시하는 필드를 잠근다 (WP-EL). None이면
+        # 마켓플레이스로 취급 — 기존 호출부·테스트 호환.
+        from daedalus.model.plugin.enums import BuildTarget
+
+        self._build_target = build_target or BuildTarget.MARKETPLACE
         self._field_widgets: dict[SkillField | AgentField, QWidget] = {}
         self._loading = False  # 로드 중 write-back 핸들러 억제용 가드
 
@@ -257,6 +263,7 @@ class _FrontmatterPanel(QScrollArea):
                     current_group = rule.emit
 
                 widget = widget_map[fld]()
+                container: QWidget | None = None
                 self._apply_value(widget, config, component, fld, rule)
                 self._wire_tool_candidates(fld, widget)
                 self._field_widgets[fld] = widget
@@ -281,11 +288,36 @@ class _FrontmatterPanel(QScrollArea):
                         lambda checked, f=fld: self._on_optional_toggled(f, checked)
                     )
                     lay.addWidget(opt_row)
+                    # 잠금은 행 전체에 걸어야 한다 — 위젯만 잠그면 체크박스가
+                    # 살아 있어 "켤 수는 있는데 아무 일도 안 일어나는" 상태가 된다
+                    container = opt_row
+
+                if is_agent:
+                    self._apply_build_target_lock(fld, container or widget)
         finally:
             self._loading = False
 
         lay.addStretch()
         self.setWidget(inner)
+
+    def _apply_build_target_lock(self, fld, widget: QWidget) -> None:
+        """빌드 타깃이 지원하지 않는 에이전트 필드를 잠근다 (WP-EL).
+
+        CC는 플러그인 서브에이전트의 hooks/mcpServers/permissionMode를 보안상
+        무시한다. 편집을 그대로 두면 "설정했는데 아무 일도 일어나지 않는" 상태가
+        된다 — 설계자가 건 제약이 조용히 사라지는 것이므로, 아예 만질 수 없게
+        하고 이유를 툴팁으로 알린다.
+        """
+        from daedalus.model.plugin.field_matrix import agent_field_supported
+
+        if agent_field_supported(fld, self._build_target):
+            return
+        widget.setEnabled(False)
+        widget.setToolTip(
+            f"마켓플레이스 플러그인에서는 '{fld.frontmatter_key}'가 무시됩니다"
+            f" (CC 보안 정책). 프로젝트 속성에서 빌드 타깃을 '프로젝트 설치'로"
+            f" 바꾸면 사용할 수 있습니다."
+        )
 
     # ------------------------------------------------------------------
     # 내부 헬퍼
