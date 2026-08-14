@@ -245,6 +245,42 @@ def test_handler_form_writes_back_mcp_fields(panel):
     assert handler.tool_input == {"channel": "#dev"}
 
 
+def test_handler_form_is_never_a_toplevel_window(panel):
+    """부모 없는 QWidget은 최상위 윈도우다 — 레이아웃에 붙기 전 한 프레임 동안
+    빈 창이 깜빡였다(핸들러를 전환할 때마다 보였다)."""
+    panel._project.hook_library.append(_hook("a", handlers=[CommandHook(script="x")]))
+    panel._reload_list()
+
+    form = panel._handler_form
+    assert form is not None
+    assert form.parent() is not None
+    assert not form.isWindow()
+
+
+def test_handler_toolbar_sits_above_the_list(panel):
+    """조작 줄이 목록 아래에 있으면 무엇을 추가하는 버튼인지 한 번 더 훑어야 한다."""
+    box_layout = panel._handlers_box.layout()
+    order = [box_layout.itemAt(i) for i in range(box_layout.count())]
+    toolbar_index = next(
+        i for i, item in enumerate(order)
+        if item.layout() is not None and item.layout().indexOf(panel._handler_type) >= 0
+    )
+    list_index = next(
+        i for i, item in enumerate(order) if item.widget() is panel._handler_list
+    )
+    assert toolbar_index < list_index
+
+
+def test_handler_area_absorbs_extra_space(panel):
+    """스페이서가 없으면 훅이 없을 때 위젯들이 위아래로 흩어진다."""
+    box_layout = panel._handlers_box.layout()
+    holder_index = next(
+        i for i in range(box_layout.count())
+        if box_layout.itemAt(i).layout() is panel._handler_form_holder
+    )
+    assert box_layout.stretch(holder_index) == 1
+
+
 def test_switching_handler_rebuilds_form(panel):
     """타입마다 필드가 달라 폼을 갈아끼운다 — 이전 타입의 위젯이 남으면 안 된다."""
     panel._project.hook_library.append(

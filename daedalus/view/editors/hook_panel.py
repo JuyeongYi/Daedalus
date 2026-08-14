@@ -70,8 +70,15 @@ class _HandlerForm(QWidget):
     알 수 없다 — 해당 타입의 필드만 보여준다.
     """
 
-    def __init__(self, handler: Any, on_changed: Callable[[], None]) -> None:
-        super().__init__()
+    def __init__(
+        self,
+        handler: Any,
+        on_changed: Callable[[], None],
+        parent: QWidget | None = None,
+    ) -> None:
+        # 부모를 반드시 받는다: 부모 없는 QWidget은 **최상위 윈도우**라, 레이아웃에
+        # 붙기 전 한 프레임 동안 빈 창이 깜빡인다(핸들러를 전환할 때마다 보였다).
+        super().__init__(parent)
         self._handler = handler
         self._on_changed = on_changed
         self._loading = True
@@ -372,14 +379,14 @@ class HookLibraryPanel(QWidget):
         return area
 
     def _build_handlers_box(self) -> QWidget:
-        box = QGroupBox("핸들러 — 이 훅이 실행할 것")
+        # CC 스키마의 hookMatcher.hooks는 배열이다 — 한 훅이 여러 개를 순서대로
+        # 실행할 수 있고, 타입이 섞여도 된다(커맨드 실행 후 에이전트 검증 등).
+        box = QGroupBox("핸들러 — 이 훅이 실행할 것 (여러 개 가능, 위에서부터 순서대로)")
+        self._handlers_box = box
         lay = QVBoxLayout(box)
 
-        self._handler_list = QListWidget()
-        self._handler_list.setFixedHeight(96)
-        self._handler_list.currentRowChanged.connect(self._on_handler_row_changed)
-        lay.addWidget(self._handler_list)
-
+        # 조작 줄이 맨 위 — 목록보다 아래에 있으면 무엇을 추가하는 버튼인지
+        # 눈이 한 번 더 훑어야 한다. 툴바는 위에 둔다.
         row = QHBoxLayout()
         self._handler_type = QComboBox()
         for kind, label in HOOK_HANDLER_LABELS:
@@ -395,8 +402,15 @@ class HookLibraryPanel(QWidget):
         row.addWidget(remove)
         lay.addLayout(row)
 
+        self._handler_list = QListWidget()
+        self._handler_list.setFixedHeight(96)
+        self._handler_list.currentRowChanged.connect(self._on_handler_row_changed)
+        lay.addWidget(self._handler_list)
+
+        # holder가 남는 세로 공간을 흡수한다 — 안 그러면 훅이 없을 때(폼이 비었을
+        # 때) 남는 공간이 위 위젯들에 균등 배분돼 위아래로 흩어진다.
         self._handler_form_holder = QVBoxLayout()
-        lay.addLayout(self._handler_form_holder)
+        lay.addLayout(self._handler_form_holder, 1)
         self._handler_form: _HandlerForm | None = None
         return box
 
@@ -594,7 +608,9 @@ class HookLibraryPanel(QWidget):
             self._handler_form = None
         if handler is None:
             return
-        self._handler_form = _HandlerForm(handler, self._on_handler_changed)
+        self._handler_form = _HandlerForm(
+            handler, self._on_handler_changed, self._handlers_box,
+        )
         self._handler_form_holder.addWidget(self._handler_form)
         self._sync_script_ref()
 
