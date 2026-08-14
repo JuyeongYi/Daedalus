@@ -155,16 +155,18 @@ def test_agent_frontmatter_selects_emit_frontmatter_only():
         model=ModelType.SONNET,
         color=AgentColor.BLUE,
         permission_mode=PermissionMode.ACCEPT_EDITS,
-        max_turns=5,  # INVOCATION — 프론트매터에 없어야
-        isolation=AgentIsolation.WORKTREE,  # INVOCATION
+        max_turns=5,
+        isolation=AgentIsolation.WORKTREE,
     )
     fm = _frontmatter(compile_agent(agent))
     assert "name: worker" in fm
     assert "color: blue" in fm
     assert "permissionMode: acceptEdits" in fm
-    # INVOCATION 필드는 프론트매터에 없음
-    assert "maxTurns:" not in fm
-    assert "isolation:" not in fm
+    # WP-FF: 이 둘도 CC 서브에이전트 프론트매터 필드다
+    assert "maxTurns: 5" in fm
+    assert "isolation: worktree" in fm
+    # SETTINGS 필드는 LOCAL 빌드에서만 나간다(WP-LA) — project 없이는 마켓플레이스
+    assert "hooks:" not in fm and "mcpServers:" not in fm
 
 
 def test_agent_permission_mode_default_omitted():

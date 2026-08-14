@@ -9,7 +9,12 @@ from daedalus.model.plugin.enums import AgentIsolation, ModelType
 from tests.compiler.builders import make_agent
 
 
-def test_agent_invocation_section_lists_non_default_invocation_fields():
+def test_max_turns_background_isolation_go_to_frontmatter():
+    """WP-FF: 본문 "호출 파라미터" 안내문이 아니라 프론트매터로 나간다.
+
+    안내문은 부르는 쪽이 읽고 따라야 적용되지만, 프론트매터는 CC 런타임이 직접
+    강제한다 — 설계자가 건 제약이 실제로 걸리려면 프론트매터여야 한다.
+    """
     agent = make_agent()
     agent.config = AgentConfig(
         model=ModelType.SONNET,
@@ -18,18 +23,21 @@ def test_agent_invocation_section_lists_non_default_invocation_fields():
         isolation=AgentIsolation.WORKTREE,
     )
     text = compile_agent(agent)
-    assert "## 호출 파라미터" in text
-    # 키 이름은 CC가 실제로 읽는 camelCase (WP-LA에서 확정)
-    assert "maxTurns`: 10" in text
-    assert "background`: True" in text
-    assert "isolation`: worktree" in text
+    assert "## 호출 파라미터" not in text
+
+    fm = text[4:text.index("\n---", 4)]
+    assert "maxTurns: 10" in fm
+    assert "background: true" in fm, "YAML bool은 소문자"
+    assert "isolation: worktree" in fm
 
 
-def test_agent_invocation_section_omitted_when_all_default():
+def test_default_invocation_fields_omitted_from_frontmatter():
     agent = make_agent()
     agent.config = AgentConfig(model=ModelType.SONNET)  # max_turns None, background False, isolation NONE
     text = compile_agent(agent)
     assert "## 호출 파라미터" not in text
+    for key in ("maxTurns:", "background:", "isolation:"):
+        assert key not in text
 
 
 def test_agent_settings_note_mentions_mcp_and_hooks():

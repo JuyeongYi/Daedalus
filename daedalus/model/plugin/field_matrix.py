@@ -175,9 +175,13 @@ AGENT_FIELD_MATRIX: dict[AgentField, FieldRule] = {
     AgentField.MEMORY:           FieldRule(O),
     AgentField.COLOR:            FieldRule(O),
     AgentField.HOOKS:            FieldRule(O, emit=FieldEmit.SETTINGS),
-    AgentField.MAX_TURNS:        FieldRule(O, emit=FieldEmit.INVOCATION),
-    AgentField.BACKGROUND:       FieldRule(O, emit=FieldEmit.INVOCATION),
-    AgentField.ISOLATION:        FieldRule(O, default_value=AgentIsolation.NONE, emit=FieldEmit.INVOCATION),
+    # max_turns/background/isolation은 CC 서브에이전트 프론트매터 필드다(공식 문서
+    # 필드 표, 2026-08 확인). 이전에는 INVOCATION emit이라 "호출 파라미터" 본문
+    # 안내문으로만 나갔는데, 그러면 부르는 쪽이 문장을 읽고 따라야 적용된다 —
+    # 프론트매터에 있으면 CC 런타임이 직접 읽어 강제한다 (WP-FF).
+    AgentField.MAX_TURNS:        FieldRule(O),
+    AgentField.BACKGROUND:       FieldRule(O),
+    AgentField.ISOLATION:        FieldRule(O, default_value=AgentIsolation.NONE),
     AgentField.MCP_SERVERS:      FieldRule(O, emit=FieldEmit.SETTINGS),
 }
 # fmt: on

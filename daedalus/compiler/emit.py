@@ -1246,7 +1246,15 @@ def _emit_agent_field(
 
 
 def _invocation_section_agent(agent: AgentDefinition) -> list[str]:
-    """INVOCATION emit 필드(max_turns/background/isolation)를 호출 파라미터 안내 단락으로."""
+    """INVOCATION emit 필드를 호출 파라미터 안내 단락으로.
+
+    WP-FF 이후 이 emit을 쓰는 에이전트 필드는 없다 — max_turns/background/
+    isolation이 프론트매터로 올라갔기 때문이다(본문 안내문은 부르는 쪽이 읽고
+    따라야 적용되지만, 프론트매터는 CC 런타임이 직접 강제한다).
+
+    함수는 남겨 둔다: 호출 시점에만 의미가 있는 필드가 나중에 생기면 여기가
+    자리다. 지금은 항상 빈 목록이라 단락이 배출되지 않는다.
+    """
     config = agent.config
     rows: list[str] = []
     for afield in AgentField:

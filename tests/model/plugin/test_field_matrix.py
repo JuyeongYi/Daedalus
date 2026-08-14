@@ -177,13 +177,29 @@ def test_agent_field_matrix_completeness():
         assert af in AGENT_FIELD_MATRIX, f"AGENT_FIELD_MATRIX에 {af} 누락"
 
 
-def test_agent_field_matrix_emit_invocation():
-    """MAX_TURNS/BACKGROUND/ISOLATION의 emit은 INVOCATION이어야 한다."""
+def test_max_turns_background_isolation_are_frontmatter():
+    """MAX_TURNS/BACKGROUND/ISOLATION은 프론트매터 필드다 (WP-FF).
+
+    CC 서브에이전트 프론트매터가 이 셋을 지원하므로, 본문 안내문("호출 파라미터")이
+    아니라 프론트매터로 나가야 CC 런타임이 직접 강제한다.
+    """
     from daedalus.model.plugin.field_matrix import AGENT_FIELD_MATRIX
     for af in (AgentField.MAX_TURNS, AgentField.BACKGROUND, AgentField.ISOLATION):
-        assert AGENT_FIELD_MATRIX[af].emit == FieldEmit.INVOCATION, (
-            f"{af} emit이 INVOCATION이 아님: {AGENT_FIELD_MATRIX[af].emit!r}"
+        assert AGENT_FIELD_MATRIX[af].emit == FieldEmit.FRONTMATTER, (
+            f"{af} emit이 FRONTMATTER가 아님: {AGENT_FIELD_MATRIX[af].emit!r}"
         )
+
+
+def test_no_agent_field_uses_invocation_emit():
+    """WP-FF 이후 INVOCATION emit을 쓰는 에이전트 필드는 없다.
+
+    다시 생기면 그 필드가 정말 호출 시점에만 의미가 있는지 — 프론트매터가
+    지원하지 않는지 — 확인하고 이 테스트를 갱신하라.
+    """
+    from daedalus.model.plugin.field_matrix import AGENT_FIELD_MATRIX
+    using = [af for af, rule in AGENT_FIELD_MATRIX.items()
+             if rule.emit is FieldEmit.INVOCATION]
+    assert using == [], f"INVOCATION emit 잔존: {using}"
 
 
 def test_agent_field_matrix_emit_settings():
