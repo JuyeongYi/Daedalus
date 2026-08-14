@@ -113,9 +113,11 @@ def test_local_build_still_emits_skills_agents_layout(tmp_path):
 
 def test_local_build_hooks_json_still_generated(tmp_path):
     """LOCAL 빌드도 hooks/hooks.json은 동일 레이아웃으로 배출된다."""
+    from daedalus.model.plugin.hook import CommandHook
+
     hook = HookDef(
         name="fmt-on-edit", description="포맷", event=HookEvent.POST_TOOL_USE,
-        command="run-formatter",
+        handlers=[CommandHook(command="run-formatter")],
     )
     skill = make_procedural(name="my-skill")
     skill.config.hooks = {"fmt-on-edit": {}}

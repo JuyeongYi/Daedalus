@@ -26,6 +26,8 @@ TOOL_NAMES = (
     "get_history",
     "validate_project",
     "compile_preview",
+    "list_hook_events",
+    "hook_frontmatter_preview",
     # 편집 — 전부 undo 가능
     "create_skill",
     "create_agent",

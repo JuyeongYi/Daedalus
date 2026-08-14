@@ -10,6 +10,9 @@ from daedalus.model.project import PluginProject
 from daedalus.view import app as app_module
 from daedalus.view.app import MainWindow
 from daedalus.view.panels.registry_panel import RegistryPanel
+# 고정 상주 탭 개수(Project FSM / 블랙보드 / 훅) — 탭이 늘어도 테스트가 따라간다
+from daedalus.view.app import _FIXED_TAB_INDEXES
+_FIXED_TAB_COUNT = len(_FIXED_TAB_INDEXES)
 
 
 def _stub_build_target_dialog(monkeypatch, choice: str = "마켓플레이스 플러그인") -> None:
@@ -77,7 +80,7 @@ class TestNewProject:
         window.set_project(proj)
         window._open_component(skill)  # 탭 열기
 
-        assert window._tabs.count() == 3  # Project FSM + 블랙보드 + skill 탭
+        assert window._tabs.count() == _FIXED_TAB_COUNT + 1  # 고정 탭 + skill 탭
 
         # 빈 프로젝트로 만든 후 새 프로젝트
         empty_proj = PluginProject(name="empty")
@@ -85,7 +88,7 @@ class TestNewProject:
         _stub_build_target_dialog(monkeypatch)
         window._new_project()  # 빈 → 새 프로젝트 (확인 다이얼로그 없음)
 
-        assert window._tabs.count() == 2  # Project FSM + 블랙보드 탭만
+        assert window._tabs.count() == _FIXED_TAB_COUNT  # 고정 탭만
         window.close()
 
     def test_new_project_resets_current_path(self, qapp, monkeypatch):
@@ -217,7 +220,7 @@ class TestDeleteHandler:
         window.set_project(proj)
         window._open_component(skill)
 
-        assert window._tabs.count() == 3  # FSM + 블랙보드 + skill 탭
+        assert window._tabs.count() == _FIXED_TAB_COUNT + 1  # 고정 탭 + skill 탭
         assert skill.id in window._open_tabs
 
         # QMessageBox 없이 직접 모델/뷰 정리 메서드를 호출
@@ -231,7 +234,7 @@ class TestDeleteHandler:
             window._close_tab(window._open_tabs[comp_id])
 
         assert skill not in window._project.skills
-        assert window._tabs.count() == 2  # FSM + 블랙보드 탭만
+        assert window._tabs.count() == _FIXED_TAB_COUNT  # 고정 탭만
         window.close()
 
     def test_delete_agent_closes_local_skill_tabs(self, qapp):
@@ -249,5 +252,5 @@ class TestDeleteHandler:
         window.set_project(proj)
         window._open_component(agent)
 
-        assert window._tabs.count() == 3  # FSM + 블랙보드 + agent 탭
+        assert window._tabs.count() == _FIXED_TAB_COUNT + 1  # 고정 탭 + agent 탭
         window.close()

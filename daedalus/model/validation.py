@@ -1132,32 +1132,55 @@ class Validator:
 
     @staticmethod
     def _check_empty_hook_command(project) -> list[ValidationError]:
-        """empty_hook_command — HookDef.command 빈 값 경고."""
+        """empty_hook_command — 훅에 핸들러가 없거나, 핸들러의 필수 값이 비면 경고.
+
+        WP-HK로 훅이 핸들러 목록을 갖게 되면서 "빈 값" 판정이 타입마다 달라졌다
+        (command 훅은 command, http 훅은 url, …). 각 핸들러가 무엇이 필수인지
+        아는 유일한 곳은 자기 자신이므로 `summary()`가 비었는지로 판정한다 —
+        핸들러 타입이 늘어도 이 규칙은 그대로 따라간다.
+        """
         errors: list[ValidationError] = []
         for hook in getattr(project, "hook_library", []):
-            if not hook.command.strip():
+            if not hook.handlers:
                 errors.append(ValidationError(
                     rule="empty_hook_command",
-                    message=f"훅 '{hook.name}'의 command가 비어 있습니다.",
+                    message=f"훅 '{hook.name}'에 핸들러가 없습니다 — 아무 일도 하지 않습니다.",
                     source=hook.name,
                     subject=hook,
                 ))
+                continue
+            for handler in hook.handlers:
+                if handler.summary().startswith("("):  # "(커맨드 없음)" 등
+                    errors.append(ValidationError(
+                        rule="empty_hook_command",
+                        message=(
+                            f"훅 '{hook.name}'의 {handler.kind} 핸들러에 "
+                            f"필수 값이 비어 있습니다."
+                        ),
+                        source=hook.name,
+                        subject=hook,
+                    ))
         return errors
 
     @staticmethod
     def _check_hook_matcher_event(project) -> list[ValidationError]:
-        """hook_matcher_without_tool_event — matcher가 있는데 event가
-        Pre/PostToolUse가 아니면 경고 (도구 매칭은 도구 이벤트에만 유효)."""
-        from daedalus.model.plugin.hook import TOOL_MATCH_EVENTS
+        """hook_matcher_without_tool_event — matcher를 받지 않는 이벤트에 matcher가
+        있으면 경고.
+
+        규칙 이름은 예전(도구 이벤트 전용이라고 보던 시절) 그대로 두지만, 판정은
+        스키마 기준이다 — CC 이벤트 대부분이 matcher를 받고, 받지 않는 것은
+        `NO_MATCHER_EVENTS`에 모아 두었다.
+        """
+        from daedalus.model.plugin.hook import MATCHER_EVENTS
         errors: list[ValidationError] = []
         for hook in getattr(project, "hook_library", []):
-            if hook.matcher.strip() and hook.event not in TOOL_MATCH_EVENTS:
+            if hook.matcher.strip() and hook.event not in MATCHER_EVENTS:
                 errors.append(ValidationError(
                     rule="hook_matcher_without_tool_event",
                     message=(
                         f"훅 '{hook.name}'의 matcher '{hook.matcher}'는 "
-                        f"event '{hook.event.value}'에서 무시됩니다. "
-                        f"matcher는 PreToolUse/PostToolUse에서만 유효합니다."
+                        f"event '{hook.event.value}'에서 무시됩니다 — "
+                        f"이 이벤트는 matcher를 받지 않습니다."
                     ),
                     source=hook.name,
                     subject=hook,

@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 
 from daedalus.compiler import compile_hooks_json, compile_project, compile_skill
-from daedalus.model.plugin.hook import HookDef, HookEvent
+from daedalus.model.plugin.hook import CommandHook, HookDef, HookEvent
 from daedalus.model.project import PluginProject
 
 from tests.compiler.builders import make_agent, make_declarative, make_procedural
@@ -14,11 +14,12 @@ from tests.compiler.builders import make_agent, make_declarative, make_procedura
 def _library() -> list[HookDef]:
     return [
         HookDef(name="fmt-on-edit", description="포맷", event=HookEvent.POST_TOOL_USE,
-                matcher="Edit|Write", command="run-formatter", timeout=30),
+                matcher="Edit|Write",
+                handlers=[CommandHook(command="run-formatter", timeout=30)]),
         HookDef(name="notify-stop", description="알림", event=HookEvent.STOP,
-                command="notify"),
+                handlers=[CommandHook(command="notify")]),
         HookDef(name="guard-bash", description="차단", event=HookEvent.PRE_TOOL_USE,
-                matcher="Bash", command="guard"),
+                matcher="Bash", handlers=[CommandHook(command="guard")]),
     ]
 
 
@@ -51,18 +52,18 @@ def test_hooks_json_schema_roundtrip():
         "hooks": [{"type": "command", "command": "run-formatter", "timeout": 30}],
     }]
 
-    # Stop: matcher 없음(도구 이벤트 아님) + timeout 없음
+    # Stop: matcher 미지정 + timeout 없음
     stop = hooks["Stop"]
     assert stop == [{"hooks": [{"type": "command", "command": "notify"}]}]
 
 
-def test_hooks_json_matcher_only_on_tool_events():
-    """STOP 이벤트 훅에 (실수로) matcher가 있어도 출력에서 생략된다."""
-    lib = [HookDef(name="h", description="d", event=HookEvent.STOP,
-                   matcher="Edit", command="c")]
+def test_hooks_json_matcher_omitted_when_event_ignores_it():
+    """matcher를 받지 않는 이벤트(스키마 명시)에서는 출력에서 생략된다."""
+    lib = [HookDef(name="h", description="d", event=HookEvent.CWD_CHANGED,
+                   matcher="Edit", handlers=[CommandHook(command="c")])]
     proj = PluginProject(name="p", agents=[_agent_with_hooks(["h"])], hook_library=lib)
     obj = json.loads(compile_hooks_json(proj))
-    assert "matcher" not in obj["hooks"]["Stop"][0]
+    assert "matcher" not in obj["hooks"]["CwdChanged"][0]
 
 
 def test_hooks_json_event_key_order_deterministic():
@@ -91,8 +92,8 @@ def test_hooks_json_none_when_ref_dangling():
 def test_hooks_json_same_event_multiple_hooks_library_order():
     """같은 이벤트의 복수 훅은 라이브러리 선언 순서로 정렬."""
     lib = [
-        HookDef(name="a", description="d", event=HookEvent.PRE_TOOL_USE, matcher="Bash", command="ca"),
-        HookDef(name="b", description="d", event=HookEvent.PRE_TOOL_USE, matcher="Read", command="cb"),
+        HookDef(name="a", description="d", event=HookEvent.PRE_TOOL_USE, matcher="Bash", handlers=[CommandHook(command="ca")]),
+        HookDef(name="b", description="d", event=HookEvent.PRE_TOOL_USE, matcher="Read", handlers=[CommandHook(command="cb")]),
     ]
     # 에이전트는 역순으로 참조하지만 출력은 라이브러리 순서(a, b)
     proj = PluginProject(name="p", agents=[_agent_with_hooks(["b", "a"])], hook_library=lib)

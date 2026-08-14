@@ -52,13 +52,17 @@ def _local_project(agent, hooks=()) -> PluginProject:
 
 
 def _hook(name="guard", event=HookEvent.PRE_TOOL_USE, **kw) -> HookDef:
+    from daedalus.model.plugin.hook import CommandHook
+
     return HookDef(
         name=name,
         description="",
         event=event,
         matcher=kw.get("matcher", ""),
-        command=kw.get("command", "./scripts/check.sh"),
-        timeout=kw.get("timeout"),
+        handlers=[CommandHook(
+            command=kw.get("command", "./scripts/check.sh"),
+            timeout=kw.get("timeout"),
+        )],
     )
 
 
@@ -91,15 +95,28 @@ def test_hook_timeout_emitted_when_set():
     assert entry["hooks"][0]["timeout"] == 5
 
 
-def test_matcher_omitted_for_non_tool_events():
-    """matcher는 Pre/PostToolUse 전용 — 그 외 이벤트에서는 키가 없어야 한다."""
+def test_matcher_omitted_for_events_that_ignore_it():
+    """matcher를 받지 않는 이벤트에서는 키가 없어야 한다.
+
+    (Stop처럼 matcher를 받는 이벤트는 그대로 배출된다 — 어느 이벤트가 받는지는
+    스키마 기준이며 NO_MATCHER_EVENTS가 단일 진실이다.)
+    """
     agent = make_agent()
-    agent.config = AgentConfig(hooks={"onstop": {}})
-    hook = _hook(name="onstop", event=HookEvent.STOP, matcher="Bash")
+    agent.config = AgentConfig(hooks={"oncwd": {}})
+    hook = _hook(name="oncwd", event=HookEvent.CWD_CHANGED, matcher="Bash")
     project = _local_project(agent, [hook])
 
-    group = _frontmatter(compile_agent(agent, project=project))["hooks"]["Stop"][0]
+    group = _frontmatter(compile_agent(agent, project=project))["hooks"]["CwdChanged"][0]
     assert "matcher" not in group
+
+
+def test_matcher_kept_for_events_that_accept_it():
+    agent = make_agent()
+    agent.config = AgentConfig(hooks={"onstop": {}})
+    project = _local_project(agent, [_hook(name="onstop", event=HookEvent.STOP, matcher="x")])
+
+    group = _frontmatter(compile_agent(agent, project=project))["hooks"]["Stop"][0]
+    assert group["matcher"] == "x"
 
 
 def test_multiple_events_keep_declaration_order():

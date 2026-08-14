@@ -13,7 +13,7 @@ from daedalus.model.fsm.machine import StateMachine
 from daedalus.model.fsm.state import SimpleState
 from daedalus.model.plugin.agent import AgentDefinition
 from daedalus.model.plugin.config import AgentConfig, DeclarativeSkillConfig
-from daedalus.model.plugin.hook import HookDef, HookEvent
+from daedalus.model.plugin.hook import CommandHook, HookDef, HookEvent
 from daedalus.model.plugin.skill import DeclarativeSkill
 from daedalus.model.project import PluginProject
 from daedalus.model.validation import WARNING_RULES, Validator
@@ -35,24 +35,24 @@ def _agent(hooks=None) -> AgentDefinition:
 
 def test_duplicate_hook_name_detected():
     proj = PluginProject(name="p", hook_library=[
-        HookDef(name="dup", description="a", command="x"),
-        HookDef(name="dup", description="b", command="y"),
+        HookDef(name="dup", description="a", handlers=[CommandHook(command="x")]),
+        HookDef(name="dup", description="b", handlers=[CommandHook(command="y")]),
     ])
     assert "duplicate_hook_name" in _rules(Validator.validate_project(proj))
 
 
 def test_duplicate_hook_name_not_detected():
     proj = PluginProject(name="p", hook_library=[
-        HookDef(name="a", description="a", command="x"),
-        HookDef(name="b", description="b", command="y"),
+        HookDef(name="a", description="a", handlers=[CommandHook(command="x")]),
+        HookDef(name="b", description="b", handlers=[CommandHook(command="y")]),
     ])
     assert "duplicate_hook_name" not in _rules(Validator.validate_project(proj))
 
 
 def test_duplicate_hook_name_is_error():
     proj = PluginProject(name="p", hook_library=[
-        HookDef(name="d", description="a", command="x"),
-        HookDef(name="d", description="b", command="y"),
+        HookDef(name="d", description="a", handlers=[CommandHook(command="x")]),
+        HookDef(name="d", description="b", handlers=[CommandHook(command="y")]),
     ])
     err = next(e for e in Validator.validate_project(proj) if e.rule == "duplicate_hook_name")
     assert not err.is_warning
@@ -62,14 +62,14 @@ def test_duplicate_hook_name_is_error():
 
 def test_empty_hook_command_detected():
     proj = PluginProject(name="p", hook_library=[
-        HookDef(name="h", description="a", command="   "),
+        HookDef(name="h", description="a", handlers=[CommandHook(command="   ")]),
     ])
     assert "empty_hook_command" in _rules(Validator.validate_project(proj))
 
 
 def test_empty_hook_command_not_detected():
     proj = PluginProject(name="p", hook_library=[
-        HookDef(name="h", description="a", command="echo hi"),
+        HookDef(name="h", description="a", handlers=[CommandHook(command="echo hi")]),
     ])
     assert "empty_hook_command" not in _rules(Validator.validate_project(proj))
 
@@ -81,27 +81,55 @@ def test_empty_hook_command_is_warning():
 # ── hook_matcher_without_tool_event ──
 
 def test_hook_matcher_without_tool_event_detected():
+    """matcher를 받지 않는 이벤트(스키마 명시)에 matcher를 주면 경고."""
     proj = PluginProject(name="p", hook_library=[
-        HookDef(name="h", description="a", command="x",
-                event=HookEvent.STOP, matcher="Edit"),
+        HookDef(name="h", description="a", handlers=[CommandHook(command="x")],
+                event=HookEvent.CWD_CHANGED, matcher="Edit"),
     ])
     assert "hook_matcher_without_tool_event" in _rules(Validator.validate_project(proj))
 
 
 def test_hook_matcher_with_tool_event_ok():
     proj = PluginProject(name="p", hook_library=[
-        HookDef(name="h", description="a", command="x",
+        HookDef(name="h", description="a", handlers=[CommandHook(command="x")],
                 event=HookEvent.POST_TOOL_USE, matcher="Edit"),
+    ])
+    assert "hook_matcher_without_tool_event" not in _rules(Validator.validate_project(proj))
+
+
+def test_matcher_ok_on_non_tool_events_that_accept_it():
+    """Stop 등도 matcher를 받는다 — 예전에는 Pre/PostToolUse만 받는다고 보았다."""
+    proj = PluginProject(name="p", hook_library=[
+        HookDef(name="h", description="a", handlers=[CommandHook(command="x")],
+                event=HookEvent.STOP, matcher="x"),
     ])
     assert "hook_matcher_without_tool_event" not in _rules(Validator.validate_project(proj))
 
 
 def test_hook_no_matcher_non_tool_event_ok():
     proj = PluginProject(name="p", hook_library=[
-        HookDef(name="h", description="a", command="x",
-                event=HookEvent.STOP, matcher=""),
+        HookDef(name="h", description="a", handlers=[CommandHook(command="x")],
+                event=HookEvent.CWD_CHANGED, matcher=""),
     ])
     assert "hook_matcher_without_tool_event" not in _rules(Validator.validate_project(proj))
+
+
+def test_hook_without_handlers_warns():
+    """핸들러가 없는 훅은 아무 일도 하지 않는다."""
+    proj = PluginProject(name="p", hook_library=[
+        HookDef(name="h", description="a", handlers=[]),
+    ])
+    assert "empty_hook_command" in _rules(Validator.validate_project(proj))
+
+
+def test_empty_http_url_warns():
+    """빈 값 판정은 타입마다 다르다 — command 훅만 검사하면 나머지가 새어 나간다."""
+    from daedalus.model.plugin.hook import HttpHook
+
+    proj = PluginProject(name="p", hook_library=[
+        HookDef(name="h", description="a", handlers=[HttpHook(url="")]),
+    ])
+    assert "empty_hook_command" in _rules(Validator.validate_project(proj))
 
 
 def test_hook_matcher_without_tool_event_is_warning():
@@ -119,7 +147,7 @@ def test_dangling_hook_ref_resolved_by_library():
     proj = PluginProject(
         name="p",
         agents=[_agent(hooks={"fmt": {}})],
-        hook_library=[HookDef(name="fmt", description="d", command="x")],
+        hook_library=[HookDef(name="fmt", description="d", handlers=[CommandHook(command="x")])],
     )
     assert "dangling_hook_ref" not in _rules(Validator.validate_project(proj))
 

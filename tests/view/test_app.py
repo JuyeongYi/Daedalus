@@ -7,6 +7,9 @@ from daedalus.model.project import PluginProject
 from daedalus.view.app import MainWindow
 from daedalus.view.commands.state_commands import CreateStateCmd
 from daedalus.view.viewmodel.state_vm import StateViewModel
+# 고정 상주 탭 개수(Project FSM / 블랙보드 / 훅) — 탭이 늘어도 테스트가 따라간다
+from daedalus.view.app import _FIXED_TAB_INDEXES
+_FIXED_TAB_COUNT = len(_FIXED_TAB_INDEXES)
 
 
 def _make_agent() -> AgentDefinition:
@@ -99,6 +102,6 @@ def test_close_tab_triggers_close_event_cleanup(qapp):
         "scene.close()(씬 리스너 해제)가 실행되어야 한다"
     )
     # 탭이 실제로 제거되었는지 확인
-    assert window._tabs.count() == 2  # Project FSM + 블랙보드 탭만 남음
+    assert window._tabs.count() == _FIXED_TAB_COUNT  # 고정 탭만 남음
     assert "my_agent" not in window._open_tabs
     window.close()

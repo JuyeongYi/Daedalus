@@ -13,7 +13,7 @@ from daedalus.compiler.project_compiler import compile_project
 from daedalus.model.fsm.event import CompletionEvent
 from daedalus.model.fsm.state import SimpleState
 from daedalus.model.fsm.transition import Transition
-from daedalus.model.plugin.hook import HookDef, HookEvent
+from daedalus.model.plugin.hook import CommandHook, HookDef, HookEvent
 from daedalus.model.project import PluginProject
 from daedalus.model.serialize import deserialize_project, serialize_project
 
@@ -190,7 +190,7 @@ def test_hooks_json_none_when_no_placements():
 def test_hooks_json_coexists_with_user_session_start_hook():
     user_hook = HookDef(
         name="greet", description="인사", event=HookEvent.SESSION_START,
-        command="echo hi",
+        handlers=[CommandHook(command="echo hi")],
     )
     agent = make_agent("worker")
     agent.config.hooks = {"greet": {}}

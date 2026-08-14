@@ -209,14 +209,7 @@ class DaedalusTools:
             ],
             "references": self._reference_summary(),
             "hook_library": [
-                {
-                    "name": h.name,
-                    "event": getattr(h.event, "value", str(h.event)),
-                    "matcher": h.matcher,
-                    "command": h.command,
-                    "timeout": h.timeout,
-                }
-                for h in getattr(project, "hook_library", []) or []
+                self._hook_summary(h) for h in getattr(project, "hook_library", []) or []
             ],
             "emit_progress_hook": getattr(project, "emit_progress_hook", None),
             "can_undo": self._window._active_stack.can_undo,
@@ -1124,10 +1117,57 @@ class DaedalusTools:
             "name": hook.name,
             "event": getattr(hook.event, "value", str(hook.event)),
             "matcher": hook.matcher,
-            "command": hook.command,
-            "timeout": hook.timeout,
             "description": getattr(hook, "description", ""),
+            # CC 스키마 그대로의 핸들러 목록 — 이 값이 hooks.json에 그대로 나간다
+            "handlers": [h.to_json() for h in hook.handlers],
         }
+
+    @staticmethod
+    def _build_hook_handler(spec: dict[str, Any]) -> Any:
+        """핸들러 스펙(dict) → HookHandler.
+
+        spec의 `type`이 CC 스키마의 다섯 종(command/prompt/agent/http/mcp_tool)
+        중 하나를 고른다. 나머지 키는 그 타입의 필드명을 쓰되, CC 산출 키와
+        파이썬 필드명이 다른 셋(`if`/`async`/`input`)은 여기서 옮겨 준다.
+        """
+        from daedalus.model.plugin.hook import HOOK_HANDLER_TYPES, HookShell
+
+        kind = str(spec.get("type", "command"))
+        cls = HOOK_HANDLER_TYPES.get(kind)
+        if cls is None:
+            allowed = ", ".join(sorted(HOOK_HANDLER_TYPES))
+            raise ValueError(f"알 수 없는 훅 핸들러 타입 '{kind}'. 사용 가능: {allowed}")
+
+        # CC 산출 키 → 파이썬 필드명 (예약어 회피 때문에 이름이 다르다)
+        aliases = {
+            "if": "condition",
+            "statusMessage": "status_message",
+            "async": "run_async",
+            "asyncRewake": "async_rewake",
+            "continueOnBlock": "continue_on_block",
+            "allowedEnvVars": "allowed_env_vars",
+            "input": "tool_input",
+        }
+        from dataclasses import fields as dc_fields
+
+        valid = {f.name for f in dc_fields(cls)} - {"id"}
+        kwargs: dict[str, Any] = {}
+        for key, value in spec.items():
+            if key == "type":
+                continue
+            attr = aliases.get(key, key)
+            if attr not in valid:
+                raise ValueError(
+                    f"'{kind}' 훅에 '{key}' 속성은 없습니다. "
+                    f"사용 가능: {', '.join(sorted(valid))}"
+                )
+            if attr == "shell":
+                try:
+                    value = HookShell(str(value))
+                except ValueError:
+                    raise ValueError("shell은 bash 또는 powershell이어야 합니다.") from None
+            kwargs[attr] = value
+        return cls(**kwargs)
 
     def _refresh_hook_ui(self) -> None:
         """훅 이름 후보(HookPresetPicker)를 쓰는 위젯들이 새 목록을 보게 한다."""
@@ -1137,22 +1177,32 @@ class DaedalusTools:
         self,
         name: str,
         event: str = "PreToolUse",
-        command: str = "",
+        handlers: list[dict[str, Any]] | None = None,
         matcher: str = "",
-        timeout: int = 0,
         description: str = "",
+        command: str = "",
     ) -> dict[str, Any]:
         """프로젝트 훅 라이브러리에 훅을 추가한다.
 
-        event: PreToolUse / PostToolUse / UserPromptSubmit / SessionStart /
-        SessionEnd / Stop / SubagentStop / Notification / PreCompact.
-        matcher(도구명 패턴)는 Pre/PostToolUse에서만 의미가 있다.
-        timeout은 초 단위이며 0이면 지정 없음(hooks.json에서 키 생략).
+        구조는 CC settings hooks 스키마 그대로다 — 이벤트 + 선택적 matcher +
+        핸들러 목록.
+
+        handlers: [{"type": "command", "command": "./check.sh", "timeout": 5}, ...]
+        핸들러 타입 5종: command(command/args/shell/async/asyncRewake) /
+        prompt(prompt/model/continueOnBlock) / agent(prompt/model) /
+        http(url/headers/allowedEnvVars) / mcp_tool(server/tool/input).
+        모든 타입이 timeout, if, statusMessage를 공통으로 받는다.
+
+        command 인자는 편의용 지름길이다 — handlers 대신 주면 command 핸들러
+        하나를 만든다.
+
+        event는 CC 훅 이벤트 31종 중 하나(get_project의 hook_events 참조).
+        matcher는 이벤트가 받을 때만 의미가 있다.
 
         훅은 라이브러리에 정의만 해 두는 것이고, 실제로 배출되려면
         set_component_hooks로 스킬/에이전트가 이름으로 참조해야 한다.
         """
-        from daedalus.model.plugin.hook import TOOL_MATCH_EVENTS, HookDef, HookEvent
+        from daedalus.model.plugin.hook import MATCHER_EVENTS, HookDef, HookEvent
         from daedalus.view.commands.attr_commands import AppendToListCmd
 
         library = self._project.hook_library
@@ -1164,13 +1214,17 @@ class DaedalusTools:
             allowed = ", ".join(e.value for e in HookEvent)
             raise ValueError(f"알 수 없는 훅 이벤트 '{event}'. 사용 가능: {allowed}") from None
 
+        specs = list(handlers or [])
+        if command:
+            specs.append({"type": "command", "command": command})
+        built = [self._build_hook_handler(s) for s in specs]
+
         hook = HookDef(
             name=name,
             description=description,
             event=hook_event,
             matcher=matcher,
-            command=command,
-            timeout=timeout or None,
+            handlers=built,
         )
         self._vm.execute(
             AppendToListCmd(
@@ -1182,25 +1236,26 @@ class DaedalusTools:
         )
         self._refresh_hook_ui()
         result = self._hook_summary(hook)
-        if matcher and hook_event not in TOOL_MATCH_EVENTS:
+        if matcher and hook_event not in MATCHER_EVENTS:
             result["note"] = (
-                f"matcher는 Pre/PostToolUse 전용입니다 — {hook_event.value}에서는 무시되고 검증 경고가 뜹니다."
+                f"{hook_event.value}는 matcher를 받지 않습니다 — 무시되고 검증 경고가 뜹니다."
             )
+        if not built:
+            result["note"] = "핸들러가 없어 아무 일도 하지 않습니다 — handlers를 지정하라."
         return result
 
     def update_hook(
         self,
         name: str,
         event: str = "",
-        command: str = "",
+        handlers: list[dict[str, Any]] | None = None,
         matcher: str | None = None,
-        timeout: int | None = None,
         description: str | None = None,
     ) -> dict[str, Any]:
         """라이브러리의 훅 정의를 고친다.
 
         빈 문자열/None은 "건드리지 않음"이다. matcher와 description은 ""를 주면
-        지워지고, timeout은 0을 주면 지정 없음이 된다.
+        지워진다. handlers를 주면 **목록 전체를 교체**한다(형식은 create_hook 참조).
         """
         from daedalus.model.plugin.hook import HookEvent
         from daedalus.view.commands.attr_commands import SetAttrCmd
@@ -1225,12 +1280,10 @@ class DaedalusTools:
             except ValueError:
                 allowed = ", ".join(e.value for e in HookEvent)
                 raise ValueError(f"알 수 없는 훅 이벤트 '{event}'. 사용 가능: {allowed}") from None
-        if command:
-            _set("command", command)
+        if handlers is not None:
+            _set("handlers", [self._build_hook_handler(s) for s in handlers])
         if matcher is not None:
             _set("matcher", matcher)
-        if timeout is not None:
-            _set("timeout", timeout or None)
         if description is not None:
             _set("description", description)
 
@@ -1243,6 +1296,67 @@ class DaedalusTools:
         )
         self._refresh_hook_ui()
         return {"before": before, **self._hook_summary(hook)}
+
+    def hook_frontmatter_preview(self, names: list[str] | None = None) -> dict[str, Any]:
+        """훅을 **서브에이전트 프론트매터 YAML**로 변환해 돌려준다 (WP-HK).
+
+        에이전트가 `.claude/agents/`에서 직접 쓰는 형식이다. 프로젝트 설치 빌드는
+        컴파일이 자동으로 넣어 주지만, 이 프로젝트 밖의 에이전트 파일에 손으로
+        붙여넣고 싶을 때 쓴다.
+
+        names를 생략하면 라이브러리 전체. hooks.json 형식이 필요하면
+        compile_preview 대신 get_project의 hook_library를 보라.
+        """
+        from daedalus.compiler.emit import _yaml_block_lines
+        from daedalus.model.plugin.hook import HookEvent
+
+        library = self._project.hook_library
+        wanted = set(names) if names else {h.name for h in library}
+        missing = sorted(wanted - {h.name for h in library})
+        if missing:
+            raise ValueError(f"라이브러리에 없는 훅: {', '.join(missing)}")
+
+        buckets: dict[str, list[dict[str, Any]]] = {}
+        for event in HookEvent:  # 선언 순서 = 결정적
+            groups = [
+                h.to_json()
+                for h in library
+                if h.event is event and h.name in wanted and h.handlers
+            ]
+            if groups:
+                buckets[event.value] = groups
+
+        if not buckets:
+            return {"hooks": [], "yaml": "", "note": "배출할 핸들러가 없습니다."}
+
+        lines = ["hooks:"] + _yaml_block_lines(buckets, 2)
+        return {
+            "hooks": sorted(wanted),
+            "yaml": "\n".join(lines) + "\n",
+        }
+
+    def list_hook_events(self) -> dict[str, Any]:
+        """CC 훅 이벤트 전체(31종)와 각 이벤트의 matcher 지원 여부.
+
+        어떤 이벤트가 있는지 몰라 짐작으로 create_hook을 부르는 것을 막는다.
+        """
+        from daedalus.model.plugin.hook import (
+            MATCHER_EVENTS,
+            UNDOCUMENTED_EVENTS,
+            HookEvent,
+        )
+
+        return {
+            "events": [
+                {
+                    "name": e.value,
+                    "supports_matcher": e in MATCHER_EVENTS,
+                    "undocumented": e in UNDOCUMENTED_EVENTS,
+                }
+                for e in HookEvent
+            ],
+            "handler_types": ["command", "prompt", "agent", "http", "mcp_tool"],
+        }
 
     def delete_hook(self, name: str) -> dict[str, Any]:
         """라이브러리에서 훅 정의를 지운다.

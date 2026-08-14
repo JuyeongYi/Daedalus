@@ -137,20 +137,24 @@ def test_set_component_when_to_use(tools):
 
 def test_create_hook_adds_to_library(tools, window):
     result = tools.create_hook(
-        "guard-bash", event="PreToolUse", command="echo hi", matcher="Bash", timeout=5
+        "guard-bash", event="PreToolUse", matcher="Bash",
+        handlers=[{"type": "command", "command": "echo hi", "timeout": 5}],
     )
     assert result["event"] == "PreToolUse"
     library = window._project.hook_library
     assert [h.name for h in library] == ["guard-bash"]
-    assert library[0].timeout == 5
+    assert library[0].handlers[0].timeout == 5
 
     tools.undo()
     assert window._project.hook_library == []
 
 
-def test_create_hook_zero_timeout_means_unset(tools, window):
+def test_create_hook_command_shortcut(tools, window):
+    """command 인자는 핸들러 하나짜리 훅을 만드는 지름길이다."""
     tools.create_hook("h", command="x")
-    assert window._project.hook_library[0].timeout is None
+    handler = window._project.hook_library[0].handlers[0]
+    assert handler.kind == "command" and handler.command == "x"
+    assert handler.timeout is None
 
 
 def test_create_hook_rejects_duplicate_name(tools):
@@ -164,22 +168,52 @@ def test_create_hook_rejects_unknown_event(tools):
         tools.create_hook("h", event="Nope")
 
 
-def test_create_hook_warns_about_matcher_on_non_tool_event(tools):
-    """matcher는 Pre/PostToolUse 전용 — 조용히 무시되면 사용자가 원인을 못 찾는다."""
-    result = tools.create_hook("h", event="SessionStart", matcher="Bash")
+def test_create_hook_warns_about_matcher_on_event_that_ignores_it(tools):
+    """조용히 무시되면 사용자가 원인을 못 찾는다."""
+    result = tools.create_hook("h", event="CwdChanged", matcher="Bash")
+    assert "note" in result
+
+
+def test_create_hook_with_handler_specs(tools, window):
+    """CC 스키마 그대로의 핸들러 목록을 받는다 — command 훅만이 아니다."""
+    tools.create_hook("h", event="Stop", handlers=[
+        {"type": "agent", "prompt": "확인하라", "timeout": 60},
+        {"type": "http", "url": "https://x", "statusMessage": "보내는 중"},
+    ])
+    hook = window._project.hook_library[0]
+    assert [h.kind for h in hook.handlers] == ["agent", "http"]
+    assert hook.handlers[0].to_json()["timeout"] == 60
+    assert hook.handlers[1].to_json()["statusMessage"] == "보내는 중"
+
+
+def test_create_hook_rejects_unknown_handler_type(tools):
+    with pytest.raises(ValueError, match="mcp_tool"):
+        tools.create_hook("h", handlers=[{"type": "quantum"}])
+
+
+def test_create_hook_rejects_property_not_on_that_type(tools):
+    """agent 훅에 command를 주면 조용히 무시되는 대신 거부한다."""
+    with pytest.raises(ValueError, match="command"):
+        tools.create_hook("h", handlers=[{"type": "agent", "command": "x"}])
+
+
+def test_create_hook_without_handlers_notes_it(tools):
+    result = tools.create_hook("h")
     assert "note" in result
 
 
 def test_update_hook_changes_fields(tools, window):
     tools.create_hook("h", command="old", matcher="Bash")
-    tools.update_hook("h", command="new", event="PostToolUse")
+    tools.update_hook(
+        "h", handlers=[{"type": "command", "command": "new"}], event="PostToolUse",
+    )
 
     hook = window._project.hook_library[0]
-    assert hook.command == "new"
+    assert hook.handlers[0].command == "new"
     assert hook.event is HookEvent.POST_TOOL_USE
 
     tools.undo()
-    assert hook.command == "old"
+    assert hook.handlers[0].command == "old"
     assert hook.event is HookEvent.PRE_TOOL_USE
 
 
@@ -189,15 +223,53 @@ def test_update_hook_clears_matcher_with_empty_string(tools, window):
     assert window._project.hook_library[0].matcher == ""
 
 
-def test_update_hook_blank_command_is_untouched(tools, window):
+def test_update_hook_omitted_handlers_are_untouched(tools, window):
     tools.create_hook("h", command="keep")
     tools.update_hook("h", matcher="Bash")
-    assert window._project.hook_library[0].command == "keep"
+    assert window._project.hook_library[0].handlers[0].command == "keep"
 
 
 def test_update_hook_unknown_name(tools):
     with pytest.raises(ValueError, match="없습니다"):
-        tools.update_hook("nope", command="x")
+        tools.update_hook("nope", matcher="x")
+
+
+# --- 훅 → 서브에이전트 프론트매터 ---
+
+
+def test_hook_frontmatter_preview_emits_yaml(tools):
+    tools.create_hook("guard", event="PreToolUse", matcher="Bash", command="./a.sh")
+    out = tools.hook_frontmatter_preview(["guard"])
+    assert out["yaml"].startswith("hooks:\n")
+    assert "PreToolUse:" in out["yaml"]
+    assert "- matcher: Bash" in out["yaml"]
+    assert "- type: command" in out["yaml"]
+
+
+def test_hook_frontmatter_preview_defaults_to_whole_library(tools):
+    tools.create_hook("a", command="x")
+    tools.create_hook("b", event="Stop", command="y")
+    assert tools.hook_frontmatter_preview()["hooks"] == ["a", "b"]
+
+
+def test_hook_frontmatter_preview_rejects_unknown_name(tools):
+    with pytest.raises(ValueError, match="ghost"):
+        tools.hook_frontmatter_preview(["ghost"])
+
+
+def test_hook_frontmatter_preview_skips_handlerless_hooks(tools):
+    tools.create_hook("empty")
+    out = tools.hook_frontmatter_preview()
+    assert out["yaml"] == ""
+
+
+def test_list_hook_events_covers_schema(tools):
+    out = tools.list_hook_events()
+    assert len(out["events"]) == 31
+    by_name = {e["name"]: e for e in out["events"]}
+    assert by_name["PreToolUse"]["supports_matcher"] is True
+    assert by_name["CwdChanged"]["supports_matcher"] is False
+    assert out["handler_types"] == ["command", "prompt", "agent", "http", "mcp_tool"]
 
 
 def test_delete_hook_removes_definition(tools, window):

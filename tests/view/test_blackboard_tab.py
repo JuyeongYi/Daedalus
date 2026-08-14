@@ -6,11 +6,14 @@ from daedalus.model.fsm.blackboard import Blackboard, DynamicClass
 from daedalus.model.project import PluginProject
 from daedalus.view.app import MainWindow
 from daedalus.view.editors.blackboard_editor import BlackboardPanel
+# 고정 상주 탭 개수(Project FSM / 블랙보드 / 훅) — 탭이 늘어도 테스트가 따라간다
+from daedalus.view.app import _FIXED_TAB_INDEXES
+_FIXED_TAB_COUNT = len(_FIXED_TAB_INDEXES)
 
 
 def test_blackboard_tab_exists_at_index_1(qapp):
     window = MainWindow()
-    assert window._tabs.count() == 2
+    assert window._tabs.count() == _FIXED_TAB_COUNT
     assert isinstance(window._tabs.widget(1), BlackboardPanel)
     assert window._tabs.tabText(1) == "🗂 블랙보드"
     window.close()
@@ -58,7 +61,7 @@ def test_load_project_preserves_blackboard_tab(qapp, tmp_path):
         json.dump(serialize_project(project), f)
 
     window.open_path(path)
-    assert window._tabs.count() == 2
+    assert window._tabs.count() == _FIXED_TAB_COUNT
     assert isinstance(window._tabs.widget(1), BlackboardPanel)
     window.close()
 

@@ -171,6 +171,40 @@ def serialize_project(project: PluginProject) -> dict:
 
 # ── hook library ──
 
+def _ser_hook_handler(h) -> dict:
+    """훅 핸들러 → dict. kind를 다형성 태그로 쓴다(Skill/Tool 선례와 동일)."""
+    from dataclasses import fields as dc_fields
+    from enum import Enum
+
+    out: dict = {"kind": h.kind, "id": h.id}
+    for f in dc_fields(h):
+        if f.name == "id":
+            continue
+        value = getattr(h, f.name)
+        out[f.name] = value.value if isinstance(value, Enum) else value
+    return out
+
+
+def _deser_hook_handler(d: dict):
+    """dict → 훅 핸들러. 미지 kind는 None(호출부가 건너뛴다)."""
+    from dataclasses import fields as dc_fields
+
+    from daedalus.model.plugin.hook import HOOK_HANDLER_TYPES, HookShell
+
+    cls = HOOK_HANDLER_TYPES.get(str(d.get("kind", "")))
+    if cls is None:
+        return None
+    kwargs: dict = {}
+    for f in dc_fields(cls):
+        if f.name == "id" or f.name not in d:
+            continue
+        value = d[f.name]
+        if f.name == "shell":
+            value = _to_enum(HookShell, value, HookShell.DEFAULT)
+        kwargs[f.name] = value
+    return cls(**kwargs, id=d.get("id") or _new_id())
+
+
 def _ser_hook(h: HookDef) -> dict:
     return {
         "id": h.id,
@@ -178,19 +212,36 @@ def _ser_hook(h: HookDef) -> dict:
         "description": h.description,
         "event": h.event.value,
         "matcher": h.matcher,
-        "command": h.command,
-        "timeout": h.timeout,
+        "handlers": [_ser_hook_handler(x) for x in h.handlers],
     }
 
 
 def _deser_hook(d: dict) -> HookDef:
+    """훅 역직렬화.
+
+    WP-HK 마이그레이션: 구버전 파일은 훅 하나가 command 핸들러 하나였다
+    (`command`/`timeout`이 HookDef의 필드). `handlers` 키가 없고 `command`가
+    있으면 CommandHook 하나로 감싼다 — 정상 마이그레이션 경로라 경고 없음.
+    """
+    from daedalus.model.plugin.hook import CommandHook
+
+    raw = d.get("handlers")
+    if raw is None:
+        legacy_command = d.get("command") or ""
+        handlers = (
+            [CommandHook(command=legacy_command, timeout=d.get("timeout"))]
+            if legacy_command or d.get("timeout") is not None
+            else []
+        )
+    else:
+        handlers = [h for h in (_deser_hook_handler(x) for x in raw) if h is not None]
+
     return HookDef(
         name=d.get("name", ""),
         description=d.get("description", ""),
         event=_to_enum(HookEvent, d.get("event"), HookEvent.PRE_TOOL_USE),
         matcher=d.get("matcher", ""),
-        command=d.get("command", ""),
-        timeout=d.get("timeout"),
+        handlers=handlers,
         id=d.get("id") or _new_id(),
     )
 

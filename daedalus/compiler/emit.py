@@ -63,7 +63,7 @@ from daedalus.model.plugin.field_matrix import (
     SKILL_FIELD_MATRIX,
     FieldRule,
 )
-from daedalus.model.plugin.hook import HookDef, HookEvent, TOOL_MATCH_EVENTS
+from daedalus.model.plugin.hook import HookDef, HookEvent
 from daedalus.model.plugin.skill import (
     DeclarativeSkill,
     ProceduralSkill,
@@ -1338,13 +1338,7 @@ def _agent_hook_groups(agent: AgentDefinition, project) -> dict[str, Any]:
 
     out: dict[str, Any] = {}
     for event in HookEvent:  # 선언 순서 = 결정적 이벤트 키 순서
-        groups: list[dict[str, Any]] = []
-        for hook in buckets.get(event) or []:
-            group: dict[str, Any] = {}
-            if event in TOOL_MATCH_EVENTS and hook.matcher:
-                group["matcher"] = hook.matcher
-            group["hooks"] = [_hook_command_entry(hook)]
-            groups.append(group)
+        groups = [h.to_json() for h in (buckets.get(event) or []) if h.handlers]
         if groups:
             out[event.value] = groups
     return out
@@ -1554,14 +1548,6 @@ def _collect_referenced_hook_names(project) -> list[str]:
     return names
 
 
-def _hook_command_entry(hook: HookDef) -> dict[str, Any]:
-    """단일 훅 → CC hooks.json의 command 엔트리. timeout은 있을 때만 출력."""
-    entry: dict[str, Any] = {"type": "command", "command": hook.command}
-    if hook.timeout is not None:
-        entry["timeout"] = hook.timeout
-    return entry
-
-
 # WP-RS Part B: SessionStart에 합성 배출되는 진행 상태 주입 훅.
 # hook_library를 오염시키지 않는다 — hooks.json 합류는 컴파일 시점에만 합성된다.
 _PROGRESS_SESSION_START_COMMAND = 'cat state/__progress__.json 2>/dev/null || true'
@@ -1612,13 +1598,9 @@ def compile_hooks_json(project) -> str | None:
     hooks_obj: dict[str, Any] = {}
     for event in HookEvent:  # 선언 순서 = 결정적 이벤트 키 순서
         bucket = event_buckets.get(event) or []
-        groups: list[dict[str, Any]] = []
-        for hook in bucket:
-            group: dict[str, Any] = {}
-            if event in TOOL_MATCH_EVENTS and hook.matcher:
-                group["matcher"] = hook.matcher
-            group["hooks"] = [_hook_command_entry(hook)]
-            groups.append(group)
+        # 핸들러가 하나도 없는 훅은 배출하지 않는다 — CC 스키마에서 hooks는
+        # 필수이고, 빈 배열은 아무 일도 하지 않으면서 파일만 늘린다.
+        groups: list[dict[str, Any]] = [h.to_json() for h in bucket if h.handlers]
         if event is HookEvent.SESSION_START and emit_progress:
             # 사용자 정의 SessionStart 훅 뒤에 합성 훅을 이어붙인다(공존).
             groups.append({"hooks": [_progress_hook_entry()]})

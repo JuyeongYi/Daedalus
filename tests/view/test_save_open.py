@@ -6,6 +6,9 @@ from daedalus.model.plugin.agent import AgentDefinition
 from daedalus.model.plugin.skill import DeclarativeSkill, ProceduralSkill
 from daedalus.model.project import PluginProject
 from daedalus.view.app import MainWindow
+# 고정 상주 탭 개수(Project FSM / 블랙보드 / 훅) — 탭이 늘어도 테스트가 따라간다
+from daedalus.view.app import _FIXED_TAB_INDEXES
+_FIXED_TAB_COUNT = len(_FIXED_TAB_INDEXES)
 
 
 def _make_project() -> PluginProject:
@@ -56,10 +59,10 @@ def test_open_clears_existing_tabs(qapp, tmp_path):
 
     # 에디터 탭 하나 열기
     window._open_component(project.agents[0])
-    assert window._tabs.count() == 3  # Project FSM + 블랙보드 + agent 탭
+    assert window._tabs.count() == _FIXED_TAB_COUNT + 1  # 고정 탭 + agent 탭
 
     window.open_path(path)
-    assert window._tabs.count() == 2  # Project FSM + 블랙보드 탭만 남음
+    assert window._tabs.count() == _FIXED_TAB_COUNT  # 고정 탭만 남음
     assert window._open_tabs == {}
 
     window.close()

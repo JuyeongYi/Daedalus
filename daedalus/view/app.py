@@ -47,6 +47,10 @@ from daedalus.view.viewmodel.project_vm import ProjectViewModel
 
 _FSM_TAB_INDEX = 0  # 프로젝트 FSM 캔버스는 항상 탭 0
 _BLACKBOARD_TAB_INDEX = 1  # 블랙보드 편집 탭은 항상 탭 1 (WP-BB — 닫기 불가 고정 탭)
+_HOOK_TAB_INDEX = 2  # 훅 라이브러리 탭은 항상 탭 2 (WP-HK — 닫기 불가 고정 탭)
+# 고정 탭 = 컴포넌트 에디터가 아닌 상주 탭. 새 에디터는 이 뒤에 붙는다.
+_FIXED_TAB_INDEXES = (_FSM_TAB_INDEX, _BLACKBOARD_TAB_INDEX, _HOOK_TAB_INDEX)
+_LAST_FIXED_TAB_INDEX = max(_FIXED_TAB_INDEXES)
 
 
 class MainWindow(QMainWindow):
@@ -99,11 +103,18 @@ class MainWindow(QMainWindow):
         self._blackboard_panel = BlackboardPanel(on_notify_fn=self._project_vm.notify)
         self._tabs.addTab(self._blackboard_panel, "🗂 블랙보드")
 
-        # 탭 0/1의 닫기 버튼 숨김 (고정 탭)
+        # 훅 라이브러리 탭 — 항상 탭 2, 닫을 수 없음 (WP-HK).
+        # 모달 다이얼로그였다가 상주 탭이 됐다: CC 훅은 이벤트 31종 × 핸들러 5종의
+        # 3단 구조라 모달 폼으로는 다룰 수 없다.
+        from daedalus.view.editors.hook_panel import HookLibraryPanel
+        self._hook_panel = HookLibraryPanel(on_notify_fn=self._project_vm.notify)
+        self._tabs.addTab(self._hook_panel, "🪝 훅")
+
+        # 고정 탭의 닫기 버튼 숨김
         tab_bar = self._tabs.tabBar()
         if tab_bar is not None:
-            tab_bar.setTabButton(_FSM_TAB_INDEX, tab_bar.ButtonPosition.RightSide, None)
-            tab_bar.setTabButton(_BLACKBOARD_TAB_INDEX, tab_bar.ButtonPosition.RightSide, None)
+            for index in _FIXED_TAB_INDEXES:
+                tab_bar.setTabButton(index, tab_bar.ButtonPosition.RightSide, None)
 
         # 프로젝트 VM 변경 시 레지스트리 dim 갱신
         self._project_vm.add_listener(self._on_project_vm_changed)
@@ -221,7 +232,7 @@ class MainWindow(QMainWindow):
 
         tools_menu = menubar.addMenu("도구")
         if tools_menu is not None:
-            self._hook_lib_action = QAction("훅 라이브러리...", self)
+            self._hook_lib_action = QAction("훅 라이브러리 탭으로", self)
             self._hook_lib_action.triggered.connect(self._open_hook_library)
             tools_menu.addAction(self._hook_lib_action)
             self._mcp_info_action = QAction("MCP 서버 정보...", self)
@@ -266,6 +277,7 @@ class MainWindow(QMainWindow):
         self._project = project
         self._registry_panel.set_project(project)
         self._blackboard_panel.set_project(project)
+        self._hook_panel.set_project(project)
         if self._fsm_scene is not None:
             self._fsm_scene.set_project(project)
         # HookPresetPicker가 이 프로젝트의 hook_library 이름을 동적으로 표시하도록 연결.
@@ -392,8 +404,8 @@ class MainWindow(QMainWindow):
         열린 에디터 탭을 닫고, 프로젝트 VM(캔버스 상태)을 비운 뒤
         레지스트리/씬을 새 프로젝트로 재구성한다.
         """
-        # 1) 열린 에디터 탭 정리 (Project FSM 탭 0 + 블랙보드 탭 1 제외, 역순 제거)
-        for index in range(self._tabs.count() - 1, _BLACKBOARD_TAB_INDEX, -1):
+        # 1) 열린 에디터 탭 정리 (고정 탭 제외, 역순 제거)
+        for index in range(self._tabs.count() - 1, _LAST_FIXED_TAB_INDEX, -1):
             self._close_tab(index)
         self._open_tabs.clear()
 
@@ -956,8 +968,8 @@ class MainWindow(QMainWindow):
         self._register_component(factories[kind]())
 
     def _close_tab(self, index: int) -> None:
-        if index in (_FSM_TAB_INDEX, _BLACKBOARD_TAB_INDEX):
-            return  # Project FSM / 블랙보드는 닫을 수 없음
+        if index in _FIXED_TAB_INDEXES:
+            return  # Project FSM / 블랙보드 / 훅은 닫을 수 없음
         widget = self._tabs.widget(index)
         name = next((n for n, i in self._open_tabs.items() if i == index), None)
         if name:
@@ -1168,16 +1180,12 @@ class MainWindow(QMainWindow):
         super().closeEvent(event)
 
     def _open_hook_library(self) -> None:
-        """도구 메뉴 — 훅 라이브러리 편집 다이얼로그를 연다."""
-        if self._project is None:
-            self._status_label.setText("훅 라이브러리: 프로젝트가 없습니다.")
-            return
-        from daedalus.view.editors.hook_editor import HookLibraryDialog
+        """도구 메뉴 — 훅 라이브러리 탭으로 이동한다 (WP-HK).
 
-        dlg = HookLibraryDialog(
-            self._project, on_notify_fn=self._on_hook_library_changed, parent=self
-        )
-        dlg.exec()
+        예전에는 모달 다이얼로그였다. CC 훅이 이벤트 31종 × 핸들러 5종의 3단
+        구조라 상주 탭으로 옮겼고, 메뉴 항목은 그 탭으로 가는 지름길이 됐다.
+        """
+        self._tabs.setCurrentIndex(_HOOK_TAB_INDEX)
 
     def _on_hook_library_changed(self) -> None:
         """훅 라이브러리 변경 시 — 열린 편집기의 HookPresetPicker 목록 갱신."""
