@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QInputDialog,
     QLabel,
     QMainWindow,
+    QMenu,
     QMessageBox,
     QStatusBar,
     QTabWidget,
@@ -29,6 +30,7 @@ from daedalus.model.plugin.skill import (
 )
 from daedalus.model.project import PluginProject
 from daedalus.model.serialize import deserialize_project, serialize_project
+from daedalus.view import recent
 from daedalus.view.canvas.canvas_view import FsmCanvasView
 from daedalus.view.canvas.edge_item import TransitionEdgeItem
 from daedalus.view.canvas.node_item import StateNodeItem
@@ -63,6 +65,8 @@ class MainWindow(QMainWindow):
         self._active_stack = self._project_vm.command_stack
         self._active_notify = self._project_vm.notify
         self._initialized = False  # setup 완료 전 시그널 발화 방어용
+        # "최근 프로젝트" 서브메뉴 (WP-RP) — _setup_menus에서 생성
+        self._recent_menu: QMenu | None = None
         # MCP 서버는 여기서 자동으로 띄우지 않는다 (WP-MCP) — 테스트가 MainWindow를
         # 수십 개 만들기 때문에, 실제 앱 실행 경로(__main__.main)에서만
         # start_mcp_service()로 기동한다.
@@ -167,6 +171,12 @@ class MainWindow(QMainWindow):
             open_action.setShortcut(QKeySequence.StandardKey.Open)  # Ctrl+O
             open_action.triggered.connect(self._open_project_dialog)
             file_menu.addAction(open_action)
+
+            self._recent_menu = file_menu.addMenu("최근 프로젝트")
+            if self._recent_menu is not None:
+                # 파일명만으로는 구분이 안 되는 경우가 흔해 툴팁에 전체 경로를 담는다
+                self._recent_menu.setToolTipsVisible(True)
+            self._rebuild_recent_menu()
 
             save_action = QAction("저장", self)
             save_action.setShortcut(QKeySequence.StandardKey.Save)  # Ctrl+S
@@ -435,6 +445,7 @@ class MainWindow(QMainWindow):
         self._current_path = path
         self._update_title()
         self._sync_files_root()
+        self._remember_recent(path)
         self._status_label.setText(f"저장됨: {path}")
 
     def _save_project(self) -> None:
@@ -525,6 +536,71 @@ class MainWindow(QMainWindow):
         if path:
             self.open_path(path)
 
+    # --- 최근 프로젝트 (WP-RP) ---
+
+    def _remember_recent(self, path: str) -> None:
+        """열기/저장이 성공한 경로를 최근 목록 맨 앞으로 올린다."""
+        recent.push(path)
+        self._rebuild_recent_menu()
+
+    def _rebuild_recent_menu(self) -> None:
+        """"최근 프로젝트" 서브메뉴를 목록 파일로부터 다시 만든다."""
+        menu = self._recent_menu
+        if menu is None:
+            return
+        menu.clear()
+
+        paths = recent.load()
+        if not paths:
+            empty = menu.addAction("(없음)")
+            if empty is not None:
+                empty.setEnabled(False)
+            return
+
+        for index, path in enumerate(paths, start=1):
+            action = QAction(self._recent_label(index, path), self)
+            action.setToolTip(path)
+            action.setStatusTip(path)
+            # 기본 인자로 path를 묶어 둔다 — 늦은 바인딩이면 전부 마지막 경로를 연다
+            action.triggered.connect(
+                lambda _checked=False, p=path: self._open_recent(p)
+            )
+            menu.addAction(action)
+
+        menu.addSeparator()
+        clear_action = QAction("목록 지우기", self)
+        clear_action.triggered.connect(self._clear_recent)
+        menu.addAction(clear_action)
+
+    @staticmethod
+    def _recent_label(index: int, path: str) -> str:
+        """`&1 파일명 — 상위폴더` 형태의 메뉴 라벨.
+
+        파일명만으로는 구분이 안 되는 경우가 흔해(`project.daedalus.json` 등)
+        상위 폴더 이름을 함께 보인다. 전체 경로는 툴팁에 있다.
+        """
+        name = os.path.basename(path)
+        parent = os.path.basename(os.path.dirname(path))
+        if parent:
+            name = f"{name} — {parent}"
+        # 파일명의 &는 니모닉으로 먹히므로 escape
+        name = name.replace("&", "&&")
+        return f"&{index} {name}" if index < 10 else name
+
+    def _open_recent(self, path: str) -> None:
+        """최근 항목을 연다. 파일이 사라졌으면 목록에서 떨군다."""
+        if not os.path.exists(path):
+            recent.remove(path)
+            self._rebuild_recent_menu()
+            self._status_label.setText(f"파일을 찾을 수 없어 목록에서 제거했습니다: {path}")
+            return
+        self.open_path(path)
+
+    def _clear_recent(self) -> None:
+        recent.clear()
+        self._rebuild_recent_menu()
+        self._status_label.setText("최근 프로젝트 목록을 비웠습니다")
+
     def open_path(self, path: str) -> None:
         """경로에서 프로젝트를 로드한다 (다이얼로그 없이 — 테스트/CLI 재사용)."""
         deser_warnings: list[str] = []
@@ -539,6 +615,7 @@ class MainWindow(QMainWindow):
         self._current_path = path
         self._update_title()
         self._sync_files_root()
+        self._remember_recent(path)
         fname = os.path.basename(path)
         if deser_warnings:
             self._status_label.setText(
