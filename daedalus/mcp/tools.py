@@ -335,17 +335,21 @@ class DaedalusTools:
             ],
         }
 
-    def compile_preview(self, name: str) -> dict[str, Any]:
-        """컴포넌트가 어떤 SKILL.md / 에이전트 .md로 컴파일되는지 — 파일은 쓰지 않는다."""
+    def compile_preview(self, name: str, agent: str = "") -> dict[str, Any]:
+        """컴포넌트가 어떤 SKILL.md / 에이전트 .md로 컴파일되는지 — 파일은 쓰지 않는다.
+
+        agent를 지정하면 그 에이전트의 로컬 스킬을 미리 본다(로컬 스킬은
+        `skills/<agent>--<skill>/SKILL.md`로 나가며 산출 문구가 조금 다르다).
+        """
         from daedalus.compiler.emit import compile_agent, compile_skill
         from daedalus.model.plugin.agent import AgentDefinition
 
-        comp = self._find_component(name)
+        comp = self._find_component(name, agent=agent)
         project = self._project
         if isinstance(comp, AgentDefinition):
             text = compile_agent(comp, project=project)
         else:
-            text = compile_skill(comp, project=project)
+            text = compile_skill(comp, local=bool(agent), project=project)
         return {"name": comp.name, "kind": self._component_kind(comp), "text": text}
 
     # ------------------------------------------------------------------
@@ -946,7 +950,9 @@ class DaedalusTools:
             out.append(EventDef(**kwargs))
         return out
 
-    def set_transfer_on(self, name: str, events: list[dict[str, Any]]) -> dict[str, Any]:
+    def set_transfer_on(
+        self, name: str, events: list[dict[str, Any]], agent: str = ""
+    ) -> dict[str, Any]:
         """스킬/에이전트의 **출력 포트**를 정의한다.
 
         events: [{"name": "gpu", "description": "GPU 병목", "color": "#ff8844"}, ...]
@@ -955,7 +961,7 @@ class DaedalusTools:
         """
         from daedalus.view.commands.attr_commands import SetAttrCmd
 
-        comp = self._find_component(name)
+        comp = self._find_component(name, agent=agent)
         defs = self._make_event_defs(events)
         self._vm.execute(
             SetAttrCmd(
@@ -968,14 +974,16 @@ class DaedalusTools:
         )
         return {"component": name, "transfer_on": [d.name for d in defs]}
 
-    def set_entry_paths(self, name: str, events: list[dict[str, Any]]) -> dict[str, Any]:
+    def set_entry_paths(
+        self, name: str, events: list[dict[str, Any]], agent: str = ""
+    ) -> dict[str, Any]:
         """스킬/에이전트의 **입력 포트**를 정의한다 (어떤 경로로 이 노드에 들어왔는지).
 
         events 형식은 set_transfer_on과 같다. 전이 쪽에서는 target_port로 지목한다.
         """
         from daedalus.view.commands.attr_commands import SetAttrCmd
 
-        comp = self._find_component(name)
+        comp = self._find_component(name, agent=agent)
         defs = self._make_event_defs(events)
         self._vm.execute(
             SetAttrCmd(
@@ -1548,17 +1556,19 @@ class DaedalusTools:
             vm.execute(DeleteTransitionCmd(vm, tvm, fsm=fsm))
         return {"disconnected": [source, target], "count": len(matches)}
 
-    def set_component_body(self, name: str, body: str) -> dict[str, Any]:
+    def set_component_body(self, name: str, body: str, agent: str = "") -> dict[str, Any]:
         """컴포넌트 본문을 교체한다.
 
         본문은 캔버스와 분리된 자체 undo 스택을 쓰므로(WP-BU) 그 문서에 적용한다 —
         에디터가 열려 있으면 화면에 즉시 반영되고, 편집기에서 Ctrl+Z로 되돌릴 수 있다.
+
+        agent를 지정하면 그 에이전트의 로컬 스킬 본문을 고친다.
         """
         from PySide6.QtGui import QTextCursor
 
         from daedalus.view.editors import body_documents
 
-        comp = self._find_component(name)
+        comp = self._find_component(name, agent=agent)
         old = str(getattr(comp, "body", "") or "")
         doc = body_documents.registry().document_for(comp)
 

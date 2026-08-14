@@ -392,6 +392,32 @@ class FsmScene(QGraphicsScene):
         ref = model.skill_ref  # type: ignore[union-attr]
         if ref is not None:
             self.node_double_clicked.emit(ref)
+            return
+        # 컴포넌트가 붙지 않은 빈 노드 — 열 편집기가 없다. 아무 반응도 없으면
+        # 고장으로 읽히므로, 빈 노드에서 유일하게 편집할 것인 이름을 연다.
+        self.rename_state_interactive(node.state_vm)
+
+    def rename_state_interactive(self, state_vm) -> None:
+        """노드 이름 변경 다이얼로그. undo 가능."""
+        from daedalus.view.commands.state_commands import RenameStateCmd
+
+        view = self.views()[0] if self.views() else None
+        old = state_vm.model.name
+        new_name, ok = QInputDialog.getText(view, "노드 이름 변경", "이름:", text=old)
+        if not ok:
+            return
+        new_name = new_name.strip()
+        if not new_name or new_name == old:
+            return
+        # 같은 머신에 동명 상태가 둘이면 컴파일·직렬화에서 서로를 가린다
+        # (duplicate_state_name 경고). 여기서 미리 막는다.
+        others = {
+            svm.model.name for svm in self._project_vm.state_vms if svm is not state_vm
+        }
+        if new_name in others:
+            QMessageBox.warning(view, "이름 중복", f"'{new_name}' 노드가 이미 있습니다.")
+            return
+        self._project_vm.execute(RenameStateCmd(state_vm, old, new_name))
 
     # --- Registry 드롭 ---
 

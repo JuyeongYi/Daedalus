@@ -1,0 +1,50 @@
+{
+  "format": 1,
+  "name": "new-plugin",
+  "description": "",
+  "version": "0.1.0",
+  "skills": [],
+  "agents": [],
+  "reference_placements": [],
+  "delegations": [],
+  "tool_shelf": [],
+  "hook_library": [],
+  "blackboard": {
+    "class_definitions": [],
+    "variables": {}
+  },
+  "graph": {
+    "id": "4305f6b67bac441c8035886d7da83c88",
+    "name": "project_graph",
+    "states": [
+      {
+        "kind": "entry_point",
+        "id": "07c498a5d4ce47508cd495bf7c13a626",
+        "name": "start",
+        "on_entry_start": [],
+        "on_entry": [],
+        "on_entry_end": [],
+        "on_exit_start": [],
+        "on_exit": [],
+        "on_exit_end": [],
+        "on_active": [],
+        "custom_events": {},
+        "inputs": [],
+        "outputs": [],
+        "reads": [],
+        "writes": []
+      }
+    ],
+    "transitions": [],
+    "initial_state": "07c498a5d4ce47508cd495bf7c13a626",
+    "final_states": [],
+    "blackboard": {
+      "class_definitions": [],
+      "variables": {}
+    }
+  },
+  "graph_layout": {},
+  "edge_layout": {},
+  "emit_progress_hook": true,
+  "build_target": "local"
+}
