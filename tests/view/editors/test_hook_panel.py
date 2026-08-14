@@ -52,12 +52,16 @@ def test_hook_tab_exists_and_is_not_closable(qapp):
         window.close()
 
 
-def test_menu_action_focuses_the_tab(qapp):
+def test_tools_menu_has_no_hook_shortcut(qapp):
+    """탭이 늘 보이므로 메뉴 지름길은 중복이다."""
+    from PySide6.QtWidgets import QMenu
+
     window = MainWindow()
     try:
-        window._tabs.setCurrentIndex(0)
-        window._open_hook_library()
-        assert window._tabs.currentIndex() == _HOOK_TAB_INDEX
+        # findChildren으로 잡아야 메뉴 객체가 살아 있다 — QAction.menu()가
+        # 돌려주는 임시 참조는 평가 직후 파괴될 수 있다.
+        tools = next(m for m in window.findChildren(QMenu) if m.title() == "도구")
+        assert all("훅" not in a.text() for a in tools.actions())
     finally:
         window.close()
 

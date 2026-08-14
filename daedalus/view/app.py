@@ -232,9 +232,6 @@ class MainWindow(QMainWindow):
 
         tools_menu = menubar.addMenu("도구")
         if tools_menu is not None:
-            self._hook_lib_action = QAction("훅 라이브러리 탭으로", self)
-            self._hook_lib_action.triggered.connect(self._open_hook_library)
-            tools_menu.addAction(self._hook_lib_action)
             self._mcp_info_action = QAction("MCP 서버 정보...", self)
             self._mcp_info_action.triggered.connect(self._show_mcp_info)
             tools_menu.addAction(self._mcp_info_action)
@@ -1178,14 +1175,6 @@ class MainWindow(QMainWindow):
             except Exception:  # noqa: BLE001 — 종료 경로를 막지 않는다
                 pass
         super().closeEvent(event)
-
-    def _open_hook_library(self) -> None:
-        """도구 메뉴 — 훅 라이브러리 탭으로 이동한다 (WP-HK).
-
-        예전에는 모달 다이얼로그였다. CC 훅이 이벤트 31종 × 핸들러 5종의 3단
-        구조라 상주 탭으로 옮겼고, 메뉴 항목은 그 탭으로 가는 지름길이 됐다.
-        """
-        self._tabs.setCurrentIndex(_HOOK_TAB_INDEX)
 
     def _on_hook_library_changed(self) -> None:
         """훅 라이브러리 변경 시 — 열린 편집기의 HookPresetPicker 목록 갱신."""
