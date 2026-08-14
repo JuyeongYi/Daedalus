@@ -1,16 +1,895 @@
 {
   "format": 1,
-  "name": "new-plugin",
-  "description": "",
+  "name": "daedalus",
+  "description": "Daedalus GUI를 MCP로 함께 조작해 FSM 기반 Claude Code 플러그인을 설계한다.",
   "version": "0.1.0",
-  "skills": [],
-  "agents": [],
+  "skills": [
+    {
+      "kind": "declarative_skill",
+      "id": "119ffdbfe266415d9fbc7771fab7f0b3",
+      "name": "daedalus-model",
+      "description": "Daedalus의 설계 모델 — 컴포넌트 5종, FSM+블랙보드 하이브리드, 포트 3종의 의미론.",
+      "when_to_use": "",
+      "body": "# Daedalus 설계 모델\n\nDaedalus는 플러그인을 **FSM + 블랙보드**로 설계하고 컴파일러가 플러그인 파일을\n찍어내는 도구다. 캔버스에서 그린 것이 곧 컴파일 산출의 소스다.\n\n## 컴포넌트 5종\n\n| 종류 | 본질 | FSM |\n|------|------|-----|\n| ProceduralSkill | 작업 지침 | 자체 FSM 보유 |\n| DeclarativeSkill | 배경 지식 | 없음 |\n| TransferSkill | 전이 중 실행되는 보조 지침 | 자체 FSM 보유 |\n| ReferenceSkill | 참조 문서 | 없음, 참조 노드로 복수 배치 |\n| AgentDefinition | 별도 컨텍스트의 상태 기계 | 자체 FSM + 별도 블랙보드 |\n\n**무엇을 무엇으로 만들 것인가**가 첫 판단이다:\n\n- 컨텍스트를 오염시키는 작업(대량 검색, 로그 훑기) → **에이전트**. 별도 창에서 하고\n  결과만 돌려준다.\n- 매번 같은 배경 지식이 필요 → **declarative**. 본문이 필요할 때만 로드된다.\n- 순서가 있는 절차 → **procedural**. 상태로 나눌 수 있다.\n- 전이 도중에만 필요한 지침 → **transfer**.\n\n## 포트 3종 — 노드가 바깥과 만나는 자리\n\n구조(노드와 선)만 만들면 분기가 표현되지 않는다. 포트가 의미론을 담는다.\n\n| 포트 | 필드 | 뜻 |\n|------|------|-----|\n| 출력 | `transfer_on` | 이 노드가 **어떤 결과로 끝나는가** (분기 갈래) |\n| 입력 | `entry_paths` | 이 노드에 **어떤 경로로 들어왔는가** |\n| 에이전트 호출 | `call_agents` | 여기서 에이전트에게 위임한다 |\n\n- 전이의 `trigger`가 출발 노드의 출력 포트 이름을 가리킨다. 이게 없으면 캔버스에서\n  포트가 갈라지지 않고, 컴파일된 \"다음 단계\" 단락도 조건 없이 뭉뚱그려진다.\n- 전이의 `target_port`가 도착 노드의 입력 포트를 가리킨다. 같은 노드에 여러 경로로\n  들어올 때, 도착한 쪽이 자기가 어디서 왔는지 알아야 다르게 행동할 수 있다.\n- **에이전트로 가는 전이는 반드시 `call_agents` 포트에서 나가야 한다.** 이건 캔버스가\n  강제하는 규칙이고 MCP 경로도 같다. 연결하면 대상 에이전트의 호출 계약 카드가\n  자동으로 생긴다.\n\n## 블랙보드 — 컨텍스트 사이의 통로\n\n같은 컨텍스트 안에서는 필요 없다. 이미 맥락을 공유하기 때문이다. **서로 다른\n컨텍스트**(스킬 → 에이전트, 세션 → 다음 세션)로 값을 넘길 때 쓴다.\n\n- 필드 타입은 스칼라 4종(`string`/`int`/`float`/`bool`)뿐이다. 컨테이너 형상은\n  `collection`(none/list/set)이 전담한다 — \"문자열 목록\"은 `string × list`.\n- 클래스 하나가 런타임에 `state/<ClassName>.json` 파일 하나가 된다.\n- 각 노드가 `reads`/`writes`로 접근을 선언한다. 선언하면 캔버스에 뱃지가 붙고,\n  컴파일된 본문의 블랙보드 단락이 그 클래스로 좁혀진다. 선언이 없으면 전 클래스를\n  나열하는 일반 안내만 나간다.\n\n## 진행 상태 — 세션을 넘기는 규약\n\n프로젝트 그래프에 배치된 스킬은 `state/__progress__.json`으로 자기 위치를 남긴다\n(`current` / `completed` / `prev` / `note`). 컴파일러가 \"작업 재개\" 단락과 \"다음 단계\"\n단락을 자동으로 붙이므로, 설계자는 그래프만 제대로 그리면 된다.\n\n`prev`에는 직전 **스킬** 이름이 남는다 — 에이전트에 위임했다가 돌아온 경우에도\n에이전트 이름이 아니라 위임한 스킬 이름이다.\n\n## 검증과 컴파일 게이트\n\nF7 검증은 에러와 경고를 나눈다. **에러가 1건이라도 있으면 컴파일이 거부**되고 파일이\n하나도 생기지 않는다. 경고는 통과하지만 대부분 실제 결함이다.\n\n컴파일 시점에만 에러로 승격되는 것이 둘 있다: 이름 규약 위반, 산출 경로 충돌.\n편집 중에는 경고지만 파일을 쓰기 직전에는 막는다.\n",
+      "config": {
+        "kind": "declarative",
+        "model": "inherit",
+        "effort": null,
+        "hooks": null,
+        "argument_hint": null,
+        "allowed_tools": [],
+        "paths": null,
+        "disable_model_invocation": false,
+        "user_invocable": true
+      },
+      "entry_paths": []
+    },
+    {
+      "kind": "declarative_skill",
+      "id": "fdeed490f406434d9a831d727d0098db",
+      "name": "cc-plugin-spec",
+      "description": "Claude Code 플러그인 규격 — 프론트매터 키 케이싱, 빌드 타깃별 제약, 경로 변수, 훅 스키마.",
+      "when_to_use": "",
+      "body": "# Claude Code 플러그인 규격\n\n공식 문서에 흩어져 있거나 아예 없는 사실들을 모았다. 규격 정본은 SchemaStore의\n`claude-code-settings.json`과 code.claude.com 문서다.\n\n## 프론트매터 키 케이싱 — 스킬과 에이전트가 다르다\n\n이걸 유추하면 틀린다. 둘은 서로 다른 규약을 쓴다.\n\n| 대상 | 규약 | 예시 |\n|------|------|------|\n| 스킬 `SKILL.md` | **kebab-case** | `allowed-tools`, `disable-model-invocation`, `argument-hint` |\n| 에이전트 `.md` | **camelCase** | `permissionMode`, `disallowedTools`, `maxTurns`, `mcpServers` |\n\n에이전트에 `permission-mode`라고 쓰면 CC가 인식하지 못하고 **조용히 무시한다**.\n값은 파일에 있는데 아무 일도 일어나지 않는다.\n\n## 플러그인 서브에이전트가 무시하는 필드 3종\n\n> For security reasons, plugin subagents don't support the `hooks`, `mcpServers`,\n> or `permissionMode` frontmatter fields.\n\n이것이 빌드 타깃을 나누는 이유 전부다. 마켓플레이스 플러그인으로 배포하면 이 셋이\n무시되므로, 설계자가 걸어 둔 제약이 사라진다. 셋 중 하나라도 필요하면\n**프로젝트 설치(LOCAL) 빌드**를 골라야 한다.\n\n프로젝트 설치 빌드는 CC 관점에서 플러그인이 아니다 — 서브에이전트 스코프로 치면\n`plugin`이 아니라 `project`다. 정확히 그래서 제약이 풀린다.\n\n## 경로 변수 — 치환 조건이 변수마다 다르다\n\n| 변수 | 치환되는 곳 |\n|------|-------------|\n| `${CLAUDE_PLUGIN_ROOT}` | **플러그인 스킬에서만** |\n| `${CLAUDE_PLUGIN_DATA}` | **플러그인 스킬에서만** |\n| `${CLAUDE_PROJECT_DIR}` | 어디서나 (v2.1.196+) |\n| `${CLAUDE_SKILL_DIR}` | 어디서나 |\n\n프로젝트 설치 빌드에서 `${CLAUDE_PLUGIN_ROOT}`를 쓰면 리터럴 문자열로 남는다.\n\n**Daedalus에서는 본문에 타깃 중립 토큰 `${ROOT}`를 쓴다.** 컴파일 시점에 빌드\n타깃에 맞는 변수로 확장된다 — 마켓플레이스는 `${CLAUDE_PLUGIN_ROOT}`, 프로젝트\n설치는 `${CLAUDE_PROJECT_DIR}`. 본문에 CC 원시 변수를 직접 쓰면 한쪽 타깃에\n묶이므로 쓰지 않는다.\n\n## 훅 — 이벤트 31종 × 핸들러 5종\n\n구조는 3단이다: 이벤트 → 그룹(matcher + 핸들러 목록) → 핸들러.\n\n```yaml\nhooks:\n  PreToolUse:\n    - matcher: \"Bash\"\n      hooks:\n        - type: command\n          command: \"${ROOT}/hooks/scripts/guard.sh\"\n```\n\n핸들러 타입은 `command` / `prompt`(빠른 모델이 판단) / `agent`(검증 서브에이전트) /\n`http` / `mcp_tool`. 한 그룹에 **여러 개를 순서대로** 넣을 수 있고 타입이 섞여도 된다.\n공통 속성은 `timeout` / `if`(permission-rule 문법 필터) / `statusMessage`.\n\n### matcher를 받지 않는 이벤트 8종\n\n`TeammateIdle`, `TaskCompleted`, `InstructionsLoaded`, `CwdChanged`,\n`WorktreeCreate`, `WorktreeRemove`, `PostToolBatch`, `TaskCreated`.\n여기에 matcher를 주면 무시된다.\n\n### MCP 도구 매칭의 함정\n\nmatcher로 MCP 도구를 잡을 때 `mcp__<서버>__<도구>` 형태를 쓴다. 서버 전체를\n잡으려면 **`.*`가 필수**다.\n\n- `mcp__memory__.*` — 그 서버의 모든 도구\n- `mcp__memory` — **아무것도 매칭하지 않는다**. 정규식이 아니라 정확한 문자열로\n  비교되기 때문이다. 조용히 아무 훅도 실행되지 않는다.\n\n## 이름 규약\n\n산출 이름이 되는 것(플러그인 이름, 스킬 이름, 에이전트 이름)은\n`^[a-z0-9][a-z0-9-]*$`를 지켜야 컴파일 게이트를 통과한다. 편집 중에는 경고 등급이지만\n컴파일 시점에는 에러로 승격된다.\n\n에이전트 이름에 `:`는 쓸 수 없다 — 플러그인 스코프 식별자(`my-plugin:reviewer`)에\n예약돼 있다.\n",
+      "config": {
+        "kind": "declarative",
+        "model": "inherit",
+        "effort": null,
+        "hooks": null,
+        "argument_hint": null,
+        "allowed_tools": [],
+        "paths": null,
+        "disable_model_invocation": false,
+        "user_invocable": true
+      },
+      "entry_paths": []
+    },
+    {
+      "kind": "procedural_skill",
+      "id": "c001763402534697a03d67a118df67cc",
+      "name": "graph-orient",
+      "description": "Daedalus 편집 세션의 진입점 — 지금 무엇이 열려 있고 사용자가 무엇을 보고 있는지 파악한다.",
+      "when_to_use": "",
+      "body": "# 지금 무엇이 열려 있는지부터 본다\n\nDaedalus MCP는 **사람이 GUI에서 작업하는 중에 같은 프로젝트를 함께 만지는 통로**다.\n조회용 API가 아니다. 그래서 첫 동작은 항상 현황 파악이다.\n\n## 1. 연결과 현황\n\n`get_project`로 프로젝트 이름·빌드 타깃·컴포넌트·배치·전이·블랙보드를 한 번에 받는다.\n\n도구 호출이 전부 실패하면 서버가 안 떠 있는 것이다. Daedalus GUI가 실행 중인지\n확인하고, 여러 인스턴스를 띄웠다면 `--mcp-port`로 어느 쪽에 붙는지 확인하라.\n\n## 2. 사용자가 무엇을 보고 있는가\n\n`get_selection`을 부른다. 사용자가 \"이거 고쳐줘\"라고 할 때 그 \"이거\"가 여기 있다.\n선택이 비어 있으면 무엇을 대상으로 하는지 먼저 물어라 — 짐작해서 엉뚱한 노드를\n고치면 사용자가 되돌려야 한다.\n\n`get_history`는 사용자가 방금 한 편집을 보여준다. 대화가 중간부터 시작됐을 때\n맥락을 따라잡는 데 쓴다.\n\n## 3. 목표를 받아 적는다\n\n`DesignSession`에 이번 작업이 무엇인지 기록한다.\n\n- `goal` — 무엇을 자동화하려는 플러그인인가. 한 문장.\n- `target_project` — 이 플러그인을 어디에 설치할 것인가.\n- `build_target` — `local`(프로젝트 설치) 또는 `marketplace`.\n\n**빌드 타깃은 여기서 정한다.** 에이전트에 `hooks`/`mcpServers`/`permissionMode`가\n하나라도 필요하면 `local`이어야 한다. 마켓플레이스는 그 셋을 무시하기 때문이다.\n나중에 바꾸려면 `set_project_properties(build_target=...)`로 바꿀 수 있지만,\n설계를 다 해 놓고 바꾸면 쓸 수 없는 필드를 걷어내야 한다.\n\n## 4. 갈림길\n\n- 캔버스가 비어 있거나 사용자가 새 워크플로를 원한다 → **new**\n- 이미 배치된 그래프가 있다 → **existing**. 손대기 전에 현황부터 검증한다.\n  기존 그래프에는 대개 미완성 배선이 남아 있고, 그걸 모르고 새로 그리면 충돌한다.\n\n## 편집 원칙\n\n여기서 하는 모든 편집은 **사용자의 undo 스택에 들어간다**. 사용자가 Ctrl+Z로\n되돌릴 수 있고, 스크립트 리스너에 사람 편집과 같은 형식으로 남는다. 되돌릴 수\n있다고 해서 함부로 해도 된다는 뜻은 아니다 — 사용자가 작업 중인 캔버스를 말없이\n크게 바꾸지 마라.\n",
+      "config": {
+        "kind": "procedural",
+        "model": "inherit",
+        "effort": null,
+        "hooks": null,
+        "argument_hint": null,
+        "allowed_tools": [],
+        "paths": null,
+        "disable_model_invocation": false,
+        "user_invocable": true,
+        "context": "inline",
+        "agent": null,
+        "shell": "bash"
+      },
+      "fsm": {
+        "id": "b38fc909f0d94317a7cd44b5df19290f",
+        "name": "graph-orient_fsm",
+        "states": [
+          {
+            "kind": "simple",
+            "id": "aa99830c054c418db97f93141e77f664",
+            "name": "start",
+            "on_entry_start": [],
+            "on_entry": [],
+            "on_entry_end": [],
+            "on_exit_start": [],
+            "on_exit": [],
+            "on_exit_end": [],
+            "on_active": [],
+            "custom_events": {},
+            "inputs": [],
+            "outputs": [],
+            "reads": [],
+            "writes": [],
+            "skill_ref": null
+          }
+        ],
+        "transitions": [],
+        "initial_state": "aa99830c054c418db97f93141e77f664",
+        "final_states": [],
+        "blackboard": {
+          "class_definitions": [],
+          "variables": {}
+        }
+      },
+      "transfer_on": [
+        {
+          "name": "new",
+          "color": "#4488ff",
+          "description": "빈 캔버스이거나 사용자가 새 워크플로를 만들려 한다"
+        },
+        {
+          "name": "existing",
+          "color": "#ffaa44",
+          "description": "이미 배치된 그래프가 있고 그것을 고치려 한다"
+        }
+      ],
+      "call_agents": [],
+      "entry_paths": []
+    },
+    {
+      "kind": "procedural_skill",
+      "id": "36540c762a1943d7a90751f441818311",
+      "name": "graph-design",
+      "description": "컴포넌트를 만들고 캔버스에 배치해 워크플로의 뼈대를 세운다.",
+      "when_to_use": "",
+      "body": "",
+      "config": {
+        "kind": "procedural",
+        "model": "inherit",
+        "effort": null,
+        "hooks": null,
+        "argument_hint": null,
+        "allowed_tools": [],
+        "paths": null,
+        "disable_model_invocation": false,
+        "user_invocable": true,
+        "context": "inline",
+        "agent": null,
+        "shell": "bash"
+      },
+      "fsm": {
+        "id": "2f5ae7c45e544d4ebf5bfee025948721",
+        "name": "graph-design_fsm",
+        "states": [
+          {
+            "kind": "simple",
+            "id": "ec97d19b4716441f95e69806873871bf",
+            "name": "start",
+            "on_entry_start": [],
+            "on_entry": [],
+            "on_entry_end": [],
+            "on_exit_start": [],
+            "on_exit": [],
+            "on_exit_end": [],
+            "on_active": [],
+            "custom_events": {},
+            "inputs": [],
+            "outputs": [],
+            "reads": [],
+            "writes": [],
+            "skill_ref": null
+          }
+        ],
+        "transitions": [],
+        "initial_state": "ec97d19b4716441f95e69806873871bf",
+        "final_states": [],
+        "blackboard": {
+          "class_definitions": [],
+          "variables": {}
+        }
+      },
+      "transfer_on": [
+        {
+          "name": "done",
+          "color": "#4488ff",
+          "description": "컴포넌트와 배치가 끝났다 — 아직 의미론은 비어 있다"
+        }
+      ],
+      "call_agents": [
+        {
+          "name": "bulk-rewire",
+          "color": "#4488ff",
+          "description": "노드가 많아 한 컨텍스트에서 재배선하면 흐름을 놓칠 때 위임한다."
+        }
+      ],
+      "entry_paths": []
+    },
+    {
+      "kind": "procedural_skill",
+      "id": "81e81814a3d24c55bf208d225bc9010b",
+      "name": "graph-wire",
+      "description": "포트를 선언하고 전이에 트리거·가드를 물려 분기 의미론을 완성한다.",
+      "when_to_use": "",
+      "body": "",
+      "config": {
+        "kind": "procedural",
+        "model": "inherit",
+        "effort": null,
+        "hooks": null,
+        "argument_hint": null,
+        "allowed_tools": [],
+        "paths": null,
+        "disable_model_invocation": false,
+        "user_invocable": true,
+        "context": "inline",
+        "agent": null,
+        "shell": "bash"
+      },
+      "fsm": {
+        "id": "c8e236b3c1be4bc69be84878073b2d02",
+        "name": "graph-wire_fsm",
+        "states": [
+          {
+            "kind": "simple",
+            "id": "9142806210f947debba78f48a2131742",
+            "name": "start",
+            "on_entry_start": [],
+            "on_entry": [],
+            "on_entry_end": [],
+            "on_exit_start": [],
+            "on_exit": [],
+            "on_exit_end": [],
+            "on_active": [],
+            "custom_events": {},
+            "inputs": [],
+            "outputs": [],
+            "reads": [],
+            "writes": [],
+            "skill_ref": null
+          }
+        ],
+        "transitions": [],
+        "initial_state": "9142806210f947debba78f48a2131742",
+        "final_states": [],
+        "blackboard": {
+          "class_definitions": [],
+          "variables": {}
+        }
+      },
+      "transfer_on": [
+        {
+          "name": "done",
+          "color": "#4488ff",
+          "description": "모든 분기에 포트와 트리거가 물렸다"
+        }
+      ],
+      "call_agents": [],
+      "entry_paths": [
+        {
+          "name": "fresh",
+          "color": "#44aa88",
+          "description": "방금 만든 례약한 그래프 — 모든 분기를 처음 선언한다"
+        },
+        {
+          "name": "repair",
+          "color": "#ff8844",
+          "description": "검증이 되돌려보냈다 — VerifyResult.blocking에 적힌 것만 고친다"
+        }
+      ]
+    },
+    {
+      "kind": "procedural_skill",
+      "id": "7e757d90f0214999b9d913caecd72848",
+      "name": "graph-state",
+      "description": "컨텍스트를 넘나드는 공유 상태를 블랙보드로 설계하고 노드별 읽기·쓰기를 선언한다.",
+      "when_to_use": "",
+      "body": "",
+      "config": {
+        "kind": "procedural",
+        "model": "inherit",
+        "effort": null,
+        "hooks": null,
+        "argument_hint": null,
+        "allowed_tools": [],
+        "paths": null,
+        "disable_model_invocation": false,
+        "user_invocable": true,
+        "context": "inline",
+        "agent": null,
+        "shell": "bash"
+      },
+      "fsm": {
+        "id": "7425d8178d8541f995a673a0321ef43d",
+        "name": "graph-state_fsm",
+        "states": [
+          {
+            "kind": "simple",
+            "id": "d8442890ab6648f5a0a941142ed7dd68",
+            "name": "start",
+            "on_entry_start": [],
+            "on_entry": [],
+            "on_entry_end": [],
+            "on_exit_start": [],
+            "on_exit": [],
+            "on_exit_end": [],
+            "on_active": [],
+            "custom_events": {},
+            "inputs": [],
+            "outputs": [],
+            "reads": [],
+            "writes": [],
+            "skill_ref": null
+          }
+        ],
+        "transitions": [],
+        "initial_state": "d8442890ab6648f5a0a941142ed7dd68",
+        "final_states": [],
+        "blackboard": {
+          "class_definitions": [],
+          "variables": {}
+        }
+      },
+      "transfer_on": [
+        {
+          "name": "done",
+          "color": "#4488ff",
+          "description": "블랙보드 설계와 노드별 접근 선언이 끝났다"
+        }
+      ],
+      "call_agents": [],
+      "entry_paths": []
+    },
+    {
+      "kind": "procedural_skill",
+      "id": "d9bebaaac3cd42bdbbea9dcde7ebc559",
+      "name": "plugin-verify",
+      "description": "프로젝트를 검증하고 경고를 원인별로 해석해 무엇을 고쳐야 하는지 정한다.",
+      "when_to_use": "",
+      "body": "",
+      "config": {
+        "kind": "procedural",
+        "model": "inherit",
+        "effort": null,
+        "hooks": null,
+        "argument_hint": null,
+        "allowed_tools": [],
+        "paths": null,
+        "disable_model_invocation": false,
+        "user_invocable": true,
+        "context": "inline",
+        "agent": null,
+        "shell": "bash"
+      },
+      "fsm": {
+        "id": "c5cb075f4f2541e4a377887a98e82462",
+        "name": "plugin-verify_fsm",
+        "states": [
+          {
+            "kind": "simple",
+            "id": "aafeabe1ba964c47bef73300e5048eac",
+            "name": "start",
+            "on_entry_start": [],
+            "on_entry": [],
+            "on_entry_end": [],
+            "on_exit_start": [],
+            "on_exit": [],
+            "on_exit_end": [],
+            "on_active": [],
+            "custom_events": {},
+            "inputs": [],
+            "outputs": [],
+            "reads": [],
+            "writes": [],
+            "skill_ref": null
+          }
+        ],
+        "transitions": [],
+        "initial_state": "aafeabe1ba964c47bef73300e5048eac",
+        "final_states": [],
+        "blackboard": {
+          "class_definitions": [],
+          "variables": {}
+        }
+      },
+      "transfer_on": [
+        {
+          "name": "pass",
+          "color": "#44cc88",
+          "description": "에러 0건 — 컴파일 가능"
+        },
+        {
+          "name": "fix-needed",
+          "color": "#ff6666",
+          "description": "에러가 있거나 무시할 수 없는 경고가 남았다"
+        }
+      ],
+      "call_agents": [],
+      "entry_paths": [
+        {
+          "name": "after-design",
+          "color": "#44aa88",
+          "description": "설계 파이프라인을 끝내고 온 정상 경로"
+        },
+        {
+          "name": "audit",
+          "color": "#ffaa44",
+          "description": "기존 프로젝트의 현황부터 점검하러 온 경로"
+        }
+      ]
+    },
+    {
+      "kind": "procedural_skill",
+      "id": "2e4bb8795b2a451d963c012bf3aefb4a",
+      "name": "plugin-compile",
+      "description": "빌드 타깃을 확인하고 플러그인 파일을 산출한다.",
+      "when_to_use": "",
+      "body": "",
+      "config": {
+        "kind": "procedural",
+        "model": "inherit",
+        "effort": null,
+        "hooks": null,
+        "argument_hint": null,
+        "allowed_tools": [],
+        "paths": null,
+        "disable_model_invocation": false,
+        "user_invocable": true,
+        "context": "inline",
+        "agent": null,
+        "shell": "bash"
+      },
+      "fsm": {
+        "id": "6da6e35641094bb69749ccb4e3dc8773",
+        "name": "plugin-compile_fsm",
+        "states": [
+          {
+            "kind": "simple",
+            "id": "b8f652dbb70a4cde9a8f88ade2f5861f",
+            "name": "start",
+            "on_entry_start": [],
+            "on_entry": [],
+            "on_entry_end": [],
+            "on_exit_start": [],
+            "on_exit": [],
+            "on_exit_end": [],
+            "on_active": [],
+            "custom_events": {},
+            "inputs": [],
+            "outputs": [],
+            "reads": [],
+            "writes": [],
+            "skill_ref": null
+          }
+        ],
+        "transitions": [],
+        "initial_state": "b8f652dbb70a4cde9a8f88ade2f5861f",
+        "final_states": [],
+        "blackboard": {
+          "class_definitions": [],
+          "variables": {}
+        }
+      },
+      "transfer_on": [
+        {
+          "name": "done",
+          "color": "#4488ff",
+          "description": ""
+        }
+      ],
+      "call_agents": [],
+      "entry_paths": []
+    }
+  ],
+  "agents": [
+    {
+      "kind": "agent",
+      "id": "6a500c27767e443789499e6e711333bd",
+      "name": "graph-surgeon",
+      "description": "대규모 그래프 재배선을 별도 컨텍스트에서 수행한다.",
+      "fsm": {
+        "id": "90eb57ad384b4cc480eb22e8785a8eab",
+        "name": "graph-surgeon_fsm",
+        "states": [
+          {
+            "kind": "entry_point",
+            "id": "cb18bfdb234446ef8a6bddcf5d0a0ad5",
+            "name": "entry",
+            "on_entry_start": [],
+            "on_entry": [],
+            "on_entry_end": [],
+            "on_exit_start": [],
+            "on_exit": [],
+            "on_exit_end": [],
+            "on_active": [],
+            "custom_events": {},
+            "inputs": [],
+            "outputs": [],
+            "reads": [],
+            "writes": []
+          },
+          {
+            "kind": "exit_point",
+            "id": "2c26b93aa373476dbabbd85da6e0cc53",
+            "name": "done",
+            "on_entry_start": [],
+            "on_entry": [],
+            "on_entry_end": [],
+            "on_exit_start": [],
+            "on_exit": [],
+            "on_exit_end": [],
+            "on_active": [],
+            "custom_events": {},
+            "inputs": [],
+            "outputs": [],
+            "reads": [],
+            "writes": [],
+            "color": "#cc6666"
+          },
+          {
+            "kind": "simple",
+            "id": "5d64f44a9b8442428cf2ed42a51be0f0",
+            "name": "survey-graph",
+            "on_entry_start": [],
+            "on_entry": [],
+            "on_entry_end": [],
+            "on_exit_start": [],
+            "on_exit": [],
+            "on_exit_end": [],
+            "on_active": [],
+            "custom_events": {},
+            "inputs": [],
+            "outputs": [],
+            "reads": [],
+            "writes": [],
+            "skill_ref": "1f633022ac3f4671819bd991d83a8d7c"
+          },
+          {
+            "kind": "simple",
+            "id": "3c064c3de9c4412b9756a969be37811a",
+            "name": "rewire-edges",
+            "on_entry_start": [],
+            "on_entry": [],
+            "on_entry_end": [],
+            "on_exit_start": [],
+            "on_exit": [],
+            "on_exit_end": [],
+            "on_active": [],
+            "custom_events": {},
+            "inputs": [],
+            "outputs": [],
+            "reads": [],
+            "writes": [],
+            "skill_ref": "8130677bfeca4b5dbbc6daa3d6ce6392"
+          }
+        ],
+        "transitions": [],
+        "initial_state": "cb18bfdb234446ef8a6bddcf5d0a0ad5",
+        "final_states": [
+          "2c26b93aa373476dbabbd85da6e0cc53"
+        ],
+        "blackboard": {
+          "class_definitions": [],
+          "variables": {}
+        }
+      },
+      "config": {
+        "kind": "agent",
+        "model": "inherit",
+        "effort": null,
+        "hooks": null,
+        "tools": null,
+        "disallowed_tools": null,
+        "permission_mode": "default",
+        "max_turns": null,
+        "skills": [],
+        "mcp_servers": null,
+        "memory": null,
+        "background": false,
+        "isolation": "none",
+        "color": null
+      },
+      "execution_policy": {
+        "mode": "fixed",
+        "count": 1,
+        "join": "all",
+        "join_count": null
+      },
+      "body": "",
+      "skills": [
+        {
+          "kind": "procedural_skill",
+          "id": "49e77594912b4778aa76f169dded7ad5",
+          "name": "ff",
+          "description": "",
+          "when_to_use": "",
+          "body": "",
+          "config": {
+            "kind": "procedural",
+            "model": "inherit",
+            "effort": null,
+            "hooks": null,
+            "argument_hint": null,
+            "allowed_tools": [],
+            "paths": null,
+            "disable_model_invocation": false,
+            "user_invocable": true,
+            "context": "inline",
+            "agent": null,
+            "shell": "bash"
+          },
+          "fsm": {
+            "id": "6a079d5ff6d14792b8eb329afb430e3e",
+            "name": "ff_fsm",
+            "states": [
+              {
+                "kind": "simple",
+                "id": "ad0e4466b8fe43458e3b56d6b0dea769",
+                "name": "start",
+                "on_entry_start": [],
+                "on_entry": [],
+                "on_entry_end": [],
+                "on_exit_start": [],
+                "on_exit": [],
+                "on_exit_end": [],
+                "on_active": [],
+                "custom_events": {},
+                "inputs": [],
+                "outputs": [],
+                "reads": [],
+                "writes": [],
+                "skill_ref": null
+              }
+            ],
+            "transitions": [],
+            "initial_state": "ad0e4466b8fe43458e3b56d6b0dea769",
+            "final_states": [],
+            "blackboard": {
+              "class_definitions": [],
+              "variables": {}
+            }
+          },
+          "transfer_on": [
+            {
+              "name": "done",
+              "color": "#4488ff",
+              "description": ""
+            }
+          ],
+          "call_agents": [],
+          "entry_paths": []
+        },
+        {
+          "kind": "procedural_skill",
+          "id": "1f633022ac3f4671819bd991d83a8d7c",
+          "name": "survey-graph",
+          "description": "그래프 전체를 훑어 고쳐야 할 전이·포트 목록을 뽑는다.",
+          "when_to_use": "",
+          "body": "",
+          "config": {
+            "kind": "procedural",
+            "model": "inherit",
+            "effort": null,
+            "hooks": null,
+            "argument_hint": null,
+            "allowed_tools": [],
+            "paths": null,
+            "disable_model_invocation": false,
+            "user_invocable": true,
+            "context": "inline",
+            "agent": null,
+            "shell": "bash"
+          },
+          "fsm": {
+            "id": "7430ec470fb9433fbbd0f3bf56447cde",
+            "name": "survey-graph_fsm",
+            "states": [
+              {
+                "kind": "simple",
+                "id": "82881521a9784b898c76cc1f52236282",
+                "name": "start",
+                "on_entry_start": [],
+                "on_entry": [],
+                "on_entry_end": [],
+                "on_exit_start": [],
+                "on_exit": [],
+                "on_exit_end": [],
+                "on_active": [],
+                "custom_events": {},
+                "inputs": [],
+                "outputs": [],
+                "reads": [],
+                "writes": [],
+                "skill_ref": null
+              }
+            ],
+            "transitions": [],
+            "initial_state": "82881521a9784b898c76cc1f52236282",
+            "final_states": [],
+            "blackboard": {
+              "class_definitions": [],
+              "variables": {}
+            }
+          },
+          "transfer_on": [
+            {
+              "name": "done",
+              "color": "#4488ff",
+              "description": ""
+            }
+          ],
+          "call_agents": [],
+          "entry_paths": []
+        },
+        {
+          "kind": "procedural_skill",
+          "id": "8130677bfeca4b5dbbc6daa3d6ce6392",
+          "name": "rewire-edges",
+          "description": "뽑아둔 목록대로 배선을 고치고 무엇을 바꿨는지 보고한다.",
+          "when_to_use": "",
+          "body": "",
+          "config": {
+            "kind": "procedural",
+            "model": "inherit",
+            "effort": null,
+            "hooks": null,
+            "argument_hint": null,
+            "allowed_tools": [],
+            "paths": null,
+            "disable_model_invocation": false,
+            "user_invocable": true,
+            "context": "inline",
+            "agent": null,
+            "shell": "bash"
+          },
+          "fsm": {
+            "id": "b4876045f86648e1a194b0f8087ecd29",
+            "name": "rewire-edges_fsm",
+            "states": [
+              {
+                "kind": "simple",
+                "id": "ce412fd827cf4e96907862939178341e",
+                "name": "start",
+                "on_entry_start": [],
+                "on_entry": [],
+                "on_entry_end": [],
+                "on_exit_start": [],
+                "on_exit": [],
+                "on_exit_end": [],
+                "on_active": [],
+                "custom_events": {},
+                "inputs": [],
+                "outputs": [],
+                "reads": [],
+                "writes": [],
+                "skill_ref": null
+              }
+            ],
+            "transitions": [],
+            "initial_state": "ce412fd827cf4e96907862939178341e",
+            "final_states": [],
+            "blackboard": {
+              "class_definitions": [],
+              "variables": {}
+            }
+          },
+          "transfer_on": [
+            {
+              "name": "done",
+              "color": "#4488ff",
+              "description": ""
+            }
+          ],
+          "call_agents": [],
+          "entry_paths": []
+        }
+      ],
+      "reference_placements": [],
+      "caller_contracts": [
+        {
+          "title": "caller: graph-design (bulk-rewire)",
+          "content": "",
+          "children": []
+        }
+      ],
+      "graph_layout": {
+        "cb18bfdb234446ef8a6bddcf5d0a0ad5": [
+          0.0,
+          100.0
+        ],
+        "2c26b93aa373476dbabbd85da6e0cc53": [
+          602.9292577634706,
+          180.00165244354196
+        ],
+        "5d64f44a9b8442428cf2ed42a51be0f0": [
+          220.0,
+          0.0
+        ],
+        "3c064c3de9c4412b9756a969be37811a": [
+          470.0,
+          0.0
+        ]
+      },
+      "edge_layout": {},
+      "entry_paths": []
+    }
+  ],
   "reference_placements": [],
   "delegations": [],
   "tool_shelf": [],
   "hook_library": [],
   "blackboard": {
-    "class_definitions": [],
+    "class_definitions": [
+      {
+        "name": "DesignSession",
+        "description": "이번 설계 세션이 무엇을 만들려는지 — 모든 스킬이 읽는 목표 선언.",
+        "fields": [
+          {
+            "name": "goal",
+            "field_type": "string",
+            "collection": "none",
+            "default": null,
+            "required": true
+          },
+          {
+            "name": "target_project",
+            "field_type": "string",
+            "collection": "none",
+            "default": null,
+            "required": false
+          },
+          {
+            "name": "build_target",
+            "field_type": "string",
+            "collection": "none",
+            "default": "local",
+            "required": true
+          }
+        ]
+      },
+      {
+        "name": "GraphDraft",
+        "description": "설계 진행 상황 — 무엇을 만들었고 어디까지 배선했는지.",
+        "fields": [
+          {
+            "name": "components",
+            "field_type": "string",
+            "collection": "list",
+            "default": null,
+            "required": false
+          },
+          {
+            "name": "placed",
+            "field_type": "string",
+            "collection": "list",
+            "default": null,
+            "required": false
+          },
+          {
+            "name": "wired",
+            "field_type": "bool",
+            "collection": "none",
+            "default": false,
+            "required": false
+          },
+          {
+            "name": "state_declared",
+            "field_type": "bool",
+            "collection": "none",
+            "default": false,
+            "required": false
+          }
+        ]
+      },
+      {
+        "name": "VerifyResult",
+        "description": "검증 결과 — 재시도 루프에서 무엇을 고쳐야 하는지 넘기는 통로.",
+        "fields": [
+          {
+            "name": "error_count",
+            "field_type": "int",
+            "collection": "none",
+            "default": 0,
+            "required": true
+          },
+          {
+            "name": "warning_count",
+            "field_type": "int",
+            "collection": "none",
+            "default": 0,
+            "required": true
+          },
+          {
+            "name": "blocking",
+            "field_type": "string",
+            "collection": "list",
+            "default": null,
+            "required": false
+          },
+          {
+            "name": "accepted",
+            "field_type": "string",
+            "collection": "list",
+            "default": null,
+            "required": false
+          }
+        ]
+      }
+    ],
     "variables": {}
   },
   "graph": {
@@ -33,9 +912,363 @@
         "outputs": [],
         "reads": [],
         "writes": []
+      },
+      {
+        "kind": "simple",
+        "id": "fbcf4809d9d54e4a89446a6bb69e317f",
+        "name": "graph-orient",
+        "on_entry_start": [],
+        "on_entry": [],
+        "on_entry_end": [],
+        "on_exit_start": [],
+        "on_exit": [],
+        "on_exit_end": [],
+        "on_active": [],
+        "custom_events": {},
+        "inputs": [],
+        "outputs": [],
+        "reads": [],
+        "writes": [
+          "DesignSession"
+        ],
+        "skill_ref": "c001763402534697a03d67a118df67cc"
+      },
+      {
+        "kind": "simple",
+        "id": "5be77a4d502447caaf04886480b7f071",
+        "name": "graph-design",
+        "on_entry_start": [],
+        "on_entry": [],
+        "on_entry_end": [],
+        "on_exit_start": [],
+        "on_exit": [],
+        "on_exit_end": [],
+        "on_active": [],
+        "custom_events": {},
+        "inputs": [],
+        "outputs": [],
+        "reads": [
+          "DesignSession"
+        ],
+        "writes": [
+          "GraphDraft.components",
+          "GraphDraft.placed"
+        ],
+        "skill_ref": "36540c762a1943d7a90751f441818311"
+      },
+      {
+        "kind": "simple",
+        "id": "f779ad58ae474a93baf9193294c70ad9",
+        "name": "graph-surgeon",
+        "on_entry_start": [],
+        "on_entry": [],
+        "on_entry_end": [],
+        "on_exit_start": [],
+        "on_exit": [],
+        "on_exit_end": [],
+        "on_active": [],
+        "custom_events": {},
+        "inputs": [],
+        "outputs": [],
+        "reads": [
+          "DesignSession.goal",
+          "GraphDraft"
+        ],
+        "writes": [
+          "GraphDraft.wired"
+        ],
+        "skill_ref": "6a500c27767e443789499e6e711333bd"
+      },
+      {
+        "kind": "simple",
+        "id": "0a71735c326c4d5ab8557b824063c041",
+        "name": "graph-wire",
+        "on_entry_start": [],
+        "on_entry": [],
+        "on_entry_end": [],
+        "on_exit_start": [],
+        "on_exit": [],
+        "on_exit_end": [],
+        "on_active": [],
+        "custom_events": {},
+        "inputs": [],
+        "outputs": [],
+        "reads": [
+          "DesignSession.goal",
+          "GraphDraft.placed",
+          "VerifyResult.blocking"
+        ],
+        "writes": [
+          "GraphDraft.wired"
+        ],
+        "skill_ref": "81e81814a3d24c55bf208d225bc9010b"
+      },
+      {
+        "kind": "simple",
+        "id": "34564e32d3254f2fa93c60ff2e1295e1",
+        "name": "graph-state",
+        "on_entry_start": [],
+        "on_entry": [],
+        "on_entry_end": [],
+        "on_exit_start": [],
+        "on_exit": [],
+        "on_exit_end": [],
+        "on_active": [],
+        "custom_events": {},
+        "inputs": [],
+        "outputs": [],
+        "reads": [
+          "DesignSession.goal",
+          "GraphDraft.placed"
+        ],
+        "writes": [
+          "GraphDraft.state_declared"
+        ],
+        "skill_ref": "7e757d90f0214999b9d913caecd72848"
+      },
+      {
+        "kind": "simple",
+        "id": "17d8711d1a4e4c7f89775b5a25c4f064",
+        "name": "plugin-verify",
+        "on_entry_start": [],
+        "on_entry": [],
+        "on_entry_end": [],
+        "on_exit_start": [],
+        "on_exit": [],
+        "on_exit_end": [],
+        "on_active": [],
+        "custom_events": {},
+        "inputs": [],
+        "outputs": [],
+        "reads": [
+          "GraphDraft"
+        ],
+        "writes": [
+          "VerifyResult"
+        ],
+        "skill_ref": "d9bebaaac3cd42bdbbea9dcde7ebc559"
+      },
+      {
+        "kind": "simple",
+        "id": "746db47c57db4d249cd543d3f317b4e4",
+        "name": "plugin-compile",
+        "on_entry_start": [],
+        "on_entry": [],
+        "on_entry_end": [],
+        "on_exit_start": [],
+        "on_exit": [],
+        "on_exit_end": [],
+        "on_active": [],
+        "custom_events": {},
+        "inputs": [],
+        "outputs": [],
+        "reads": [
+          "DesignSession.build_target",
+          "DesignSession.target_project",
+          "VerifyResult.error_count"
+        ],
+        "writes": [],
+        "skill_ref": "2e4bb8795b2a451d963c012bf3aefb4a"
       }
     ],
-    "transitions": [],
+    "transitions": [
+      {
+        "id": "d811dd4d82e549bca0630c6bd32ad958",
+        "source": "fbcf4809d9d54e4a89446a6bb69e317f",
+        "target": "5be77a4d502447caaf04886480b7f071",
+        "type": "external",
+        "trigger": {
+          "kind": "completion",
+          "name": "new"
+        },
+        "guard": {
+          "evaluation": {
+            "kind": "llm_evaluation",
+            "prompt": "캔버스에 배치가 없거나, 사용자가 새로운 워크플로를 만들려는 경우"
+          }
+        },
+        "on_guard_check": [],
+        "on_traverse_start": [],
+        "on_traverse": [],
+        "on_traverse_end": [],
+        "custom_events": {},
+        "data_map": {},
+        "skill_ref": null,
+        "target_port": ""
+      },
+      {
+        "id": "317479b5fa864778bc5aee68b0be6d0a",
+        "source": "fbcf4809d9d54e4a89446a6bb69e317f",
+        "target": "17d8711d1a4e4c7f89775b5a25c4f064",
+        "type": "external",
+        "trigger": {
+          "kind": "completion",
+          "name": "existing"
+        },
+        "guard": {
+          "evaluation": {
+            "kind": "llm_evaluation",
+            "prompt": "이미 배치된 그래프가 있어 현황부터 파악해야 하는 경우"
+          }
+        },
+        "on_guard_check": [],
+        "on_traverse_start": [],
+        "on_traverse": [],
+        "on_traverse_end": [],
+        "custom_events": {},
+        "data_map": {},
+        "skill_ref": null,
+        "target_port": "audit"
+      },
+      {
+        "id": "9e2f7ca55bc94b428cbb892891ad3e8a",
+        "source": "5be77a4d502447caaf04886480b7f071",
+        "target": "0a71735c326c4d5ab8557b824063c041",
+        "type": "external",
+        "trigger": {
+          "kind": "completion",
+          "name": "done"
+        },
+        "guard": null,
+        "on_guard_check": [],
+        "on_traverse_start": [],
+        "on_traverse": [],
+        "on_traverse_end": [],
+        "custom_events": {},
+        "data_map": {},
+        "skill_ref": null,
+        "target_port": "fresh"
+      },
+      {
+        "id": "f2db256870b94d1b91c78009772e1ba2",
+        "source": "5be77a4d502447caaf04886480b7f071",
+        "target": "f779ad58ae474a93baf9193294c70ad9",
+        "type": "external",
+        "trigger": {
+          "kind": "completion",
+          "name": "bulk-rewire"
+        },
+        "guard": {
+          "evaluation": {
+            "kind": "llm_evaluation",
+            "prompt": "재배선할 노드가 스무 개를 넘어 한 컨텍스트에서 다루면 흐름을 놓칠 때"
+          }
+        },
+        "on_guard_check": [],
+        "on_traverse_start": [],
+        "on_traverse": [],
+        "on_traverse_end": [],
+        "custom_events": {},
+        "data_map": {},
+        "skill_ref": null,
+        "target_port": ""
+      },
+      {
+        "id": "161273b929d642ac923987be53f8be99",
+        "source": "0a71735c326c4d5ab8557b824063c041",
+        "target": "34564e32d3254f2fa93c60ff2e1295e1",
+        "type": "external",
+        "trigger": {
+          "kind": "completion",
+          "name": "done"
+        },
+        "guard": null,
+        "on_guard_check": [],
+        "on_traverse_start": [],
+        "on_traverse": [],
+        "on_traverse_end": [],
+        "custom_events": {},
+        "data_map": {},
+        "skill_ref": null,
+        "target_port": ""
+      },
+      {
+        "id": "1b0fda3618fb4f64b773f87f68e13425",
+        "source": "34564e32d3254f2fa93c60ff2e1295e1",
+        "target": "17d8711d1a4e4c7f89775b5a25c4f064",
+        "type": "external",
+        "trigger": {
+          "kind": "completion",
+          "name": "done"
+        },
+        "guard": null,
+        "on_guard_check": [],
+        "on_traverse_start": [],
+        "on_traverse": [],
+        "on_traverse_end": [],
+        "custom_events": {},
+        "data_map": {},
+        "skill_ref": null,
+        "target_port": "after-design"
+      },
+      {
+        "id": "69cec1b067154cbe9425741411f7f7ab",
+        "source": "17d8711d1a4e4c7f89775b5a25c4f064",
+        "target": "0a71735c326c4d5ab8557b824063c041",
+        "type": "external",
+        "trigger": {
+          "kind": "completion",
+          "name": "fix-needed"
+        },
+        "guard": {
+          "evaluation": {
+            "kind": "llm_evaluation",
+            "prompt": "남은 문제가 포트·트리거·가드·블랙보드 접근 선언 등 의미론 결함일 때"
+          }
+        },
+        "on_guard_check": [],
+        "on_traverse_start": [],
+        "on_traverse": [],
+        "on_traverse_end": [],
+        "custom_events": {},
+        "data_map": {},
+        "skill_ref": null,
+        "target_port": "repair"
+      },
+      {
+        "id": "eb85ec1396714c2a8c339d0358f0dcd5",
+        "source": "17d8711d1a4e4c7f89775b5a25c4f064",
+        "target": "746db47c57db4d249cd543d3f317b4e4",
+        "type": "external",
+        "trigger": {
+          "kind": "completion",
+          "name": "pass"
+        },
+        "guard": {
+          "evaluation": {
+            "kind": "llm_evaluation",
+            "prompt": "에러가 0건이고 남은 경고를 모두 확인했을 때"
+          }
+        },
+        "on_guard_check": [],
+        "on_traverse_start": [],
+        "on_traverse": [],
+        "on_traverse_end": [],
+        "custom_events": {},
+        "data_map": {},
+        "skill_ref": null,
+        "target_port": ""
+      },
+      {
+        "id": "955e833c19ac40de941afa3329669588",
+        "source": "f779ad58ae474a93baf9193294c70ad9",
+        "target": "17d8711d1a4e4c7f89775b5a25c4f064",
+        "type": "external",
+        "trigger": {
+          "kind": "completion",
+          "name": "done"
+        },
+        "guard": null,
+        "on_guard_check": [],
+        "on_traverse_start": [],
+        "on_traverse": [],
+        "on_traverse_end": [],
+        "custom_events": {},
+        "data_map": {},
+        "skill_ref": null,
+        "target_port": "after-design"
+      }
+    ],
     "initial_state": "07c498a5d4ce47508cd495bf7c13a626",
     "final_states": [],
     "blackboard": {
@@ -43,7 +1276,36 @@
       "variables": {}
     }
   },
-  "graph_layout": {},
+  "graph_layout": {
+    "fbcf4809d9d54e4a89446a6bb69e317f": [
+      -32.0,
+      139.0
+    ],
+    "5be77a4d502447caaf04886480b7f071": [
+      188.0,
+      -67.0
+    ],
+    "f779ad58ae474a93baf9193294c70ad9": [
+      374.86956521739125,
+      150.6521739130435
+    ],
+    "0a71735c326c4d5ab8557b824063c041": [
+      580.0,
+      -48.0
+    ],
+    "34564e32d3254f2fa93c60ff2e1295e1": [
+      835.0245746691871,
+      -49.047258979206035
+    ],
+    "17d8711d1a4e4c7f89775b5a25c4f064": [
+      681.0699432892251,
+      326.2608695652173
+    ],
+    "746db47c57db4d249cd543d3f317b4e4": [
+      1043.8500000000001,
+      431.5499999999999
+    ]
+  },
   "edge_layout": {},
   "emit_progress_hook": true,
   "build_target": "local"

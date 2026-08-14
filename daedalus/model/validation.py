@@ -105,6 +105,20 @@ CC_BUILTIN_TOOLS: frozenset[str] = frozenset({
 })
 
 
+_CODE_FENCE_RE = re.compile(r"```.*?(?:```|\Z)", re.DOTALL)
+_INLINE_CODE_RE = re.compile(r"`[^`\n]*`")
+
+
+def _strip_markdown_code(text: str) -> str:
+    """마크다운 본문에서 코드로 표시된 부분을 지운다.
+
+    본문을 문자열로 훑는 규칙이 **문서가 무언가를 설명하려고 인용한 것**까지
+    실사용으로 오인하지 않게 한다. 코드 펜스를 먼저 지우는 순서가 중요하다 —
+    펜스 안의 백틱이 인라인 코드로 잘못 짝지어지는 것을 막는다.
+    """
+    return _INLINE_CODE_RE.sub("", _CODE_FENCE_RE.sub("", text))
+
+
 # skip_rules로 생략을 지원하는 규칙 집합 — 이름 오타/규칙 리네임이 조용한
 # no-op이 되지 않도록 알려진 이름만 허용한다.
 SKIPPABLE_RULES: frozenset[str] = frozenset({"unreachable_state"})
@@ -1677,8 +1691,13 @@ class Validator:
         스킬에서만 치환한다**(공식 skills 문서의 치환 표). 프로젝트 설치 빌드는
         플러그인이 아니므로 이 변수들이 리터럴 문자열 그대로 남는다.
 
-        WP-RT 이후 files/ 참조는 타깃 중립 ``${ROOT}/files/``를 쓰므로 **예외
-        처리가 없다** — 본문에 CC 원시 플러그인 변수가 보이면 그대로 문제다.
+        WP-RT 이후 files/ 참조는 타깃 중립 ``${ROOT}/files/``를 쓰므로 files/
+        예외 처리는 없다 — 본문에 CC 원시 플러그인 변수가 보이면 그대로 문제다.
+
+        단 **코드로 표시된 부분은 검사하지 않는다**(백틱 인라인 코드, 코드 펜스).
+        규격을 설명하는 문서 스킬은 이 변수 이름을 언급할 수밖에 없는데, 그것을
+        "죽은 경로"로 짚으면 고칠 수 없는 경고가 영구히 남는다. 실제 경로로 쓰는
+        경우는 `${ROOT}`를 쓰는 것이 규약이므로 이 좁힘으로 잃는 것이 없다.
         """
         from daedalus.model.plugin.variables import PLUGIN_ONLY_VARIABLES
 
@@ -1688,7 +1707,7 @@ class Validator:
         errors: list[ValidationError] = []
 
         def _scan(label: str, subject: object, body: str, path: tuple[str, ...]) -> None:
-            remaining = body or ""
+            remaining = _strip_markdown_code(body or "")
             for var in PLUGIN_ONLY_VARIABLES:
                 if var in remaining:
                     errors.append(ValidationError(
