@@ -154,17 +154,28 @@ class DaedalusMCPService:
 
     # --- 수명주기 ---
 
-    def start(self) -> int | None:
-        """서버를 띄우고 포트를 돌려준다. 실패하면 None(원인은 ``error``)."""
+    def start(self, port: int | None = None) -> int | None:
+        """서버를 띄우고 포트를 돌려준다. 실패하면 None(원인은 ``error``).
+
+        port를 주면 **그 포트만** 쓴다 — 점유돼 있으면 다른 포트로 물러나지 않고
+        실패한다. 물러나면 지정한 의미가 없기 때문이다(고정 포트를 가리키는
+        `.mcp.json`이 엉뚱한 인스턴스에 붙는다). 생략하면 기본 포트부터 훑어
+        비어 있는 것을 찾는다.
+        """
         if self.running:
             return self._port
 
-        port = endpoint.find_free_port()
-        if port is None:
-            self._error = (
-                f"{endpoint.DEFAULT_PORT}부터 {endpoint.PORT_SCAN_LIMIT}개 포트가 모두 사용 중입니다."
-            )
-            return None
+        if port is not None:
+            if not endpoint.is_port_free(port):
+                self._error = f"포트 {port}가 이미 사용 중입니다."
+                return None
+        else:
+            port = endpoint.find_free_port()
+            if port is None:
+                self._error = (
+                    f"{endpoint.DEFAULT_PORT}부터 {endpoint.PORT_SCAN_LIMIT}개 포트가 모두 사용 중입니다."
+                )
+                return None
 
         try:
             import uvicorn

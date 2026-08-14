@@ -1,7 +1,10 @@
+import argparse
 import sys
 import traceback
 
 from PySide6.QtWidgets import QApplication
+
+from daedalus.mcp import endpoint
 
 from daedalus.model.fsm.machine import StateMachine
 from daedalus.model.fsm.pseudo import ExitPoint
@@ -103,17 +106,49 @@ def _excepthook(exc_type: type, exc_value: BaseException, exc_tb: object) -> Non
     traceback.print_exception(exc_type, exc_value, exc_tb)  # type: ignore[arg-type]
 
 
+def parse_args(argv: list[str] | None = None) -> tuple[argparse.Namespace, list[str]]:
+    """명령줄 인자 파싱 (Qt 무관 — 단위 테스트 가능).
+
+    우리 옵션만 떼어내고 나머지는 Qt에 그대로 넘긴다(`-style` 등 Qt 자체 옵션을
+    막지 않기 위해). 반환값은 (우리 옵션, Qt에 넘길 argv).
+    """
+    raw = list(sys.argv if argv is None else argv)
+    parser = argparse.ArgumentParser(
+        prog="daedalus",
+        description="Daedalus — FSM 기반 Claude Code 플러그인 설계 도구",
+    )
+    parser.add_argument(
+        "--mcp-port",
+        type=int,
+        default=None,
+        metavar="PORT",
+        help=(
+            f"MCP 서버 포트를 지정한다. 생략하면 {endpoint.DEFAULT_PORT}부터 비어 있는 "
+            "포트를 찾는다. 지정한 포트가 사용 중이면 다른 포트로 물러나지 않고 "
+            "실패한다 — 여러 인스턴스를 각각 다른 CC 세션에 붙일 때 쓴다."
+        ),
+    )
+    parser.add_argument(
+        "--no-mcp", action="store_true", help="MCP 서버를 띄우지 않는다.",
+    )
+    known, rest = parser.parse_known_args(raw[1:])
+    return known, [raw[0], *rest]
+
+
 def main() -> None:
     sys.excepthook = _excepthook
 
-    app = QApplication(sys.argv)
+    args, qt_argv = parse_args()
+
+    app = QApplication(qt_argv)
     app.setStyleSheet(_DARK_STYLE)
 
     window = MainWindow()
     window.set_project(_demo_project())
     # 앱이 켜지면 CC와 협업할 MCP 서버도 함께 뜬다 (WP-MCP). MainWindow.__init__이
     # 아니라 여기서 시작하는 이유는 테스트가 MainWindow를 다수 생성하기 때문이다.
-    window.start_mcp_service()
+    if not args.no_mcp:
+        window.start_mcp_service(args.mcp_port)
     window.show()
 
     sys.exit(app.exec())

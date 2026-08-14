@@ -1122,17 +1122,20 @@ class MainWindow(QMainWindow):
 
     # --- MCP 서버 (WP-MCP) ---
 
-    def start_mcp_service(self) -> None:
+    def start_mcp_service(self, port: int | None = None) -> None:
         """앱과 함께 MCP 서버를 띄운다 — 실제 실행 경로에서만 호출된다.
 
         __init__에서 자동으로 시작하지 않는 이유: 테스트가 MainWindow를 수십 개
         만들기 때문에 매번 포트를 잡으면 서로 충돌한다.
+
+        port를 주면 그 포트만 쓴다(`--mcp-port`). 여러 인스턴스를 동시에 띄우고
+        각각 다른 CC 세션과 붙일 때 쓴다.
         """
         from daedalus.mcp.service import DaedalusMCPService
 
         service = DaedalusMCPService(self)
         self._mcp_service = service
-        port = service.start()
+        port = service.start(port)
         if port is None:
             self._status_label.setText(f"MCP 서버 시작 실패 — {service.error}")
         else:

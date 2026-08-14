@@ -383,6 +383,11 @@ daedalus/
 - **기동 지점:** `MainWindow.__init__`이 아니라 **`__main__.main`이 `window.start_mcp_service()`를
   호출**한다. 테스트가 MainWindow를 수십 개 만들기 때문에 자동 기동하면 포트가 서로 충돌한다.
   종료는 `MainWindow.closeEvent` → `service.stop()`.
+- **명령줄 인자:** `__main__.parse_args(argv) -> (우리 옵션, Qt에 넘길 argv)` — `parse_known_args`로
+  우리 옵션만 떼어내고 나머지는 Qt에 그대로 넘긴다(`-style` 같은 Qt 자체 옵션을 막지 않기 위해).
+  `--mcp-port PORT`는 **그 포트만** 쓴다(점유 시 다른 포트로 물러나지 않고 실패 — 물러나면 지정한
+  의미가 없다. 고정 포트를 가리키는 `.mcp.json`이 엉뚱한 인스턴스에 붙는다). 여러 인스턴스를 각각
+  다른 CC 세션에 붙일 때 쓴다. `--no-mcp`는 서버를 띄우지 않는다.
 - **포트:** 기본 `8787`(`endpoint.DEFAULT_PORT`). 점유돼 있으면 위로 훑어 비어 있는 포트를 쓰고
   실제 포트를 `~/.daedalus/mcp-endpoint.json`에 기록한다. `.mcp.json`은 정적 파일이라 고정 포트를
   가리키므로, 여러 창을 띄우면 결과적으로 "먼저 켜진 인스턴스"가 협업 대상이 된다(의도된 동작).
