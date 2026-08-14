@@ -220,6 +220,43 @@ def test_handler_form_writes_back_command_fields(panel):
     assert handler.run_async is True
 
 
+def test_script_path_preview_is_one_line(panel, qapp):
+    """줄바꿈되면 QFormLayout 행 높이(한 줄 기준)를 넘어 아래가 잘린다."""
+    panel._project.hook_library.append(
+        _hook("new-hook", handlers=[CommandHook(script="x")])
+    )
+    panel._reload_list()
+    panel.resize(640, 900)
+    panel.show()
+    qapp.processEvents()
+    try:
+        label = panel._handler_form._script_ref
+        assert not label.wordWrap()
+        # 접두를 떼서 좁은 폭에서도 파일명이 보인다
+        assert label.text() == "hooks/scripts/new-hook.sh"
+        assert label.toolTip() == "${ROOT}/hooks/scripts/new-hook.sh"
+        assert label.height() >= label.sizeHint().height(), "라벨이 잘렸다"
+    finally:
+        panel.hide()
+
+
+def test_script_path_preview_follows_hook_name(panel):
+    panel._project.hook_library.append(_hook("a", handlers=[CommandHook(script="x")]))
+    panel._reload_list()
+
+    panel._name.setText("renamed")
+    assert panel._handler_form._script_ref.text() == "hooks/scripts/renamed.sh"
+
+
+def test_script_path_preview_follows_shell(panel):
+    panel._project.hook_library.append(_hook("a", handlers=[CommandHook(script="x")]))
+    panel._reload_list()
+
+    form = panel._handler_form
+    form._shell.setCurrentIndex(list(HookShell).index(HookShell.POWERSHELL))
+    assert form._script_ref.text().endswith(".ps1")
+
+
 def test_handler_form_writes_back_http_fields(panel):
     panel._project.hook_library.append(_hook("a", handlers=[HttpHook()]))
     panel._reload_list()

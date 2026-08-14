@@ -51,6 +51,7 @@ from daedalus.model.plugin.hook import (
     mcp_matcher_matches_nothing,
 )
 from daedalus.model.plugin.hook_presets import BUILTIN_HOOK_PRESETS, preset_copy
+from daedalus.model.plugin.variables import ROOT_TOKEN
 
 
 def event_label(event: HookEvent) -> str:
@@ -118,10 +119,18 @@ class _HandlerForm(QWidget):
         self._loading = False
 
     def set_script_ref(self, text: str) -> None:
-        """command 훅의 스크립트 산출 경로 미리보기를 갱신한다 (WP-HS)."""
+        """command 훅의 스크립트 산출 경로 미리보기를 갱신한다 (WP-HS).
+
+        `${ROOT}/` 접두는 모든 훅에서 같아서 폭만 먹는다 — 떼고 보여주고 전체
+        경로는 툴팁에 남긴다. 사용자가 실제로 알고 싶은 것은 파일명이다.
+        """
         label = getattr(self, "_script_ref", None)
-        if label is not None:
-            label.setText(text)
+        if label is None:
+            return
+        prefix = f"{ROOT_TOKEN}/"
+        short = text[len(prefix):] if text.startswith(prefix) else text
+        label.setText(short)
+        label.setToolTip(text)
 
     # ── 타입별 필드 ──
 
@@ -144,7 +153,12 @@ class _HandlerForm(QWidget):
 
             self._script_ref = QLabel()
             self._script_ref.setStyleSheet("color: #888;")
-            self._script_ref.setWordWrap(True)
+            # 줄바꿈을 켜면 좁은 패널에서 두 줄이 되는데 QFormLayout 행 높이가
+            # 한 줄 기준이라 아래쪽이 잘린다. 한 줄로 두고 긴 부분은 툴팁에 넘긴다.
+            self._script_ref.setWordWrap(False)
+            self._script_ref.setTextInteractionFlags(
+                Qt.TextInteractionFlag.TextSelectableByMouse
+            )
             lay.addRow("경로", self._script_ref)
 
             self._args = QLineEdit(" ".join(h.args))
