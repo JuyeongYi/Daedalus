@@ -26,12 +26,15 @@ TOOL_NAMES = (
     "get_history",
     "validate_project",
     "compile_preview",
-    # 편집 — 전부 undo 가능 (set_component_description만 예외, WP-CE 대기)
+    # 편집 — 전부 undo 가능
     "create_skill",
     "create_agent",
     "add_agent_call",
+    "remove_agent_call",
     "rename_component",
     "set_component_description",
+    "set_component_when_to_use",
+    "set_project_properties",
     "place_component",
     "create_state",
     "move_state",
@@ -44,6 +47,14 @@ TOOL_NAMES = (
     "set_entry_paths",
     "create_blackboard_class",
     "set_state_access",
+    "create_hook",
+    "update_hook",
+    "delete_hook",
+    "set_component_hooks",
+    "place_reference",
+    "link_reference",
+    "unlink_reference",
+    "unplace_reference",
     "set_component_body",
     "undo",
     "redo",
@@ -59,8 +70,12 @@ Daedalus(FSM 기반 Claude Code 플러그인 설계 도구)의 열려 있는 편
 - `get_history`는 사용자가 방금 한 편집을 보여줍니다.
 - 편집 도구는 즉시 캔버스에 반영되며 전부 사용자의 undo 스택에 들어갑니다 — \
 사용자가 Ctrl+Z로 되돌릴 수 있고, 스크립트 리스너에 사람 편집과 같은 형식으로 남습니다.
-- 지금 노출된 편집은 캔버스 구조(노드/전이/배치)와 컴포넌트 본문입니다. \
-프론트매터·블랙보드·훅 편집은 아직 GUI에서만 가능합니다.
+- 노출된 편집: 캔버스 구조(노드/전이/배치/참조 노드), 포트와 분기 의미론, \
+블랙보드, 훅 라이브러리, 프로젝트 속성, 컴포넌트 본문. 컴포넌트 삭제와 나머지 \
+프론트매터 필드는 아직 GUI에서만 가능합니다.
+- 구조(노드와 선)만 만들면 분기가 표현되지 않습니다. 여러 갈래로 나가는 노드는 \
+`set_transfer_on`으로 갈래를 선언하고 각 전이에 trigger를 물려야 합니다. \
+에이전트로 가는 전이는 `add_agent_call`로 만든 호출 포트에서만 나갈 수 있습니다.
 """
 
 

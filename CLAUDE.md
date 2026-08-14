@@ -68,10 +68,16 @@ daedalus/
 │   ├── tools.py            # DaedalusTools — 도구 구현(읽기 6종 + 편집 10종). 메인 스레드 실행 전제
 │   └── service.py          # DaedalusMCPService — MCPServer 구성(_server_factory가 mcp 1.x/2.x 흡수) + uvicorn 데몬 스레드 수명주기
 └── view/             # PySide6 기반 노드 에디터
+    ├── recent.py           # 최근 프로젝트 목록(WP-RP) — ~/.daedalus/recent.json 읽기/쓰기 (Qt 무관 순수 stdlib).
+    │                       #   load/save/push/remove/clear + MAX_RECENT. 기록 실패는 삼킨다(endpoint.py와 같은 정책).
+    │                       #   실존 검사는 하지 않는다 — 메뉴를 열 때마다 stat을 때리면 네트워크 드라이브에서 UI가 멈춘다.
     ├── app.py              # 메인 윈도우 (Ctrl+N "새 프로젝트"(기본 이름 "new-plugin", 빌드 타깃 선택 다이얼로그 — WP-TG `_prompt_build_target`, 취소 시 생성 취소), F7 "프로젝트 검증", Ctrl+B "컴파일", 파일→"프로젝트 속성...", 도구→"훅 라이브러리...")
     │                       # 컴포넌트 이름 변경: _FrontmatterPanel.renamed → _on_component_renamed (중복 거부 + rename_component 호출 + 탭 타이틀 동기화)
     │                       # 컴포넌트 삭제: 레지스트리 우클릭 → _on_delete_component (확인 다이얼로그 + remove_component + 탭 닫기 + notify)
     │                       # 프로젝트 속성: _edit_project_properties → ProjectPropertiesDialog(name/description/version + emit_progress_hook 체크박스, 이름 규약 미강제)
+    │                       # 최근 프로젝트(WP-RP): File→"최근 프로젝트" 서브메뉴(_recent_menu). _remember_recent(open_path/_save_to_path
+    │                       #   성공 경로에서 호출)가 recent.push + _rebuild_recent_menu. 항목 클릭 → _open_recent(사라진 파일은 그 자리에서
+    │                       #   목록에서 제거), "목록 지우기" → _clear_recent. 라벨은 _recent_label(&1 파일명 — 상위폴더, & escape), 툴팁=전체 경로.
     │                       # 탭 구조(WP-BB): 인덱스 0=프로젝트 FSM 캔버스, 1=블랙보드 편집(BlackboardPanel, 상주·닫기 불가) 고정 2개 — _close_tab이 두
     │                       #   인덱스 모두 거부, load_project의 탭 정리 루프는 인덱스 2부터 닫는다. set_project가 blackboard_panel.set_project(project) +
     │                       #   tag_input.set_blackboard_candidate_provider(blackboard_candidate_strings로 바인딩)를 배선.
@@ -418,9 +424,27 @@ daedalus/
   그 탭이 열리는데, 무엇이 바뀌는지 보이므로 협업 관점에서 바람직하다.
   `create_skill(..., agent=...)`은 로컬 스킬을 만든다(procedural/transfer만, 블랙보드 parent는
   소유 에이전트 FSM). `_find_component(name, agent=...)`가 로컬 스킬을 우선 조회한다.
-- **아직 노출하지 않은 편집:** 훅 라이브러리·프로젝트 속성·나머지 프론트매터 필드는 **현재 커맨드를
-  거치지 않고 모델에 직접 쓰므로** 도구 표면에 넣지 않았다. WP-CE 본편에서 커맨드화한 뒤 `TOOL_NAMES`에
-  합류시킨다 — 그 시점부터는 커맨드를 만들기만 하면 자동으로 AI에 노출된다.
+- **훅 라이브러리(WP-CE 4차):** `create_hook`/`update_hook`/`delete_hook`(라이브러리 = 정의의
+  단일 진실) + `set_component_hooks`(스킬/에이전트가 이름으로 참조). GUI 훅 다이얼로그는 모델에
+  직접 쓰지만 MCP 경로는 `AppendToListCmd`/`RemoveFromListCmd`/`SetAttrCmd`를 거쳐 undo된다.
+  `update_hook`은 빈 문자열/None = 건드리지 않음, matcher·description은 ""로 지움, timeout은 0이
+  지정 없음이다. **삭제는 참조를 건드리지 않는다**(GUI와 같은 정책) — 남은 참조는
+  `dangling_hook_ref` 경고로 드러나므로 결과의 `still_referenced_by`로 보고한다.
+  `set_component_hooks`는 라이브러리에 없는 이름을 **거부**한다(오타가 컴파일까지 조용히 흘러가
+  경고로만 드러나는 것을 막는다). `config.hooks`의 선언 기본값은 `{}`가 아니라 `None`이라,
+  undo는 빈 dict가 아니라 None으로 되돌아간다.
+- **참조 노드 배치(WP-CE 4차):** `place_reference`/`link_reference`/`unlink_reference`/
+  `unplace_reference`. 참조 노드는 상태가 아니라 **여러 상태가 공유하는 문서**라 같은 스킬을
+  여러 번 놓을 수 있어(그래서 `place_component`와 별도 도구다) 이름 + `index`로 지목한다.
+  구현은 `FsmScene.drop_reference_skill`/`create_reference_link`/`delete_reference_node`를
+  그대로 호출한다 — 캔버스와 같은 커맨드·같은 `_sync_refs_to_model` 경로다. 프로젝트 캔버스
+  전용(`agent` 인자 없음).
+- **프로젝트 속성(WP-CE 4차):** `set_project_properties(name/description/version/build_target)` —
+  빈 값은 건드리지 않고, 여러 필드를 한 번에 주면 `MacroCommand`로 1 undo 단위가 된다.
+  `set_component_description`도 이때 커맨드화됐고(이전에는 이 편집만 Ctrl+Z가 듣지 않았다)
+  `set_component_when_to_use`가 함께 붙었다.
+- **아직 노출하지 않은 편집:** 컴포넌트 삭제(아래)와 나머지 프론트매터 필드. 커맨드를 만들기만
+  하면 `TOOL_NAMES`에 이름을 더해 노출된다.
 - **컴포넌트 삭제는 의도적으로 빠져 있다:** `remove_component`가 그래프 placement·skill_ref
   None화·위임 참조·graph_layout·edge_layout까지 훑어 정리하므로, 되돌리려면 그 정리 내역 전부를
   기록·복원해야 한다. 부분 복원 커맨드는 없느니만 못하므로 WP-CE 본편으로 미뤘다(GUI 삭제는 종전대로 동작).

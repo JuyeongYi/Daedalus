@@ -9,9 +9,9 @@ MainThreadInvoker로 마샬링한다). 여기서 스레드 안전성을 다시 �
 본문이 캔버스와 분리된 자체 undo 스택을 갖기 때문이다(WP-BU) — 우회가 아니라
 그 스택에 정확히 올리는 경로다.
 
-**현재 커맨드화된 편집은 캔버스 구조뿐이다.** 프론트매터·블랙보드·훅 등 폼 편집은
-아직 커맨드를 거치지 않으므로 이 표면에 노출하지 않았다(WP-CE에서 커맨드화한 뒤
-합류시킨다).
+**아직 노출하지 않은 편집:** 컴포넌트 삭제(`remove_component`의 정리 범위가 넓어
+부분 복원 커맨드가 위험하다)와 나머지 프론트매터 필드. 커맨드화되는 대로 합류시킨다
+— 커맨드를 만들기만 하면 `service.TOOL_NAMES`에 이름을 더해 노출된다.
 """
 from __future__ import annotations
 
@@ -148,6 +148,29 @@ class DaedalusTools:
             )
         return out
 
+    def _reference_summary(self) -> list[dict[str, Any]]:
+        """캔버스에 배치된 참조 노드 — 같은 스킬이 여러 번 놓일 수 있어 index를 함께 준다."""
+        out: list[dict[str, Any]] = []
+        counts: dict[str, int] = {}
+        for rvm in self._vm.reference_vms:
+            name = str(getattr(rvm.model, "name", "?"))
+            index = counts.get(name, 0)
+            counts[name] = index + 1
+            out.append(
+                {
+                    "component": name,
+                    "index": index,
+                    "x": round(rvm.x, 1),
+                    "y": round(rvm.y, 1),
+                    "linked_nodes": [
+                        link.state_vm.model.name
+                        for link in self._vm.reference_links
+                        if link.reference_vm is rvm
+                    ],
+                }
+            )
+        return out
+
     # ------------------------------------------------------------------
     # 읽기 도구
     # ------------------------------------------------------------------
@@ -184,6 +207,18 @@ class DaedalusTools:
                 }
                 for c in classes
             ],
+            "references": self._reference_summary(),
+            "hook_library": [
+                {
+                    "name": h.name,
+                    "event": getattr(h.event, "value", str(h.event)),
+                    "matcher": h.matcher,
+                    "command": h.command,
+                    "timeout": h.timeout,
+                }
+                for h in getattr(project, "hook_library", []) or []
+            ],
+            "emit_progress_hook": getattr(project, "emit_progress_hook", None),
             "can_undo": self._window._active_stack.can_undo,
             "can_redo": self._window._active_stack.can_redo,
         }
@@ -260,6 +295,16 @@ class DaedalusTools:
             "entry_paths": [
                 {"name": e.name, "description": getattr(e, "description", "")}
                 for e in (getattr(comp, "entry_paths", []) or [])
+            ],
+            # 에이전트 호출 포트 — 에이전트로 가는 전이는 이 포트에서만 나갈 수 있다
+            "call_agents": [
+                {"name": e.name, "description": getattr(e, "description", "")}
+                for e in (getattr(comp, "call_agents", []) or [])
+            ],
+            # 에이전트의 잠금 계약 카드 — 누가 이 에이전트를 어느 포트로 부르는지
+            "caller_contracts": [
+                {"title": s.title, "content": getattr(s, "content", "")}
+                for s in (getattr(comp, "caller_contracts", []) or [])
             ],
         }
         if config is not None:
@@ -423,17 +468,124 @@ class DaedalusTools:
         self._window._registry_panel.set_project(self._project)
         return {"renamed": name, "to": new_name}
 
-    def set_component_description(self, name: str, description: str) -> dict[str, Any]:
-        """컴포넌트 설명을 바꾼다.
+    def set_component_description(
+        self, name: str, description: str, agent: str = ""
+    ) -> dict[str, Any]:
+        """컴포넌트 설명을 바꾼다(프론트매터 description)."""
+        from daedalus.view.commands.attr_commands import SetAttrCmd
 
-        아직 커맨드가 아니다 — 프론트매터 편집 전반이 WP-CE에서 커맨드화될 때
-        함께 옮겨간다. 그때까지 이 편집만은 Ctrl+Z로 되돌아가지 않는다.
-        """
-        comp = self._find_component(name)
+        comp = self._find_component(name, agent=agent)
         old = getattr(comp, "description", "")
-        comp.description = description
-        self._vm.notify()
+        self._vm.execute(
+            SetAttrCmd(
+                comp,
+                "description",
+                description,
+                label=f"'{name}' 설명 변경",
+                script=f'set_component_description("{name}", ...)',
+            )
+        )
+        self._window._registry_panel.set_project(self._project)
         return {"component": name, "old": old, "new": description}
+
+    def set_component_when_to_use(
+        self, name: str, when_to_use: str, agent: str = ""
+    ) -> dict[str, Any]:
+        """컴포넌트의 when_to_use를 바꾼다.
+
+        별도 프론트매터 키가 아니라 컴파일 시 description과 합류한다
+        (`<description> Use when <when_to_use>`) — 모델이 이 스킬을 언제 집어야
+        하는지 판단하는 문장이다.
+        """
+        from daedalus.view.commands.attr_commands import SetAttrCmd
+
+        comp = self._find_component(name, agent=agent)
+        old = getattr(comp, "when_to_use", "")
+        self._vm.execute(
+            SetAttrCmd(
+                comp,
+                "when_to_use",
+                when_to_use,
+                label=f"'{name}' when_to_use 변경",
+                script=f'set_component_when_to_use("{name}", ...)',
+            )
+        )
+        return {"component": name, "old": old, "new": when_to_use}
+
+    def set_project_properties(
+        self,
+        name: str = "",
+        description: str = "",
+        version: str = "",
+        build_target: str = "",
+    ) -> dict[str, Any]:
+        """플러그인 매니페스트 속성을 바꾼다 — 빈 값은 "건드리지 않음".
+
+        name은 plugin.json의 플러그인 식별자가 되므로 `^[a-z0-9][a-z0-9-]*$`를
+        지켜야 컴파일 게이트를 통과한다(F7에서는 경고 등급).
+        build_target: marketplace / local.
+        """
+        from daedalus.model.plugin.enums import BuildTarget
+        from daedalus.view.commands.attr_commands import SetAttrCmd
+        from daedalus.view.commands.base import MacroCommand
+
+        project = self._project
+        before = {
+            "name": project.name,
+            "description": project.description,
+            "version": project.version,
+            "build_target": project.build_target.value,
+        }
+
+        cmds: list[Any] = []
+        for attr, value in (
+            ("name", name),
+            ("description", description),
+            ("version", version),
+        ):
+            if value:
+                cmds.append(
+                    SetAttrCmd(
+                        project,
+                        attr,
+                        value,
+                        label=f"프로젝트 {attr} 변경",
+                        script=f'set_project_properties({attr}="{value}")',
+                    )
+                )
+        if build_target:
+            try:
+                target = BuildTarget(build_target.lower())
+            except ValueError:
+                allowed = ", ".join(t.value for t in BuildTarget)
+                raise ValueError(
+                    f"알 수 없는 빌드 타깃 '{build_target}'. 사용 가능: {allowed}"
+                ) from None
+            cmds.append(
+                SetAttrCmd(
+                    project,
+                    "build_target",
+                    target,
+                    label=f"빌드 타깃 → {target.value}",
+                    script=f'set_project_properties(build_target="{target.value}")',
+                )
+            )
+
+        if not cmds:
+            return {"changed": [], **before}
+        self._vm.execute(
+            cmds[0]
+            if len(cmds) == 1
+            else MacroCommand(children=cmds, description="프로젝트 속성 변경")
+        )
+        self._window._update_title()
+        return {
+            "before": before,
+            "name": project.name,
+            "description": project.description,
+            "version": project.version,
+            "build_target": project.build_target.value,
+        }
 
     def place_component(
         self, name: str, x: float = 0.0, y: float = 0.0, agent: str = ""
@@ -563,6 +715,46 @@ class DaedalusTools:
             )
         )
         return {"skill": skill, "call_agents": [e.name for e in new_list]}
+
+    def remove_agent_call(self, skill: str, event: str) -> dict[str, Any]:
+        """ProceduralSkill의 에이전트 호출 포트를 제거한다.
+
+        그 포트를 trigger로 쓰는 전이는 **함께 지우지 않는다**(캔버스에서 포트를
+        지웠을 때와 같다) — 남은 전이는 `trigger_unknown_event` 경고로 드러나므로,
+        결과의 `orphaned_transitions`를 보고 disconnect_states로 정리하라.
+        """
+        from daedalus.model.plugin.skill import ProceduralSkill
+        from daedalus.view.commands.attr_commands import SetAttrCmd
+
+        comp = self._find_component(skill)
+        if not isinstance(comp, ProceduralSkill):
+            raise ValueError(f"'{skill}'은 ProceduralSkill이 아닙니다.")
+        if not any(e.name == event for e in comp.call_agents):
+            known = ", ".join(e.name for e in comp.call_agents) or "(없음)"
+            raise ValueError(f"'{skill}'에 '{event}' 호출 포트가 없습니다. 현재: {known}")
+
+        orphaned = [
+            [tvm.source_vm.model.name, tvm.target_vm.model.name]
+            for tvm in self._vm.transition_vms
+            if getattr(tvm.source_vm.model, "skill_ref", None) is comp
+            and getattr(getattr(tvm.model, "trigger", None), "name", None) == event
+        ]
+        new_list = [e for e in comp.call_agents if e.name != event]
+        self._vm.execute(
+            SetAttrCmd(
+                comp,
+                "call_agents",
+                new_list,
+                label=f"'{skill}' 에이전트 호출 포트 '{event}' 제거",
+                script=f'remove_agent_call("{skill}", "{event}")',
+            )
+        )
+        return {
+            "skill": skill,
+            "removed": event,
+            "call_agents": [e.name for e in new_list],
+            "orphaned_transitions": orphaned,
+        }
 
     def connect_states(
         self,
@@ -916,6 +1108,302 @@ class DaedalusTools:
             else MacroCommand(children=cmds, description=f"'{node}' 블랙보드 접근 선언")
         )
         return {"node": node, "reads": reads, "writes": writes}
+
+    # --- 훅 라이브러리 ---
+
+    def _find_hook(self, name: str) -> Any:
+        for hook in self._project.hook_library:
+            if hook.name == name:
+                return hook
+        known = ", ".join(h.name for h in self._project.hook_library) or "(없음)"
+        raise ValueError(f"'{name}' 훅이 없습니다. 현재 라이브러리: {known}")
+
+    @staticmethod
+    def _hook_summary(hook: Any) -> dict[str, Any]:
+        return {
+            "name": hook.name,
+            "event": getattr(hook.event, "value", str(hook.event)),
+            "matcher": hook.matcher,
+            "command": hook.command,
+            "timeout": hook.timeout,
+            "description": getattr(hook, "description", ""),
+        }
+
+    def _refresh_hook_ui(self) -> None:
+        """훅 이름 후보(HookPresetPicker)를 쓰는 위젯들이 새 목록을 보게 한다."""
+        self._vm.notify()
+
+    def create_hook(
+        self,
+        name: str,
+        event: str = "PreToolUse",
+        command: str = "",
+        matcher: str = "",
+        timeout: int = 0,
+        description: str = "",
+    ) -> dict[str, Any]:
+        """프로젝트 훅 라이브러리에 훅을 추가한다.
+
+        event: PreToolUse / PostToolUse / UserPromptSubmit / SessionStart /
+        SessionEnd / Stop / SubagentStop / Notification / PreCompact.
+        matcher(도구명 패턴)는 Pre/PostToolUse에서만 의미가 있다.
+        timeout은 초 단위이며 0이면 지정 없음(hooks.json에서 키 생략).
+
+        훅은 라이브러리에 정의만 해 두는 것이고, 실제로 배출되려면
+        set_component_hooks로 스킬/에이전트가 이름으로 참조해야 한다.
+        """
+        from daedalus.model.plugin.hook import TOOL_MATCH_EVENTS, HookDef, HookEvent
+        from daedalus.view.commands.attr_commands import AppendToListCmd
+
+        library = self._project.hook_library
+        if any(h.name == name for h in library):
+            raise ValueError(f"'{name}' 훅이 이미 있습니다.")
+        try:
+            hook_event = HookEvent(event)
+        except ValueError:
+            allowed = ", ".join(e.value for e in HookEvent)
+            raise ValueError(f"알 수 없는 훅 이벤트 '{event}'. 사용 가능: {allowed}") from None
+
+        hook = HookDef(
+            name=name,
+            description=description,
+            event=hook_event,
+            matcher=matcher,
+            command=command,
+            timeout=timeout or None,
+        )
+        self._vm.execute(
+            AppendToListCmd(
+                library,
+                hook,
+                label=f"훅 '{name}' 추가",
+                script=f'create_hook("{name}", event="{hook_event.value}")',
+            )
+        )
+        self._refresh_hook_ui()
+        result = self._hook_summary(hook)
+        if matcher and hook_event not in TOOL_MATCH_EVENTS:
+            result["note"] = (
+                f"matcher는 Pre/PostToolUse 전용입니다 — {hook_event.value}에서는 무시되고 검증 경고가 뜹니다."
+            )
+        return result
+
+    def update_hook(
+        self,
+        name: str,
+        event: str = "",
+        command: str = "",
+        matcher: str | None = None,
+        timeout: int | None = None,
+        description: str | None = None,
+    ) -> dict[str, Any]:
+        """라이브러리의 훅 정의를 고친다.
+
+        빈 문자열/None은 "건드리지 않음"이다. matcher와 description은 ""를 주면
+        지워지고, timeout은 0을 주면 지정 없음이 된다.
+        """
+        from daedalus.model.plugin.hook import HookEvent
+        from daedalus.view.commands.attr_commands import SetAttrCmd
+        from daedalus.view.commands.base import MacroCommand
+
+        hook = self._find_hook(name)
+        before = self._hook_summary(hook)
+        cmds: list[Any] = []
+
+        def _set(attr: str, value: Any) -> None:
+            cmds.append(
+                SetAttrCmd(
+                    hook, attr, value,
+                    label=f"훅 '{name}' {attr} 변경",
+                    script=f'update_hook("{name}", {attr}=...)',
+                )
+            )
+
+        if event:
+            try:
+                _set("event", HookEvent(event))
+            except ValueError:
+                allowed = ", ".join(e.value for e in HookEvent)
+                raise ValueError(f"알 수 없는 훅 이벤트 '{event}'. 사용 가능: {allowed}") from None
+        if command:
+            _set("command", command)
+        if matcher is not None:
+            _set("matcher", matcher)
+        if timeout is not None:
+            _set("timeout", timeout or None)
+        if description is not None:
+            _set("description", description)
+
+        if not cmds:
+            return {"changed": [], **before}
+        self._vm.execute(
+            cmds[0]
+            if len(cmds) == 1
+            else MacroCommand(children=cmds, description=f"훅 '{name}' 변경")
+        )
+        self._refresh_hook_ui()
+        return {"before": before, **self._hook_summary(hook)}
+
+    def delete_hook(self, name: str) -> dict[str, Any]:
+        """라이브러리에서 훅 정의를 지운다.
+
+        이 훅을 참조하는 컴포넌트의 참조는 **건드리지 않는다**(GUI 훅 라이브러리와
+        같은 정책) — 남은 참조는 `dangling_hook_ref` 경고로 드러나므로, 결과의
+        `still_referenced_by`를 보고 set_component_hooks로 정리하라.
+        """
+        from daedalus.view.commands.attr_commands import RemoveFromListCmd
+
+        hook = self._find_hook(name)
+        referenced = [
+            getattr(comp, "name", "?")
+            for comp in self._all_hook_owners()
+            if name in (getattr(getattr(comp, "config", None), "hooks", {}) or {})
+        ]
+        self._vm.execute(
+            RemoveFromListCmd(
+                self._project.hook_library,
+                hook,
+                label=f"훅 '{name}' 삭제",
+                script=f'delete_hook("{name}")',
+            )
+        )
+        self._refresh_hook_ui()
+        return {"deleted": name, "still_referenced_by": referenced}
+
+    def _all_hook_owners(self) -> list[Any]:
+        """훅을 참조할 수 있는 컴포넌트 전부 — 에이전트 로컬 스킬까지 포함한다."""
+        project = self._project
+        owners: list[Any] = [*project.skills, *project.agents]
+        for agent in project.agents:
+            owners.extend(getattr(agent, "skills", []) or [])
+        return owners
+
+    def set_component_hooks(
+        self, name: str, hooks: list[str], agent: str = ""
+    ) -> dict[str, Any]:
+        """스킬/에이전트가 참조하는 훅 이름 목록을 통째로 지정한다.
+
+        라이브러리에 없는 이름은 거부한다 — 오타는 컴파일까지 조용히 흘러가
+        `dangling_hook_ref` 경고로만 드러나기 때문이다.
+        """
+        from daedalus.view.commands.attr_commands import SetAttrCmd
+
+        comp = self._find_component(name, agent=agent)
+        config = getattr(comp, "config", None)
+        if config is None:
+            raise ValueError(f"'{name}'에는 config가 없어 훅을 붙일 수 없습니다.")
+
+        known = {h.name for h in self._project.hook_library}
+        unknown = [h for h in hooks if h not in known]
+        if unknown:
+            raise ValueError(
+                f"라이브러리에 없는 훅: {', '.join(unknown)}. "
+                f"사용 가능: {', '.join(sorted(known)) or '(없음)'}"
+            )
+
+        # 기존 오버라이드는 유지한다 — 이름만 다시 지정하는 것이 이 도구의 일이다
+        current = dict(getattr(config, "hooks", {}) or {})
+        new_map = {h: current.get(h, {}) for h in hooks}
+        self._vm.execute(
+            SetAttrCmd(
+                config,
+                "hooks",
+                new_map,
+                label=f"'{name}' 훅 참조 {len(hooks)}개 설정",
+                script=f'set_component_hooks("{name}", {list(hooks)})',
+            )
+        )
+        return {"component": name, "hooks": list(new_map)}
+
+    # --- 참조 노드 (ReferenceSkill 배치) ---
+
+    @property
+    def _scene(self) -> Any:
+        scene = getattr(self._window, "_fsm_scene", None)
+        if scene is None:
+            raise RuntimeError("프로젝트 캔버스가 준비되지 않았습니다.")
+        return scene
+
+    def _find_ref_vm(self, name: str, index: int = 0) -> Any:
+        matches = [
+            rvm
+            for rvm in self._vm.reference_vms
+            if getattr(rvm.model, "name", None) == name
+        ]
+        if not matches:
+            raise ValueError(f"캔버스에 '{name}' 참조 노드가 없습니다.")
+        if index >= len(matches):
+            raise ValueError(
+                f"'{name}' 참조 노드는 {len(matches)}개뿐입니다(index={index} 초과)."
+            )
+        return matches[index]
+
+    def place_reference(self, name: str, x: float = 0.0, y: float = 0.0) -> dict[str, Any]:
+        """ReferenceSkill을 프로젝트 캔버스에 참조 노드로 배치한다.
+
+        참조 노드는 상태가 아니라 **여러 상태가 공유하는 문서**라, 같은 스킬을
+        여러 번 놓을 수 있다(그래서 place_component가 아니라 별도 도구다).
+        놓은 뒤 link_reference로 상태에 연결한다.
+        """
+        from PySide6.QtCore import QPointF
+
+        from daedalus.model.plugin.skill import ReferenceSkill
+
+        comp = self._find_component(name)
+        if not isinstance(comp, ReferenceSkill):
+            raise ValueError(
+                f"'{name}'은 ReferenceSkill이 아닙니다(현재 {self._component_kind(comp)}) — "
+                "일반 스킬·에이전트는 place_component로 배치하라."
+            )
+        before = len(self._vm.reference_vms)
+        self._scene.drop_reference_skill(name, QPointF(float(x), float(y)))
+        if len(self._vm.reference_vms) == before:
+            raise RuntimeError(f"'{name}' 참조 노드를 배치하지 못했습니다.")
+        return {
+            "placed": name,
+            "index": sum(
+                1 for r in self._vm.reference_vms if getattr(r.model, "name", None) == name
+            ) - 1,
+            "x": float(x),
+            "y": float(y),
+        }
+
+    def link_reference(self, node: str, reference: str, index: int = 0) -> dict[str, Any]:
+        """캔버스 노드를 참조 노드에 잇는다(그 노드가 이 문서를 참조한다는 선언).
+
+        같은 참조 스킬이 여러 번 배치돼 있으면 index로 고른다.
+        """
+        svm = self._find_state_vm(node)
+        rvm = self._find_ref_vm(reference, index)
+        before = len(self._vm.reference_links)
+        self._scene.create_reference_link(svm, rvm)
+        created = len(self._vm.reference_links) > before
+        return {"node": node, "reference": reference, "created": created}
+
+    def unlink_reference(self, node: str, reference: str, index: int = 0) -> dict[str, Any]:
+        """노드와 참조 노드 사이의 연결을 끊는다(참조 노드 자체는 남는다)."""
+        svm = self._find_state_vm(node)
+        rvm = self._find_ref_vm(reference, index)
+        matches = [
+            link
+            for link in self._vm.reference_links
+            if link.state_vm is svm and link.reference_vm is rvm
+        ]
+        if not matches:
+            raise ValueError(f"'{node}' → '{reference}' 참조 연결이 없습니다.")
+        for link in matches:
+            self._scene.delete_reference_link(link)
+        return {"unlinked": [node, reference], "count": len(matches)}
+
+    def unplace_reference(self, name: str, index: int = 0) -> dict[str, Any]:
+        """참조 노드를 캔버스에서 제거한다(연결된 링크도 함께 — 1 undo 단위).
+
+        스킬 자체는 남는다 — 배치만 지운다.
+        """
+        rvm = self._find_ref_vm(name, index)
+        links = sum(1 for l in self._vm.reference_links if l.reference_vm is rvm)
+        self._scene.delete_reference_node(rvm)
+        return {"unplaced": name, "index": index, "removed_links": links}
 
     def disconnect_states(self, source: str, target: str, agent: str = "") -> dict[str, Any]:
         """두 노드 사이의 전이를 지운다."""
