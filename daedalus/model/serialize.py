@@ -1061,11 +1061,19 @@ def _deser_body(d: dict) -> str:
     ``body`` 키가 있으면 그대로 사용. 없고 ``sections`` 키가 있으면(구버전
     파일) ``render_markdown``으로 평탄화한다 — 정상 마이그레이션 경로이므로
     경고 없음. 둘 다 없으면 빈 문자열.
+
+    WP-RT: 구버전 본문의 ``${CLAUDE_PLUGIN_ROOT}/files/``를 타깃 중립
+    ``${ROOT}/files/``로 변환한다(로드 시 단방향). 사용자가 아무것도 하지
+    않아도 기존 프로젝트가 새 규약으로 넘어온다.
     """
+    from daedalus.model.plugin.variables import migrate_legacy_file_refs
+
     if "body" in d:
-        return d.get("body") or ""
+        return migrate_legacy_file_refs(d.get("body") or "")
     if "sections" in d:
-        return render_markdown([_deser_section(s) for s in d["sections"]])
+        return migrate_legacy_file_refs(
+            render_markdown([_deser_section(s) for s in d["sections"]])
+        )
     return ""
 
 

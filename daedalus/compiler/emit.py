@@ -1735,6 +1735,18 @@ _LOCAL_FILE_REF_FROM = "${CLAUDE_PLUGIN_ROOT}/files/"
 _LOCAL_FILE_REF_TO = "${CLAUDE_PROJECT_DIR}/files/"
 
 
+def expand_root_token(text: str, project=None) -> str:
+    """산출 텍스트의 ``${ROOT}``를 빌드 타깃에 맞는 CC 변수로 확장한다 (WP-RT).
+
+    본문 정본은 타깃 중립 토큰 하나만 쓰고, 어느 CC 변수가 되는지는 여기서
+    정해진다 — 마켓플레이스는 ``${CLAUDE_PLUGIN_ROOT}``, 프로젝트 설치는
+    ``${CLAUDE_PROJECT_DIR}``. 매핑의 단일 진실은 model/plugin/variables.py.
+    """
+    from daedalus.model.plugin.variables import expand_root
+
+    return expand_root(text, _build_target(project))
+
+
 def substitute_local_file_refs(text: str) -> str:
     """LOCAL 빌드 산출 텍스트에서 ``${CLAUDE_PLUGIN_ROOT}/files/`` →
     ``${CLAUDE_PROJECT_DIR}/files/``로 치환한다.

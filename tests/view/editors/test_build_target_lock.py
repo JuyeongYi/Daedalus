@@ -169,13 +169,13 @@ def test_plugin_data_variable_warned_in_local_build():
     assert "plugin_root_in_local_build" in rules
 
 
-def test_files_reference_is_not_warned():
-    """files/ 참조는 컴파일이 ${CLAUDE_PROJECT_DIR}로 치환하므로 정상이다."""
+def test_neutral_root_token_is_not_warned():
+    """타깃 중립 ${ROOT}는 컴파일이 타깃에 맞는 변수로 확장하므로 정상이다."""
     from daedalus.model.validation import Validator
 
     from tests.compiler.builders import make_procedural
 
-    skill = make_procedural(body="체크리스트: ${CLAUDE_PLUGIN_ROOT}/files/list.md")
+    skill = make_procedural(body="체크리스트: ${ROOT}/files/list.md")
     project = PluginProject(
         name="p", skills=[skill], build_target=BuildTarget.LOCAL,
     )

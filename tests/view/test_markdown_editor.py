@@ -871,7 +871,7 @@ def test_drop_file_under_files_root_inserts_token(qapp, tmp_path):
     ed.dropEvent(event)
 
     assert event.isAccepted()
-    assert ed.toPlainText() == "hello${CLAUDE_PLUGIN_ROOT}/files/A/c.txt world"
+    assert ed.toPlainText() == "hello${ROOT}/files/A/c.txt world"
 
 
 def test_drop_multiple_files_joined_by_newline(qapp, tmp_path):
@@ -891,7 +891,7 @@ def test_drop_multiple_files_joined_by_newline(qapp, tmp_path):
     ed.dropEvent(event)
 
     assert ed.toPlainText() == (
-        "${CLAUDE_PLUGIN_ROOT}/files/a.txt\n${CLAUDE_PLUGIN_ROOT}/files/b.txt"
+        "${ROOT}/files/a.txt\n${ROOT}/files/b.txt"
     )
 
 
@@ -909,7 +909,7 @@ def test_drop_file_outside_files_root_falls_through(qapp, tmp_path):
     event = _drop_event_at(ed, 5, mime)
     ed.dropEvent(event)
 
-    assert "${CLAUDE_PLUGIN_ROOT}" not in ed.toPlainText()
+    assert "${ROOT}" not in ed.toPlainText()
 
 
 def test_drop_without_files_root_provider_falls_through(qapp, tmp_path):
@@ -924,7 +924,7 @@ def test_drop_without_files_root_provider_falls_through(qapp, tmp_path):
     event = _drop_event_at(ed, 5, mime)
     ed.dropEvent(event)
 
-    assert "${CLAUDE_PLUGIN_ROOT}" not in ed.toPlainText()
+    assert "${ROOT}" not in ed.toPlainText()
 
 
 def test_drop_plain_text_still_works(qapp):
@@ -977,7 +977,7 @@ def test_drop_space_path_wraps_in_angle_brackets(qapp, tmp_path):
         QPointF(1, 1), Qt.DropAction.CopyAction, mime,
         Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier,
     ))
-    assert ed.toPlainText().strip() == "<${CLAUDE_PLUGIN_ROOT}/files/with space.txt>"
+    assert ed.toPlainText().strip() == "<${ROOT}/files/with space.txt>"
 
 
 def test_mixed_drop_keeps_outside_urls(qapp, tmp_path):
@@ -1003,7 +1003,7 @@ def test_mixed_drop_keeps_outside_urls(qapp, tmp_path):
         Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier,
     ))
     text = ed.toPlainText()
-    assert "${CLAUDE_PLUGIN_ROOT}/files/a.txt" in text
+    assert "${ROOT}/files/a.txt" in text
     assert "outside.txt" in text
 
 

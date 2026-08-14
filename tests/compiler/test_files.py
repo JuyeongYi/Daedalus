@@ -83,7 +83,7 @@ def test_stale_out_files_cleared_before_copy(tmp_path):
 def test_files_dir_nonexistent_skips_copy_but_still_scans(tmp_path):
     """files_dir가 실존하지 않으면 복사는 생략하지만 dangling 스캔은 수행한다."""
     out_dir = tmp_path / "out"
-    body = "참조: ${CLAUDE_PLUGIN_ROOT}/files/missing.txt"
+    body = "참조: ${ROOT}/files/missing.txt"
     skill = make_procedural(name="clean-skill", body=body)
     project = PluginProject(name="p", skills=[skill])
 
@@ -100,7 +100,7 @@ def test_files_dir_nonexistent_skips_copy_but_still_scans(tmp_path):
 def test_dangling_file_ref_warning_when_referenced_file_absent(tmp_path):
     src = tmp_path / "src_files"
     src.mkdir()
-    body = "See ${CLAUDE_PLUGIN_ROOT}/files/ghost.txt for details."
+    body = "See ${ROOT}/files/ghost.txt for details."
     skill = make_procedural(name="ref-skill", body=body)
     project = PluginProject(name="p", skills=[skill])
 
@@ -116,7 +116,7 @@ def test_no_dangling_warning_when_referenced_file_exists(tmp_path):
     src = tmp_path / "src_files"
     (src / "A").mkdir(parents=True)
     (src / "A" / "c.txt").write_text("x", encoding="utf-8")
-    body = "See ${CLAUDE_PLUGIN_ROOT}/files/A/c.txt for details."
+    body = "See ${ROOT}/files/A/c.txt for details."
     skill = make_procedural(name="ref-skill", body=body)
     project = PluginProject(name="p", skills=[skill])
 
@@ -133,9 +133,9 @@ def test_dangling_scan_covers_agent_and_local_skill_bodies(tmp_path):
     src.mkdir()
 
     agent = make_agent("worker")
-    agent.body = "Agent needs ${CLAUDE_PLUGIN_ROOT}/files/agent-missing.txt"
+    agent.body = "Agent needs ${ROOT}/files/agent-missing.txt"
     local_skill = make_procedural(
-        name="local-helper", body="Local ${CLAUDE_PLUGIN_ROOT}/files/local-missing.txt",
+        name="local-helper", body="Local ${ROOT}/files/local-missing.txt",
     )
     agent.skills = [local_skill]
     project = PluginProject(name="p", agents=[agent])
@@ -220,7 +220,7 @@ def test_angle_wrapped_space_path_not_flagged(tmp_path):
     files.mkdir()
     (files / "with space.txt").write_text("x", encoding="utf-8")
     project = _proj_with_body(
-        "참조: <${CLAUDE_PLUGIN_ROOT}/files/with space.txt>\n"
+        "참조: <${ROOT}/files/with space.txt>\n"
     )
     result = compile_project(project, tmp_path / "out", files_dir=files)
     assert not [w for w in result.warnings if w.rule == "dangling_file_ref"]
@@ -229,7 +229,7 @@ def test_angle_wrapped_space_path_not_flagged(tmp_path):
 def test_angle_wrapped_missing_path_still_flagged(tmp_path):
     files = tmp_path / "files"
     files.mkdir()
-    project = _proj_with_body("참조: <${CLAUDE_PLUGIN_ROOT}/files/no such.txt>\n")
+    project = _proj_with_body("참조: <${ROOT}/files/no such.txt>\n")
     result = compile_project(project, tmp_path / "out", files_dir=files)
     assert [w for w in result.warnings if w.rule == "dangling_file_ref"]
 
@@ -240,9 +240,9 @@ def test_trailing_punctuation_not_part_of_path(tmp_path):
     files.mkdir()
     (files / "top.txt").write_text("x", encoding="utf-8")
     project = _proj_with_body(
-        "A: ${CLAUDE_PLUGIN_ROOT}/files/top.txt, "
-        "B: ${CLAUDE_PLUGIN_ROOT}/files/top.txt; "
-        "C: ${CLAUDE_PLUGIN_ROOT}/files/top.txt.\n"
+        "A: ${ROOT}/files/top.txt, "
+        "B: ${ROOT}/files/top.txt; "
+        "C: ${ROOT}/files/top.txt.\n"
     )
     result = compile_project(project, tmp_path / "out", files_dir=files)
     assert not [w for w in result.warnings if w.rule == "dangling_file_ref"]

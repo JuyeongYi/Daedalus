@@ -506,9 +506,9 @@ def _line_marker_from_event(event) -> str | None:
 def _file_ref_token(local_path: str, files_root: str) -> str | None:
     """local_path가 files_root 하위 파일이면 참조 토큰을 계산한다. 아니면 None.
 
-    토큰은 ``${CLAUDE_PLUGIN_ROOT}/files/<상대경로>`` 고정 — CC 공식 문서
-    (plugins-reference §Environment variables)가 스킬/에이전트 본문 어디서나
-    치환됨을 명시한다. 경로 구분자는 POSIX(``/``)로 정규화한다.
+    토큰은 타깃 중립 ``${ROOT}/files/<상대경로>``다(WP-RT) — 어느 CC 변수가
+    되는지는 컴파일 시점에 빌드 타깃이 정한다. 경로 구분자는 POSIX(``/``)로
+    정규화한다.
 
     경로에 공백이 있으면 마크다운 관례대로 ``<...>``로 감싼다 — 감싸지 않으면
     컴파일러의 참조 스캐너가 공백에서 끊어 자기가 만든 토큰을 dangling으로
@@ -520,8 +520,10 @@ def _file_ref_token(local_path: str, files_root: str) -> str | None:
         return None
     if str(rel) == ".":
         return None  # files_root 자체가 드롭된 경우 — 삽입 대상 아님
+    from daedalus.model.plugin.variables import file_ref_token
+
     posix_rel = PurePosixPath(rel.as_posix())
-    token = f"${{CLAUDE_PLUGIN_ROOT}}/files/{posix_rel}"
+    token = file_ref_token(str(posix_rel))
     return f"<{token}>" if " " in str(posix_rel) else token
 
 

@@ -89,9 +89,9 @@ def test_plugin_root_non_files_usage_warns_in_local_build():
     assert all(f.is_warning for f in named)
 
 
-def test_plugin_root_files_usage_only_no_warning_in_local_build():
-    """files/ 참조만 있으면(컴파일이 자동 치환) 경고 없음."""
-    body = "참조: ${CLAUDE_PLUGIN_ROOT}/files/doc.txt"
+def test_neutral_root_token_no_warning_in_local_build():
+    """타깃 중립 ${ROOT}는 어느 빌드에서도 정상이다 (WP-RT)."""
+    body = "참조: ${ROOT}/files/doc.txt"
     project = PluginProject(
         name="p", skills=[_skill_with_body(body)], build_target=BuildTarget.LOCAL,
     )
@@ -176,7 +176,7 @@ def test_files_ref_in_caller_contract_not_flagged():
         name="worker", description="d", body="",
     )
     agent.caller_contracts.append(
-        Section(title="caller: x", content="참조: ${CLAUDE_PLUGIN_ROOT}/files/a.md")
+        Section(title="caller: x", content="참조: ${ROOT}/files/a.md")
     )
     project = PluginProject(name="p", agents=[agent], build_target=BuildTarget.LOCAL)
     errors = Validator.validate_project(project)

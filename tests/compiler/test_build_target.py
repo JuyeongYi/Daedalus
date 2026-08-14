@@ -9,7 +9,7 @@ from daedalus.compiler.emit import (
     compile_install_md,
     compile_install_ps1,
     compile_install_sh,
-    substitute_local_file_refs,
+    expand_root_token,
 )
 from daedalus.model.plugin.enums import BuildTarget
 from daedalus.model.plugin.hook import HookDef, HookEvent
@@ -53,9 +53,9 @@ def test_marketplace_explicit_matches_omitted_byte_identical(tmp_path):
         assert (out_default / rel).read_bytes() == (out_explicit / rel).read_bytes()
 
 
-def test_marketplace_body_with_file_ref_not_substituted(tmp_path):
-    """MARKETPLACE 빌드는 ${CLAUDE_PLUGIN_ROOT}/files/ 참조를 치환하지 않는다."""
-    body = "참조: ${CLAUDE_PLUGIN_ROOT}/files/doc.txt"
+def test_marketplace_expands_root_to_plugin_root(tmp_path):
+    """MARKETPLACE 빌드는 ${ROOT}를 ${CLAUDE_PLUGIN_ROOT}로 확장한다 (WP-RT)."""
+    body = "참조: ${ROOT}/files/doc.txt"
     skill = make_procedural(name="my-skill", body=body)
     project = PluginProject(name="p", skills=[skill])
     result = compile_project(project, tmp_path)
@@ -63,6 +63,7 @@ def test_marketplace_body_with_file_ref_not_substituted(tmp_path):
     text = (tmp_path / "skills" / "my-skill" / "SKILL.md").read_text(encoding="utf-8")
     assert "${CLAUDE_PLUGIN_ROOT}/files/doc.txt" in text
     assert "${CLAUDE_PROJECT_DIR}" not in text
+    assert "${ROOT}" not in text, "중립 토큰은 산출에 남으면 안 된다"
 
 
 # ─────────────────────── LOCAL — plugin.json 부재 + 설치 산출물 ───────────────────────
@@ -130,7 +131,7 @@ def test_local_build_hooks_json_still_generated(tmp_path):
 
 
 def test_local_build_substitutes_file_refs_in_skill_body(tmp_path):
-    body = "참조: ${CLAUDE_PLUGIN_ROOT}/files/doc.txt 확인하라."
+    body = "참조: ${ROOT}/files/doc.txt 확인하라."
     skill = make_procedural(name="my-skill", body=body)
     project = PluginProject(name="p", skills=[skill], build_target=BuildTarget.LOCAL)
     result = compile_project(project, tmp_path)
@@ -138,13 +139,14 @@ def test_local_build_substitutes_file_refs_in_skill_body(tmp_path):
     text = (tmp_path / "skills" / "my-skill" / "SKILL.md").read_text(encoding="utf-8")
     assert "${CLAUDE_PROJECT_DIR}/files/doc.txt" in text
     assert "${CLAUDE_PLUGIN_ROOT}/files/" not in text
+    assert "${ROOT}" not in text
 
 
 def test_local_build_substitutes_file_refs_in_agent_and_local_skill_body(tmp_path):
     agent = make_agent("worker")
-    agent.body = "에이전트 참조: ${CLAUDE_PLUGIN_ROOT}/files/agent-doc.txt"
+    agent.body = "에이전트 참조: ${ROOT}/files/agent-doc.txt"
     local_skill = make_procedural(
-        name="local-helper", body="로컬 참조: ${CLAUDE_PLUGIN_ROOT}/files/local-doc.txt",
+        name="local-helper", body="로컬 참조: ${ROOT}/files/local-doc.txt",
     )
     agent.skills = [local_skill]
     project = PluginProject(name="p", agents=[agent], build_target=BuildTarget.LOCAL)
@@ -160,15 +162,52 @@ def test_local_build_substitutes_file_refs_in_agent_and_local_skill_body(tmp_pat
     assert "${CLAUDE_PROJECT_DIR}/files/local-doc.txt" in local_text
 
 
-def test_substitute_local_file_refs_leaves_other_plugin_root_usage_untouched():
-    """files/ 참조 이외 용도의 ${CLAUDE_PLUGIN_ROOT}는 치환하지 않는다."""
-    text = (
-        "파일: ${CLAUDE_PLUGIN_ROOT}/files/a.txt, "
-        "스크립트: ${CLAUDE_PLUGIN_ROOT}/scripts/run.sh"
-    )
-    out = substitute_local_file_refs(text)
+def test_expand_root_leaves_raw_cc_variables_untouched():
+    """확장 대상은 ${ROOT}뿐 — 사용자가 직접 쓴 CC 변수는 건드리지 않는다.
+
+    files/ 이외 용도의 ${CLAUDE_PLUGIN_ROOT}는 프로젝트 설치 빌드에서 치환되지
+    않는 죽은 경로이지만, 무엇을 의도했는지 알 수 없으므로 컴파일러가 임의로
+    바꾸지 않고 plugin_root_in_local_build 경고에 맡긴다.
+    """
+    text = "파일: ${ROOT}/files/a.txt, 스크립트: ${CLAUDE_PLUGIN_ROOT}/scripts/run.sh"
+
+    local = PluginProject(name="p", build_target=BuildTarget.LOCAL)
+    out = expand_root_token(text, local)
     assert "${CLAUDE_PROJECT_DIR}/files/a.txt" in out
     assert "${CLAUDE_PLUGIN_ROOT}/scripts/run.sh" in out
+
+
+def test_expand_root_without_project_is_marketplace():
+    assert expand_root_token("${ROOT}/files/a.txt") == "${CLAUDE_PLUGIN_ROOT}/files/a.txt"
+
+
+# ─────────────────────── WP-RT: 구버전 본문 마이그레이션 ───────────────────────
+
+
+def test_legacy_file_ref_migrated_on_load():
+    """구버전 프로젝트를 열면 files/ 참조가 ${ROOT}로 바뀐다 — 사용자 조치 불필요."""
+    from daedalus.model.serialize import deserialize_project, serialize_project
+
+    skill = make_procedural(name="my-skill", body="참조: ${ROOT}/files/doc.txt")
+    data = serialize_project(PluginProject(name="p", skills=[skill]))
+    # 저장 파일을 구버전 형태로 되돌린다
+    data["skills"][0]["body"] = "참조: ${CLAUDE_PLUGIN_ROOT}/files/doc.txt"
+
+    loaded = deserialize_project(data)
+    assert loaded.skills[0].body == "참조: ${ROOT}/files/doc.txt"
+
+
+def test_legacy_non_files_usage_not_migrated():
+    """files/ 외 용도는 무엇을 의도했는지 알 수 없으므로 건드리지 않는다 —
+    검증 경고(plugin_root_in_local_build)가 짚는다."""
+    from daedalus.model.serialize import deserialize_project, serialize_project
+
+    skill = make_procedural(name="my-skill", body="x")
+    data = serialize_project(PluginProject(name="p", skills=[skill]))
+    data["skills"][0]["body"] = "스크립트: ${CLAUDE_PLUGIN_ROOT}/scripts/run.sh"
+
+    loaded = deserialize_project(data)
+    assert loaded.skills[0].body == "스크립트: ${CLAUDE_PLUGIN_ROOT}/scripts/run.sh"
 
 
 def test_local_gate_rejection_skips_install_files(tmp_path):

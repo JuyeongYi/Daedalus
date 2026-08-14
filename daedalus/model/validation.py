@@ -104,16 +104,6 @@ CC_BUILTIN_TOOLS: frozenset[str] = frozenset({
 })
 
 
-# CC가 **플러그인 스킬에서만 치환하는** 변수 (공식 skills 문서의 치환 표).
-# 프로젝트 설치(LOCAL) 빌드는 플러그인이 아니므로 이 변수들은 리터럴로 남는다.
-# ${CLAUDE_PROJECT_DIR}/${CLAUDE_SKILL_DIR}은 플러그인 여부와 무관하게 치환되므로
-# 여기 넣지 않는다 — LOCAL에서 files/를 가리키는 정상 경로다.
-PLUGIN_ONLY_VARIABLES: tuple[str, ...] = (
-    "${CLAUDE_PLUGIN_ROOT}",
-    "${CLAUDE_PLUGIN_DATA}",
-)
-
-
 # skip_rules로 생략을 지원하는 규칙 집합 — 이름 오타/규칙 리네임이 조용한
 # no-op이 되지 않도록 알려진 이름만 허용한다.
 SKIPPABLE_RULES: frozenset[str] = frozenset({"unreachable_state"})
@@ -1646,19 +1636,18 @@ class Validator:
         스킬에서만 치환한다**(공식 skills 문서의 치환 표). 프로젝트 설치 빌드는
         플러그인이 아니므로 이 변수들이 리터럴 문자열 그대로 남는다.
 
-        files/ 참조(``${CLAUDE_PLUGIN_ROOT}/files/``)는 컴파일이
-        ``${CLAUDE_PROJECT_DIR}/files/``로 자동 치환하므로 검사에서 제외한다 —
-        `${CLAUDE_PROJECT_DIR}`는 플러그인 여부와 무관하게 치환된다(v2.1.196+).
+        WP-RT 이후 files/ 참조는 타깃 중립 ``${ROOT}/files/``를 쓰므로 **예외
+        처리가 없다** — 본문에 CC 원시 플러그인 변수가 보이면 그대로 문제다.
         """
+        from daedalus.model.plugin.variables import PLUGIN_ONLY_VARIABLES
+
         build_target = getattr(project, "build_target", BuildTarget.MARKETPLACE)
         if build_target is not BuildTarget.LOCAL:
             return []
         errors: list[ValidationError] = []
 
         def _scan(label: str, subject: object, body: str, path: tuple[str, ...]) -> None:
-            text = body or ""
-            # files/ 참조는 컴파일이 자동 치환하므로 제거한 나머지에서만 검사.
-            remaining = text.replace("${CLAUDE_PLUGIN_ROOT}/files/", "")
+            remaining = body or ""
             for var in PLUGIN_ONLY_VARIABLES:
                 if var in remaining:
                     errors.append(ValidationError(

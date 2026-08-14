@@ -44,7 +44,7 @@ from daedalus.compiler.emit import (
     compile_plugin_manifest,
     compile_schemas_json,
     compile_skill,
-    substitute_local_file_refs,
+    expand_root_token,
 )
 from daedalus.model.plugin.enums import BuildTarget
 from daedalus.model.plugin.skill import Skill
@@ -56,15 +56,18 @@ _OUTPUT_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 
 # 스킬/에이전트 body에서 파일 참조 토큰을 스캔하는 패턴 — MarkdownEditor의
 # 드롭 삽입(view/widgets/markdown_editor.py `_file_ref_token`)이 만드는 형식과
-# 동일: ``${CLAUDE_PLUGIN_ROOT}/files/<상대경로>``.
+# 동일: 타깃 중립 ``${ROOT}/files/<상대경로>`` (WP-RT).
 #
 # 두 형태를 모두 인식한다:
-#   1. `<${CLAUDE_PLUGIN_ROOT}/files/공백 있는 경로>` — 꺾쇠로 감싼 형태(드롭이
-#      공백 경로에 붙인다). 닫는 꺾쇠까지가 경로 — 공백에서 끊지 않는다.
-#   2. `${CLAUDE_PLUGIN_ROOT}/files/경로` — 맨 형태. 공백·마크다운 구분자
-#      (`)]`"'<>,;`)에서 끊고, 문장 종결 마침표는 뒤에서 트림한다.
-_FILE_REF_ANGLE_RE = re.compile(r"<\$\{CLAUDE_PLUGIN_ROOT\}/files/([^>]+)>")
-_FILE_REF_BARE_RE = re.compile(r"\$\{CLAUDE_PLUGIN_ROOT\}/files/([^\s)\]`\"'<>,;]+)")
+#   1. `<${ROOT}/files/공백 있는 경로>` — 꺾쇠로 감싼 형태(드롭이 공백 경로에
+#      붙인다). 닫는 꺾쇠까지가 경로 — 공백에서 끊지 않는다.
+#   2. `${ROOT}/files/경로` — 맨 형태. 공백·마크다운 구분자(`)]`"'<>,;`)에서
+#      끊고, 문장 종결 마침표는 뒤에서 트림한다.
+#
+# 스캔은 ${ROOT} 확장 **전** 본문(정본)을 대상으로 하므로 여기서 타깃을 알 필요가
+# 없다 — 구버전 토큰은 로드 시 이미 ${ROOT}로 변환되어 있다.
+_FILE_REF_ANGLE_RE = re.compile(r"<\$\{ROOT\}/files/([^>]+)>")
+_FILE_REF_BARE_RE = re.compile(r"\$\{ROOT\}/files/([^\s)\]`\"'<>,;]+)")
 
 # 컴파일 게이트 전용 rule 분류 표 (등급 의도의 단일 진실).
 # 이 rule들은 validation.py의 WARNING_RULES에 없으므로 is_warning이 자동으로
@@ -369,7 +372,7 @@ def _scan_dangling_file_refs(project, files_dir: Path) -> list[ValidationError]:
                 rule="dangling_file_ref",
                 message=(
                     f"{label}의 본문이 참조하는 파일이 files/ 아래에 없습니다: "
-                    f"${{CLAUDE_PLUGIN_ROOT}}/files/{rel}"
+                    f"${{ROOT}}/files/{rel}"
                 ),
                 source=rel,
                 subject=subject,
@@ -425,7 +428,6 @@ def compile_project(
             result.skipped.append(("compile_gate_error", item.label))
         return result
 
-    is_local = _is_local_build(project)
     for item in plan:
         if item.kind == "skill":
             text = compile_skill(item.component, project=project)
@@ -446,10 +448,10 @@ def compile_project(
         else:  # local_skill
             text = compile_skill(item.component, local=True, project=project)
 
-        # LOCAL 빌드 — 스킬/에이전트 본문의 files/ 참조만 ${CLAUDE_PROJECT_DIR}로
-        # 치환한다(WP-TG). 본문 저장 정본은 마켓플레이스 형태 하나 그대로.
-        if is_local and item.kind in ("skill", "agent", "local_skill"):
-            text = substitute_local_file_refs(text)
+        # 타깃 중립 토큰 ${ROOT}를 빌드 타깃에 맞는 CC 변수로 확장한다(WP-RT).
+        # 본문 정본은 어느 타깃에도 기울지 않고, 여기서만 갈라진다.
+        if item.kind in ("skill", "agent", "local_skill"):
+            text = expand_root_token(text, project)
 
         path = out_dir / item.rel_path
         _write_text(path, text)
