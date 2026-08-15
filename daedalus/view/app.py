@@ -438,9 +438,15 @@ class MainWindow(QMainWindow):
         else:
             self.setWindowTitle(base)
 
-    def _save_to_path(self, path: str) -> None:
+    def _save_to_path(self, path: str) -> bool:
+        """프로젝트를 경로에 쓴다. 성공 여부를 돌려준다.
+
+        반환값은 GUI 경로에서는 무시되지만(상태바 문구가 결과를 말한다) MCP의
+        `open_project`처럼 **저장 성공을 전제로 다음 단계를 진행하는** 호출자는
+        이 값으로 판정한다 — 실패를 못 보고 열면 그 순간 변경이 사라진다.
+        """
         if self._project is None:
-            return
+            return False
         # 저장 직전 캔버스 좌표를 graph_layout에 반영 (버그 1: 좌표 왕복)
         self._save_graph_layout()
         try:
@@ -450,12 +456,13 @@ class MainWindow(QMainWindow):
         except (OSError, TypeError, ValueError) as exc:
             # OSError: IO 실패 / TypeError·ValueError: 직렬화 불가 객체 혼입
             self._status_label.setText(f"저장 실패: {exc}")
-            return
+            return False
         self._current_path = path
         self._update_title()
         self._sync_files_root()
         self._remember_recent(path)
         self._status_label.setText(f"저장됨: {path}")
+        return True
 
     def _save_project(self) -> None:
         if self._current_path:
@@ -471,6 +478,22 @@ class MainWindow(QMainWindow):
         if path:
             self._save_to_path(path)
 
+    def project_has_content(self) -> bool:
+        """잃을 것이 있는 프로젝트인가 — 빈 프로젝트를 덮어쓰는 것은 손실이 아니다.
+
+        "새 프로젝트"의 확인 다이얼로그와 MCP `open_project`의 저장 강제가 같은
+        판정을 써야 한다 — 한쪽만 느슨하면 그 경로로만 변경이 사라진다.
+        """
+        project = self._project
+        if project is None:
+            return False
+        return (
+            bool(project.skills)
+            or bool(project.agents)
+            or bool(project.delegations)
+            or len(project.graph.states) > 1  # EntryPoint 제외
+        )
+
     def _new_project(self) -> None:
         """Ctrl+N — 새 빈 프로젝트를 생성한다.
 
@@ -479,13 +502,7 @@ class MainWindow(QMainWindow):
         선택(WP-TG)을 취소하면 새 프로젝트 생성 자체를 취소한다.
         """
         if self._project is not None:
-            has_content = (
-                bool(self._project.skills)
-                or bool(self._project.agents)
-                or bool(self._project.delegations)
-                or len(self._project.graph.states) > 1  # EntryPoint 제외
-            )
-            if has_content:
+            if self.project_has_content():
                 reply = QMessageBox.question(
                     self,
                     "새 프로젝트",
@@ -610,8 +627,12 @@ class MainWindow(QMainWindow):
         self._rebuild_recent_menu()
         self._status_label.setText("최근 프로젝트 목록을 비웠습니다")
 
-    def open_path(self, path: str) -> None:
-        """경로에서 프로젝트를 로드한다 (다이얼로그 없이 — 테스트/CLI 재사용)."""
+    def open_path(self, path: str) -> bool:
+        """경로에서 프로젝트를 로드한다 (다이얼로그 없이 — 테스트/CLI/MCP 재사용).
+
+        성공 여부를 돌려준다 — `_save_to_path`와 같은 이유다(호출자가 실패를
+        구분해야 한다). GUI 경로는 상태바 문구로 결과를 말하므로 무시한다.
+        """
         deser_warnings: list[str] = []
         try:
             with open(path, "r", encoding="utf-8") as f:
@@ -619,7 +640,7 @@ class MainWindow(QMainWindow):
             project = deserialize_project(data, collect_warnings=deser_warnings)
         except (OSError, ValueError) as exc:
             self._status_label.setText(f"열기 실패: {exc}")
-            return
+            return False
         self.load_project(project)
         self._current_path = path
         self._update_title()
@@ -632,6 +653,7 @@ class MainWindow(QMainWindow):
             )
         else:
             self._status_label.setText(f"열림: {fname}")
+        return True
 
     def _skill_lookup(self, name: str) -> object | None:
         if self._project is None:

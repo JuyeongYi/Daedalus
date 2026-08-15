@@ -449,8 +449,22 @@ daedalus/
   빈 값은 건드리지 않고, 여러 필드를 한 번에 주면 `MacroCommand`로 1 undo 단위가 된다.
   `set_component_description`도 이때 커맨드화됐고(이전에는 이 편집만 Ctrl+Z가 듣지 않았다)
   `set_component_when_to_use`가 함께 붙었다.
-- **아직 노출하지 않은 편집:** 컴포넌트 삭제(아래)와 나머지 프론트매터 필드. 커맨드를 만들기만
-  하면 `TOOL_NAMES`에 이름을 더해 노출된다.
+- **프론트매터 필드:** `list_component_fields`(필드 목록 + 현재값 + enum 선택지 + emit 위치)와
+  `set_component_field`(SetAttrCmd 경유 — undo 가능). 대상 필드 집합은 `SKILL_FIELD_MATRIX`/
+  `AGENT_FIELD_MATRIX`에서 뽑으므로 매트릭스가 늘면 도구가 따라간다. 타입 강제는
+  `_config_field_types`(`get_type_hints` — `from __future__ import annotations` 탓에 dataclass의
+  `f.type`이 문자열이라 그대로 쓸 수 없다) + `_coerce_field_value`가 맡고, 잘못된 enum 값은
+  선택지를 나열하며 **거부**한다(조용히 문자열이 들어가면 컴파일 산출이 이상해질 때까지 안 드러난다).
+  `hooks`는 `set_component_hooks`로 안내하며 거절한다.
+- **세션(저장/열기):** `save_project`/`open_project`/`list_recent_projects`. **저장이 여는 절차
+  안에 있다** — 편집 중인 내용은 메모리에만 있어 여는 순간 사라지므로, 잃을 것이 있으면
+  (`MainWindow.project_has_content()` — "새 프로젝트" 확인 다이얼로그와 같은 판정) 먼저 저장하고
+  **저장할 수 없으면 열지 않는다**. 한 번도 저장한 적 없으면 `save_current_as`로 경로를 받아야
+  하고, 버리려면 `save_current=False`를 명시해야 한다. 이를 위해 `MainWindow._save_to_path`/
+  `open_path`가 `bool`을 돌려준다(GUI 경로는 상태바 문구로 결과를 말하므로 무시한다 — 반환값은
+  성공을 전제로 다음 단계를 진행하는 호출자를 위한 것이다). 저장은 파일 쓰기라 undo 대상이 아니다.
+- **아직 노출하지 않은 편집:** 컴포넌트 삭제(아래). 커맨드를 만들기만 하면 `TOOL_NAMES`에 이름을
+  더해 노출된다.
 - **컴포넌트 삭제는 의도적으로 빠져 있다:** `remove_component`가 그래프 placement·skill_ref
   None화·위임 참조·graph_layout·edge_layout까지 훑어 정리하므로, 되돌리려면 그 정리 내역 전부를
   기록·복원해야 한다. 부분 복원 커맨드는 없느니만 못하므로 WP-CE 본편으로 미뤘다(GUI 삭제는 종전대로 동작).
