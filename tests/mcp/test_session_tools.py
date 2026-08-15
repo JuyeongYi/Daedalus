@@ -78,7 +78,7 @@ def test_saves_to_current_path_when_omitted(tools, window, tmp_path):
 
 
 def test_save_without_path_on_unsaved_project_is_rejected(tools):
-    with pytest.raises(ValueError, match="저장 경로"):
+    with pytest.raises(ValueError, match="저장 폴더"):
         tools.save_project()
 
 

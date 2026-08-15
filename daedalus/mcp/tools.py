@@ -1776,7 +1776,7 @@ class DaedalusTools:
         target = path or getattr(window, "_current_path", None)
         if not target:
             raise ValueError(
-                "한 번도 저장한 적 없는 프로젝트입니다. path로 저장 경로를 지정하세요."
+                "한 번도 저장한 적 없는 프로젝트입니다. path로 저장 폴더를 지정하세요."
             )
         if not window._save_to_path(target):
             raise RuntimeError(f"저장하지 못했습니다: {self._status_text()}")
@@ -1788,19 +1788,28 @@ class DaedalusTools:
         save_current: bool = True,
         save_current_as: str = "",
     ) -> dict[str, Any]:
-        """다른 프로젝트 파일을 연다 — **현재 프로젝트를 먼저 저장한 뒤에**.
+        """다른 프로젝트를 연다 — **현재 프로젝트를 먼저 저장한 뒤에**.
+
+        path는 **프로젝트 폴더**(안의 `.daedalus.json`을 연다) 또는 구버전
+        `<이름>.daedalus.json` 파일이다.
 
         편집 중인 내용은 메모리에만 있으므로 여는 순간 사라진다. 그래서 저장이
         이 도구의 절차 안에 들어 있다: 잃을 것이 있으면 먼저 저장하고, 저장할
         수 없으면(경로를 모르거나 쓰기에 실패하면) **열지 않는다**.
 
-        - 한 번도 저장한 적 없는 프로젝트라면 `save_current_as`로 경로를 주어야 한다.
+        - 한 번도 저장한 적 없는 프로젝트라면 `save_current_as`로 폴더를 주어야 한다.
         - 버려도 되는 내용이면 `save_current=False`로 명시한다.
         - 빈 프로젝트(스킬·에이전트·배치 전무)는 잃을 것이 없으므로 그냥 열린다.
         """
+        from daedalus.model import package
+
         window = self._window
-        if not os.path.isfile(path):
-            raise ValueError(f"프로젝트 파일이 없습니다: {path}")
+        if not os.path.exists(path):
+            raise ValueError(f"경로가 없습니다: {path}")
+        try:
+            package.find_project_file(path)  # 열 수 없는 경로면 저장 전에 거절한다
+        except package.PackageError as exc:
+            raise ValueError(str(exc)) from exc
 
         saved_before: str | None = None
         discarded = False
@@ -1829,6 +1838,35 @@ class DaedalusTools:
             "saved_before_open": saved_before,
             "discarded_unsaved": discarded,
         }
+
+    def export_package(self, archive_path: str = "") -> dict[str, Any]:
+        """현재 프로젝트 폴더를 `.ddpj` 하나로 묶는다 — 통째로 건넬 때 쓴다.
+
+        `open_project`와 같은 이유로 **먼저 저장한 뒤에** 묶는다: 메모리에만 있는
+        편집을 빼놓고 묶으면 받는 쪽은 그것이 최신인 줄 안다.
+
+        archive_path를 생략하면 프로젝트 폴더 옆에 폴더 이름으로 만든다.
+        """
+        from daedalus.model import package
+
+        window = self._window
+        project = self._project
+        current = getattr(window, "_current_path", None)
+        if not current:
+            raise ValueError(
+                "한 번도 저장한 적 없는 프로젝트입니다. save_project로 먼저 저장하세요."
+            )
+        if not window._save_to_path(current):
+            raise RuntimeError(f"저장하지 못해 묶지 않았습니다: {self._status_text()}")
+
+        current = window._current_path
+        source = package.project_dir(current)
+        target = archive_path or str(source.parent / package.default_archive_name(current))
+        try:
+            members = package.pack(source, target)
+        except (package.PackageError, OSError) as exc:
+            raise RuntimeError(f"묶지 못했습니다: {exc}") from exc
+        return {"archive": target, "name": project.name, "files": len(members)}
 
     def _status_text(self) -> str:
         """상태바 문구 — 실패 원인은 거기에만 남는다(GUI 경로와 같은 출처)."""

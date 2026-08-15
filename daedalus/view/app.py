@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
     QTabWidget,
 )
 
+from daedalus.model import package
 from daedalus.model.plugin.agent import AgentDefinition
 from daedalus.model.plugin.enums import BuildTarget
 from daedalus.model.plugin.skill import (
@@ -178,10 +179,15 @@ class MainWindow(QMainWindow):
 
             file_menu.addSeparator()
 
-            open_action = QAction("열기", self)
+            open_action = QAction("폴더 열기", self)
             open_action.setShortcut(QKeySequence.StandardKey.Open)  # Ctrl+O
             open_action.triggered.connect(self._open_project_dialog)
             file_menu.addAction(open_action)
+
+            open_file_action = QAction("파일에서 열기…", self)
+            open_file_action.setToolTip("구버전 <이름>.daedalus.json을 직접 연다")
+            open_file_action.triggered.connect(self._open_file_dialog)
+            file_menu.addAction(open_file_action)
 
             self._recent_menu = file_menu.addMenu("최근 프로젝트")
             if self._recent_menu is not None:
@@ -198,6 +204,18 @@ class MainWindow(QMainWindow):
             save_as_action.setShortcut(QKeySequence.StandardKey.SaveAs)
             save_as_action.triggered.connect(self._save_project_as)
             file_menu.addAction(save_as_action)
+
+            file_menu.addSeparator()
+
+            export_action = QAction("패키지로 내보내기… (.ddpj)", self)
+            export_action.triggered.connect(self._export_package_dialog)
+            file_menu.addAction(export_action)
+
+            import_action = QAction("패키지 가져오기…", self)
+            import_action.triggered.connect(self._import_package_dialog)
+            file_menu.addAction(import_action)
+
+            file_menu.addSeparator()
 
             properties_action = QAction("프로젝트 속성…", self)
             properties_action.triggered.connect(self._edit_project_properties)
@@ -434,7 +452,7 @@ class MainWindow(QMainWindow):
     def _update_title(self) -> None:
         base = "Daedalus — FSM Plugin Designer"
         if self._current_path:
-            self.setWindowTitle(f"{os.path.basename(self._current_path)} — {base}")
+            self.setWindowTitle(f"{package.display_name(self._current_path)} — {base}")
         else:
             self.setWindowTitle(base)
 
@@ -447,22 +465,57 @@ class MainWindow(QMainWindow):
         """
         if self._project is None:
             return False
+        # 폴더를 주면 그 안의 정본 파일이 저장 대상이다 (WP-PK). `_current_path`는
+        # 계속 **파일**을 가리키므로 parent로 계산하는 곳들이 그대로 동작한다.
+        target = str(package.resolve_project_file(path))
         # 저장 직전 캔버스 좌표를 graph_layout에 반영 (버그 1: 좌표 왕복)
         self._save_graph_layout()
         try:
+            parent = Path(target).parent
+            if not parent.exists():
+                parent.mkdir(parents=True, exist_ok=True)
             data = serialize_project(self._project)
-            with open(path, "w", encoding="utf-8") as f:
+            with open(target, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
         except (OSError, TypeError, ValueError) as exc:
             # OSError: IO 실패 / TypeError·ValueError: 직렬화 불가 객체 혼입
             self._status_label.setText(f"저장 실패: {exc}")
             return False
+        moved_files = self._carry_files_dir(target)
+        path = target
         self._current_path = path
         self._update_title()
         self._sync_files_root()
         self._remember_recent(path)
-        self._status_label.setText(f"저장됨: {path}")
+        note = f" (files/ {moved_files}개 복사)" if moved_files else ""
+        self._status_label.setText(f"저장됨: {path}{note}")
         return True
+
+    def _carry_files_dir(self, new_file: str) -> int:
+        """다른 폴더로 저장할 때 `files/`를 함께 옮긴다 (WP-PK).
+
+        폴더가 곧 프로젝트이므로, 프로젝트를 다른 폴더에 저장했는데 동봉 파일이
+        옛 폴더에 남아 있으면 그건 반쪽짜리 프로젝트다 — 컴파일하면 파일이
+        빠지고, `dangling_file_ref` 경고로야 뒤늦게 드러난다.
+
+        목적지에 이미 `files/`가 있으면 **건드리지 않는다** — 남의 것을 덮어쓰는
+        것보다 아무것도 안 하는 편이 낫다(그 경우는 사용자가 의도한 배치다).
+        """
+        import shutil
+
+        old = self._current_path
+        if not old:
+            return 0
+        source = Path(old).parent / "files"
+        dest = Path(new_file).parent / "files"
+        if source.resolve() == dest.resolve() or not source.is_dir() or dest.exists():
+            return 0
+        try:
+            shutil.copytree(source, dest, symlinks=False)
+        except (OSError, shutil.Error) as exc:
+            self._status_label.setText(f"files/ 복사 실패: {exc}")
+            return 0
+        return sum(1 for p in dest.rglob("*") if p.is_file())
 
     def _save_project(self) -> None:
         if self._current_path:
@@ -471,12 +524,18 @@ class MainWindow(QMainWindow):
             self._save_project_as()
 
     def _save_project_as(self) -> None:
-        path, _ = QFileDialog.getSaveFileName(
-            self, "다른 이름으로 저장", self._current_path or "",
-            "Daedalus 프로젝트 (*.daedalus.json *.json)",
+        """프로젝트 **폴더**를 골라 저장한다 (WP-PK).
+
+        구버전 파일을 열어 두었더라도 여기서 폴더를 고르면 새 형식
+        (`<폴더>/.daedalus.json`)으로 옮겨간다 — 그것이 형식을 바꾸는 유일한
+        지점이다(Ctrl+S는 열려 있던 형식을 그대로 유지한다).
+        """
+        start = str(package.project_dir(self._current_path)) if self._current_path else ""
+        directory = QFileDialog.getExistingDirectory(
+            self, "프로젝트 폴더 선택 (폴더가 곧 프로젝트입니다)", start,
         )
-        if path:
-            self._save_to_path(path)
+        if directory:
+            self._save_to_path(directory)
 
     def project_has_content(self) -> bool:
         """잃을 것이 있는 프로젝트인가 — 빈 프로젝트를 덮어쓰는 것은 손실이 아니다.
@@ -555,12 +614,83 @@ class MainWindow(QMainWindow):
             self._status_label.setText("프로젝트 속성 변경됨")
 
     def _open_project_dialog(self) -> None:
+        """프로젝트 **폴더**를 골라 연다 (WP-PK).
+
+        폴더 안의 정본(`.daedalus.json`)을 열고, 없으면 구버전
+        `<이름>.daedalus.json` 하나를 받아들인다 — 기존 프로젝트 폴더도
+        그대로 폴더째 열린다.
+        """
+        start = str(package.project_dir(self._current_path)) if self._current_path else ""
+        directory = QFileDialog.getExistingDirectory(self, "프로젝트 폴더 열기", start)
+        if directory:
+            self.open_path(directory)
+
+    def _open_file_dialog(self) -> None:
+        """구버전 `<이름>.daedalus.json`을 파일로 직접 연다.
+
+        한 폴더에 구버전 파일이 여럿이면 폴더 선택으로는 무엇을 여는지 정할 수
+        없다 — 그때 쓰는 통로다.
+        """
         path, _ = QFileDialog.getOpenFileName(
-            self, "열기", self._current_path or "",
+            self, "프로젝트 파일 열기", self._current_path or "",
             "Daedalus 프로젝트 (*.daedalus.json *.json)",
         )
         if path:
             self.open_path(path)
+
+    # --- 패키지 (.ddpj) ---
+
+    def _export_package_dialog(self) -> None:
+        """현재 프로젝트 폴더를 `.ddpj` 하나로 묶는다.
+
+        지금까지 프로젝트를 남에게 주려면 "json이랑 files 폴더를 같이 보내라"고
+        해야 했다 — 틀리기 쉬운 안내였다.
+        """
+        if not self._current_path:
+            QMessageBox.information(
+                self, "패키지로 내보내기",
+                "먼저 프로젝트를 저장하세요. 묶을 폴더가 정해져야 합니다.",
+            )
+            return
+        source = package.project_dir(self._current_path)
+        suggested = str(source.parent / package.default_archive_name(self._current_path))
+        target, _ = QFileDialog.getSaveFileName(
+            self, "패키지로 내보내기", suggested,
+            f"Daedalus 패키지 (*{package.ARCHIVE_SUFFIX})",
+        )
+        if not target:
+            return
+        try:
+            members = package.pack(source, target)
+        except (package.PackageError, OSError) as exc:
+            self._status_label.setText(f"내보내기 실패: {exc}")
+            return
+        self._status_label.setText(f"내보냄: {target} ({len(members)}개 파일)")
+
+    def _import_package_dialog(self) -> None:
+        """`.ddpj`를 폴더에 풀고 그 프로젝트를 연다.
+
+        압축 안에서 직접 편집하지 않는다 — `files/` 드래그·컴파일·저장이 전부
+        특수 경로가 되어 득보다 실이 크다.
+        """
+        archive, _ = QFileDialog.getOpenFileName(
+            self, "패키지 가져오기", "",
+            f"Daedalus 패키지 (*{package.ARCHIVE_SUFFIX})",
+        )
+        if not archive:
+            return
+        dest = QFileDialog.getExistingDirectory(
+            self, "풀어놓을 폴더 선택 (비어 있어야 합니다)",
+            str(Path(archive).parent),
+        )
+        if not dest:
+            return
+        try:
+            project_file = package.unpack(archive, dest)
+        except (package.PackageError, OSError) as exc:
+            self._status_label.setText(f"가져오기 실패: {exc}")
+            return
+        self.open_path(str(project_file))
 
     # --- 최근 프로젝트 (WP-RP) ---
 
@@ -604,9 +734,16 @@ class MainWindow(QMainWindow):
 
         파일명만으로는 구분이 안 되는 경우가 흔해(`project.daedalus.json` 등)
         상위 폴더 이름을 함께 보인다. 전체 경로는 툴팁에 있다.
+
+        새 형식(WP-PK)에서는 파일 이름이 `.daedalus.json` 하나뿐이라 그대로
+        보이면 전부 같은 이름이 된다 — 그때는 폴더 이름이 곧 이름이고, 상위
+        폴더는 그 위 단계가 된다.
         """
-        name = os.path.basename(path)
-        parent = os.path.basename(os.path.dirname(path))
+        shown = path
+        if os.path.basename(path) == package.PROJECT_FILENAME:
+            shown = os.path.dirname(path)
+        name = os.path.basename(shown)
+        parent = os.path.basename(os.path.dirname(shown))
         if parent:
             name = f"{name} — {parent}"
         # 파일명의 &는 니모닉으로 먹히므로 escape
@@ -630,15 +767,19 @@ class MainWindow(QMainWindow):
     def open_path(self, path: str) -> bool:
         """경로에서 프로젝트를 로드한다 (다이얼로그 없이 — 테스트/CLI/MCP 재사용).
 
+        폴더를 주면 그 안의 프로젝트 파일을 찾아 연다 (WP-PK) — 정본
+        `.daedalus.json`이 우선, 없으면 구버전 `<이름>.daedalus.json` 하나.
+
         성공 여부를 돌려준다 — `_save_to_path`와 같은 이유다(호출자가 실패를
         구분해야 한다). GUI 경로는 상태바 문구로 결과를 말하므로 무시한다.
         """
         deser_warnings: list[str] = []
         try:
+            path = str(package.find_project_file(path))
             with open(path, "r", encoding="utf-8") as f:
                 data = json.load(f)
             project = deserialize_project(data, collect_warnings=deser_warnings)
-        except (OSError, ValueError) as exc:
+        except (OSError, ValueError, package.PackageError) as exc:
             self._status_label.setText(f"열기 실패: {exc}")
             return False
         self.load_project(project)

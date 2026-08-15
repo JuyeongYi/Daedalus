@@ -33,6 +33,7 @@ TOOL_NAMES = (
     # 세션 — 저장은 undo 대상이 아니다(파일 쓰기)
     "save_project",
     "open_project",
+    "export_package",
     # 편집 — 전부 undo 가능
     "create_skill",
     "create_agent",
@@ -81,9 +82,11 @@ Daedalus(FSM 기반 Claude Code 플러그인 설계 도구)의 열려 있는 편
 - 노출된 편집: 캔버스 구조(노드/전이/배치/참조 노드), 포트와 분기 의미론, \
 블랙보드, 훅 라이브러리, 프로젝트 속성, 컴포넌트 본문. 컴포넌트 삭제와 나머지 \
 프론트매터 필드는 아직 GUI에서만 가능합니다.
-- `open_project`는 현재 프로젝트를 **먼저 저장한 뒤** 엽니다. 저장할 수 없으면 \
-열지 않습니다 — 편집 중인 내용은 메모리에만 있기 때문입니다. 열 파일 경로는 \
-`list_recent_projects`로 찾을 수 있습니다.
+- **프로젝트의 단위는 폴더**입니다(`<폴더>/.daedalus.json` + `<폴더>/files/`). \
+`open_project`에는 폴더 경로를 주세요(구버전 `<이름>.daedalus.json` 파일도 열립니다). \
+경로는 `list_recent_projects`로 찾을 수 있습니다.
+- `open_project`와 `export_package`는 현재 프로젝트를 **먼저 저장한 뒤** 진행합니다. \
+저장할 수 없으면 진행하지 않습니다 — 편집 중인 내용은 메모리에만 있기 때문입니다.
 - 구조(노드와 선)만 만들면 분기가 표현되지 않습니다. 여러 갈래로 나가는 노드는 \
 `set_transfer_on`으로 갈래를 선언하고 각 전이에 trigger를 물려야 합니다. \
 에이전트로 가는 전이는 `add_agent_call`로 만든 호출 포트에서만 나갈 수 있습니다.

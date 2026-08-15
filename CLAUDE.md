@@ -56,6 +56,9 @@ daedalus/
 │   ├── project.py           # PluginProject (최상위 컨테이너, name+description+version — plugin.json 매니페스트 소스), ReferencePlacement, tool_shelf, hook_library, blackboard(최상위), graph(워크플로 백킹 머신)+graph_layout+edge_layout(WP-ER 엣지 웨이포인트, 키: Transition.id), emit_progress_hook(WP-RS SessionStart 진행 상태 훅 토글, 기본 True), build_target(WP-TG 빌드 타깃 — MARKETPLACE/LOCAL, 기본 MARKETPLACE)
 │   │                       # + rename_component(project, component, new_name) — 이름 변경 + 문자열 참조 3종 일괄 갱신 (Qt 무관)
 │   │                       # + remove_component(project, component) → list[str] — 모델 정리 (graph placement, skill_ref None화, 위임 agent_ref None화 등)
+│   ├── package.py           # 프로젝트 패키지(WP-PK) — 폴더가 곧 프로젝트. PROJECT_FILENAME(".daedalus.json")/ARCHIVE_SUFFIX(".ddpj"),
+│   │                       #   resolve_project_file(저장 대상)/find_project_file(열 대상)/project_dir/display_name,
+│   │                       #   pack(결정적 zip)/unpack(zip slip 방어). Qt 무관 순수 stdlib.
 │   ├── serialize.py         # serialize_project/deserialize_project (모델↔JSON dict, 안정 ID 기반)
 │   └── validation.py        # Validator + ValidationError + WARNING_RULES + is_warning (머신 규칙 20종 + 프로젝트 규칙 16종, 재귀)
 ├── compiler/         # 순수 모델 → 플러그인 파일 (Qt 무관)
@@ -85,6 +88,10 @@ daedalus/
     │                       # 파일 독(WP-FR): _setup_docks가 FilePanel을 "파일" 독으로 배치하고 markdown_editor.set_files_root_provider(lambda: self._file_panel.files_root())를
     │                       #   등록. _sync_files_root(_current_path 기준 project_dir/files 재계산)를 _save_to_path/open_path/_new_project 끝에서 호출.
     │                       #   _compile_project_dialog는 _current_path 기준 files_dir를 compile_project에 전달(미저장이면 None).
+    │                       # 프로젝트 패키지(WP-PK): 열기/저장이 **폴더** 단위. _open_project_dialog(폴더 선택)/_open_file_dialog(구버전 파일 직접)/
+    │                       #   _save_project_as(폴더 선택 — 형식이 새 형식으로 바뀌는 유일한 지점)/_export_package_dialog/_import_package_dialog.
+    │                       #   _save_to_path가 package.resolve_project_file로 폴더→정본 파일 해석 + 없는 폴더 생성 + _carry_files_dir(다른 폴더로
+    │                       #   저장 시 files/ 동반 복사). open_path는 package.find_project_file로 폴더→파일 해석. _current_path는 계속 **파일**을 가리킨다.
     ├── canvas/             # GraphicsView/Scene, NodeItem, EdgeItem, RefNodeItem, RefEdgeItem, sync(VM→모델 동기화 — Qt 무관)
     │                       # 엣지 리루트(WP-ER): TransitionEdgeItem.update_path가 TransitionViewModel.waypoints(경유점)를 경유하는
     │                       #   구간별 베지어 곡선을 그린다. 선택 시 자식 WaypointHandleItem(작은 원)을 표시 — 더블클릭/컨텍스트 메뉴로
@@ -456,7 +463,8 @@ daedalus/
   `f.type`이 문자열이라 그대로 쓸 수 없다) + `_coerce_field_value`가 맡고, 잘못된 enum 값은
   선택지를 나열하며 **거부**한다(조용히 문자열이 들어가면 컴파일 산출이 이상해질 때까지 안 드러난다).
   `hooks`는 `set_component_hooks`로 안내하며 거절한다.
-- **세션(저장/열기):** `save_project`/`open_project`/`list_recent_projects`. **저장이 여는 절차
+- **세션(저장/열기):** `save_project`/`open_project`/`export_package`/`list_recent_projects`.
+  경로는 **폴더**를 받는다(WP-PK — 구버전 파일도 열린다). **저장이 여는 절차
   안에 있다** — 편집 중인 내용은 메모리에만 있어 여는 순간 사라지므로, 잃을 것이 있으면
   (`MainWindow.project_has_content()` — "새 프로젝트" 확인 다이얼로그와 같은 판정) 먼저 저장하고
   **저장할 수 없으면 열지 않는다**. 한 번도 저장한 적 없으면 `save_current_as`로 경로를 받아야
@@ -622,6 +630,18 @@ CC의 구조는 **3단**이다: 이벤트 → 그룹(matcher + 핸들러 목록)
 - **검증**: `empty_hook_command`는 핸들러 0개 또는 핸들러의 필수 값이 빈 경우다. 무엇이 필수인지는 타입마다 다르므로 `handler.summary()`가 `"("`로 시작하는지로 판정한다 — 타입이 늘어도 규칙이 따라간다. `hook_matcher_without_tool_event`는 이름만 예전 그대로이고 판정은 `MATCHER_EVENTS` 기준이다.
 - **UI**: `editors/hook_panel.HookLibraryPanel` — **상주 탭(인덱스 2)**. 모달 다이얼로그(`hook_editor.HookLibraryDialog`)는 3단 구조를 담을 수 없어 제거됐다(도구 메뉴 항목도 함께 — 탭이 늘 보이므로 지름길이 중복이다). 좌: 훅 목록(핸들러 없으면 ⚠). 우: 이벤트 콤보(matcher 미지원/미문서화를 문구에 표시) + matcher(받지 않는 이벤트면 잠금 + 이유 표시) + 핸들러 목록·폼(`_HandlerForm` — 타입이 바뀌면 통째로 다시 만든다). **"서브에이전트 프론트매터로 복사" / "hooks.json으로 복사"** 버튼이 이 프로젝트 밖의 파일에 붙여넣을 텍스트를 클립보드에 넣는다. `widgets/preset_picker`의 `set_hook_name_provider`로 HookPresetPicker가 hook_library 이름을 동적 표시하는 것은 그대로.
 - **MCP**: `create_hook`/`update_hook`은 `handlers=[{...}]`로 CC 스키마 그대로 받는다(`command=` 인자는 커맨드 훅 하나를 만드는 지름길). 그 타입에 없는 속성은 **거부**한다 — 조용히 무시되면 왜 안 먹는지 알 수 없다. `list_hook_events`가 이벤트 31종과 matcher 지원 여부를, `hook_frontmatter_preview`가 서브에이전트 프론트매터 YAML을 돌려준다.
+
+### 프로젝트 패키지 — 폴더가 곧 프로젝트 (WP-PK)
+
+이미 절반은 그랬다. `files/`가 저장 파일 옆에 있고 `_sync_files_root`가 `parent`로 루트를 잡으니 프로젝트의 단위는 사실상 폴더였다. 다만 강제되지 않아 **같은 폴더의 `.daedalus.json` 둘이 `files/`를 말없이 공유하는 구멍**이 있었다. 폴더 = 프로젝트로 못 박으면 그 구멍은 정의상 사라진다.
+
+- **`_current_path`는 여전히 안쪽 파일을 가리킨다.** 사용자에게 보이는 단위만 폴더로 바뀌고 저장 대상은 파일 그대로다 — 덕분에 `Path(_current_path).parent`로 계산하는 곳(FilePanel 루트·컴파일 `files_dir`·MCP 접속 정보·카탈로그 project_dir)이 **한 줄도 안 바뀌고**, 구버전 파일도 같은 코드 경로를 탄다. 이것이 이 변경의 파급을 작게 만든 유일한 결정이다.
+- **`resolve_project_file`(저장 대상) vs `find_project_file`(열 대상)이 다르다.** 저장은 구버전 파일에 덮어쓸 때 그 이름을 유지하고(Ctrl+S가 형식을 말없이 갈아치우지 않는다 — 형식이 바뀌는 지점은 폴더를 고르는 "다른 이름으로 저장" 하나뿐), 열기는 폴더 안에서 정본을 찾고 없으면 구버전 `<이름>.daedalus.json` **하나**를 받아들인다(여럿이면 거절 — 조용히 하나를 고르면 나머지를 편집 중이라 착각하게 된다).
+- **아직 없는 경로는 `is_dir()`로 판정할 수 없다.** 새 폴더에 저장하는 것이 정상 경로이므로 확장자로 가른다 — `.json`으로 끝나면 파일, 아니면 폴더. 이 판정이 없으면 "새 폴더에 저장"이 확장자 없는 파일 하나를 만들고 끝난다(테스트가 잡은 실제 버그).
+- **Save As가 `files/`를 데려간다**(`_carry_files_dir`). 폴더가 곧 프로젝트인데 동봉 파일이 옛 폴더에 남으면 반쪽짜리다 — 컴파일하면 파일이 빠지고 `dangling_file_ref`로야 뒤늦게 드러난다. 목적지에 이미 `files/`가 있으면 건드리지 않는다(덮어쓰기보다 아무것도 안 하는 편이 낫다).
+- **`.ddpj` = 프로젝트 폴더를 묶은 zip.** 폴더 **내용**이 아카이브 루트에 놓인다(푸는 쪽이 목적지를 정하므로 폴더 이름을 한 겹 더 넣으면 중첩만 깊어진다). 압축은 결정적(항목 정렬 + 고정 타임스탬프 `(1980,1,1,0,0,0)`)이고, 푸는 쪽은 목적지가 비어 있어야 하며 zip slip(절대 경로·`..`)을 **쓰기 전에** 검사한다(절반 푼 폴더를 남기지 않는다). 압축 안에서 직접 편집하지는 않는다 — `files/` 드래그·컴파일·저장이 전부 특수 경로가 되어 득보다 실이 크다.
+- **UI:** File → "폴더 열기"(Ctrl+O) / "파일에서 열기…"(구버전 직접 지정) / "패키지로 내보내기… (.ddpj)" / "패키지 가져오기…". 창 제목·최근 목록은 `display_name`(새 형식이면 폴더 이름 — 파일 이름이 전부 `.daedalus.json`이라 그대로 보이면 구분이 안 된다).
+- **MCP:** `open_project`/`save_project`가 폴더를 받고, `export_package`가 **먼저 저장한 뒤** 묶는다(`open_project`와 같은 이유 — 메모리에만 있는 편집을 빼놓고 묶으면 받는 쪽은 그것이 최신인 줄 안다). `open_project`는 열 수 없는 경로면 **저장하기 전에** 거절한다(헛저장은 혼란만 남긴다).
 
 ### 파일 참조 (files/) — WP-FR
 
