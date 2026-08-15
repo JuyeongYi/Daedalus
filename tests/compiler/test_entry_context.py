@@ -43,8 +43,9 @@ def test_entry_context_section_basic_default_port():
     )
     text = compile_skill(b, project=project)
     assert "## 진입 맥락" in text
-    assert "`state/__progress__.json`의 `prev`를 확인하고" in text
-    assert "### 기본 경로" in text
+    assert "`state/__progress__.json`의 `prev`" in text
+    # WP-IP — 포트 그룹 헤딩은 퇴역, 출처 항목만 나열된다
+    assert "### 기본 경로" not in text
     assert "- `a`에서 [완료 이벤트 'done']로 진입" in text
 
 
@@ -113,7 +114,9 @@ def _dual_port_target(name: str = "target") -> ProceduralSkill:
     )
 
 
-def test_entry_context_named_port_group_with_description():
+def test_entry_context_ignores_legacy_port_declarations():
+    """WP-IP — legacy entry_paths/target_port는 산출에 영향이 없다. 포트 그룹
+    헤딩 없이 출처 항목만 나열된다."""
     a = make_procedural(name="a")
     t = _dual_port_target("t")
     project = PluginProject(name="p", skills=[a, t])
@@ -123,73 +126,51 @@ def test_entry_context_named_port_group_with_description():
     project.graph.transitions.append(
         Transition(
             source=sa, target=st, trigger=CompletionEvent(name="done"),
-            target_port="retry",
+            target_port="retry",  # legacy 파일 잔재 — 무시된다
         )
     )
     text = compile_skill(t, project=project)
-    assert "### 경로: retry" in text
-    assert "재시도 진입" in text
-    assert "### 기본 경로" not in text  # main 포트로 들어오는 전이가 없으므로 생략 X, 기본경로만 없음
+    assert "### 경로: retry" not in text
+    assert "### 기본 경로" not in text
+    assert "- `a`에서 [완료 이벤트 'done']로 진입" in text
 
 
-def test_entry_context_only_incoming_ports_emitted():
-    """incoming이 있는 포트만 배출 — main 포트에 incoming 없으면 생략."""
+def test_entry_context_carries_caller_output_description():
+    """호출 시 정보가 담긴다(WP-IP) — 출처가 자기 출력 포트에 적은 description이
+    도착 스킬의 진입 맥락 항목에 병기된다."""
     a = make_procedural(name="a")
-    t = _dual_port_target("t2")
-    project = PluginProject(name="p", skills=[a, t])
-    sa = SimpleState(name="a", skill_ref=a)
-    st = SimpleState(name="t2", skill_ref=t)
-    project.graph.states += [sa, st]
-    project.graph.transitions.append(
-        Transition(
-            source=sa, target=st, trigger=CompletionEvent(name="done"),
-            target_port="retry",
-        )
-    )
-    text = compile_skill(t, project=project)
-    assert "### 경로: main" not in text
-    assert "### 경로: retry" in text
-
-
-def test_entry_context_dangling_target_port_falls_back_to_default_group():
-    """entry_paths에 없는 target_port 이름은 기본 경로 그룹으로 수렴한다."""
-    a = make_procedural(name="a")
-    t = _dual_port_target("t3")
-    project = PluginProject(name="p", skills=[a, t])
-    sa = SimpleState(name="a", skill_ref=a)
-    st = SimpleState(name="t3", skill_ref=t)
-    project.graph.states += [sa, st]
-    project.graph.transitions.append(
-        Transition(
-            source=sa, target=st, trigger=CompletionEvent(name="done"),
-            target_port="renamed-away",  # entry_paths에 없는 이름(rename 고아)
-        )
-    )
-    text = compile_skill(t, project=project)
-    assert "### 기본 경로" in text
-    assert "### 경로: renamed-away" not in text
-
-
-def test_entry_context_port_order_matches_entry_paths_declaration_with_default_last():
-    """포트 순서는 entry_paths 선언 순서, 기본 경로는 항상 마지막."""
-    a = make_procedural(name="a")
+    a.transfer_on = [EventDef("done", description="초안 완성 — 배선은 비어 있다")]
     b = make_procedural(name="b")
-    t = _dual_port_target("t4")
-    project = PluginProject(name="p", skills=[a, b, t])
+    project = PluginProject(name="p", skills=[a, b])
     sa = SimpleState(name="a", skill_ref=a)
     sb = SimpleState(name="b", skill_ref=b)
-    st = SimpleState(name="t4", skill_ref=t)
-    project.graph.states += [sa, sb, st]
-    # 기본 경로 전이를 먼저 추가하고, main/retry는 나중에 추가해도 순서는
-    # entry_paths 선언(main, retry) 뒤 기본 경로가 마지막이어야 한다.
-    project.graph.transitions += [
-        Transition(source=sa, target=st, trigger=CompletionEvent(name="done"), target_port=""),
-        Transition(source=sb, target=st, trigger=CompletionEvent(name="done"), target_port="main"),
-    ]
-    text = compile_skill(t, project=project)
-    idx_main = text.index("### 경로: main")
-    idx_default = text.index("### 기본 경로")
-    assert idx_main < idx_default
+    project.graph.states += [sa, sb]
+    project.graph.transitions.append(
+        Transition(source=sa, target=sb, trigger=CompletionEvent(name="done"))
+    )
+    text = compile_skill(b, project=project)
+    assert "- `a`에서 [완료 이벤트 'done']로 진입 — 초안 완성 — 배선은 비어 있다" in text
+
+
+def test_next_steps_carry_caller_output_description():
+    """호출자 쪽 "다음 단계"에도 갈래의 의미(출력 포트 description)가 실린다."""
+    a = make_procedural(name="a")
+    a.transfer_on = [EventDef("done", description="초안 완성")]
+    b = make_procedural(name="b")
+    project = PluginProject(name="p", skills=[a, b])
+    sa = SimpleState(name="a", skill_ref=a)
+    sb = SimpleState(name="b", skill_ref=b)
+    project.graph.states += [sa, sb]
+    project.graph.transitions.append(
+        Transition(source=sa, target=sb, trigger=CompletionEvent(name="done"))
+    )
+    text = compile_skill(a, project=project)
+    assert "→ `b` 스킬을 인보크하라 — 초안 완성" in text
+
+
+def test_progress_note_records_branch():
+    """진행 규약이 어느 갈래로 넘어갔는지 note에 남기도록 지시한다(WP-IP)."""
+    assert "어느 갈래" in _PROGRESS_UPDATE_NOTE
 
 
 # ── 3) 출처 항목: 정렬 + TransferSkill 합류 + 에이전트 출처 문구 ──

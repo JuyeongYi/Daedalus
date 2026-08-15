@@ -50,15 +50,10 @@ class AgentEditor(QWidget):
         )
         self._transfer_on_panel.transfer_on_changed.connect(self._on_model_changed)
 
-        # 입력 경로 (WP-IC) — transfer_on 편집과 대칭 위치·패턴.
-        self._entry_paths_panel = _TransferOnPanel(
-            self._agent.entry_paths, title="⇤ 입력 경로",
-        )
-        self._entry_paths_panel.transfer_on_changed.connect(self._on_model_changed)
-
+        # WP-IP — 입력 경로 패널은 퇴역했다(출력 포트만 남는다).
         self._component_editor = ComponentEditor(
             self._agent,
-            right_widgets=[self._transfer_on_panel, self._entry_paths_panel],
+            right_widgets=[self._transfer_on_panel],
             on_notify_fn=self._on_model_changed,
             # 빌드 타깃이 지원하지 않는 필드를 잠그기 위해 전달 (WP-EL)
             build_target=getattr(self._project, "build_target", None),

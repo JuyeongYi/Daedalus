@@ -8,6 +8,7 @@ from __future__ import annotations
 import pytest
 
 from daedalus.model.fsm.machine import StateMachine
+from daedalus.model.fsm.section import EventDef
 from daedalus.model.fsm.state import SimpleState
 from daedalus.model.plugin.skill import ProceduralSkill
 from daedalus.model.project import PluginProject
@@ -57,9 +58,13 @@ def test_set_transfer_on_reaches_local_skill(tools):
     assert [e.name for e in _local(tools).transfer_on] == ["ok", "retry"]
 
 
-def test_set_entry_paths_reaches_local_skill(tools):
-    tools.set_entry_paths("step-one", [{"name": "fresh"}], agent="worker")
-    assert [e.name for e in _local(tools).entry_paths] == ["fresh"]
+def test_set_entry_paths_only_clears_legacy(tools):
+    """WP-IP — 입력 경로 선언은 퇴역. 빈 목록(legacy 제거)만 허용된다."""
+    _local(tools).entry_paths.append(EventDef(name="stale"))
+    tools.set_entry_paths("step-one", [], agent="worker")
+    assert _local(tools).entry_paths == []
+    with pytest.raises(ValueError, match="퇴역"):
+        tools.set_entry_paths("step-one", [{"name": "fresh"}], agent="worker")
 
 
 def test_set_component_body_reaches_local_skill(tools):

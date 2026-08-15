@@ -59,33 +59,31 @@ def test_transfer_on_panel_procedural(qapp):
     assert isinstance(panel, QWidget)
 
 
-def test_entry_paths_panel_present_for_procedural(qapp):
-    """WP-IC — ProceduralSkill 에디터에 입력 경로 패널(entry_paths) + transfer_on 패널이 함께 존재."""
+def test_no_entry_paths_panel_for_procedural(qapp):
+    """WP-IP — 입력 경로 패널은 퇴역. transfer_on + call_agents 2개뿐이다."""
     from daedalus.view.editors.skill_editor import SkillEditor, _TransferOnPanel
     comp = _make_procedural()
     editor = SkillEditor(comp)
     panels = editor.findChildren(_TransferOnPanel)
-    # transfer_on + call_agents + entry_paths = 3개 — 입력 경로 패널을 제거하면
-    # 실패해야 한다 (리뷰 오탐 지적: >= 2는 패널 제거를 못 잡았음)
-    assert len(panels) >= 3
+    assert len(panels) == 2
 
 
-def test_entry_paths_panel_present_for_declarative(qapp):
-    """WP-IC — DeclarativeSkill도 entry_paths 편집 패널을 갖는다(출력 이벤트는 없음)."""
+def test_no_ports_panel_for_declarative(qapp):
+    """WP-IP — DeclarativeSkill은 포트 패널이 없다(출력 이벤트도 입력 경로도 없음)."""
     from daedalus.view.editors.skill_editor import SkillEditor, _TransferOnPanel
     comp = _make_declarative()
     editor = SkillEditor(comp)
-    panels = editor.findChildren(_TransferOnPanel)
-    assert len(panels) >= 1
+    assert editor.findChildren(_TransferOnPanel) == []
 
 
-def test_entry_paths_editable_via_panel(qapp):
-    """입력 경로 패널에서 '+' 추가 시 component.entry_paths에 실제로 반영된다."""
+def test_transfer_on_editable_via_panel(qapp):
+    """포트 패널에서 '+' 추가 시 편집 대상 리스트에 실제로 반영된다."""
     from daedalus.view.editors.skill_editor import _TransferOnPanel
     comp = _make_procedural()
-    panel = _TransferOnPanel(comp.entry_paths, title="⇤ 입력 경로")
+    panel = _TransferOnPanel(comp.transfer_on, title="⇄ Transfer On")
+    before = len(comp.transfer_on)
     panel._on_add_event()
-    assert len(comp.entry_paths) == 1
+    assert len(comp.transfer_on) == before + 1
 
 
 def test_event_card_renders(qapp):

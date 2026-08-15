@@ -37,7 +37,6 @@ _WARN_RULES = frozenset({
     "unreachable_state",
     "invalid_data_map_source",
     "trigger_unknown_event",
-    "dangling_target_port",
     "invalid_blackboard_field_type",
     "choice_completeness_missing_else",
     "parallel_join_count",

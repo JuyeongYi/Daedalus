@@ -340,15 +340,12 @@ class FsmScene(QGraphicsScene):
                     for t in self._project_vm.transition_vms
                 )
                 if not duplicate:
-                    # WP-IC — 드롭 지점에서 가장 가까운 입력 포트에 스냅.
-                    target_port = target.nearest_input_port_name(
-                        target.mapFromScene(scene_pos)
-                    )
+                    # WP-IP — 입력 포트 선언 퇴역: target_port는 기록하지 않는다
+                    # (기본 포트 하나뿐이라 스냅할 대상이 없다).
                     model = Transition(
                         source=src_vm.model,
                         target=tgt_vm.model,
                         trigger=CompletionEvent(name=event_name),
-                        target_port=target_port,
                     )
                     tvm = TransitionViewModel(
                         model=model, source_vm=src_vm, target_vm=tgt_vm

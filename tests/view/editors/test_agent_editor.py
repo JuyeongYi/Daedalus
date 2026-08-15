@@ -62,14 +62,6 @@ def test_transfer_on_panel_edits_agent_output_ports(qapp):
     assert panel._transfer_on is agent.transfer_on  # 같은 리스트를 편집해야 반영된다
 
 
-def test_entry_paths_panel_edits_agent_entry_paths(qapp):
-    from daedalus.view.editors.agent_editor import AgentEditor
-
-    agent = _make_agent()
-    editor = AgentEditor(agent)
-    assert editor._entry_paths_panel._transfer_on is agent.entry_paths
-
-
 def test_output_events_come_from_transfer_on(qapp):
     """캔버스 포트 소스 — transfer_on이 단일 진실이다."""
     agent = _make_agent(transfer_on=[EventDef(name="ok"), EventDef(name="fail")])

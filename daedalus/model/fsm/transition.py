@@ -51,6 +51,7 @@ class Transition:
     # 데이터
     data_map: dict[str, str] = field(default_factory=dict)
     skill_ref: TransferSkill | None = None
-    # WP-IC — 타깃 입력 포트 이름(target.skill_ref.entry_paths의 EventDef.name 참조).
-    # 빈 값 = 기본 포트. rename 고아는 Validator(dangling_target_port)가 검출한다.
+    # legacy (WP-IP 퇴역) — 타깃 입력 포트 이름. 입력 포트 선언(entry_paths)이
+    # 퇴역해 렌더·컴파일·검증 어디서도 읽지 않는다. 구버전 파일 왕복 보존용으로만
+    # 남아 있으며 새 전이는 항상 빈 값이다.
     target_port: str = ""

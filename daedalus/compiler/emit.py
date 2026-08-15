@@ -727,6 +727,9 @@ def _next_steps_section(component, project) -> list[str]:
     if not placements:
         return []
     graph = project.graph
+    events_by_name = {
+        e.name: e for e in getattr(component, "transfer_on", None) or []
+    }
     lines: list[str] = []
     for placement in placements:
         for t in graph.transitions:
@@ -736,7 +739,14 @@ def _next_steps_section(component, project) -> list[str]:
             if invoke is None:
                 continue
             cond = _next_step_condition(t)
-            lines.append(f"- [{cond}] → {invoke}")
+            line = f"- [{cond}] → {invoke}"
+            # WP-IP — 도착 노드의 입력 포트 선언이 퇴역했으므로, 이 갈래가
+            # 무엇을 뜻하는지(출력 포트 description)는 호출하는 쪽 산출에 싣는다.
+            trig_name = getattr(getattr(t, "trigger", None), "name", "")
+            ev = events_by_name.get(trig_name)
+            if ev is not None and (ev.description or "").strip():
+                line += f" — {ev.description.strip()}"
+            lines.append(line)
     if not lines:
         return []
     return [
@@ -753,8 +763,11 @@ def _next_steps_section(component, project) -> list[str]:
 
 _PROGRESS_UPDATE_NOTE = (
     "전이 시 `state/__progress__.json`을 갱신하라 — 이 스킬을 `completed`에 추가하고 "
-    "`current`를 다음 대상으로, `prev`에 자신(이 스킬 이름)을, `note`에 인계 한 줄을, "
-    "`updated`에 현재 시각(ISO8601)을 남겨라. 에이전트에게 위임하는 전이는 두 번 갱신한다: "
+    "`current`를 다음 대상으로, `prev`에 자신(이 스킬 이름)을, `note`에 **어느 갈래"
+    "(출력 이벤트 이름)로 넘어가는지와 인계 한 줄**을, "
+    "`updated`에 현재 시각(ISO8601)을 남겨라. 도착 스킬은 (`prev`, `note`의 갈래)로 "
+    "자기가 어떤 경로로 진입했는지 판별한다 — 갈래를 빼먹으면 같은 출처의 서로 다른 "
+    "결과를 구분할 수 없다. 에이전트에게 위임하는 전이는 두 번 갱신한다: "
     "위임 직전 `current`를 에이전트 이름으로, 위임 완료 후 후속 스킬 이름으로(이때도 `prev`는 "
     "위임한 스킬 이름으로 남긴다)."
 )
@@ -811,33 +824,6 @@ def _entry_incoming_transitions(component, project) -> list:
     ]
 
 
-def _entry_context_groups(component, project) -> list[tuple[str | None, str, list]]:
-    """(포트 이름 또는 None(기본 경로), EventDef.description, 전이 목록) 튜플 리스트.
-
-    정렬: 포트는 entry_paths 선언 순서(기본 경로 마지막). 그룹 내 전이는 호출부가
-    출처 이름순으로 정렬한다. incoming이 있는 포트만 배출.
-    """
-    incoming = _entry_incoming_transitions(component, project)
-    if not incoming:
-        return []
-    entry_paths = getattr(component, "entry_paths", None) or []
-    name_set = {e.name for e in entry_paths}
-    groups: dict[str, list] = {}
-    for t in incoming:
-        # target_port가 entry_paths에 없는 이름(dangling)이면 기본 경로로 수렴
-        # (캔버스 렌더의 "이름 불일치 → 기본 포트" 규칙과 동일한 관용).
-        key = t.target_port if t.target_port in name_set else ""
-        groups.setdefault(key, []).append(t)
-
-    ordered: list[tuple[str | None, str, list]] = []
-    for edef in entry_paths:
-        if edef.name in groups:
-            ordered.append((edef.name, edef.description, groups[edef.name]))
-    if "" in groups:
-        ordered.append((None, "", groups[""]))
-    return ordered
-
-
 def _entry_source_ref_name(t) -> str:
     """정렬용 — 전이 출처의 표시 이름(skill_ref.name)."""
     ref = getattr(t.source, "skill_ref", None)
@@ -869,6 +855,14 @@ def _entry_item_line(t, project) -> str:
             line += f" (이때 `prev`는 위임을 시작한 스킬 — {names})"
     else:
         line = f"- `{name}`에서{cond_str}로 진입"
+    # 출처가 그 출력 포트에 적어 둔 설명 — "무엇을 넘기는가"는 호출자가 말한다
+    # (WP-IP: 도착 노드의 entry_paths 선언은 퇴역, 호출 계약(WP-CT)과 같은 원칙).
+    trig_name = getattr(getattr(t, "trigger", None), "name", "")
+    if trig_name and ref is not None:
+        for ev in getattr(ref, "transfer_on", None) or []:
+            if ev.name == trig_name and (ev.description or "").strip():
+                line += f" — {ev.description.strip()}"
+                break
     if t.skill_ref is not None:
         desc = f"(`{t.skill_ref.description}`)" if t.skill_ref.description else ""
         line += f": 전이 스킬 `{t.skill_ref.name}`{desc}의 지침을 수행한 상태다"
@@ -876,29 +870,31 @@ def _entry_item_line(t, project) -> str:
 
 
 def _entry_context_section(component, project) -> list[str]:
-    """WP-IC Part C-1: "## 진입 맥락" 단락 — 작업 재개 프리앰블 뒤·본문 앞.
+    """"## 진입 맥락" 단락 — 작업 재개 프리앰블 뒤·본문 앞.
+
+    **그래프에서만 유도한다(WP-IP).** 도착 노드의 entry_paths(입력 포트 선언)는
+    퇴역했다 — (출처, 트리거)가 이미 경로를 특정하고, 무엇을 넘기는지는 출처가
+    자기 출력 포트 description에 적는다(계약 카드 퇴역과 같은 원칙: 인터페이스
+    선언은 값을 만드는 쪽에만 둔다). 경로별로 다르게 행동해야 하면 그 지시는
+    도착 스킬 본문에 쓴다.
 
     배치된 전역 ProceduralSkill/DeclarativeSkill에서 incoming 전이가 1개 이상일
     때만 배출(게이트는 호출부). incoming이 없으면 빈 리스트(단락 생략, 하위 호환).
     """
-    groups = _entry_context_groups(component, project)
-    if not groups:
+    incoming = _entry_incoming_transitions(component, project)
+    if not incoming:
         return []
     blocks: list[str] = [
         "## 진입 맥락",
         (
-            "`state/__progress__.json`의 `prev`를 확인하고 아래에서 해당 출처 항목을 따르라. "
-            "에이전트 위임에서 복귀한 경우 `prev`에는 에이전트가 아니라 위임을 시작한 "
-            "스킬 이름이 남아 있다."
+            "`state/__progress__.json`의 `prev`(직전 스킬)와 `note`(넘어온 갈래)를 "
+            "확인하고 아래에서 해당 출처 항목을 따르라. 같은 출처의 항목이 여럿이면 "
+            "`note`에 기록된 갈래(출력 이벤트 이름)로 특정한다. 에이전트 위임에서 "
+            "복귀한 경우 `prev`에는 에이전트가 아니라 위임을 시작한 스킬 이름이 남아 있다."
         ),
     ]
-    for name, desc, transitions in groups:
-        heading = f"### 경로: {name}" if name is not None else "### 기본 경로"
-        blocks.append(heading)
-        if desc:
-            blocks.append(desc)
-        ordered = sorted(transitions, key=_entry_source_ref_name)
-        blocks.append("\n".join(_entry_item_line(t, project) for t in ordered))
+    ordered = sorted(incoming, key=_entry_source_ref_name)
+    blocks.append("\n".join(_entry_item_line(t, project) for t in ordered))
     return blocks
 
 

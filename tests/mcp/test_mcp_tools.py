@@ -263,10 +263,12 @@ def test_set_transfer_on_accepts_bare_strings(tools, window):
     assert [e.name for e in comp.transfer_on] == ["a", "b"]
 
 
-def test_set_entry_paths_defines_input_ports(tools, window):
-    tools.set_entry_paths("rules", [{"name": "from-init"}])
+def test_set_entry_paths_is_retired(tools, window):
+    """WP-IP — 입력 경로 선언은 퇴역했다. 빈 목록(legacy 제거)만 허용."""
+    with pytest.raises(ValueError, match="퇴역"):
+        tools.set_entry_paths("rules", [{"name": "from-init"}])
     comp = next(s for s in window._project.skills if s.name == "rules")
-    assert [e.name for e in comp.entry_paths] == ["from-init"]
+    assert comp.entry_paths == []
 
 
 def test_connect_states_with_trigger_and_guard(tools, window):
@@ -283,27 +285,31 @@ def test_set_transition_updates_existing_edge(tools, window):
     tools.create_state("a")
     tools.create_state("b")
     tools.connect_states("a", "b")
-    tools.set_transition("a", "b", trigger="done", target_port="main")
+    tools.set_transition("a", "b", trigger="done")
 
     trans = window._project_vm.transition_vms[0].model
     assert trans.trigger.name == "done"
-    assert trans.target_port == "main"
 
-    # 한 undo로 두 속성이 함께 되돌아온다 (MacroCommand)
     tools.undo()
     assert trans.trigger is None
-    assert trans.target_port == ""
 
 
 def test_set_transition_none_leaves_untouched(tools, window):
     tools.create_state("a")
     tools.create_state("b")
     tools.connect_states("a", "b", trigger="keep")
-    tools.set_transition("a", "b", target_port="p")
+    tools.set_transition("a", "b")
 
     trans = window._project_vm.transition_vms[0].model
     assert trans.trigger.name == "keep"  # None이었으므로 유지
-    assert trans.target_port == "p"
+
+
+def test_set_transition_rejects_target_port(tools, window):
+    tools.create_state("a")
+    tools.create_state("b")
+    tools.connect_states("a", "b")
+    with pytest.raises(ValueError, match="퇴역"):
+        tools.set_transition("a", "b", target_port="main")
 
 
 def test_set_transition_empty_string_clears(tools, window):

@@ -115,18 +115,12 @@ class StateNodeItem(DraggableItemMixin, QGraphicsItem):
         return []
 
     def _input_event_defs(self) -> list[EventDef]:
-        """WP-IC — skill_ref.entry_paths에서 EventDef 목록 반환.
+        """입력 포트는 항상 기본 1개 (WP-IP — entry_paths 선언 퇴역).
 
-        빈 리스트 = 기본 포트 1개(암묵, 이름 없음) — 기존 렌더와 호환.
+        (출처, 트리거)가 이미 경로를 특정하므로 도착 노드가 입력 포트를 이름으로
+        가를 이유가 없다 — legacy 파일에 entry_paths가 남아 있어도 렌더는 기본
+        포트 하나다(target_port 앵커도 자연히 무시된다).
         """
-        model = self._state_vm.model
-        if not hasattr(model, "skill_ref"):
-            return []
-        ref = model.skill_ref  # type: ignore[union-attr]
-        if ref is None:
-            return []
-        if hasattr(ref, "entry_paths"):
-            return list(ref.entry_paths)  # type: ignore[union-attr]
         return []
 
     def set_ref_count(self, n: int) -> None:

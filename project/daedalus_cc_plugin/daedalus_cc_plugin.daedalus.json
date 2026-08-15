@@ -276,18 +276,7 @@
         }
       ],
       "call_agents": [],
-      "entry_paths": [
-        {
-          "name": "fresh",
-          "color": "#44aa88",
-          "description": "방금 만든 례약한 그래프 — 모든 분기를 처음 선언한다"
-        },
-        {
-          "name": "repair",
-          "color": "#ff8844",
-          "description": "검증이 되돌려보냈다 — VerifyResult.blocking에 적힌 것만 고친다"
-        }
-      ]
+      "entry_paths": []
     },
     {
       "kind": "procedural_skill",
@@ -426,18 +415,7 @@
         }
       ],
       "call_agents": [],
-      "entry_paths": [
-        {
-          "name": "after-design",
-          "color": "#44aa88",
-          "description": "설계 파이프라인을 끝내고 온 정상 경로"
-        },
-        {
-          "name": "audit",
-          "color": "#ffaa44",
-          "description": "기존 프로젝트의 현황부터 점검하러 온 경로"
-        }
-      ]
+      "entry_paths": []
     },
     {
       "kind": "procedural_skill",
@@ -1091,7 +1069,14 @@
         ]
       },
       "edge_layout": {},
-      "entry_paths": []
+      "entry_paths": [],
+      "transfer_on": [
+        {
+          "name": "done",
+          "color": "#cc6666",
+          "description": ""
+        }
+      ]
     }
   ],
   "reference_placements": [
@@ -1108,8 +1093,8 @@
     },
     {
       "skill_name": "cc-plugin-spec",
-      "x": 920.0,
-      "y": 470.0,
+      "x": 921.1500000000002,
+      "y": 650.5499999999998,
       "connected_states": [
         "plugin-verify",
         "plugin-compile",
@@ -1496,49 +1481,6 @@
         "target_port": ""
       },
       {
-        "id": "317479b5fa864778bc5aee68b0be6d0a",
-        "source": "fbcf4809d9d54e4a89446a6bb69e317f",
-        "target": "17d8711d1a4e4c7f89775b5a25c4f064",
-        "type": "external",
-        "trigger": {
-          "kind": "completion",
-          "name": "existing"
-        },
-        "guard": {
-          "evaluation": {
-            "kind": "llm_evaluation",
-            "prompt": "이미 배치된 그래프가 있어 현황부터 파악해야 하는 경우"
-          }
-        },
-        "on_guard_check": [],
-        "on_traverse_start": [],
-        "on_traverse": [],
-        "on_traverse_end": [],
-        "custom_events": {},
-        "data_map": {},
-        "skill_ref": null,
-        "target_port": "audit"
-      },
-      {
-        "id": "9e2f7ca55bc94b428cbb892891ad3e8a",
-        "source": "5be77a4d502447caaf04886480b7f071",
-        "target": "0a71735c326c4d5ab8557b824063c041",
-        "type": "external",
-        "trigger": {
-          "kind": "completion",
-          "name": "done"
-        },
-        "guard": null,
-        "on_guard_check": [],
-        "on_traverse_start": [],
-        "on_traverse": [],
-        "on_traverse_end": [],
-        "custom_events": {},
-        "data_map": {},
-        "skill_ref": null,
-        "target_port": "fresh"
-      },
-      {
         "id": "f2db256870b94d1b91c78009772e1ba2",
         "source": "5be77a4d502447caaf04886480b7f071",
         "target": "f779ad58ae474a93baf9193294c70ad9",
@@ -1582,30 +1524,6 @@
         "target_port": ""
       },
       {
-        "id": "69cec1b067154cbe9425741411f7f7ab",
-        "source": "17d8711d1a4e4c7f89775b5a25c4f064",
-        "target": "0a71735c326c4d5ab8557b824063c041",
-        "type": "external",
-        "trigger": {
-          "kind": "completion",
-          "name": "fix-needed"
-        },
-        "guard": {
-          "evaluation": {
-            "kind": "llm_evaluation",
-            "prompt": "남은 문제가 포트·트리거·가드·블랙보드 접근 선언 등 의미론 결함일 때"
-          }
-        },
-        "on_guard_check": [],
-        "on_traverse_start": [],
-        "on_traverse": [],
-        "on_traverse_end": [],
-        "custom_events": {},
-        "data_map": {},
-        "skill_ref": null,
-        "target_port": "repair"
-      },
-      {
         "id": "eb85ec1396714c2a8c339d0358f0dcd5",
         "source": "17d8711d1a4e4c7f89775b5a25c4f064",
         "target": "746db47c57db4d249cd543d3f317b4e4",
@@ -1630,44 +1548,6 @@
         "target_port": ""
       },
       {
-        "id": "955e833c19ac40de941afa3329669588",
-        "source": "f779ad58ae474a93baf9193294c70ad9",
-        "target": "17d8711d1a4e4c7f89775b5a25c4f064",
-        "type": "external",
-        "trigger": {
-          "kind": "completion",
-          "name": "done"
-        },
-        "guard": null,
-        "on_guard_check": [],
-        "on_traverse_start": [],
-        "on_traverse": [],
-        "on_traverse_end": [],
-        "custom_events": {},
-        "data_map": {},
-        "skill_ref": null,
-        "target_port": "after-design"
-      },
-      {
-        "id": "00974bd49aac4ace9f992043bea2001a",
-        "source": "5ee3bc1c5580488baa3f242983d19d11",
-        "target": "17d8711d1a4e4c7f89775b5a25c4f064",
-        "type": "external",
-        "trigger": {
-          "kind": "completion",
-          "name": "done"
-        },
-        "guard": null,
-        "on_guard_check": [],
-        "on_traverse_start": [],
-        "on_traverse": [],
-        "on_traverse_end": [],
-        "custom_events": {},
-        "data_map": {},
-        "skill_ref": null,
-        "target_port": "after-design"
-      },
-      {
         "id": "d171e12704d94f7ba310e8fbbb9d97c3",
         "source": "34564e32d3254f2fa93c60ff2e1295e1",
         "target": "b9a8dd47c5014e8e86c1a7fabc27b956",
@@ -1690,6 +1570,101 @@
         "id": "73405d2a58bf40baa88ee5255bc54114",
         "source": "b9a8dd47c5014e8e86c1a7fabc27b956",
         "target": "5ee3bc1c5580488baa3f242983d19d11",
+        "type": "external",
+        "trigger": {
+          "kind": "completion",
+          "name": "done"
+        },
+        "guard": null,
+        "on_guard_check": [],
+        "on_traverse_start": [],
+        "on_traverse": [],
+        "on_traverse_end": [],
+        "custom_events": {},
+        "data_map": {},
+        "skill_ref": null,
+        "target_port": ""
+      },
+      {
+        "id": "27b65abd37e0461e935775cf6f1bc3e2",
+        "source": "fbcf4809d9d54e4a89446a6bb69e317f",
+        "target": "17d8711d1a4e4c7f89775b5a25c4f064",
+        "type": "external",
+        "trigger": {
+          "kind": "completion",
+          "name": "existing"
+        },
+        "guard": null,
+        "on_guard_check": [],
+        "on_traverse_start": [],
+        "on_traverse": [],
+        "on_traverse_end": [],
+        "custom_events": {},
+        "data_map": {},
+        "skill_ref": null,
+        "target_port": ""
+      },
+      {
+        "id": "c1637db902b44b4c8f3bced39f1fee99",
+        "source": "5be77a4d502447caaf04886480b7f071",
+        "target": "0a71735c326c4d5ab8557b824063c041",
+        "type": "external",
+        "trigger": {
+          "kind": "completion",
+          "name": "done"
+        },
+        "guard": null,
+        "on_guard_check": [],
+        "on_traverse_start": [],
+        "on_traverse": [],
+        "on_traverse_end": [],
+        "custom_events": {},
+        "data_map": {},
+        "skill_ref": null,
+        "target_port": ""
+      },
+      {
+        "id": "2c052d63ad6548c294788948414aa60d",
+        "source": "17d8711d1a4e4c7f89775b5a25c4f064",
+        "target": "0a71735c326c4d5ab8557b824063c041",
+        "type": "external",
+        "trigger": {
+          "kind": "completion",
+          "name": "fix-needed"
+        },
+        "guard": null,
+        "on_guard_check": [],
+        "on_traverse_start": [],
+        "on_traverse": [],
+        "on_traverse_end": [],
+        "custom_events": {},
+        "data_map": {},
+        "skill_ref": null,
+        "target_port": ""
+      },
+      {
+        "id": "49169ecf26af41188b2a328cc86b5a43",
+        "source": "f779ad58ae474a93baf9193294c70ad9",
+        "target": "17d8711d1a4e4c7f89775b5a25c4f064",
+        "type": "external",
+        "trigger": {
+          "kind": "completion",
+          "name": "done"
+        },
+        "guard": null,
+        "on_guard_check": [],
+        "on_traverse_start": [],
+        "on_traverse": [],
+        "on_traverse_end": [],
+        "custom_events": {},
+        "data_map": {},
+        "skill_ref": null,
+        "target_port": ""
+      },
+      {
+        "id": "6c985c7e945a431788c94b020f28bcf7",
+        "source": "5ee3bc1c5580488baa3f242983d19d11",
+        "target": "17d8711d1a4e4c7f89775b5a25c4f064",
         "type": "external",
         "trigger": {
           "kind": "completion",
@@ -1735,23 +1710,24 @@
       -95.04725897920603
     ],
     "17d8711d1a4e4c7f89775b5a25c4f064": [
-      749.9776444480975,
-      242.6511054491657
+      828.1776444480976,
+      210.4511054491657
     ],
     "746db47c57db4d249cd543d3f317b4e4": [
-      1207.1543478260874,
-      279.37608695652165
+      1682.104347826087,
+      236.82608695652164
     ],
     "5ee3bc1c5580488baa3f242983d19d11": [
-      1172.8000000000002,
-      -101.0
+      1516.6500000000005,
+      -106.75
     ],
     "b9a8dd47c5014e8e86c1a7fabc27b956": [
-      965.0,
-      -215.0
+      1181.2,
+      -110.35000000000002
     ]
   },
   "edge_layout": {},
   "emit_progress_hook": true,
-  "build_target": "local"
+  "build_target": "local",
+  "mcp_server_defs": {}
 }

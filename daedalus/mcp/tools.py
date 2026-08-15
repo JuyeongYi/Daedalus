@@ -840,12 +840,20 @@ class DaedalusTools:
         target_port: str | None = None,
         agent: str = "",
     ) -> dict[str, Any]:
-        """이미 있는 전이에 트리거·가드·입력 포트를 설정한다.
+        """이미 있는 전이에 트리거·가드를 설정한다.
 
         None을 넘긴 항목은 건드리지 않는다. 빈 문자열("")을 넘기면 그 항목을 지운다.
+        target_port는 퇴역했다(WP-IP) — 값을 넘기면 거부한다.
         """
         from daedalus.view.commands.attr_commands import SetAttrCmd
         from daedalus.view.commands.base import MacroCommand
+
+        if target_port:
+            raise ValueError(
+                "입력 포트(target_port)는 퇴역했습니다 — (출처, 트리거)가 경로를 "
+                "특정합니다. 이 갈래가 무엇을 뜻하는지는 출발 스킬의 transfer_on "
+                "description에 적으세요."
+            )
 
         vm, _ = self._scope(agent)
         tvm = self._find_transition_vm(source, target, vm)
@@ -871,16 +879,6 @@ class DaedalusTools:
                     script=f'set_transition("{source}", "{target}", guard="{guard}")',
                 )
             )
-        if target_port is not None:
-            cmds.append(
-                SetAttrCmd(
-                    trans,
-                    "target_port",
-                    target_port,
-                    label=f"전이 '{source}→{target}' 입력 포트: {target_port or '(기본)'}",
-                    script=f'set_transition("{source}", "{target}", target_port="{target_port}")',
-                )
-            )
         if not cmds:
             return {"transition": [source, target], "changed": []}
         vm.execute(
@@ -892,7 +890,6 @@ class DaedalusTools:
             "transition": [source, target],
             "trigger": trigger,
             "guard": guard,
-            "target_port": target_port,
         }
 
     # --- 포트 (출력 이벤트 / 입력 경로) ---
@@ -946,22 +943,28 @@ class DaedalusTools:
     ) -> dict[str, Any]:
         """스킬/에이전트의 **입력 포트**를 정의한다 (어떤 경로로 이 노드에 들어왔는지).
 
-        events 형식은 set_transfer_on과 같다. 전이 쪽에서는 target_port로 지목한다.
+        입력 포트 선언은 퇴역했다(WP-IP) — 빈 목록(기존 선언 제거)만 허용한다.
         """
         from daedalus.view.commands.attr_commands import SetAttrCmd
 
+        if events:
+            raise ValueError(
+                "입력 경로(entry_paths)는 퇴역했습니다 — (출처, 트리거)가 경로를 "
+                "특정합니다. 갈래의 의미는 출발 스킬의 transfer_on description에, "
+                "경로별 대응은 도착 스킬 본문에 적으세요. 빈 목록([])은 legacy "
+                "선언 제거용으로만 허용됩니다."
+            )
         comp = self._find_component(name, agent=agent)
-        defs = self._make_event_defs(events)
         self._vm.execute(
             SetAttrCmd(
                 comp,
                 "entry_paths",
-                defs,
-                label=f"'{name}' 입력 경로 {len(defs)}개 설정",
-                script=f'set_entry_paths("{name}", {[d.name for d in defs]})',
+                [],
+                label=f"'{name}' legacy 입력 경로 제거",
+                script=f'set_entry_paths("{name}", [])',
             )
         )
-        return {"component": name, "entry_paths": [d.name for d in defs]}
+        return {"component": name, "entry_paths": []}
 
     # --- 블랙보드 ---
 

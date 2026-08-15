@@ -285,48 +285,22 @@ daedalus/
 - `render_markdown(sections, depth=1) -> str`(section.py): 구버전(sections 트리) 파일을 로드할 때 `body`로 평탄화하는 단방향 마이그레이션 헬퍼. `serialize.py`의 `_deser_body`가 `body` 키 부재 + `sections` 키 존재 시에만 호출한다(경고 없음 — 정상 마이그레이션 경로).
 - `EventDef`: TransferOn 스킬의 출력 이벤트 정의. 노드 출력 포트에 대응 (`name`, `color`, `description`)
 
-### 입력 포트 (entry_paths / target_port) — WP-IC
+### 입력 포트 퇴역 (WP-IP) — 인터페이스 선언은 값을 만드는 쪽에만
 
-- **입력 상태**(어떤 상태로부터 전이) ≠ **입력 포트**(이 상태에 이 경로로 접근) — 출력 쪽은
-  `transfer_on`(출력 포트)이 있었지만 입력 쪽은 뷰 전용 렌더뿐 모델 개념이 없었다. 도착 스킬이
-  자기가 어디서·어떤 경로로 진입했는지 서술할 수 있도록 입력 포트를 모델·캔버스·컴파일러
-  전 계층에 추가했다.
-- **모델:** `entry_paths: list[EventDef] = field(default_factory=list)` —
-  `ProceduralSkill`/`DeclarativeSkill`/`AgentDefinition` 공용(`TransferSkill`은 입출력 1개
-  고정이라 대상 아님). 빈 리스트 = 기본 포트 1개(암묵, 이름 없음) — 기존 파일·기존 렌더와
-  하위 호환. `Transition.target_port: str = ""` — entry_paths의 EventDef 이름을 문자열로
-  참조(빈 값=기본 포트, rename 고아는 `dangling_target_port`가 검출). 직렬화는 둘 다 왕복하고
-  구버전 키 부재 시 기본값(경고 없음).
-- **캔버스 렌더·수렴(Part B):** `StateNodeItem._input_event_defs()`가 skill_ref.entry_paths를
-  읽어 입력 포트 수(`max(1, len(entry_paths))`)와 라벨(EventDef.color, 출력 포트와 대칭 —
-  포트 오른쪽·본체 안·좌측 정렬)을 렌더한다. `input_port_scene_pos(port_name)`이 이름으로
-  포트 위치를 조회하므로 `TransitionEdgeItem.update_path`가 `Transition.target_port`로 도착점을
-  앵커한다 — **같은 target_port를 향하는 여러 전이는 자연히 한 점에 수렴**한다(구버전의
-  incoming edge 개수 기반 팬아웃 방식은 폐지). `FsmScene.end_transition_drag`가 드롭 지점에서
-  `nearest_input_port_name`으로 가장 가까운 포트에 스냅해 target_port를 기록한다(**선언된
-  entry_paths가 없을 때만 빈 값** — 선언이 1개라도 있으면 그 이름을 기록해 1개 선언이
-  no-op이 되지 않게 한다. 리뷰 반영).
-- **편집 UI:** 기존 `_TransferOnPanel`(transfer_on 편집, `list[EventDef]` 범용 위젯)을 그대로
-  재사용해 ProceduralSkill/DeclarativeSkill/AgentDefinition 에디터에 "⇤ 입력 경로" 패널을
-  추가했다 — transfer_on(출력 이벤트) 편집과 대칭 위치·패턴(입력 경로 기본색 `#44aa88` —
-  출력 포트 기본색과 시각 구분). **에이전트의 entry_paths는 캔버스 렌더·수렴과
-  dangling_target_port 검증에만 쓰이고 컴파일 산출에는 반영되지 않는다**(진입 맥락 단락은
-  스킬 한정 — 에이전트 .md 반영은 후속 후보).
-- **컴파일러(Part C):** 배치된 전역 ProceduralSkill/DeclarativeSkill에서 incoming 전이가 1개
-  이상이면 "## 작업 재개" 프리앰블 뒤·본문 앞에 `_entry_context_section`이 "## 진입 맥락"
-  단락을 배출한다. entry_paths 선언 순서로 포트별 그룹(`### 경로: <name>` + EventDef.description,
-  기본 경로는 `### 기본 경로`로 항상 마지막)을 만들고, 그룹 안에서는 출처 이름순으로 항목을
-  나열한다("- `<출처>`에서 [조건]로 진입" — 조건은 `_transition_condition` 재사용, 전이에
-  TransferSkill이 있으면 지침 수행 문구 합류, 출처가 에이전트 placement면 "에이전트 `X`의
-  위임 완료 후 … (이때 `prev`는 위임을 시작한 스킬 — `Y`)" — 규약상 prev에는 에이전트가
-  아니라 위임 스킬 이름이 남으므로 병기해야 prev로 항목을 특정할 수 있다. 도입부에도
-  에이전트 복귀 시 prev 의미 안내 1문장). entry_paths에 없는 target_port(rename 고아)는
-  기본 경로로 수렴한다. incoming 0개 배치·미배치·로컬 스킬은 산출 변화 없음(하위 호환).
-  동일 출처가 서로 다른 두 포트로 진입하는 경우 prev만으로는 그룹을 특정할 수 없는 한계가
-  남아 있다 — 진행 규약에 포트를 싣는 것(`prev_port` 등)은 후속 후보.
-- **검증:** `dangling_target_port` — target_port가 비어있지 않은데 타깃 skill_ref의
-  entry_paths 이름 집합에 없으면 경고(`trigger_unknown_event`의 입력판). 타깃이 skill_ref
-  없는 상태면 스킵.
+- **원칙(사용자 확정):** 함수(도착 노드)가 자기 입력 경로를 알 필요가 없다 — 호출하는 쪽이 맞춘다.
+  (출처, 트리거)가 이미 경로를 특정하므로 `entry_paths`(입력 포트 선언)와 `Transition.target_port`는
+  **퇴역**했다. 계약 카드 퇴역(WP-CT)과 같은 원칙이다: 갈래의 의미는 출발 스킬이 자기 `transfer_on`
+  description에 적고, 경로별 대응은 도착 스킬 본문에 쓴다. 실증: unreal-profiler 실사용 세션이 쓴
+  target_port 6개 전부가 (출처, 트리거) 쌍으로 특정되는 정보의 이름표 중복이었다.
+- **호출 시 정보가 담긴다(컴파일):** ① 출발 스킬 "## 다음 단계" 항목에 그 갈래의 transfer_on
+  description 병기("— <desc>"). ② `_PROGRESS_UPDATE_NOTE`가 `note`에 **어느 갈래(출력 이벤트
+  이름)**를 기록하도록 지시 — 도착 스킬은 (`prev`, `note`의 갈래)로 진입 경로를 판별한다.
+  ③ 도착 스킬 "## 진입 맥락"은 그래프에서만 유도(포트 그룹 헤딩 없음, 출처 이름순 항목 + 출처의
+  transfer_on description 병기).
+- **잔재 처리:** 모델 필드(`entry_paths`/`target_port`)는 구버전 파일 왕복 보존용으로만 남는다 —
+  렌더(입력 포트 항상 기본 1개, legacy target_port 앵커 무시)·컴파일·검증(`dangling_target_port`
+  규칙 삭제) 어디서도 읽지 않는다. 편집 UI("⇤ 입력 경로" 패널) 제거. MCP `set_entry_paths`는 빈
+  목록(legacy 제거)만 허용, `set_transition`/`connect_states`의 target_port 값은 거부.
 
 ### PluginProject.graph = 워크플로 백킹 머신
 
