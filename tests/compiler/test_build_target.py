@@ -279,6 +279,31 @@ def test_local_mcp_wiring_is_idempotent(tmp_path):
     assert settings["enabledMcpjsonServers"] == ["daedalus"]
 
 
+def test_extra_server_defs_fill_gaps(tmp_path):
+    """호출 환경이 아는 정의(예: Daedalus 자신의 서버)가 빈 자리를 채운다 —
+    앱이 이미 아는 것을 사용자에게 등록시키지 않는다."""
+    project = _mcp_project()  # mcp_server_defs 없음
+    result = compile_project(
+        project, tmp_path, extra_server_defs={"daedalus": dict(_DAEDALUS_DEF)},
+    )
+    assert result.ok
+    mcp = json.loads((tmp_path / ".mcp.json").read_text(encoding="utf-8"))
+    assert mcp["mcpServers"]["daedalus"] == _DAEDALUS_DEF
+    assert not any(w.rule == "missing_mcp_server_def" for w in result.warnings)
+
+
+def test_project_defs_override_extra(tmp_path):
+    """프로젝트에 명시된 정의가 환경 주입보다 우선한다 — 사용자가 적은 것이 진실."""
+    mine = {"type": "http", "url": "http://127.0.0.1:9000/mcp"}
+    project = _mcp_project(mcp_server_defs={"daedalus": mine})
+    result = compile_project(
+        project, tmp_path, extra_server_defs={"daedalus": dict(_DAEDALUS_DEF)},
+    )
+    assert result.ok
+    mcp = json.loads((tmp_path / ".mcp.json").read_text(encoding="utf-8"))
+    assert mcp["mcpServers"]["daedalus"] == mine
+
+
 def test_local_missing_server_def_warns(tmp_path):
     """참조는 있는데 정의가 없으면 배선하지 못한 사실을 경고로 알린다 —
     조용히 빠지면 설치 후 스킬이 죽은 도구를 가리키는 이유를 알 수 없다."""

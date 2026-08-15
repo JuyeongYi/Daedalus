@@ -1280,7 +1280,12 @@ class MainWindow(QMainWindow):
         from daedalus.compiler import compile_project
 
         files_dir = Path(self._current_path).parent / "files" if self._current_path else None
-        result = compile_project(self._project, out_dir, files_dir=files_dir)
+        result = compile_project(
+            self._project, out_dir, files_dir=files_dir,
+            # 앱이 이미 아는 서버 정의(자기 자신의 daedalus 서버)를 주입한다 —
+            # 아는 것을 사용자에게 등록시키지 않는다(WP-MW).
+            extra_server_defs=self._known_server_defs(),
+        )
         if not result.ok:
             # 에러 — 검증 패널에 동봉(경고 포함) 표시
             self._validation_panel.set_errors(result.errors + result.warnings)
@@ -1301,6 +1306,19 @@ class MainWindow(QMainWindow):
             # 인지하게 두지 않는다.
             self._validation_panel.set_errors(result.warnings)
             self._show_validation_dock()
+
+    def _known_server_defs(self) -> dict[str, dict]:
+        """앱이 스스로 아는 MCP 서버 정의 — 지금은 자기 자신(daedalus)뿐.
+
+        서버가 떠 있으면 실제 포트를, 아니면 기본 포트를 쓴다 — MCP를 끄고
+        컴파일해도 배선은 나가야 설치 후 앱을 켰을 때 바로 붙는다.
+        """
+        from daedalus.mcp import endpoint
+
+        url = getattr(self._mcp_service, "url", None) or endpoint.url_for(
+            endpoint.DEFAULT_PORT
+        )
+        return {"daedalus": {"type": "http", "url": url}}
 
     # --- MCP 서버 (WP-MCP) ---
 

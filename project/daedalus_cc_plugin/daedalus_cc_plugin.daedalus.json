@@ -616,6 +616,73 @@
       ],
       "call_agents": [],
       "entry_paths": []
+    },
+    {
+      "kind": "procedural_skill",
+      "id": "dd46b90990514f9f8712189ad9b53a25",
+      "name": "graph-tools",
+      "description": "설계된 워크플로가 새 CLI 도구나 MCP 서버를 필요로 하는지 점검하고 조달 방법을 정한다.",
+      "when_to_use": "구조·블랙보드 설계가 끝났고, 각 단계가 실제로 어떤 도구로 일할지 아직 확정하지 않았을 때.",
+      "body": "# 도구 점검 — 각 단계는 무엇으로 일하는가\n\n구조가 완성돼도 단계가 쓸 도구가 없으면 그 지침은 실행 불가능한 소망이다.\n배치된 노드를 하나씩 보며 **\"이 단계는 어떤 도구로 이 일을 하는가\"**를 묻는다.\n\n## 판정 순서\n\n노드마다 필요한 능력을 적고, 아래 순서로 조달 방법을 고른다. 위가 쌀수록 좋다 —\n아래로 갈수록 만들고 유지할 것이 늘어난다.\n\n1. **CC 내장 도구로 충분** (Read/Write/Edit/Bash/Glob/Grep/WebFetch …)\n   → 조달 없음. 본문 작성 단계에서 `allowed_tools`만 좁힌다.\n2. **기존 MCP 서버가 이미 제공** (`mcp__<서버>__<도구>`)\n   → 도구 이름을 기록해 두고, **서버 정의를 `set_mcp_server_def`로 등록**한다.\n   정의(이름 → `.mcp.json` 객체)가 없으면 로컬 빌드가 설치 배선을 못 해\n   `missing_mcp_server_def` 경고가 난다.\n3. **반복 스크립트/검증 로직이 필요** (파서, 포맷 변환, 일괄 검사)\n   → CLI 스크립트를 `files/`에 동봉하고 본문이 `${ROOT}/files/…`로 참조,\n   실행 단계의 `allowed_tools`에 `Bash`를 연다. 프롬프트로 매번 시키는 것보다\n   스크립트 하나가 결정적이고 싸다.\n4. **새 MCP 서버를 만들어야 함** (상태 유지 서비스, GUI 연동, 외부 시스템)\n   → 가장 비싸다. 정말 2·3으로 안 되는지 다시 보라. 만들기로 했다면 그 서버\n   구축은 이 플러그인 범위 밖의 별도 작업임을 사용자에게 명시하라.\n\n## 점검 항목\n\n- 본문에 \"~를 실행한다\"고 썼는데 그 도구가 어디에도 없는 단계\n- `mcp__` 도구를 참조하는데 `mcp_server_defs`에 정의가 없는 서버 (`get_project`로 확인)\n- 에이전트가 도구 미지정(전 도구 상속)인 채로 남아 있는 것 — 과하다\n\n## 완료\n\n노드별 조달 결정(내장/기존 MCP/동봉 CLI/신규)을 정리해 `GraphDraft`에 기록하고\n**done**으로 본문 작성 단계에 넘긴다 — 결정된 도구 목록이 그 단계에서\n`allowed_tools`/`tools` 프론트매터가 된다.\n",
+      "config": {
+        "kind": "procedural",
+        "model": "inherit",
+        "effort": null,
+        "hooks": null,
+        "argument_hint": null,
+        "allowed_tools": [
+          "mcp__daedalus__get_project",
+          "mcp__daedalus__get_component",
+          "mcp__daedalus__set_mcp_server_def",
+          "mcp__daedalus__validate_project"
+        ],
+        "paths": null,
+        "disable_model_invocation": false,
+        "user_invocable": true,
+        "context": "inline",
+        "agent": null,
+        "shell": "bash"
+      },
+      "fsm": {
+        "id": "892de64e84bc4464bd7a9b4bd55a692b",
+        "name": "graph-tools_fsm",
+        "states": [
+          {
+            "kind": "simple",
+            "id": "5984e133006d43549c56131055725d11",
+            "name": "start",
+            "on_entry_start": [],
+            "on_entry": [],
+            "on_entry_end": [],
+            "on_exit_start": [],
+            "on_exit": [],
+            "on_exit_end": [],
+            "on_active": [],
+            "custom_events": {},
+            "inputs": [],
+            "outputs": [],
+            "reads": [],
+            "writes": [],
+            "skill_ref": null
+          }
+        ],
+        "transitions": [],
+        "initial_state": "5984e133006d43549c56131055725d11",
+        "final_states": [],
+        "blackboard": {
+          "class_definitions": [],
+          "variables": {}
+        }
+      },
+      "transfer_on": [
+        {
+          "name": "done",
+          "color": "#4488ff",
+          "description": "도구 조달 계획 확정 — 본문 작성 단계가 allowed_tools에 반영한다"
+        }
+      ],
+      "call_agents": [],
+      "entry_paths": []
     }
   ],
   "agents": [
@@ -1047,7 +1114,8 @@
         "plugin-verify",
         "plugin-compile",
         "graph-author",
-        "graph-orient"
+        "graph-orient",
+        "graph-tools"
       ]
     }
   ],
@@ -1377,6 +1445,29 @@
           "GraphDraft"
         ],
         "skill_ref": "0399f18731044306823ff76faa0ba9d3"
+      },
+      {
+        "kind": "simple",
+        "id": "b9a8dd47c5014e8e86c1a7fabc27b956",
+        "name": "graph-tools",
+        "on_entry_start": [],
+        "on_entry": [],
+        "on_entry_end": [],
+        "on_exit_start": [],
+        "on_exit": [],
+        "on_exit_end": [],
+        "on_active": [],
+        "custom_events": {},
+        "inputs": [],
+        "outputs": [],
+        "reads": [
+          "DesignSession.goal",
+          "GraphDraft.placed"
+        ],
+        "writes": [
+          "GraphDraft"
+        ],
+        "skill_ref": "dd46b90990514f9f8712189ad9b53a25"
       }
     ],
     "transitions": [
@@ -1558,25 +1649,6 @@
         "target_port": "after-design"
       },
       {
-        "id": "b2dc20c6873247cc888418e4648673b4",
-        "source": "34564e32d3254f2fa93c60ff2e1295e1",
-        "target": "5ee3bc1c5580488baa3f242983d19d11",
-        "type": "external",
-        "trigger": {
-          "kind": "completion",
-          "name": "done"
-        },
-        "guard": null,
-        "on_guard_check": [],
-        "on_traverse_start": [],
-        "on_traverse": [],
-        "on_traverse_end": [],
-        "custom_events": {},
-        "data_map": {},
-        "skill_ref": null,
-        "target_port": ""
-      },
-      {
         "id": "00974bd49aac4ace9f992043bea2001a",
         "source": "5ee3bc1c5580488baa3f242983d19d11",
         "target": "17d8711d1a4e4c7f89775b5a25c4f064",
@@ -1594,6 +1666,44 @@
         "data_map": {},
         "skill_ref": null,
         "target_port": "after-design"
+      },
+      {
+        "id": "d171e12704d94f7ba310e8fbbb9d97c3",
+        "source": "34564e32d3254f2fa93c60ff2e1295e1",
+        "target": "b9a8dd47c5014e8e86c1a7fabc27b956",
+        "type": "external",
+        "trigger": {
+          "kind": "completion",
+          "name": "done"
+        },
+        "guard": null,
+        "on_guard_check": [],
+        "on_traverse_start": [],
+        "on_traverse": [],
+        "on_traverse_end": [],
+        "custom_events": {},
+        "data_map": {},
+        "skill_ref": null,
+        "target_port": ""
+      },
+      {
+        "id": "73405d2a58bf40baa88ee5255bc54114",
+        "source": "b9a8dd47c5014e8e86c1a7fabc27b956",
+        "target": "5ee3bc1c5580488baa3f242983d19d11",
+        "type": "external",
+        "trigger": {
+          "kind": "completion",
+          "name": "done"
+        },
+        "guard": null,
+        "on_guard_check": [],
+        "on_traverse_start": [],
+        "on_traverse": [],
+        "on_traverse_end": [],
+        "custom_events": {},
+        "data_map": {},
+        "skill_ref": null,
+        "target_port": ""
       }
     ],
     "initial_state": "07c498a5d4ce47508cd495bf7c13a626",
@@ -1635,6 +1745,10 @@
     "5ee3bc1c5580488baa3f242983d19d11": [
       1172.8000000000002,
       -101.0
+    ],
+    "b9a8dd47c5014e8e86c1a7fabc27b956": [
+      965.0,
+      -215.0
     ]
   },
   "edge_layout": {},

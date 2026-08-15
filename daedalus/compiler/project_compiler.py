@@ -413,6 +413,7 @@ def _write_text(path: Path, text: str) -> None:
 
 def compile_project(
     project, out_dir: Path | str, files_dir: Path | str | None = None,
+    extra_server_defs: dict[str, dict] | None = None,
 ) -> CompileResult:
     """프로젝트를 out_dir에 컴파일한다.
 
@@ -423,6 +424,12 @@ def compile_project(
     (게이트 통과 시에만), 스킬/에이전트 body의 파일 참조 토큰을 스캔해 실존하지
     않는 참조를 `dangling_file_ref` 경고로 추가한다(files_dir가 None이면 스캔
     생략 — 기존 산출물/문자열 불변, 하위 호환).
+
+    extra_server_defs(WP-MW, 선택): 호출 환경이 아는 MCP 서버 정의(이름 → .mcp.json
+    객체). LOCAL 설치 배선에서 `project.mcp_server_defs`의 **빈 자리를 채운다**
+    (프로젝트에 명시된 정의가 항상 우선). Daedalus 앱이 자기 자신의 daedalus
+    서버 접속 정보를 여기로 주입한다 — 앱이 이미 아는 것을 사용자에게 등록시키지
+    않기 위해서다. 컴파일러는 환경을 추측하지 않으므로 파라미터로 받는다(결정성).
     """
     out_dir = Path(out_dir)
     all_findings = Validator.validate_project(project)
@@ -478,7 +485,7 @@ def compile_project(
         result.warnings.extend(_scan_dangling_file_refs(project, files_dir_path))
 
     if _is_local_build(project):
-        _wire_local_install(project, out_dir, result)
+        _wire_local_install(project, out_dir, result, extra_server_defs)
 
     return result
 
@@ -486,17 +493,24 @@ def compile_project(
 # ─────────────────────── LOCAL 설치 배선 — JSON 병합 (WP-MW) ───────────────────────
 
 
-def _wire_local_install(project, out_dir: Path, result: CompileResult) -> None:
+def _wire_local_install(
+    project, out_dir: Path, result: CompileResult,
+    extra_server_defs: dict[str, dict] | None = None,
+) -> None:
     """LOCAL 빌드의 설치 배선 — 대상 작업 폴더의 설정 파일을 생성/수정한다.
 
     병합 자체는 `compiler/wiring.wire_workspace`가 한다("Claude Code 실행"
     메뉴와 공유 — 같은 폴더를 두 경로가 다르게 만지면 안 된다). 여기서는
     무엇을 배선할지(참조 서버 ∩ 정의, 프로젝트 훅)를 정하고, 배선하지 못한
     사실을 경고로 변환한다.
+
+    정의 조회는 프로젝트(`mcp_server_defs`)가 우선이고, 없으면 호출 환경이
+    준 `extra_server_defs`(예: Daedalus 앱 자신의 daedalus 서버)로 채운다.
     """
     from daedalus.compiler.wiring import wire_workspace
 
-    defs = getattr(project, "mcp_server_defs", None) or {}
+    defs = dict(extra_server_defs or {})
+    defs.update(getattr(project, "mcp_server_defs", None) or {})  # 프로젝트가 우선
     referenced = referenced_mcp_servers(project)
     entries = {name: defs[name] for name in referenced if name in defs}
     for name in referenced:
