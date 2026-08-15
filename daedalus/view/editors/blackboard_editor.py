@@ -315,4 +315,19 @@ class BlackboardPanel(QWidget):
 
     def _notify(self) -> None:
         if self._on_notify_fn is not None:
-            self._on_notify_fn()
+            self._self_notify = True
+            try:
+                self._on_notify_fn()
+            finally:
+                self._self_notify = False
+
+    def refresh_external(self) -> None:
+        """바깥(MCP `create_blackboard_class` 등)의 변경을 목록에 반영한다.
+
+        hook_panel.refresh_external과 같은 패턴 — 자기 편집이 발화한 notify가
+        되돌아온 경우는 건너뛴다(타이핑 중인 폼의 선택 리셋 방지).
+        """
+        if getattr(self, "_self_notify", False):
+            return
+        current = self._list.currentRow()
+        self._reload_list(select_index=current if current >= 0 else None)

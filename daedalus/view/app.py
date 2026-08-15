@@ -821,6 +821,10 @@ class MainWindow(QMainWindow):
         self._registry_panel.set_placed_ids(self._get_placed_ids())
         self._sync_agent_editors()
         self._sync_tab_titles()
+        # 상주 패널은 자기 편집만 알므로, 바깥(MCP 등)에서 온 변경을 여기서
+        # 반영한다 — 패널 자신이 발화한 notify는 각 패널이 알아서 건너뛴다.
+        self._hook_panel.refresh_external()
+        self._blackboard_panel.refresh_external()
 
     def _sync_agent_editors(self) -> None:
         """열린 AgentEditor 탭의 계약 패널 동기화."""

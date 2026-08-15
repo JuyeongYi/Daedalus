@@ -447,7 +447,24 @@ class HookLibraryPanel(QWidget):
 
     def _notify(self) -> None:
         if self._on_notify_fn is not None:
-            self._on_notify_fn()
+            self._self_notify = True
+            try:
+                self._on_notify_fn()
+            finally:
+                self._self_notify = False
+
+    def refresh_external(self) -> None:
+        """바깥(MCP 등)에서 hook_library가 바뀌었을 때 목록을 다시 그린다.
+
+        이 패널은 자기 편집만 알았다 — MCP `create_hook`이 라이브러리에 훅을
+        넣어도 목록에 나타나지 않았다(사용자 보고). 자기 편집이 발화한 notify가
+        되돌아온 경우는 건너뛴다: 그때 목록을 다시 그리면 사용자가 타이핑 중인
+        폼의 선택이 리셋된다.
+        """
+        if getattr(self, "_self_notify", False):
+            return
+        current = self._list.currentRow()
+        self._reload_list(select=current if current >= 0 else None)
 
     # ── 목록 ──
 
