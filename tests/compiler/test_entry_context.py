@@ -283,18 +283,16 @@ def _make_agent_with_contracts(contracts: list[Section]) -> AgentDefinition:
     return agent
 
 
-def test_caller_contracts_section_emitted_in_declaration_order():
+def test_legacy_manual_contract_cards_no_longer_emitted():
+    """WP-CT — 수동 계약 카드는 산출에 반영되지 않는다. 같은 사실의 소스가
+    둘(호출자 포트 + 수동 카드)이면 반드시 어긋난다 — 호출 계약은 그래프에서
+    유도한다(유도 산출은 tests/mcp/test_mcp_tools.py가 검증)."""
     agent = _make_agent_with_contracts([
         Section(title="caller: a (done)", content="A가 기대하는 입력"),
-        Section(title="caller: b (error)", content="B가 기대하는 입력"),
     ])
     text = compile_agent(agent)
-    assert "## 호출 계약" in text
-    idx_a = text.index("### caller: a (done)")
-    idx_b = text.index("### caller: b (error)")
-    assert idx_a < idx_b
-    assert "A가 기대하는 입력" in text
-    assert "B가 기대하는 입력" in text
+    assert "## 호출 계약" not in text
+    assert "A가 기대하는 입력" not in text
 
 
 def test_caller_contracts_section_omitted_when_empty():

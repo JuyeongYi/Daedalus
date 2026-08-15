@@ -32,11 +32,12 @@ def test_agent_body_default():
     assert agent.body == ""
 
 
-def test_agent_no_transfer_on():
-    """AgentDefinition에 transfer_on 필드가 없어야 함."""
+def test_agent_has_transfer_on_output_ports():
+    """WP-AF — 에이전트의 결과 분기는 transfer_on(출력 포트)이 담는다
+    (ExitPoint 승계, 스킬과 동일 필드)."""
     fsm = _make_agent_fsm()
     agent = AgentDefinition(fsm=fsm, name="A", description="d")
-    assert not hasattr(agent, "transfer_on")
+    assert agent.transfer_on == []
 
 
 def test_agent_output_events_from_exit_points():

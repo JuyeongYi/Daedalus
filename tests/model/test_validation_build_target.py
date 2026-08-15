@@ -137,9 +137,9 @@ def test_plugin_root_checks_agent_and_local_skill_bodies():
     }
 
 
-def test_plugin_root_in_caller_contract_flagged():
-    """호출 계약 카드의 비-files ${CLAUDE_PLUGIN_ROOT}도 잡는다 (리뷰 지적 C —
-    계약 카드도 agent .md에 그대로 배출된다)."""
+def test_retired_contract_cards_not_scanned():
+    """WP-CT — 계약 카드는 산출에 반영되지 않으므로 더 이상 검사하지 않는다.
+    카드 속 죽은 경로가 경고를 내면 고칠 수 없는 경고가 영구히 남는다."""
     from daedalus.model.fsm.machine import StateMachine
     from daedalus.model.fsm.section import Section
     from daedalus.model.fsm.state import SimpleState
@@ -158,26 +158,6 @@ def test_plugin_root_in_caller_contract_flagged():
     )
     project = PluginProject(name="p", agents=[agent], build_target=BuildTarget.LOCAL)
     errors = Validator.validate_project(project)
-    assert any(e.rule == "plugin_root_in_local_build" for e in errors)
-
-
-def test_files_ref_in_caller_contract_not_flagged():
-    from daedalus.model.fsm.machine import StateMachine
-    from daedalus.model.fsm.section import Section
-    from daedalus.model.fsm.state import SimpleState
-    from daedalus.model.plugin.agent import AgentDefinition
-    from daedalus.model.plugin.enums import BuildTarget
-    from daedalus.model.project import PluginProject
-    from daedalus.model.validation import Validator
-
-    s = SimpleState(name="a")
-    agent = AgentDefinition(
-        fsm=StateMachine(name="af", initial_state=s, states=[s], final_states=[s]),
-        name="worker", description="d", body="",
-    )
-    agent.caller_contracts.append(
-        Section(title="caller: x", content="참조: ${ROOT}/files/a.md")
-    )
-    project = PluginProject(name="p", agents=[agent], build_target=BuildTarget.LOCAL)
-    errors = Validator.validate_project(project)
     assert not any(e.rule == "plugin_root_in_local_build" for e in errors)
+
+

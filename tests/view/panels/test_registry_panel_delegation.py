@@ -118,77 +118,15 @@ def test_registry_section_no_add_flag_creates_no_button(qapp):
 
 
 # ─────────────────────── AgentEditor ───────────────────────
-
-def test_agent_editor_deleg_section_hidden_when_empty(qapp):
-    """AgentEditor: 위임 없는 에이전트 → _deleg_section 비표시."""
-    from daedalus.view.editors.agent_editor import AgentEditor
-    agent = _make_agent()
-    project = PluginProject(name="p", agents=[agent])
-    editor = AgentEditor(agent, project=project)
-
-    assert editor._deleg_section.isHidden() is True
+# WP-AF — 내부 FSM 퇴역과 함께 AgentEditor의 위임 사이드바(_deleg_section)도
+# 사라졌다(그래프 탭 소속이었다). 위임 자체가 deprecated라 대체 UI는 없다.
 
 
-def test_agent_editor_deleg_section_visible_with_delegation(qapp):
-    """AgentEditor: 프로젝트에 위임이 있으면 _deleg_section이 표시되고 항목이 렌더된다."""
+def test_agent_editor_has_no_delegation_sidebar(qapp):
     from daedalus.view.editors.agent_editor import AgentEditor
     agent = _make_agent()
     project = PluginProject(name="p", agents=[agent])
     project.delegations.append(TeamSpawnDef(name="team-a", description=""))
     editor = AgentEditor(agent, project=project)
 
-    assert editor._deleg_section.isHidden() is False
-    assert editor._deleg_section._list.count() == 1
-
-
-def test_agent_editor_deleg_section_has_no_add_button(qapp):
-    """AgentEditor: _deleg_section에 '+' 추가 버튼이 없다."""
-    from daedalus.view.editors.agent_editor import AgentEditor
-    agent = _make_agent()
-    project = PluginProject(name="p", agents=[agent])
-    project.delegations.append(TeamSpawnDef(name="team-a", description=""))
-    editor = AgentEditor(agent, project=project)
-
-    assert editor._deleg_section.findChild(QPushButton) is None
-
-
-def test_agent_editor_has_no_on_add_delegation_method(qapp):
-    """죽은 코드 제거 확인: _on_add_delegation 메서드가 더 이상 존재하지 않는다."""
-    from daedalus.view.editors.agent_editor import AgentEditor
-    agent = _make_agent()
-    editor = AgentEditor(agent)
-    assert not hasattr(editor, "_on_add_delegation")
-
-
-def test_agent_editor_deleg_double_click_still_opens_editor_path(qapp):
-    """더블클릭 편집 경로(_open_delegation)는 격하 후에도 연결되어 있다."""
-    from daedalus.view.editors.agent_editor import AgentEditor
-    agent = _make_agent()
-    project = PluginProject(name="p", agents=[agent])
-    deleg = TeamSpawnDef(name="team-a", description="")
-    project.delegations.append(deleg)
-    editor = AgentEditor(agent, project=project)
-
-    calls: list[object] = []
-    monkey_target = editor._open_delegation
-    editor._open_delegation = lambda comp: calls.append(comp)  # type: ignore[method-assign]
-    editor._deleg_section.item_double_clicked.emit(deleg)
-
-    assert calls == [deleg]
-    editor._open_delegation = monkey_target
-
-
-# ─────────────────────── app.py 죽은 코드 제거 ───────────────────────
-
-def test_main_window_has_no_new_delegation_entry_point(qapp):
-    """MainWindow에 더 이상 _on_new_delegation 메서드가 없다."""
-    from daedalus.view.app import MainWindow
-    window = MainWindow()
-    assert not hasattr(window, "_on_new_delegation")
-    window.close()
-
-
-def test_component_titles_excludes_delegation(qapp):
-    """_COMPONENT_TITLES에서 delegation 키가 제거되었다 (신규 생성 불가)."""
-    from daedalus.view.app import MainWindow
-    assert "delegation" not in MainWindow._COMPONENT_TITLES
+    assert not hasattr(editor, "_deleg_section")

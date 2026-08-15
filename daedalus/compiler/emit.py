@@ -1252,11 +1252,54 @@ def _frontmatter_lines_agent(agent: AgentDefinition, project=None) -> list[str]:
         if afield is AgentField.DESCRIPTION:
             lines.append(f"{key}: {_yaml_scalar(_compose_description(agent))}")
             continue
+        if afield is AgentField.SKILLS:
+            merged = _agent_skills_list(agent, project)
+            if merged:
+                lines.append(_format_kv(key, merged))
+            continue
 
         emitted = _emit_agent_field(afield, rule, config, key)
         if emitted is not None:
             lines.append(emitted)
     return lines
+
+
+def _agent_skills_list(agent: AgentDefinition, project) -> list[str]:
+    """에이전트 `skills` 프론트매터 — 자동 합류 + 수동 선언 (WP-AS).
+
+    서브에이전트는 별도 컨텍스트라 스킬을 상속받지 않는다 — 목록에 없는 지식은
+    없는 지식이다. 그래서 자동으로 합류시킨다:
+      1. 전역 DeclarativeSkill 전부 — 배경 지식은 어느 컨텍스트에나 필요하다.
+      2. 이 에이전트 placement에 링크된 ReferenceSkill — 캔버스에서 "이 에이전트가
+         이 문서를 참조한다"고 선언한 것이 여기서 실현된다.
+    그 뒤에 `config.skills`(수동 선언)가 순서대로 붙는다(중복 제거 — 자동 목록에
+    이미 있으면 다시 넣지 않는다). project가 없으면 수동 선언만(하위 호환).
+    """
+    from daedalus.model.plugin.skill import DeclarativeSkill, ReferenceSkill
+
+    auto: list[str] = []
+    if project is not None:
+        for skill in getattr(project, "skills", []) or []:
+            if isinstance(skill, DeclarativeSkill):
+                auto.append(skill.name)
+        # placement 노드 이름 집합 — 참조 링크(connected_states)는 노드 이름을 가리킨다
+        node_names = {
+            s.name
+            for s in getattr(getattr(project, "graph", None), "states", []) or []
+            if getattr(s, "skill_ref", None) is agent
+        }
+        if node_names:
+            ref_names = {
+                s.name for s in project.skills if isinstance(s, ReferenceSkill)
+            }
+            for rp in getattr(project, "reference_placements", []) or []:
+                if rp.skill_name in ref_names and node_names & set(rp.connected_states):
+                    if rp.skill_name not in auto:
+                        auto.append(rp.skill_name)
+    for name in getattr(agent.config, "skills", None) or []:
+        if name not in auto:
+            auto.append(name)
+    return auto
 
 
 def _emit_agent_field(
@@ -1433,22 +1476,60 @@ def _settings_note_agent(agent: AgentDefinition, project=None) -> list[str]:
     return blocks
 
 
-def _caller_contracts_section(agent: AgentDefinition) -> list[str]:
-    """WP-IC Part C-3: caller_contracts(잠금 계약 카드)를 "## 호출 계약" 단락으로.
+def _call_contract_section(agent: AgentDefinition, project) -> list[str]:
+    """"## 호출 계약" — 그래프에서 유도한다 (WP-CT, 수동 계약 카드 퇴역).
 
-    각 Section을 `### <title>` + content로 선언 순서대로 나열. 비어 있으면
-    빈 리스트(단락 생략) — 기존 누락 해소(caller_contracts는 지금까지 컴파일
-    산출에 반영되지 않았다).
+    호출 정보를 양쪽에 적게 하던 중복(호출자의 call_agents 포트 + 에이전트의
+    수동 계약 카드)을 해소했다 — **호출자가 무엇을 넘기는지는 호출자가 자기
+    포트 description에 적는다**(사용자 확정 설계). 에이전트 .md의 호출 계약은
+    프로젝트 그래프의 incoming 호출 전이에서 자동 유도되므로, 에이전트 쪽에서
+    입력할 것이 없다. 넘겨받는 데이터 자체는 블랙보드 reads 선언이 말한다
+    (블랙보드 단락이 그 클래스로 좁혀진다).
+
+    구버전 파일의 caller_contracts(수동 카드)는 더 이상 산출에 반영되지
+    않는다 — 같은 사실의 소스가 둘이면 반드시 어긋난다.
     """
-    contracts = getattr(agent, "caller_contracts", None) or []
-    if not contracts:
+    if project is None:
         return []
-    blocks: list[str] = ["## 호출 계약"]
-    for sec in contracts:
-        blocks.append(f"### {sec.title}")
-        content = (sec.content or "").strip()
-        if content:
-            blocks.append(content)
+    graph = getattr(project, "graph", None)
+    if graph is None:
+        return []
+
+    entries: list[tuple[str, str, str, str]] = []  # (caller, port, desc, guard)
+    for trans in getattr(graph, "transitions", []) or []:
+        tgt_ref = getattr(trans.target, "skill_ref", None)
+        if tgt_ref is not agent:
+            continue
+        src_ref = getattr(trans.source, "skill_ref", None)
+        caller = getattr(src_ref, "name", None)
+        if not caller:
+            continue
+        port = getattr(getattr(trans, "trigger", None), "name", "") or ""
+        desc = ""
+        for ev in getattr(src_ref, "call_agents", None) or []:
+            if ev.name == port:
+                desc = (ev.description or "").strip()
+                break
+        guard = _describe_guard(getattr(trans, "guard", None))
+        entries.append((caller, port, desc, guard))
+
+    if not entries:
+        return []
+    entries.sort(key=lambda e: (e[0], e[1]))
+    blocks: list[str] = [
+        "## 호출 계약",
+        (
+            "이 에이전트는 다음 경로로 호출된다. 넘겨받는 데이터는 공유 상태"
+            "(블랙보드) 단락의 읽기 선언을 따른다."
+        ),
+    ]
+    for caller, port, desc, guard in entries:
+        line = f"- `{caller}`의 `{port}` 포트에서 호출" if port else f"- `{caller}`에서 호출"
+        if guard:
+            line += f" [가드: {guard}]"
+        if desc:
+            line += f" — {desc}"
+        blocks.append(line)
     return blocks
 
 
@@ -1464,16 +1545,19 @@ def compile_agent(agent: AgentDefinition, project=None) -> str:
     if body_block is not None:
         blocks.append(body_block)
 
-    # 호출 계약(WP-IC) — 본문 뒤, 기존 누락 해소.
-    blocks.extend(_caller_contracts_section(agent))
+    # 호출 계약(WP-CT) — 그래프에서 유도. 수동 계약 카드는 퇴역했다.
+    blocks.extend(_call_contract_section(agent, project))
 
     # 호출 파라미터(INVOCATION)
     blocks.extend(_invocation_section_agent(agent))
     # 요구 환경(SETTINGS 언급) — LOCAL 빌드는 프론트매터가 대신하므로 생략된다
     blocks.extend(_settings_note_agent(agent, project))
 
-    # 에이전트 FSM 절차 (ExitPoint 출구 의미 포함)
+    # 내부 워크플로 — legacy FSM에 실질 상태가 있을 때만 (WP-AF)
     blocks.extend(_describe_agent_fsm(agent))
+
+    # 출구 — 출력 포트(transfer_on). 호출자 그래프가 이 이름으로 분기한다.
+    blocks.extend(_agent_outputs_section(agent))
 
     # 위임 지침 (에이전트 그래프 내부)
     delegations = _collect_delegations(agent.fsm)
@@ -1492,13 +1576,28 @@ def compile_agent(agent: AgentDefinition, project=None) -> str:
 
 
 def _describe_agent_fsm(agent: AgentDefinition) -> list[str]:
-    """에이전트 FSM을 절차 단락으로 — 상태 진행 + ExitPoint 출구 의미.
+    """에이전트 내부 FSM 절차 단락 — **legacy 전용** (WP-AF).
+
+    내부 FSM은 퇴역했다 — 절차는 본문 산문이 담고, 결과 분기는 transfer_on
+    (출력 포트)이 담는다. 다만 구버전 프로젝트의 내부 FSM에는 실제 설계가
+    들어 있으므로, **실질 상태(SimpleState 등)가 하나라도 있으면** 종전처럼
+    서술한다. entry/exit 표지뿐인 FSM(신규 기본형)은 서술할 내용이 없으므로
+    생략한다 — "1. entry (시작) 2. done (출구)" 같은 무의미한 목록을 막는다.
+
+    출구("## 출구") 단락은 여기가 아니라 `_agent_outputs_section`(transfer_on
+    기반)이 담당한다.
 
     방어 가드: states 비어 있음 / initial_state=None인 불완전 FSM은 생략
     (게이트가 먼저 거부하지만 compile_agent 직접 호출 경로 보호).
     """
+    from daedalus.model.fsm.pseudo import EntryPoint as _Entry
+
     sm = agent.fsm
     if not sm.states or sm.initial_state is None:
+        return []
+    if not any(
+        not isinstance(s, (_Entry, ExitPoint)) for s in sm.states
+    ):
         return []
     blocks: list[str] = ["## 내부 워크플로"]
     blocks.append(
@@ -1537,14 +1636,27 @@ def _describe_agent_fsm(agent: AgentDefinition) -> list[str]:
                 lines.append(f"    - → **{t.target.name}**{cond_str}")
     blocks.append("\n".join(lines))
 
-    # ExitPoint 출구 의미
-    exits = [s for s in sm.states if isinstance(s, ExitPoint)]
-    if exits:
-        ex_lines = ["## 출구", "이 에이전트는 다음 출구로 종료할 수 있다:"]
-        for ep in exits:
-            ex_lines.append(f"- `{ep.name}`")
-        blocks.append("\n".join(ex_lines))
     return blocks
+
+
+def _agent_outputs_section(agent: AgentDefinition) -> list[str]:
+    """"## 출구" — 출력 포트(transfer_on) 기반 (WP-AF, ExitPoint 승계).
+
+    호출자 그래프가 이 이름들로 분기하므로, 에이전트는 종료 시 자신이 어느
+    출구로 끝났는지 명시해야 한다. description이 있으면 판정 기준으로 병기.
+    """
+    events = agent.output_event_defs
+    if not events:
+        return []
+    lines = [
+        "## 출구",
+        "이 에이전트는 다음 출구 중 하나로 종료한다. 완료 보고의 첫 줄에 어느 "
+        "출구인지 명시하라 — 호출자가 이 이름으로 다음 단계를 가른다:",
+    ]
+    for ev in events:
+        desc = (getattr(ev, "description", "") or "").strip()
+        lines.append(f"- `{ev.name}`" + (f" — {desc}" if desc else ""))
+    return ["\n".join(lines)]
 
 
 # ─────────────────────────── hooks.json (SETTINGS) ───────────────────────────

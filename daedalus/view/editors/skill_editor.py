@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from daedalus.model.fsm.section import EventDef, Section
+from daedalus.model.fsm.section import EventDef
 from daedalus.model.plugin.agent import AgentDefinition
 from daedalus.model.plugin.skill import DeclarativeSkill, ProceduralSkill, ReferenceSkill, TransferSkill
 from daedalus.model.plugin.enums import (
@@ -700,114 +700,6 @@ class _EventCard(QFrame):
     def _on_desc_multi_changed(self) -> None:
         self._event.description = self._w_desc_multi.toPlainText()
         self.changed.emit()
-
-
-class _ContractCard(QFrame):
-    """계약 섹션 카드 — 타이틀 잠금, 내용 편집 가능."""
-
-    changed = Signal()
-
-    def __init__(self, section: Section, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-        self._section = section
-        self.setFrameShape(QFrame.Shape.StyledPanel)
-
-        lay = QVBoxLayout(self)
-        lay.setContentsMargins(8, 8, 8, 8)
-        lay.setSpacing(6)
-
-        self._title_lbl = QLabel(f"🔒 {section.title}")
-        lay.addWidget(self._title_lbl)
-
-        self._w_content = QTextEdit()
-        self._w_content.setPlainText(section.content)
-        self._w_content.setPlaceholderText("이 호출에서 기대하는 입력을 작성하세요...")
-        self._w_content.setMinimumHeight(60)
-        self._w_content.textChanged.connect(self._on_content_changed)
-        lay.addWidget(self._w_content)
-
-    @property
-    def section(self) -> Section:
-        return self._section
-
-    def sync_title(self) -> None:
-        """모델 제목을 라벨에 반영 (in-place 갱신 — 위젯 재생성 회피)."""
-        self._title_lbl.setText(f"🔒 {self._section.title}")
-
-    def _on_content_changed(self) -> None:
-        self._section.content = self._w_content.toPlainText()
-        self.changed.emit()
-
-
-class _ContractPanel(QScrollArea):
-    """잠금 계약 섹션 패널 — 인라인 편집 카드 목록 (스크롤 지원)."""
-
-    contract_changed = Signal()
-
-    def __init__(
-        self,
-        label: str,
-        contracts: list[Section],
-        parent: QWidget | None = None,
-    ) -> None:
-        super().__init__(parent)
-        self._contracts = contracts
-        self._label = label
-        self.setWidgetResizable(True)
-        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-
-        self._inner = QWidget()
-        self._lay = QVBoxLayout(self._inner)
-        self._lay.setContentsMargins(12, 12, 12, 12)
-        self._lay.setSpacing(8)
-        self._cards: list[_ContractCard] = []
-        self.setWidget(self._inner)
-        self._rebuild()
-
-    def refresh(self) -> None:
-        """모델과 카드를 동기화한다.
-
-        카드 수/순서/대상 Section이 동일하면 위젯을 재생성하지 않고
-        제목만 in-place 갱신한다 — 편집 중인 QTextEdit가 deleteLater되어
-        타이핑이 끊기는 버그(_ContractCard 실사용 버그)를 막는다.
-        구조가 달라졌을 때만 전체 재구성한다.
-        """
-        if self._cards_match_model():
-            for card in self._cards:
-                card.sync_title()
-            return
-        self._rebuild()
-
-    def _cards_match_model(self) -> bool:
-        """현재 카드 목록이 모델 contracts와 identity 기준으로 1:1 대응하는지."""
-        if len(self._cards) != len(self._contracts):
-            return False
-        return all(
-            card.section is sec
-            for card, sec in zip(self._cards, self._contracts)
-        )
-
-    def _rebuild(self) -> None:
-        self._cards = []
-        while self._lay.count():
-            child = self._lay.takeAt(0)
-            if child is not None:
-                w = child.widget()
-                if w is not None:
-                    w.deleteLater()
-        if not self._contracts:
-            placeholder = QLabel("연결된 호출이 없습니다")
-            self._lay.addWidget(placeholder)
-            self._lay.addStretch()
-            return
-        lbl = QLabel(self._label)
-        self._lay.addWidget(lbl)
-        for sec in self._contracts:
-            card = _ContractCard(sec)
-            card.changed.connect(self.contract_changed)
-            self._lay.addWidget(card)
-            self._cards.append(card)
-        self._lay.addStretch()
 
 
 class _TransferOnPanel(QScrollArea):

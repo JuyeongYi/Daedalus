@@ -18,12 +18,11 @@ from PySide6.QtWidgets import (
 
 from daedalus.model.fsm.event import CompletionEvent
 from daedalus.model.fsm.machine import StateMachine
-from daedalus.model.fsm.section import Section
 from daedalus.model.fsm.state import SimpleState
 from daedalus.model.fsm.transition import Transition
 from daedalus.model.plugin.agent import AgentDefinition
 from daedalus.model.plugin.delegation import DelegationDef
-from daedalus.model.plugin.skill import DeclarativeSkill, ProceduralSkill, ReferenceSkill, TransferSkill
+from daedalus.model.plugin.skill import DeclarativeSkill, ReferenceSkill, TransferSkill
 from daedalus.view.canvas.draggable import DraggableItemMixin
 from daedalus.view.canvas.edge_item import TransitionEdgeItem, WaypointHandleItem
 from daedalus.view.canvas.node_item import StateNodeItem
@@ -36,7 +35,6 @@ from daedalus.view.commands.reference_commands import (
     DeleteRefCmd,
     DeleteRefLinkCmd,
 )
-from daedalus.view.commands.section_commands import AddSectionCmd, RemoveSectionCmd
 from daedalus.view.commands.state_commands import CreateStateCmd, DeleteStateCmd
 from daedalus.view.commands.transition_commands import (
     AddSkillToProjectCmd,
@@ -355,18 +353,11 @@ class FsmScene(QGraphicsScene):
                     tvm = TransitionViewModel(
                         model=model, source_vm=src_vm, target_vm=tgt_vm
                     )
-                    cmds: list[Command] = [CreateTransitionCmd(self._project_vm, tvm, fsm=self._target_fsm)]
-                    # call_agent 연결 시 caller/callee 양쪽에 섹션 강제 생성
-                    if is_agent_call and tgt_is_agent:
-                        sec_cmds = self._make_agent_call_section_cmds(src_ref, tgt_ref, event_name)
-                        cmds.extend(sec_cmds)
-                    if len(cmds) == 1:
-                        self._project_vm.execute(cmds[0])
-                    else:
-                        self._project_vm.execute(MacroCommand(
-                            children=cmds,
-                            description=f"에이전트 호출 '{event_name}→{tgt_vm.model.name}' 연결",
-                        ))
+                    # WP-CT — 계약 카드 자동 생성은 퇴역했다. 호출 계약은
+                    # 컴파일러가 그래프(호출 포트 + 전이)에서 유도한다.
+                    self._project_vm.execute(
+                        CreateTransitionCmd(self._project_vm, tvm, fsm=self._target_fsm)
+                    )
 
         self._connecting = False
         self._connect_source = None
@@ -557,31 +548,10 @@ class FsmScene(QGraphicsScene):
         # EntryPoint(워크플로 시작점)는 삭제 불가 — 모든 경로에서 방어.
         if isinstance(state_vm.model, _EP):
             return
-        ref = getattr(state_vm.model, "skill_ref", None)
-        # 에이전트 노드 삭제 시: caller_contracts가 있으면 경고 + 정리
-        if isinstance(ref, AgentDefinition) and ref.caller_contracts:
-            view = self.views()[0] if self.views() else None
-            result = QMessageBox.warning(
-                view,
-                "에이전트 노드 삭제",
-                f"'{ref.name}'에 연결된 입력 프로시저 정보가 있습니다.\n"
-                "삭제하면 저장된 입력 프로시저 정보가 모두 사라집니다.\n\n계속하시겠습니까?",
-                QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel,
-                QMessageBox.StandardButton.Cancel,
-            )
-            if result != QMessageBox.StandardButton.Ok:
-                return
-
         transitions = self._project_vm.get_transitions_for(state_vm)
         children: list[Command] = []
-        # 연결된 전이의 caller_contracts 섹션 정리
+        # WP-CT — 계약 카드 정리는 퇴역했다(카드 자체가 없다). 전이만 함께 지운다.
         for t in transitions:
-            src_ref = getattr(t.source_vm.model, "skill_ref", None)
-            tgt_ref = getattr(t.target_vm.model, "skill_ref", None)
-            trigger = t.model.trigger
-            event_name = trigger.name if trigger is not None else ""
-            if isinstance(src_ref, ProceduralSkill) and isinstance(tgt_ref, AgentDefinition):
-                children.extend(self._find_agent_call_section_cmds(src_ref, tgt_ref, event_name))
             children.append(DeleteTransitionCmd(self._project_vm, t, fsm=self._target_fsm))
         children.append(DeleteStateCmd(self._project_vm, state_vm, fsm=self._target_fsm))
         self._project_vm.execute(
@@ -589,54 +559,9 @@ class FsmScene(QGraphicsScene):
         )
 
     def _delete_transition(self, tvm: TransitionViewModel) -> None:
-        src_ref = getattr(tvm.source_vm.model, "skill_ref", None)
-        tgt_ref = getattr(tvm.target_vm.model, "skill_ref", None)
-        trigger = tvm.model.trigger
-        event_name = trigger.name if trigger is not None else ""
-        if isinstance(src_ref, ProceduralSkill) and isinstance(tgt_ref, AgentDefinition):
-            sec_cmds = self._find_agent_call_section_cmds(src_ref, tgt_ref, event_name)
-            cmds: list[Command] = sec_cmds + [DeleteTransitionCmd(self._project_vm, tvm, fsm=self._target_fsm)]
-            self._project_vm.execute(MacroCommand(
-                children=cmds,
-                description=f"에이전트 호출 '{event_name}→{tgt_ref.name}' 삭제",
-            ))
-        else:
-            self._project_vm.execute(DeleteTransitionCmd(self._project_vm, tvm, fsm=self._target_fsm))
-
-    # --- call_agent 섹션 관리 ---
-
-    @staticmethod
-    def _callee_section_title(skill_name: str, event_name: str) -> str:
-        return f"caller: {skill_name} ({event_name})"
-
-    def _make_agent_call_section_cmds(
-        self, src_ref: object, tgt_ref: object, event_name: str
-    ) -> list[Command]:
-        """call_agent 연결 시 에이전트 측 caller_contracts에 섹션 추가."""
-        cmds: list[Command] = []
-        if not isinstance(src_ref, ProceduralSkill) or not isinstance(tgt_ref, AgentDefinition):
-            return cmds
-        callee_title = self._callee_section_title(src_ref.name, event_name)
-        if not any(s.title == callee_title for s in tgt_ref.caller_contracts):
-            cmds.append(AddSectionCmd(
-                tgt_ref.caller_contracts,
-                Section(title=callee_title, content=""),
-            ))
-        return cmds
-
-    def _find_agent_call_section_cmds(
-        self, src_ref: object, tgt_ref: object, event_name: str
-    ) -> list[Command]:
-        """call_agent 삭제 시 에이전트 측 caller_contracts에서 섹션 제거."""
-        cmds: list[Command] = []
-        if not isinstance(src_ref, ProceduralSkill) or not isinstance(tgt_ref, AgentDefinition):
-            return cmds
-        callee_title = self._callee_section_title(src_ref.name, event_name)
-        for sec in tgt_ref.caller_contracts:
-            if sec.title == callee_title:
-                cmds.append(RemoveSectionCmd(tgt_ref.caller_contracts, sec))
-                break
-        return cmds
+        self._project_vm.execute(
+            DeleteTransitionCmd(self._project_vm, tvm, fsm=self._target_fsm)
+        )
 
     def set_project(self, project: PluginProject) -> None:
         self._project = project

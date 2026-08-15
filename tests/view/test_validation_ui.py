@@ -137,26 +137,19 @@ def _make_agent_with_violation() -> tuple[PluginProject, AgentDefinition]:
     return project, agent
 
 
-def test_focus_agent_tab_open_selects_node(qapp):
-    """에이전트 탭이 열려 있을 때 더블클릭 → 탭 전환 + 노드 선택.
-
-    회귀 가드: _focus_in_agent_tab이 AgentEditor의 실제 뷰 속성(_canvas_view)을
-    참조하는지 — 잘못된 속성명이어도 select는 되므로 속성 실존까지 확인한다.
-    """
+def test_focus_agent_tab_open_switches_tab(qapp):
+    """WP-AF — 에이전트 편집기에 내부 캔버스가 없다. legacy FSM 에러의
+    더블클릭은 에이전트 탭 전환까지만 하고(노드 선택은 불가) 죽지 않아야 한다."""
     from daedalus.view.editors.agent_editor import AgentEditor
 
     window = MainWindow()
     project, agent = _make_agent_with_violation()
     window.set_project(project)
 
-    # 에이전트 탭 열기
     window._open_component(agent)
     widget = window._tabs.currentWidget()
     assert isinstance(widget, AgentEditor)
-    # 회귀 가드: _focus_in_agent_tab이 조회하는 속성이 실존해야 한다
-    assert getattr(widget, "_canvas_view", None) is not None
 
-    # 검증 실행 → duplicate_state_name 에러 획득
     window._run_validation()
     errors = [
         e for e in window._validation_panel._errors
@@ -166,19 +159,10 @@ def test_focus_agent_tab_open_selects_node(qapp):
     error = errors[0]
     assert error.path and error.path[0] == "agent:worker"
 
-    # 프로젝트 탭으로 이동 후 더블클릭 시뮬레이션
     window._tabs.setCurrentIndex(0)
     window._on_validation_item_activated(error)
 
-    # 에이전트 탭으로 전환되었는지
     assert window._tabs.currentWidget() is widget
-    # 해당 노드가 씬에서 선택되었는지 (identity 기준)
-    selected_models = [
-        svm.model
-        for svm, item in widget._graph_scene._node_items.items()
-        if item.isSelected()
-    ]
-    assert any(m is error.subject for m in selected_models)
     window.close()
 
 

@@ -626,6 +626,9 @@ def _ser_agent(a: AgentDefinition) -> dict:
             k: [list(pt) for pt in v] for k, v in a.edge_layout.items()
         },
         "entry_paths": [_ser_eventdef(e) for e in a.entry_paths],
+        # WP-AF — 출력 포트(ExitPoint 승계). 구버전 파일(키 부재)은 로드 시
+        # ExitPoint에서 마이그레이션한다.
+        "transfer_on": [_ser_eventdef(e) for e in a.transfer_on],
     }
 
 
@@ -1292,7 +1295,18 @@ def _deser_agent(d: dict, reg: _Registry) -> AgentDefinition:
         },
         # WP-IC — 구버전 파일(키 부재) → 빈 리스트(기본 포트 1개, 경고 없음).
         entry_paths=[_deser_eventdef(e) for e in d.get("entry_paths", [])],
+        # WP-AF — 출력 포트(ExitPoint 승계). 구버전 키 부재는 아래 마이그레이션.
+        transfer_on=[_deser_eventdef(e) for e in d.get("transfer_on", [])],
     )
+    # WP-AF 마이그레이션 — 구버전 파일(transfer_on 키 부재)의 출력 포트는
+    # 내부 FSM의 ExitPoint였다. 이름·색을 그대로 승계한다(단방향, 경고 없음).
+    # ExitPoint 자체는 fsm에 남는다 — 저장 왕복 보존, 렌더·검증은 transfer_on만 본다.
+    if not agent.transfer_on and agent.exit_points:
+        from daedalus.model.fsm.section import EventDef as _EventDef
+
+        agent.transfer_on = [
+            _EventDef(name=ep.name, color=ep.color) for ep in agent.exit_points
+        ]
     reg.components[sid] = agent
     return agent
 

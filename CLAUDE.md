@@ -188,13 +188,43 @@ daedalus/
 | DeclarativeSkill | 배경 지식 | FSM 없음 |
 | TransferSkill | 전이 시 실행되는 보조 지침 | 자체 FSM 보유 |
 | ReferenceSkill | 참조 문서 | FSM 없음, 참조 노드로 복수 배치 |
-| AgentDefinition | 별도 컨텍스트의 상태 기계 | 자체 FSM + 별도 블랙보드 |
+| AgentDefinition | 별도 컨텍스트의 작업자 | **내부 FSM 퇴역(WP-AF)** — 절차는 본문, 결과 분기는 transfer_on |
 
-### CompositeState = 에이전트
+### 에이전트 — 본문 + 출력 포트 (WP-AF, 내부 FSM 퇴역)
 
-- CompositeState는 "별도 컨텍스트에서의 상태 기계"로, 에이전트 개념에 해당
-- `sub_machine: StateMachine`을 포함 — 내부에 완전한 FSM(상태 + 전이 + 블랙보드)을 보유
-- UML 스테이트차트의 composite state 원래 정의와 일치
+- **왜 퇴역했나:** Daedalus FSM은 런타임 엔진이 없다 — 내부 FSM은 컴파일되면 에이전트 .md 안의
+  번호 목록 텍스트가 될 뿐이고, 같은 지시는 본문 산문이 동일한 효력을 낸다. 형식화 비용(그래프
+  탭·별도 CommandStack·로컬 스킬 기계장치)에 걸맞은 대가가 없었다(사용자 확정. 도그푸딩에서
+  손실·버그 대부분이 이 표면에서 났고, 실사용 세션은 에이전트를 내부 FSM 없이 본문만으로 만들었다).
+- **살아남은 조각 = 출력 포트.** 프로젝트 그래프가 에이전트의 결과로 분기한다(과거 ExitPoint 이름이
+  전이 trigger). `AgentDefinition.transfer_on: list[EventDef]`로 이관 — 스킬과 동일 필드·동일 편집
+  패널(_TransferOnPanel)·동일 캔버스 포트 렌더. `output_events`/`output_event_defs`는 transfer_on을
+  단일 진실로 읽되, transfer_on이 빈 구버전 메모리 객체는 legacy ExitPoint로 폴백한다.
+- **마이그레이션:** `deserialize_project`가 transfer_on 키 부재 + ExitPoint 존재 시 이름·색을
+  승계한다(단방향, 경고 없음). fsm 필드 자체는 WorkflowComponent 계약상 남는다 — 신규 에이전트는
+  EntryPoint 하나짜리 빈 기계(`app._make_agent_fsm`) + 기본 출력 포트 `done`.
+- **로컬 스킬 퇴역:** 생성 경로(GUI/MCP) 제거. 에이전트에게 줄 지식은 전역 스킬로 — 컴파일이
+  skills 프론트매터에 자동 합류시킨다(WP-AS: 전역 DeclarativeSkill 전부 + 그 에이전트 placement에
+  링크된 ReferenceSkill + config.skills 수동 선언 순, 중복 제거. `emit._agent_skills_list`).
+  기존 파일의 로컬 스킬은 계속 읽히고 컴파일된다(agent= 인자 조회 경로 유지).
+- **호출 계약 = 그래프 유도 (WP-CT):** 수동 계약 카드(caller_contracts 편집·자동 생성)는 퇴역 —
+  호출 정보를 양쪽(호출자 포트 + 에이전트 카드)에 적게 하던 중복이었다. **호출자가 무엇을 넘기는지는
+  호출자의 call_agents 포트 description에 적는다.** 에이전트 .md의 "## 호출 계약"은
+  `emit._call_contract_section(agent, project)`이 프로젝트 그래프의 incoming 호출 전이에서 유도한다
+  (호출자·포트·description·가드, 호출자 이름순). caller_contracts 필드는 직렬화 호환용으로만 남고
+  산출·검증에서 제외된다.
+- **에이전트 편집기:** AgentEditor = ComponentEditor + 출력 포트/입력 경로 패널 — 스킬 편집기와
+  같은 레벨(그래프/컨텐츠 탭 구조 제거, 별도 그래프 VM 없음 — undo는 프로젝트 스택).
+- **MCP:** `_scope(agent=...)` 캔버스 편집·`create_skill(agent=...)` 로컬 생성은 명시적 에러로 거부.
+  `set_transfer_on(에이전트 이름)`으로 출력 포트 편집. `create_agent`는 기본 포트 done으로 시작.
+- **컴파일:** "## 내부 워크플로"는 legacy FSM에 실질 상태(SimpleState 등)가 있을 때만 배출.
+  "## 출구"는 transfer_on 기반(`_agent_outputs_section` — 완료 보고 첫 줄에 출구 명시 지시 + description 병기).
+
+### CompositeState (순수 FSM 개념)
+
+- `sub_machine: StateMachine`을 포함하는 UML composite state — fsm/ 레이어의 순수 개념으로 존치
+  (Region과 함께). **에이전트 개념과의 대응은 WP-AF로 끊어졌다** — 에이전트는 더 이상 내부 FSM으로
+  설계하지 않는다.
 
 ### Region = 병렬 실행 트랙
 
@@ -438,13 +468,10 @@ daedalus/
   (`caller: <스킬> (<포트>)`)를 `MacroCommand`로 함께 만든다. 포트는 `add_agent_call(skill, event)`로
   먼저 만든다. **제목 규약은 `FsmScene._callee_section_title`과 반드시 같아야 한다** — 어긋나면
   같은 연결에 계약 카드가 둘 생긴다.
-- **에이전트 내부 FSM 편집(WP-CE):** 편집 도구는 `agent: str = ""` 인자를 받는다. 비면 프로젝트
-  캔버스, 이름을 주면 그 에이전트의 내부 FSM이다(`_scope`가 (뷰모델, 백킹 FSM)을 고른다).
-  **에이전트 편집기가 닫혀 있으면 탭을 연다** — 커맨드가 `AgentEditor._graph_vm`(별도 뷰모델·별도
-  CommandStack)을 다루므로 에디터가 살아 있어야 화면에 반영된다. AI가 만지는 순간 사용자 화면에도
-  그 탭이 열리는데, 무엇이 바뀌는지 보이므로 협업 관점에서 바람직하다.
-  `create_skill(..., agent=...)`은 로컬 스킬을 만든다(procedural/transfer만, 블랙보드 parent는
-  소유 에이전트 FSM). `_find_component(name, agent=...)`가 로컬 스킬을 우선 조회한다.
+- **에이전트 스코프(WP-AF 이후):** 캔버스 편집 도구의 `agent` 인자는 **명시적 에러로 거부**된다
+  (내부 FSM 퇴역 — 조용히 프로젝트 캔버스를 만지면 오배치). `create_skill(agent=...)` 로컬 생성도
+  거부. 단 **조회·본문·포트·프론트매터 도구의 `agent` 인자는 legacy 로컬 스킬 접근용으로 유지**
+  (`_find_component(name, agent=...)` — 기존 파일의 로컬 스킬은 계속 읽히고 컴파일된다).
 - **훅 라이브러리(WP-CE 4차):** `create_hook`/`update_hook`/`delete_hook`(라이브러리 = 정의의
   단일 진실) + `set_component_hooks`(스킬/에이전트가 이름으로 참조). GUI 훅 다이얼로그는 모델에
   직접 쓰지만 MCP 경로는 `AppendToListCmd`/`RemoveFromListCmd`/`SetAttrCmd`를 거쳐 undo된다.

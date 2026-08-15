@@ -1,8 +1,7 @@
-"""로컬 스킬(에이전트 소속 스킬)을 다루는 MCP 도구의 agent 인자.
+"""legacy 로컬 스킬을 다루는 MCP 도구의 agent 인자 (WP-AF 이후).
 
-실제로 에이전트 내부 워크플로를 만들다 드러난 구멍이다: create_skill(agent=...)로
-로컬 스킬을 만들 수는 있는데, 포트를 선언하거나 본문을 쓰려 하면 "컴포넌트를 찾을
-수 없습니다"가 났다. 로컬 스킬은 project.skills에 없고 agent.skills에만 있다.
+로컬 스킬 **생성**은 내부 FSM과 함께 퇴역했지만, 기존 파일의 로컬 스킬은 계속
+읽히고 컴파일된다 — 포트/본문/프론트매터 도구가 agent 인자로 여전히 닿아야 한다.
 """
 from __future__ import annotations
 
@@ -35,7 +34,15 @@ def tools(window):
 
     t = DaedalusTools(window)
     t.create_agent("worker")
-    t.create_skill("step-one", kind="procedural", agent="worker")
+    # WP-AF — 로컬 스킬 생성 도구는 퇴역했다. 기존 파일에서 온 로컬 스킬을
+    # 도구들이 여전히 다룰 수 있는지가 이 파일의 관심사이므로, legacy 상태를
+    # 모델에 직접 구성한다.
+    agent = t._find_component("worker")
+    start = SimpleState(name="start")
+    local_fsm = StateMachine(name="lf", states=[start], initial_state=start)
+    agent.skills.append(
+        ProceduralSkill(fsm=local_fsm, name="step-one", description="")
+    )
     return t
 
 

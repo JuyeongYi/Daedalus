@@ -72,44 +72,22 @@ class DaedalusTools:
             raise ValueError(f"캔버스에 '{name}' 노드가 없습니다. 현재 노드: {known or '(없음)'}")
         return found
 
-    # --- 편집 범위 (프로젝트 캔버스 vs 에이전트 내부 FSM) ---
-
-    def _agent_editor(self, agent_obj: Any) -> Any:
-        """에이전트 편집기 위젯을 얻는다 — 닫혀 있으면 탭을 연다.
-
-        커맨드가 캔버스 VM을 다루므로, 편집 결과가 화면에 반영되려면 그 에디터가
-        살아 있어야 한다. AI가 편집하는 순간 사용자 화면에도 해당 탭이 열리는데,
-        이는 협업 관점에서 오히려 바람직하다 — 무엇이 바뀌는지 보인다.
-        """
-        from daedalus.view.editors.agent_editor import AgentEditor
-
-        win = self._window
-        comp_id = getattr(agent_obj, "id", None)
-        if comp_id is None:
-            raise RuntimeError("에이전트에 id가 없습니다.")
-        if comp_id not in win._open_tabs:
-            win._open_component(agent_obj)
-        index = win._open_tabs.get(comp_id)
-        widget = win._tabs.widget(index) if index is not None else None
-        if not isinstance(widget, AgentEditor):
-            raise RuntimeError(f"에이전트 '{getattr(agent_obj, 'name', '?')}' 편집기를 열지 못했습니다.")
-        return widget
+    # --- 편집 범위 ---
 
     def _scope(self, agent: str = "") -> tuple[Any, Any]:
-        """편집 대상 (뷰모델, 백킹 StateMachine)을 고른다.
+        """편집 대상 (뷰모델, 백킹 StateMachine).
 
-        agent가 비어 있으면 프로젝트 캔버스, 아니면 그 에이전트의 내부 FSM.
+        WP-AF — 에이전트 내부 FSM은 퇴역했다(절차는 본문 산문, 결과 분기는
+        transfer_on). agent를 지정한 캔버스 편집은 거부한다 — 조용히 프로젝트
+        캔버스를 만지면 잘못된 곳을 고치게 된다.
         """
-        from daedalus.model.plugin.agent import AgentDefinition
-
-        if not agent:
-            return self._vm, self._project.graph
-        agent_obj = self._find_component(agent)
-        if not isinstance(agent_obj, AgentDefinition):
-            kind = self._component_kind(agent_obj)
-            raise ValueError(f"'{agent}'는 에이전트가 아닙니다(현재 {kind}).")
-        editor = self._agent_editor(agent_obj)
-        return editor._graph_vm, agent_obj.fsm
+        if agent:
+            raise ValueError(
+                "에이전트 내부 FSM은 퇴역했습니다 — 절차는 set_component_body로 "
+                "본문에, 결과 분기는 set_transfer_on(에이전트 이름)으로 출력 "
+                "포트에 서술하세요."
+            )
+        return self._vm, self._project.graph
 
     @staticmethod
     def _component_kind(comp: Any) -> str:
@@ -296,11 +274,6 @@ class DaedalusTools:
                 {"name": e.name, "description": getattr(e, "description", "")}
                 for e in (getattr(comp, "call_agents", []) or [])
             ],
-            # 에이전트의 잠금 계약 카드 — 누가 이 에이전트를 어느 포트로 부르는지
-            "caller_contracts": [
-                {"title": s.title, "content": getattr(s, "content", "")}
-                for s in (getattr(comp, "caller_contracts", []) or [])
-            ],
         }
         if config is not None:
             info["config"] = {
@@ -403,56 +376,32 @@ class DaedalusTools:
     def _create_local_skill(
         self, name: str, kind: str, description: str, agent: str
     ) -> dict[str, Any]:
-        """에이전트 내부에만 존재하는 로컬 스킬 (agent_editor._on_add_local_skill 미러링)."""
-        from daedalus.model.fsm.machine import StateMachine
-        from daedalus.model.fsm.state import SimpleState
-        from daedalus.model.plugin.agent import AgentDefinition
-        from daedalus.model.plugin.skill import ProceduralSkill, TransferSkill
-        from daedalus.view.commands.attr_commands import AppendToListCmd
+        """로컬 스킬 생성 — 퇴역 (WP-AF).
 
-        agent_obj = self._find_component(agent)
-        if not isinstance(agent_obj, AgentDefinition):
-            raise ValueError(f"'{agent}'는 에이전트가 아닙니다.")
-        if kind not in ("procedural", "transfer"):
-            raise ValueError(
-                f"로컬 스킬은 procedural / transfer만 가능합니다(요청: {kind})."
-            )
-        if any(s.name == name for s in agent_obj.skills):
-            raise ValueError(f"에이전트 '{agent}'에 '{name}' 스킬이 이미 있습니다.")
-
-        start = SimpleState(name="start")
-        fsm = StateMachine(name=f"{name}_fsm", states=[start], initial_state=start)
-        # 블랙보드 스코핑 — 로컬 스킬 FSM은 소유 에이전트 FSM 블랙보드의 자식이다.
-        if fsm.blackboard.parent is None:
-            fsm.blackboard.parent = agent_obj.fsm.blackboard
-        skill = (
-            ProceduralSkill(fsm=fsm, name=name, description=description)
-            if kind == "procedural"
-            else TransferSkill(fsm=fsm, name=name, description=description)
+        내부 FSM과 함께 사라졌다. 에이전트에게 줄 지식은 전역 스킬로 만들면
+        컴파일이 skills 프론트매터에 자동 합류시킨다(전역 declarative 전부 +
+        링크된 reference). 기존 파일의 로컬 스킬은 계속 읽히고 컴파일된다.
+        """
+        raise ValueError(
+            "로컬 스킬은 퇴역했습니다 — 전역 스킬로 만드세요. 전역 declarative와 "
+            "에이전트 노드에 링크된 reference는 컴파일 시 에이전트 skills "
+            "프론트매터에 자동 합류됩니다."
         )
-
-        vm, _ = self._scope(agent)  # 에디터를 열어 둔다 — 목록 갱신에 필요
-        vm.execute(
-            AppendToListCmd(
-                agent_obj.skills,
-                skill,
-                label=f"에이전트 '{agent}'의 로컬 스킬 '{name}' 생성",
-                script=f'create_skill("{name}", kind="{kind}", agent="{agent}")',
-            )
-        )
-        editor = self._agent_editor(agent_obj)
-        if hasattr(editor, "_refresh_skill_list"):
-            editor._refresh_skill_list()
-        return {"created": name, "kind": kind, "agent": agent, "local": True}
 
     def create_agent(self, name: str, description: str = "") -> dict[str, Any]:
-        """에이전트를 만든다 — 별도 컨텍스트의 상태 기계(EntryPoint/ExitPoint 포함)."""
+        """에이전트를 만든다 — 별도 컨텍스트의 작업자.
+
+        절차는 본문(set_component_body)에, 결과 분기는 출력 포트
+        (set_transfer_on)에 서술한다. 기본 출력 포트 'done' 하나로 시작한다.
+        """
+        from daedalus.model.fsm.section import EventDef
         from daedalus.model.plugin.agent import AgentDefinition
 
         self._reject_duplicate_name(name)
         win = self._window
         agent = AgentDefinition(
-            fsm=win._make_agent_fsm(name), name=name, description=description
+            fsm=win._make_agent_fsm(name), name=name, description=description,
+            transfer_on=[EventDef(name="done")],
         )
         win._register_component(agent)
         return {"created": name, "kind": "agent"}
@@ -704,27 +653,6 @@ class DaedalusTools:
         vm.execute(MacroCommand(children=children, description=f"상태 '{name}' 삭제"))
         return {"deleted": name, "removed_transitions": removed}
 
-    @staticmethod
-    def _callee_section_title(skill_name: str, event_name: str) -> str:
-        """캔버스(FsmScene._callee_section_title)와 같은 제목 규약을 쓴다."""
-        return f"caller: {skill_name} ({event_name})"
-
-    def _agent_call_contract_cmds(
-        self, src_ref: Any, tgt_ref: Any, event_name: str
-    ) -> list[Any]:
-        """에이전트 호출 연결 시 callee의 caller_contracts에 계약 카드를 만든다.
-
-        캔버스가 `_make_agent_call_section_cmds`로 하는 일과 동일하다 — MCP 경로가
-        이걸 빠뜨리면 같은 조작인데 결과가 달라진다.
-        """
-        from daedalus.model.fsm.section import Section
-        from daedalus.view.commands.section_commands import AddSectionCmd
-
-        title = self._callee_section_title(src_ref.name, event_name)
-        if any(s.title == title for s in tgt_ref.caller_contracts):
-            return []
-        return [AddSectionCmd(tgt_ref.caller_contracts, Section(title=title, content=""))]
-
     def add_agent_call(
         self, skill: str, event: str, description: str = "", color: str = ""
     ) -> dict[str, Any]:
@@ -819,13 +747,12 @@ class DaedalusTools:
         agent: 지정하면 그 에이전트의 내부 FSM에서 연결한다(기본은 프로젝트 캔버스).
 
         **에이전트 노드로 가는 전이는 반드시 call_agent 포트에서 나가야 한다** —
-        캔버스와 같은 규칙이며, 연결 시 대상 에이전트의 caller_contracts에 계약
-        카드가 함께 만들어진다.
+        캔버스와 같은 규칙이다. 호출 계약은 컴파일러가 그래프(호출 포트 + 전이)
+        에서 유도하므로 에이전트 쪽에 따로 입력할 것이 없다(WP-CT).
         """
         from daedalus.model.fsm.transition import Transition
         from daedalus.model.plugin.agent import AgentDefinition
         from daedalus.model.plugin.skill import ProceduralSkill
-        from daedalus.view.commands.base import MacroCommand
         from daedalus.view.commands.transition_commands import CreateTransitionCmd
         from daedalus.view.viewmodel.state_vm import TransitionViewModel
 
@@ -871,16 +798,9 @@ class DaedalusTools:
             trans.target_port = target_port
         tvm = TransitionViewModel(model=trans, source_vm=src, target_vm=tgt)
 
-        cmds: list[Any] = [CreateTransitionCmd(vm, tvm, fsm=fsm)]
-        if is_agent_call:
-            cmds.extend(self._agent_call_contract_cmds(src_ref, tgt_ref, trigger))
-        vm.execute(
-            cmds[0]
-            if len(cmds) == 1
-            else MacroCommand(
-                children=cmds, description=f"에이전트 호출 '{trigger}→{target}' 연결"
-            )
-        )
+        # WP-CT — 계약 카드 자동 생성은 퇴역했다(캔버스와 동일). 호출 계약은
+        # 컴파일러가 그래프(호출 포트 + 전이)에서 유도한다.
+        vm.execute(CreateTransitionCmd(vm, tvm, fsm=fsm))
         return {
             "connected": [source, target],
             "trigger": trigger or None,

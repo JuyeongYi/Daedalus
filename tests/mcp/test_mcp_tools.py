@@ -194,11 +194,12 @@ def test_created_procedural_skill_gets_blackboard_parent(tools, window):
     assert comp.fsm.blackboard.parent is window._project.blackboard
 
 
-def test_create_agent_has_entry_and_exit(tools, window):
+def test_create_agent_has_default_output_port(tools, window):
+    """WP-AF — 내부 FSM 대신 기본 출력 포트 'done'으로 시작한다."""
     tools.create_agent("worker", description="작업자")
     agent = next(a for a in window._project.agents if a.name == "worker")
-    names = {s.name for s in agent.fsm.states}
-    assert "entry" in names and "done" in names
+    assert [e.name for e in agent.transfer_on] == ["done"]
+    assert agent.output_events == ["done"]
 
     tools.undo()
     assert not any(a.name == "worker" for a in window._project.agents)
@@ -392,20 +393,25 @@ def test_agent_connection_rejects_undeclared_port(tools, with_agent):
         tools.connect_states("init", "worker", trigger="nope")
 
 
-def test_add_agent_call_then_connect_creates_contract(tools, with_agent):
-    """포트를 만든 뒤 연결하면 callee의 caller_contracts에 계약 카드가 생긴다."""
+def test_add_agent_call_then_connect_derives_contract_at_compile(tools, with_agent):
+    """WP-CT — 계약 카드는 만들지 않는다. 호출 계약은 컴파일이 그래프에서
+    유도한다(호출자 포트 description이 곧 '무엇을 넘기는가')."""
+    from daedalus.compiler.emit import compile_agent
+
     tools.add_agent_call("init", "delegate", description="작업 위임")
     result = tools.connect_states("init", "worker", trigger="delegate")
     assert result["agent_call"] is True
 
     agent = next(a for a in with_agent._project.agents if a.name == "worker")
-    titles = [s.title for s in agent.caller_contracts]
-    assert "caller: init (delegate)" in titles
+    assert agent.caller_contracts == []  # 수동 카드는 더 이상 생기지 않는다
 
-    # 전이와 계약 카드가 한 undo 단위로 함께 사라져야 한다
+    text = compile_agent(agent, project=with_agent._project)
+    assert "## 호출 계약" in text
+    assert "`init`의 `delegate` 포트에서 호출" in text
+    assert "작업 위임" in text
+
     tools.undo()
     assert with_agent._project_vm.transition_vms == []
-    assert agent.caller_contracts == []
 
 
 def test_call_port_cannot_target_non_agent(tools, with_agent):
@@ -432,50 +438,23 @@ def test_add_agent_call_is_undoable(tools, window):
 # --- 에이전트 내부 FSM 편집 ---
 
 
-def test_edit_inside_agent_fsm(tools, window):
-    """agent 인자로 편집 범위가 에이전트 내부 FSM으로 바뀐다."""
+def test_agent_scoped_canvas_editing_is_retired(tools, window):
+    """WP-AF — 에이전트 내부 FSM 편집은 거부된다(조용한 오배치 방지)."""
     tools.create_agent("worker")
-    tools.create_state("step-a", x=10, y=20, agent="worker")
-
-    agent = next(a for a in window._project.agents if a.name == "worker")
-    assert any(s.name == "step-a" for s in agent.fsm.states)
+    with pytest.raises(ValueError, match="퇴역"):
+        tools.create_state("step-a", x=10, y=20, agent="worker")
+    with pytest.raises(ValueError, match="퇴역"):
+        tools.connect_states("a", "b", agent="worker")
     # 프로젝트 캔버스는 건드리지 않는다
     assert window._project_vm.get_state_vm("step-a") is None
 
 
-def test_connect_inside_agent_fsm(tools, window):
+def test_local_skill_creation_is_retired(tools, window):
     tools.create_agent("worker")
-    tools.create_state("a", agent="worker")
-    tools.create_state("b", agent="worker")
-    tools.connect_states("a", "b", agent="worker")
-
+    with pytest.raises(ValueError, match="퇴역"):
+        tools.create_skill("inner", kind="procedural", agent="worker")
     agent = next(a for a in window._project.agents if a.name == "worker")
-    assert any(
-        t.source.name == "a" and t.target.name == "b" for t in agent.fsm.transitions
-    )
-
-
-def test_create_local_skill(tools, window):
-    tools.create_agent("worker")
-    tools.create_skill("inner", kind="procedural", agent="worker")
-
-    agent = next(a for a in window._project.agents if a.name == "worker")
-    assert [s.name for s in agent.skills] == ["inner"]
-    # 로컬 스킬은 전역 목록에 없다
-    assert not any(s.name == "inner" for s in window._project.skills)
-    # 블랙보드는 소유 에이전트 FSM의 자식으로 스코핑된다
-    assert agent.skills[0].fsm.blackboard.parent is agent.fsm.blackboard
-
-
-def test_local_skill_rejects_declarative(tools, window):
-    tools.create_agent("worker")
-    with pytest.raises(ValueError, match="procedural / transfer"):
-        tools.create_skill("x", kind="declarative", agent="worker")
-
-
-def test_scope_rejects_non_agent(tools):
-    with pytest.raises(ValueError, match="에이전트가 아닙니다"):
-        tools.create_state("x", agent="rules")
+    assert agent.skills == []
 
 
 # --- 이력 ---

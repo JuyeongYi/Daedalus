@@ -85,6 +85,10 @@ def _legacy_compile_agent(agent: AgentDefinition, sections: list[Section]) -> st
     blocks.extend(_emit._invocation_section_agent(agent))
     blocks.extend(_emit._settings_note_agent(agent))
     blocks.extend(_emit._describe_agent_fsm(agent))
+    # WP-AF — 출구 단락은 transfer_on 기반으로 분리됐다. original은 transfer_on이
+    # 없어 ExitPoint 폴백을 타고, 마이그레이션된 쪽은 승계된 transfer_on을 타서
+    # 같은 목록이 나온다 — 본문 마이그레이션 동일성 비교에는 영향이 없다.
+    blocks.extend(_emit._agent_outputs_section(agent))
     delegations = _emit._collect_delegations(agent.fsm)
     if delegations:
         blocks.append("## 위임 전제 조건")

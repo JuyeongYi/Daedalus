@@ -46,31 +46,28 @@ def test_register_agent_wires_blackboard_parent(qapp):
     window.close()
 
 
-def test_agent_editor_local_skill_wires_blackboard_parent(qapp, monkeypatch):
-    """에이전트 로컬 스킬 생성 시 fsm.blackboard.parent가
-    소유 에이전트 FSM 블랙보드를 가리킨다."""
+def test_legacy_local_skill_blackboard_parent_survives_load(qapp):
+    """WP-AF — 로컬 스킬 생성 UI는 퇴역했지만, 기존 파일의 로컬 스킬은
+    역직렬화가 blackboard.parent를 소유 에이전트 FSM으로 재연결한다."""
     from daedalus.model.fsm.machine import StateMachine
-    from daedalus.model.fsm.pseudo import EntryPoint, ExitPoint
+    from daedalus.model.fsm.pseudo import EntryPoint
+    from daedalus.model.fsm.state import SimpleState
     from daedalus.model.plugin.agent import AgentDefinition
-    from daedalus.view.editors import agent_editor as ae_module
-    from daedalus.view.editors.agent_editor import AgentEditor
+    from daedalus.model.plugin.skill import ProceduralSkill
+    from daedalus.model.project import PluginProject
+    from daedalus.model.serialize import deserialize_project, serialize_project
 
     entry = EntryPoint(name="entry")
-    done = ExitPoint(name="done")
-    fsm = StateMachine(name="a_fsm", states=[entry, done],
-                       initial_state=entry, final_states=[done])
-    agent = AgentDefinition(fsm=fsm, name="my-agent", description="")
-    editor = AgentEditor(agent)
-
-    # 이름 입력 다이얼로그 우회
-    monkeypatch.setattr(
-        ae_module.QInputDialog, "getText",
-        staticmethod(lambda *a, **k: ("local-tool", True)),
+    fsm = StateMachine(name="a_fsm", states=[entry], initial_state=entry)
+    start_state = SimpleState(name="start")
+    local_fsm = StateMachine(
+        name="local_fsm", states=[start_state], initial_state=start_state,
     )
-    editor._on_add_local_skill("procedural")
+    local = ProceduralSkill(fsm=local_fsm, name="local-tool", description="")
+    agent = AgentDefinition(fsm=fsm, name="my-agent", description="", skills=[local])
 
-    assert len(agent.skills) == 1
-    local = agent.skills[0]
-    assert local.name == "local-tool"
-    assert local.fsm.blackboard.parent is agent.fsm.blackboard
-    editor.close()
+    loaded = deserialize_project(
+        serialize_project(PluginProject(name="p", agents=[agent]))
+    )
+    restored = loaded.agents[0]
+    assert restored.skills[0].fsm.blackboard.parent is restored.fsm.blackboard

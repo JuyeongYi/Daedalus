@@ -411,12 +411,14 @@ class Validator:
                         path=path,
                     ))
             elif isinstance(ref, AgentDefinition):
+                # WP-AF — 출력 포트는 transfer_on이 단일 진실(output_events가
+                # legacy ExitPoint 폴백까지 흡수한다).
                 if not ref.output_events:
                     errors.append(ValidationError(
                         rule="transfer_on_not_empty",
                         message=(
-                            f"'{ref.name}' 에이전트의 ExitPoint가 없습니다. "
-                            f"최소 하나의 ExitPoint가 필요합니다."
+                            f"'{ref.name}' 에이전트의 출력 포트(transfer_on)가 "
+                            f"비어 있습니다. 최소 하나의 출력 이벤트가 필요합니다."
                         ),
                         source=ref.name,
                         subject=ref,
@@ -1737,14 +1739,8 @@ class Validator:
                 f"에이전트 '{agent.name}'", agent, getattr(agent, "body", ""),
                 (f"agent:{agent.name}",),
             )
-            # 잠금 계약 카드도 agent .md에 그대로 배출되므로 함께 검사한다
-            # (리뷰 지적 C — body만 보면 계약 카드의 죽은 경로를 놓친다)
-            for contract in getattr(agent, "caller_contracts", None) or []:
-                _scan(
-                    f"에이전트 '{agent.name}'의 호출 계약 '{contract.title}'",
-                    agent, getattr(contract, "content", ""),
-                    (f"agent:{agent.name}",),
-                )
+            # WP-CT — 계약 카드(caller_contracts)는 퇴역해 산출에 반영되지
+            # 않으므로 더 이상 검사하지 않는다.
             for local in getattr(agent, "skills", None) or []:
                 _scan(
                     f"에이전트 '{agent.name}'의 로컬 스킬 '{local.name}'",

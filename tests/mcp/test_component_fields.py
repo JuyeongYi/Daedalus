@@ -153,18 +153,33 @@ def test_skill_field_on_agent_is_rejected(tools):
         tools.set_component_field("worker", "allowed_tools", ["Read"])
 
 
-# --- 로컬 스킬 ---
+# --- 로컬 스킬 (legacy — WP-AF 이후 생성 불가, 기존 파일 호환만) ---
+
+
+def _inject_legacy_local_skill(tools, name="step"):
+    """WP-AF — 로컬 스킬 생성 도구는 퇴역. legacy 상태를 모델에 직접 구성한다."""
+    from daedalus.model.fsm.machine import StateMachine as _SM
+    from daedalus.model.fsm.state import SimpleState as _SS
+
+    agent = tools._find_component("worker")
+    start = _SS(name="start")
+    agent.skills.append(
+        ProceduralSkill(
+            fsm=_SM(name="lf", states=[start], initial_state=start),
+            name=name, description="",
+        )
+    )
 
 
 def test_reaches_local_skill(tools):
-    tools.create_skill("step", kind="procedural", agent="worker")
+    _inject_legacy_local_skill(tools)
     tools.set_component_field("step", "allowed_tools", ["Read"], agent="worker")
     assert _config(tools, "step", agent="worker").allowed_tools == ["Read"]
 
 
 def test_local_skill_matrix_key_uses_local_variant(tools):
     """로컬 스킬은 local_procedural 매트릭스를 본다 — user_invocable이 FIXED다."""
-    tools.create_skill("step", kind="procedural", agent="worker")
+    _inject_legacy_local_skill(tools)
     out = tools.list_component_fields("step", agent="worker")
     by_field = {f["field"]: f for f in out["fields"]}
     assert by_field["user_invocable"]["visibility"] == "fixed"

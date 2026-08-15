@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
 )
 
 from daedalus.model import package
+from daedalus.model.fsm.section import EventDef
 from daedalus.model.plugin.agent import AgentDefinition
 from daedalus.model.plugin.enums import BuildTarget
 from daedalus.model.plugin.skill import (
@@ -834,12 +835,11 @@ class MainWindow(QMainWindow):
         self._blackboard_panel.refresh_external()
 
     def _sync_agent_editors(self) -> None:
-        """열린 AgentEditor 탭의 계약 패널 동기화."""
-        from daedalus.view.editors.agent_editor import AgentEditor as _AE
-        for i in range(self._tabs.count()):
-            widget = self._tabs.widget(i)
-            if isinstance(widget, _AE) and hasattr(widget, "_caller_contract_panel"):
-                widget._caller_contract_panel.refresh()
+        """열린 AgentEditor 탭 동기화 훅 (WP-CT 이후 빈 자리).
+
+        계약 패널 동기화가 유일한 일이었는데 패널이 퇴역해 지금은 할 일이 없다.
+        에이전트 편집기에 외부 변경 반영이 다시 필요해지면 여기가 자리다.
+        """
 
     def _sync_tab_titles(self) -> None:
         """열린 탭의 타이틀을 현재 컴포넌트 이름과 동기화한다.
@@ -1092,15 +1092,19 @@ class MainWindow(QMainWindow):
         return StateMachine(name=f"{name}_fsm", states=[s], initial_state=s)
 
     def _make_agent_fsm(self, name: str) -> object:
+        """에이전트 백킹 FSM — WP-AF 이후 형식상의 최소 기계.
+
+        내부 FSM은 퇴역했다(절차는 본문, 결과 분기는 transfer_on). fsm 필드는
+        WorkflowComponent 계약상 남아 있으므로 EntryPoint 하나짜리 빈 기계를
+        준다 — 서술할 것이 없어 컴파일 산출에도 나타나지 않는다.
+        """
         from daedalus.model.fsm.machine import StateMachine
-        from daedalus.model.fsm.pseudo import EntryPoint, ExitPoint
+        from daedalus.model.fsm.pseudo import EntryPoint
         entry = EntryPoint(name="entry")
-        exit_done = ExitPoint(name="done")
         return StateMachine(
             name=f"{name}_fsm",
-            states=[entry, exit_done],
+            states=[entry],
             initial_state=entry,
-            final_states=[exit_done],
         )
 
     def _register_component(self, component: object) -> None:
@@ -1134,7 +1138,10 @@ class MainWindow(QMainWindow):
             "declarative": lambda: DeclarativeSkill(name=name, description=""),
             "transfer": lambda: TransferSkill(fsm=self._make_fsm(name), name=name, description=""),
             "reference": lambda: ReferenceSkill(name=name, description=""),
-            "agent": lambda: AgentDefinition(fsm=self._make_agent_fsm(name), name=name, description=""),  # type: ignore[arg-type]
+            "agent": lambda: AgentDefinition(
+                fsm=self._make_agent_fsm(name), name=name, description="",
+                transfer_on=[EventDef(name="done")],  # 기본 출력 포트 (WP-AF)
+            ),  # type: ignore[arg-type]
         }
         self._register_component(factories[kind]())
 
@@ -1170,25 +1177,14 @@ class MainWindow(QMainWindow):
             self._property_panel.set_project_vm(self._project_vm)
             self._script_panel.set_stack(self._project_vm.command_stack)
         else:
-            from daedalus.view.editors.agent_editor import AgentEditor as _AE
-            widget = self._tabs.widget(index)
-            if isinstance(widget, _AE):
-                # AgentEditor — undo/redo는 에이전트 그래프 VM 기준
-                agent_stack = widget._graph_vm.command_stack
-                self._active_stack = agent_stack
-                self._active_notify = widget._graph_vm.notify
-                self._history_panel.set_stack(
-                    agent_stack, on_goto=widget._graph_vm.notify
-                )
-                self._script_panel.set_stack(agent_stack)
-            else:
-                # SkillEditor — undo/redo는 project VM 기준
-                self._active_stack = self._project_vm.command_stack
-                self._active_notify = self._project_vm.notify
-                self._history_panel.set_stack(
-                    self._project_vm.command_stack, on_goto=self._project_vm.notify
-                )
-                self._script_panel.set_stack(self._project_vm.command_stack)
+            # Skill/Agent 편집기 — undo/redo는 project VM 기준 (WP-AF 이후
+            # AgentEditor도 별도 그래프 VM이 없어 SkillEditor와 동일하다).
+            self._active_stack = self._project_vm.command_stack
+            self._active_notify = self._project_vm.notify
+            self._history_panel.set_stack(
+                self._project_vm.command_stack, on_goto=self._project_vm.notify
+            )
+            self._script_panel.set_stack(self._project_vm.command_stack)
             self._property_panel.clear()
 
         self._active_stack.add_listener(self._update_undo_redo)
