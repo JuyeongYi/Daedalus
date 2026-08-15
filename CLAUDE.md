@@ -53,7 +53,7 @@ daedalus/
 │   │   ├── hook_presets.py # BUILTIN_HOOK_PRESETS (복사용 훅 템플릿) + preset_copy(핸들러까지 깊은 복사)
 │   │   ├── variables.py    # 본문 경로 변수(WP-RT) — ${ROOT} 타깃 중립 토큰, 타깃별 확장 매핑, 구버전 마이그레이션
 │   │   └── field_matrix.py # FieldRule(emit 포함), SKILL_FIELD_MATRIX, AGENT_FIELD_MATRIX (스킬/에이전트 유형별 프론트매터 필드 규칙)
-│   ├── project.py           # PluginProject (최상위 컨테이너, name+description+version — plugin.json 매니페스트 소스), ReferencePlacement, tool_shelf, hook_library, blackboard(최상위), graph(워크플로 백킹 머신)+graph_layout+edge_layout(WP-ER 엣지 웨이포인트, 키: Transition.id), emit_progress_hook(WP-RS SessionStart 진행 상태 훅 토글, 기본 True), build_target(WP-TG 빌드 타깃 — MARKETPLACE/LOCAL, 기본 MARKETPLACE)
+│   ├── project.py           # PluginProject (최상위 컨테이너, name+description+version — plugin.json 매니페스트 소스), ReferencePlacement, tool_shelf, hook_library, blackboard(최상위), graph(워크플로 백킹 머신)+graph_layout+edge_layout(WP-ER 엣지 웨이포인트, 키: Transition.id), emit_progress_hook(WP-RS SessionStart 진행 상태 훅 토글, 기본 True), build_target(WP-TG 빌드 타깃 — MARKETPLACE/LOCAL, 기본 MARKETPLACE), mcp_server_defs(WP-MW — 이름→.mcp.json 서버 객체, LOCAL 설치 배선 소스)
 │   │                       # + rename_component(project, component, new_name) — 이름 변경 + 문자열 참조 3종 일괄 갱신 (Qt 무관)
 │   │                       # + remove_component(project, component) → list[str] — 모델 정리 (graph placement, skill_ref None화, 위임 agent_ref None화 등)
 │   ├── package.py           # 프로젝트 패키지(WP-PK) — 폴더가 곧 프로젝트. PROJECT_FILENAME(".daedalus.json")/ARCHIVE_SUFFIX(".ddpj"),
@@ -63,9 +63,13 @@ daedalus/
 │   └── validation.py        # Validator + ValidationError + WARNING_RULES + is_warning (머신 규칙 20종 + 프로젝트 규칙 16종, 재귀)
 ├── compiler/         # 순수 모델 → 플러그인 파일 (Qt 무관)
 │   ├── emit.py             # compile_skill/compile_agent/compile_hooks_json — model → SKILL.md/agent .md/hooks.json 텍스트 (결정적, LF)
-│   └── project_compiler.py # compile_project(project, out_dir, files_dir=None) → CompileResult (검증 게이트 + 파일 쓰기)
-│                           # files_dir(WP-FR, 선택): 실존 디렉토리면 <out>/files/ 정렬 순회 복사(_copy_files_tree, 심볼릭 링크 미추종) +
-│                           #   dangling_file_ref 스캔(_scan_dangling_file_refs). 생략 시 기존 산출 완전 불변(하위 호환).
+│   ├── project_compiler.py # compile_project(project, out_dir, files_dir=None) → CompileResult (검증 게이트 + 파일 쓰기)
+│   │                       # files_dir(WP-FR, 선택): 실존 디렉토리면 <out>/files/ 정렬 순회 복사(_copy_files_tree, 심볼릭 링크 미추종) +
+│   │                       #   dangling_file_ref 스캔(_scan_dangling_file_refs). 생략 시 기존 산출 완전 불변(하위 호환).
+│   │                       # LOCAL 빌드는 컴파일이 곧 설치(WP-MW) — .claude/ 반입 + _wire_local_install(컴파일 정책 15번 참조).
+│   └── wiring.py           # wire_workspace(target, server_entries, hooks_map) → WireResult (WP-MW) — 작업 폴더의 .mcp.json
+│                           #   mcpServers + .claude/settings.local.json enabledMcpjsonServers/hooks 병합. 추가/갱신만·멱등·
+│                           #   깨진 JSON 불가침. LOCAL 컴파일과 앱 "Claude Code 실행" 메뉴가 공유하는 단일 진실. 순수 stdlib.
 ├── mcp/              # 앱 내장 MCP 서버 (WP-MCP) — CC와 협업하는 창구
 │   ├── endpoint.py         # 접속 정보(~/.daedalus/mcp-endpoint.json) + 포트 탐색 + .mcp.json 스니펫 (Qt 무관 순수)
 │   ├── invoker.py          # MainThreadInvoker — uvicorn 워커 스레드 → Qt 메인 스레드 마샬링(시그널+Event, 타임아웃)
@@ -88,6 +92,10 @@ daedalus/
     │                       # 파일 독(WP-FR): _setup_docks가 FilePanel을 "파일" 독으로 배치하고 markdown_editor.set_files_root_provider(lambda: self._file_panel.files_root())를
     │                       #   등록. _sync_files_root(_current_path 기준 project_dir/files 재계산)를 _save_to_path/open_path/_new_project 끝에서 호출.
     │                       #   _compile_project_dialog는 _current_path 기준 files_dir를 compile_project에 전달(미저장이면 None).
+    │                       # 도구 메뉴(WP-MW): "MCP 서버 정보..."(정보 전부 본문 즉시 표시 — Show Details 없음) +
+    │                       #   "Claude Code 실행"(_launch_claude_code — 프로젝트 저장 폴더에서 새 콘솔로 claude 실행,
+    │                       #   실행 전 _ensure_daedalus_mcp_json이 wiring.wire_workspace로 daedalus 서버를 .mcp.json/
+    │                       #   settings.local.json에 배선. 미저장·서버 미기동이면 상태바 안내 후 중단).
     │                       # 프로젝트 패키지(WP-PK): 열기/저장이 **폴더** 단위. _open_project_dialog(폴더 선택)/_open_file_dialog(구버전 파일 직접)/
     │                       #   _save_project_as(폴더 선택 — 형식이 새 형식으로 바뀌는 유일한 지점)/_export_package_dialog/_import_package_dialog.
     │                       #   _save_to_path가 package.resolve_project_file로 폴더→정본 파일 해석 + 없는 폴더 생성 + _carry_files_dir(다른 폴더로
@@ -305,7 +313,7 @@ daedalus/
 - **모델:** `model/plugin/enums.py`의 `BuildTarget(Enum)`: `MARKETPLACE`(기본) / `LOCAL`. `PluginProject.build_target: BuildTarget = BuildTarget.MARKETPLACE`.
 - **직렬화:** `.value` 왕복. 구버전 파일(키 부재)·미지 값은 `MARKETPLACE`로 조용히 폴백(경고 없음) — 하위 호환 게이트.
 - **생성 흐름:** `app._new_project`(Ctrl+N)가 이름 결정 전에 `QInputDialog.getItem`으로 "마켓플레이스 플러그인"/"로컬 플러그인"을 고르게 한다(`_prompt_build_target`). 취소하면 새 프로젝트 생성 자체가 취소된다(기존 프로젝트 유지). 표시 문구·enum 매핑은 `view/editors/project_properties.py`의 `BUILD_TARGET_LABELS`가 단일 진실(app.py가 재사용). `ProjectPropertiesDialog`에도 콤보로 노출해 생성 후 변경 가능.
-- **컴파일:** MARKETPLACE는 현행과 바이트 동일(하위 호환 게이트) — `plugin.json` 생성. LOCAL은 `compiler/project_compiler.py`의 컴파일 정책 13번 항목 참조(`.claude-plugin/` 미생성, `INSTALL.md`/`install.ps1`/`install.sh` 동봉, `${CLAUDE_PLUGIN_ROOT}/files/` → `${CLAUDE_PROJECT_DIR}/files/` 치환).
+- **컴파일:** MARKETPLACE는 현행과 바이트 동일(하위 호환 게이트) — `plugin.json` 생성. LOCAL은 **컴파일이 곧 설치**(WP-MW) — out_dir가 대상 작업 폴더이고 산출이 `.claude/` 밑으로 바로 나간다. 상세는 컴파일 정책 15번 항목 참조.
 - **검증:** `mcp_agent_in_marketplace_build`/`plugin_root_in_local_build` — Validator 프로젝트 수준 규칙 표 참조.
 
 ### 연결선 리루트 — 엣지 웨이포인트 (WP-ER)
@@ -456,6 +464,10 @@ daedalus/
   빈 값은 건드리지 않고, 여러 필드를 한 번에 주면 `MacroCommand`로 1 undo 단위가 된다.
   `set_component_description`도 이때 커맨드화됐고(이전에는 이 편집만 Ctrl+Z가 듣지 않았다)
   `set_component_when_to_use`가 함께 붙었다.
+- **MCP 서버 정의(WP-MW):** `set_mcp_server_def(name, config)` — 이름 → `.mcp.json` 서버 객체를
+  `project.mcp_server_defs`에 등록/갱신(config=None이면 삭제, 미존재 삭제는 거부). SetAttrCmd에
+  **새 dict**를 넘겨 undo 가능(제자리 수정이면 undo가 같은 객체를 가리킨다). LOCAL 컴파일의
+  설치 배선(`missing_mcp_server_def` 경고 해소)에 쓰인다. `get_project`가 `mcp_server_defs`를 포함.
 - **프론트매터 필드:** `list_component_fields`(필드 목록 + 현재값 + enum 선택지 + emit 위치)와
   `set_component_field`(SetAttrCmd 경유 — undo 가능). 대상 필드 집합은 `SKILL_FIELD_MATRIX`/
   `AGENT_FIELD_MATRIX`에서 뽑으므로 매트릭스가 늘면 도구가 따라간다. 타입 강제는
@@ -720,7 +732,7 @@ dataclass(값 동등성, unhashable) 유지 — 컬렉션 멤버십에는 list/`
 - `<out>/skills/<agent-name>--<skill-name>/SKILL.md` — 에이전트 로컬 스킬 (`--` 결합은 충돌 무결하지 **않음** — 이름 규약이 연속 하이픈을 허용하므로 게이트가 사전 경로 집합 검사로 충돌 시 거부)
 - `<out>/agents/<agent-name>.md` — 에이전트
 
-**`build_target == LOCAL`(WP-TG)일 때 출력 구조 차이:** `skills/`·`agents/`·`files/`·`hooks/hooks.json`은 동일 레이아웃이지만 `<out>/.claude-plugin/plugin.json`은 생성하지 않고(디렉토리 자체가 없음) 대신 `<out>/INSTALL.md`·`<out>/install.ps1`·`<out>/install.sh`가 동봉된다. 상세는 컴파일 정책 15번 항목 참조.
+**`build_target == LOCAL`(WP-TG/WP-MW)일 때 — 컴파일이 곧 설치:** out_dir는 스테이징이 아니라 대상 **작업 폴더**다. `<out>/.claude/skills/`·`<out>/.claude/agents/`(CC가 실제로 읽는 위치), `<out>/files/`·`<out>/schemas/`·`<out>/hooks/scripts/`(본문의 `${CLAUDE_PROJECT_DIR}/…` 참조 대상), `<out>/.mcp.json`·`<out>/.claude/settings.local.json`(생성/병합). `plugin.json`·`hooks/hooks.json`·설치 스크립트는 만들지 않는다. 상세는 컴파일 정책 15번 항목 참조.
 
 **컴파일 정책 (확정):**
 1. **프론트매터**: 해당 kind 매트릭스에서 `emit==FRONTMATTER`인 필드만. 키는 `frontmatter_key`(kebab-case).
@@ -761,7 +773,7 @@ dataclass(값 동등성, unhashable) 유지 — 컬렉션 멤버십에는 list/`
 14. **files/ 복사 + dangling_file_ref 경고 (WP-FR)**: `files_dir`가 실존 디렉토리면(게이트 통과 시에만) `_copy_files_tree`가 `<out>/files/`로 정렬 순회 복사한다(결정적, 심볼릭 링크 미추종 — 디렉토리는 재귀 안 함·파일은 복사 안 함). 기존 `<out>/files/`는 복사 전 삭제(out 전체가 아니라 files/만). 복사된 파일 경로는 `CompileResult.copied_files`에 담긴다. `files_dir`가 주어지면(실존 여부 무관) `_scan_dangling_file_refs`가 전역 스킬·에이전트·로컬 스킬 body에서 `${CLAUDE_PLUGIN_ROOT}/files/<경로>` 참조 토큰을 스캔해 files_dir에 실존하지 않으면 `dangling_file_ref` 경고를 `CompileResult.warnings`에 추가한다(게이트 차단 아님). `files_dir` 생략(None) 시 복사·스캔 모두 생략되어 기존 산출 파일/문자열이 완전히 불변(하위 호환).
 15. **빌드 타깃 — LOCAL 빌드 (WP-TG)**: `project.build_target`(기본 `MARKETPLACE`)에 따라 `_plan_outputs`의 산출 계획이 갈린다.
     - **MARKETPLACE**(기본): 현행과 **바이트 동일** — 하위 호환 게이트(기존 산출 문자열/파일 전부 불변).
-    - **LOCAL**: `.claude-plugin/plugin.json`을 계획에서 제외하고, 대신 `INSTALL.md`(`compile_install_md`, 산출 구조 설명 + 설치 스크립트 사용법 + hooks 수동 병합 안내)·`install.ps1`/`install.sh`(`compile_install_ps1`/`compile_install_sh`, 프로젝트 내용과 무관한 결정적 상수 텍스트 — 대상 경로 인자 필수·미지정 시 사용법 출력, skills/agents/files 복사, hooks.json은 복사하지 않고 수동 병합 안내만 출력)를 계획에 추가한다. 스킬/에이전트/로컬 스킬 본문 산출 텍스트는 쓰기 직전 `substitute_local_file_refs`가 `${CLAUDE_PLUGIN_ROOT}/files/` → `${CLAUDE_PROJECT_DIR}/files/`만 치환한다(본문 저장 정본은 마켓플레이스 형태 하나 그대로, files/ 외 용도의 `${CLAUDE_PLUGIN_ROOT}`는 미치환 — `plugin_root_in_local_build` 검증 경고 대상). 프로젝트 이름 규약 게이트·`hooks/hooks.json`·`schemas/schemas.json` 산출 조건은 빌드 타깃과 무관하게 기존 그대로 적용된다.
+    - **LOCAL — 컴파일이 곧 설치 (WP-MW)**: out_dir가 대상 작업 폴더다. 스킬/에이전트/로컬 스킬은 `.claude/skills/`·`.claude/agents/`(CC가 실제로 읽는 위치)로 나가고, `plugin.json`과 이전의 `INSTALL.md`/`install.ps1`/`install.sh` 동봉은 폐기됐다(별도 설치 단계가 없다). `hooks/hooks.json` 파일도 만들지 않는다 — 훅은 `.claude/settings.local.json`의 `hooks` 섹션에 병합된다(훅 스크립트 파일은 양쪽 타깃 모두 `hooks/scripts/`로 — LOCAL 커맨드가 `${CLAUDE_PROJECT_DIR}/hooks/scripts/…`를 가리킨다). MCP 배선: `referenced_mcp_servers(project)`(스킬 allowed_tools ∪ 에이전트 tools/mcp_servers ∪ 로컬 스킬, 이름순) ∩ `project.mcp_server_defs` 정의를 `<out>/.mcp.json`의 `mcpServers`에 병합하고 그 이름을 `.claude/settings.local.json`의 `enabledMcpjsonServers`에 올린다. 참조되지만 정의 없는 서버는 `missing_mcp_server_def` 경고, 깨진 기존 JSON은 건드리지 않고 `unmergeable_settings_json` 경고(수기 설정 보호). 병합은 추가/갱신만·동일 훅 그룹 중복 삽입 없음 — **재컴파일 멱등**. 병합 구현은 `compiler/wiring.py`의 `wire_workspace`가 단일 진실("Claude Code 실행" 메뉴와 공유). files/ 복사는 LOCAL에서 기존 `<out>/files/`를 **삭제하지 않고** 덮어쓰기만 한다(`_copy_files_tree(clear_first=False)` — 사용자 작업 폴더의 파일 삭제 위험 > 스테일 잔존). `${ROOT}` 확장·이름 규약 게이트·`schemas/schemas.json` 산출 조건은 기존 그대로.
 
 16. **LOCAL 에이전트 프론트매터 — hooks / mcpServers (WP-LA)**: CC는 **보안상 플러그인 서브에이전트의
     `hooks`/`mcpServers`/`permissionMode` 프론트매터를 무시한다**(공식 sub-agents 문서 명시). 즉 이 셋은

@@ -44,6 +44,7 @@ TOOL_NAMES = (
     "set_component_when_to_use",
     "set_component_field",
     "set_project_properties",
+    "set_mcp_server_def",
     "place_component",
     "create_state",
     "move_state",

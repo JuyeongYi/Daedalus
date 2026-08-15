@@ -213,6 +213,7 @@ class DaedalusTools:
                 self._hook_summary(h) for h in getattr(project, "hook_library", []) or []
             ],
             "emit_progress_hook": getattr(project, "emit_progress_hook", None),
+            "mcp_server_defs": dict(getattr(project, "mcp_server_defs", None) or {}),
             "can_undo": self._window._active_stack.can_undo,
             "can_redo": self._window._active_stack.can_redo,
         }
@@ -584,6 +585,51 @@ class DaedalusTools:
             "version": project.version,
             "build_target": project.build_target.value,
         }
+
+    def set_mcp_server_def(
+        self, name: str, config: dict | None = None
+    ) -> dict[str, Any]:
+        """MCP 서버 정의(이름 → `.mcp.json` 서버 객체)를 등록/갱신/삭제한다 (WP-MW).
+
+        config 예: {"type": "http", "url": "http://127.0.0.1:8787/mcp"} 또는
+        {"command": "npx", "args": ["-y", "@modelcontextprotocol/server-memory"]}.
+        config=None(또는 빈 dict)이면 그 이름의 정의를 삭제한다.
+
+        컴포넌트는 서버를 이름으로만 참조한다(tools/allowed_tools의 mcp__<서버>__
+        접두, mcp_servers 선언). 정의는 **로컬 빌드의 설치 배선**에 쓰인다 —
+        컴파일이 대상 작업 폴더의 `.mcp.json`에 병합하고 `.claude/
+        settings.local.json`의 `enabledMcpjsonServers`에 이름을 올린다. 정의 없이
+        참조만 있으면 컴파일이 `missing_mcp_server_def` 경고를 낸다.
+        """
+        from daedalus.view.commands.attr_commands import SetAttrCmd
+
+        if not name:
+            raise ValueError("서버 이름이 비어 있습니다.")
+        project = self._project
+        current = dict(getattr(project, "mcp_server_defs", None) or {})
+        old = current.get(name)
+
+        updated = dict(current)
+        if config:
+            updated[name] = dict(config)
+            action = "updated" if name in current else "added"
+        else:
+            if name not in current:
+                known = ", ".join(sorted(current)) or "(없음)"
+                raise ValueError(f"'{name}' 정의가 없습니다. 현재 정의: {known}")
+            del updated[name]
+            action = "removed"
+
+        # SetAttrCmd는 값을 복사하지 않으므로 새 dict를 만들어 넘긴다 — 제자리
+        # 수정이면 undo가 같은 객체를 가리켜 되돌릴 수 없다.
+        self._vm.execute(SetAttrCmd(
+            project,
+            "mcp_server_defs",
+            updated,
+            label=f"MCP 서버 정의 {action}: {name}",
+            script=f'set_mcp_server_def("{name}", ...)',
+        ))
+        return {"server": name, "action": action, "old": old, "new": updated.get(name)}
 
     def place_component(
         self, name: str, x: float = 0.0, y: float = 0.0, agent: str = ""

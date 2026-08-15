@@ -166,6 +166,8 @@ def serialize_project(project: PluginProject) -> dict:
         "emit_progress_hook": project.emit_progress_hook,
         # WP-TG — 구버전 파일(키 부재)은 역직렬화 시 MARKETPLACE로 취급(경고 없음).
         "build_target": project.build_target.value,
+        # WP-MW — MCP 서버 정의(이름 → .mcp.json 서버 객체). 구버전 파일(키 부재)은 빈 dict.
+        "mcp_server_defs": {k: dict(v) for k, v in project.mcp_server_defs.items()},
     }
 
 
@@ -773,6 +775,10 @@ def deserialize_project(
         build_target=_to_enum(
             BuildTarget, data.get("build_target"), BuildTarget.MARKETPLACE
         ),
+        # WP-MW — 구버전 파일(키 부재) → 빈 dict (경고 없음).
+        mcp_server_defs={
+            k: dict(v) for k, v in data.get("mcp_server_defs", {}).items()
+        },
     )
 
     # ── pass 2: 모든 참조(state/skill/agent id) 해소 ──

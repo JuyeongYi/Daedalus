@@ -76,6 +76,12 @@ class PluginProject:
     # 프로젝트 생성 시 선택하고 프로젝트 속성에서 변경 가능. 구버전 프로젝트 파일
     # (키 부재)은 MARKETPLACE로 취급(deserialize_project) — 하위 호환 게이트.
     build_target: BuildTarget = BuildTarget.MARKETPLACE
+    # WP-MW — MCP 서버 정의: 이름 → CC `.mcp.json` 서버 객체(JSON dict 그대로,
+    # 예: {"type": "http", "url": "http://127.0.0.1:8787/mcp"}). 컴포넌트들은
+    # 서버를 **이름**으로만 참조하는 원칙 그대로이고, 정의는 설치 배선(로컬 빌드의
+    # mcp/mcp-servers.json 산출 → install 스크립트가 대상 프로젝트 .mcp.json에 병합)
+    # 에만 쓰인다. 구버전 파일(키 부재)은 빈 dict.
+    mcp_server_defs: dict[str, dict] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         # 블랙보드 스코핑 — 프로젝트 그래프 FSM의 blackboard를 최상위 블랙보드의

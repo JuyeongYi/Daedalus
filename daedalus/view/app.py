@@ -254,6 +254,13 @@ class MainWindow(QMainWindow):
             self._mcp_info_action.triggered.connect(self._show_mcp_info)
             tools_menu.addAction(self._mcp_info_action)
 
+            self._launch_cc_action = QAction("Claude Code 실행", self)
+            self._launch_cc_action.setToolTip(
+                "프로젝트 폴더에서 Claude Code를 연다 (MCP 서버 실행 중일 때)"
+            )
+            self._launch_cc_action.triggered.connect(self._launch_claude_code)
+            tools_menu.addAction(self._launch_cc_action)
+
         view_menu = menubar.addMenu("View")
         if view_menu is None:
             return
@@ -1258,7 +1265,15 @@ class MainWindow(QMainWindow):
             self._status_label.setText("컴파일: 프로젝트가 없습니다.")
             return
 
-        out_dir = QFileDialog.getExistingDirectory(self, "컴파일 출력 폴더 선택", "")
+        # LOCAL은 컴파일이 곧 설치 — 고르는 것은 스테이징 폴더가 아니라 플러그인을
+        # 반입할 **작업 폴더**다(WP-MW). 시작 위치는 현재 프로젝트 저장 폴더.
+        is_local = getattr(self._project, "build_target", None) is BuildTarget.LOCAL
+        title = (
+            "설치 대상 작업 폴더 선택 (.claude/ 밑에 반입됩니다)"
+            if is_local else "컴파일 출력 폴더 선택"
+        )
+        start = str(package.project_dir(self._current_path)) if self._current_path else ""
+        out_dir = QFileDialog.getExistingDirectory(self, title, start)
         if not out_dir:
             return
 
@@ -1324,17 +1339,82 @@ class MainWindow(QMainWindow):
             return
 
         port = service.port
-        text = (
-            f"접속 주소: {service.url}\n\n"
-            "Claude Code에서 쓰려면 프로젝트의 .mcp.json에 아래를 넣으세요:\n\n"
-            f"{endpoint.mcp_json_snippet(port)}\n\n"
-            f"접속 정보 파일: {endpoint.ENDPOINT_PATH}"
-        )
+        # Show Details를 누르게 하지 않는다 — 정보 전부를 본문에 바로 보여준다
+        # (사용자 요청). 스니펫은 복사해 쓰는 텍스트라 고정폭이 읽기 좋다.
         box = QMessageBox(self)
         box.setWindowTitle("MCP 서버")
-        box.setText("Claude Code와 협업할 준비가 되었습니다.")
-        box.setDetailedText(text)
+        box.setTextFormat(Qt.TextFormat.RichText)
+        box.setText(
+            "<b>Claude Code와 협업할 준비가 되었습니다.</b><br><br>"
+            f"접속 주소: <code>{service.url}</code><br><br>"
+            "Claude Code에서 쓰려면 프로젝트의 <code>.mcp.json</code>에 아래를 넣으세요:"
+            f"<pre>{endpoint.mcp_json_snippet(port)}</pre>"
+            f"접속 정보 파일: <code>{endpoint.ENDPOINT_PATH}</code>"
+        )
         box.exec()
+
+    def _launch_claude_code(self) -> None:
+        """도구 메뉴 — 프로젝트 폴더에서 Claude Code를 연다.
+
+        시작 위치는 현재 프로젝트가 저장된 폴더다. 열기 전에 그 폴더의
+        `.mcp.json`에 daedalus 서버 항목을 병합해 두므로(추가만 — 기존 항목
+        보존), 새 세션이 바로 이 편집 세션에 붙을 수 있다.
+        """
+        import subprocess
+        import sys
+
+        service = self._mcp_service
+        if service is None or not getattr(service, "running", False):
+            self._status_label.setText(
+                "Claude Code 실행: MCP 서버가 실행 중이 아닙니다."
+            )
+            return
+        if not self._current_path:
+            self._status_label.setText(
+                "Claude Code 실행: 먼저 프로젝트를 저장하세요 — 시작 폴더가 정해져야 합니다."
+            )
+            return
+        work_dir = str(package.project_dir(self._current_path))
+        self._ensure_daedalus_mcp_json(work_dir)
+        try:
+            if sys.platform == "win32":
+                # start /D <dir> — 새 콘솔에서 claude를 연다. cmd /k라 claude가
+                # 끝나도 창이 남아 에러 메시지를 읽을 수 있다.
+                subprocess.Popen(
+                    ["cmd.exe", "/c", "start", "Claude Code", "/D", work_dir,
+                     "cmd", "/k", "claude"],
+                )
+            elif sys.platform == "darwin":
+                subprocess.Popen(["open", "-a", "Terminal", work_dir])
+            else:
+                subprocess.Popen(["x-terminal-emulator", "-e", "claude"], cwd=work_dir)
+        except OSError as exc:
+            self._status_label.setText(f"Claude Code 실행 실패: {exc}")
+            return
+        self._status_label.setText(f"Claude Code 실행: {work_dir}")
+
+    def _ensure_daedalus_mcp_json(self, work_dir: str) -> None:
+        """프로젝트 폴더에 daedalus 서버를 배선한다 — `.mcp.json`의 `mcpServers`와
+        `.claude/settings.local.json`의 `enabledMcpjsonServers` 생성/수정.
+
+        병합은 LOCAL 빌드의 설치 배선과 **같은 공유 함수**(`wiring.wire_workspace`)
+        다 — 같은 폴더를 두 경로가 다르게 만지면 안 된다. 추가/갱신만 하고 깨진
+        JSON은 건드리지 않는다(수기 설정 보호).
+        """
+        from daedalus.compiler.wiring import wire_workspace
+
+        service = self._mcp_service
+        url = getattr(service, "url", None)
+        if not url:
+            return
+        wired = wire_workspace(
+            work_dir, {"daedalus": {"type": "http", "url": url}},
+        )
+        if wired.unmergeable:
+            names = ", ".join(str(p) for p in wired.unmergeable)
+            self._status_label.setText(
+                f"올바른 JSON이 아니어서 배선하지 못했습니다: {names}"
+            )
 
     def closeEvent(self, event) -> None:  # noqa: N802 (Qt override)
         """앱이 닫히면 MCP 서버도 함께 내린다."""

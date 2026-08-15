@@ -7,12 +7,17 @@ CC 플러그인 출력 구조 (project.build_target == MARKETPLACE, 기본):
     <out>/skills/<agent-name>--<skill-name>/SKILL.md   # 에이전트 로컬 스킬
     <out>/agents/<agent-name>.md                # 에이전트
 
-LOCAL 빌드(WP-TG) 출력 구조 — .claude/ 반입형:
-    <out>/skills/, <out>/agents/, <out>/files/, <out>/hooks/hooks.json은 동일 레이아웃.
-    <out>/.claude-plugin/plugin.json은 생성하지 않는다(디렉토리 자체가 없음).
-    <out>/INSTALL.md, <out>/install.ps1, <out>/install.sh가 대신 동봉된다.
-    스킬/에이전트 본문의 ``${CLAUDE_PLUGIN_ROOT}/files/``는 산출 시점에
-    ``${CLAUDE_PROJECT_DIR}/files/``로 치환된다(본문 저장 정본은 불변).
+LOCAL 빌드(WP-TG/WP-MW) — **컴파일이 곧 설치**다. out_dir는 스테이징이 아니라
+대상 **작업 폴더**이고, 산출물이 CC가 실제로 읽는 위치에 바로 놓인다:
+    <out>/.claude/skills/<skill-name>/SKILL.md    # CC 프로젝트 스킬 위치
+    <out>/.claude/agents/<agent-name>.md          # CC 프로젝트 에이전트 위치
+    <out>/files/, <out>/schemas/, <out>/hooks/scripts/  # 본문이 ${CLAUDE_PROJECT_DIR}/…로 참조
+    <out>/.mcp.json                    # mcpServers 병합 (mcp_server_defs 소스, 생성/수정)
+    <out>/.claude/settings.local.json  # enabledMcpjsonServers + hooks 병합 (생성/수정)
+plugin.json·hooks/hooks.json·설치 스크립트는 만들지 않는다 — 별도 설치 단계가
+없기 때문이다. JSON 병합은 추가만 한다(기존 항목 보존, 같은 이름 서버는 갱신,
+동일 hooks 그룹은 중복 삽입하지 않아 재컴파일이 멱등). ``${ROOT}``는
+``${CLAUDE_PROJECT_DIR}``로 확장된다(본문 저장 정본은 불변).
 
 로컬 스킬의 '--' 결합은 충돌 무결하지 **않다** — 이름 규약이 연속 하이픈을
 허용하므로 (agent 'a--b', skill 'c')와 (agent 'a', skill 'b--c')가 같은
@@ -29,6 +34,7 @@ LOCAL 빌드(WP-TG) 출력 구조 — .claude/ 반입형:
 """
 from __future__ import annotations
 
+import json
 import os
 import re
 import shutil
@@ -39,13 +45,11 @@ from daedalus.compiler.emit import (
     compile_agent,
     compile_hook_scripts,
     compile_hooks_json,
-    compile_install_md,
-    compile_install_ps1,
-    compile_install_sh,
     compile_plugin_manifest,
     compile_schemas_json,
     compile_skill,
     expand_root_token,
+    referenced_mcp_servers,
 )
 from daedalus.model.plugin.enums import BuildTarget
 from daedalus.model.plugin.hook import HOOK_SCRIPT_DIR
@@ -148,6 +152,10 @@ def _plan_outputs(project) -> tuple[list[_PlannedOutput], list[ValidationError]]
     plan: list[_PlannedOutput] = []
     errors: list[ValidationError] = []
     is_local = _is_local_build(project)
+    # LOCAL은 컴파일이 곧 설치 — 스킬/에이전트가 CC가 실제로 읽는 <작업 폴더>/.claude/
+    # 밑으로 바로 나간다. files/·schemas/·hooks/scripts/는 루트 그대로다(본문의
+    # ${CLAUDE_PROJECT_DIR}/… 참조가 그 위치를 가리킨다).
+    cc_prefix = PurePosixPath(".claude") if is_local else PurePosixPath(".")
 
     def check_name(name: str, label: str, subject: object) -> None:
         if not _OUTPUT_NAME_RE.match(name or ""):
@@ -188,7 +196,7 @@ def _plan_outputs(project) -> tuple[list[_PlannedOutput], list[ValidationError]]
         label = f"스킬 '{skill.name}'"
         check_name(skill.name, label, skill)
         plan.append(_PlannedOutput(
-            rel_path=PurePosixPath("skills") / _skill_dir_name(skill.name) / "SKILL.md",
+            rel_path=cc_prefix / "skills" / _skill_dir_name(skill.name) / "SKILL.md",
             label=label,
             subject=skill,
             kind="skill",
@@ -200,7 +208,7 @@ def _plan_outputs(project) -> tuple[list[_PlannedOutput], list[ValidationError]]
         label = f"에이전트 '{agent.name}'"
         check_name(agent.name, label, agent)
         plan.append(_PlannedOutput(
-            rel_path=PurePosixPath("agents") / f"{agent.name}.md",
+            rel_path=cc_prefix / "agents" / f"{agent.name}.md",
             label=label,
             subject=agent,
             kind="agent",
@@ -211,7 +219,7 @@ def _plan_outputs(project) -> tuple[list[_PlannedOutput], list[ValidationError]]
             check_name(local_skill.name, local_label, local_skill)
             plan.append(_PlannedOutput(
                 rel_path=(
-                    PurePosixPath("skills")
+                    cc_prefix / "skills"
                     / _local_skill_dir_name(agent.name, local_skill.name)
                     / "SKILL.md"
                 ),
@@ -223,17 +231,20 @@ def _plan_outputs(project) -> tuple[list[_PlannedOutput], list[ValidationError]]
             ))
 
     # hooks.json (SETTINGS) — 프로젝트가 참조하는 훅이 있을 때만 계획에 합류.
-    # 고정 경로 'hooks/hooks.json'이라 컴포넌트 산출(skills/·agents/)과 충돌할 수
-    # 없지만, 경로 집합·결정성 일관성을 위해 plan에 포함한다.
+    # LOCAL은 hooks/hooks.json 파일을 만들지 않는다 — 컴파일이 곧 설치이므로 훅은
+    # <out>/.claude/settings.local.json의 hooks 섹션에 병합된다(compile_project의
+    # 병합 단계, WP-MW). 훅 스크립트 파일은 양쪽 타깃 모두 hooks/scripts/로 나간다
+    # (LOCAL의 커맨드가 ${CLAUDE_PROJECT_DIR}/hooks/scripts/…를 가리킨다).
     hooks_text = compile_hooks_json(project)
     if hooks_text is not None:
-        plan.append(_PlannedOutput(
-            rel_path=PurePosixPath("hooks") / "hooks.json",
-            label="hooks.json (lifecycle hooks)",
-            subject=project,
-            kind="hooks_json",
-            component=project,
-        ))
+        if not is_local:
+            plan.append(_PlannedOutput(
+                rel_path=PurePosixPath("hooks") / "hooks.json",
+                label="hooks.json (lifecycle hooks)",
+                subject=project,
+                kind="hooks_json",
+                component=project,
+            ))
         # 훅 스크립트 — 커맨드는 아무리 짧아도 파일로 나가고 hooks.json에는
         # 루트 기반 경로만 남는다 (WP-HS).
         for filename, _body in compile_hook_scripts(project):
@@ -261,36 +272,14 @@ def _plan_outputs(project) -> tuple[list[_PlannedOutput], list[ValidationError]]
 
     # plugin.json (플러그인 매니페스트) — MARKETPLACE 빌드에서만 생성한다
     # (매니페스트 없이는 산출 디렉토리를 CC 플러그인으로 설치할 수 없다).
-    # LOCAL 빌드는 .claude/ 반입형이라 .claude-plugin/ 디렉토리 자체가 없고,
-    # 대신 INSTALL.md + install.ps1/.sh를 동봉한다 (WP-TG).
+    # LOCAL 빌드는 컴파일이 곧 설치라 매니페스트도 설치 스크립트도 없다 (WP-MW —
+    # 이전의 INSTALL.md/install.ps1/install.sh 동봉은 폐기됐다).
     if not is_local:
         plan.append(_PlannedOutput(
             rel_path=PurePosixPath(".claude-plugin") / "plugin.json",
             label="plugin.json (플러그인 매니페스트)",
             subject=project,
             kind="plugin_manifest",
-            component=project,
-        ))
-    else:
-        plan.append(_PlannedOutput(
-            rel_path=PurePosixPath("INSTALL.md"),
-            label="INSTALL.md (로컬 빌드 설치 안내)",
-            subject=project,
-            kind="install_md",
-            component=project,
-        ))
-        plan.append(_PlannedOutput(
-            rel_path=PurePosixPath("install.ps1"),
-            label="install.ps1 (설치 스크립트)",
-            subject=project,
-            kind="install_ps1",
-            component=project,
-        ))
-        plan.append(_PlannedOutput(
-            rel_path=PurePosixPath("install.sh"),
-            label="install.sh (설치 스크립트)",
-            subject=project,
-            kind="install_sh",
             component=project,
         ))
 
@@ -315,7 +304,9 @@ def _plan_outputs(project) -> tuple[list[_PlannedOutput], list[ValidationError]]
     return plan, errors
 
 
-def _copy_files_tree(src_dir: Path, dst_dir: Path) -> list[Path]:
+def _copy_files_tree(
+    src_dir: Path, dst_dir: Path, clear_first: bool = True,
+) -> list[Path]:
     """src_dir 트리를 dst_dir로 정렬 순회 복사한다 (결정적 로그).
 
     심볼릭 링크는 따라가지 않는다 — 디렉토리는 재귀하지 않고, 파일은 복사하지
@@ -325,7 +316,9 @@ def _copy_files_tree(src_dir: Path, dst_dir: Path) -> list[Path]:
     반환: 실제로 복사된 파일의 dst_dir 기준 경로 목록 (정렬 순서, 디렉토리
     자체는 포함하지 않음).
     """
-    if dst_dir.exists():
+    # clear_first=False(LOCAL — out_dir가 사용자의 작업 폴더)는 기존 dst_dir를
+    # 지우지 않고 덮어쓰기 복사만 한다. 사용자 파일 삭제 위험 > 스테일 잔존.
+    if clear_first and dst_dir.exists():
         shutil.rmtree(dst_dir)
     dst_dir.mkdir(parents=True, exist_ok=True)
 
@@ -460,12 +453,6 @@ def compile_project(
             text = compile_schemas_json(project) or ""
         elif item.kind == "plugin_manifest":
             text = compile_plugin_manifest(project)
-        elif item.kind == "install_md":
-            text = compile_install_md(project)
-        elif item.kind == "install_ps1":
-            text = compile_install_ps1()
-        elif item.kind == "install_sh":
-            text = compile_install_sh()
         else:  # local_skill
             text = compile_skill(item.component, local=True, project=project)
 
@@ -481,7 +468,64 @@ def compile_project(
     if files_dir is not None:
         files_dir_path = Path(files_dir)
         if files_dir_path.is_dir():
-            result.copied_files = _copy_files_tree(files_dir_path, out_dir / "files")
+            # LOCAL의 out_dir는 사용자의 작업 폴더다 — 기존 <out>/files/를 지우면
+            # 사용자 파일을 지울 수 있으므로 덮어쓰기 복사만 한다(스테일 잔존은
+            # 감수). MARKETPLACE 스테이징 디렉토리는 종전대로 삭제 후 복사.
+            result.copied_files = _copy_files_tree(
+                files_dir_path, out_dir / "files",
+                clear_first=not _is_local_build(project),
+            )
         result.warnings.extend(_scan_dangling_file_refs(project, files_dir_path))
 
+    if _is_local_build(project):
+        _wire_local_install(project, out_dir, result)
+
     return result
+
+
+# ─────────────────────── LOCAL 설치 배선 — JSON 병합 (WP-MW) ───────────────────────
+
+
+def _wire_local_install(project, out_dir: Path, result: CompileResult) -> None:
+    """LOCAL 빌드의 설치 배선 — 대상 작업 폴더의 설정 파일을 생성/수정한다.
+
+    병합 자체는 `compiler/wiring.wire_workspace`가 한다("Claude Code 실행"
+    메뉴와 공유 — 같은 폴더를 두 경로가 다르게 만지면 안 된다). 여기서는
+    무엇을 배선할지(참조 서버 ∩ 정의, 프로젝트 훅)를 정하고, 배선하지 못한
+    사실을 경고로 변환한다.
+    """
+    from daedalus.compiler.wiring import wire_workspace
+
+    defs = getattr(project, "mcp_server_defs", None) or {}
+    referenced = referenced_mcp_servers(project)
+    entries = {name: defs[name] for name in referenced if name in defs}
+    for name in referenced:
+        if name not in defs:
+            result.warnings.append(ValidationError(
+                rule="missing_mcp_server_def",
+                message=(
+                    f"MCP 서버 '{name}'가 참조되지만 프로젝트에 서버 정의가 없어 "
+                    f".mcp.json에 배선하지 못했습니다. set_mcp_server_def(MCP) 또는 "
+                    f"프로젝트 속성에서 정의를 추가하거나, 대상 프로젝트의 "
+                    f".mcp.json에 직접 추가하세요."
+                ),
+                source=name,
+                subject=project,
+            ))
+
+    hooks_text = compile_hooks_json(project)
+    hooks_map = json.loads(hooks_text).get("hooks", {}) if hooks_text else None
+
+    wired = wire_workspace(out_dir, entries, hooks_map)
+    result.written.extend(wired.written)
+    for path in wired.unmergeable:
+        result.warnings.append(ValidationError(
+            rule="unmergeable_settings_json",
+            message=(
+                f"'{path}'가 올바른 JSON이 아니어서 병합하지 않았습니다 — 기존 "
+                f"내용을 지키기 위해 그대로 두었습니다. 파일을 고친 뒤 다시 "
+                f"컴파일하세요."
+            ),
+            source=str(path),
+            subject=project,
+        ))

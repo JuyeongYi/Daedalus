@@ -7,7 +7,7 @@
     {
       "kind": "declarative_skill",
       "id": "119ffdbfe266415d9fbc7771fab7f0b3",
-      "name": "daedalus-model",
+      "name": "daedalus-model-old",
       "description": "Daedalus의 설계 모델 — 컴포넌트 5종, FSM+블랙보드 하이브리드, 포트 3종의 의미론.",
       "when_to_use": "",
       "body": "# Daedalus 설계 모델\n\nDaedalus는 플러그인을 **FSM + 블랙보드**로 설계하고 컴파일러가 플러그인 파일을\n찍어내는 도구다. 캔버스에서 그린 것이 곧 컴파일 산출의 소스다.\n\n## 컴포넌트 5종\n\n| 종류 | 본질 | FSM |\n|------|------|-----|\n| ProceduralSkill | 작업 지침 | 자체 FSM 보유 |\n| DeclarativeSkill | 배경 지식 | 없음 |\n| TransferSkill | 전이 중 실행되는 보조 지침 | 자체 FSM 보유 |\n| ReferenceSkill | 참조 문서 | 없음, 참조 노드로 복수 배치 |\n| AgentDefinition | 별도 컨텍스트의 상태 기계 | 자체 FSM + 별도 블랙보드 |\n\n**무엇을 무엇으로 만들 것인가**가 첫 판단이다:\n\n- 컨텍스트를 오염시키는 작업(대량 검색, 로그 훑기) → **에이전트**. 별도 창에서 하고\n  결과만 돌려준다.\n- 매번 같은 배경 지식이 필요 → **declarative**. 본문이 필요할 때만 로드된다.\n- 순서가 있는 절차 → **procedural**. 상태로 나눌 수 있다.\n- 전이 도중에만 필요한 지침 → **transfer**.\n\n## 포트 3종 — 노드가 바깥과 만나는 자리\n\n구조(노드와 선)만 만들면 분기가 표현되지 않는다. 포트가 의미론을 담는다.\n\n| 포트 | 필드 | 뜻 |\n|------|------|-----|\n| 출력 | `transfer_on` | 이 노드가 **어떤 결과로 끝나는가** (분기 갈래) |\n| 입력 | `entry_paths` | 이 노드에 **어떤 경로로 들어왔는가** |\n| 에이전트 호출 | `call_agents` | 여기서 에이전트에게 위임한다 |\n\n- 전이의 `trigger`가 출발 노드의 출력 포트 이름을 가리킨다. 이게 없으면 캔버스에서\n  포트가 갈라지지 않고, 컴파일된 \"다음 단계\" 단락도 조건 없이 뭉뚱그려진다.\n- 전이의 `target_port`가 도착 노드의 입력 포트를 가리킨다. 같은 노드에 여러 경로로\n  들어올 때, 도착한 쪽이 자기가 어디서 왔는지 알아야 다르게 행동할 수 있다.\n- **에이전트로 가는 전이는 반드시 `call_agents` 포트에서 나가야 한다.** 이건 캔버스가\n  강제하는 규칙이고 MCP 경로도 같다. 연결하면 대상 에이전트의 호출 계약 카드가\n  자동으로 생긴다.\n\n## 블랙보드 — 컨텍스트 사이의 통로\n\n같은 컨텍스트 안에서는 필요 없다. 이미 맥락을 공유하기 때문이다. **서로 다른\n컨텍스트**(스킬 → 에이전트, 세션 → 다음 세션)로 값을 넘길 때 쓴다.\n\n- 필드 타입은 스칼라 4종(`string`/`int`/`float`/`bool`)뿐이다. 컨테이너 형상은\n  `collection`(none/list/set)이 전담한다 — \"문자열 목록\"은 `string × list`.\n- 클래스 하나가 런타임에 `state/<ClassName>.json` 파일 하나가 된다.\n- 각 노드가 `reads`/`writes`로 접근을 선언한다. 선언하면 캔버스에 뱃지가 붙고,\n  컴파일된 본문의 블랙보드 단락이 그 클래스로 좁혀진다. 선언이 없으면 전 클래스를\n  나열하는 일반 안내만 나간다.\n\n## 진행 상태 — 세션을 넘기는 규약\n\n프로젝트 그래프에 배치된 스킬은 `state/__progress__.json`으로 자기 위치를 남긴다\n(`current` / `completed` / `prev` / `note`). 컴파일러가 \"작업 재개\" 단락과 \"다음 단계\"\n단락을 자동으로 붙이므로, 설계자는 그래프만 제대로 그리면 된다.\n\n`prev`에는 직전 **스킬** 이름이 남는다 — 에이전트에 위임했다가 돌아온 경우에도\n에이전트 이름이 아니라 위임한 스킬 이름이다.\n\n## 검증과 컴파일 게이트\n\nF7 검증은 에러와 경고를 나눈다. **에러가 1건이라도 있으면 컴파일이 거부**되고 파일이\n하나도 생기지 않는다. 경고는 통과하지만 대부분 실제 결함이다.\n\n컴파일 시점에만 에러로 승격되는 것이 둘 있다: 이름 규약 위반, 산출 경로 충돌.\n편집 중에는 경고지만 파일을 쓰기 직전에는 막는다.\n",
@@ -27,7 +27,7 @@
     {
       "kind": "declarative_skill",
       "id": "fdeed490f406434d9a831d727d0098db",
-      "name": "cc-plugin-spec",
+      "name": "cc-plugin-spec-old",
       "description": "Claude Code 플러그인 규격 — 프론트매터 키 케이싱, 빌드 타깃별 제약, 경로 변수, 훅 스키마.",
       "when_to_use": "",
       "body": "# Claude Code 플러그인 규격\n\n공식 문서에 흩어져 있거나 아예 없는 사실들을 모았다. 규격 정본은 SchemaStore의\n`claude-code-settings.json`과 code.claude.com 문서다.\n\n## 프론트매터 키 케이싱 — 스킬과 에이전트가 다르다\n\n이걸 유추하면 틀린다. 둘은 서로 다른 규약을 쓴다.\n\n| 대상 | 규약 | 예시 |\n|------|------|------|\n| 스킬 `SKILL.md` | **kebab-case** | `allowed-tools`, `disable-model-invocation`, `argument-hint` |\n| 에이전트 `.md` | **camelCase** | `permissionMode`, `disallowedTools`, `maxTurns`, `mcpServers` |\n\n에이전트에 `permission-mode`라고 쓰면 CC가 인식하지 못하고 **조용히 무시한다**.\n값은 파일에 있는데 아무 일도 일어나지 않는다.\n\n## 플러그인 서브에이전트가 무시하는 필드 3종\n\n> For security reasons, plugin subagents don't support the `hooks`, `mcpServers`,\n> or `permissionMode` frontmatter fields.\n\n이것이 빌드 타깃을 나누는 이유 전부다. 마켓플레이스 플러그인으로 배포하면 이 셋이\n무시되므로, 설계자가 걸어 둔 제약이 사라진다. 셋 중 하나라도 필요하면\n**프로젝트 설치(LOCAL) 빌드**를 골라야 한다.\n\n프로젝트 설치 빌드는 CC 관점에서 플러그인이 아니다 — 서브에이전트 스코프로 치면\n`plugin`이 아니라 `project`다. 정확히 그래서 제약이 풀린다.\n\n## 경로 변수 — 치환 조건이 변수마다 다르다\n\n| 변수 | 치환되는 곳 |\n|------|-------------|\n| `${CLAUDE_PLUGIN_ROOT}` | **플러그인 스킬에서만** |\n| `${CLAUDE_PLUGIN_DATA}` | **플러그인 스킬에서만** |\n| `${CLAUDE_PROJECT_DIR}` | 어디서나 (v2.1.196+) |\n| `${CLAUDE_SKILL_DIR}` | 어디서나 |\n\n프로젝트 설치 빌드에서 `${CLAUDE_PLUGIN_ROOT}`를 쓰면 리터럴 문자열로 남는다.\n\n**Daedalus에서는 본문에 타깃 중립 토큰 `${ROOT}`를 쓴다.** 컴파일 시점에 빌드\n타깃에 맞는 변수로 확장된다 — 마켓플레이스는 `${CLAUDE_PLUGIN_ROOT}`, 프로젝트\n설치는 `${CLAUDE_PROJECT_DIR}`. 본문에 CC 원시 변수를 직접 쓰면 한쪽 타깃에\n묶이므로 쓰지 않는다.\n\n## 훅 — 이벤트 31종 × 핸들러 5종\n\n구조는 3단이다: 이벤트 → 그룹(matcher + 핸들러 목록) → 핸들러.\n\n```yaml\nhooks:\n  PreToolUse:\n    - matcher: \"Bash\"\n      hooks:\n        - type: command\n          command: \"${ROOT}/hooks/scripts/guard.sh\"\n```\n\n핸들러 타입은 `command` / `prompt`(빠른 모델이 판단) / `agent`(검증 서브에이전트) /\n`http` / `mcp_tool`. 한 그룹에 **여러 개를 순서대로** 넣을 수 있고 타입이 섞여도 된다.\n공통 속성은 `timeout` / `if`(permission-rule 문법 필터) / `statusMessage`.\n\n### matcher를 받지 않는 이벤트 8종\n\n`TeammateIdle`, `TaskCompleted`, `InstructionsLoaded`, `CwdChanged`,\n`WorktreeCreate`, `WorktreeRemove`, `PostToolBatch`, `TaskCreated`.\n여기에 matcher를 주면 무시된다.\n\n### MCP 도구 매칭의 함정\n\nmatcher로 MCP 도구를 잡을 때 `mcp__<서버>__<도구>` 형태를 쓴다. 서버 전체를\n잡으려면 **`.*`가 필수**다.\n\n- `mcp__memory__.*` — 그 서버의 모든 도구\n- `mcp__memory` — **아무것도 매칭하지 않는다**. 정규식이 아니라 정확한 문자열로\n  비교되기 때문이다. 조용히 아무 훅도 실행되지 않는다.\n\n## 이름 규약\n\n산출 이름이 되는 것(플러그인 이름, 스킬 이름, 에이전트 이름)은\n`^[a-z0-9][a-z0-9-]*$`를 지켜야 컴파일 게이트를 통과한다. 편집 중에는 경고 등급이지만\n컴파일 시점에는 에러로 승격된다.\n\n에이전트 이름에 `:`는 쓸 수 없다 — 플러그인 스코프 식별자(`my-plugin:reviewer`)에\n예약돼 있다.\n",
@@ -55,9 +55,18 @@
         "kind": "procedural",
         "model": "inherit",
         "effort": null,
-        "hooks": null,
+        "hooks": {
+          "check-daedalus-mcp": {}
+        },
         "argument_hint": null,
-        "allowed_tools": [],
+        "allowed_tools": [
+          "mcp__daedalus__get_project",
+          "mcp__daedalus__get_selection",
+          "mcp__daedalus__get_history",
+          "mcp__daedalus__list_recent_projects",
+          "mcp__daedalus__open_project",
+          "mcp__daedalus__validate_project"
+        ],
         "paths": null,
         "disable_model_invocation": false,
         "user_invocable": true,
@@ -124,7 +133,23 @@
         "effort": null,
         "hooks": null,
         "argument_hint": null,
-        "allowed_tools": [],
+        "allowed_tools": [
+          "mcp__daedalus__get_project",
+          "mcp__daedalus__get_component",
+          "mcp__daedalus__create_skill",
+          "mcp__daedalus__create_agent",
+          "mcp__daedalus__place_component",
+          "mcp__daedalus__create_state",
+          "mcp__daedalus__move_state",
+          "mcp__daedalus__rename_state",
+          "mcp__daedalus__rename_component",
+          "mcp__daedalus__set_component_description",
+          "mcp__daedalus__set_component_when_to_use",
+          "mcp__daedalus__set_component_field",
+          "mcp__daedalus__set_component_body",
+          "mcp__daedalus__list_component_fields",
+          "mcp__daedalus__undo"
+        ],
         "paths": null,
         "disable_model_invocation": false,
         "user_invocable": true,
@@ -192,7 +217,19 @@
         "effort": null,
         "hooks": null,
         "argument_hint": null,
-        "allowed_tools": [],
+        "allowed_tools": [
+          "mcp__daedalus__get_project",
+          "mcp__daedalus__get_component",
+          "mcp__daedalus__connect_states",
+          "mcp__daedalus__disconnect_states",
+          "mcp__daedalus__set_transition",
+          "mcp__daedalus__set_transfer_on",
+          "mcp__daedalus__set_entry_paths",
+          "mcp__daedalus__add_agent_call",
+          "mcp__daedalus__remove_agent_call",
+          "mcp__daedalus__validate_project",
+          "mcp__daedalus__undo"
+        ],
         "paths": null,
         "disable_model_invocation": false,
         "user_invocable": true,
@@ -265,7 +302,12 @@
         "effort": null,
         "hooks": null,
         "argument_hint": null,
-        "allowed_tools": [],
+        "allowed_tools": [
+          "mcp__daedalus__get_project",
+          "mcp__daedalus__create_blackboard_class",
+          "mcp__daedalus__set_state_access",
+          "mcp__daedalus__validate_project"
+        ],
         "paths": null,
         "disable_model_invocation": false,
         "user_invocable": true,
@@ -327,7 +369,12 @@
         "effort": null,
         "hooks": null,
         "argument_hint": null,
-        "allowed_tools": [],
+        "allowed_tools": [
+          "mcp__daedalus__validate_project",
+          "mcp__daedalus__get_project",
+          "mcp__daedalus__get_component",
+          "mcp__daedalus__compile_preview"
+        ],
         "paths": null,
         "disable_model_invocation": false,
         "user_invocable": true,
@@ -405,7 +452,12 @@
         "effort": null,
         "hooks": null,
         "argument_hint": null,
-        "allowed_tools": [],
+        "allowed_tools": [
+          "mcp__daedalus__validate_project",
+          "mcp__daedalus__compile_preview",
+          "mcp__daedalus__save_project",
+          "mcp__daedalus__get_project"
+        ],
         "paths": null,
         "disable_model_invocation": false,
         "user_invocable": true,
@@ -449,6 +501,117 @@
           "name": "done",
           "color": "#4488ff",
           "description": ""
+        }
+      ],
+      "call_agents": [],
+      "entry_paths": []
+    },
+    {
+      "kind": "reference_skill",
+      "id": "d1fc9f25a5fd4b688adc6773eceea2bf",
+      "name": "daedalus-model",
+      "description": "Daedalus의 설계 모델 — 컴포넌트 5종, FSM+블랙보드 하이브리드, 포트 3종의 의미론.",
+      "when_to_use": "",
+      "body": "# Daedalus 설계 모델\n\nDaedalus는 플러그인을 **FSM + 블랙보드**로 설계하고 컴파일러가 플러그인 파일을\n찍어내는 도구다. 캔버스에서 그린 것이 곧 컴파일 산출의 소스다.\n\n## 컴포넌트 5종\n\n| 종류 | 본질 | FSM |\n|------|------|-----|\n| ProceduralSkill | 작업 지침 | 자체 FSM 보유 |\n| DeclarativeSkill | 배경 지식 | 없음 |\n| TransferSkill | 전이 중 실행되는 보조 지침 | 자체 FSM 보유 |\n| ReferenceSkill | 참조 문서 | 없음, 참조 노드로 복수 배치 |\n| AgentDefinition | 별도 컨텍스트의 상태 기계 | 자체 FSM + 별도 블랙보드 |\n\n**무엇을 무엇으로 만들 것인가**가 첫 판단이다:\n\n- 컨텍스트를 오염시키는 작업(대량 검색, 로그 훑기) → **에이전트**. 별도 창에서 하고\n  결과만 돌려준다.\n- 매번 같은 배경 지식이 필요 → **declarative**. 본문이 필요할 때만 로드된다.\n- 순서가 있는 절차 → **procedural**. 상태로 나눌 수 있다.\n- 전이 도중에만 필요한 지침 → **transfer**.\n- 여러 단계가 공유하는 문서 → **reference**. 참조 노드로 배치해 어느 단계가\n  읽는지 캔버스에 드러낸다.\n\n## 포트 3종 — 노드가 바깥과 만나는 자리\n\n구조(노드와 선)만 만들면 분기가 표현되지 않는다. 포트가 의미론을 담는다.\n\n| 포트 | 필드 | 뜻 |\n|------|------|-----|\n| 출력 | `transfer_on` | 이 노드가 **어떤 결과로 끝나는가** (분기 갈래) |\n| 입력 | `entry_paths` | 이 노드에 **어떤 경로로 들어왔는가** |\n| 에이전트 호출 | `call_agents` | 여기서 에이전트에게 위임한다 |\n\n- 전이의 `trigger`가 출발 노드의 출력 포트 이름을 가리킨다. 이게 없으면 캔버스에서\n  포트가 갈라지지 않고, 컴파일된 \"다음 단계\" 단락도 조건 없이 뭉뚱그려진다.\n- 전이의 `target_port`가 도착 노드의 입력 포트를 가리킨다. 같은 노드에 여러 경로로\n  들어올 때, 도착한 쪽이 자기가 어디서 왔는지 알아야 다르게 행동할 수 있다.\n- **에이전트로 가는 전이는 반드시 `call_agents` 포트에서 나가야 한다.** 이건 캔버스가\n  강제하는 규칙이고 MCP 경로도 같다. 연결하면 대상 에이전트의 호출 계약 카드가\n  자동으로 생긴다.\n\n## 블랙보드 — 컨텍스트 사이의 통로\n\n같은 컨텍스트 안에서는 필요 없다. 이미 맥락을 공유하기 때문이다. **서로 다른\n컨텍스트**(스킬 → 에이전트, 세션 → 다음 세션)로 값을 넘길 때 쓴다.\n\n- 필드 타입은 스칼라 4종(`string`/`int`/`float`/`bool`)뿐이다. 컨테이너 형상은\n  `collection`(none/list/set)이 전담한다 — \"문자열 목록\"은 `string × list`.\n- 클래스 하나가 런타임에 `state/<ClassName>.json` 파일 하나가 된다.\n- 각 노드가 `reads`/`writes`로 접근을 선언한다. 선언하면 캔버스에 뱃지가 붙고,\n  컴파일된 본문의 블랙보드 단락이 그 클래스로 좁혀진다. 선언이 없으면 전 클래스를\n  나열하는 일반 안내만 나간다.\n\n## 진행 상태 — 세션을 넘기는 규약\n\n프로젝트 그래프에 배치된 스킬은 `state/__progress__.json`으로 자기 위치를 남긴다\n(`current` / `completed` / `prev` / `note`). 컴파일러가 \"작업 재개\" 단락과 \"다음 단계\"\n단락을 자동으로 붙이므로, 설계자는 그래프만 제대로 그리면 된다.\n\n`prev`에는 직전 **스킬** 이름이 남는다 — 에이전트에 위임했다가 돌아온 경우에도\n에이전트 이름이 아니라 위임한 스킬 이름이다.\n\n## 검증과 컴파일 게이트\n\nF7 검증은 에러와 경고를 나눈다. **에러가 1건이라도 있으면 컴파일이 거부**되고 파일이\n하나도 생기지 않는다. 경고는 통과하지만 대부분 실제 결함이다.\n\n컴파일 시점에만 에러로 승격되는 것이 둘 있다: 이름 규약 위반, 산출 경로 충돌.\n편집 중에는 경고지만 파일을 쓰기 직전에는 막는다.\n",
+      "config": {
+        "kind": "reference",
+        "model": "inherit",
+        "effort": null,
+        "hooks": null,
+        "argument_hint": null,
+        "allowed_tools": [],
+        "paths": null,
+        "user_invocable": false
+      }
+    },
+    {
+      "kind": "reference_skill",
+      "id": "48fa1ed9763c476f95bd428b82c133ae",
+      "name": "cc-plugin-spec",
+      "description": "Claude Code 플러그인 규격 — 프론트매터 키 케이싱, 빌드 타깃별 제약, 경로 변수, 훅 스키마.",
+      "when_to_use": "",
+      "body": "# Claude Code 플러그인 규격\n\n공식 문서에 흩어져 있거나 아예 없는 사실들을 모았다. 규격 정본은 SchemaStore의\n`claude-code-settings.json`과 code.claude.com 문서다.\n\n## 프론트매터 키 케이싱 — 스킬과 에이전트가 다르다\n\n이걸 유추하면 틀린다. 둘은 서로 다른 규약을 쓴다.\n\n| 대상 | 규약 | 예시 |\n|------|------|------|\n| 스킬 `SKILL.md` | **kebab-case** | `allowed-tools`, `disable-model-invocation`, `argument-hint` |\n| 에이전트 `.md` | **camelCase** | `permissionMode`, `disallowedTools`, `maxTurns`, `mcpServers` |\n\n에이전트에 `permission-mode`라고 쓰면 CC가 인식하지 못하고 **조용히 무시한다**.\n값은 파일에 있는데 아무 일도 일어나지 않는다.\n\n## 플러그인 서브에이전트가 무시하는 필드 3종\n\n> For security reasons, plugin subagents don't support the `hooks`, `mcpServers`,\n> or `permissionMode` frontmatter fields.\n\n이것이 빌드 타깃을 나누는 이유 전부다. 마켓플레이스 플러그인으로 배포하면 이 셋이\n무시되므로, 설계자가 걸어 둔 제약이 사라진다. 셋 중 하나라도 필요하면\n**프로젝트 설치(LOCAL) 빌드**를 골라야 한다.\n\n프로젝트 설치 빌드는 CC 관점에서 플러그인이 아니다 — 서브에이전트 스코프로 치면\n`plugin`이 아니라 `project`다. 정확히 그래서 제약이 풀린다.\n\n## 경로 변수 — 치환 조건이 변수마다 다르다\n\n| 변수 | 치환되는 곳 |\n|------|-------------|\n| `${CLAUDE_PLUGIN_ROOT}` | **플러그인 스킬에서만** |\n| `${CLAUDE_PLUGIN_DATA}` | **플러그인 스킬에서만** |\n| `${CLAUDE_PROJECT_DIR}` | 어디서나 (v2.1.196+) |\n| `${CLAUDE_SKILL_DIR}` | 어디서나 |\n\n프로젝트 설치 빌드에서 `${CLAUDE_PLUGIN_ROOT}`를 쓰면 리터럴 문자열로 남는다.\n\n**Daedalus에서는 본문에 타깃 중립 토큰 `${ROOT}`를 쓴다.** 컴파일 시점에 빌드\n타깃에 맞는 변수로 확장된다 — 마켓플레이스는 `${CLAUDE_PLUGIN_ROOT}`, 프로젝트\n설치는 `${CLAUDE_PROJECT_DIR}`. 본문에 CC 원시 변수를 직접 쓰면 한쪽 타깃에\n묶이므로 쓰지 않는다.\n\n## 훅 — 이벤트 31종 × 핸들러 5종\n\n구조는 3단이다: 이벤트 → 그룹(matcher + 핸들러 목록) → 핸들러.\n\n```yaml\nhooks:\n  PreToolUse:\n    - matcher: \"Bash\"\n      hooks:\n        - type: command\n          command: \"${ROOT}/hooks/scripts/guard.sh\"\n```\n\n핸들러 타입은 `command` / `prompt`(빠른 모델이 판단) / `agent`(검증 서브에이전트) /\n`http` / `mcp_tool`. 한 그룹에 **여러 개를 순서대로** 넣을 수 있고 타입이 섞여도 된다.\n공통 속성은 `timeout` / `if`(permission-rule 문법 필터) / `statusMessage`.\n\n### matcher를 받지 않는 이벤트 8종\n\n`TeammateIdle`, `TaskCompleted`, `InstructionsLoaded`, `CwdChanged`,\n`WorktreeCreate`, `WorktreeRemove`, `PostToolBatch`, `TaskCreated`.\n여기에 matcher를 주면 무시된다.\n\n### MCP 도구 매칭의 함정\n\nmatcher로 MCP 도구를 잡을 때 `mcp__<서버>__<도구>` 형태를 쓴다. 서버 전체를\n잡으려면 **`.*`가 필수**다.\n\n- `mcp__memory__.*` — 그 서버의 모든 도구\n- `mcp__memory` — **아무것도 매칭하지 않는다**. 정규식이 아니라 정확한 문자열로\n  비교되기 때문이다. 조용히 아무 훅도 실행되지 않는다.\n\n## 이름 규약\n\n산출 이름이 되는 것(플러그인 이름, 스킬 이름, 에이전트 이름)은\n`^[a-z0-9][a-z0-9-]*$`를 지켜야 컴파일 게이트를 통과한다. 편집 중에는 경고 등급이지만\n컴파일 시점에는 에러로 승격된다.\n\n에이전트 이름에 `:`는 쓸 수 없다 — 플러그인 스코프 식별자(`my-plugin:reviewer`)에\n예약돼 있다.\n",
+      "config": {
+        "kind": "reference",
+        "model": "inherit",
+        "effort": null,
+        "hooks": null,
+        "argument_hint": null,
+        "allowed_tools": [],
+        "paths": null,
+        "user_invocable": false
+      }
+    },
+    {
+      "kind": "procedural_skill",
+      "id": "0399f18731044306823ff76faa0ba9d3",
+      "name": "graph-author",
+      "description": "배치된 컴포넌트의 본문과 프론트매터를 채운다 — 구조 다음은 내용이다.",
+      "when_to_use": "그래프 구조(배치·배선·블랙보드)는 끝났는데 컴포넌트 본문이 비었거나 프론트매터(tools/model/permission 등)가 기본값일 때.",
+      "body": "# 본문과 프론트매터 — 구조 다음은 내용이다\n\n그래프가 완성돼도 컴포넌트 본문이 비어 있으면 컴파일 산출은 껍데기다. 이 단계에서\n배치된 모든 컴포넌트의 본문과 프론트매터를 채운다.\n\n## 1. 빈 곳부터 찾는다\n\n`get_component`로 배치된 컴포넌트를 하나씩 확인한다. 점검 목록:\n\n- `body`가 비었거나 한 줄짜리 — 실제 지침이 없다\n- `when_to_use`가 빈 값 — 모델이 언제 집을지 판단할 근거가 없다\n- 에이전트의 `tools`가 미지정 — 전 도구 상속(대부분 과하다)\n- 로컬 스킬(`agent=` 지정 조회)도 잊지 마라 — 에이전트 내부 상태의 본문이다\n\n## 2. 본문 작성 원칙\n\n- **왜를 적어라.** \"X를 하라\"보다 \"Y가 깨지므로 X를 하라\"가 지시를 지키게 만든다.\n- 다음 단계·작업 재개·블랙보드 단락은 **컴파일러가 자동으로 붙인다**. 본문에 직접\n  쓰면 이중이 된다 — 본문은 그 단계 고유의 지침만 담는다.\n- 파일 동봉 참조는 `${ROOT}/files/...` 토큰을 쓴다(타깃 중립 — cc-plugin-spec 참조).\n\n## 3. 프론트매터\n\n`list_component_fields`로 그 컴포넌트가 받는 필드를 확인하고 `set_component_field`로\n채운다. 짐작으로 필드명을 넘기지 마라 — 스킬 종류마다 받는 필드가 다르다.\n\n- 스킬 `allowed_tools`: 그 단계가 실제로 쓰는 도구만. 좁을수록 안전하다.\n- 에이전트 `tools`: 명시 목록. `mcp__<서버>__<도구>` 접두에서 서버 이름이 추출돼\n  `mcpServers` 프론트매터에 자동 합류한다.\n- 에이전트 `permission_mode`/`max_turns`: 프로젝트 설치(LOCAL) 빌드에서만 실제로\n  동작한다 — 빌드 타깃이 marketplace면 넣어도 무시된다.\n\n## 4. 훅\n\n반복 강제가 필요한 규칙(세션 시작 주입, 도구 사용 감시)은 본문 지시가 아니라 훅으로\n만든다 — `create_hook`으로 라이브러리에 정의하고 `set_component_hooks`로 부착한다.\n\n## 완료\n\n배치 컴포넌트 전부의 본문·프론트매터가 채워졌으면 `GraphDraft`에 작성 완료를\n기록하고 **done**으로 검증 단계에 넘긴다.\n",
+      "config": {
+        "kind": "procedural",
+        "model": "inherit",
+        "effort": null,
+        "hooks": null,
+        "argument_hint": null,
+        "allowed_tools": [
+          "mcp__daedalus__get_project",
+          "mcp__daedalus__get_component",
+          "mcp__daedalus__list_component_fields",
+          "mcp__daedalus__set_component_field",
+          "mcp__daedalus__set_component_body",
+          "mcp__daedalus__set_component_description",
+          "mcp__daedalus__set_component_when_to_use",
+          "mcp__daedalus__create_hook",
+          "mcp__daedalus__update_hook",
+          "mcp__daedalus__set_component_hooks",
+          "mcp__daedalus__compile_preview",
+          "mcp__daedalus__undo"
+        ],
+        "paths": null,
+        "disable_model_invocation": false,
+        "user_invocable": true,
+        "context": "inline",
+        "agent": null,
+        "shell": "bash"
+      },
+      "fsm": {
+        "id": "7b2a28b062fd4dd1af971484fdb12d35",
+        "name": "graph-author_fsm",
+        "states": [
+          {
+            "kind": "simple",
+            "id": "2a88dfa8419b4fd0b5946709342f1d3b",
+            "name": "start",
+            "on_entry_start": [],
+            "on_entry": [],
+            "on_entry_end": [],
+            "on_exit_start": [],
+            "on_exit": [],
+            "on_exit_end": [],
+            "on_active": [],
+            "custom_events": {},
+            "inputs": [],
+            "outputs": [],
+            "reads": [],
+            "writes": [],
+            "skill_ref": null
+          }
+        ],
+        "transitions": [],
+        "initial_state": "2a88dfa8419b4fd0b5946709342f1d3b",
+        "final_states": [],
+        "blackboard": {
+          "class_definitions": [],
+          "variables": {}
+        }
+      },
+      "transfer_on": [
+        {
+          "name": "done",
+          "color": "#4488ff",
+          "description": "모든 배치 컴포넌트의 본문·프론트매터 작성 완료"
         }
       ],
       "call_agents": [],
@@ -537,7 +700,62 @@
             "skill_ref": "8130677bfeca4b5dbbc6daa3d6ce6392"
           }
         ],
-        "transitions": [],
+        "transitions": [
+          {
+            "id": "1322fd0604ee4528ad5b4ecd00ac13f0",
+            "source": "cb18bfdb234446ef8a6bddcf5d0a0ad5",
+            "target": "5d64f44a9b8442428cf2ed42a51be0f0",
+            "type": "external",
+            "trigger": null,
+            "guard": null,
+            "on_guard_check": [],
+            "on_traverse_start": [],
+            "on_traverse": [],
+            "on_traverse_end": [],
+            "custom_events": {},
+            "data_map": {},
+            "skill_ref": null,
+            "target_port": ""
+          },
+          {
+            "id": "21e97de97cca4d33a9eae9edb1f59799",
+            "source": "5d64f44a9b8442428cf2ed42a51be0f0",
+            "target": "3c064c3de9c4412b9756a969be37811a",
+            "type": "external",
+            "trigger": {
+              "kind": "completion",
+              "name": "done"
+            },
+            "guard": null,
+            "on_guard_check": [],
+            "on_traverse_start": [],
+            "on_traverse": [],
+            "on_traverse_end": [],
+            "custom_events": {},
+            "data_map": {},
+            "skill_ref": null,
+            "target_port": ""
+          },
+          {
+            "id": "f2dc816477984e51a735e1b0205a262f",
+            "source": "3c064c3de9c4412b9756a969be37811a",
+            "target": "2c26b93aa373476dbabbd85da6e0cc53",
+            "type": "external",
+            "trigger": {
+              "kind": "completion",
+              "name": "done"
+            },
+            "guard": null,
+            "on_guard_check": [],
+            "on_traverse_start": [],
+            "on_traverse": [],
+            "on_traverse_end": [],
+            "custom_events": {},
+            "data_map": {},
+            "skill_ref": null,
+            "target_port": ""
+          }
+        ],
         "initial_state": "cb18bfdb234446ef8a6bddcf5d0a0ad5",
         "final_states": [
           "2c26b93aa373476dbabbd85da6e0cc53"
@@ -552,16 +770,37 @@
         "model": "inherit",
         "effort": null,
         "hooks": null,
-        "tools": null,
+        "tools": [
+          "mcp__daedalus__get_project",
+          "mcp__daedalus__get_component",
+          "mcp__daedalus__get_selection",
+          "mcp__daedalus__get_history",
+          "mcp__daedalus__create_state",
+          "mcp__daedalus__move_state",
+          "mcp__daedalus__rename_state",
+          "mcp__daedalus__delete_state",
+          "mcp__daedalus__connect_states",
+          "mcp__daedalus__disconnect_states",
+          "mcp__daedalus__set_transition",
+          "mcp__daedalus__set_transfer_on",
+          "mcp__daedalus__set_entry_paths",
+          "mcp__daedalus__add_agent_call",
+          "mcp__daedalus__remove_agent_call",
+          "mcp__daedalus__place_component",
+          "mcp__daedalus__set_state_access",
+          "mcp__daedalus__validate_project",
+          "mcp__daedalus__undo",
+          "mcp__daedalus__redo"
+        ],
         "disallowed_tools": null,
-        "permission_mode": "default",
-        "max_turns": null,
+        "permission_mode": "acceptEdits",
+        "max_turns": 40,
         "skills": [],
         "mcp_servers": null,
         "memory": null,
         "background": false,
         "isolation": "none",
-        "color": null
+        "color": "purple"
       },
       "execution_policy": {
         "mode": "fixed",
@@ -569,7 +808,7 @@
         "join": "all",
         "join_count": null
       },
-      "body": "",
+      "body": "# 대규모 그래프 재배선\n\n호출자가 캔버스를 크게 갈아엎는 작업을 넘겼다. 별도 컨텍스트에서 도는 이유는\n호출자의 대화를 수십 번의 편집 호출로 오염시키지 않기 위해서다.\n\n## 작업 규율\n\n- **조사 없이 자르지 마라.** 먼저 `survey-graph`로 전체 그래프를 훑어 고칠 목록을\n  만들고, 그 목록대로만 `rewire-edges`에서 편집한다. 목록에 없는 것을 \"겸사겸사\"\n  고치지 마라 — 호출자가 의도한 범위를 넘는다.\n- **모든 편집은 사용자의 undo 스택에 들어간다.** 되돌릴 수 있지만, 수십 개의\n  편집을 되돌리는 것은 사용자에게 고역이다. 편집 전에 계획을 확정하라.\n- **분기 의미론을 지켜라.** 노드와 선만 만들면 분기가 표현되지 않는다. 여러 갈래로\n  나가는 노드는 `set_transfer_on`으로 갈래를 선언하고 각 전이에 trigger를 물려라.\n  에이전트로 가는 전이는 `add_agent_call`로 만든 호출 포트에서만 나갈 수 있다.\n- **끝나면 검증하라.** `validate_project`가 에러 0인 상태로 반환한다. 경고는\n  원인과 함께 보고에 적는다.\n\n## 보고\n\n완료 시 무엇을 바꿨는지 요약한다: 만든/지운 전이 수, 선언한 포트, 남은 경고.\n블랙보드 `GraphDraft.wired`에 배선 완료 여부를 기록한다.\n",
       "skills": [
         {
           "kind": "procedural_skill",
@@ -639,7 +878,7 @@
           "name": "survey-graph",
           "description": "그래프 전체를 훑어 고쳐야 할 전이·포트 목록을 뽑는다.",
           "when_to_use": "",
-          "body": "",
+          "body": "# 그래프 조사 — 고칠 목록부터\n\n편집하기 전에 전체를 본다. `get_project`로 배치·전이·포트를 받아 다음을 점검한다.\n\n## 점검 항목\n\n1. **트리거 없는 다중 분기** — 한 노드에서 나가는 전이가 2개 이상인데 trigger가\n   없는 것. 어느 갈래인지 표현되지 않아 LLM이 임의로 고른다.\n2. **선언 안 된 포트 참조** — 전이의 trigger가 출발 노드의 transfer_on에 없거나,\n   target_port가 도착 노드의 entry_paths에 없는 것 (rename 고아).\n3. **에이전트 직결** — 에이전트로 가는 전이가 call_agent 포트를 거치지 않는 것.\n4. **고립 노드** — 들어오는 전이도 나가는 전이도 없는 배치.\n5. `validate_project`의 경고 — 위 항목과 겹치지 않는 것만 추가한다.\n\n## 산출\n\n고칠 항목을 **하나씩 실행 가능한 편집 단위**로 목록화한다:\n\"survey → rewire: `A`의 transfer_on에 `ok` 추가, `A→B` 전이 trigger를 `ok`로\".\n\n목록이 확정되면 **done**으로 rewire-edges에 넘긴다. 빈 목록이면 그대로 done —\n고칠 것이 없다는 것도 유효한 조사 결과다.\n",
           "config": {
             "kind": "procedural",
             "model": "inherit",
@@ -701,7 +940,7 @@
           "name": "rewire-edges",
           "description": "뽑아둔 목록대로 배선을 고치고 무엇을 바꿨는지 보고한다.",
           "when_to_use": "",
-          "body": "",
+          "body": "# 배선 수리 — 목록대로만\n\nsurvey-graph가 만든 목록을 위에서부터 하나씩 실행한다.\n\n## 실행 순서\n\n항목마다: **포트 선언 먼저, 전이 수정 나중**. 전이의 trigger는 출발 노드의\ntransfer_on에 그 이름이 있어야 유효하다 — 순서를 바꾸면 중간 상태가\n`trigger_unknown_event` 경고를 낸다.\n\n- 포트 추가: `set_transfer_on` / `set_entry_paths` (기존 목록에 **추가**한다 —\n  통째로 교체하는 도구이므로 먼저 현재 목록을 읽어라)\n- 전이 수정: `set_transition` (None=건드리지 않음, \"\"=지움)\n- 새 전이: `connect_states`, 삭제: `disconnect_states`\n- 에이전트 호출 경로: `add_agent_call`로 포트를 만든 뒤 연결\n\n## 실수했을 때\n\n방금 한 편집이 잘못됐으면 `undo`로 되돌린다. 여러 단계 전 실수는 undo 연타보다\n반대 편집이 안전하다 — 그 사이 편집까지 되돌리기 때문이다.\n\n## 완료\n\n목록을 다 소진하면 `validate_project`로 에러 0을 확인하고, 바꾼 내역 요약과 함께\n**done**으로 나간다. 에러가 남으면 해소할 때까지 이 단계를 벗어나지 마라.\n",
           "config": {
             "kind": "procedural",
             "model": "inherit",
@@ -771,10 +1010,6 @@
           0.0,
           100.0
         ],
-        "2c26b93aa373476dbabbd85da6e0cc53": [
-          602.9292577634706,
-          180.00165244354196
-        ],
         "5d64f44a9b8442428cf2ed42a51be0f0": [
           220.0,
           0.0
@@ -782,16 +1017,66 @@
         "3c064c3de9c4412b9756a969be37811a": [
           470.0,
           0.0
+        ],
+        "2c26b93aa373476dbabbd85da6e0cc53": [
+          602.9292577634706,
+          180.00165244354196
         ]
       },
       "edge_layout": {},
       "entry_paths": []
     }
   ],
-  "reference_placements": [],
+  "reference_placements": [
+    {
+      "skill_name": "daedalus-model",
+      "x": 478.47912500000007,
+      "y": 583.857,
+      "connected_states": [
+        "graph-design",
+        "graph-wire",
+        "graph-state",
+        "graph-surgeon"
+      ]
+    },
+    {
+      "skill_name": "cc-plugin-spec",
+      "x": 920.0,
+      "y": 470.0,
+      "connected_states": [
+        "plugin-verify",
+        "plugin-compile",
+        "graph-author",
+        "graph-orient"
+      ]
+    }
+  ],
   "delegations": [],
   "tool_shelf": [],
-  "hook_library": [],
+  "hook_library": [
+    {
+      "id": "3069b373b07a42cb8100289160a11065",
+      "name": "check-daedalus-mcp",
+      "description": "세션 시작 시 Daedalus 앱(MCP 서버)이 떠 있는지 확인하고 접속 정보를 컨텍스트에 주입한다.",
+      "event": "SessionStart",
+      "matcher": "",
+      "handlers": [
+        {
+          "kind": "command",
+          "id": "94896f6eb27543059982eea3b8328a97",
+          "timeout": 10,
+          "condition": "",
+          "status_message": "",
+          "script": "#!/bin/sh\n# Daedalus 앱이 켜져 있으면 ~/.daedalus/mcp-endpoint.json에 접속 정보가 있다.\n# 있으면 그대로 컨텍스트에 주입하고, 없으면 안내만 남긴다(차단하지 않는다).\nENDPOINT=\"$HOME/.daedalus/mcp-endpoint.json\"\nif [ -f \"$ENDPOINT\" ]; then\n  echo \"[daedalus] MCP 접속 정보:\"\n  cat \"$ENDPOINT\"\nelse\n  echo \"[daedalus] Daedalus 앱이 실행 중이 아닙니다. graph-* 스킬을 쓰려면 앱을 먼저 켜세요.\"\nfi\nexit 0\n",
+          "script_name": "check-daedalus-mcp",
+          "shell": "",
+          "args": [],
+          "run_async": false,
+          "async_rewake": false
+        }
+      ]
+    }
+  ],
   "blackboard": {
     "class_definitions": [
       {
@@ -1069,6 +1354,29 @@
         ],
         "writes": [],
         "skill_ref": "2e4bb8795b2a451d963c012bf3aefb4a"
+      },
+      {
+        "kind": "simple",
+        "id": "5ee3bc1c5580488baa3f242983d19d11",
+        "name": "graph-author",
+        "on_entry_start": [],
+        "on_entry": [],
+        "on_entry_end": [],
+        "on_exit_start": [],
+        "on_exit": [],
+        "on_exit_end": [],
+        "on_active": [],
+        "custom_events": {},
+        "inputs": [],
+        "outputs": [],
+        "reads": [
+          "DesignSession.goal",
+          "GraphDraft.placed"
+        ],
+        "writes": [
+          "GraphDraft"
+        ],
+        "skill_ref": "0399f18731044306823ff76faa0ba9d3"
       }
     ],
     "transitions": [
@@ -1183,25 +1491,6 @@
         "target_port": ""
       },
       {
-        "id": "1b0fda3618fb4f64b773f87f68e13425",
-        "source": "34564e32d3254f2fa93c60ff2e1295e1",
-        "target": "17d8711d1a4e4c7f89775b5a25c4f064",
-        "type": "external",
-        "trigger": {
-          "kind": "completion",
-          "name": "done"
-        },
-        "guard": null,
-        "on_guard_check": [],
-        "on_traverse_start": [],
-        "on_traverse": [],
-        "on_traverse_end": [],
-        "custom_events": {},
-        "data_map": {},
-        "skill_ref": null,
-        "target_port": "after-design"
-      },
-      {
         "id": "69cec1b067154cbe9425741411f7f7ab",
         "source": "17d8711d1a4e4c7f89775b5a25c4f064",
         "target": "0a71735c326c4d5ab8557b824063c041",
@@ -1267,6 +1556,44 @@
         "data_map": {},
         "skill_ref": null,
         "target_port": "after-design"
+      },
+      {
+        "id": "b2dc20c6873247cc888418e4648673b4",
+        "source": "34564e32d3254f2fa93c60ff2e1295e1",
+        "target": "5ee3bc1c5580488baa3f242983d19d11",
+        "type": "external",
+        "trigger": {
+          "kind": "completion",
+          "name": "done"
+        },
+        "guard": null,
+        "on_guard_check": [],
+        "on_traverse_start": [],
+        "on_traverse": [],
+        "on_traverse_end": [],
+        "custom_events": {},
+        "data_map": {},
+        "skill_ref": null,
+        "target_port": ""
+      },
+      {
+        "id": "00974bd49aac4ace9f992043bea2001a",
+        "source": "5ee3bc1c5580488baa3f242983d19d11",
+        "target": "17d8711d1a4e4c7f89775b5a25c4f064",
+        "type": "external",
+        "trigger": {
+          "kind": "completion",
+          "name": "done"
+        },
+        "guard": null,
+        "on_guard_check": [],
+        "on_traverse_start": [],
+        "on_traverse": [],
+        "on_traverse_end": [],
+        "custom_events": {},
+        "data_map": {},
+        "skill_ref": null,
+        "target_port": "after-design"
       }
     ],
     "initial_state": "07c498a5d4ce47508cd495bf7c13a626",
@@ -1278,8 +1605,8 @@
   },
   "graph_layout": {
     "fbcf4809d9d54e4a89446a6bb69e317f": [
-      -32.0,
-      139.0
+      -141.0,
+      175.0
     ],
     "5be77a4d502447caaf04886480b7f071": [
       188.0,
@@ -1290,20 +1617,24 @@
       150.6521739130435
     ],
     "0a71735c326c4d5ab8557b824063c041": [
-      580.0,
-      -48.0
+      662.8000000000001,
+      -94.0
     ],
     "34564e32d3254f2fa93c60ff2e1295e1": [
-      835.0245746691871,
-      -49.047258979206035
+      917.8245746691872,
+      -95.04725897920603
     ],
     "17d8711d1a4e4c7f89775b5a25c4f064": [
-      681.0699432892251,
-      326.2608695652173
+      749.9776444480975,
+      242.6511054491657
     ],
     "746db47c57db4d249cd543d3f317b4e4": [
-      1043.8500000000001,
-      431.5499999999999
+      1207.1543478260874,
+      279.37608695652165
+    ],
+    "5ee3bc1c5580488baa3f242983d19d11": [
+      1172.8000000000002,
+      -101.0
     ]
   },
   "edge_layout": {},

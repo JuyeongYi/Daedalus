@@ -92,6 +92,10 @@ WARNING_RULES: frozenset[str] = frozenset({
     "plugin_root_in_local_build",
     # WP-LA — 플러그인 서브에이전트가 무시하는 프론트매터 필드
     "unsupported_agent_field_in_marketplace_build",
+    # WP-MW — LOCAL 직접 설치 배선 경고. 검사·발급은 compiler/project_compiler.py
+    # 소관(dangling_file_ref와 동일 정책 — 검증기는 파일시스템 무접근).
+    "missing_mcp_server_def",
+    "unmergeable_settings_json",
 })
 
 

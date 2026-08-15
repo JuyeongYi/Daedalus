@@ -57,6 +57,8 @@ _WARN_RULES = frozenset({
     "plugin_root_in_local_build",  # WP-TG
     "unsupported_agent_field_in_marketplace_build",  # WP-LA
     "hook_matcher_matches_nothing",  # WP-HS
+    "missing_mcp_server_def",  # WP-MW — 아래 _EXTERNALLY_EMITTED_RULES 참조
+    "unmergeable_settings_json",  # WP-MW
 })
 
 # validation.py 밖(컴파일러 등)에서 emit되지만 WARNING_RULES에는 등록된 규칙 —
@@ -65,6 +67,8 @@ _WARN_RULES = frozenset({
 # 유지하므로 이 rule 문자열이 validation.py 안에 나타나지 않는다).
 _EXTERNALLY_EMITTED_RULES = frozenset({
     "dangling_file_ref",  # daedalus/compiler/project_compiler.py 소관 (WP-FR)
+    "missing_mcp_server_def",  # daedalus/compiler/project_compiler.py 소관 (WP-MW)
+    "unmergeable_settings_json",  # daedalus/compiler/project_compiler.py 소관 (WP-MW)
 })
 
 
