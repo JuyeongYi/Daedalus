@@ -54,7 +54,6 @@ TOOL_NAMES = (
     "disconnect_states",
     "set_transition",
     "set_transfer_on",
-    "set_entry_paths",
     "create_blackboard_class",
     "set_state_access",
     "create_hook",

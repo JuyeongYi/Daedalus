@@ -121,7 +121,6 @@ class DaedalusTools:
                     "source": tvm.source_vm.model.name,
                     "target": tvm.target_vm.model.name,
                     "trigger": getattr(trigger, "name", None),
-                    "target_port": getattr(trans, "target_port", "") or None,
                     "transfer_skill": getattr(getattr(trans, "skill_ref", None), "name", None),
                 }
             )
@@ -264,10 +263,6 @@ class DaedalusTools:
             "transfer_on": [
                 {"name": e.name, "description": getattr(e, "description", "")}
                 for e in (getattr(comp, "transfer_on", []) or [])
-            ],
-            "entry_paths": [
-                {"name": e.name, "description": getattr(e, "description", "")}
-                for e in (getattr(comp, "entry_paths", []) or [])
             ],
             # 에이전트 호출 포트 — 에이전트로 가는 전이는 이 포트에서만 나갈 수 있다
             "call_agents": [
@@ -734,17 +729,15 @@ class DaedalusTools:
         target: str,
         trigger: str = "",
         guard: str = "",
-        target_port: str = "",
         agent: str = "",
     ) -> dict[str, Any]:
         """두 노드를 전이로 잇는다.
 
         trigger: 출발 스킬의 출력 이벤트(transfer_on) 또는 에이전트 호출 포트
         (call_agents) 이름. 분기가 여러 갈래일 때 이 값이 있어야 어느 경로인지
-        표현되고 캔버스 포트도 갈라진다.
+        표현되고 캔버스 포트도 갈라진다. 이 갈래가 무엇을 뜻하는지는 출발 스킬의
+        transfer_on description에 적는다 — 도착 쪽 입력 포트 선언은 없다(WP-IP).
         guard: 전이 조건 서술(LLM이 판정할 자연어). 빈 값이면 가드 없음.
-        target_port: 도착 스킬의 입력 경로(entry_paths) 이름.
-        agent: 지정하면 그 에이전트의 내부 FSM에서 연결한다(기본은 프로젝트 캔버스).
 
         **에이전트 노드로 가는 전이는 반드시 call_agent 포트에서 나가야 한다** —
         캔버스와 같은 규칙이다. 호출 계약은 컴파일러가 그래프(호출 포트 + 전이)
@@ -794,8 +787,6 @@ class DaedalusTools:
             trans.trigger = self._make_trigger(trigger)
         if guard:
             trans.guard = self._make_guard(guard)
-        if target_port:
-            trans.target_port = target_port
         tvm = TransitionViewModel(model=trans, source_vm=src, target_vm=tgt)
 
         # WP-CT — 계약 카드 자동 생성은 퇴역했다(캔버스와 동일). 호출 계약은
@@ -805,7 +796,6 @@ class DaedalusTools:
             "connected": [source, target],
             "trigger": trigger or None,
             "guard": guard or None,
-            "target_port": target_port or None,
             "agent_call": is_agent_call,
             "scope": agent or "project",
         }
@@ -837,23 +827,14 @@ class DaedalusTools:
         target: str,
         trigger: str | None = None,
         guard: str | None = None,
-        target_port: str | None = None,
         agent: str = "",
     ) -> dict[str, Any]:
         """이미 있는 전이에 트리거·가드를 설정한다.
 
         None을 넘긴 항목은 건드리지 않는다. 빈 문자열("")을 넘기면 그 항목을 지운다.
-        target_port는 퇴역했다(WP-IP) — 값을 넘기면 거부한다.
         """
         from daedalus.view.commands.attr_commands import SetAttrCmd
         from daedalus.view.commands.base import MacroCommand
-
-        if target_port:
-            raise ValueError(
-                "입력 포트(target_port)는 퇴역했습니다 — (출처, 트리거)가 경로를 "
-                "특정합니다. 이 갈래가 무엇을 뜻하는지는 출발 스킬의 transfer_on "
-                "description에 적으세요."
-            )
 
         vm, _ = self._scope(agent)
         tvm = self._find_transition_vm(source, target, vm)
@@ -937,34 +918,6 @@ class DaedalusTools:
             )
         )
         return {"component": name, "transfer_on": [d.name for d in defs]}
-
-    def set_entry_paths(
-        self, name: str, events: list[dict[str, Any]], agent: str = ""
-    ) -> dict[str, Any]:
-        """스킬/에이전트의 **입력 포트**를 정의한다 (어떤 경로로 이 노드에 들어왔는지).
-
-        입력 포트 선언은 퇴역했다(WP-IP) — 빈 목록(기존 선언 제거)만 허용한다.
-        """
-        from daedalus.view.commands.attr_commands import SetAttrCmd
-
-        if events:
-            raise ValueError(
-                "입력 경로(entry_paths)는 퇴역했습니다 — (출처, 트리거)가 경로를 "
-                "특정합니다. 갈래의 의미는 출발 스킬의 transfer_on description에, "
-                "경로별 대응은 도착 스킬 본문에 적으세요. 빈 목록([])은 legacy "
-                "선언 제거용으로만 허용됩니다."
-            )
-        comp = self._find_component(name, agent=agent)
-        self._vm.execute(
-            SetAttrCmd(
-                comp,
-                "entry_paths",
-                [],
-                label=f"'{name}' legacy 입력 경로 제거",
-                script=f'set_entry_paths("{name}", [])',
-            )
-        )
-        return {"component": name, "entry_paths": []}
 
     # --- 블랙보드 ---
 

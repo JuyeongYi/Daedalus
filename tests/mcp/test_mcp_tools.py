@@ -263,12 +263,11 @@ def test_set_transfer_on_accepts_bare_strings(tools, window):
     assert [e.name for e in comp.transfer_on] == ["a", "b"]
 
 
-def test_set_entry_paths_is_retired(tools, window):
-    """WP-IP — 입력 경로 선언은 퇴역했다. 빈 목록(legacy 제거)만 허용."""
-    with pytest.raises(ValueError, match="퇴역"):
-        tools.set_entry_paths("rules", [{"name": "from-init"}])
-    comp = next(s for s in window._project.skills if s.name == "rules")
-    assert comp.entry_paths == []
+def test_set_entry_paths_tool_is_gone():
+    """WP-IP — 입력 경로 도구는 노출 목록에서 제거됐다."""
+    from daedalus.mcp.service import TOOL_NAMES
+
+    assert "set_entry_paths" not in TOOL_NAMES
 
 
 def test_connect_states_with_trigger_and_guard(tools, window):
@@ -304,12 +303,13 @@ def test_set_transition_none_leaves_untouched(tools, window):
     assert trans.trigger.name == "keep"  # None이었으므로 유지
 
 
-def test_set_transition_rejects_target_port(tools, window):
-    tools.create_state("a")
-    tools.create_state("b")
-    tools.connect_states("a", "b")
-    with pytest.raises(ValueError, match="퇴역"):
-        tools.set_transition("a", "b", target_port="main")
+def test_set_transition_has_no_target_port_param(tools, window):
+    """WP-IP — target_port 파라미터 자체가 시그니처에서 사라졌다."""
+    import inspect
+
+    params = inspect.signature(tools.set_transition).parameters
+    assert "target_port" not in params
+    assert "target_port" not in inspect.signature(tools.connect_states).parameters
 
 
 def test_set_transition_empty_string_clears(tools, window):

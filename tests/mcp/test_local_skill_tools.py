@@ -58,13 +58,11 @@ def test_set_transfer_on_reaches_local_skill(tools):
     assert [e.name for e in _local(tools).transfer_on] == ["ok", "retry"]
 
 
-def test_set_entry_paths_only_clears_legacy(tools):
-    """WP-IP — 입력 경로 선언은 퇴역. 빈 목록(legacy 제거)만 허용된다."""
+def test_legacy_entry_paths_are_inert(tools):
+    """WP-IP — legacy 선언이 남아 있어도 산출·검증 어디에도 영향이 없다."""
     _local(tools).entry_paths.append(EventDef(name="stale"))
-    tools.set_entry_paths("step-one", [], agent="worker")
-    assert _local(tools).entry_paths == []
-    with pytest.raises(ValueError, match="퇴역"):
-        tools.set_entry_paths("step-one", [{"name": "fresh"}], agent="worker")
+    out = tools.get_component("step-one", agent="worker")
+    assert "entry_paths" not in out  # 조회 표면에서도 사라졌다
 
 
 def test_set_component_body_reaches_local_skill(tools):

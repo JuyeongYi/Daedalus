@@ -299,8 +299,8 @@ daedalus/
   transfer_on description 병기).
 - **잔재 처리:** 모델 필드(`entry_paths`/`target_port`)는 구버전 파일 왕복 보존용으로만 남는다 —
   렌더(입력 포트 항상 기본 1개, legacy target_port 앵커 무시)·컴파일·검증(`dangling_target_port`
-  규칙 삭제) 어디서도 읽지 않는다. 편집 UI("⇤ 입력 경로" 패널) 제거. MCP `set_entry_paths`는 빈
-  목록(legacy 제거)만 허용, `set_transition`/`connect_states`의 target_port 값은 거부.
+  규칙 삭제) 어디서도 읽지 않는다. 편집 UI("⇤ 입력 경로" 패널) 제거. MCP는 `set_entry_paths` 도구 자체를
+  제거했고 `set_transition`/`connect_states`에서 target_port 파라미터도 사라졌다(조회 출력에서도 제외).
 
 ### PluginProject.graph = 워크플로 백킹 머신
 
