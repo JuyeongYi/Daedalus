@@ -68,8 +68,14 @@ daedalus/
 │   ├── outline.py           # 본문 아웃라인(WP-BO) — body 마크다운의 파생 인덱스. parse_outline(fence-aware 헤딩 파서)/
 │   │                       #   find_section(제목·"## 제목" 레벨 지정·"부모 > 자식" 경로, 0개·복수 매칭 ValueError)/
 │   │                       #   section_text/char_span/replacement_text/replace_section(비교체 구간 바이트 보존). Qt 무관 순수 stdlib.
-│   ├── serialize.py         # serialize_project/deserialize_project (모델↔JSON dict, 안정 ID 기반, format 2)
-│   │                       # + _migrate_v1(v1→v2 단방향 마이그레이션 집약 — RF-1b, "안정 ID + 직렬화" 항목 참조)
+│   ├── serialize/           # 모델↔JSON dict 직렬화 (안정 ID 기반, format 2). 구 serialize.py(1,437줄)를 WP-SZ로
+│   │   │                   #   패키지 분해(이동만·동작 불변). 의존 방향 ser ← migrate ← deser 단방향(순환 없음)
+│   │   ├── __init__.py     #   재-export 파사드 — 분해 전 모듈의 모든 속성(public + 테스트가 쓰는 _ser_tool/_deser_tool
+│   │   │                   #   등 _헬퍼 + 부수 임포트) 보존. `from daedalus.model.serialize import …` 기존 경로 무수정 동작
+│   │   ├── ser.py          #   정방향 — serialize_project + _ser_* 전부. FORMAT_VERSION의 단일 진실(쓰는 쪽이 선언)
+│   │   ├── migrate.py      #   v1→v2 단방향 마이그레이션 집약 — _migrate_v1/_promote_local_skills/_v1_all_machines/
+│   │   │                   #   _v1_scrub_number + _deser_section(v1 sections 트리 전용이라 여기 — deser에 두면 순환)
+│   │   └── deser.py        #   역방향 — 2-pass deserialize_project + _Registry(id→객체, dangling 경고) + _deser_* 전부
 │   └── validation/          # 모델 검증 (Qt·파일시스템 무관). 구 validation.py를 WP-RF-3d로 패키지 분해(이동만·동작 불변)
 │       ├── __init__.py     #   재-export 파사드 + `Validator(_MachineRules, _ProjectRules)` 합성 — 분해 전 모듈의 모든 속성
 │       │                   #   (public + 테스트가 쓰는 _헬퍼)과 `Validator._check_*` 이름 전부 보존(기존 임포트 무수정 동작)
@@ -598,10 +604,11 @@ daedalus/
 - **연결 방법:** 도구 메뉴 → "MCP 서버 정보..."가 접속 주소와 `.mcp.json` 스니펫
   (`{"mcpServers": {"daedalus": {"type": "http", "url": "http://127.0.0.1:8787/mcp"}}}`)을 보여준다.
 
-### 안정 ID + 직렬화 (serialize.py)
+### 안정 ID + 직렬화 (model/serialize/)
 
 - **안정 ID:** `State`(베이스)/`Transition`/`StateMachine`/`Region`/`Variable`/`Skill`(베이스)/`AgentDefinition`에 `id: str = field(default_factory=lambda: uuid4().hex, kw_only=True)`. kw_only로 다중 상속 필드 순서 제약을 회피한다. eq=False 클래스는 identity 동등성/해시를 유지(id는 `__eq__`/`__hash__` 무관)하고, 값 동등성 클래스(Variable/Skill/Agent)는 `compare=False`로 값 비교에서 제외한다.
-- **직렬화 원칙:** `serialize_project`/`deserialize_project`는 JSON 호환 dict(`"format": 2` 버전 키)를 만든다. **소유 객체는 인라인, 참조는 ID 문자열로 평탄화**한다 — Transition.source/target(state id), SimpleState.skill_ref·Transition.skill_ref(component id), StateMachine.initial_state/final_states(state id). 다형성은 `kind` property를 태그로 재사용. enum은 `.value`↔타입 복원. 역직렬화는 2-pass(객체 생성+id 레지스트리 → 참조 해소)이고 dangling id는 None+경고. `Blackboard.parent`는 ID가 아니라 sub_machine 소유 구조로 재연결한다. serialize.py는 순수 모델(Qt 무관).
+- **직렬화 원칙:** `serialize_project`/`deserialize_project`는 JSON 호환 dict(`"format": 2` 버전 키)를 만든다. **소유 객체는 인라인, 참조는 ID 문자열로 평탄화**한다 — Transition.source/target(state id), SimpleState.skill_ref·Transition.skill_ref(component id), StateMachine.initial_state/final_states(state id). 다형성은 `kind` property를 태그로 재사용. enum은 `.value`↔타입 복원. 역직렬화는 2-pass(객체 생성+id 레지스트리 → 참조 해소)이고 dangling id는 None+경고. `Blackboard.parent`는 ID가 아니라 sub_machine 소유 구조로 재연결한다. serialize 패키지는 순수 모델(Qt 무관).
+- **패키지 분해 (WP-SZ):** 구 단일 모듈 `serialize.py`(1,437줄 — 위생 허용 목록의 마지막 등재)를 `model/serialize/`로 쪼갰다(이동만·동작 불변, 최상위 정의 66개 AST 동등 검증). 구획은 `ser.py`(정방향 + `FORMAT_VERSION` 단일 진실) / `migrate.py`(v1→v2) / `deser.py`(역방향 2-pass)이고 의존 방향은 **ser ← migrate ← deser 단방향**이다 — `_deser_section`이 `migrate.py`에 있는 이유가 이것이다(`sections` 트리는 v1 파일에만 있고 유일한 호출자가 `_migrate_v1`이라, deser에 두면 순환이 생긴다). `__init__.py`는 **재-export 파사드**로 분해 전 모듈의 속성 138개를 전부 보존해 `from daedalus.model.serialize import _ser_tool` 같은 기존 임포트가 무수정 동작한다(`tests/model/test_serialize_facade.py`가 파사드 완전성·의존 방향·모듈 크기를 고정). 이 분해로 `tests/test_code_hygiene.py`의 ALLOWLIST가 비었다 — 다시 채우는 것은 규칙 위반이다.
 - **포맷 v2 + `_migrate_v1` (RF-1b):** `serialize_project`는 항상 `"format": 2`를 쓴다. `deserialize_project`는 format 1(또는 키 부재 구버전)을 받으면 **`_migrate_v1` 한 함수로 집약된 단방향 마이그레이션**을 태운 뒤 v2로 읽는다(왕복 보존 없음 — 열면 v2로 저장된다). 미지의 상위 format은 명시 에러. `_migrate_v1`이 다루는 축(입력 dict는 deepcopy로 불변): ① delegations 드롭(경고 — WP-RF-1a. 위임을 가리키던 placement skill_ref는 dangling 경고와 함께 None으로 정리) ①-b 에이전트 로컬 스킬 → **전역 스킬 승격**(WP-RF-1c, `_promote_local_skills` — 이름 충돌(전역 스킬·에이전트·먼저 승격된 스킬) 시 `<agent>--<name>` 개명 + 재충돌 시 `-2` 접미 유일화 + 개명 시 소유 에이전트 config.skills 참조 치환, 승격마다 경고 1건, id 보존이라 transfer skill_ref 해소 유지. 승격 dict는 data["skills"]에 합류해 이후 단계·역직렬화에서 전역 스킬과 같은 경로. **format 2 파일도 에이전트 dict에 `skills` 키가 있으면 같은 승격을 탄다** — RF-1b 시점 코드가 저장한 v2 파일의 인라인 로컬 스킬이 경고 없이 드롭되는 것 방지) ② sections 트리→body 평탄화(render_markdown) + `${CLAUDE_PLUGIN_ROOT}/files/`→`${ROOT}/files/` 치환(WP-RT) ③ 퇴역 키 조용히 드롭 — entry_paths/caller_contracts/전이의 target_port(WP-IP/WP-CT, 경고 불필요) ④ 에이전트 transfer_on 부재 시 내부 FSM ExitPoint 이름·색 승계(WP-AF) ⑤ 구버전 훅(커맨드 하나짜리)을 handlers 목록으로 감싸기 + 핸들러 command→script(WP-HK/WP-HS) ⑥ `field_type: "number"`→`"float"`(FieldType.NUMBER 퇴역). 픽스처 고정은 `tests/model/test_migrate_v1.py`(v2 왕복 항등 포함).
 - **프로젝트 그래프 직렬화:** `serialize_project`는 `graph`(`_ser_machine` 재사용)와 `graph_layout`을 왕복한다. 그래프 placement의 skill_ref는 component id로 평탄화되고, 역직렬화 시 pass1에서 등록된 skills/agents를 pass2가 해소한다(그래프 `_deser_machine`은 pass1에서 호출). 하위 호환: `"graph"` 키 부재(구버전 파일) → `_make_project_graph()`로 빈 그래프 생성(경고 없음). graph.blackboard.parent는 역직렬화 시 프로젝트 블랙보드로 재연결.
 - `AgentDefinition.graph_layout`/`PluginProject.graph_layout`의 키는 state.name이 아니라 **state.id**다 (이름 변경 시 레이아웃 유실 방지).

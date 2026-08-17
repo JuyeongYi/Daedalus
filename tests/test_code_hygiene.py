@@ -20,11 +20,9 @@ _SRC = _REPO / "daedalus"
 HARD_LIMIT = 1200
 
 # 경로(POSIX) → 상한. WP-RF 종료 시점(2026-08-17) 실측 스냅샷 + 소폭 여유.
-# serialize.py는 RF-1b의 _migrate_v1 집약으로 오히려 커졌다(1,381→1,437) —
-# 분해 후보(RF 후속)이며, 그전까지는 이 값을 넘길 수 없다.
-ALLOWLIST: dict[str, int] = {
-    "daedalus/model/serialize.py": 1500,
-}
+# WP-SZ에서 마지막 등재 파일(model/serialize.py, 1,437줄)이 패키지로 분해되어
+# 목록이 비었다 — 다시 채우는 것은 규칙 위반이다(기능을 더하기 전에 먼저 쪼갠다).
+ALLOWLIST: dict[str, int] = {}
 
 
 def _line_count(path: Path) -> int:
