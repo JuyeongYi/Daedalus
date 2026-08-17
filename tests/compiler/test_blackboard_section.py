@@ -76,10 +76,18 @@ def test_blackboard_section_includes_cli_directive_before_rules():
     project = _project_with_classes(skills=[a])
     text = compile_skill(a, project=project)
     assert "`command -v daedalus-bb`" in text
-    assert "uv tool install daedalus" in text
     cli_idx = text.index("command -v daedalus-bb")
     rule_idx = text.index("규칙:\n- 파일을 수정하기 전에")
     assert cli_idx < rule_idx
+
+
+def test_cli_directive_does_not_instruct_package_install():
+    """설치 명령을 지시하지 않는다 — PyPI의 동명 무관 패키지를 깔거나 실패한다."""
+    a = make_procedural(name="a")
+    project = _project_with_classes(skills=[a])
+    text = compile_skill(a, project=project)
+    assert "uv tool install" not in text
+    assert "pip install" not in text
 
 
 def test_blackboard_section_cli_directive_matches_actual_cli_surface():
@@ -108,6 +116,74 @@ def test_blackboard_section_cli_directive_matches_actual_cli_surface():
     for token in ("daedalus-bb read", "daedalus-bb write", "daedalus-bb validate",
                   "--set", "--append", "--remove"):
         assert token in text
+
+
+def test_cli_directive_passes_schemas_path_as_neutral_root_token():
+    """CLI 기본 스키마 경로는 cwd 기준이라 지시문이 경로를 명시해야 한다.
+
+    정본은 타깃 중립 토큰 ``${ROOT}``이고 컴파일이 타깃별 CC 변수로 확장한다.
+    """
+    a = make_procedural(name="a")
+    project = _project_with_classes(skills=[a])
+    text = compile_skill(a, project=project)
+    assert "--schemas ${ROOT}/schemas/schemas.json" in text
+
+
+def test_cli_schemas_path_expands_per_build_target(tmp_path):
+    """MARKETPLACE는 플러그인 루트, LOCAL은 작업 폴더 루트로 확장된다.
+
+    두 타깃 모두 ``<루트>/schemas/schemas.json``에 스키마를 산출하므로 토큰
+    하나가 양쪽에서 실제로 존재하는 경로를 가리킨다.
+    """
+    from daedalus.model.plugin.enums import BuildTarget
+    from daedalus.compiler.project_compiler import compile_project
+
+    for target, expected, rel in (
+        (BuildTarget.MARKETPLACE, "${CLAUDE_PLUGIN_ROOT}", "skills/a/SKILL.md"),
+        (BuildTarget.LOCAL, "${CLAUDE_PROJECT_DIR}", ".claude/skills/a/SKILL.md"),
+    ):
+        out = tmp_path / target.value
+        a = make_procedural(name="a")
+        project = _project_with_classes(skills=[a])
+        project.build_target = target
+        result = compile_project(project, out)
+        assert result.ok, result.errors
+        text = (out / rel).read_text(encoding="utf-8")
+        assert f"--schemas {expected}/schemas/schemas.json" in text
+        assert "${ROOT}" not in text
+        # 지시문이 가리키는 경로에 스키마가 실제로 산출됐는지.
+        assert (out / "schemas" / "schemas.json").is_file()
+
+
+def test_cli_directive_present_in_access_declared_branch():
+    """reads/writes 선언이 있는(=union) 분기에도 CLI 지시가 규칙 앞에 나온다.
+
+    _blackboard_section에는 return이 둘이라, 선언 없는 프로젝트만 검사하면
+    union 분기가 통째로 비어도 초록이 된다.
+    """
+    a = make_procedural(name="a")
+    a.fsm.states[0].reads = ["TaskState"]
+    a.fsm.states[0].writes = ["ReviewFindings.files"]
+    project = _project_with_two_classes(skills=[a])
+    text = compile_skill(a, project=project)
+
+    assert "이 스킬이 읽는 것: `TaskState`" in text  # union 분기임을 확정
+    assert "`command -v daedalus-bb`" in text
+    assert "--schemas ${ROOT}/schemas/schemas.json" in text
+    assert text.index("command -v daedalus-bb") < text.index("규칙:\n- 파일을 수정하기 전에")
+
+
+def test_cli_directive_present_in_agent_access_declared_branch():
+    """에이전트 산출의 union 분기도 동일 — 마지막 단락 순서까지 고정."""
+    agent = make_agent("worker")
+    work = next(s for s in agent.fsm.states if s.name == "work")
+    work.writes = ["TaskState.step"]
+    project = _project_with_two_classes(agents=[agent])
+    text = compile_agent(agent, project=project)
+
+    assert "이 에이전트가 쓰는 것: `TaskState.step`" in text
+    assert "`command -v daedalus-bb`" in text
+    assert text.index("command -v daedalus-bb") < text.index("규칙:\n- 파일을 수정하기 전에")
 
 
 def test_no_class_definitions_no_cli_directive():
