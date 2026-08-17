@@ -22,5 +22,10 @@ daedalus-bb = "daedalus.cli.blackboard:main"
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
 
+# flat-layout 자동 탐색은 저장소 루트의 project/(실프로젝트 데이터 폴더)를
+# 패키지로 오인해 빌드를 거부한다 — 배포 대상은 daedalus 패키지뿐임을 명시.
+[tool.setuptools.packages.find]
+include = ["daedalus*"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
