@@ -26,7 +26,8 @@ core는 Qt 바인딩(PySide6/PyQt6/shiboken6)·GUI 레이어(`daedalus.view`)·M
 함수 안 지연 임포트를 놓친다. 접두 매칭은 점 단위 — `daedalus.mcp`는 SDK `mcp`와 다르다). `mcp/tools/`는
 core가 아니라 **GUI 어댑터**(MainWindow·VM·커맨드 스택 결합 표면 — 각 믹스인 모듈 docstring 명시)이고,
 `mcp/invoker.py`의 Qt 의존과 `mcp/service.py`의 SDK/uvicorn 의존은 의도된 설계다. view→compiler 방향
-임포트는 정상(컴파일러 패턴의 방향과 일치).
+임포트는 정상(컴파일러 패턴의 방향과 일치). **`cli/`는 core 금지 목록에 더해 `daedalus.model`도 임포트할
+수 없다**(WP-BB1 — 설치 대상 프로젝트에서 도는 물건이라 검증 정본이 산출 `schemas.json` 파일 자체다).
 
 ```
 daedalus/
@@ -121,9 +122,12 @@ daedalus/
 │   │   ├── body.py         #   본문(set_component_body/get_body_outline/get_body_section/set_body_section — WP-BU/WP-BO 경로)
 │   │   └── props.py        #   생성·속성(create_skill/create_agent/rename_component/description/when_to_use/field/project_properties/set_mcp_server_def)
 │   └── service.py          # DaedalusMCPService — MCPServer 구성(_server_factory가 mcp 1.x/2.x 흡수) + uvicorn 데몬 스레드 수명주기
-├── cli/              # 블랙보드 CLI(daedalus-bb) 자리 (WP-RF-2 신설, 빈 패키지) — C+A 설계: uv tool install로 앱과 함께
-│                     #   설치되고, 컴파일 산출의 블랙보드 지시가 이 CLI를 호출. pyproject [project.scripts] 등록은 CLI 구현
-│                     #   시점에(실존하지 않는 entry point는 설치를 깨뜨린다). core 경계 소속 — Qt·view·SDK 임포트 금지.
+├── cli/              # 블랙보드 CLI (WP-RF-2 신설 → WP-BB1 구현) — C+A 설계: uv tool install로 앱과 함께 설치되고,
+│   │                 #   컴파일 산출의 블랙보드 지시가 런타임에 이 CLI를 호출해 work 폴더의 state/를 읽고 쓴다.
+│   │                 #   core 경계 소속 — Qt·view·MCP SDK·uvicorn 금지 + **daedalus.model도 금지**(순수 stdlib).
+│   └── blackboard.py # daedalus-bb 전부 (pyproject [project.scripts] 등록 완료). read/init/write/validate/list +
+│                     #   최소 JSON Schema 검증기(type/properties/required/items/uniqueItems) + 원자적 쓰기.
+│                     #   상세는 "블랙보드 CLI (WP-BB1)" 개념 섹션 참조.
 └── view/             # PySide6 기반 노드 에디터
     ├── recent.py           # 최근 프로젝트 목록(WP-RP) — ~/.daedalus/recent.json 읽기/쓰기 (Qt 무관 순수 stdlib).
     │                       #   load/save/push/remove/clear + MAX_RECENT. 기록 실패는 삼킨다(endpoint.py와 같은 정책).
@@ -363,6 +367,77 @@ daedalus/
   프로젝트 그래프 포함)/`orphan_blackboard_field`(어떤 상태도 참조하지 않는 필드 경고 — 클래스
   전체 참조는 그 필드 전부 커버로 간주, 프로젝트 전체에 접근 선언이 하나도 없으면 스킵) 2종.
   둘 다 프로젝트 수준 경고 규칙(아래 Validator 규칙 표 참조).
+
+### 블랙보드 CLI `daedalus-bb` (WP-BB1)
+
+설계 시점의 블랙보드(스키마)와 런타임의 블랙보드(work 폴더 `state/*.json`) 사이를 잇는
+도구. 스킬/에이전트 본문의 블랙보드 지시가 "읽기-수정-쓰기"를 말로만 시키면 LLM이 JSON을
+손으로 만들다 스키마를 어긴다 — 그 조작을 검증 가능한 명령 하나로 만든 것이 이 CLI다.
+`uv tool install`로 앱과 **함께 설치**된다(C+A 설계의 C).
+
+```
+daedalus-bb [--state-dir state] [--schemas schemas/schemas.json] <command>
+  read <Class> [--field NAME]    # 파일 전체(JSON) 또는 필드 값
+  init <Class> [--force]         # 스키마 기반 초기 객체 (있으면 거부, --force로 재생성)
+  write <Class> --set f=v [--append f=v] [--remove f=v]
+  validate [Class ...]           # 생략 시 전 클래스
+  list                           # 클래스·필드 목록(JSON)
+```
+
+- **exit code:** 0 성공 / 1 검증 실패 / 2 사용법·스키마·IO 오류 / 3 대상 상태 파일 없음
+  (`read`, 그리고 클래스를 **명시한** `validate`). 전역 옵션은 **하위 명령 앞**에 온다
+  (argparse 서브파서 구조).
+- **stdout에 나가는 것은 JSON뿐, 진단·안내는 stderr.** 소비자가 LLM이라 출력 채널을 섞으면
+  파싱이 깨진다. 다만 "항상 JSON이 나온다"는 뜻은 아니다 — 오류 경로(exit 2/3, init·write의
+  exit 1)는 stdout에 **아무것도 쓰지 않으므로** 무조건 `json.loads`를 걸면 그때 깨진다
+  (`validate`만 예외 — 실패해도 `{"ok": false, "violations": [...]}`를 stdout에 내고 사람이
+  읽을 목록을 stderr에 낸다). 본문 지시를 쓸 때는 exit code로 먼저 갈라야 한다.
+  Windows에서 파이프 인코딩이 cp949로 잡혀 한국어가 깨지지 않도록 `main()`이 stdout/stderr를
+  UTF-8로 reconfigure한다.
+- **왜 `schemas.json`이 단일 진실인가:** CLI는 **설치 대상 프로젝트**(플러그인이 깔린 작업
+  폴더)에서 돈다. 그곳에는 Daedalus 모델도 `.daedalus.json`도 없다 — 있는 것은 컴파일 산출
+  `schemas/schemas.json`뿐이다. 그래서 `daedalus/cli/**`는 **`daedalus.model`을 임포트하지
+  않는다**(순수 stdlib. `tests/test_import_contracts.py`가 core 금지 목록에 더해 AST로 강제).
+  모델을 끌어오면 "편집 시점 모델"과 "산출 스키마" 중 무엇이 정본인지가 흐려진다.
+- **검증기는 최소 구현이다.** 범용 JSON Schema가 아니라 컴파일러(`FIELD_TYPE_TO_JSON_SCHEMA`
+  + CollectionType 래핑)가 **실제로 만들어내는 형상**만 다룬다: `type`(string/integer/number/
+  boolean/array/object) · `properties` · `required` · `items` · `uniqueItems`. `bool`은 Python에서
+  `int`의 하위형이라 integer/number 검사보다 **먼저** 배제한다(안 그러면 `true`가 정수로 통과한다).
+  스키마에 없는 키는 위반이 아니다(JSON Schema 기본) — CLI 경로로는 애초에 들어올 수 없다.
+- **write는 검증 게이트 뒤에 있고 쓰기는 원자적이다.** 읽기-수정-쓰기 후 검증에 실패하면
+  exit 1 + 파일 완전 불변, 통과하면 임시 파일 + `os.replace`로 교체한다(반쯤 쓰인 상태 파일
+  없음). 파일이 없으면 초기 객체에서 시작한다.
+- **코어션:** `--set f=v`의 값은 스키마 타입으로 변환(integer/number/boolean/string, boolean은
+  true/1/yes/y/on ↔ false/0/no/n/off). 컬렉션 필드는 `--append`/`--remove`(원소 단위, `--remove`는
+  **모든** 일치 원소 제거 — "이후 그 값은 없다"가 기대 동작) 또는 `--set f='["a","b"]'`(JSON 배열
+  통째). `uniqueItems`(SET 컬렉션)면 append·set 양쪽에서 중복 제거. 적용 순서는 set → append → remove.
+  **`--remove`는 없는 것을 만들지 않는다** — 키가 없으면(비required 필드의 초기 상태) 아무 일도
+  일어나지 않고, 리스트가 아닌 값(스키마 위반)도 건드리지 않는다(빈 배열로 덮으면 고장이 조용히
+  지워진다 — 그 위반은 검증 게이트가 잡는다). 값 형식 검사는 키 유무와 무관하게 그대로 돈다.
+- **초기 객체:** required 필드만 채우고 비required는 생략한다. 값은 **선언 타입에 맞는
+  `default`가 스키마에 있으면 그 값**, 없으면 타입별 제로값(string `""`/integer `0`/number
+  `0.0`/boolean `false`/array `[]`/object `{}`/무제약(ANY) `null`)이다. 컴파일러가 `default`를
+  실제로 배출하므로(`_class_to_json_schema`) 그것을 무시하면 default `true`인 required boolean이
+  `false`로 초기화된다. 다만 default는 **타입이 보장되지 않는다** — 블랙보드 편집기가 default
+  셀을 자유 텍스트로 받아 boolean 필드에 문자열 `"true"`가 실릴 수 있다. 그래서 선언 타입에
+  맞을 때만 쓰고 어긋나면 제로값으로 물러난다(어긋난 default 때문에 `init` 자체가 실패하는 것이
+  더 나쁘다 — 어긋남은 `list` 출력에 그대로 보인다).
+- **`state/__progress__.json`은 스키마 밖 규약 파일**(WP-RS 진행 상태)이라 `validate` 전 클래스
+  순회의 대상이 아니다 — 그 파일이 깨져 있어도 블랙보드 검증은 통과한다.
+- **미존재 이름은 즉시 거부한다.** 클래스가 없으면 가용 클래스를, 필드가 없으면 가용 필드를
+  stderr에 나열하고 exit 2. 필드 오타는 상태 파일 유무보다 **먼저** 판정한다(파일이 없다고
+  대답하면 오타를 못 찾는다).
+- `validate`에서 상태 파일이 없는 클래스는 위반이 아니라 `"missing"`으로 보고한다(아직
+  초기화되지 않은 상태는 고장이 아니다). 파싱 불가 파일은 위반이다. **이름을 생략한 전 클래스
+  순회는 미초기화여도 exit 0**이지만, **클래스를 명시한 호출에서 그 파일이 없으면 exit 3**이다
+  (`read`와 같은 뜻) — 물어본 대상이 없다는 것 자체가 대답이고, exit code만 보는 호출자가
+  "검사했고 정상"으로 읽으면 안 된다. 위반이 있으면 그쪽이 우선(exit 1).
+- **컴파일러 산출 형상과의 결합은 테스트가 고정한다.** CLI는 모델을 임포트할 수 없지만
+  `tests/`는 양쪽을 볼 수 있으므로, `tests/cli/test_schema_contract.py`가
+  `compile_schemas_json`이 **실제로 만든 텍스트**를 `schemas.json`으로 깔고 list/init/write/
+  validate를 돌린다(손으로 쓴 픽스처만 쓰면 컴파일러가 형상을 바꿔도 CLI 테스트는 전부 초록인
+  채 런타임만 깨진다). `BLACKBOARD_FIELD_TYPES` 밖 legacy 타입(ANY/JSON/bare LIST)도 경고
+  등급이라 실제로 산출에 나오므로 함께 고정한다.
 
 ### FSM + Blackboard 하이브리드
 
