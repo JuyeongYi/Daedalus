@@ -293,7 +293,21 @@ class PropsTools(_BaseTools):
                     f"'{field}'의 값 '{value}'이 올바르지 않습니다. 사용 가능: {allowed}"
                 ) from None
         if target is bool:
-            return bool(value)
+            # bool(value)를 쓰면 안 된다 — MCP 클라이언트가 불리언을 문자열로
+            # 보내는 경우가 실재하고, bool("false")는 True다(실사고: 라이브
+            # 프로젝트의 user_invocable=false 지정이 조용히 True로 저장됐다).
+            if isinstance(value, bool):
+                return value
+            if isinstance(value, str):
+                low = value.strip().lower()
+                if low in ("true", "1"):
+                    return True
+                if low in ("false", "0"):
+                    return False
+            raise ValueError(
+                f"'{field}'는 불리언입니다 — true 또는 false로 주세요 "
+                f"(받은 값: {value!r})."
+            )
         if target is int:
             return int(value)
         return value

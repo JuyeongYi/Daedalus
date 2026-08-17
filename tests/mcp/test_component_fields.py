@@ -166,3 +166,25 @@ def test_agent_tools_reach_compiled_frontmatter(tools, window):
     assert "tools: [Read, mcp__daedalus__undo]" in text
     # tools의 mcp__ 접두에서 서버 이름이 추출돼 요구 환경에 합류한다
     assert "daedalus" in text
+
+
+# --- bool 코어션 (실사고 회귀: bool("false") == True) ---
+
+
+def test_bool_field_accepts_string_false(tools):
+    """MCP 클라이언트가 불리언을 문자열로 보내는 경우가 실재한다 — "false"는
+    False여야 한다(실사고: user_invocable=false 지정이 조용히 True로 저장됐다)."""
+    tools.set_component_field("init", "user_invocable", "false")
+    assert _config(tools, "init").user_invocable is False
+    tools.set_component_field("init", "user_invocable", "true")
+    assert _config(tools, "init").user_invocable is True
+
+
+def test_bool_field_accepts_real_boolean(tools):
+    tools.set_component_field("init", "user_invocable", False)
+    assert _config(tools, "init").user_invocable is False
+
+
+def test_bool_field_rejects_garbage_string(tools):
+    with pytest.raises(ValueError, match="불리언"):
+        tools.set_component_field("init", "user_invocable", "maybe")
