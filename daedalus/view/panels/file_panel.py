@@ -197,6 +197,10 @@ class SkillFilesPanel(_FileTreeBase):
     에디터가 열릴 때마다 새로 만들어도 배선이 필요 없다.
     """
 
+    # ComponentEditor 우측 수직 스플리터에서의 선호 비율 — 파일 트리는 포트
+    # 카드 목록(Transfer On/Agent Call)보다 세로 공간이 더 필요하다.
+    right_stretch = 3
+
     def __init__(self, component: object, parent: QWidget | None = None) -> None:
         self._component = component  # name을 매번 읽는다 — rename 추적
         super().__init__(parent)

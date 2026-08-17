@@ -78,9 +78,18 @@ class ComponentEditor(QWidget):
         if rw:
             right_splitter = QSplitter(Qt.Orientation.Vertical)
             right_splitter.setMinimumWidth(_RIGHT_MIN_W)
-            for w in rw:
+            for i, w in enumerate(rw):
                 w.setMinimumHeight(_RIGHT_CHILD_MIN_H)
                 right_splitter.addWidget(w)
+                # 위젯이 `right_stretch`로 선호 비율을 선언할 수 있다 (WP-SF —
+                # 파일 트리는 포트 카드 목록보다 세로 공간이 더 필요하다).
+                right_splitter.setStretchFactor(i, getattr(w, "right_stretch", 1))
+            # stretch factor는 sizeHint 이후의 **여유 공간**에만 작용한다 —
+            # 초기 분할 자체를 비율대로 잡으려면 setSizes가 필요하다
+            # (QSplitter가 합계 대비 비율로 정규화한다).
+            right_splitter.setSizes(
+                [100 * getattr(w, "right_stretch", 1) for w in rw]
+            )
             root_splitter.addWidget(right_splitter)
 
         # stretch 비율: 좌1 중3 우2 (3컬럼) / 좌1 중3 (2컬럼)

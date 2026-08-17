@@ -166,3 +166,21 @@ def test_skill_editor_embeds_skill_files_panel(qapp):
 
     editor = SkillEditor(make_procedural(name="alpha"))
     assert editor.findChildren(SkillFilesPanel)
+
+
+def test_skill_files_panel_gets_larger_share_of_right_column(qapp):
+    """파일 트리는 포트 카드 목록보다 세로 공간을 크게 받는다 (사용자 피드백)."""
+    from PySide6.QtWidgets import QSplitter
+
+    from daedalus.view.editors.skill_editor import SkillEditor
+    from daedalus.view.panels.file_panel import SkillFilesPanel
+    from tests.compiler.builders import make_procedural
+
+    editor = SkillEditor(make_procedural(name="alpha"))
+    panel = editor.findChildren(SkillFilesPanel)[0]
+    splitter = panel.parentWidget()
+    assert isinstance(splitter, QSplitter)
+    sizes = splitter.sizes()
+    files_idx = splitter.indexOf(panel)
+    others = [s for i, s in enumerate(sizes) if i != files_idx]
+    assert others and sizes[files_idx] > max(others)
