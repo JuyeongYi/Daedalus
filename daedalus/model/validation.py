@@ -999,7 +999,7 @@ class Validator:
     def _collect_hook_refs(project):
         """config.hooks 키(훅 이름 참조)를 (label, name, subject)로 yield.
 
-        스킬/에이전트/에이전트 로컬 스킬의 config.hooks를 모두 훑는다.
+        스킬/에이전트의 config.hooks를 모두 훑는다.
         """
         for skill in getattr(project, "skills", []):
             cfg = getattr(skill, "config", None)
@@ -1013,12 +1013,6 @@ class Validator:
             if isinstance(hooks, dict):
                 for name in hooks:
                     yield (f"agent:{agent.name}", name, agent)
-            for local in getattr(agent, "skills", []):
-                lcfg = getattr(local, "config", None)
-                lhooks = getattr(lcfg, "hooks", None)
-                if isinstance(lhooks, dict):
-                    for name in lhooks:
-                        yield (f"agent:{agent.name}/skill:{local.name}", name, local)
 
     @staticmethod
     def _check_duplicate_hook_name(project) -> list[ValidationError]:
@@ -1257,20 +1251,18 @@ class Validator:
                         subject=skill,
                     ))
 
-        # AgentConfig.skills 검사 (전역 + 에이전트 로컬 스킬 합산)
+        # AgentConfig.skills 검사 (전역 스킬 이름)
         for agent in project.agents:
             cfg = agent.config
             if not isinstance(cfg, AgentConfig):
                 continue
-            local_skill_names = {s.name for s in agent.skills}
-            available_names = global_skill_names | local_skill_names
             for skill_name in cfg.skills:
-                if skill_name not in available_names:
+                if skill_name not in global_skill_names:
                     errors.append(ValidationError(
                         rule="dangling_string_reference",
                         message=(
                             f"에이전트 '{agent.name}'의 config.skills '{skill_name}'이 "
-                            f"프로젝트 skills 또는 에이전트 로컬 skills에 없습니다."
+                            f"프로젝트 skills에 없습니다."
                         ),
                         source=agent.name,
                         subject=agent,
@@ -1350,15 +1342,6 @@ class Validator:
                 Validator._scan_state_access(fsm, _make_checker((f"skill:{skill.name}",)))
         for agent in project.agents:
             Validator._scan_state_access(agent.fsm, _make_checker((f"agent:{agent.name}",)))
-            # 에이전트 로컬 스킬 FSM도 검사 — dangling_hook_ref 전례 (리뷰 지적:
-            # 제외하면 orphan이 오탐, dangling이 미검출된다)
-            for local in getattr(agent, "skills", None) or []:
-                local_fsm = getattr(local, "fsm", None)
-                if local_fsm is not None:
-                    Validator._scan_state_access(
-                        local_fsm,
-                        _make_checker((f"agent:{agent.name}", f"skill:{local.name}")),
-                    )
         graph = getattr(project, "graph", None)
         if graph is not None:
             Validator._scan_state_access(graph, _make_checker(("project",)))
@@ -1387,10 +1370,6 @@ class Validator:
                 Validator._scan_state_access(fsm, _collect)
         for agent in project.agents:
             Validator._scan_state_access(agent.fsm, _collect)
-            for local in getattr(agent, "skills", None) or []:
-                local_fsm = getattr(local, "fsm", None)
-                if local_fsm is not None:
-                    Validator._scan_state_access(local_fsm, _collect)
         graph = getattr(project, "graph", None)
         if graph is not None:
             Validator._scan_state_access(graph, _collect)
@@ -1507,8 +1486,8 @@ class Validator:
 
     @staticmethod
     def _check_plugin_root_in_local_build(project) -> list[ValidationError]:
-        """plugin_root_in_local_build — build_target=LOCAL인데 스킬/에이전트(로컬
-        스킬 포함) 본문에 **플러그인 전용 변수**가 남아 있으면 경고.
+        """plugin_root_in_local_build — build_target=LOCAL인데 스킬/에이전트
+        본문에 **플러그인 전용 변수**가 남아 있으면 경고.
 
         CC는 `${CLAUDE_PLUGIN_ROOT}`와 `${CLAUDE_PLUGIN_DATA}`를 **플러그인
         스킬에서만 치환한다**(공식 skills 문서의 치환 표). 프로젝트 설치 빌드는
@@ -1556,12 +1535,6 @@ class Validator:
                 f"에이전트 '{agent.name}'", agent, getattr(agent, "body", ""),
                 (f"agent:{agent.name}",),
             )
-            for local in getattr(agent, "skills", None) or []:
-                _scan(
-                    f"에이전트 '{agent.name}'의 로컬 스킬 '{local.name}'",
-                    local, getattr(local, "body", ""),
-                    (f"agent:{agent.name}", f"skill:{local.name}"),
-                )
         return errors
 
     @staticmethod

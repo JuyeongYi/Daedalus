@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from daedalus.model.fsm.section import EventDef
@@ -10,23 +9,23 @@ from daedalus.model.plugin.base import PluginComponent, WorkflowComponent
 from daedalus.model.plugin.config import AgentConfig
 from daedalus.model.plugin.policy import ExecutionPolicy
 
-if TYPE_CHECKING:
-    from daedalus.model.plugin.skill import ProceduralSkill, ReferenceSkill, TransferSkill
-
 
 @dataclass
 class AgentDefinition(PluginComponent, WorkflowComponent):
     """에이전트 = PluginComponent + FSM.
 
+    로컬 스킬(skills 필드)은 퇴역했다(WP-RF-1c) — v1 파일의 로컬 스킬은 로드 시
+    전역 스킬로 승격된다(serialize._migrate_v1). 에이전트에게 줄 지식은 전역
+    스킬로 만들면 컴파일이 skills 프론트매터에 자동 합류시킨다(WP-AS).
+
     필드 순서 (dataclass MRO):
       fsm (required, WorkflowComponent)
       name, description (required, PluginComponent)
-      config, execution_policy, body, skills (default)
+      config, execution_policy, body (default)
     """
     config: AgentConfig = field(default_factory=AgentConfig)
     execution_policy: ExecutionPolicy = field(default_factory=ExecutionPolicy)
     body: str = ""
-    skills: list[ProceduralSkill | TransferSkill | ReferenceSkill] = field(default_factory=list)
     reference_placements: list = field(default_factory=list)  # list[ReferencePlacement]
     graph_layout: dict[str, list[float]] = field(default_factory=dict)
     # WP-ER — 전이 엣지의 경유점(waypoint) 좌표. 키는 Transition.id, 값은 [x, y] 목록

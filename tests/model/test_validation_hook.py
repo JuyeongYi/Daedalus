@@ -160,16 +160,6 @@ def test_dangling_hook_ref_on_skill():
     assert "dangling_hook_ref" in _rules(Validator.validate_project(proj))
 
 
-def test_dangling_hook_ref_on_agent_local_skill():
-    cfg = DeclarativeSkillConfig()
-    cfg.hooks = {"missing": {}}
-    local = DeclarativeSkill(name="lsk", description="d", config=cfg)
-    ag = _agent()
-    ag.skills.append(local)
-    proj = PluginProject(name="p", agents=[ag])
-    assert "dangling_hook_ref" in _rules(Validator.validate_project(proj))
-
-
 def test_no_hooks_no_dangling():
     proj = PluginProject(name="p", agents=[_agent(hooks=None)])
     assert "dangling_hook_ref" not in _rules(Validator.validate_project(proj))

@@ -49,14 +49,6 @@ def test_no_class_definitions_no_section():
     assert "## 공유 상태 (블랙보드)" not in text
 
 
-def test_local_skill_no_section():
-    """로컬 스킬(에이전트 소유)은 단락을 받지 않는다 — 에이전트 .md가 이미 받는다."""
-    a = make_procedural(name="local-proc")
-    project = _project_with_classes()
-    text = compile_skill(a, local=True, project=project)
-    assert "## 공유 상태 (블랙보드)" not in text
-
-
 def test_declarative_skill_no_section():
     kb = make_declarative("kb")
     project = _project_with_classes(skills=[kb])

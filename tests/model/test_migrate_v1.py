@@ -219,6 +219,114 @@ def test_v1_delegations_dropped_with_warning():
     assert any("위임 정의 1건" in w and "드롭" in w for w in warnings)
 
 
+# ─────────────────────── 로컬 스킬 → 전역 승격 (WP-RF-1c) ───────────────────────
+
+
+def _v1_agent_with_local(local: dict, agent_extra: dict | None = None) -> dict:
+    data = _v1_base()
+    agent = {
+        "kind": "agent", "id": "a1", "name": "worker", "description": "d",
+        "fsm": {
+            "id": "f1", "name": "af",
+            "states": [{"kind": "entry_point", "id": "e1", "name": "entry"}],
+            "transitions": [], "initial_state": "e1", "final_states": [],
+        },
+        "skills": [local],
+    }
+    agent.update(agent_extra or {})
+    data["agents"].append(agent)
+    return data
+
+
+def _v1_local_proc(name: str = "helper", **extra) -> dict:
+    d = {
+        "kind": "procedural_skill", "id": "ls1", "name": name, "description": "ld",
+        "fsm": {
+            "id": "lf1", "name": "lf",
+            "states": [{"kind": "simple", "id": "ss1", "name": "start"}],
+            "transitions": [], "initial_state": "ss1", "final_states": [],
+        },
+    }
+    d.update(extra)
+    return d
+
+
+def test_v1_local_skill_promoted_to_global_with_warning():
+    """v1 에이전트 로컬 스킬은 전역 스킬로 승격된다 — 경고 1건, id 보존."""
+    warnings: list[str] = []
+    p = deserialize_project(
+        _v1_agent_with_local(_v1_local_proc()), collect_warnings=warnings,
+    )
+    names = [s.name for s in p.skills]
+    assert names == ["helper"]
+    assert p.skills[0].id == "ls1"
+    assert not hasattr(p.agents[0], "skills")
+    assert any(
+        "worker" in w and "helper" in w and "승격" in w for w in warnings
+    ), warnings
+
+
+def test_v1_promoted_local_skill_renamed_on_conflict():
+    """전역 이름 충돌 시 '<agent>--<name>'으로 개명하고 경고에 명시한다."""
+    data = _v1_agent_with_local(_v1_local_proc(name="helper"))
+    data["skills"].append({
+        "kind": "declarative_skill", "id": "g1", "name": "helper", "description": "d",
+    })
+    warnings: list[str] = []
+    p = deserialize_project(data, collect_warnings=warnings)
+    names = {s.name for s in p.skills}
+    assert names == {"helper", "worker--helper"}
+    promoted = next(s for s in p.skills if s.name == "worker--helper")
+    assert promoted.id == "ls1"
+    assert any("개명" in w and "worker--helper" in w for w in warnings), warnings
+
+
+def test_v1_promoted_local_skill_blackboard_parent_is_project():
+    """승격된 스킬의 fsm 블랙보드 parent는 전역 스킬과 동일 경로 — 프로젝트
+    블랙보드로 배선된다 (소유 에이전트 FSM 블랙보드가 아니다)."""
+    p = deserialize_project(_v1_agent_with_local(_v1_local_proc()))
+    promoted = p.skills[0]
+    assert promoted.fsm.blackboard.parent is p.blackboard
+
+
+def test_v1_promoted_local_skill_body_migrated():
+    """승격된 스킬도 본문 마이그레이션(sections 평탄화 + 경로 변수 치환)을
+    전역 스킬과 동일하게 받는다."""
+    local = _v1_local_proc()
+    local["sections"] = [{
+        "title": "Top",
+        "content": "${CLAUDE_PLUGIN_ROOT}/files/x.txt",
+        "children": [],
+    }]
+    p = deserialize_project(_v1_agent_with_local(local))
+    assert p.skills[0].body == "# Top\n\n${ROOT}/files/x.txt"
+
+
+def test_v1_local_transfer_skill_ref_resolves_after_promotion():
+    """에이전트 FSM 전이의 transfer skill_ref(id 참조)는 승격 후에도 해소된다."""
+    local = {
+        "kind": "transfer_skill", "id": "lt1", "name": "edge", "description": "d",
+        "fsm": {
+            "id": "tf1", "name": "tf",
+            "states": [{"kind": "simple", "id": "ts1", "name": "s"}],
+            "transitions": [], "initial_state": "ts1", "final_states": [],
+        },
+    }
+    data = _v1_agent_with_local(local)
+    agent = data["agents"][0]
+    agent["fsm"]["states"].append({"kind": "simple", "id": "n1", "name": "step"})
+    agent["fsm"]["transitions"].append({
+        "id": "t1", "source": "e1", "target": "n1", "type": "external",
+        "skill_ref": "lt1",
+    })
+    warnings: list[str] = []
+    p = deserialize_project(data, collect_warnings=warnings)
+    promoted = next(s for s in p.skills if s.name == "edge")
+    trans = p.agents[0].fsm.transitions[0]
+    assert trans.skill_ref is promoted
+    assert not any("dangling" in w for w in warnings), warnings
+
+
 def test_v1_legacy_hook_wrapped_as_command_handler():
     data = _v1_base()
     data["hook_library"] = [{

@@ -76,22 +76,6 @@ def test_files_copied_under_dot_claude_in_local_build(tmp_path):
     assert (skill_dir / "reference.md").read_bytes() == b"ref-doc"
 
 
-def test_local_skill_dir_name_matches(tmp_path):
-    """legacy 로컬 스킬은 '<agent>--<skill>' 폴더명으로 매칭된다."""
-    agent = make_agent(name="worker")
-    agent.skills = [make_procedural(name="helper")]
-    project = PluginProject(name="p", agents=[agent])
-    root = tmp_path / "skill-files"
-    (root / "worker--helper").mkdir(parents=True)
-    (root / "worker--helper" / "data.txt").write_bytes(b"x")
-
-    out = tmp_path / "out"
-    result = compile_project(project, out, skill_files_dir=root)
-    assert result.ok
-    assert result.warnings == []
-    assert (out / "skills" / "worker--helper" / "data.txt").read_bytes() == b"x"
-
-
 # --- 경고 ---
 
 

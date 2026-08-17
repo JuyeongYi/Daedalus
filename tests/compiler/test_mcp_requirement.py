@@ -89,19 +89,6 @@ def test_skill_requirement_section_is_deterministic_across_calls():
     assert text1 == text2
 
 
-def test_local_skill_still_gets_requirement_section():
-    """로컬 스킬(에이전트 소유)도 자기 config 기반이므로 단락을 받는다."""
-    skill = make_procedural(
-        name="local-a",
-        config=ProceduralSkillConfig(
-            model=ModelType.SONNET,
-            allowed_tools=["mcp__playwright__browser_click"],
-        ),
-    )
-    text = compile_skill(skill, local=True)
-    assert "## 요구 환경" in text
-
-
 def test_agent_tools_mcp_prefix_merges_into_settings_note():
     agent = make_agent("worker")
     agent.config = AgentConfig(model=ModelType.SONNET, tools=["mcp__github__create_issue"])

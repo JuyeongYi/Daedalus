@@ -55,28 +55,26 @@ def test_clean_project_no_warnings(tmp_path):
 # ─────────────────────── 게이트 강화: 산출 경로 충돌 ───────────────────────
 
 
-def test_local_skill_path_collision_rejected(tmp_path):
-    """(agent 'a--b', skill 'c')와 (agent 'a', skill 'b--c')는 동일 디렉토리
-    'a--b--c'를 산출한다 — 조용한 덮어쓰기 대신 컴파일 거부 + 충돌 보고."""
-    from tests.compiler.builders import make_agent
+def test_output_path_collision_rejected(tmp_path):
+    """스킬 동봉 파일(skill-files)이 SKILL.md 산출 경로를 덮으면 — 조용한
+    덮어쓰기 대신 컴파일 거부 + 충돌 보고."""
+    skill = make_procedural(name="alpha")
+    project = PluginProject(name="p", skills=[skill])
+    root = tmp_path / "skill-files"
+    (root / "alpha").mkdir(parents=True)
+    (root / "alpha" / "SKILL.md").write_bytes(b"boom")
 
-    agent1 = make_agent("a--b")
-    agent1.skills = [make_procedural(name="c")]
-    agent2 = make_agent("a")
-    agent2.skills = [make_procedural(name="b--c")]
-    project = PluginProject(name="p", agents=[agent1, agent2])
-
-    result = compile_project(project, tmp_path)
+    out = tmp_path / "out"
+    result = compile_project(project, out, skill_files_dir=root)
     assert not result.ok
     assert result.written == []
-    assert not list(tmp_path.rglob("*.md"))
+    assert not list(out.rglob("*.md"))
 
     conflicts = [e for e in result.errors if e.rule == "compile_output_path_conflict"]
     assert conflicts, [e.rule for e in result.errors]
     msg = conflicts[0].message
     # 충돌 경로 + 원인 컴포넌트 둘 다 보고
-    assert "a--b--c" in msg
-    assert "a--b" in msg and "b--c" in msg
+    assert "alpha" in msg and "SKILL.md" in msg
     # 게이트 에러는 에러 등급이어야 한다 (경고로 새면 안 됨)
     assert all(not e.is_warning for e in conflicts)
 
@@ -115,12 +113,11 @@ def test_nonconforming_name_rejected_at_gate(tmp_path):
         assert all(not e.is_warning for e in named)
 
 
-def test_nonconforming_agent_and_local_skill_name_rejected(tmp_path):
-    """에이전트·로컬 스킬 이름도 게이트 규약 검사 대상이다."""
+def test_nonconforming_agent_name_rejected(tmp_path):
+    """에이전트 이름도 게이트 규약 검사 대상이다."""
     from tests.compiler.builders import make_agent
 
     agent = make_agent("Worker Agent")  # 공백+대문자
-    agent.skills = [make_procedural(name="Local Skill")]
     project = PluginProject(name="p", agents=[agent])
 
     result = compile_project(project, tmp_path)
@@ -129,7 +126,6 @@ def test_nonconforming_agent_and_local_skill_name_rejected(tmp_path):
     named = [e for e in result.errors if e.rule == "compile_invalid_component_name"]
     sources = {e.source for e in named}
     assert "Worker Agent" in sources
-    assert "Local Skill" in sources
 
 
 def test_validator_keeps_warning_grade_for_invalid_name():
@@ -149,7 +145,6 @@ def test_clean_project_still_passes_after_gate_hardening(tmp_path):
     from tests.compiler.builders import make_agent
 
     agent = make_agent("a1")
-    agent.skills = [make_procedural(name="local-proc")]
     project = PluginProject(
         name="p", skills=[make_procedural(name="top-skill")], agents=[agent]
     )
@@ -157,7 +152,6 @@ def test_clean_project_still_passes_after_gate_hardening(tmp_path):
     assert result.ok, [e.message for e in result.errors]
     assert (tmp_path / "skills" / "top-skill" / "SKILL.md").exists()
     assert (tmp_path / "agents" / "a1.md").exists()
-    assert (tmp_path / "skills" / "a1--local-proc" / "SKILL.md").exists()
 
 
 # ─────────────────────── 리뷰 마이너 후속 ───────────────────────
@@ -173,31 +167,33 @@ def test_gate_rules_registered_in_compiler_error_rules(tmp_path):
     assert not (COMPILER_ERROR_RULES & WARNING_RULES)
 
     # 두 게이트 에러를 동시에 유발하는 프로젝트로 발급 rule ⊆ 등록 집합 고정
-    agent1 = make_agent("a--b")
-    agent1.skills = [make_procedural(name="c")]
-    agent2 = make_agent("a")
-    agent2.skills = [make_procedural(name="b--c")]
+    # (경로 충돌은 skill-files의 SKILL.md 덮어쓰기로 유발)
+    agent1 = make_agent("a1")
     project = PluginProject(
-        name="p", skills=[make_procedural(name="Bad Name")], agents=[agent1, agent2]
+        name="p",
+        skills=[make_procedural(name="Bad Name"), make_procedural(name="alpha")],
+        agents=[agent1],
     )
-    result = compile_project(project, tmp_path)
+    root = tmp_path / "skill-files"
+    (root / "alpha").mkdir(parents=True)
+    (root / "alpha" / "SKILL.md").write_bytes(b"boom")
+    result = compile_project(project, tmp_path / "out", skill_files_dir=root)
     emitted = {e.rule for e in result.errors if e.rule.startswith("compile_")}
     assert emitted == COMPILER_ERROR_RULES, (
         f"발급 {emitted} vs 등록 {COMPILER_ERROR_RULES}"
     )
 
 
-def test_skipped_includes_local_skills(tmp_path):
-    """거부 시 skipped에 에이전트 로컬 스킬도 포함된다."""
+def test_skipped_includes_all_planned_outputs(tmp_path):
+    """거부 시 skipped에 산출 계획 전체(스킬 + 에이전트)가 포함된다."""
     from tests.compiler.builders import make_agent
 
     agent = make_agent("a1")
-    agent.skills = [make_procedural(name="local-proc")]
     project = PluginProject(
         name="p", skills=[make_procedural(name="Bad Name")], agents=[agent]
     )
     result = compile_project(project, tmp_path)
     assert not result.ok
     labels = [label for _, label in result.skipped]
-    assert any("local-proc" in lb for lb in labels), labels
+    assert any("Bad Name" in lb for lb in labels), labels
     assert any("a1" in lb for lb in labels)

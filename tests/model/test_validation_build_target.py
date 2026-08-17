@@ -111,7 +111,7 @@ def test_plugin_root_non_files_usage_no_warning_in_marketplace_build():
     assert named == []
 
 
-def test_plugin_root_checks_agent_and_local_skill_bodies():
+def test_plugin_root_checks_agent_bodies():
     entry = EntryPoint(name="entry")
     done = ExitPoint(name="done")
     fsm = StateMachine(
@@ -121,20 +121,12 @@ def test_plugin_root_checks_agent_and_local_skill_bodies():
         fsm=fsm, name="worker", description="",
         body="에이전트 스크립트: ${CLAUDE_PLUGIN_ROOT}/scripts/agent-setup.sh",
     )
-    local_skill = _skill_with_body(
-        "로컬 스크립트: ${CLAUDE_PLUGIN_ROOT}/scripts/local-setup.sh"
-    )
-    local_skill.name = "local-helper"
-    agent.skills = [local_skill]
     project = PluginProject(name="p", agents=[agent], build_target=BuildTarget.LOCAL)
 
     findings = Validator.validate_project(project)
     named = [f for f in findings if f.rule == "plugin_root_in_local_build"]
     labels = {f.source for f in named}
-    assert labels == {
-        "에이전트 'worker'",
-        "에이전트 'worker'의 로컬 스킬 'local-helper'",
-    }
+    assert labels == {"에이전트 'worker'"}
 
 
 # (RF-1b) 수동 계약 카드(caller_contracts)는 필드째 삭제됐다 — 카드 본문 스캔

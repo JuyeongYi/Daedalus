@@ -6,7 +6,7 @@ field_matrix.py(model)에서 분리된 위젯 선택 책임을 담는다. 위젯
 모든 kind에서 동일한 위젯 타입을 사용한다.
 
 주의(AGENT ↔ TransferSkillConfig 부재 함정):
-    SKILL_FIELD_MATRIX에서 transfer/local_* kind는 AGENT 필드가 비노출(D)이라
+    SKILL_FIELD_MATRIX에서 transfer kind는 AGENT 필드가 비노출(D)이라
     TransferSkillConfig에 `agent` 속성이 없어도 안전하다. 소비부(skill_editor)는
     attr 접근 시 getattr 기본값/hasattr 가드로 방어한다.
 """

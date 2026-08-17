@@ -86,15 +86,6 @@ def test_local_build_installs_into_dot_claude(tmp_path):
     assert not (tmp_path / "agents").exists()
 
 
-def test_local_build_local_skill_goes_under_dot_claude(tmp_path):
-    agent = make_agent("worker")
-    agent.skills = [make_procedural(name="helper")]
-    project = PluginProject(name="p", agents=[agent], build_target=BuildTarget.LOCAL)
-    result = compile_project(project, tmp_path)
-    assert result.ok, [e.message for e in result.errors]
-    assert (tmp_path / ".claude" / "skills" / "worker--helper" / "SKILL.md").exists()
-
-
 def test_local_build_omits_plugin_json_and_install_scripts(tmp_path):
     skill = make_procedural(name="my-skill")
     project = PluginProject(name="p", skills=[skill], build_target=BuildTarget.LOCAL)
@@ -120,13 +111,9 @@ def test_local_build_substitutes_file_refs_in_skill_body(tmp_path):
     assert "${ROOT}" not in text
 
 
-def test_local_build_substitutes_file_refs_in_agent_and_local_skill_body(tmp_path):
+def test_local_build_substitutes_file_refs_in_agent_body(tmp_path):
     agent = make_agent("worker")
     agent.body = "에이전트 참조: ${ROOT}/files/agent-doc.txt"
-    local_skill = make_procedural(
-        name="local-helper", body="로컬 참조: ${ROOT}/files/local-doc.txt",
-    )
-    agent.skills = [local_skill]
     project = PluginProject(name="p", agents=[agent], build_target=BuildTarget.LOCAL)
     result = compile_project(project, tmp_path)
     assert result.ok, [e.message for e in result.errors]
@@ -135,11 +122,6 @@ def test_local_build_substitutes_file_refs_in_agent_and_local_skill_body(tmp_pat
         tmp_path / ".claude" / "agents" / "worker.md"
     ).read_text(encoding="utf-8")
     assert "${CLAUDE_PROJECT_DIR}/files/agent-doc.txt" in agent_text
-
-    local_text = (
-        tmp_path / ".claude" / "skills" / "worker--local-helper" / "SKILL.md"
-    ).read_text(encoding="utf-8")
-    assert "${CLAUDE_PROJECT_DIR}/files/local-doc.txt" in local_text
 
 
 # ─────────────────────── LOCAL — 훅: settings.local.json 병합 ───────────────────────
@@ -233,11 +215,9 @@ def test_referenced_mcp_servers_collects_all_axes():
     agent = make_agent("worker")
     agent.config.tools = ["mcp__github__create_issue"]
     agent.config.mcp_servers = ["memory"]
-    agent.skills = [make_procedural(name="helper")]
-    agent.skills[0].config.allowed_tools = ["mcp__local-srv__x"]
     project = _mcp_project(agents=[agent])
     assert referenced_mcp_servers(project) == [
-        "daedalus", "github", "local-srv", "memory",
+        "daedalus", "github", "memory",
     ]
 
 

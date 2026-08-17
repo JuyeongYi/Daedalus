@@ -493,18 +493,6 @@ def test_dangling_agent_config_skills_warns():
     assert "ghost-skill" in matching[0].message
 
 
-def test_agent_config_skill_in_local_skills_passes():
-    """AgentConfig.skills에 에이전트 로컬 스킬이 있으면 통과."""
-    project = PluginProject(name="p")
-    local_skill = _procedural("local-tool")
-    agent = _agent_def("worker")
-    agent.config = AgentConfig(skills=["local-tool"])
-    agent.skills.append(local_skill)
-    project.agents.append(agent)
-    errors = Validator.validate_project(project)
-    assert not any(e.rule == "dangling_string_reference" for e in errors)
-
-
 def test_dangling_reference_placement_warns():
     """reference_placements.skill_name이 존재하지 않는 스킬이면 경고."""
     project = PluginProject(name="p")

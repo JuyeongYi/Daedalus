@@ -788,7 +788,7 @@ def referenced_mcp_servers(project) -> list[str]:
     """프로젝트가 참조하는 MCP 서버 이름 합집합 (이름순 정렬 — 결정적).
 
     에이전트: ``config.mcp_servers`` 선언 ∪ ``config.tools`` 추출.
-    스킬(로컬 스킬 포함): ``config.allowed_tools`` 추출.
+    스킬: ``config.allowed_tools`` 추출.
     "요구 환경" 단락과 같은 합집합 규칙 — 본문·프론트매터·설치 배선이 서로 다른
     목록을 말하지 않는다.
     """
@@ -800,11 +800,6 @@ def referenced_mcp_servers(project) -> list[str]:
         config = getattr(agent, "config", None)
         servers.update(getattr(config, "mcp_servers", None) or [])
         servers.update(_mcp_servers_from_tools(getattr(config, "tools", None)))
-        for local in getattr(agent, "skills", []) or []:
-            local_cfg = getattr(local, "config", None)
-            servers.update(
-                _mcp_servers_from_tools(getattr(local_cfg, "allowed_tools", None))
-            )
     return sorted(s for s in servers if s)
 
 
@@ -949,15 +944,12 @@ def _tool_shelf_section(project) -> list[str]:
 # ─────────────────────────── 공개: compile_skill ───────────────────────────
 
 
-def _skill_kind_key(skill: Skill, *, local: bool = False) -> str:
-    """Skill 인스턴스 → SKILL_FIELD_MATRIX 키.
-
-    local=True(에이전트 소유)이면 local_procedural / local_transfer.
-    """
+def _skill_kind_key(skill: Skill) -> str:
+    """Skill 인스턴스 → SKILL_FIELD_MATRIX 키."""
     if isinstance(skill, ProceduralSkill):
-        return "local_procedural" if local else "procedural"
+        return "procedural"
     if isinstance(skill, TransferSkill):
-        return "local_transfer" if local else "transfer"
+        return "transfer"
     if isinstance(skill, DeclarativeSkill):
         return "declarative"
     if isinstance(skill, ReferenceSkill):
@@ -968,27 +960,24 @@ def _skill_kind_key(skill: Skill, *, local: bool = False) -> str:
 def compile_skill(
     skill: Skill,
     *,
-    local: bool = False,
     project=None,
 ) -> str:
     """단일 스킬 → SKILL.md 텍스트 (LF, BOM 없음, 결정적).
 
-    local=True이면 에이전트 로컬 스킬 매트릭스를 쓴다(local_procedural/local_transfer).
     project가 주어지면 tool_shelf 참조 단락을 덧붙인다(ProceduralSkill에 한함).
     """
-    kind_key = _skill_kind_key(skill, local=local)
+    kind_key = _skill_kind_key(skill)
     fm_lines = _frontmatter_lines_skill(skill, kind_key)
 
     blocks: list[str] = [_frontmatter_block(fm_lines)]
 
     # 작업 재개 프리앰블(WP-RS) — 프론트매터 직후, 본문 앞. 프로젝트 그래프에
-    # 배치된 전역 Procedural/Declarative 스킬에 배출(미배치·로컬은 없음).
+    # 배치된 Procedural/Declarative 스킬에 배출(미배치는 없음).
     # Declarative 포함 이유: 배치되면 "다음 단계"를 받는데 갱신 규칙이 빠지면
     # 그 노드에서 진행 사슬이 끊긴다 (리뷰 지적 ①).
     progress_placements: list = []
     if (
         project is not None
-        and not local
         and isinstance(skill, (ProceduralSkill, DeclarativeSkill))
     ):
         progress_placements = _graph_placements(skill, project)
@@ -1003,12 +992,11 @@ def compile_skill(
     if body_block is not None:
         blocks.append(body_block)
 
-    # TransferSkill: 전이 도중 중단 대비 note (본문 끝, 로컬 스킬은 제외).
+    # TransferSkill: 전이 도중 중단 대비 note (본문 끝).
     # 진행 파일을 만드는 배치 스킬이 하나도 없는 프로젝트에서는 고아 지시가
     # 되므로 placement 존재를 게이트로 건다 (리뷰 지적 ②).
     if (
         isinstance(skill, TransferSkill)
-        and not local
         and project is not None
         and _graph_placements_any(project)
     ):
@@ -1020,21 +1008,19 @@ def compile_skill(
         blocks.extend(_describe_fsm(skill.fsm, skill))
         if project is not None:
             blocks.extend(_tool_shelf_section(project))
-        if project is not None and not local:
             blocks.extend(_blackboard_section(project, skill))
 
     # 요구 환경(MCP 서버 자동 언급) — allowed_tools의 mcp__ 접두에서 추출.
     # project 유무와 무관(스킬 자체 config만 참조), "다음 단계" 단락 앞.
     blocks.extend(_mcp_requirement_section_skill(skill))
 
-    # 프로젝트 그래프 기반 "다음 단계" (버그 2) — 전역 스킬에 한함.
-    # 로컬 스킬(에이전트 소유)은 프로젝트 그래프 placement 대상이 아니다.
+    # 프로젝트 그래프 기반 "다음 단계" (버그 2).
     # WP-RS: 배치 스킬이면 다음 단계 단락 끝에 진행 상태 갱신 규칙을 합류시키고,
     # outgoing이 없는 터미널 배치면 "다음 단계" 대신 "작업 완료"를 배출한다.
     # 터미널 판정은 "다음 단계 문구 생성 실패"가 아니라 **placement의 실제
     # outgoing 전이 부재**다 — 타깃이 빈 상태(skill_ref=None)뿐이라 문구가 안
     # 나와도 중간 스킬은 터미널이 아니다 (리뷰 차단 지적).
-    if project is not None and not local:
+    if project is not None:
         next_blocks = _next_steps_section(skill, project)
         has_outgoing = any(
             t.source is p
@@ -1485,8 +1471,8 @@ def _agent_outputs_section(agent: AgentDefinition) -> list[str]:
 def _collect_referenced_hook_names(project) -> list[str]:
     """프로젝트 전체 config.hooks 키(훅 이름 참조)를 첫 등장 순서·중복 제거로 수집.
 
-    스킬·에이전트·에이전트 로컬 스킬의 config.hooks를 모두 훑는다. 출력은
-    결정적(선언 순회 순서)이며, hook_library에 없는 이름은 여기서 거르지 않는다
+    스킬·에이전트의 config.hooks를 모두 훑는다. 출력은 결정적(선언 순회
+    순서)이며, hook_library에 없는 이름은 여기서 거르지 않는다
     (dangling은 검증/게이트 경고로 별도 처리 — emit은 라이브러리 교집합만 출력).
     """
     names: list[str] = []
@@ -1504,8 +1490,6 @@ def _collect_referenced_hook_names(project) -> list[str]:
         _add_from(getattr(skill, "config", None))
     for agent in getattr(project, "agents", []):
         _add_from(getattr(agent, "config", None))
-        for local in getattr(agent, "skills", []):
-            _add_from(getattr(local, "config", None))
     return names
 
 

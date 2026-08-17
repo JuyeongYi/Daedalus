@@ -25,7 +25,6 @@ from daedalus.model.plugin.enums import (
     MemoryScope,
     ModelType,
     PermissionMode,
-    SkillContext,
     SkillField,
 )
 
@@ -119,39 +118,6 @@ _REFERENCE: dict[SkillField, FieldRule] = {
     SkillField.USER_INVOCABLE: FieldRule(F, fixed_value=False),
 }
 
-_LOCAL_PROCEDURAL: dict[SkillField, FieldRule] = {
-    SkillField.NAME:           FieldRule(R),
-    SkillField.DESCRIPTION:    FieldRule(R),
-    SkillField.WHEN_TO_USE:    FieldRule(D, emit=FieldEmit.BODY),
-    SkillField.ARGUMENT_HINT:  FieldRule(D),
-    SkillField.MODEL:          FieldRule(R, default_value=ModelType.INHERIT),
-    SkillField.EFFORT:         FieldRule(D),
-    SkillField.ALLOWED_TOOLS:  FieldRule(O),
-    SkillField.CONTEXT:        FieldRule(F, fixed_value=SkillContext.FORK),
-    SkillField.AGENT:          FieldRule(D),
-    SkillField.SHELL:          FieldRule(O),
-    SkillField.PATHS:          FieldRule(D),
-    SkillField.HOOKS:          FieldRule(O),
-    SkillField.DISABLE_MODEL:  FieldRule(F, fixed_value=True),
-    SkillField.USER_INVOCABLE: FieldRule(F, fixed_value=False),
-}
-
-_LOCAL_TRANSFER: dict[SkillField, FieldRule] = {
-    SkillField.NAME:           FieldRule(R),
-    SkillField.DESCRIPTION:    FieldRule(R),
-    SkillField.WHEN_TO_USE:    FieldRule(D, emit=FieldEmit.BODY),
-    SkillField.ARGUMENT_HINT:  FieldRule(D),
-    SkillField.MODEL:          FieldRule(R, default_value=ModelType.INHERIT),
-    SkillField.EFFORT:         FieldRule(D),
-    SkillField.ALLOWED_TOOLS:  FieldRule(O),
-    SkillField.CONTEXT:        FieldRule(F, fixed_value=SkillContext.FORK),
-    SkillField.AGENT:          FieldRule(D),
-    SkillField.SHELL:          FieldRule(O),
-    SkillField.PATHS:          FieldRule(D),
-    SkillField.HOOKS:          FieldRule(O),
-    SkillField.DISABLE_MODEL:  FieldRule(F, fixed_value=True),
-    SkillField.USER_INVOCABLE: FieldRule(F, fixed_value=False),
-}
 # fmt: on
 
 SKILL_FIELD_MATRIX: dict[str, dict[SkillField, FieldRule]] = {
@@ -159,8 +125,6 @@ SKILL_FIELD_MATRIX: dict[str, dict[SkillField, FieldRule]] = {
     "declarative": _DECLARATIVE,
     "transfer": _TRANSFER,
     "reference": _REFERENCE,
-    "local_procedural": _LOCAL_PROCEDURAL,
-    "local_transfer": _LOCAL_TRANSFER,
 }
 
 # fmt: off
