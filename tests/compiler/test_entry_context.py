@@ -1,5 +1,5 @@
 # tests/compiler/test_entry_context.py
-"""WP-IC Part C: "## 진입 맥락" 단락 + prev 규약 + caller_contracts 배출.
+"""WP-IC Part C: "## 진입 맥락" 단락 + prev 규약 + "## 호출 계약" 그래프 유도.
 
 단일 진실: docs/plans/2026-08-02-wp-ic-input-ports-entry-context.md Part C.
 """
@@ -12,12 +12,11 @@ from daedalus.compiler.emit import (
 )
 from daedalus.model.fsm.event import CompletionEvent
 from daedalus.model.fsm.machine import StateMachine
-from daedalus.model.fsm.pseudo import EntryPoint, ExitPoint
-from daedalus.model.fsm.section import EventDef, Section
+from daedalus.model.fsm.pseudo import EntryPoint
+from daedalus.model.fsm.section import EventDef
 from daedalus.model.fsm.state import SimpleState
 from daedalus.model.fsm.transition import Transition
 from daedalus.model.plugin.agent import AgentDefinition
-from daedalus.model.plugin.skill import ProceduralSkill
 from daedalus.model.project import PluginProject
 
 from tests.compiler.builders import (
@@ -98,39 +97,23 @@ def test_entry_context_declarative_skill_also_gets_section():
     assert "## 진입 맥락" in text
 
 
-# ── 2) 포트 그룹 (entry_paths) ──
+# ── 2) 포트 그룹 없음 (WP-IP — 입력 포트 개념 자체가 없다) ──
 
 
-def _dual_port_target(name: str = "target") -> ProceduralSkill:
-    from tests.compiler.builders import make_linear_fsm
-    return ProceduralSkill(
-        fsm=make_linear_fsm(name),
-        name=name,
-        description="Target skill",
-        entry_paths=[
-            EventDef("main", description="일반 진입"),
-            EventDef("retry", description="재시도 진입"),
-        ],
-    )
-
-
-def test_entry_context_ignores_legacy_port_declarations():
-    """WP-IP — legacy entry_paths/target_port는 산출에 영향이 없다. 포트 그룹
-    헤딩 없이 출처 항목만 나열된다."""
+def test_entry_context_has_no_port_group_headings():
+    """WP-IP — 도착 노드는 입력 포트를 선언하지 않으므로 포트 그룹 헤딩 없이
+    출처 항목만 나열된다."""
     a = make_procedural(name="a")
-    t = _dual_port_target("t")
+    t = make_procedural(name="t")
     project = PluginProject(name="p", skills=[a, t])
     sa = SimpleState(name="a", skill_ref=a)
     st = SimpleState(name="t", skill_ref=t)
     project.graph.states += [sa, st]
     project.graph.transitions.append(
-        Transition(
-            source=sa, target=st, trigger=CompletionEvent(name="done"),
-            target_port="retry",  # legacy 파일 잔재 — 무시된다
-        )
+        Transition(source=sa, target=st, trigger=CompletionEvent(name="done"))
     )
     text = compile_skill(t, project=project)
-    assert "### 경로: retry" not in text
+    assert "### 경로:" not in text
     assert "### 기본 경로" not in text
     assert "- `a`에서 [완료 이벤트 'done']로 진입" in text
 
@@ -250,34 +233,19 @@ def test_resume_preamble_json_example_includes_prev():
     assert '"prev": ""' in text
 
 
-# ── 5) caller_contracts 배출 ──
+# ── 5) 호출 계약 — 그래프에서만 유도 (WP-CT — 수동 카드 개념 없음) ──
 
 
-def _make_agent_with_contracts(contracts: list[Section]) -> AgentDefinition:
+def test_call_contract_absent_without_project_graph():
+    """WP-CT — 호출 계약은 프로젝트 그래프의 incoming 호출 전이에서만 유도된다.
+    그래프 없이(단독 컴파일) 에이전트에는 단락이 나오지 않는다(유도 산출은
+    tests/mcp/test_mcp_tools.py가 검증)."""
     entry = EntryPoint(name="entry")
-    done = ExitPoint(name="done")
-    fsm = StateMachine(
-        name="f", states=[entry, done], initial_state=entry, final_states=[done],
+    fsm = StateMachine(name="f", states=[entry], initial_state=entry)
+    agent = AgentDefinition(
+        fsm=fsm, name="worker", description="워커", body="Do stuff.",
+        transfer_on=[EventDef("done")],
     )
-    agent = AgentDefinition(fsm=fsm, name="worker", description="워커", body="Do stuff.")
-    agent.caller_contracts = contracts
-    return agent
-
-
-def test_legacy_manual_contract_cards_no_longer_emitted():
-    """WP-CT — 수동 계약 카드는 산출에 반영되지 않는다. 같은 사실의 소스가
-    둘(호출자 포트 + 수동 카드)이면 반드시 어긋난다 — 호출 계약은 그래프에서
-    유도한다(유도 산출은 tests/mcp/test_mcp_tools.py가 검증)."""
-    agent = _make_agent_with_contracts([
-        Section(title="caller: a (done)", content="A가 기대하는 입력"),
-    ])
-    text = compile_agent(agent)
-    assert "## 호출 계약" not in text
-    assert "A가 기대하는 입력" not in text
-
-
-def test_caller_contracts_section_omitted_when_empty():
-    agent = _make_agent_with_contracts([])
     text = compile_agent(agent)
     assert "## 호출 계약" not in text
 

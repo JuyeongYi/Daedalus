@@ -113,6 +113,7 @@ def _sec_to_dict(sec: Section) -> dict:
 def _legacy_skill_dict(project: PluginProject, skill_name: str, tree: list[Section]) -> dict:
     """serialize_project 산출에서 skill의 body 키를 sections 키로 치환(구버전 파일 흉내)."""
     data = serialize_project(project)
+    data["format"] = 1  # 구버전 파일 흉내 — _migrate_v1 경유
     skill_d = next(s for s in data["skills"] if s["name"] == skill_name)
     del skill_d["body"]
     skill_d["sections"] = [_sec_to_dict(s) for s in tree]
@@ -121,6 +122,7 @@ def _legacy_skill_dict(project: PluginProject, skill_name: str, tree: list[Secti
 
 def _legacy_agent_dict(project: PluginProject, agent_name: str, tree: list[Section]) -> dict:
     data = serialize_project(project)
+    data["format"] = 1  # 구버전 파일 흉내 — _migrate_v1 경유
     agent_d = next(a for a in data["agents"] if a["name"] == agent_name)
     del agent_d["body"]
     agent_d["sections"] = [_sec_to_dict(s) for s in tree]
@@ -184,7 +186,11 @@ def test_identity_gate_agent():
     )
     from daedalus.model.fsm.transition import Transition
     fsm.transitions.append(Transition(source=entry, target=work))
-    original = AgentDefinition(fsm=fsm, name="legacy-agent", description="에이전트")
+    from daedalus.model.fsm.section import EventDef
+    original = AgentDefinition(
+        fsm=fsm, name="legacy-agent", description="에이전트",
+        transfer_on=[EventDef("done")],
+    )
     project = PluginProject(name="P", agents=[original])
 
     legacy_text = _legacy_compile_agent(original, tree)

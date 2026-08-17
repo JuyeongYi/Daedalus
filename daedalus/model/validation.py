@@ -407,8 +407,7 @@ class Validator:
                         path=path,
                     ))
             elif isinstance(ref, AgentDefinition):
-                # WP-AF — 출력 포트는 transfer_on이 단일 진실(output_events가
-                # legacy ExitPoint 폴백까지 흡수한다).
+                # WP-AF — 출력 포트는 transfer_on이 단일 진실.
                 if not ref.output_events:
                     errors.append(ValidationError(
                         rule="transfer_on_not_empty",
@@ -1557,8 +1556,6 @@ class Validator:
                 f"에이전트 '{agent.name}'", agent, getattr(agent, "body", ""),
                 (f"agent:{agent.name}",),
             )
-            # WP-CT — 계약 카드(caller_contracts)는 퇴역해 산출에 반영되지
-            # 않으므로 더 이상 검사하지 않는다.
             for local in getattr(agent, "skills", None) or []:
                 _scan(
                     f"에이전트 '{agent.name}'의 로컬 스킬 '{local.name}'",

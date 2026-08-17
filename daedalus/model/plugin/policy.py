@@ -3,11 +3,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-# JoinStrategy는 model/fsm/join.py로 이전됨 (순수 FSM 개념). 하위 호환을 위해
-# 기존 import 경로(daedalus.model.plugin.policy.JoinStrategy)를 re-export로 유지한다.
+# JoinStrategy는 순수 FSM 개념이라 model/fsm/join.py가 정본이다 — 필요한 곳은
+# 거기서 직수입한다 (여기서는 ExecutionPolicy 기본값에만 쓴다).
 from daedalus.model.fsm.join import JoinStrategy
 
-__all__ = ["ExecutionPolicy", "JoinStrategy"]
+__all__ = ["ExecutionPolicy"]
 
 
 @dataclass

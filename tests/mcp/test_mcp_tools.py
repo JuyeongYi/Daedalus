@@ -409,7 +409,8 @@ def test_add_agent_call_then_connect_derives_contract_at_compile(tools, with_age
     assert result["agent_call"] is True
 
     agent = next(a for a in with_agent._project.agents if a.name == "worker")
-    assert agent.caller_contracts == []  # 수동 카드는 더 이상 생기지 않는다
+    # RF-1b — 수동 계약 카드는 필드째 사라졌다
+    assert not hasattr(agent, "caller_contracts")
 
     text = compile_agent(agent, project=with_agent._project)
     assert "## 호출 계약" in text

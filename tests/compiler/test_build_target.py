@@ -398,6 +398,7 @@ def test_legacy_file_ref_migrated_on_load():
     skill = make_procedural(name="my-skill", body="참조: ${ROOT}/files/doc.txt")
     data = serialize_project(PluginProject(name="p", skills=[skill]))
     # 저장 파일을 구버전 형태로 되돌린다
+    data["format"] = 1
     data["skills"][0]["body"] = "참조: ${CLAUDE_PLUGIN_ROOT}/files/doc.txt"
 
     loaded = deserialize_project(data)
@@ -411,6 +412,7 @@ def test_legacy_non_files_usage_not_migrated():
 
     skill = make_procedural(name="my-skill", body="x")
     data = serialize_project(PluginProject(name="p", skills=[skill]))
+    data["format"] = 1
     data["skills"][0]["body"] = "스크립트: ${CLAUDE_PLUGIN_ROOT}/scripts/run.sh"
 
     loaded = deserialize_project(data)

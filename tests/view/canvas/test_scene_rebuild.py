@@ -102,11 +102,11 @@ def test_rebuild_adds_and_removes_edge_items(qapp):
 
 
 # ---------------------------------------------------------------------------
-# WP-IC — 입력 포트 수렴 (target_port 기반)
+# WP-IP — 입력 포트 수렴 (노드당 1개)
 # ---------------------------------------------------------------------------
 
-def test_edges_to_same_target_port_converge(qapp):
-    """entry_paths 없는(기본 포트) 타깃으로 들어오는 엣지 2개는 같은 점에 수렴한다."""
+def test_edges_to_same_target_converge(qapp):
+    """같은 타깃으로 들어오는 엣지 2개는 같은 점(단일 입력 포트)에 수렴한다."""
     vm = ProjectViewModel()
     scene = FsmScene(vm)
     t = StateViewModel(model=SimpleState(name="t"), x=400, y=0)
@@ -153,7 +153,7 @@ def test_transition_drag_creates_transition(qapp):
     vm.notify()
 
     node_b = scene._node_items[bvm]
-    drop_pt = node_b.input_port_scene_pos("")
+    drop_pt = node_b.input_port_scene_pos()
 
     scene.begin_transition_drag(scene._node_items[avm], "done")
     assert scene._connecting is True
@@ -183,7 +183,7 @@ def test_transition_drag_to_self_is_rejected(qapp):
     vm.notify()
 
     node_a = scene._node_items[avm]
-    drop_pt = node_a.input_port_scene_pos("")
+    drop_pt = node_a.input_port_scene_pos()
 
     scene.begin_transition_drag(node_a, "done")
     scene.end_transition_drag(drop_pt)

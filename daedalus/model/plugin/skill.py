@@ -33,7 +33,7 @@ class ProceduralSkill(Skill, WorkflowComponent):
     필드 순서 (dataclass MRO):
       fsm (required, WorkflowComponent)
       name, description (required, PluginComponent)
-      config, body, transfer_on, call_agents, entry_paths (default)
+      config, body, transfer_on, call_agents (default)
     """
     config: ProceduralSkillConfig = field(default_factory=ProceduralSkillConfig)
     body: str = ""
@@ -41,8 +41,6 @@ class ProceduralSkill(Skill, WorkflowComponent):
         default_factory=lambda: [EventDef("done")]
     )
     call_agents: list[EventDef] = field(default_factory=list)
-    # WP-IC — 입력 포트 정의. 빈 리스트 = 기본 포트 1개(암묵, 이름 없음).
-    entry_paths: list[EventDef] = field(default_factory=list)
 
     @property
     def kind(self) -> str:
@@ -59,8 +57,6 @@ class DeclarativeSkill(Skill):
     """선언형 = Skill only. FSM 없음, transfer_on 없음."""
     body: str = ""
     config: DeclarativeSkillConfig = field(default_factory=DeclarativeSkillConfig)
-    # WP-IC — 입력 포트 정의. 빈 리스트 = 기본 포트 1개(암묵, 이름 없음).
-    entry_paths: list[EventDef] = field(default_factory=list)
 
     @property
     def kind(self) -> str:

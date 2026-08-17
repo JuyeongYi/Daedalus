@@ -81,8 +81,7 @@ class TransitionEdgeItem(QGraphicsPathItem):
 
         is_agent_call = self._source_node.is_agent_call_event(event_name)
         src_pt = self._source_node.output_port_scene_pos(event_name, is_agent_call)
-        target_port = self._transition_vm.model.target_port
-        tgt_pt = self._target_node.input_port_scene_pos(target_port)
+        tgt_pt = self._target_node.input_port_scene_pos()
 
         waypoints = self._transition_vm.waypoints
         return [src_pt] + [QPointF(x, y) for x, y in waypoints] + [tgt_pt]
@@ -90,8 +89,8 @@ class TransitionEdgeItem(QGraphicsPathItem):
     def update_path(self) -> None:
         """출력/입력 포트 위치 기반 베지어 경로.
 
-        WP-IC: 입력 포트 위치는 target_port(이름) 기준으로 조회한다 —
-        같은 target_port를 향하는 여러 전이는 자연히 한 점에 수렴한다.
+        입력 포트는 노드당 하나(WP-IP) — 같은 타깃으로 들어오는 여러 전이는
+        자연히 한 점에 수렴한다.
 
         WP-ER: transition_vm.waypoints가 있으면 소스 포트 → 경유점들 → 타깃
         포트 순으로 잇는다. 경유점이 없으면 기존 렌더와 완전히 동일하다(하위 호환).

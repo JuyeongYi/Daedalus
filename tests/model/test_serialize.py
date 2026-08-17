@@ -437,6 +437,7 @@ def test_legacy_delegations_dropped_with_warning():
     ]
     data["graph"]["states"].append({"kind": "simple", "id": "s-wf", "name": "wf",
                                     "skill_ref": "d1"})
+    data["format"] = 1  # 구버전 파일 — _migrate_v1 경유
 
     warnings: list[str] = []
     restored = deserialize_project(data, collect_warnings=warnings)
@@ -506,6 +507,7 @@ def test_legacy_sections_migrated_to_body_without_warning():
             {"title": "Mid", "content": "mid", "children": []},
         ]},
     ]
+    data["format"] = 1  # 구버전 파일 — _migrate_v1 경유
 
     warnings: list[str] = []
     p2 = deserialize_project(data, collect_warnings=warnings)
@@ -527,23 +529,24 @@ def test_missing_body_and_sections_defaults_to_empty():
     assert kb2.body == ""
 
 
-def test_caller_contracts_roundtrip_unchanged():
-    """WP-SB는 caller_contracts(list[Section] 잠금 계약 카드)를 건드리지 않는다 —
-    왕복 후에도 title/content가 그대로 보존된다."""
-    from daedalus.model.fsm.section import Section
-
+def test_v1_caller_contracts_silently_dropped():
+    """RF-1b — v1 파일의 caller_contracts(수동 계약 카드)는 퇴역 개념이라
+    로드 시 조용히 드롭된다(경고 없음). 필드 자체가 모델에 없다."""
     entry = EntryPoint(name="e")
     afsm = StateMachine(name="af", initial_state=entry, states=[entry])
-    agent = AgentDefinition(
-        fsm=afsm, name="ag", description="d",
-        caller_contracts=[Section(title="caller: proc (done)", content="입력 내용")],
-    )
+    agent = AgentDefinition(fsm=afsm, name="ag", description="d")
     p = PluginProject(name="P", agents=[agent])
-    p2 = _roundtrip(p)
+    data = serialize_project(p)
+    data["format"] = 1
+    data["agents"][0]["caller_contracts"] = [
+        {"title": "caller: proc (done)", "content": "입력 내용", "children": []},
+    ]
+
+    warnings: list[str] = []
+    p2 = deserialize_project(data, collect_warnings=warnings)
     ag2 = p2.agents[0]
-    assert len(ag2.caller_contracts) == 1
-    assert ag2.caller_contracts[0].title == "caller: proc (done)"
-    assert ag2.caller_contracts[0].content == "입력 내용"
+    assert not hasattr(ag2, "caller_contracts")
+    assert warnings == []
 
 
 # ─────────────────────── WP-BB: 상태 접근 선언(reads/writes) ───────────────────────

@@ -697,7 +697,7 @@ def _entry_item_line(t, project) -> str:
     else:
         line = f"- `{name}`에서{cond_str}로 진입"
     # 출처가 그 출력 포트에 적어 둔 설명 — "무엇을 넘기는가"는 호출자가 말한다
-    # (WP-IP: 도착 노드의 entry_paths 선언은 퇴역, 호출 계약(WP-CT)과 같은 원칙).
+    # (WP-IP: 인터페이스 선언은 값을 만드는 쪽에만 — 호출 계약(WP-CT)과 같은 원칙).
     trig_name = getattr(getattr(t, "trigger", None), "name", "")
     if trig_name and ref is not None:
         for ev in getattr(ref, "transfer_on", None) or []:
@@ -713,8 +713,8 @@ def _entry_item_line(t, project) -> str:
 def _entry_context_section(component, project) -> list[str]:
     """"## 진입 맥락" 단락 — 작업 재개 프리앰블 뒤·본문 앞.
 
-    **그래프에서만 유도한다(WP-IP).** 도착 노드의 entry_paths(입력 포트 선언)는
-    퇴역했다 — (출처, 트리거)가 이미 경로를 특정하고, 무엇을 넘기는지는 출처가
+    **그래프에서만 유도한다(WP-IP).** 도착 노드는 입력 포트를 선언하지
+    않는다 — (출처, 트리거)가 이미 경로를 특정하고, 무엇을 넘기는지는 출처가
     자기 출력 포트 description에 적는다(계약 카드 퇴역과 같은 원칙: 인터페이스
     선언은 값을 만드는 쪽에만 둔다). 경로별로 다르게 행동해야 하면 그 지시는
     도착 스킬 본문에 쓴다.
@@ -1315,8 +1315,8 @@ def _call_contract_section(agent: AgentDefinition, project) -> list[str]:
     입력할 것이 없다. 넘겨받는 데이터 자체는 블랙보드 reads 선언이 말한다
     (블랙보드 단락이 그 클래스로 좁혀진다).
 
-    구버전 파일의 caller_contracts(수동 카드)는 더 이상 산출에 반영되지
-    않는다 — 같은 사실의 소스가 둘이면 반드시 어긋난다.
+    수동 계약 카드는 v2에서 삭제됐다(v1 파일의 카드는 로드 시 드롭) — 같은
+    사실의 소스가 둘이면 반드시 어긋난다.
     """
     if project is None:
         return []
@@ -1460,7 +1460,7 @@ def _describe_agent_fsm(agent: AgentDefinition) -> list[str]:
 
 
 def _agent_outputs_section(agent: AgentDefinition) -> list[str]:
-    """"## 출구" — 출력 포트(transfer_on) 기반 (WP-AF, ExitPoint 승계).
+    """"## 출구" — 출력 포트(transfer_on) 기반 (WP-AF).
 
     호출자 그래프가 이 이름들로 분기하므로, 에이전트는 종료 시 자신이 어느
     출구로 끝났는지 명시해야 한다. description이 있으면 판정 기준으로 병기.

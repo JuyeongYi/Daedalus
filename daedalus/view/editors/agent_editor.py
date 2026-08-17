@@ -10,8 +10,8 @@ FSM은 런타임 엔진이 없어 내부 FSM이 사주는 것은 에이전트 .m
 
 살아남은 한 조각은 **출력 포트**다 — 프로젝트 그래프가 에이전트의 결과로
 분기하므로(ExitPoint 이름이 전이 trigger였다), 이는 스킬의 transfer_on과 같은
-개념이라 같은 필드·같은 편집 패널로 이관했다. 구버전 파일의 내부 FSM은 로드
-시 ExitPoint → transfer_on 마이그레이션으로 흡수된다(serialize.py).
+개념이라 같은 필드·같은 편집 패널로 이관했다. v1 파일의 내부 FSM은 로드 시
+ExitPoint → transfer_on 마이그레이션으로 흡수된다(serialize._migrate_v1).
 """
 from __future__ import annotations
 

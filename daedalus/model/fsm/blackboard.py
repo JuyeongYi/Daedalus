@@ -52,7 +52,6 @@ class Blackboard:
 #   FieldType.STRING  → "string"
 #   FieldType.INT     → "integer"
 #   FieldType.FLOAT   → "number"
-#   FieldType.NUMBER  → "number"   (deprecated alias of FLOAT — 합류)
 #   FieldType.BOOL    → "boolean"
 #   FieldType.LIST    → "array"
 #   FieldType.JSON    → "object"
@@ -66,7 +65,6 @@ FIELD_TYPE_TO_JSON_SCHEMA: dict[FieldType, dict] = {
     FieldType.STRING: {"type": "string"},
     FieldType.INT: {"type": "integer"},
     FieldType.FLOAT: {"type": "number"},
-    FieldType.NUMBER: {"type": "number"},
     FieldType.BOOL: {"type": "boolean"},
     FieldType.LIST: {"type": "array"},
     FieldType.JSON: {"type": "object"},

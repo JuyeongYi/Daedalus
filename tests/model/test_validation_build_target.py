@@ -137,27 +137,7 @@ def test_plugin_root_checks_agent_and_local_skill_bodies():
     }
 
 
-def test_retired_contract_cards_not_scanned():
-    """WP-CT — 계약 카드는 산출에 반영되지 않으므로 더 이상 검사하지 않는다.
-    카드 속 죽은 경로가 경고를 내면 고칠 수 없는 경고가 영구히 남는다."""
-    from daedalus.model.fsm.machine import StateMachine
-    from daedalus.model.fsm.section import Section
-    from daedalus.model.fsm.state import SimpleState
-    from daedalus.model.plugin.agent import AgentDefinition
-    from daedalus.model.plugin.enums import BuildTarget
-    from daedalus.model.project import PluginProject
-    from daedalus.model.validation import Validator
-
-    s = SimpleState(name="a")
-    agent = AgentDefinition(
-        fsm=StateMachine(name="af", initial_state=s, states=[s], final_states=[s]),
-        name="worker", description="d", body="본문\n",
-    )
-    agent.caller_contracts.append(
-        Section(title="caller: x", content="스크립트: ${CLAUDE_PLUGIN_ROOT}/bin/run.sh")
-    )
-    project = PluginProject(name="p", agents=[agent], build_target=BuildTarget.LOCAL)
-    errors = Validator.validate_project(project)
-    assert not any(e.rule == "plugin_root_in_local_build" for e in errors)
+# (RF-1b) 수동 계약 카드(caller_contracts)는 필드째 삭제됐다 — 카드 본문 스캔
+# 여부를 확인하던 테스트도 함께 퇴역.
 
 

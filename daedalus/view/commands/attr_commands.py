@@ -1,6 +1,6 @@
 """범용 속성/리스트 편집 커맨드 (WP-CE).
 
-폼 편집(프론트매터 필드, transfer_on, entry_paths, 전이 트리거, 상태 reads/writes,
+폼 편집(프론트매터 필드, transfer_on, 전이 트리거, 상태 reads/writes,
 블랙보드 클래스…)은 지금까지 모델에 직접 쓰여서 Ctrl+Z가 듣지 않았고, 그래서 MCP
 표면에도 올릴 수 없었다(AI 편집만 되돌릴 수 없는 비대칭이 생긴다).
 

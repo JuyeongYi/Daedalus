@@ -27,7 +27,6 @@ def test_field_type_mapping_golden():
             DynamicField(name="s", field_type=FieldType.STRING),
             DynamicField(name="i", field_type=FieldType.INT),
             DynamicField(name="f", field_type=FieldType.FLOAT),
-            DynamicField(name="n", field_type=FieldType.NUMBER),
             DynamicField(name="b", field_type=FieldType.BOOL),
             DynamicField(name="l", field_type=FieldType.LIST),
             DynamicField(name="j", field_type=FieldType.JSON),
@@ -42,7 +41,6 @@ def test_field_type_mapping_golden():
     assert props["s"] == {"type": "string"}
     assert props["i"] == {"type": "integer"}
     assert props["f"] == {"type": "number"}
-    assert props["n"] == {"type": "number"}  # NUMBER → number (FLOAT 합류)
     assert props["b"] == {"type": "boolean"}
     assert props["l"] == {"type": "array"}
     assert props["j"] == {"type": "object"}

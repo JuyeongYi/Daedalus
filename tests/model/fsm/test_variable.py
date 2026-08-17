@@ -17,7 +17,6 @@ def test_field_type_enum():
     assert FieldType.STRING.value == "string"
     assert FieldType.INT.value == "int"
     assert FieldType.FLOAT.value == "float"
-    assert FieldType.NUMBER.value == "number"
     assert FieldType.BOOL.value == "bool"
     assert FieldType.LIST.value == "list"
     assert FieldType.JSON.value == "json"

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from daedalus.model.plugin.policy import ExecutionPolicy, JoinStrategy
+from daedalus.model.fsm.join import JoinStrategy
+from daedalus.model.plugin.policy import ExecutionPolicy
 
 
 def test_join_strategy():

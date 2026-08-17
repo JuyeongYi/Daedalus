@@ -51,7 +51,3 @@ class Transition:
     # 데이터
     data_map: dict[str, str] = field(default_factory=dict)
     skill_ref: TransferSkill | None = None
-    # legacy (WP-IP 퇴역) — 타깃 입력 포트 이름. 입력 포트 선언(entry_paths)이
-    # 퇴역해 렌더·컴파일·검증 어디서도 읽지 않는다. 구버전 파일 왕복 보존용으로만
-    # 남아 있으며 새 전이는 항상 빈 값이다.
-    target_port: str = ""
