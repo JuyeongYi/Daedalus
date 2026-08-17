@@ -639,7 +639,10 @@ ComponentConfig(ABC)          # model, effort, hooks 공통 필드
 `from daedalus.model.validation import …`와 `Validator._check_*` 이름이 분해 전과 동일하게 동작한다.
 새 규칙은 해당 그룹 모듈에 `_check_*` staticmethod로 추가하고 오케스트레이터(`_validate_machine` /
 `validate_project`)에 한 줄 등록한다 — 등급 지정을 빼먹으면 `tests/model/test_validation_severity.py`가
-깨진다(패키지 **전 모듈** 소스를 합쳐 `rule=` 리터럴을 introspect한다).
+깨진다(패키지 **전 모듈** 소스를 합쳐 `rule=` 리터럴을 introspect한다 — 열거는
+`pkgutil.walk_packages` **재귀**라, 이후 규칙을 하위 *패키지*로 한 겹 더 나눠도
+커버리지가 따라간다. 비재귀 `iter_modules`였다면 중첩 모듈의 등급 미분류가 조용히
+통과한다 — A/B 스모크로 실측 확인).
 
 `ValidationError` 필드: `rule`, `message`, `source`(기존) + `subject: object | None`(문제 객체, 향후 노드 점프용 — `compare=False`이므로 identity 비교로 조회) + `path: tuple[str, ...]`(중첩 경로, 예: `("agent:Writer", "region:r1")`). 기본값이 있어 기존 생성자 호환. `validate_project`는 최상위 FSM 오류에 root path(`"skill:<이름>"`/`"agent:<이름>"`)를 주입한다.
 

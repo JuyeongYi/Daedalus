@@ -74,18 +74,40 @@ _EXTERNALLY_EMITTED_RULES = frozenset({
 })
 
 
+def _validation_submodule_names() -> list[str]:
+    """validation 패키지 하위 모듈의 **전체 점 표기 이름**을 재귀 열거한다.
+
+    ``iter_modules``가 아니라 ``walk_packages``인 이유: 전자는 패키지 바로 아래
+    최상위 모듈만 열거한다(비재귀). 지금은 평면 3모듈이라 결과가 같지만, 이후
+    규칙을 ``validation/project/hooks.py`` 같은 하위 *패키지*로 한 겹 더 나누면
+    그 모듈의 ``rule=`` 리터럴이 introspect 대상에서 빠져 등급 미분류가 조용히
+    통과한다. 분해가 더 진행돼도 커버리지가 따라가도록 재귀로 훑는다.
+    """
+    return [
+        info.name
+        for info in pkgutil.walk_packages(
+            validation_module.__path__, prefix=f"{validation_module.__name__}."
+        )
+    ]
+
+
 def _validation_sources() -> str:
     """validation 패키지 **전 모듈**의 소스를 합친다 (WP-RF-3d 분해 대응).
 
     분해 전에는 단일 모듈이라 ``inspect.getsource(validation_module)`` 하나로
     충분했다. 패키지가 된 지금 파사드(``__init__``)만 보면 규칙 검사 본문이
-    통째로 빠지므로, 하위 모듈을 열거해 함께 읽는다 — 앞으로 구획이 더 갈려도
-    이 테스트가 따라간다.
+    통째로 빠지므로, 하위 모듈을 재귀 열거해 함께 읽는다 — 앞으로 구획이 더
+    갈려도 이 테스트가 따라간다.
     """
     texts = [inspect.getsource(validation_module)]
-    for info in pkgutil.iter_modules(validation_module.__path__):
-        sub = importlib.import_module(f"{validation_module.__name__}.{info.name}")
-        texts.append(inspect.getsource(sub))
+    for name in _validation_submodule_names():
+        try:
+            texts.append(inspect.getsource(importlib.import_module(name)))
+        except OSError:
+            # 빈 모듈(하위 패키지의 빈 ``__init__.py`` 등)은 linecache가 소스를
+            # 못 내주고 OSError를 던진다. 규칙 리터럴이 있을 수 없는 파일이므로
+            # 건너뛴다 — 여기서 터지면 아래 분류 테스트가 진짜 이유를 못 말한다.
+            continue
     return "\n".join(texts)
 
 
@@ -106,7 +128,8 @@ def test_validation_sources_cover_rule_modules():
     전부 통과해 버린다 — 모듈 이동/개명으로 커버리지가 조용히 사라지는 것을 막는다.
     """
     text = _validation_sources()
-    assert "machine_rules" in {info.name for info in pkgutil.iter_modules(validation_module.__path__)}
+    names = _validation_submodule_names()
+    assert f"{validation_module.__name__}.machine_rules" in names
     assert 'rule="unreachable_state"' in text  # 머신 수준 규칙 본문
     assert 'rule="duplicate_component_name"' in text  # 프로젝트 수준 규칙 본문
 
