@@ -24,7 +24,9 @@ def _make_skill(name: str) -> ProceduralSkill:
 
 
 def test_input_port_is_single(qapp):
-    """입력 포트는 노드당 1개 — 위치 조회는 항상 같은 점이다."""
+    """입력 포트는 노드당 1개 — 이름 인자 없이 조회되는 좌변 위의 한 점이다."""
+    import inspect
+
     vm = ProjectViewModel()
     scene = FsmScene(vm)
     skill = _make_skill("dual")
@@ -34,7 +36,13 @@ def test_input_port_is_single(qapp):
     scene._rebuild()
 
     node = scene._node_items[svm]
-    assert node.input_port_scene_pos() == node.input_port_scene_pos()
+    # 포트를 이름으로 가를 인자 자체가 없다 (WP-IP/RF-1b)
+    assert not inspect.signature(node.input_port_scene_pos).parameters
+    # 위치는 노드 좌변(x=0) 위의 점이고, 그 점이 입력 포트로 히트 판정된다
+    local = node.mapFromScene(node.input_port_scene_pos())
+    assert local.x() == 0.0
+    assert 0.0 < local.y() < node._height()
+    assert node.is_input_port(local)
 
 
 def test_all_incoming_edges_converge_on_single_port(qapp):

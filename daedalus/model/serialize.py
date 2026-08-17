@@ -843,10 +843,13 @@ def _migrate_v1(data: dict, warnings: list[str]) -> dict:
                 ):
                     hh["script"] = hh.pop("command") or ""
 
-    # 6) field_type "number" → "float" — Variable/DynamicField dict는 상태
-    # inputs/outputs·액션 output_variable·블랙보드 등 깊이 흩어져 있어
-    # 트리 전체를 걸어 "field_type" 키만 치환한다.
-    _v1_scrub_number(data)
+    # 6) field_type "number" → "float" — Variable/DynamicField dict는 머신 내부
+    # (상태 inputs/outputs·액션 output_variable·머신 블랙보드)와 프로젝트 최상위
+    # 블랙보드에만 있다. mcp_server_defs 같은 자유 형식 config의 우연한
+    # "field_type" 키를 건드리지 않도록 그 범위만 걷는다.
+    for machine in _v1_all_machines(data):
+        _v1_scrub_number(machine)
+    _v1_scrub_number(data.get("blackboard"))
     return data
 
 
@@ -881,7 +884,7 @@ def _v1_all_machines(data: dict):
 
 
 def _v1_scrub_number(node: Any) -> None:
-    """트리 전역에서 ``"field_type": "number"`` → ``"float"`` (제자리 치환)."""
+    """주어진 서브트리에서 ``"field_type": "number"`` → ``"float"`` (제자리 치환)."""
     if isinstance(node, dict):
         if node.get("field_type") == "number":
             node["field_type"] = "float"

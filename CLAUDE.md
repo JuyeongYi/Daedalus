@@ -62,7 +62,7 @@ daedalus/
 │   │                       #   section_text/char_span/replacement_text/replace_section(비교체 구간 바이트 보존). Qt 무관 순수 stdlib.
 │   ├── serialize.py         # serialize_project/deserialize_project (모델↔JSON dict, 안정 ID 기반, format 2)
 │   │                       # + _migrate_v1(v1→v2 단방향 마이그레이션 집약 — RF-1b, "안정 ID + 직렬화" 항목 참조)
-│   └── validation.py        # Validator + ValidationError + WARNING_RULES + is_warning (머신 규칙 20종 + 프로젝트 규칙 17종, 재귀)
+│   └── validation.py        # Validator + ValidationError + WARNING_RULES + is_warning (머신 규칙 18종 + 프로젝트 규칙 15종, 재귀)
 ├── compiler/         # 순수 모델 → 플러그인 파일 (Qt 무관)
 │   ├── emit.py             # compile_skill/compile_agent/compile_hooks_json — model → SKILL.md/agent .md/hooks.json 텍스트 (결정적, LF)
 │   ├── project_compiler.py # compile_project(project, out_dir, files_dir=None) → CompileResult (검증 게이트 + 파일 쓰기)
@@ -589,7 +589,7 @@ ComponentConfig(ABC)          # model, effort, hooks 공통 필드
 | `pseudo_state_hooks` | 의사 상태에 lifecycle 훅 설정 시 경고 |
 | `completion_event_on_composite` | Composite/ParallelState 출발 전이에 CompletionEvent 없으면 경고 |
 | `no_duplicate_skill_ref` | 동일 스킬/에이전트의 중복 배치 금지 |
-| `transfer_on_not_empty` | ProceduralSkill transfer_on / Agent ExitPoint 최소 1개 |
+| `transfer_on_not_empty` | ProceduralSkill/Agent transfer_on 최소 1개 (ExitPoint 폴백은 RF-1b에서 삭제 — transfer_on 단일 진실) |
 | `transition_endpoint_not_in_states` | Transition.source/target이 sm.states에 없으면 에러 (initial/final 비대칭 해소) |
 | `duplicate_state_name` | 동일 머신 내 동명 상태 경고 (컴파일/직렬화 혼동 방지) |
 | `unreachable_state` | initial_state + 모든 EntryPoint에서 전이 그래프로 도달 불가 상태 경고 (스킬/에이전트 FSM 대상. 프로젝트 그래프 자체는 WP-EP로 스킵 — 아래 "프로젝트 그래프 검증" 참조) |
@@ -771,8 +771,7 @@ dataclass(값 동등성, unhashable) 유지 — 컬렉션 멤버십에는 list/`
 깨우지 않아 타이핑마다 재구성이 도는 것을 막는다(채널은 서로 격리 — 교차 호출 없음).
 에디터는 임의의 `Callable[[], None]`을 `on_notify_fn`으로 받으므로, `call_notify(fn, scope)`
 헬퍼가 시그니처를 검사해 scope를 받는 콜백에만 채널을 전달한다(상위 호환). 텍스트 편집
-패널은 위젯 재생성으로 편집 중 위젯이 파괴되지 않도록 in-place 동기화 원칙을 따른다
-(`_ContractPanel.refresh` 참조).
+패널은 위젯 재생성으로 편집 중 위젯이 파괴되지 않도록 in-place 동기화 원칙을 따른다.
 
 ## 컴파일러 (compiler/)
 
