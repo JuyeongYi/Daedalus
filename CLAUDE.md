@@ -122,27 +122,53 @@ daedalus/
     ├── recent.py           # 최근 프로젝트 목록(WP-RP) — ~/.daedalus/recent.json 읽기/쓰기 (Qt 무관 순수 stdlib).
     │                       #   load/save/push/remove/clear + MAX_RECENT. 기록 실패는 삼킨다(endpoint.py와 같은 정책).
     │                       #   실존 검사는 하지 않는다 — 메뉴를 열 때마다 stat을 때리면 네트워크 드라이브에서 UI가 멈춘다.
-    ├── app.py              # 메인 윈도우 (Ctrl+N "새 프로젝트"(기본 이름 "new-plugin", 빌드 타깃 선택 다이얼로그 — WP-TG `_prompt_build_target`, 취소 시 생성 취소), F7 "프로젝트 검증", Ctrl+B "컴파일", 파일→"프로젝트 속성...", 도구→"훅 라이브러리...")
+    ├── app.py              # 메인 윈도우 **골격** (WP-RF-3e 분해 후 ~960줄) — 탭·독·메뉴 배선 + 컴포넌트 편집 진입 + 그래프 로드/저장.
+    │                       #   나머지는 협력 객체 4종에 위임(Mixin 아님 — 상속으로 섞으면 이름 충돌과 self의 정체가 흐려진다):
+    │                       #   session_io.py / compile_actions.py / launch_actions.py / validation_actions.py (아래 각 항목).
+    │                       #   **협력 객체가 실체이고 MainWindow에는 같은 이름의 한 줄 위임 메서드만 남는다** — 테스트와 MCP 도구가
+    │                       #   window._save_to_path(...)처럼 윈도우의 내부 메서드를 직접 부르기 때문이다(tests/view/test_app_collaborators.py가 고정).
+    │                       #   **상태(_project/_current_path/_mcp_service/_status_label …)의 단일 진실은 계속 윈도우**이고 협력 객체는
+    │                       #   그것을 복제하지 않고 self._w.<attr>로 직접 읽고 쓴다(복제하면 두 곳이 어긋나는 순간 "저장했는데 다른
+    │                       #   파일이 열린다"가 된다). 협력 객체는 위젯 배선보다 **먼저** 생성한다 — _setup_menus가 최근 목록을 채우며
+    │                       #   곧바로 _session_io를 부른다. QFileDialog/QInputDialog는 app.py에 임포트를 남긴다(테스트가
+    │                       #   `daedalus.view.app.QFileDialog...` 경로로 몽키패치 — 클래스 속성 패치라 협력 객체에도 그대로 걸린다).
+    │                       # 메뉴: Ctrl+N "새 프로젝트"(기본 이름 "new-plugin", 빌드 타깃 선택 다이얼로그 — WP-TG, 취소 시 생성 취소),
+    │                       #   F7 "프로젝트 검증", Ctrl+B "컴파일", 파일→"프로젝트 속성...", 도구→"MCP 서버 정보..."/"Claude Code 실행".
     │                       # 컴포넌트 이름 변경: _FrontmatterPanel.renamed → _on_component_renamed (중복 거부 + rename_component 호출 + 탭 타이틀 동기화)
     │                       # 컴포넌트 삭제: 레지스트리 우클릭 → _on_delete_component (확인 다이얼로그 + remove_component + 탭 닫기 + notify)
-    │                       # 프로젝트 속성: _edit_project_properties → ProjectPropertiesDialog(name/description/version + emit_progress_hook 체크박스, 이름 규약 미강제)
-    │                       # 최근 프로젝트(WP-RP): File→"최근 프로젝트" 서브메뉴(_recent_menu). _remember_recent(open_path/_save_to_path
-    │                       #   성공 경로에서 호출)가 recent.push + _rebuild_recent_menu. 항목 클릭 → _open_recent(사라진 파일은 그 자리에서
-    │                       #   목록에서 제거), "목록 지우기" → _clear_recent. 라벨은 _recent_label(&1 파일명 — 상위폴더, & escape), 툴팁=전체 경로.
-    │                       # 탭 구조(WP-BB): 인덱스 0=프로젝트 FSM 캔버스, 1=블랙보드 편집(BlackboardPanel, 상주·닫기 불가) 고정 2개 — _close_tab이 두
-    │                       #   인덱스 모두 거부, load_project의 탭 정리 루프는 인덱스 2부터 닫는다. set_project가 blackboard_panel.set_project(project) +
-    │                       #   tag_input.set_blackboard_candidate_provider(blackboard_candidate_strings로 바인딩)를 배선.
-    │                       # 파일 독(WP-FR): _setup_docks가 FilePanel을 "파일" 독으로 배치하고 markdown_editor.set_files_root_provider(lambda: self._file_panel.files_root())를
-    │                       #   등록. _sync_files_root(_current_path 기준 project_dir/files 재계산)를 _save_to_path/open_path/_new_project 끝에서 호출.
-    │                       #   _compile_project_dialog는 _current_path 기준 files_dir를 compile_project에 전달(미저장이면 None).
-    │                       # 도구 메뉴(WP-MW): "MCP 서버 정보..."(정보 전부 본문 즉시 표시 — Show Details 없음) +
-    │                       #   "Claude Code 실행"(_launch_claude_code — 프로젝트 저장 폴더에서 새 콘솔로 claude 실행,
-    │                       #   실행 전 _ensure_daedalus_mcp_json이 wiring.wire_workspace로 daedalus 서버를 .mcp.json/
-    │                       #   settings.local.json에 배선. 미저장·서버 미기동이면 상태바 안내 후 중단).
-    │                       # 프로젝트 패키지(WP-PK): 열기/저장이 **폴더** 단위. _open_project_dialog(폴더 선택)/_open_file_dialog(구버전 파일 직접)/
-    │                       #   _save_project_as(폴더 선택 — 형식이 새 형식으로 바뀌는 유일한 지점)/_export_package_dialog/_import_package_dialog.
-    │                       #   _save_to_path가 package.resolve_project_file로 폴더→정본 파일 해석 + 없는 폴더 생성 + _carry_files_dir(다른 폴더로
-    │                       #   저장 시 files/ 동반 복사). open_path는 package.find_project_file로 폴더→파일 해석. _current_path는 계속 **파일**을 가리킨다.
+    │                       # 탭 구조(WP-BB/WP-HK): 인덱스 0=프로젝트 FSM 캔버스, 1=블랙보드 편집(BlackboardPanel), 2=훅 라이브러리(HookLibraryPanel)
+    │                       #   — 상주·닫기 불가 고정 3개. _close_tab이 세 인덱스 모두 거부, load_project의 탭 정리 루프는 인덱스 3부터 닫는다.
+    │                       #   set_project가 blackboard_panel.set_project(project) + tag_input.set_blackboard_candidate_provider(...)를 배선.
+    │                       # 파일 독(WP-FR): _setup_docks가 FilePanel을 "플러그인 파일 (공용)" 독으로 배치하고
+    │                       #   markdown_editor.set_files_root_provider(lambda: self._file_panel.files_root())를 등록.
+    ├── session_io.py       # SessionIO(window) — 저장/열기/최근 목록/패키지(.ddpj) (WP-RF-3e에서 app.py로부터 추출).
+    │                       # 프로젝트 패키지(WP-PK): 열기/저장이 **폴더** 단위. open_project_dialog(폴더 선택)/open_file_dialog(구버전 파일 직접)/
+    │                       #   save_project_as(폴더 선택 — 형식이 새 형식으로 바뀌는 유일한 지점)/export_package_dialog/import_package_dialog.
+    │                       #   save_to_path가 package.resolve_project_file로 폴더→정본 파일 해석 + 없는 폴더 생성 + carry_files_dir(다른 폴더로
+    │                       #   저장 시 files/·skill-files/ 동반 복사). open_path는 package.find_project_file로 폴더→파일 해석.
+    │                       #   window._current_path는 계속 **파일**을 가리킨다.
+    │                       # sync_files_root(_current_path 기준 project_dir/files 재계산 + MCP 접속 정보 갱신)를 save_to_path/open_path/
+    │                       #   new_project 끝에서 호출 — _current_path가 바뀌는 지점이 여기 하나로 모여 배선 지점도 하나다.
+    │                       # 최근 프로젝트(WP-RP): File→"최근 프로젝트" 서브메뉴(window._recent_menu). remember_recent(open_path/save_to_path
+    │                       #   성공 경로에서 호출)가 recent.push + rebuild_recent_menu. 항목 클릭 → open_recent(사라진 파일은 그 자리에서
+    │                       #   목록에서 제거), "목록 지우기" → clear_recent. 라벨은 **모듈 수준 순수 함수** recent_label(&1 파일명 — 상위폴더,
+    │                       #   & escape; MainWindow._recent_label이 staticmethod로 재노출 — 테스트가 클래스에서 직접 호출한다), 툴팁=전체 경로.
+    │                       # 프로젝트 생성/속성: new_project(빈 프로젝트 + 빌드 타깃 프롬프트)/prompt_build_target/edit_project_properties
+    │                       #   → ProjectPropertiesDialog(name/description/version + emit_progress_hook 체크박스, 이름 규약 미강제).
+    │                       #   project_has_content("새 프로젝트" 확인과 MCP open_project의 저장 강제가 공유하는 단일 판정).
+    ├── compile_actions.py  # CompileActions(window) — Ctrl+B 컴파일 (WP-RF-3e에서 추출).
+    │                       #   compile_project_dialog: 출력 폴더 선택(LOCAL이면 "설치 대상 작업 폴더" — WP-MW) + _current_path 기준
+    │                       #   files_dir/skill_files_dir를 compile_project에 전달(미저장이면 None). 에러면 window._show_validation_dock().
+    │                       #   known_server_defs: 앱이 스스로 아는 daedalus 서버 정의(서버 미기동이면 기본 포트) — extra_server_defs로 주입.
+    ├── launch_actions.py   # LaunchActions(window) — MCP 서버 수명주기 + Claude Code 실행 (WP-RF-3e에서 추출).
+    │                       #   start_mcp_service(port)(__main__.main만 호출 — 테스트가 MainWindow를 수십 개 만들어 자동 기동은 포트 충돌)/
+    │                       #   stop_mcp_service(MainWindow.closeEvent가 호출)/show_mcp_info(정보 전부 본문 즉시 표시 — Show Details 없음)/
+    │                       #   launch_claude_code(프로젝트 저장 폴더에서 새 콘솔로 claude 실행. 미저장·서버 미기동이면 상태바 안내 후 중단)/
+    │                       #   ensure_daedalus_mcp_json(wiring.wire_workspace로 daedalus 서버를 .mcp.json/settings.local.json에 배선).
+    ├── validation_actions.py  # ValidationActions(window) — F7 검증 + 결과 항목 → 노드 포커스 (WP-RF-3e에서 추출).
+    │                       #   run_validation(Validator.validate_project → ValidationPanel + dock 표시)/show_validation_dock(컴파일 경로와 공용)/
+    │                       #   find_validation_dock/on_validation_item_activated → focus_in_project_canvas | focus_in_agent_tab.
+    │                       #   탭 인덱스 상수(_FSM_TAB_INDEX)는 app.py 소유라 **메서드 안에서 지역 임포트**한다(최상단이면 순환 임포트).
     ├── canvas/             # GraphicsView/Scene, NodeItem, EdgeItem, RefNodeItem, RefEdgeItem, sync(VM→모델 동기화 — Qt 무관)
     │                       # 엣지 리루트(WP-ER): TransitionEdgeItem.update_path가 TransitionViewModel.waypoints(경유점)를 경유하는
     │                       #   구간별 베지어 곡선을 그린다. 선택 시 자식 WaypointHandleItem(작은 원)을 표시 — 더블클릭/컨텍스트 메뉴로

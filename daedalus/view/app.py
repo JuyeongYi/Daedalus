@@ -1,16 +1,31 @@
 # daedalus/view/app.py
+"""Daedalus 메인 윈도우 골격 (WP-RF-3e).
+
+윈도우가 직접 갖는 것은 **탭·독·메뉴 배선과 컴포넌트 편집 진입**뿐이다.
+세션 입출력·컴파일·실행·검증은 각각 협력 객체(Mixin 아님)가 맡는다:
+
+| 협력 객체 | 모듈 | 담당 |
+|---|---|---|
+| `SessionIO` | `view/session_io.py` | 저장/열기/최근 목록/패키지(.ddpj) |
+| `CompileActions` | `view/compile_actions.py` | Ctrl+B 컴파일 + 서버 정의 주입 |
+| `LaunchActions` | `view/launch_actions.py` | MCP 서버 수명주기 · Claude Code 실행 |
+| `ValidationActions` | `view/validation_actions.py` | F7 검증 · 결과 항목 노드 포커스 |
+
+**협력 객체가 실체이고 `MainWindow`에는 같은 이름의 한 줄 위임 메서드만
+남는다** — 테스트와 MCP 도구가 `window._save_to_path(...)`처럼 윈도우의
+내부 메서드를 직접 호출하기 때문이다. 상태(`_project`/`_current_path`/
+`_mcp_service` …)의 단일 진실은 계속 윈도우에 있고, 협력 객체는 그것을
+복제하지 않고 직접 읽고 쓴다.
+"""
 from __future__ import annotations
 
-import json
-import os
 from pathlib import Path
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (
-    QDialog,
     QDockWidget,
-    QFileDialog,
+    QFileDialog,  # noqa: F401 — 테스트가 이 모듈 경로로 다이얼로그를 몽키패치한다
     QInputDialog,
     QLabel,
     QMainWindow,
@@ -20,31 +35,32 @@ from PySide6.QtWidgets import (
     QTabWidget,
 )
 
-from daedalus.model import package
 from daedalus.model.fsm.section import EventDef
 from daedalus.model.plugin.agent import AgentDefinition
-from daedalus.model.plugin.enums import BuildTarget
 from daedalus.model.plugin.skill import (
     DeclarativeSkill,
     ProceduralSkill,
     ReferenceSkill,
     TransferSkill,
 )
+from daedalus.model.plugin.enums import BuildTarget
 from daedalus.model.project import PluginProject
-from daedalus.model.serialize import deserialize_project, serialize_project
-from daedalus.view import recent
+from daedalus.model.validation import ValidationError
 from daedalus.view.canvas.canvas_view import FsmCanvasView
 from daedalus.view.canvas.edge_item import TransitionEdgeItem
 from daedalus.view.canvas.node_item import StateNodeItem
 from daedalus.view.canvas.scene import FsmScene
+from daedalus.view.compile_actions import CompileActions
 from daedalus.view.editors.skill_editor import SkillEditor
-from daedalus.model.validation import ValidationError, Validator
+from daedalus.view.launch_actions import LaunchActions
 from daedalus.view.panels.file_panel import FilePanel
 from daedalus.view.panels.history_panel import HistoryPanel
 from daedalus.view.panels.property_panel import PropertyPanel
 from daedalus.view.panels.registry_panel import RegistryPanel
 from daedalus.view.panels.script_listener import ScriptListenerPanel
 from daedalus.view.panels.validation_panel import ValidationPanel
+from daedalus.view.session_io import SessionIO, recent_label
+from daedalus.view.validation_actions import ValidationActions
 from daedalus.view.viewmodel.project_vm import ProjectViewModel
 
 _FSM_TAB_INDEX = 0  # 프로젝트 FSM 캔버스는 항상 탭 0
@@ -77,6 +93,13 @@ class MainWindow(QMainWindow):
         # 수십 개 만들기 때문에, 실제 앱 실행 경로(__main__.main)에서만
         # start_mcp_service()로 기동한다.
         self._mcp_service: object | None = None
+
+        # 협력 객체 (WP-RF-3e) — 위젯 배선보다 **먼저** 만든다: _setup_menus가
+        # 최근 목록 서브메뉴를 채우며 곧바로 _session_io를 부른다.
+        self._session_io = SessionIO(self)
+        self._compile_actions = CompileActions(self)
+        self._launch_actions = LaunchActions(self)
+        self._validation_actions = ValidationActions(self)
 
         self._setup_central()
         self._setup_docks()
@@ -451,372 +474,116 @@ class MainWindow(QMainWindow):
         # (notify는 set_project → _load_project_graph 끝에서 1회 발화 — 중복 금지)
         self.set_project(project)
 
-    # --- 저장 / 열기 ---
+    # --- 세션 입출력 위임 (실체는 view/session_io.SessionIO) ---
 
     def _sync_files_root(self) -> None:
-        """FilePanel의 root를 `_current_path` 기준으로 재설정한다 (WP-FR).
-
-        MCP 접속 정보의 프로젝트 경로도 같이 갱신한다 (WP-MCP) — CC가 지금 어떤
-        프로젝트에 붙어 있는지 알 수 있도록. `_current_path`가 바뀌는 지점이
-        여기 하나로 모여 있어 배선 지점도 하나로 유지된다.
-        """
-        project_dir = Path(self._current_path).parent if self._current_path else None
-        self._file_panel.set_project_dir(project_dir)
-        service = self._mcp_service
-        if service is not None:
-            service.update_project_path(self._current_path)  # type: ignore[attr-defined]
+        self._session_io.sync_files_root()
 
     def _update_title(self) -> None:
-        base = "Daedalus — FSM Plugin Designer"
-        if self._current_path:
-            self.setWindowTitle(f"{package.display_name(self._current_path)} — {base}")
-        else:
-            self.setWindowTitle(base)
+        self._session_io.update_title()
 
     def _save_to_path(self, path: str) -> bool:
-        """프로젝트를 경로에 쓴다. 성공 여부를 돌려준다.
-
-        반환값은 GUI 경로에서는 무시되지만(상태바 문구가 결과를 말한다) MCP의
-        `open_project`처럼 **저장 성공을 전제로 다음 단계를 진행하는** 호출자는
-        이 값으로 판정한다 — 실패를 못 보고 열면 그 순간 변경이 사라진다.
-        """
-        if self._project is None:
-            return False
-        # 폴더를 주면 그 안의 정본 파일이 저장 대상이다 (WP-PK). `_current_path`는
-        # 계속 **파일**을 가리키므로 parent로 계산하는 곳들이 그대로 동작한다.
-        target = str(package.resolve_project_file(path))
-        # 저장 직전 캔버스 좌표를 graph_layout에 반영 (버그 1: 좌표 왕복)
-        self._save_graph_layout()
-        try:
-            parent = Path(target).parent
-            if not parent.exists():
-                parent.mkdir(parents=True, exist_ok=True)
-            data = serialize_project(self._project)
-            with open(target, "w", encoding="utf-8") as f:
-                json.dump(data, f, ensure_ascii=False, indent=2)
-        except (OSError, TypeError, ValueError) as exc:
-            # OSError: IO 실패 / TypeError·ValueError: 직렬화 불가 객체 혼입
-            self._status_label.setText(f"저장 실패: {exc}")
-            return False
-        moved_files = self._carry_files_dir(target)
-        path = target
-        self._current_path = path
-        self._update_title()
-        self._sync_files_root()
-        self._remember_recent(path)
-        note = f" (files/ {moved_files}개 복사)" if moved_files else ""
-        self._status_label.setText(f"저장됨: {path}{note}")
-        return True
+        return self._session_io.save_to_path(path)
 
     def _carry_files_dir(self, new_file: str) -> int:
-        """다른 폴더로 저장할 때 `files/`·`skill-files/`를 함께 옮긴다 (WP-PK/WP-SF).
-
-        폴더가 곧 프로젝트이므로, 프로젝트를 다른 폴더에 저장했는데 동봉 파일이
-        옛 폴더에 남아 있으면 그건 반쪽짜리 프로젝트다 — 컴파일하면 파일이
-        빠지고, `dangling_file_ref` 경고로야 뒤늦게 드러난다.
-
-        목적지에 이미 같은 이름 폴더가 있으면 **건드리지 않는다** — 남의 것을
-        덮어쓰는 것보다 아무것도 안 하는 편이 낫다(그 경우는 사용자가 의도한
-        배치다).
-        """
-        import shutil
-
-        from daedalus.compiler.project_compiler import SKILL_FILES_DIRNAME
-
-        old = self._current_path
-        if not old:
-            return 0
-        copied = 0
-        for dirname in ("files", SKILL_FILES_DIRNAME):
-            source = Path(old).parent / dirname
-            dest = Path(new_file).parent / dirname
-            if source.resolve() == dest.resolve() or not source.is_dir() or dest.exists():
-                continue
-            try:
-                shutil.copytree(source, dest, symlinks=False)
-            except (OSError, shutil.Error) as exc:
-                self._status_label.setText(f"{dirname}/ 복사 실패: {exc}")
-                continue
-            copied += sum(1 for p in dest.rglob("*") if p.is_file())
-        return copied
+        return self._session_io.carry_files_dir(new_file)
 
     def _save_project(self) -> None:
-        if self._current_path:
-            self._save_to_path(self._current_path)
-        else:
-            self._save_project_as()
+        self._session_io.save_project()
 
     def _save_project_as(self) -> None:
-        """프로젝트 **폴더**를 골라 저장한다 (WP-PK).
-
-        구버전 파일을 열어 두었더라도 여기서 폴더를 고르면 새 형식
-        (`<폴더>/.daedalus.json`)으로 옮겨간다 — 그것이 형식을 바꾸는 유일한
-        지점이다(Ctrl+S는 열려 있던 형식을 그대로 유지한다).
-        """
-        start = str(package.project_dir(self._current_path)) if self._current_path else ""
-        directory = QFileDialog.getExistingDirectory(
-            self, "프로젝트 폴더 선택 (폴더가 곧 프로젝트입니다)", start,
-        )
-        if directory:
-            self._save_to_path(directory)
+        self._session_io.save_project_as()
 
     def project_has_content(self) -> bool:
-        """잃을 것이 있는 프로젝트인가 — 빈 프로젝트를 덮어쓰는 것은 손실이 아니다.
-
-        "새 프로젝트"의 확인 다이얼로그와 MCP `open_project`의 저장 강제가 같은
-        판정을 써야 한다 — 한쪽만 느슨하면 그 경로로만 변경이 사라진다.
-        """
-        project = self._project
-        if project is None:
-            return False
-        return (
-            bool(project.skills)
-            or bool(project.agents)
-            or len(project.graph.states) > 1  # EntryPoint 제외
-        )
+        return self._session_io.project_has_content()
 
     def _new_project(self) -> None:
-        """Ctrl+N — 새 빈 프로젝트를 생성한다.
-
-        현재 프로젝트가 비어 있지 않으면(스킬/에이전트/graph placement 중
-        하나라도 존재) 저장 여부를 확인하는 다이얼로그를 표시한다. 빌드 타깃
-        선택(WP-TG)을 취소하면 새 프로젝트 생성 자체를 취소한다.
-        """
-        if self._project is not None:
-            if self.project_has_content():
-                reply = QMessageBox.question(
-                    self,
-                    "새 프로젝트",
-                    "저장하지 않은 변경이 사라질 수 있습니다.\n계속하시겠습니까?",
-                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                    QMessageBox.StandardButton.No,
-                )
-                if reply != QMessageBox.StandardButton.Yes:
-                    return
-
-        target = self._prompt_build_target()
-        if target is None:
-            return  # 취소 — 프로젝트 생성 취소
-
-        new_proj = PluginProject(name="new-plugin", build_target=target)
-        self.load_project(new_proj)
-        self._current_path = None
-        self._update_title()
-        self._sync_files_root()
-        self._status_label.setText("새 프로젝트")
+        self._session_io.new_project()
 
     def _prompt_build_target(self) -> BuildTarget | None:
-        """새 프로젝트 생성 시 빌드 타깃을 고르게 한다. 취소 시 None(WP-TG)."""
-        from daedalus.view.editors.project_properties import BUILD_TARGET_LABELS
-
-        items = [label for _target, label in BUILD_TARGET_LABELS]
-        choice, ok = QInputDialog.getItem(
-            self, "빌드 타깃", "새 프로젝트의 빌드 타깃을 선택하세요:", items, 0, False,
-        )
-        if not ok:
-            return None
-        for target, label in BUILD_TARGET_LABELS:
-            if label == choice:
-                return target
-        return BuildTarget.MARKETPLACE
+        return self._session_io.prompt_build_target()
 
     def _edit_project_properties(self) -> None:
-        """"프로젝트 속성…" — name/description/version 편집.
-
-        이름 규약 검사는 여기서 막지 않는다 — F7 경고 / 컴파일 게이트가 잡는다.
-        """
-        if self._project is None:
-            return
-        from daedalus.view.editors.project_properties import ProjectPropertiesDialog
-
-        dialog = ProjectPropertiesDialog(self._project, parent=self)
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            dialog.apply_to(self._project)
-            self._update_title()
-            self._status_label.setText("프로젝트 속성 변경됨")
+        self._session_io.edit_project_properties()
 
     def _open_project_dialog(self) -> None:
-        """프로젝트 **폴더**를 골라 연다 (WP-PK).
-
-        폴더 안의 정본(`.daedalus.json`)을 열고, 없으면 구버전
-        `<이름>.daedalus.json` 하나를 받아들인다 — 기존 프로젝트 폴더도
-        그대로 폴더째 열린다.
-        """
-        start = str(package.project_dir(self._current_path)) if self._current_path else ""
-        directory = QFileDialog.getExistingDirectory(self, "프로젝트 폴더 열기", start)
-        if directory:
-            self.open_path(directory)
+        self._session_io.open_project_dialog()
 
     def _open_file_dialog(self) -> None:
-        """구버전 `<이름>.daedalus.json`을 파일로 직접 연다.
-
-        한 폴더에 구버전 파일이 여럿이면 폴더 선택으로는 무엇을 여는지 정할 수
-        없다 — 그때 쓰는 통로다.
-        """
-        path, _ = QFileDialog.getOpenFileName(
-            self, "프로젝트 파일 열기", self._current_path or "",
-            "Daedalus 프로젝트 (*.daedalus.json *.json)",
-        )
-        if path:
-            self.open_path(path)
-
-    # --- 패키지 (.ddpj) ---
+        self._session_io.open_file_dialog()
 
     def _export_package_dialog(self) -> None:
-        """현재 프로젝트 폴더를 `.ddpj` 하나로 묶는다.
-
-        지금까지 프로젝트를 남에게 주려면 "json이랑 files 폴더를 같이 보내라"고
-        해야 했다 — 틀리기 쉬운 안내였다.
-        """
-        if not self._current_path:
-            QMessageBox.information(
-                self, "패키지로 내보내기",
-                "먼저 프로젝트를 저장하세요. 묶을 폴더가 정해져야 합니다.",
-            )
-            return
-        source = package.project_dir(self._current_path)
-        suggested = str(source.parent / package.default_archive_name(self._current_path))
-        target, _ = QFileDialog.getSaveFileName(
-            self, "패키지로 내보내기", suggested,
-            f"Daedalus 패키지 (*{package.ARCHIVE_SUFFIX})",
-        )
-        if not target:
-            return
-        try:
-            members = package.pack(source, target)
-        except (package.PackageError, OSError) as exc:
-            self._status_label.setText(f"내보내기 실패: {exc}")
-            return
-        self._status_label.setText(f"내보냄: {target} ({len(members)}개 파일)")
+        self._session_io.export_package_dialog()
 
     def _import_package_dialog(self) -> None:
-        """`.ddpj`를 폴더에 풀고 그 프로젝트를 연다.
-
-        압축 안에서 직접 편집하지 않는다 — `files/` 드래그·컴파일·저장이 전부
-        특수 경로가 되어 득보다 실이 크다.
-        """
-        archive, _ = QFileDialog.getOpenFileName(
-            self, "패키지 가져오기", "",
-            f"Daedalus 패키지 (*{package.ARCHIVE_SUFFIX})",
-        )
-        if not archive:
-            return
-        dest = QFileDialog.getExistingDirectory(
-            self, "풀어놓을 폴더 선택 (비어 있어야 합니다)",
-            str(Path(archive).parent),
-        )
-        if not dest:
-            return
-        try:
-            project_file = package.unpack(archive, dest)
-        except (package.PackageError, OSError) as exc:
-            self._status_label.setText(f"가져오기 실패: {exc}")
-            return
-        self.open_path(str(project_file))
-
-    # --- 최근 프로젝트 (WP-RP) ---
+        self._session_io.import_package_dialog()
 
     def _remember_recent(self, path: str) -> None:
-        """열기/저장이 성공한 경로를 최근 목록 맨 앞으로 올린다."""
-        recent.push(path)
-        self._rebuild_recent_menu()
+        self._session_io.remember_recent(path)
 
     def _rebuild_recent_menu(self) -> None:
-        """"최근 프로젝트" 서브메뉴를 목록 파일로부터 다시 만든다."""
-        menu = self._recent_menu
-        if menu is None:
-            return
-        menu.clear()
+        self._session_io.rebuild_recent_menu()
 
-        paths = recent.load()
-        if not paths:
-            empty = menu.addAction("(없음)")
-            if empty is not None:
-                empty.setEnabled(False)
-            return
-
-        for index, path in enumerate(paths, start=1):
-            action = QAction(self._recent_label(index, path), self)
-            action.setToolTip(path)
-            action.setStatusTip(path)
-            # 기본 인자로 path를 묶어 둔다 — 늦은 바인딩이면 전부 마지막 경로를 연다
-            action.triggered.connect(
-                lambda _checked=False, p=path: self._open_recent(p)
-            )
-            menu.addAction(action)
-
-        menu.addSeparator()
-        clear_action = QAction("목록 지우기", self)
-        clear_action.triggered.connect(self._clear_recent)
-        menu.addAction(clear_action)
-
-    @staticmethod
-    def _recent_label(index: int, path: str) -> str:
-        """`&1 파일명 — 상위폴더` 형태의 메뉴 라벨.
-
-        파일명만으로는 구분이 안 되는 경우가 흔해(`project.daedalus.json` 등)
-        상위 폴더 이름을 함께 보인다. 전체 경로는 툴팁에 있다.
-
-        새 형식(WP-PK)에서는 파일 이름이 `.daedalus.json` 하나뿐이라 그대로
-        보이면 전부 같은 이름이 된다 — 그때는 폴더 이름이 곧 이름이고, 상위
-        폴더는 그 위 단계가 된다.
-        """
-        shown = path
-        if os.path.basename(path) == package.PROJECT_FILENAME:
-            shown = os.path.dirname(path)
-        name = os.path.basename(shown)
-        parent = os.path.basename(os.path.dirname(shown))
-        if parent:
-            name = f"{name} — {parent}"
-        # 파일명의 &는 니모닉으로 먹히므로 escape
-        name = name.replace("&", "&&")
-        return f"&{index} {name}" if index < 10 else name
+    # 순수 함수라 인스턴스가 필요 없다 — `MainWindow._recent_label(...)`로 직접 쓴다.
+    _recent_label = staticmethod(recent_label)
 
     def _open_recent(self, path: str) -> None:
-        """최근 항목을 연다. 파일이 사라졌으면 목록에서 떨군다."""
-        if not os.path.exists(path):
-            recent.remove(path)
-            self._rebuild_recent_menu()
-            self._status_label.setText(f"파일을 찾을 수 없어 목록에서 제거했습니다: {path}")
-            return
-        self.open_path(path)
+        self._session_io.open_recent(path)
 
     def _clear_recent(self) -> None:
-        recent.clear()
-        self._rebuild_recent_menu()
-        self._status_label.setText("최근 프로젝트 목록을 비웠습니다")
+        self._session_io.clear_recent()
 
     def open_path(self, path: str) -> bool:
-        """경로에서 프로젝트를 로드한다 (다이얼로그 없이 — 테스트/CLI/MCP 재사용).
+        return self._session_io.open_path(path)
 
-        폴더를 주면 그 안의 프로젝트 파일을 찾아 연다 (WP-PK) — 정본
-        `.daedalus.json`이 우선, 없으면 구버전 `<이름>.daedalus.json` 하나.
+    # --- 컴파일 위임 (실체는 view/compile_actions.CompileActions) ---
 
-        성공 여부를 돌려준다 — `_save_to_path`와 같은 이유다(호출자가 실패를
-        구분해야 한다). GUI 경로는 상태바 문구로 결과를 말하므로 무시한다.
-        """
-        deser_warnings: list[str] = []
-        try:
-            path = str(package.find_project_file(path))
-            with open(path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            project = deserialize_project(data, collect_warnings=deser_warnings)
-        except (OSError, ValueError, package.PackageError) as exc:
-            self._status_label.setText(f"열기 실패: {exc}")
-            return False
-        self.load_project(project)
-        self._current_path = path
-        self._update_title()
-        self._sync_files_root()
-        self._remember_recent(path)
-        fname = os.path.basename(path)
-        if deser_warnings:
-            self._status_label.setText(
-                f"열림: {fname} (경고 {len(deser_warnings)}건 — F7로 확인)"
-            )
-        else:
-            self._status_label.setText(f"열림: {fname}")
-        return True
+    def _compile_project_dialog(self) -> None:
+        self._compile_actions.compile_project_dialog()
+
+    def _known_server_defs(self) -> dict[str, dict]:
+        return self._compile_actions.known_server_defs()
+
+    # --- MCP 서버 / Claude Code 실행 위임 (실체는 view/launch_actions.LaunchActions) ---
+
+    def start_mcp_service(self, port: int | None = None) -> None:
+        self._launch_actions.start_mcp_service(port)
+
+    def _show_mcp_info(self) -> None:
+        self._launch_actions.show_mcp_info()
+
+    def _launch_claude_code(self) -> None:
+        self._launch_actions.launch_claude_code()
+
+    def _ensure_daedalus_mcp_json(self, work_dir: str) -> None:
+        self._launch_actions.ensure_daedalus_mcp_json(work_dir)
+
+    def closeEvent(self, event) -> None:  # noqa: N802 (Qt override)
+        """앱이 닫히면 MCP 서버도 함께 내린다."""
+        self._launch_actions.stop_mcp_service()
+        super().closeEvent(event)
+
+    # --- 검증 위임 (실체는 view/validation_actions.ValidationActions) ---
+
+    def _run_validation(self) -> None:
+        self._validation_actions.run_validation()
+
+    def _show_validation_dock(self) -> None:
+        self._validation_actions.show_validation_dock()
+
+    def _find_validation_dock(self) -> QDockWidget | None:
+        return self._validation_actions.find_validation_dock()
+
+    def _on_validation_item_activated(self, error: ValidationError) -> None:
+        self._validation_actions.on_validation_item_activated(error)
+
+    def _focus_in_project_canvas(self, subject: object) -> None:
+        self._validation_actions.focus_in_project_canvas(subject)
+
+    def _focus_in_agent_tab(self, agent_name: str, subject: object) -> None:
+        self._validation_actions.focus_in_agent_tab(agent_name, subject)
+
+    # --- 조회 / 동기화 ---
 
     def _skill_lookup(self, name: str) -> object | None:
         if self._project is None:
@@ -1187,333 +954,9 @@ class MainWindow(QMainWindow):
         self._active_stack.redo()
         self._active_notify()
 
-    # --- 검증 ---
-
-    def _run_validation(self) -> None:
-        """F7 — 프로젝트 전체 검증 실행 후 ValidationPanel 갱신."""
-        if self._project is None:
-            self._status_label.setText("검증: 프로젝트가 없습니다.")
-            return
-
-        errors = Validator.validate_project(self._project)
-        self._validation_panel.set_errors(errors)
-
-        # 검증 패널이 숨겨져 있으면 표시
-        self._show_validation_dock()
-
-        error_count = sum(1 for e in errors if not e.is_warning)
-        warning_count = sum(1 for e in errors if e.is_warning)
-        if not errors:
-            self._status_label.setText("검증: 문제 없음")
-        else:
-            self._status_label.setText(
-                f"검증: 오류 {error_count} / 경고 {warning_count}"
-            )
-
-    # --- 컴파일 ---
-
-    def _compile_project_dialog(self) -> None:
-        """Ctrl+B — 출력 폴더 선택 후 프로젝트를 컴파일한다.
-
-        에러가 있으면 ValidationPanel을 갱신하고 거부 메시지를 상태바에 표시한다.
-        """
-        if self._project is None:
-            self._status_label.setText("컴파일: 프로젝트가 없습니다.")
-            return
-
-        # LOCAL은 컴파일이 곧 설치 — 고르는 것은 스테이징 폴더가 아니라 플러그인을
-        # 반입할 **작업 폴더**다(WP-MW). 시작 위치는 현재 프로젝트 저장 폴더.
-        is_local = getattr(self._project, "build_target", None) is BuildTarget.LOCAL
-        title = (
-            "설치 대상 작업 폴더 선택 (.claude/ 밑에 반입됩니다)"
-            if is_local else "컴파일 출력 폴더 선택"
-        )
-        start = str(package.project_dir(self._current_path)) if self._current_path else ""
-        out_dir = QFileDialog.getExistingDirectory(self, title, start)
-        if not out_dir:
-            return
-
-        from daedalus.compiler import compile_project
-
-        from daedalus.compiler.project_compiler import SKILL_FILES_DIRNAME
-
-        project_dir = Path(self._current_path).parent if self._current_path else None
-        files_dir = project_dir / "files" if project_dir else None
-        skill_files_dir = project_dir / SKILL_FILES_DIRNAME if project_dir else None
-        result = compile_project(
-            self._project, out_dir, files_dir=files_dir,
-            # 앱이 이미 아는 서버 정의(자기 자신의 daedalus 서버)를 주입한다 —
-            # 아는 것을 사용자에게 등록시키지 않는다(WP-MW).
-            extra_server_defs=self._known_server_defs(),
-            skill_files_dir=skill_files_dir,
-        )
-        if not result.ok:
-            # 에러 — 검증 패널에 동봉(경고 포함) 표시
-            self._validation_panel.set_errors(result.errors + result.warnings)
-            self._show_validation_dock()
-            self._status_label.setText(
-                f"컴파일 거부: 에러 {len(result.errors)}건 (F7로 확인)"
-            )
-            return
-
-        warn = len(result.warnings)
-        warn_str = f" / 경고 {warn}건" if warn else ""
-        copied_str = f" / files {len(result.copied_files)}개 복사" if result.copied_files else ""
-        self._status_label.setText(
-            f"컴파일 완료: {len(result.written)}파일 생성{copied_str}{warn_str} → {out_dir}"
-        )
-        if warn:
-            # F7 검증 흐름과 동일하게 dock도 표시 — 경고를 상태바 문구로만
-            # 인지하게 두지 않는다.
-            self._validation_panel.set_errors(result.warnings)
-            self._show_validation_dock()
-
-    def _known_server_defs(self) -> dict[str, dict]:
-        """앱이 스스로 아는 MCP 서버 정의 — 지금은 자기 자신(daedalus)뿐.
-
-        서버가 떠 있으면 실제 포트를, 아니면 기본 포트를 쓴다 — MCP를 끄고
-        컴파일해도 배선은 나가야 설치 후 앱을 켰을 때 바로 붙는다.
-        """
-        from daedalus.mcp import endpoint
-
-        url = getattr(self._mcp_service, "url", None) or endpoint.url_for(
-            endpoint.DEFAULT_PORT
-        )
-        return {"daedalus": {"type": "http", "url": url}}
-
-    # --- MCP 서버 (WP-MCP) ---
-
-    def start_mcp_service(self, port: int | None = None) -> None:
-        """앱과 함께 MCP 서버를 띄운다 — 실제 실행 경로에서만 호출된다.
-
-        __init__에서 자동으로 시작하지 않는 이유: 테스트가 MainWindow를 수십 개
-        만들기 때문에 매번 포트를 잡으면 서로 충돌한다.
-
-        port를 주면 그 포트만 쓴다(`--mcp-port`). 여러 인스턴스를 동시에 띄우고
-        각각 다른 CC 세션과 붙일 때 쓴다.
-        """
-        from daedalus.mcp.service import DaedalusMCPService
-
-        service = DaedalusMCPService(self)
-        self._mcp_service = service
-        port = service.start(port)
-        if port is None:
-            self._status_label.setText(f"MCP 서버 시작 실패 — {service.error}")
-        else:
-            self._status_label.setText(f"MCP 서버 대기 중 — {service.url}")
-
-    def _show_mcp_info(self) -> None:
-        """도구 메뉴 — 접속 주소와 .mcp.json 설정 조각을 보여준다."""
-        from daedalus.mcp import endpoint
-
-        service = self._mcp_service
-        if service is None or not getattr(service, "running", False):
-            reason = getattr(service, "error", None) if service is not None else None
-            QMessageBox.information(
-                self,
-                "MCP 서버",
-                "MCP 서버가 실행 중이 아닙니다."
-                + (f"\n\n{reason}" if reason else ""),
-            )
-            return
-
-        port = service.port
-        # Show Details를 누르게 하지 않는다 — 정보 전부를 본문에 바로 보여준다
-        # (사용자 요청). 스니펫은 복사해 쓰는 텍스트라 고정폭이 읽기 좋다.
-        box = QMessageBox(self)
-        box.setWindowTitle("MCP 서버")
-        box.setTextFormat(Qt.TextFormat.RichText)
-        box.setText(
-            "<b>Claude Code와 협업할 준비가 되었습니다.</b><br><br>"
-            f"접속 주소: <code>{service.url}</code><br><br>"
-            "Claude Code에서 쓰려면 프로젝트의 <code>.mcp.json</code>에 아래를 넣으세요:"
-            f"<pre>{endpoint.mcp_json_snippet(port)}</pre>"
-            f"접속 정보 파일: <code>{endpoint.ENDPOINT_PATH}</code>"
-        )
-        box.exec()
-
-    def _launch_claude_code(self) -> None:
-        """도구 메뉴 — 프로젝트 폴더에서 Claude Code를 연다.
-
-        시작 위치는 현재 프로젝트가 저장된 폴더다. 열기 전에 그 폴더의
-        `.mcp.json`에 daedalus 서버 항목을 병합해 두므로(추가만 — 기존 항목
-        보존), 새 세션이 바로 이 편집 세션에 붙을 수 있다.
-        """
-        import subprocess
-        import sys
-
-        service = self._mcp_service
-        if service is None or not getattr(service, "running", False):
-            self._status_label.setText(
-                "Claude Code 실행: MCP 서버가 실행 중이 아닙니다."
-            )
-            return
-        if not self._current_path:
-            self._status_label.setText(
-                "Claude Code 실행: 먼저 프로젝트를 저장하세요 — 시작 폴더가 정해져야 합니다."
-            )
-            return
-        work_dir = str(package.project_dir(self._current_path))
-        self._ensure_daedalus_mcp_json(work_dir)
-        try:
-            if sys.platform == "win32":
-                # start /D <dir> — 새 콘솔에서 claude를 연다. cmd /k라 claude가
-                # 끝나도 창이 남아 에러 메시지를 읽을 수 있다.
-                subprocess.Popen(
-                    ["cmd.exe", "/c", "start", "Claude Code", "/D", work_dir,
-                     "cmd", "/k", "claude"],
-                )
-            elif sys.platform == "darwin":
-                subprocess.Popen(["open", "-a", "Terminal", work_dir])
-            else:
-                subprocess.Popen(["x-terminal-emulator", "-e", "claude"], cwd=work_dir)
-        except OSError as exc:
-            self._status_label.setText(f"Claude Code 실행 실패: {exc}")
-            return
-        self._status_label.setText(f"Claude Code 실행: {work_dir}")
-
-    def _ensure_daedalus_mcp_json(self, work_dir: str) -> None:
-        """프로젝트 폴더에 daedalus 서버를 배선한다 — `.mcp.json`의 `mcpServers`와
-        `.claude/settings.local.json`의 `enabledMcpjsonServers` 생성/수정.
-
-        병합은 LOCAL 빌드의 설치 배선과 **같은 공유 함수**(`wiring.wire_workspace`)
-        다 — 같은 폴더를 두 경로가 다르게 만지면 안 된다. 추가/갱신만 하고 깨진
-        JSON은 건드리지 않는다(수기 설정 보호).
-        """
-        from daedalus.compiler.wiring import wire_workspace
-
-        service = self._mcp_service
-        url = getattr(service, "url", None)
-        if not url:
-            return
-        wired = wire_workspace(
-            work_dir, {"daedalus": {"type": "http", "url": url}},
-        )
-        if wired.unmergeable:
-            names = ", ".join(str(p) for p in wired.unmergeable)
-            self._status_label.setText(
-                f"올바른 JSON이 아니어서 배선하지 못했습니다: {names}"
-            )
-
-    def closeEvent(self, event) -> None:  # noqa: N802 (Qt override)
-        """앱이 닫히면 MCP 서버도 함께 내린다."""
-        service = self._mcp_service
-        if service is not None:
-            try:
-                service.stop()  # type: ignore[attr-defined]
-            except Exception:  # noqa: BLE001 — 종료 경로를 막지 않는다
-                pass
-        super().closeEvent(event)
-
     def _on_hook_library_changed(self) -> None:
         """훅 라이브러리 변경 시 — 열린 편집기의 HookPresetPicker 목록 갱신."""
         from daedalus.view.widgets.preset_picker import HookPresetPicker
 
         for picker in self.findChildren(HookPresetPicker):
             picker.refresh()
-
-    def _show_validation_dock(self) -> None:
-        """검증 dock을 표시하고 앞으로 올린다 (F7/컴파일 공용)."""
-        validation_dock = self._find_validation_dock()
-        if validation_dock is not None:
-            validation_dock.show()
-            validation_dock.raise_()
-
-    def _find_validation_dock(self) -> QDockWidget | None:
-        """'검증' 도킹 위젯을 반환한다."""
-        for dock in self.findChildren(QDockWidget):
-            if dock.widget() is self._validation_panel:
-                return dock
-        return None
-
-    def _on_validation_item_activated(self, error: ValidationError) -> None:
-        """ValidationPanel 더블클릭 → 해당 노드 포커스."""
-        if self._project is None:
-            return
-
-        subject = error.subject
-        if subject is None:
-            return
-
-        # path의 첫 요소로 에이전트 컨텍스트 판별
-        path = error.path
-        agent_name: str | None = None
-        if path:
-            first = path[0]
-            if first.startswith("agent:"):
-                agent_name = first[len("agent:"):]
-
-        if agent_name is not None:
-            # 에이전트 탭 내부 노드
-            self._focus_in_agent_tab(agent_name, subject)
-        else:
-            # 프로젝트 캔버스(탭 0)
-            self._focus_in_project_canvas(subject)
-
-    def _focus_in_project_canvas(self, subject: object) -> None:
-        """프로젝트 FSM 캔버스(탭 0)에서 subject와 identity 일치하는 노드를 선택+센터링.
-
-        subject가 캔버스에 없으면(삭제된 노드 등) 상태바에 안내를 표시하고 no-op.
-        """
-        # 프로젝트 자체가 subject인 검증 항목(예: 프로젝트 이름 규약)은 캔버스
-        # 노드가 아니다 — 조치 위치를 안내하고 끝낸다.
-        if subject is self._project:
-            self._status_label.setText(
-                "프로젝트 이름/속성은 파일 → 프로젝트 속성…에서 수정하세요."
-            )
-            return
-        self._tabs.setCurrentIndex(_FSM_TAB_INDEX)
-        if self._fsm_scene is None:
-            return
-        for svm, node_item in self._fsm_scene._node_items.items():
-            if svm.model is subject:
-                self._fsm_scene.clearSelection()
-                node_item.setSelected(True)
-                view = self._tabs.widget(_FSM_TAB_INDEX)
-                if hasattr(view, "centerOn"):
-                    view.centerOn(node_item)  # type: ignore[union-attr]
-                elif hasattr(view, "ensureVisible"):
-                    view.ensureVisible(node_item)  # type: ignore[union-attr]
-                return
-        # subject가 캔버스에 없음 — 삭제된 노드일 수 있음
-        name = getattr(subject, "name", None)
-        if name:
-            self._status_label.setText(
-                f"'{name}' 노드가 캔버스에 없습니다 (이미 삭제되었을 수 있습니다)."
-            )
-
-    def _focus_in_agent_tab(self, agent_name: str, subject: object) -> None:
-        """에이전트 탭이 열려 있으면 해당 노드를 포커스, 없으면 상태바 안내.
-
-        subject가 캔버스에 없으면(삭제된 노드 등) 상태바에 안내를 표시하고 no-op.
-        """
-        from daedalus.view.editors.agent_editor import AgentEditor
-        for i in range(self._tabs.count()):
-            widget = self._tabs.widget(i)
-            if isinstance(widget, AgentEditor):
-                ag = getattr(widget, "_agent", None)
-                if ag is not None and ag.name == agent_name:
-                    self._tabs.setCurrentIndex(i)
-                    # AgentEditor 내부 씬에서 노드 탐색
-                    scene = getattr(widget, "_graph_scene", None)
-                    if scene is not None:
-                        for svm, node_item in scene._node_items.items():
-                            if svm.model is subject:
-                                scene.clearSelection()
-                                node_item.setSelected(True)
-                                view = getattr(widget, "_canvas_view", None)
-                                if view is not None and hasattr(view, "centerOn"):
-                                    view.centerOn(node_item)
-                                return
-                    # 탭은 열려있지만 subject를 찾지 못함 — 삭제된 노드일 수 있음
-                    name = getattr(subject, "name", None)
-                    if name:
-                        self._status_label.setText(
-                            f"'{name}' 노드가 에이전트 '{agent_name}' 캔버스에 없습니다 "
-                            f"(이미 삭제되었을 수 있습니다)."
-                        )
-                    return
-        # 탭이 열려 있지 않음
-        self._status_label.setText(
-            f"에이전트 '{agent_name}' 탭을 열어 확인하세요."
-        )

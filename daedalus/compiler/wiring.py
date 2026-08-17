@@ -2,7 +2,7 @@
 
 두 호출자가 같은 병합을 쓴다:
   1. LOCAL 빌드 컴파일(project_compiler._wire_local_install) — 컴파일이 곧 설치.
-  2. 앱의 "Claude Code 실행"(view/app._launch_claude_code) — 프로젝트 폴더에서
+  2. 앱의 "Claude Code 실행"(view/launch_actions.LaunchActions) — 프로젝트 폴더에서
      CC를 열기 전에 daedalus 서버를 배선해 새 세션이 바로 붙게 한다.
 
 정책(두 호출자 공통):
