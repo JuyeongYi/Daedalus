@@ -99,10 +99,6 @@ UNDOCUMENTED_EVENTS: frozenset[HookEvent] = frozenset({
 # matcher를 받는 이벤트 — NO_MATCHER_EVENTS의 여집합.
 MATCHER_EVENTS: frozenset[HookEvent] = frozenset(HookEvent) - NO_MATCHER_EVENTS
 
-# 하위 호환 별칭 — 예전에는 Pre/PostToolUse만 matcher를 쓴다고 보았다.
-# 이제 대부분 이벤트가 matcher를 받으므로 MATCHER_EVENTS를 쓰라.
-TOOL_MATCH_EVENTS: frozenset[HookEvent] = MATCHER_EVENTS
-
 
 class HookShell(Enum):
     """command 훅의 shell 지정. 미지정(빈 값)이면 CC 기본값."""

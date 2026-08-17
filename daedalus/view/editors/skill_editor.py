@@ -793,8 +793,8 @@ class SkillEditor(QWidget):
         from daedalus.view.editors.component_editor import ComponentEditor
 
         right_widgets: list[QWidget] = []
-        # WP-IP — 입력 경로(entry_paths) 편집 패널은 퇴역했다. (출처, 트리거)가
-        # 경로를 특정하고, 무엇을 넘기는지는 출처가 자기 출력 포트에 적는다.
+        # 입력 경로 편집 패널은 없다(WP-IP) — (출처, 트리거)가 경로를 특정하고,
+        # 무엇을 넘기는지는 출처가 자기 출력 포트에 적는다.
         if isinstance(component, ProceduralSkill):
             right_widgets.append(_TransferOnPanel(component.transfer_on, title="⇄ Transfer On"))
             if show_call_agents:

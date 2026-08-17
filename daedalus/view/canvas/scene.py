@@ -339,8 +339,7 @@ class FsmScene(QGraphicsScene):
                     for t in self._project_vm.transition_vms
                 )
                 if not duplicate:
-                    # WP-IP — 입력 포트 선언 퇴역: target_port는 기록하지 않는다
-                    # (기본 포트 하나뿐이라 스냅할 대상이 없다).
+                    # 입력 포트는 노드당 하나(WP-IP) — 도착점 지정 없이 연결한다.
                     model = Transition(
                         source=src_vm.model,
                         target=tgt_vm.model,

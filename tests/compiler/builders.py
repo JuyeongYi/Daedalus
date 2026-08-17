@@ -107,4 +107,6 @@ def make_agent(name: str = "worker") -> AgentDefinition:
         description="A worker agent",
         config=AgentConfig(model=ModelType.SONNET),
         body="# instruction\n\nDo agent work.",
+        # WP-AF/RF-1b — 출력 포트는 transfer_on이 단일 진실 (ExitPoint 폴백 없음).
+        transfer_on=[EventDef("done", color="#cc6666")],
     )

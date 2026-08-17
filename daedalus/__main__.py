@@ -7,7 +7,7 @@ from PySide6.QtWidgets import QApplication
 from daedalus.mcp import endpoint
 
 from daedalus.model.fsm.machine import StateMachine
-from daedalus.model.fsm.pseudo import ExitPoint
+from daedalus.model.fsm.section import EventDef
 from daedalus.model.fsm.state import SimpleState
 from daedalus.model.fsm.transition import Transition
 from daedalus.model.plugin.agent import AgentDefinition
@@ -73,15 +73,18 @@ def _demo_project() -> PluginProject:
 
     w1 = SimpleState(name="Receive")
     w2 = SimpleState(name="Execute")
-    w_done = ExitPoint(name="done")  # transfer_on_not_empty 게이트 충족 (Ctrl+B 데모)
     worker_fsm = StateMachine(
         name="worker_fsm",
         initial_state=w1,
-        states=[w1, w2, w_done],
-        transitions=[Transition(source=w1, target=w2), Transition(source=w2, target=w_done)],
+        states=[w1, w2],
+        transitions=[Transition(source=w1, target=w2)],
         final_states=[w2],
     )
-    worker = AgentDefinition(fsm=worker_fsm, name="worker", description="작업 에이전트")
+    worker = AgentDefinition(
+        fsm=worker_fsm, name="worker", description="작업 에이전트",
+        # transfer_on_not_empty 게이트 충족 (Ctrl+B 데모)
+        transfer_on=[EventDef("done")],
+    )
 
     project = PluginProject(
         name="my-plugin",

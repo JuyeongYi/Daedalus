@@ -91,6 +91,7 @@ def test_legacy_command_hook_migrated_on_load():
     proj = PluginProject(name="p", hook_library=_sample_library())
     data = json.loads(json.dumps(serialize_project(proj)))
     # 저장 파일을 구버전 형태로 되돌린다
+    data["format"] = 1
     data["hook_library"][0].pop("handlers")
     data["hook_library"][0]["command"] = "legacy-fmt"
     data["hook_library"][0]["timeout"] = 11
@@ -105,6 +106,7 @@ def test_legacy_command_hook_migrated_on_load():
 def test_legacy_hook_without_command_gets_no_handler():
     proj = PluginProject(name="p", hook_library=_sample_library())
     data = json.loads(json.dumps(serialize_project(proj)))
+    data["format"] = 1
     data["hook_library"][0].pop("handlers")
 
     out = deserialize_project(data)

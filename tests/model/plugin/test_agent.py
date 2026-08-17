@@ -3,7 +3,8 @@ from __future__ import annotations
 from daedalus.model.fsm.machine import StateMachine
 from daedalus.model.fsm.pseudo import EntryPoint, ExitPoint
 from daedalus.model.plugin.agent import AgentDefinition
-from daedalus.model.plugin.policy import ExecutionPolicy, JoinStrategy
+from daedalus.model.fsm.join import JoinStrategy
+from daedalus.model.plugin.policy import ExecutionPolicy
 
 
 def _make_agent_fsm():
@@ -40,22 +41,21 @@ def test_agent_has_transfer_on_output_ports():
     assert agent.transfer_on == []
 
 
-def test_agent_output_events_from_exit_points():
-    """output_events는 FSM의 ExitPoint 이름에서 파생."""
-    entry = EntryPoint(name="entry")
-    exit_ok = ExitPoint(name="success")
-    exit_err = ExitPoint(name="error")
-    fsm = StateMachine(
-        name="f",
-        states=[entry, exit_ok, exit_err],
-        initial_state=entry,
-        final_states=[exit_ok, exit_err],
+def test_agent_output_events_from_transfer_on():
+    """RF-1b — output_events는 transfer_on이 단일 진실 (ExitPoint 폴백 없음)."""
+    from daedalus.model.fsm.section import EventDef
+
+    fsm = _make_agent_fsm()
+    agent = AgentDefinition(
+        fsm=fsm, name="A", description="d",
+        transfer_on=[EventDef("success"), EventDef("error")],
     )
-    agent = AgentDefinition(fsm=fsm, name="A", description="d")
-    assert set(agent.output_events) == {"success", "error"}
+    assert agent.output_events == ["success", "error"]
 
 
-def test_agent_exit_points_property():
+def test_agent_output_events_ignore_fsm_exit_points():
+    """FSM에 ExitPoint가 있어도 transfer_on이 비어 있으면 출력 포트도 없다 —
+    v1 파일의 ExitPoint 승계는 로드 마이그레이션(serialize._migrate_v1) 소관."""
     entry = EntryPoint(name="entry")
     exit_done = ExitPoint(name="done", color="#44aa44")
     fsm = StateMachine(
@@ -63,19 +63,18 @@ def test_agent_exit_points_property():
         initial_state=entry, final_states=[exit_done],
     )
     agent = AgentDefinition(fsm=fsm, name="A", description="d")
-    assert len(agent.exit_points) == 1
-    assert agent.exit_points[0].name == "done"
-    assert agent.exit_points[0].color == "#44aa44"
+    assert agent.output_events == []
+    assert agent.output_event_defs == []
 
 
 def test_agent_output_event_defs():
-    entry = EntryPoint(name="entry")
-    exit_done = ExitPoint(name="done", color="#44aa44")
-    fsm = StateMachine(
-        name="f", states=[entry, exit_done],
-        initial_state=entry, final_states=[exit_done],
+    from daedalus.model.fsm.section import EventDef
+
+    fsm = _make_agent_fsm()
+    agent = AgentDefinition(
+        fsm=fsm, name="A", description="d",
+        transfer_on=[EventDef("done", color="#44aa44")],
     )
-    agent = AgentDefinition(fsm=fsm, name="A", description="d")
     defs = agent.output_event_defs
     assert len(defs) == 1
     assert defs[0].name == "done"

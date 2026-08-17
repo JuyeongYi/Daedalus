@@ -18,9 +18,18 @@
   2. 참조 해소 (state/skill/agent id → 실제 객체)
 
 dangling id 는 ValueError 가 아니라 None 처리하고 경고를 수집한다.
+
+포맷 버전 (v2)
+--------------
+- ``serialize_project`` 는 항상 ``"format": 2`` 를 쓴다.
+- ``deserialize_project`` 는 format 1(또는 키 부재 구버전)을 받으면
+  ``_migrate_v1`` 한 함수로 집약된 **단방향 마이그레이션**을 태운 뒤 v2 로
+  읽는다 (왕복 보존 없음 — 열면 v2 로 저장된다). 미지의 상위 format 은 명시
+  에러다.
 """
 from __future__ import annotations
 
+import copy
 from typing import Any
 
 from daedalus.model.fsm.action import Action
@@ -36,6 +45,7 @@ from daedalus.model.fsm.event import (
     Event,
 )
 from daedalus.model.fsm.guard import Guard
+from daedalus.model.fsm.join import JoinStrategy
 from daedalus.model.fsm.machine import StateMachine
 from daedalus.model.fsm.pseudo import (
     ChoiceState,
@@ -91,7 +101,7 @@ from daedalus.model.plugin.enums import (
     SkillShell,
 )
 from daedalus.model.plugin.hook import HookDef, HookEvent
-from daedalus.model.plugin.policy import ExecutionPolicy, JoinStrategy
+from daedalus.model.plugin.policy import ExecutionPolicy
 from daedalus.model.plugin.skill import (
     DeclarativeSkill,
     ProceduralSkill,
@@ -110,7 +120,7 @@ from daedalus.model.project import (
     _make_project_graph,
 )
 
-FORMAT_VERSION = 1
+FORMAT_VERSION = 2
 
 
 # ───────────────────────── enum 헬퍼 ─────────────────────────
@@ -192,10 +202,6 @@ def _deser_hook_handler(d: dict):
         if f.name == "shell":
             value = _to_enum(HookShell, value, HookShell.DEFAULT)
         kwargs[f.name] = value
-    # WP-HS: 커맨드 훅의 인라인 `command`가 스크립트 본문 `script`가 됐다.
-    # 구버전 핸들러 dict는 그 값을 옮겨 온다(정상 마이그레이션 경로).
-    if "script" not in kwargs and "command" in d:
-        kwargs["script"] = d["command"] or ""
     return cls(**kwargs, id=d.get("id") or _new_id())
 
 
@@ -211,24 +217,13 @@ def _ser_hook(h: HookDef) -> dict:
 
 
 def _deser_hook(d: dict) -> HookDef:
-    """훅 역직렬화.
-
-    WP-HK 마이그레이션: 구버전 파일은 훅 하나가 command 핸들러 하나였다
-    (`command`/`timeout`이 HookDef의 필드). `handlers` 키가 없고 `command`가
-    있으면 CommandHook 하나로 감싼다 — 정상 마이그레이션 경로라 경고 없음.
-    """
-    from daedalus.model.plugin.hook import CommandHook
-
-    raw = d.get("handlers")
-    if raw is None:
-        legacy_command = d.get("command") or ""
-        handlers = (
-            [CommandHook(script=legacy_command, timeout=d.get("timeout"))]
-            if legacy_command or d.get("timeout") is not None
-            else []
-        )
-    else:
-        handlers = [h for h in (_deser_hook_handler(x) for x in raw) if h is not None]
+    """훅 역직렬화 — 구버전(커맨드 하나짜리) 형태는 _migrate_v1이 handlers로
+    감싸 두므로 여기서는 v2 형태만 읽는다. 미지 kind 핸들러는 건너뛴다."""
+    handlers = [
+        h
+        for h in (_deser_hook_handler(x) for x in d.get("handlers", []))
+        if h is not None
+    ]
 
     return HookDef(
         name=d.get("name", ""),
@@ -476,8 +471,6 @@ def _ser_transition(t: Transition) -> dict:
         "data_map": dict(t.data_map),
         # transfer skill 참조 — id (없으면 None)
         "skill_ref": t.skill_ref.id if t.skill_ref is not None else None,
-        # WP-IC — 타깃 입력 포트 이름. 빈 값 = 기본 포트.
-        "target_port": t.target_port,
     }
 
 
@@ -494,14 +487,6 @@ def _ser_machine(m: StateMachine) -> dict:
 
 
 # ── section / eventdef ──
-
-def _ser_section(s: Section) -> dict:
-    return {
-        "title": s.title,
-        "content": s.content,
-        "children": [_ser_section(c) for c in s.children],
-    }
-
 
 def _ser_eventdef(e: EventDef) -> dict:
     return {"name": e.name, "color": e.color, "description": e.description}
@@ -586,9 +571,6 @@ def _ser_skill(s: Any) -> dict:
     if isinstance(s, ProceduralSkill):
         d["transfer_on"] = [_ser_eventdef(e) for e in s.transfer_on]
         d["call_agents"] = [_ser_eventdef(e) for e in s.call_agents]
-        d["entry_paths"] = [_ser_eventdef(e) for e in s.entry_paths]
-    if isinstance(s, DeclarativeSkill):
-        d["entry_paths"] = [_ser_eventdef(e) for e in s.entry_paths]
     return d
 
 
@@ -607,15 +589,12 @@ def _ser_agent(a: AgentDefinition) -> dict:
         "reference_placements": [
             _ser_ref_placement(r) for r in a.reference_placements
         ],
-        "caller_contracts": [_ser_section(s) for s in a.caller_contracts],
         "graph_layout": {k: list(v) for k, v in a.graph_layout.items()},
         # WP-ER — 전이 엣지 경유점(waypoint). 키는 Transition.id.
         "edge_layout": {
             k: [list(pt) for pt in v] for k, v in a.edge_layout.items()
         },
-        "entry_paths": [_ser_eventdef(e) for e in a.entry_paths],
-        # WP-AF — 출력 포트(ExitPoint 승계). 구버전 파일(키 부재)은 로드 시
-        # ExitPoint에서 마이그레이션한다.
+        # WP-AF — 출력 포트. v1 파일의 ExitPoint는 _migrate_v1이 승계한다.
         "transfer_on": [_ser_eventdef(e) for e in a.transfer_on],
     }
 
@@ -679,13 +658,20 @@ def deserialize_project(
     collect_warnings: 호출자가 리스트를 주면 역직렬화 중 발생한 dangling id
       경고 문자열을 해당 리스트에 채워준다. None이면 경고를 버린다(기존 동작).
       반환 타입은 항상 PluginProject — 변경 없음.
+
+    format 1(또는 키 부재 구버전)은 ``_migrate_v1``로 단방향 마이그레이션한
+    뒤 읽는다. format 2는 마이그레이션 없이 읽는다. 미지의 상위 format은
+    명시 에러(미래 버전 파일을 조용히 오독하지 않는다).
     """
-    fmt = data.get("format")
-    if fmt != FORMAT_VERSION:
-        raise ValueError(
-            f"지원하지 않는 파일 형식 버전: {fmt!r} (지원: {FORMAT_VERSION})"
-        )
     reg = _Registry()
+    fmt = data.get("format")
+    if fmt is None or fmt == 1:
+        data = _migrate_v1(data, reg.warnings)
+    elif fmt != FORMAT_VERSION:
+        raise ValueError(
+            f"지원하지 않는 파일 형식 버전: {fmt!r} "
+            f"(지원: {FORMAT_VERSION}, 구버전 1은 로드 시 마이그레이션)"
+        )
 
     # ── pass 1: 컴포넌트(skill/agent) 객체 생성 + 등록 ──
     skills = [_deser_skill(s, reg) for s in data.get("skills", [])]
@@ -701,19 +687,6 @@ def deserialize_project(
         graph = _deser_machine(graph_data, reg, parent_bb=blackboard)
     else:
         graph = _make_project_graph()
-
-    # 위임(delegation)은 퇴역한 개념이다(WP-RF-1a) — 구버전 파일에 위임 정의가
-    # 있으면 경고 후 드롭한다. 위임을 가리키던 placement skill_ref는 해당 id가
-    # 레지스트리에 없으므로 pass2에서 dangling 경고와 함께 None으로 정리된다.
-    dropped_delegations = data.get("delegations", [])
-    if dropped_delegations:
-        names = ", ".join(
-            f"'{d.get('name', '?')}'" for d in dropped_delegations
-        )
-        reg.warnings.append(
-            f"위임 정의 {len(dropped_delegations)}건({names})은 퇴역한 개념이라 "
-            f"드롭했습니다 — 위임 지시는 스킬 본문에 서술하세요."
-        )
 
     project = PluginProject(
         name=data.get("name", ""),
@@ -770,6 +743,153 @@ def deserialize_project(
         collect_warnings.extend(reg.warnings)
 
     return project
+
+
+# ═══════════════════════ v1 → v2 마이그레이션 ═══════════════════════
+
+
+def _migrate_v1(data: dict, warnings: list[str]) -> dict:
+    """format 1(또는 키 부재) dict → format 2 dict. 단방향 — 입력은 변형하지 않는다.
+
+    흩어져 있던 구버전 마이그레이션을 한 함수로 집약했다 (WP-RF-1b):
+      1. delegation 정의 드롭 (퇴역 개념 — 경고 후 드롭)
+      2. 컴포넌트 본문: ``sections`` 트리 → ``body`` 평탄화(render_markdown) +
+         ``${CLAUDE_PLUGIN_ROOT}/files/`` → ``${ROOT}/files/`` 치환(WP-RT)
+      3. 퇴역 키 드롭: ``entry_paths`` / ``caller_contracts`` /
+         전이의 ``target_port`` (WP-IP/WP-CT — 경고 없음, 퇴역 개념)
+      4. 에이전트 출력 포트: ``transfer_on`` 부재 시 내부 FSM의 ExitPoint
+         이름·색 승계 (WP-AF)
+      5. 훅: 커맨드 하나짜리 구버전(HookDef.command/timeout) → handlers 목록,
+         핸들러의 ``command`` → ``script`` (WP-HK/WP-HS)
+      6. ``field_type: "number"`` → ``"float"`` (FieldType.NUMBER 퇴역)
+    """
+    from daedalus.model.plugin.variables import migrate_legacy_file_refs
+
+    data = copy.deepcopy(data)
+    data["format"] = FORMAT_VERSION
+
+    # 1) delegation 드롭 — 위임을 가리키던 placement skill_ref는 해당 id가
+    # 레지스트리에 없으므로 pass2에서 dangling 경고와 함께 None으로 정리된다.
+    dropped_delegations = data.pop("delegations", [])
+    if dropped_delegations:
+        names = ", ".join(
+            f"'{d.get('name', '?')}'" for d in dropped_delegations
+        )
+        warnings.append(
+            f"위임 정의 {len(dropped_delegations)}건({names})은 퇴역한 개념이라 "
+            f"드롭했습니다 — 위임 지시는 스킬 본문에 서술하세요."
+        )
+
+    # 2)+3) 컴포넌트 공통 — 본문 평탄화 + 경로 변수 치환 + 퇴역 키 드롭
+    def _migrate_component(d: dict) -> None:
+        if "body" not in d and "sections" in d:
+            d["body"] = render_markdown(
+                [_deser_section(s) for s in d["sections"]]
+            )
+        d.pop("sections", None)
+        d["body"] = migrate_legacy_file_refs(d.get("body") or "")
+        d.pop("entry_paths", None)
+        d.pop("caller_contracts", None)
+
+    for s in data.get("skills", []) or []:
+        _migrate_component(s)
+    for a in data.get("agents", []) or []:
+        _migrate_component(a)
+        for local in a.get("skills", []) or []:
+            _migrate_component(local)
+        # 4) ExitPoint → transfer_on 승계 (이름·색, 단방향 — 경고 없음).
+        # ExitPoint 상태 자체는 fsm에 남는다(순수 FSM 개념).
+        if not a.get("transfer_on"):
+            exit_states = [
+                st for st in (a.get("fsm") or {}).get("states", [])
+                if st.get("kind") == "exit_point"
+            ]
+            if exit_states:
+                a["transfer_on"] = [
+                    {
+                        "name": st.get("name", ""),
+                        "color": st.get("color", "#cc6666"),
+                        "description": "",
+                    }
+                    for st in exit_states
+                ]
+
+    # 3) 전이의 target_port 드롭 — 모든 머신(스킬/에이전트/로컬 스킬 fsm +
+    # 프로젝트 그래프, sub_machine/Region 재귀)의 transitions에서.
+    for machine in _v1_all_machines(data):
+        for t in machine.get("transitions", []) or []:
+            t.pop("target_port", None)
+
+    # 5) 훅 마이그레이션 — 훅 하나 = 커맨드 하나였던 시절의 형태.
+    for h in data.get("hook_library", []) or []:
+        if "handlers" not in h:
+            legacy_command = h.pop("command", "") or ""
+            legacy_timeout = h.pop("timeout", None)
+            h["handlers"] = (
+                [{
+                    "kind": "command",
+                    "script": legacy_command,
+                    "timeout": legacy_timeout,
+                }]
+                if legacy_command or legacy_timeout is not None
+                else []
+            )
+        else:
+            for hh in h.get("handlers", []) or []:
+                if (
+                    isinstance(hh, dict)
+                    and "script" not in hh
+                    and "command" in hh
+                ):
+                    hh["script"] = hh.pop("command") or ""
+
+    # 6) field_type "number" → "float" — Variable/DynamicField dict는 상태
+    # inputs/outputs·액션 output_variable·블랙보드 등 깊이 흩어져 있어
+    # 트리 전체를 걸어 "field_type" 키만 치환한다.
+    _v1_scrub_number(data)
+    return data
+
+
+def _v1_all_machines(data: dict):
+    """v1 dict의 모든 머신 dict를 순회 (sub_machine/Region 재귀 포함)."""
+
+    def _walk(m: dict):
+        yield m
+        for st in m.get("states", []) or []:
+            sub = st.get("sub_machine")
+            if sub:
+                yield from _walk(sub)
+            for r in st.get("regions", []) or []:
+                rsub = r.get("sub_machine")
+                if rsub:
+                    yield from _walk(rsub)
+
+    def _components():
+        for s in data.get("skills", []) or []:
+            yield s
+        for a in data.get("agents", []) or []:
+            yield a
+            yield from (a.get("skills", []) or [])
+
+    for comp in _components():
+        fsm = comp.get("fsm")
+        if fsm:
+            yield from _walk(fsm)
+    graph = data.get("graph")
+    if graph:
+        yield from _walk(graph)
+
+
+def _v1_scrub_number(node: Any) -> None:
+    """트리 전역에서 ``"field_type": "number"`` → ``"float"`` (제자리 치환)."""
+    if isinstance(node, dict):
+        if node.get("field_type") == "number":
+            node["field_type"] = "float"
+        for v in node.values():
+            _v1_scrub_number(v)
+    elif isinstance(node, list):
+        for v in node:
+            _v1_scrub_number(v)
 
 
 # ── enum 복원 헬퍼 ──
@@ -1016,8 +1136,6 @@ def _deser_transition(d: dict, reg: _Registry) -> Transition:
             k: _deser_actions(v) for k, v in d.get("custom_events", {}).items()
         },
         data_map=dict(d.get("data_map", {})),
-        # WP-IC — 구버전 파일(키 부재) → 기본값 "" (경고 없음).
-        target_port=d.get("target_port", ""),
     )
 
     def _resolve(t=t, d=d):
@@ -1081,25 +1199,11 @@ def _deser_section(d: dict) -> Section:
 
 
 def _deser_body(d: dict) -> str:
-    """스킬/에이전트 본문 역직렬화 (WP-SB).
+    """스킬/에이전트 본문 역직렬화 — v2는 ``body``가 단일 진실이다.
 
-    ``body`` 키가 있으면 그대로 사용. 없고 ``sections`` 키가 있으면(구버전
-    파일) ``render_markdown``으로 평탄화한다 — 정상 마이그레이션 경로이므로
-    경고 없음. 둘 다 없으면 빈 문자열.
-
-    WP-RT: 구버전 본문의 ``${CLAUDE_PLUGIN_ROOT}/files/``를 타깃 중립
-    ``${ROOT}/files/``로 변환한다(로드 시 단방향). 사용자가 아무것도 하지
-    않아도 기존 프로젝트가 새 규약으로 넘어온다.
+    구버전 ``sections`` 트리·경로 변수 치환은 ``_migrate_v1``이 처리한다.
     """
-    from daedalus.model.plugin.variables import migrate_legacy_file_refs
-
-    if "body" in d:
-        return migrate_legacy_file_refs(d.get("body") or "")
-    if "sections" in d:
-        return migrate_legacy_file_refs(
-            render_markdown([_deser_section(s) for s in d["sections"]])
-        )
-    return ""
+    return d.get("body") or ""
 
 
 def _deser_eventdef(d: dict) -> EventDef:
@@ -1200,8 +1304,6 @@ def _deser_skill(d: dict, reg: _Registry) -> Any:
             body=body,
             transfer_on=[_deser_eventdef(e) for e in d.get("transfer_on", [])],
             call_agents=[_deser_eventdef(e) for e in d.get("call_agents", [])],
-            # WP-IC — 구버전 파일(키 부재) → 빈 리스트(기본 포트 1개, 경고 없음).
-            entry_paths=[_deser_eventdef(e) for e in d.get("entry_paths", [])],
         )
     elif kind == "transfer_skill":
         fsm = _deser_machine(d["fsm"], reg, parent_bb=None)
@@ -1215,7 +1317,6 @@ def _deser_skill(d: dict, reg: _Registry) -> Any:
             name=name, description=desc, id=sid,
             config=config or DeclarativeSkillConfig(),
             body=body,
-            entry_paths=[_deser_eventdef(e) for e in d.get("entry_paths", [])],
         )
     elif kind == "reference_skill":
         skill = ReferenceSkill(
@@ -1248,26 +1349,14 @@ def _deser_agent(d: dict, reg: _Registry) -> AgentDefinition:
         reference_placements=[
             _deser_ref_placement(r) for r in d.get("reference_placements", [])
         ],
-        caller_contracts=[_deser_section(s) for s in d.get("caller_contracts", [])],
         graph_layout={k: list(v) for k, v in d.get("graph_layout", {}).items()},
         # WP-ER — 구버전 키 부재 → 빈 dict (경고 없음).
         edge_layout={
             k: [list(pt) for pt in v] for k, v in d.get("edge_layout", {}).items()
         },
-        # WP-IC — 구버전 파일(키 부재) → 빈 리스트(기본 포트 1개, 경고 없음).
-        entry_paths=[_deser_eventdef(e) for e in d.get("entry_paths", [])],
-        # WP-AF — 출력 포트(ExitPoint 승계). 구버전 키 부재는 아래 마이그레이션.
+        # WP-AF — 출력 포트가 단일 진실. v1의 ExitPoint 승계는 _migrate_v1 소관.
         transfer_on=[_deser_eventdef(e) for e in d.get("transfer_on", [])],
     )
-    # WP-AF 마이그레이션 — 구버전 파일(transfer_on 키 부재)의 출력 포트는
-    # 내부 FSM의 ExitPoint였다. 이름·색을 그대로 승계한다(단방향, 경고 없음).
-    # ExitPoint 자체는 fsm에 남는다 — 저장 왕복 보존, 렌더·검증은 transfer_on만 본다.
-    if not agent.transfer_on and agent.exit_points:
-        from daedalus.model.fsm.section import EventDef as _EventDef
-
-        agent.transfer_on = [
-            _EventDef(name=ep.name, color=ep.color) for ep in agent.exit_points
-        ]
     reg.components[sid] = agent
     return agent
 

@@ -19,10 +19,6 @@ class FieldType(Enum):
     STRING = "string"
     INT = "int"
     FLOAT = "float"
-    # deprecated: INT/FLOAT을 사용하라. 컴파일 시 JSON Schema "number"로 합류된다
-    # (INT→integer, FLOAT/NUMBER→number). 신규 코드에서는 의미가 더 명확한
-    # INT/FLOAT을 쓰고, NUMBER는 하위 호환을 위해서만 남겨둔다.
-    NUMBER = "number"
     BOOL = "bool"
     LIST = "list"
     JSON = "json"

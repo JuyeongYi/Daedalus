@@ -68,8 +68,9 @@ def test_output_events_come_from_transfer_on(qapp):
     assert agent.output_events == ["ok", "fail"]
 
 
-def test_legacy_exit_points_still_feed_output_events():
-    """transfer_on이 빈 구버전 객체는 ExitPoint 폴백 — 메모리 내 호환."""
+def test_exit_points_do_not_feed_output_events():
+    """RF-1b — ExitPoint 폴백은 삭제됐다. transfer_on이 비면 출력 포트도 없다
+    (v1 파일의 ExitPoint 승계는 로드 마이그레이션 소관 — serialize._migrate_v1)."""
     entry = EntryPoint(name="entry")
     done = ExitPoint(name="done")
     fsm = StateMachine(
@@ -77,4 +78,4 @@ def test_legacy_exit_points_still_feed_output_events():
     )
     agent = AgentDefinition(fsm=fsm, name="legacy", description="")
     assert agent.transfer_on == []
-    assert agent.output_events == ["done"]
+    assert agent.output_events == []

@@ -70,7 +70,7 @@ def test_edge_without_waypoints_matches_original_formula(qapp):
     edge.update_path()
 
     src_pt = a.output_port_scene_pos("done", False)
-    tgt_pt = b.input_port_scene_pos("")
+    tgt_pt = b.input_port_scene_pos()
     dx = abs(tgt_pt.x() - src_pt.x()) * 0.5
     ctrl1 = QPointF(src_pt.x() + dx, src_pt.y())
     ctrl2 = QPointF(tgt_pt.x() - dx, tgt_pt.y())

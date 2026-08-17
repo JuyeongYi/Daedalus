@@ -1,4 +1,4 @@
-"""WP-M ③ JoinStrategy 위치 이동 + 하위 호환 re-export 검증."""
+"""JoinStrategy 정본 위치(fsm/join.py) 검증 — plugin.policy re-export는 RF-1b에서 삭제."""
 from __future__ import annotations
 
 
@@ -9,14 +9,13 @@ def test_join_strategy_new_location():
     assert JoinStrategy.N_OF.value == "n_of"
 
 
-def test_join_strategy_reexport_backward_compat():
-    """기존 import 경로(plugin.policy)가 새 위치 심볼과 동일 객체다."""
-    from daedalus.model.fsm.join import JoinStrategy as New
-    from daedalus.model.plugin.policy import JoinStrategy as Old
-    assert New is Old
+def test_join_strategy_not_reexported_from_policy():
+    """RF-1b — 별칭 경로는 없다. __all__에 ExecutionPolicy만 남는다."""
+    from daedalus.model.plugin import policy
+    assert policy.__all__ == ["ExecutionPolicy"]
 
 
-def test_execution_policy_uses_reexported_join():
+def test_execution_policy_uses_fsm_join():
     from daedalus.model.fsm.join import JoinStrategy
     from daedalus.model.plugin.policy import ExecutionPolicy
     p = ExecutionPolicy(join=JoinStrategy.N_OF, join_count=2)

@@ -8,7 +8,6 @@ from __future__ import annotations
 import pytest
 
 from daedalus.model.fsm.machine import StateMachine
-from daedalus.model.fsm.section import EventDef
 from daedalus.model.fsm.state import SimpleState
 from daedalus.model.plugin.skill import ProceduralSkill
 from daedalus.model.project import PluginProject
@@ -58,11 +57,11 @@ def test_set_transfer_on_reaches_local_skill(tools):
     assert [e.name for e in _local(tools).transfer_on] == ["ok", "retry"]
 
 
-def test_legacy_entry_paths_are_inert(tools):
-    """WP-IP — legacy 선언이 남아 있어도 산출·검증 어디에도 영향이 없다."""
-    _local(tools).entry_paths.append(EventDef(name="stale"))
+def test_entry_paths_absent_from_query_surface(tools):
+    """WP-IP/RF-1b — 입력 포트 선언은 필드째 사라졌다. 조회 표면에도 없다."""
+    assert not hasattr(_local(tools), "entry_paths")
     out = tools.get_component("step-one", agent="worker")
-    assert "entry_paths" not in out  # 조회 표면에서도 사라졌다
+    assert "entry_paths" not in out
 
 
 def test_set_component_body_reaches_local_skill(tools):
