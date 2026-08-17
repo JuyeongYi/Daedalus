@@ -59,6 +59,9 @@ daedalus/
 │   ├── package.py           # 프로젝트 패키지(WP-PK) — 폴더가 곧 프로젝트. PROJECT_FILENAME(".daedalus.json")/ARCHIVE_SUFFIX(".ddpj"),
 │   │                       #   resolve_project_file(저장 대상)/find_project_file(열 대상)/project_dir/display_name,
 │   │                       #   pack(결정적 zip)/unpack(zip slip 방어). Qt 무관 순수 stdlib.
+│   ├── outline.py           # 본문 아웃라인(WP-BO) — body 마크다운의 파생 인덱스. parse_outline(fence-aware 헤딩 파서)/
+│   │                       #   find_section(제목·"## 제목" 레벨 지정·"부모 > 자식" 경로, 0개·복수 매칭 ValueError)/
+│   │                       #   section_text/char_span/replacement_text/replace_section(비교체 구간 바이트 보존). Qt 무관 순수 stdlib.
 │   ├── serialize.py         # serialize_project/deserialize_project (모델↔JSON dict, 안정 ID 기반)
 │   └── validation.py        # Validator + ValidationError + WARNING_RULES + is_warning (머신 규칙 20종 + 프로젝트 규칙 16종, 재귀)
 ├── compiler/         # 순수 모델 → 플러그인 파일 (Qt 무관)
@@ -73,7 +76,7 @@ daedalus/
 ├── mcp/              # 앱 내장 MCP 서버 (WP-MCP) — CC와 협업하는 창구
 │   ├── endpoint.py         # 접속 정보(~/.daedalus/mcp-endpoint.json) + 포트 탐색 + .mcp.json 스니펫 (Qt 무관 순수)
 │   ├── invoker.py          # MainThreadInvoker — uvicorn 워커 스레드 → Qt 메인 스레드 마샬링(시그널+Event, 타임아웃)
-│   ├── tools.py            # DaedalusTools — 도구 구현(읽기 6종 + 편집 10종). 메인 스레드 실행 전제
+│   ├── tools.py            # DaedalusTools — 도구 구현(조회·편집·세션·본문 부분 접근(WP-BO)). 메인 스레드 실행 전제
 │   └── service.py          # DaedalusMCPService — MCPServer 구성(_server_factory가 mcp 1.x/2.x 흡수) + uvicorn 데몬 스레드 수명주기
 └── view/             # PySide6 기반 노드 에디터
     ├── recent.py           # 최근 프로젝트 목록(WP-RP) — ~/.daedalus/recent.json 읽기/쓰기 (Qt 무관 순수 stdlib).
@@ -284,6 +287,26 @@ daedalus/
 - `Section`(`model/fsm/section.py`)은 자유 콘텐츠 계층(H1–H6, `children: list[Section]` 재귀 트리) 자체는 그대로 남아 있으나, 이제 **`AgentDefinition.caller_contracts`(잠금 계약 카드) 전용**이다 — 호출 계약 카드는 `_ContractPanel`/`_ContractCard`(skill_editor.py)와 `commands/section_commands.py`(scene.py의 call_agent 연결 시 자동 추가/제거)가 계속 사용한다.
 - `render_markdown(sections, depth=1) -> str`(section.py): 구버전(sections 트리) 파일을 로드할 때 `body`로 평탄화하는 단방향 마이그레이션 헬퍼. `serialize.py`의 `_deser_body`가 `body` 키 부재 + `sections` 키 존재 시에만 호출한다(경고 없음 — 정상 마이그레이션 경로).
 - `EventDef`: TransferOn 스킬의 출력 이벤트 정의. 노드 출력 포트에 대응 (`name`, `color`, `description`)
+
+### 본문 부분 접근 (WP-BO) — 파생 인덱스, 저장 불변
+
+- **저장의 단일 진실은 `body: str` 그대로다**(사용자 확정, A안). 저장을 헤딩 트리로 바꾸면 마크다운↔트리
+  무손실 왕복 파서가 필요해지는데("저장했더니 본문이 미묘하게 달라짐" 류 버그가 최악), 구조는 항상
+  **파생으로만** 만든다. 필요 시 확장 경로: B안(인텍스트 헤딩 속성 `{#id key=val}` — 저장은 여전히 텍스트),
+  C안(섹션 일급 객체화 — 섹션 공유 요구가 실재할 때만).
+- `model/outline.py`: `parse_outline(body)`(ATX 헤딩, 코드 펜스 제외 — 펜스 정규식은 view
+  `MarkdownHighlighter`의 `_FENCE_OPEN/CLOSE_RE` **미러**, 어긋나면 TOC와 섹션 집기가 달라진다),
+  `find_section`(제목/`"## 제목"` 레벨 지정/`"부모 > 자식"` 경로 — 0개·복수 매칭은 ValueError, 조용히
+  하나를 고르지 않는다), `section_text`/`char_span`/`replacement_text`/`replace_section`. 텍스트 연산은
+  전부 `split("\n")` 기반이라 비교체 구간이 바이트 그대로 보존된다. `replace_section`과 QTextCursor
+  경로(char_span+replacement_text)는 `replacement_text`를 공유해 결과가 같다(테스트 고정).
+- **MCP 도구 3종(부분 접근):** `get_body_outline`(구조만 — 본문 전송 없음)/`get_body_section`/
+  `set_body_section`(섹션 교체 — `set_component_body`와 같은 문서 경로(WP-BU)라 undo 가능, text에
+  자기 헤딩 줄을 포함해야 섹션으로 남는다). 읽기는 `BodyDocumentRegistry.peek`(열린 문서가 있으면
+  그쪽이 진실이되, 읽기가 문서를 **만들지는 않는다**)를 쓴다.
+- **후속 예정:** 컴파일 분할(점진 공개 — 큰 본문의 섹션을 스킬 디렉토리 보조 파일로 산출.
+  `${CLAUDE_SKILL_DIR}`가 공식 변수이고 스킬 디렉토리 상대 참조가 CC 공식 패턴임을 확인, 2026-08.
+  에이전트는 단일 .md라 전용 폴더 없음 — 대상 아님), 스킬별 파일 탭(files-per-skill).
 
 ### 입력 포트 퇴역 (WP-IP) — 인터페이스 선언은 값을 만드는 쪽에만
 

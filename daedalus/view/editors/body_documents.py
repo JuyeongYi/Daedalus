@@ -68,6 +68,15 @@ class BodyDocumentRegistry:
         self._documents[key] = doc
         return doc
 
+    def peek(self, component: object) -> QTextDocument | None:
+        """이미 열린 문서만 돌려준다 — 없으면 None (읽기 전용 조회).
+
+        ``document_for``와 달리 문서를 만들지 않는다. 편집 중이면 문서가
+        모델보다 앞서 있으므로(WP-BU) 본문을 **읽기만** 하는 쪽도 문서를
+        우선해야 하는데, 그 읽기가 편집 자원을 생성하면 안 되기 때문이다.
+        """
+        return self._documents.get(_key(component))
+
     def sync_from_model(self, component: object) -> None:
         """모델 body를 문서에 강제 반영한다 (외부 변경 경로 전용).
 

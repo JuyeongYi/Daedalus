@@ -23,6 +23,8 @@ TOOL_NAMES = (
     "get_project",
     "get_selection",
     "get_component",
+    "get_body_outline",
+    "get_body_section",
     "get_history",
     "validate_project",
     "compile_preview",
@@ -65,6 +67,7 @@ TOOL_NAMES = (
     "unlink_reference",
     "unplace_reference",
     "set_component_body",
+    "set_body_section",
     "undo",
     "redo",
 )
@@ -87,6 +90,8 @@ Daedalus(FSM 기반 Claude Code 플러그인 설계 도구)의 열려 있는 편
 경로는 `list_recent_projects`로 찾을 수 있습니다.
 - `open_project`와 `export_package`는 현재 프로젝트를 **먼저 저장한 뒤** 진행합니다. \
 저장할 수 없으면 진행하지 않습니다 — 편집 중인 내용은 메모리에만 있기 때문입니다.
+- 긴 본문은 `get_body_outline`으로 구조만 보고 `get_body_section`/`set_body_section`으로 \
+섹션 단위 접근하세요 — 전문 재전송 없이 필요한 부분만 읽고 고칠 수 있습니다.
 - 구조(노드와 선)만 만들면 분기가 표현되지 않습니다. 여러 갈래로 나가는 노드는 \
 `set_transfer_on`으로 갈래를 선언하고 각 전이에 trigger를 물려야 합니다. \
 에이전트로 가는 전이는 `add_agent_call`로 만든 호출 포트에서만 나갈 수 있습니다.
