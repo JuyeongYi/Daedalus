@@ -20,6 +20,14 @@ pytest는 `python -m pytest`로 실행한다 (`pytest` 직접 실행 시 command
 
 현재 구현 범위: **model/ + view/ + compiler/** (FSM 코어 + 플러그인 메타데이터 + PySide6 에디터 + SKILL.md/agent .md 생성).
 
+**경계 계약 (WP-RF-2, B안 — 물리 이동 없음):** core = `model/` + `compiler/` + `mcp/endpoint.py` + `cli/`.
+core는 Qt 바인딩(PySide6/PyQt6/shiboken6)·GUI 레이어(`daedalus.view`)·MCP SDK(`mcp`)·`uvicorn`을
+임포트할 수 없다 — `tests/test_import_contracts.py`가 **소스 AST 기준**으로 강제한다(런타임 임포트 차단만으로는
+함수 안 지연 임포트를 놓친다. 접두 매칭은 점 단위 — `daedalus.mcp`는 SDK `mcp`와 다르다). `mcp/tools.py`는
+core가 아니라 **GUI 어댑터**(MainWindow·VM·커맨드 스택 결합 표면 — 모듈 docstring 명시, RF-3b 분해의 근거)이고,
+`mcp/invoker.py`의 Qt 의존과 `mcp/service.py`의 SDK/uvicorn 의존은 의도된 설계다. view→compiler 방향
+임포트는 정상(컴파일러 패턴의 방향과 일치).
+
 ```
 daedalus/
 ├── model/
@@ -75,8 +83,12 @@ daedalus/
 ├── mcp/              # 앱 내장 MCP 서버 (WP-MCP) — CC와 협업하는 창구
 │   ├── endpoint.py         # 접속 정보(~/.daedalus/mcp-endpoint.json) + 포트 탐색 + .mcp.json 스니펫 (Qt 무관 순수)
 │   ├── invoker.py          # MainThreadInvoker — uvicorn 워커 스레드 → Qt 메인 스레드 마샬링(시그널+Event, 타임아웃)
-│   ├── tools.py            # DaedalusTools — 도구 구현(조회·편집·세션·본문 부분 접근(WP-BO)). 메인 스레드 실행 전제
+│   ├── tools.py            # DaedalusTools — 도구 구현(조회·편집·세션·본문 부분 접근(WP-BO)). 메인 스레드 실행 전제.
+│   │                       #   **GUI 어댑터**(WP-RF-2) — MainWindow·VM·커맨드 스택 결합 표면, core 경계 계약 대상 아님
 │   └── service.py          # DaedalusMCPService — MCPServer 구성(_server_factory가 mcp 1.x/2.x 흡수) + uvicorn 데몬 스레드 수명주기
+├── cli/              # 블랙보드 CLI(daedalus-bb) 자리 (WP-RF-2 신설, 빈 패키지) — C+A 설계: uv tool install로 앱과 함께
+│                     #   설치되고, 컴파일 산출의 블랙보드 지시가 이 CLI를 호출. pyproject [project.scripts] 등록은 CLI 구현
+│                     #   시점에(실존하지 않는 entry point는 설치를 깨뜨린다). core 경계 소속 — Qt·view·SDK 임포트 금지.
 └── view/             # PySide6 기반 노드 에디터
     ├── recent.py           # 최근 프로젝트 목록(WP-RP) — ~/.daedalus/recent.json 읽기/쓰기 (Qt 무관 순수 stdlib).
     │                       #   load/save/push/remove/clear + MAX_RECENT. 기록 실패는 삼킨다(endpoint.py와 같은 정책).
