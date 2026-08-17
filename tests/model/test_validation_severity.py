@@ -1,7 +1,9 @@
 """ValidationError.is_warning / WARNING_RULES 완전성 테스트 (WP-J)."""
 from __future__ import annotations
 
+import importlib
 import inspect
+import pkgutil
 import re
 
 import pytest
@@ -59,10 +61,10 @@ _WARN_RULES = frozenset({
     "skill_dir_token_in_agent",  # WP-SF
 })
 
-# validation.py 밖(컴파일러 등)에서 emit되지만 WARNING_RULES에는 등록된 규칙 —
+# validation 패키지 밖(컴파일러 등)에서 emit되지만 WARNING_RULES에는 등록된 규칙 —
 # is_warning 판정 일관성을 위해 등록하되, _emitted_rules_from_source() 소스
 # introspection 대상에서는 제외한다(검증기는 파일시스템 무접근 순수성을
-# 유지하므로 이 rule 문자열이 validation.py 안에 나타나지 않는다).
+# 유지하므로 이 rule 문자열이 validation 패키지 안에 나타나지 않는다).
 _EXTERNALLY_EMITTED_RULES = frozenset({
     "dangling_file_ref",  # daedalus/compiler/project_compiler.py 소관 (WP-FR)
     "missing_mcp_server_def",  # daedalus/compiler/project_compiler.py 소관 (WP-MW)
@@ -72,10 +74,24 @@ _EXTERNALLY_EMITTED_RULES = frozenset({
 })
 
 
+def _validation_sources() -> str:
+    """validation 패키지 **전 모듈**의 소스를 합친다 (WP-RF-3d 분해 대응).
+
+    분해 전에는 단일 모듈이라 ``inspect.getsource(validation_module)`` 하나로
+    충분했다. 패키지가 된 지금 파사드(``__init__``)만 보면 규칙 검사 본문이
+    통째로 빠지므로, 하위 모듈을 열거해 함께 읽는다 — 앞으로 구획이 더 갈려도
+    이 테스트가 따라간다.
+    """
+    texts = [inspect.getsource(validation_module)]
+    for info in pkgutil.iter_modules(validation_module.__path__):
+        sub = importlib.import_module(f"{validation_module.__name__}.{info.name}")
+        texts.append(inspect.getsource(sub))
+    return "\n".join(texts)
+
+
 def _emitted_rules_from_source() -> frozenset[str]:
-    """validation.py 소스에서 실제 emit되는 rule= 리터럴을 introspect."""
-    source = inspect.getsource(validation_module)
-    return frozenset(re.findall(r'rule="([a-z0-9_]+)"', source))
+    """validation 패키지 소스에서 실제 emit되는 rule= 리터럴을 introspect."""
+    return frozenset(re.findall(r'rule="([a-z0-9_]+)"', _validation_sources()))
 
 
 def test_warning_rules_completeness():
@@ -83,23 +99,35 @@ def test_warning_rules_completeness():
     assert WARNING_RULES == _WARN_RULES
 
 
+def test_validation_sources_cover_rule_modules():
+    """소스 introspection이 규칙 본문이 있는 하위 모듈까지 읽는지 고정.
+
+    파사드(``__init__``)만 읽으면 규칙이 하나도 안 잡히므로, 아래 분류 테스트가
+    전부 통과해 버린다 — 모듈 이동/개명으로 커버리지가 조용히 사라지는 것을 막는다.
+    """
+    text = _validation_sources()
+    assert "machine_rules" in {info.name for info in pkgutil.iter_modules(validation_module.__path__)}
+    assert 'rule="unreachable_state"' in text  # 머신 수준 규칙 본문
+    assert 'rule="duplicate_component_name"' in text  # 프로젝트 수준 규칙 본문
+
+
 def test_every_emitted_rule_is_classified():
-    """validation.py가 emit하는 모든 rule이 에러/경고 어느 한쪽에 분류되어 있다.
+    """validation 패키지가 emit하는 모든 rule이 에러/경고 어느 한쪽에 분류되어 있다.
 
     소스 introspection — 새 규칙 추가 시 이 테스트가 깨져 분류 누락을 강제 검출한다.
     (하드코딩 재진술이 아니라 실제 emit 지점 기준.)
     """
     emitted = _emitted_rules_from_source()
-    assert emitted, "validation.py에서 rule= 리터럴을 찾지 못했다 — 패턴 확인 필요"
+    assert emitted, "validation 패키지에서 rule= 리터럴을 찾지 못했다 — 패턴 확인 필요"
     classified = _ERROR_RULES | _WARN_RULES
     unclassified = emitted - classified
     assert not unclassified, (
         f"분류되지 않은 규칙: {sorted(unclassified)} — "
-        f"WARNING_RULES(validation.py) 및 본 테스트의 _ERROR_RULES/_WARN_RULES에 "
-        f"등급을 지정하라"
+        f"WARNING_RULES(validation/severity.py) 및 본 테스트의 "
+        f"_ERROR_RULES/_WARN_RULES에 등급을 지정하라"
     )
     # 역방향: 분류표에 있으나 더 이상 emit되지 않는 유령 규칙도 검출
-    # (컴파일러 등 validation.py 밖에서 emit되는 규칙은 제외 — 위 참조)
+    # (컴파일러 등 validation 패키지 밖에서 emit되는 규칙은 제외 — 위 참조)
     ghost = classified - emitted - _EXTERNALLY_EMITTED_RULES
     assert not ghost, f"emit되지 않는 유령 규칙: {sorted(ghost)}"
 
