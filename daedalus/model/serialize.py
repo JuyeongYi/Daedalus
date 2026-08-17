@@ -665,7 +665,15 @@ def deserialize_project(
     fmt = data.get("format")
     if fmt is None or fmt == 1:
         data = _migrate_v1(data, reg.warnings)
-    elif fmt != FORMAT_VERSION:
+    elif fmt == FORMAT_VERSION:
+        # RF-1b 시점(로컬 스킬 승격 이전)의 코드가 저장한 format 2 파일에는
+        # 에이전트 인라인 로컬 스킬("skills" 키)이 남아 있을 수 있다 — format
+        # 게이트만 보고 건너뛰면 스킬 이름·본문이 경고 없이 통째로 드롭된다.
+        # v1과 동일한 승격 마이그레이션을 태운다 (WP-RF-1c 리뷰 지적).
+        if any(a.get("skills") for a in data.get("agents", []) or []):
+            data = copy.deepcopy(data)
+            _promote_local_skills(data, reg.warnings)
+    else:
         raise ValueError(
             f"지원하지 않는 파일 형식 버전: {fmt!r} "
             f"(지원: {FORMAT_VERSION}, 구버전 1은 로드 시 마이그레이션)"
@@ -780,34 +788,7 @@ def _migrate_v1(data: dict, warnings: list[str]) -> dict:
         )
 
     # 1-b) 에이전트 로컬 스킬 → 전역 스킬 승격 (WP-RF-1c).
-    # 이름 충돌(기존 전역 스킬·에이전트·이미 승격된 스킬)이면 "<agent>--<name>"
-    # 으로 개명한다. 승격된 dict는 data["skills"]에 합류해 이후 단계(본문
-    # 마이그레이션·머신 순회)와 역직렬화에서 전역 스킬과 같은 경로를 탄다 —
-    # id가 보존되므로 에이전트 FSM 전이의 transfer skill_ref도 그대로 해소된다.
-    global_skills = data.get("skills")
-    if not isinstance(global_skills, list):
-        global_skills = []
-        data["skills"] = global_skills
-    taken_names = {s.get("name", "") for s in global_skills} | {
-        a.get("name", "") for a in data.get("agents", []) or []
-    }
-    for a in data.get("agents", []) or []:
-        for local in a.pop("skills", []) or []:
-            agent_name = a.get("name", "?")
-            original = local.get("name", "")
-            promoted_name = original
-            if promoted_name in taken_names:
-                promoted_name = f"{agent_name}--{original}"
-            local["name"] = promoted_name
-            taken_names.add(promoted_name)
-            renamed = (
-                f" (개명: '{promoted_name}')" if promoted_name != original else ""
-            )
-            warnings.append(
-                f"에이전트 '{agent_name}'의 로컬 스킬 '{original}'을(를) 전역 "
-                f"스킬로 승격했습니다{renamed} — 로컬 스킬은 퇴역한 개념입니다."
-            )
-            global_skills.append(local)
+    _promote_local_skills(data, warnings)
 
     # 2)+3) 컴포넌트 공통 — 본문 평탄화 + 경로 변수 치환 + 퇴역 키 드롭
     def _migrate_component(d: dict) -> None:
@@ -878,6 +859,62 @@ def _migrate_v1(data: dict, warnings: list[str]) -> dict:
         _v1_scrub_number(machine)
     _v1_scrub_number(data.get("blackboard"))
     return data
+
+
+def _promote_local_skills(data: dict, warnings: list[str]) -> None:
+    """에이전트 인라인 로컬 스킬 dict를 전역 skills로 승격 (제자리 변형).
+
+    이름 충돌(기존 전역 스킬·에이전트·이미 승격된 스킬)이면 "<agent>--<name>"
+    으로 개명하고, 그마저 충돌하면 "-2", "-3"… 접미를 붙여 반드시 유일한
+    이름을 만든다(중복을 통과시키면 duplicate_component_name 게이트에 걸릴
+    때까지 조용히 숨는다). 개명 시 소유 에이전트 config의 ``skills`` 참조도
+    새 이름으로 치환한다 — 그대로 두면 충돌한 전역 스킬로 조용히 재지정된다.
+
+    승격된 dict는 data["skills"]에 합류해 이후 단계(본문 마이그레이션·머신
+    순회)와 역직렬화에서 전역 스킬과 같은 경로를 탄다 — id가 보존되므로
+    에이전트 FSM 전이의 transfer skill_ref도 그대로 해소된다.
+
+    v1 마이그레이션(_migrate_v1 1-b)과, RF-1b 시점 코드가 남긴 인라인 로컬
+    스킬이 든 format 2 파일 로드 양쪽에서 호출된다.
+    """
+    global_skills = data.get("skills")
+    if not isinstance(global_skills, list):
+        global_skills = []
+        data["skills"] = global_skills
+    taken_names = {s.get("name", "") for s in global_skills} | {
+        a.get("name", "") for a in data.get("agents", []) or []
+    }
+    for a in data.get("agents", []) or []:
+        for local in a.pop("skills", []) or []:
+            agent_name = a.get("name", "?")
+            original = local.get("name", "")
+            promoted_name = original
+            if promoted_name in taken_names:
+                promoted_name = f"{agent_name}--{original}"
+                suffix = 2
+                while promoted_name in taken_names:
+                    promoted_name = f"{agent_name}--{original}-{suffix}"
+                    suffix += 1
+            local["name"] = promoted_name
+            taken_names.add(promoted_name)
+            renamed = (
+                f" (개명: '{promoted_name}')" if promoted_name != original else ""
+            )
+            if promoted_name != original:
+                # 소유 에이전트의 수동 skills 선언이 옛 이름을 가리키면 새
+                # 이름으로 따라간다 (다른 에이전트의 동명 참조는 전역 스킬을
+                # 가리키던 것이므로 건드리지 않는다).
+                cfg = a.get("config")
+                if isinstance(cfg, dict) and isinstance(cfg.get("skills"), list):
+                    cfg["skills"] = [
+                        promoted_name if n == original else n
+                        for n in cfg["skills"]
+                    ]
+            warnings.append(
+                f"에이전트 '{agent_name}'의 로컬 스킬 '{original}'을(를) 전역 "
+                f"스킬로 승격했습니다{renamed} — 로컬 스킬은 퇴역한 개념입니다."
+            )
+            global_skills.append(local)
 
 
 def _v1_all_machines(data: dict):

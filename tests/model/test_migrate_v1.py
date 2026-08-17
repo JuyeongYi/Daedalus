@@ -327,6 +327,74 @@ def test_v1_local_transfer_skill_ref_resolves_after_promotion():
     assert not any("dangling" in w for w in warnings), warnings
 
 
+def test_v1_promoted_rename_updates_owner_config_skills_ref():
+    """개명 시 소유 에이전트 config.skills의 옛 이름 참조가 새 이름으로
+    따라간다 — 그대로 두면 충돌한 전역 스킬로 조용히 재지정된다."""
+    data = _v1_agent_with_local(
+        _v1_local_proc(name="helper"),
+        agent_extra={"config": {"kind": "agent", "skills": ["helper", "other"]}},
+    )
+    data["skills"].append({
+        "kind": "declarative_skill", "id": "g1", "name": "helper", "description": "d",
+    })
+    p = deserialize_project(data)
+    assert p.agents[0].config.skills == ["worker--helper", "other"]
+
+
+def test_v1_promoted_rename_second_level_collision_gets_suffix():
+    """개명 결과 '<agent>--<name>'마저 이미 있으면 '-2' 접미로 유일화한다 —
+    동명 중복을 조용히 통과시키지 않는다."""
+    data = _v1_agent_with_local(_v1_local_proc(name="helper"))
+    data["skills"].append({
+        "kind": "declarative_skill", "id": "g1", "name": "helper", "description": "d",
+    })
+    data["skills"].append({
+        "kind": "declarative_skill", "id": "g2", "name": "worker--helper",
+        "description": "d",
+    })
+    warnings: list[str] = []
+    p = deserialize_project(data, collect_warnings=warnings)
+    names = [s.name for s in p.skills]
+    assert sorted(names) == ["helper", "worker--helper", "worker--helper-2"]
+    assert len(names) == len(set(names))
+    assert any("worker--helper-2" in w for w in warnings), warnings
+
+
+# ─────────────── format 2 파일의 인라인 로컬 스킬 (RF-1b 창) ───────────────
+
+
+def test_v2_agent_inline_local_skills_promoted_not_dropped():
+    """RF-1b 시점 코드가 저장한 format 2 파일은 에이전트 인라인 로컬 스킬을
+    담고 있다 — format 게이트만 보고 건너뛰면 경고 없이 통째로 드롭된다.
+    v1과 동일한 승격(경고 + id 보존)을 태워야 한다."""
+    data = _v1_agent_with_local(_v1_local_proc())
+    data["format"] = FORMAT_VERSION
+    warnings: list[str] = []
+    p = deserialize_project(data, collect_warnings=warnings)
+    assert [s.name for s in p.skills] == ["helper"]
+    assert p.skills[0].id == "ls1"
+    assert p.skills[0].fsm.blackboard.parent is p.blackboard
+    assert any("승격" in w for w in warnings), warnings
+
+
+def test_v2_inline_local_skill_promotion_does_not_mutate_input():
+    data = _v1_agent_with_local(_v1_local_proc())
+    data["format"] = FORMAT_VERSION
+    deserialize_project(data)
+    assert data["agents"][0]["skills"], "입력 dict는 변형되지 않는다 (deepcopy)"
+
+
+def test_v2_without_inline_local_skills_reads_without_copy_path():
+    """평범한 v2 파일(인라인 로컬 스킬 없음)은 승격 경로를 타지 않고 그대로
+    읽힌다 — 경고 0건."""
+    data = _v1_base()
+    data["format"] = FORMAT_VERSION
+    warnings: list[str] = []
+    p = deserialize_project(data, collect_warnings=warnings)
+    assert p.name == data["name"]
+    assert not any("승격" in w for w in warnings)
+
+
 def test_v1_legacy_hook_wrapped_as_command_handler():
     data = _v1_base()
     data["hook_library"] = [{
