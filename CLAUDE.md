@@ -23,8 +23,8 @@ pytest는 `python -m pytest`로 실행한다 (`pytest` 직접 실행 시 command
 **경계 계약 (WP-RF-2, B안 — 물리 이동 없음):** core = `model/` + `compiler/` + `mcp/endpoint.py` + `cli/`.
 core는 Qt 바인딩(PySide6/PyQt6/shiboken6)·GUI 레이어(`daedalus.view`)·MCP SDK(`mcp`)·`uvicorn`을
 임포트할 수 없다 — `tests/test_import_contracts.py`가 **소스 AST 기준**으로 강제한다(런타임 임포트 차단만으로는
-함수 안 지연 임포트를 놓친다. 접두 매칭은 점 단위 — `daedalus.mcp`는 SDK `mcp`와 다르다). `mcp/tools.py`는
-core가 아니라 **GUI 어댑터**(MainWindow·VM·커맨드 스택 결합 표면 — 모듈 docstring 명시, RF-3b 분해의 근거)이고,
+함수 안 지연 임포트를 놓친다. 접두 매칭은 점 단위 — `daedalus.mcp`는 SDK `mcp`와 다르다). `mcp/tools/`는
+core가 아니라 **GUI 어댑터**(MainWindow·VM·커맨드 스택 결합 표면 — 각 믹스인 모듈 docstring 명시)이고,
 `mcp/invoker.py`의 Qt 의존과 `mcp/service.py`의 SDK/uvicorn 의존은 의도된 설계다. view→compiler 방향
 임포트는 정상(컴파일러 패턴의 방향과 일치).
 
@@ -92,8 +92,21 @@ daedalus/
 ├── mcp/              # 앱 내장 MCP 서버 (WP-MCP) — CC와 협업하는 창구
 │   ├── endpoint.py         # 접속 정보(~/.daedalus/mcp-endpoint.json) + 포트 탐색 + .mcp.json 스니펫 (Qt 무관 순수)
 │   ├── invoker.py          # MainThreadInvoker — uvicorn 워커 스레드 → Qt 메인 스레드 마샬링(시그널+Event, 타임아웃)
-│   ├── tools.py            # DaedalusTools — 도구 구현(조회·편집·세션·본문 부분 접근(WP-BO)). 메인 스레드 실행 전제.
-│   │                       #   **GUI 어댑터**(WP-RF-2) — MainWindow·VM·커맨드 스택 결합 표면, core 경계 계약 대상 아님
+│   ├── tools/              # DaedalusTools — 도구 구현(조회·편집·세션·본문 부분 접근(WP-BO)). 메인 스레드 실행 전제.
+│   │   │                   #   **GUI 어댑터**(WP-RF-2) — MainWindow·VM·커맨드 스택 결합 표면, core 경계 계약 대상 아님.
+│   │   │                   #   구 단일 모듈 tools.py를 WP-RF-3b로 도메인별 믹스인 패키지로 분해(이동만·동작 불변)
+│   │   ├── __init__.py     #   재-export 파사드 + DaedalusTools 합성 클래스(믹스인 8종 상속) — 메서드 이름·시그니처·
+│   │   │                   #   docstring 분해 전과 동일(SDK 입력 스키마 원료 — service._wrap의 functools.wraps 경로),
+│   │   │                   #   기존 `from daedalus.mcp.tools import DaedalusTools` 무수정 동작(test_tools_facade.py가 고정)
+│   │   ├── _base.py        #   _BaseTools — 공통 헬퍼(_project/_vm/_find_component/_find_state_vm/_scope/_reject_duplicate_name)
+│   │   ├── query.py        #   조회(get_project/get_selection/get_component/validate_project/compile_preview) + undo 스택(undo/redo/get_history)
+│   │   ├── session.py      #   세션(save_project/open_project/export_package/list_recent_projects)
+│   │   ├── canvas.py       #   캔버스 구조(place/create_state/move/rename/delete/connect/disconnect/set_transition/참조 노드)
+│   │   ├── ports.py        #   포트(set_transfer_on/add_agent_call/remove_agent_call)
+│   │   ├── blackboard.py   #   블랙보드(create_blackboard_class/set_state_access)
+│   │   ├── hooks.py        #   훅 라이브러리(create/update/delete_hook/set_component_hooks/list_hook_events/hook_frontmatter_preview)
+│   │   ├── body.py         #   본문(set_component_body/get_body_outline/get_body_section/set_body_section — WP-BU/WP-BO 경로)
+│   │   └── props.py        #   생성·속성(create_skill/create_agent/rename_component/description/when_to_use/field/project_properties/set_mcp_server_def)
 │   └── service.py          # DaedalusMCPService — MCPServer 구성(_server_factory가 mcp 1.x/2.x 흡수) + uvicorn 데몬 스레드 수명주기
 ├── cli/              # 블랙보드 CLI(daedalus-bb) 자리 (WP-RF-2 신설, 빈 패키지) — C+A 설계: uv tool install로 앱과 함께
 │                     #   설치되고, 컴파일 산출의 블랙보드 지시가 이 CLI를 호출. pyproject [project.scripts] 등록은 CLI 구현
