@@ -58,7 +58,7 @@ from daedalus.model.validation import ValidationError, Validator
 _OUTPUT_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 
 # 스킬/에이전트 body에서 파일 참조 토큰을 스캔하는 패턴 — MarkdownEditor의
-# 드롭 삽입(view/widgets/markdown_editor.py `_file_ref_token`)이 만드는 형식과
+# 드롭 삽입(view/widgets/markdown/providers.py `_file_ref_token`)이 만드는 형식과
 # 동일: 타깃 중립 ``${ROOT}/files/<상대경로>`` (WP-RT).
 #
 # 두 형태를 모두 인식한다:

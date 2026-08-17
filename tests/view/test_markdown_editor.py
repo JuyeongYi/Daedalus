@@ -825,11 +825,30 @@ def test_close_bar_noop_when_hidden(qapp):
 
 
 def test_multiline_selection_prefill_skipped(qapp):
-    """여러 줄 선택(U+2029 포함) 프리필은 생략된다 (리뷰 결함 4)."""
+    """여러 줄 선택(U+2029 포함) 프리필은 생략된다 (리뷰 결함 4).
+
+    이 케이스 하나로는 판정 문자를 고정하지 못한다 — 프리필이 일반 공백도
+    품고 있어서 억제 조건을 U+2029에서 공백으로 잘못 바꿔도 그대로 통과한다
+    (WP-RF-3c 리뷰 실측). 아래 `test_single_line_selection_with_space_is_prefilled`와
+    한 쌍으로 읽어야 U+2029 전용이라는 사실이 고정된다.
+    """
     ed = MarkdownEditor()
     bar = SearchBar(ed)
     bar.open(prefill="line one\u2029line two")
     assert bar._search_edit.text() == ""
+
+
+def test_single_line_selection_with_space_is_prefilled(qapp):
+    """한 줄 선택은 공백이 있어도 프리필된다 — 억제 조건은 U+2029 전용이다.
+
+    위 여러 줄 케이스의 짝. 둘이 함께 있어야 "공백이면 억제"로의 드리프트가
+    잡힌다(그 변경은 여기서 프리필이 비어 실패한다).
+    """
+    ed = MarkdownEditor()
+    ed.setPlainText("hello world here")
+    bar = SearchBar(ed)
+    bar.open(prefill="hello world")
+    assert bar._search_edit.text() == "hello world"
 
 
 # --- 파일 드롭 치환 (WP-FR Part B) ---

@@ -180,7 +180,17 @@ daedalus/
     │                       #   스냅샷, get_tool_candidates와 동일 정책), tags_changed → state.reads/writes 직접 기록(커맨드화 범위 밖) + notify. 프로젝트
     │                       #   캔버스 placement와 에이전트 FSM 상태(agent_editor 그래프 탭에 임베드된 PropertyPanel) 양쪽에서 동일하게 편집 가능.
     ├── viewmodel/          # ProjectViewModel(notify structure/content 채널), StateViewModel (모델↔뷰 중간 계층)
-    └── widgets/            # ComboWidgets, TagInput, PresetPicker, markdown_editor(MarkdownHighlighter+MarkdownEditor — 하이브리드 마크다운 하이라이팅·편집, SectionContentPanel 본문에 통합
+    └── widgets/            # ComboWidgets, TagInput, PresetPicker, markdown/(마크다운 에디터 패키지 — WP-RF-3c로 구 단일 모듈 markdown_editor.py를 분해.
+                            #   markdown_editor.py 모듈 경로는 **재-export 파사드**로 유지되어 기존 임포트가 무수정 동작한다. 구획:
+                            #     syntax.py      — MARKDOWN_PALETTE·폰트 상수·정규식 전부(_FENCE_*_RE/_HEADING_*_RE/_TASK_RE/… )·_make_format·_detect_line_marker.
+                            #                      **모듈 간 공유 상수의 단일 진실**(복제 금지) — model/outline.py의 펜스 정규식이 이 파일을 미러한다.
+                            #     highlighter.py — MarkdownHighlighter(블록 상태 _STATE_NONE/_STATE_CODE_FENCE로 코드 펜스 추적)
+                            #     providers.py   — files/·skill-files/ 루트 provider 4함수 + _file_ref_token/_skill_file_ref_token(드롭 참조 토큰 계산).
+                            #                      provider 전역은 여기가 단일 진실 — 파사드는 함수만 재-export한다(가변 전역 복사는 스테일).
+                            #     slash.py       — SlashItem/SLASH_CATALOG/_SlashMenu (`/` 오버레이)
+                            #     editor.py      — MarkdownEditor + 단축키 판정표(_HEADING_DIGIT_*/_MARKER_SHORTCUT_*)·_heading_digit_from_event/_line_marker_from_event
+                            #     toolbar.py     — MarkdownToolbar / search.py — SearchBar / toc.py — TocEntry+TocPanel
+                            #   MarkdownHighlighter+MarkdownEditor — 하이브리드 마크다운 하이라이팅·편집, SectionContentPanel 본문에 통합
                             #   + `/` 슬래시 메뉴(_SlashMenu — 에디터 viewport 자식 오버레이, Qt.Popup 아님) + MarkdownToolbar(서식 버튼 행 + toc_toggled/preview_toggled 시그널))
                             #   찾기/바꾸기 + TOC(WP-MD3, 마크다운 에디터 마일스톤 마감): SearchBar(QLineEdit 검색·바꾸기 + 이전/다음 + Aa 대소문자
                             #   토글 + 일치 수 라벨 — 평문 부분 문자열 매칭, QTextDocument.find 미사용. search_next/prev는 랩어라운드, replace_current는
@@ -195,7 +205,7 @@ daedalus/
                             #   ALLOWED_TOOLS/TOOLS/DISALLOWED_TOOLS 필드 생성 시 후보를 부착(_wire_tool_candidates) — PATHS/SKILLS/MCP_SERVERS는 제외
                             #   set_blackboard_candidate_provider/get_blackboard_candidates(WP-BB, 동일 provider 패턴)는 State.reads/writes TagInput
                             #   (PropertyPanel)의 "클래스"/"클래스.필드" 후보 — app.py의 set_project가 blackboard_candidate_strings(project)를 등록.
-                            #   파일 드롭 치환(WP-FR): markdown_editor.set_files_root_provider/get_files_root(동일 provider 패턴) — MarkdownEditor.
+                            #   파일 드롭 치환(WP-FR): markdown/providers.py의 set_files_root_provider/get_files_root(동일 provider 패턴) — MarkdownEditor.
                             #   dragEnterEvent/dragMoveEvent/dropEvent가 mime의 file URL 중 현재 files/ 루트 하위인 것만 _file_ref_token으로
                             #   변환해 드롭 지점에 삽입(복수 파일=줄바꿈 구분). files 밖·비파일 mime은 super()로 흘려 기존 QPlainTextEdit
                             #   기본 드롭(텍스트 드래그 등)을 보존한다. app.py의 _setup_docks가 등록.
@@ -331,7 +341,8 @@ daedalus/
   **파생으로만** 만든다. 필요 시 확장 경로: B안(인텍스트 헤딩 속성 `{#id key=val}` — 저장은 여전히 텍스트),
   C안(섹션 일급 객체화 — 섹션 공유 요구가 실재할 때만).
 - `model/outline.py`: `parse_outline(body)`(ATX 헤딩, 코드 펜스 제외 — 펜스 정규식은 view
-  `MarkdownHighlighter`의 `_FENCE_OPEN/CLOSE_RE` **미러**, 어긋나면 TOC와 섹션 집기가 달라진다),
+  `widgets/markdown/syntax.py`의 `_FENCE_OPEN/CLOSE_RE` **미러**, 어긋나면 TOC와 섹션 집기가
+  달라진다. 하이라이터·에디터도 같은 syntax.py 상수를 임포트하므로 정본은 그 한 곳이다),
   `find_section`(제목/`"## 제목"` 레벨 지정/`"부모 > 자식"` 경로 — 0개·복수 매칭은 ValueError, 조용히
   하나를 고르지 않는다), `section_text`/`char_span`/`replacement_text`/`replace_section`. 텍스트 연산은
   전부 `split("\n")` 기반이라 비교체 구간이 바이트 그대로 보존된다. `replace_section`과 QTextCursor
@@ -717,7 +728,7 @@ CC의 구조는 **3단**이다: 이벤트 → 그룹(matcher + 핸들러 목록)
 - **산출 위치:** `<out>/files/A/c.txt` — 구조 그대로 복사.
 - **참조 토큰(확정):** `${CLAUDE_PLUGIN_ROOT}/files/A/c.txt` — CC 공식 문서(plugins-reference §Environment variables)가 스킬/에이전트 본문 어디서나 치환됨을 명시한다(`$PLUGIN_DIR`는 표준에 없음). 경로 구분자는 POSIX(`/`)로 정규화한다.
 - **FilePanel(view/panels/file_panel.py):** `QTreeView` + `QFileSystemModel`(root = `<project_dir>/files`). files/ 부재 시 안내 라벨 + "files 폴더 만들기" 버튼, 새로고침 버튼(루트 생성 직후 재바인딩용). `app.py`가 독 위젯 "파일"로 배치하고 `_sync_files_root`(저장/열기/새 프로젝트 등 `_current_path` 변경 지점마다 호출)로 `set_project_dir`을 갱신한다. 드래그 소스는 `QFileSystemModel` 기본 mime(file URL) 그대로 사용.
-- **드롭 치환(widgets/markdown_editor.py):** `MarkdownEditor.dragEnterEvent`/`dragMoveEvent`/`dropEvent`가 mime의 file URL 중 현재 files/ 루트 하위인 것만 `_file_ref_token`으로 변환해 드롭 지점에 삽입(복수 파일이면 줄바꿈 구분). files 밖 파일·비파일 mime(일반 텍스트 드래그 등)은 토큰 후보가 없으므로 그대로 `super()`로 흘러 기존 QPlainTextEdit 기본 드롭 동작을 보존한다. 루트 주입은 TagInput의 도구/블랙보드 후보와 동일한 provider 패턴 — `set_files_root_provider(callable)`/`get_files_root()`(모듈 전역, app이 `_sync_files_root`에서 `lambda: self._file_panel.files_root()`로 등록).
+- **드롭 치환(widgets/markdown/editor.py + widgets/markdown/providers.py):** `MarkdownEditor.dragEnterEvent`/`dragMoveEvent`/`dropEvent`(editor.py)가 mime의 file URL 중 현재 files/ 루트 하위인 것만 `_file_ref_token`(providers.py)으로 변환해 드롭 지점에 삽입(복수 파일이면 줄바꿈 구분). files 밖 파일·비파일 mime(일반 텍스트 드래그 등)은 토큰 후보가 없으므로 그대로 `super()`로 흘러 기존 QPlainTextEdit 기본 드롭 동작을 보존한다. 루트 주입은 TagInput의 도구/블랙보드 후보와 동일한 provider 패턴 — `set_files_root_provider(callable)`/`get_files_root()`(providers.py의 모듈 전역이 단일 진실. app은 파사드 경로 `widgets.markdown_editor`에서 임포트해 `_sync_files_root`에서 `lambda: self._file_panel.files_root()`로 등록한다 — 전역 자체는 파사드로 복사되지 않으므로 반드시 이 함수들을 거쳐야 한다).
 - **컴파일 복사(compiler/project_compiler.py):** `compile_project(project, out_dir, files_dir=None)` — files_dir가 실존 디렉토리면 게이트 통과 후(에러 시엔 복사도 스킵) `<out>/files/`로 정렬 순회 복사(`_copy_files_tree`, 결정적, 심볼릭 링크 미추종 — 디렉토리는 재귀 안 함·파일은 복사 안 함)한다. 기존 `<out>/files/`는 복사 전 삭제(out 전체가 아니라 files/만 — 스테일 잔존 방지). `CompileResult.copied_files`에 복사된 파일 경로 목록을 담는다. files_dir 생략(None) 시 기존 산출 파일/문자열이 완전히 불변이라 하위 호환이며, 헤드리스 `compile_project` 직접 호출부는 변경 없이 그대로 동작한다. `app._compile_project_dialog`가 `_current_path` 기준 `<project_dir>/files`를 전달.
 - **dangling_file_ref 경고:** `_scan_dangling_file_refs`가 files_dir 지정 시(None이면 스캔 생략) 스킬/에이전트 body에서 `${CLAUDE_PLUGIN_ROOT}/files/<경로>` 패턴을 스캔해 files_dir에 실존하지 않는 참조를 `dangling_file_ref` 경고로 `CompileResult.warnings`에 추가한다(게이트 차단 아님). Validator가 아니라 컴파일러 소관 — 검증기는 파일시스템 무접근 순수성을 유지한다. `is_warning` 판정 일관성을 위해 rule 이름은 `validation.py`의 `WARNING_RULES`에도 등록했다(실제 emit은 project_compiler.py — `tests/model/test_validation_severity.py`의 소스 introspection 완전성 테스트는 `_EXTERNALLY_EMITTED_RULES`로 이 예외를 명시).
 

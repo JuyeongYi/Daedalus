@@ -7,7 +7,8 @@
 파생으로만 만든다(사용자 확정, A안 — 필요 시 인텍스트 속성(B안)으로 확장).
 
 펜스 규칙은 view의 ``MarkdownHighlighter``와 동일해야 한다(아래 정규식은
-``markdown_editor.py``의 ``_FENCE_OPEN_RE``/``_FENCE_CLOSE_RE`` 미러) —
+``view/widgets/markdown/syntax.py``의 ``_FENCE_OPEN_RE``/``_FENCE_CLOSE_RE``
+미러 — 정규식의 단일 진실은 그쪽이다) —
 코드 펜스 안의 ``#`` 줄은 헤딩이 아니다. 두 곳이 어긋나면 TOC에 보이는
 섹션과 여기서 집는 섹션이 달라진다.
 
