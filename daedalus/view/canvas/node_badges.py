@@ -50,27 +50,6 @@ def _differs(config: object, attr: str) -> tuple[bool, Any]:
 
 
 # ---------------------------------------------------------------------------
-# 위임 뱃지 (DelegationDef 전용)
-# ---------------------------------------------------------------------------
-
-def _delegation_badges(ref: object) -> list[tuple[str, str]]:
-    """DelegationDef ref → (이모지, 툴팁) 목록. 비-DelegationDef는 []."""
-    from daedalus.model.plugin.delegation import (
-        CompositionMode,
-        DelegationDef,
-        WaitMode,
-    )
-    if not isinstance(ref, DelegationDef):
-        return []
-    result: list[tuple[str, str]] = []
-    if ref.wait_mode is WaitMode.FIRE_AND_FORGET:
-        result.append(("🔥", "위임 후 즉시 진행 (fire-and-forget)"))
-    if ref.composition is CompositionMode.GUIDED:
-        result.append(("✨", "구성 자동 결정 (guided)"))
-    return result
-
-
-# ---------------------------------------------------------------------------
 # 모델 뱃지 이모지 매핑
 # ---------------------------------------------------------------------------
 from daedalus.model.plugin.enums import ModelType
@@ -114,11 +93,6 @@ def badges_for(component: object) -> list[tuple[str, str]]:
     Returns:
         list of (emoji, tooltip) tuples, empty list if no notable values.
     """
-    # DelegationDef: config 없음 — wait_mode/composition 뱃지만
-    from daedalus.model.plugin.delegation import DelegationDef
-    if isinstance(component, DelegationDef):
-        return _delegation_badges(component)
-
     config = getattr(component, "config", None)
     if config is None:
         return []

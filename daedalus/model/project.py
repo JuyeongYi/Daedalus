@@ -6,7 +6,6 @@ from daedalus.model.fsm.blackboard import Blackboard
 from daedalus.model.fsm.machine import StateMachine
 from daedalus.model.fsm.pseudo import EntryPoint
 from daedalus.model.plugin.agent import AgentDefinition
-from daedalus.model.plugin.delegation import DelegationDef
 from daedalus.model.plugin.enums import BuildTarget
 from daedalus.model.plugin.hook import HookDef
 from daedalus.model.plugin.skill import Skill
@@ -47,7 +46,6 @@ class PluginProject:
     skills: list[Skill] = field(default_factory=list)
     agents: list[AgentDefinition] = field(default_factory=list)
     reference_placements: list[ReferencePlacement] = field(default_factory=list)
-    delegations: list[DelegationDef] = field(default_factory=list)
     # 도구 선반 — BuiltinTool/MCPTool/UserDefinedTool의 단일 진실 (결정 Z: shelf).
     # FSM 전략의 ToolEvaluation/ToolExecution.tool은 여기 Tool.name을 이름으로 참조한다.
     tool_shelf: list[Tool] = field(default_factory=list)
@@ -164,20 +162,15 @@ def remove_component(
     정리 내역 문자열 리스트를 반환한다 (확인 다이얼로그 표시용).
 
     정리 항목:
-    - project.skills / agents / delegations 에서 제거 (identity 비교)
+    - project.skills / agents 에서 제거 (identity 비교)
     - project.graph 에서 해당 skill_ref를 가진 SimpleState + 연결 전이 제거
     - project.graph_layout 에서 해당 state.id 제거
     - project.reference_placements + 각 agent reference_placements에서 skill_name 일치 항목 제거
       (skill_name은 스킬 이름 참조 — component가 스킬일 때만, 동명-다른타입 오삭제 방지)
     - 다른 스킬/에이전트 FSM의 skill_ref(SimpleState/Transition.skill_ref)가 삭제 대상이면 None으로
-    - 위임 정의의 agent_ref가 삭제 대상 에이전트면 None으로
     - 에이전트 삭제 시 로컬 스킬은 소유 구조상 자동 소멸 (별도 목록 없음)
     """
     from daedalus.model.fsm.state import CompositeState, ParallelState, SimpleState
-    from daedalus.model.plugin.delegation import (
-        DynamicWorkflowDef,
-        TeamSpawnDef,
-    )
 
     log: list[str] = []
     comp_name: str = getattr(component, "name", str(component))
@@ -194,7 +187,6 @@ def remove_component(
     removed = (
         _remove_by_identity(project.skills, "스킬")
         or _remove_by_identity(project.agents, "에이전트")
-        or _remove_by_identity(project.delegations, "위임")
     )
     if not removed:
         log.append(f"'{comp_name}' — 목록에서 찾을 수 없음")
@@ -228,7 +220,7 @@ def remove_component(
         log.append(f"캔버스 노드 {len(states_to_remove)}개 + 연결 전이 제거됨")
 
     # --- 3) reference_placements 정리 — skill_name은 스킬 이름 참조이므로
-    #     component가 스킬일 때만 (동명 에이전트/위임 삭제 시 오삭제 방지) ---
+    #     component가 스킬일 때만 (동명 에이전트 삭제 시 오삭제 방지) ---
     if isinstance(component, Skill):
         def _clean_ref_placements(placements: list) -> int:
             before = len(placements)
@@ -272,21 +264,5 @@ def remove_component(
             nullified += _nullify_skill_refs_in_machine(fsm)
     if nullified > 0:
         log.append(f"다른 FSM 내 skill_ref {nullified}개 → None")
-
-    # --- 5) 위임 정의의 agent_ref → None ---
-    agent_ref_count = 0
-    for deleg in project.delegations:
-        if isinstance(deleg, TeamSpawnDef):
-            for spec in deleg.teammates:
-                if spec.agent_ref is component:
-                    spec.agent_ref = None  # type: ignore[assignment]
-                    agent_ref_count += 1
-        elif isinstance(deleg, DynamicWorkflowDef):
-            for phase in deleg.phases:
-                if phase.agent_ref is component:
-                    phase.agent_ref = None
-                    agent_ref_count += 1
-    if agent_ref_count > 0:
-        log.append(f"위임 정의 내 agent_ref {agent_ref_count}개 → None")
 
     return log

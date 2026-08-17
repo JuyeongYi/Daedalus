@@ -15,13 +15,6 @@ from daedalus.model.plugin.config import (
     ReferenceSkillConfig,
     TransferSkillConfig,
 )
-from daedalus.model.plugin.delegation import (
-    AgoraDispatchDef,
-    CompositionMode,
-    DynamicWorkflowDef,
-    TeamSpawnDef,
-    WaitMode,
-)
 from daedalus.model.plugin.enums import (
     EffortLevel,
     ModelType,
@@ -262,57 +255,6 @@ def test_transfer_user_invocable_false_no_badge():
     emojis = _emojis(skill)
     assert "⛔" not in emojis
     assert "↪" not in emojis
-
-
-# ---------------------------------------------------------------------------
-# DelegationDef 뱃지 회귀 (node_badges로 통합 후)
-# ---------------------------------------------------------------------------
-
-def test_delegation_fire_and_forget_badge():
-    """DelegationDef FIRE_AND_FORGET → 🔥."""
-    d = TeamSpawnDef(name="t", description="", wait_mode=WaitMode.FIRE_AND_FORGET)
-    emojis = _emojis(d)
-    assert "🔥" in emojis
-
-
-def test_delegation_guided_badge():
-    """DelegationDef GUIDED → ✨."""
-    d = DynamicWorkflowDef(name="w", description="", composition=CompositionMode.GUIDED)
-    emojis = _emojis(d)
-    assert "✨" in emojis
-
-
-def test_delegation_default_no_badge():
-    """DelegationDef 기본값 → 뱃지 없음."""
-    d = AgoraDispatchDef(name="a", description="")
-    assert badges_for(d) == []
-
-
-def test_delegation_both_badges():
-    """FIRE_AND_FORGET + GUIDED → 🔥 + ✨."""
-    d = TeamSpawnDef(
-        name="x", description="",
-        wait_mode=WaitMode.FIRE_AND_FORGET,
-        composition=CompositionMode.GUIDED,
-    )
-    emojis = _emojis(d)
-    assert "🔥" in emojis
-    assert "✨" in emojis
-
-
-def test_delegation_tooltips_present():
-    """DelegationDef 뱃지는 툴팁 텍스트를 포함한다."""
-    d = TeamSpawnDef(
-        name="x", description="",
-        wait_mode=WaitMode.FIRE_AND_FORGET,
-        composition=CompositionMode.GUIDED,
-    )
-    result = badges_for(d)
-    emojis_in_result = [e for e, _ in result]
-    assert "🔥" in emojis_in_result
-    assert "✨" in emojis_in_result
-    tips = [t for _, t in result]
-    assert all(len(t) > 0 for t in tips), "모든 뱃지에 툴팁이 있어야 한다"
 
 
 # ---------------------------------------------------------------------------

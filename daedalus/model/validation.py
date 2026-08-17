@@ -56,8 +56,6 @@ WARNING_RULES: frozenset[str] = frozenset({
     "missing_required_input",
     "pseudo_state_hooks",
     "completion_event_on_composite",
-    "empty_delegation",
-    "forget_completion_mismatch",
     "duplicate_state_name",
     "unreachable_state",
     "invalid_data_map_source",
@@ -66,9 +64,7 @@ WARNING_RULES: frozenset[str] = frozenset({
     "choice_completeness_missing_else",
     "parallel_join_count",
     # 프로젝트 수준 경고
-    "dangling_teammate_ref",
     "dangling_string_reference",
-    "unregistered_delegation",
     "invalid_component_name",  # 빈 이름 제외는 is_warning에서 처리
     # 도구(tool_shelf) 경고
     "dangling_tool_ref",
@@ -166,7 +162,6 @@ class Validator:
         errors.extend(Validator._check_completion_events(sm, path))
         errors.extend(Validator._check_duplicate_skill_ref(sm.states, path))
         errors.extend(Validator._check_transfer_on_not_empty(sm.states, path))
-        errors.extend(Validator._check_delegation_states(sm, path))
         # 신규 머신 수준 규칙
         errors.extend(Validator._check_transition_endpoints(sm, path))
         errors.extend(Validator._check_duplicate_state_name(sm, path))
@@ -360,7 +355,6 @@ class Validator:
         path: tuple[str, ...] = (),
     ) -> list[ValidationError]:
         from daedalus.model.fsm.state import SimpleState
-        from daedalus.model.plugin.delegation import DelegationDef
         seen: set[int] = set()
         errors: list[ValidationError] = []
         for state in states:
@@ -369,8 +363,6 @@ class Validator:
             ref = state.skill_ref
             if ref is None:
                 continue
-            if isinstance(ref, DelegationDef):
-                continue  # 위임 정의는 복수 배치 허용 (스펙 2절)
             ref_id = id(ref)
             if ref_id in seen:
                 errors.append(ValidationError(
@@ -426,73 +418,6 @@ class Validator:
                         ),
                         source=ref.name,
                         subject=ref,
-                        path=path,
-                    ))
-        return errors
-
-    @staticmethod
-    def _check_delegation_states(
-        sm: StateMachine,
-        path: tuple[str, ...] = (),
-    ) -> list[ValidationError]:
-        """위임 노드의 내용 누락(empty_delegation)과
-        forget 모드 결과 분기(forget_completion_mismatch)를 검사."""
-        from daedalus.model.fsm.state import SimpleState
-        from daedalus.model.plugin.delegation import (
-            AgoraDispatchDef,
-            CompositionMode,
-            DelegationDef,
-            DynamicWorkflowDef,
-            TeamSpawnDef,
-            WaitMode,
-        )
-        errors: list[ValidationError] = []
-        for state in sm.states:
-            if not isinstance(state, SimpleState):
-                continue
-            ref = state.skill_ref
-            if not isinstance(ref, DelegationDef):
-                continue
-            is_guided = ref.composition is CompositionMode.GUIDED
-            empty_msg = None
-            if isinstance(ref, TeamSpawnDef):
-                if not is_guided:
-                    # EXPLICIT 모드에서만 팀원 0명/count<1 경고
-                    if not ref.teammates:
-                        empty_msg = f"'{ref.name}' 팀에 팀원이 없습니다."
-                    elif any(tm.count < 1 for tm in ref.teammates):
-                        empty_msg = f"'{ref.name}' 팀원의 count가 1 미만입니다."
-            elif isinstance(ref, DynamicWorkflowDef):
-                if not is_guided and not ref.objective:
-                    # EXPLICIT 모드에서만 objective 빈 값 경고
-                    empty_msg = f"'{ref.name}' 워크플로의 objective가 비어 있습니다."
-            elif isinstance(ref, AgoraDispatchDef) and not ref.msgtype:
-                # AgoraDispatch msgtype 경고는 모드 무관 유지
-                empty_msg = f"'{ref.name}' 송신의 msgtype이 비어 있습니다."
-            if empty_msg:
-                errors.append(ValidationError(
-                    rule="empty_delegation",
-                    message=empty_msg,
-                    source=state.name,
-                    subject=ref,
-                    path=path,
-                ))
-            if ref.wait_mode is WaitMode.FIRE_AND_FORGET:
-                completion_names = {
-                    t.trigger.name
-                    for t in sm.transitions
-                    if t.source is state and isinstance(t.trigger, CompletionEvent)
-                }
-                if len(completion_names) > 1:
-                    errors.append(ValidationError(
-                        rule="forget_completion_mismatch",
-                        message=(
-                            f"'{state.name}'은 forget 모드인데 결과 분기"
-                            f"({len(completion_names)}개 이벤트)를 시도합니다. "
-                            f"결과가 없으므로 단일 진행만 유효합니다."
-                        ),
-                        source=state.name,
-                        subject=state,
                         path=path,
                     ))
         return errors
@@ -656,7 +581,7 @@ class Validator:
             if isinstance(source, SimpleState) and source.skill_ref is not None:
                 ref = source.skill_ref
                 # ProceduralSkill/AgentDefinition만 출력 이벤트 집합을 정의한다.
-                # DelegationDef·DeclarativeSkill 등은 known_events=None → 검사 스킵.
+                # DeclarativeSkill 등은 known_events=None → 검사 스킵.
                 # 주의: TransferSkill.output_events는 항상 []이므로 향후 분기에
                 # 추가하면 모든 trigger가 오탐이 된다 — 추가 금지.
                 if isinstance(ref, ProceduralSkill):
@@ -854,8 +779,6 @@ class Validator:
             errors.extend(Validator._validate_machine(
                 graph, path=("project",), skip_rules=frozenset({"unreachable_state"}),
             ))
-        errors.extend(Validator._check_dangling_delegation_refs(project))
-        errors.extend(Validator._check_unregistered_delegations(project))
         # 신규 프로젝트 수준 규칙
         errors.extend(Validator._check_duplicate_component_name(project))
         errors.extend(Validator._check_invalid_component_name(project))
@@ -1212,84 +1135,13 @@ class Validator:
         return errors
 
     @staticmethod
-    def _check_dangling_delegation_refs(project) -> list[ValidationError]:
-        """위임 정의의 agent_ref가 프로젝트 agents에 실존하는지 검사."""
-        from daedalus.model.plugin.delegation import DynamicWorkflowDef, TeamSpawnDef
-        known = {id(a) for a in project.agents}
-        errors: list[ValidationError] = []
-        for d in project.delegations:
-            refs: list = []
-            if isinstance(d, TeamSpawnDef):
-                # remove_component가 삭제된 에이전트의 agent_ref를 None으로 만들 수 있다.
-                # None은 dangling이 아니라 '비워진 참조' — empty_delegation 규칙이 다룬다.
-                refs = [tm.agent_ref for tm in d.teammates if tm.agent_ref is not None]
-            elif isinstance(d, DynamicWorkflowDef):
-                refs = [ph.agent_ref for ph in d.phases if ph.agent_ref is not None]
-            for ref in refs:
-                if id(ref) not in known:
-                    errors.append(ValidationError(
-                        rule="dangling_teammate_ref",
-                        message=(
-                            f"위임 '{d.name}'이 프로젝트에 없는 에이전트 "
-                            f"'{ref.name}'을 참조합니다."
-                        ),
-                        source=d.name,
-                        subject=ref,
-                    ))
-        return errors
-
-    @staticmethod
-    def _check_unregistered_delegations(project) -> list[ValidationError]:
-        """unregistered_delegation — 배치된 SimpleState.skill_ref가 DelegationDef인데
-        project.delegations에 미등록이면 경고."""
-        from daedalus.model.fsm.state import SimpleState
-        from daedalus.model.plugin.delegation import DelegationDef
-
-        registered_ids = {id(d) for d in project.delegations}
-        errors: list[ValidationError] = []
-
-        def _scan_machine(sm: StateMachine) -> None:
-            for state in sm.states:
-                if isinstance(state, SimpleState):
-                    ref = state.skill_ref
-                    if isinstance(ref, DelegationDef) and id(ref) not in registered_ids:
-                        errors.append(ValidationError(
-                            rule="unregistered_delegation",
-                            message=(
-                                f"배치된 노드 '{state.name}'의 skill_ref "
-                                f"'{ref.name}'({ref.kind})이 project.delegations에 "
-                                f"등록되어 있지 않습니다."
-                            ),
-                            source=state.name,
-                            subject=ref,
-                        ))
-                elif isinstance(state, CompositeState):
-                    _scan_machine(state.sub_machine)
-                elif isinstance(state, ParallelState):
-                    for region in state.regions:
-                        _scan_machine(region.sub_machine)
-
-        for skill in project.skills:
-            fsm = getattr(skill, "fsm", None)
-            if fsm is not None:
-                _scan_machine(fsm)
-        for agent in project.agents:
-            _scan_machine(agent.fsm)
-        graph = getattr(project, "graph", None)
-        if graph is not None:
-            _scan_machine(graph)
-
-        return errors
-
-    @staticmethod
     def _check_duplicate_component_name(project) -> list[ValidationError]:
-        """duplicate_component_name — skills/agents/delegations 전체에서 동명 컴포넌트 에러."""
+        """duplicate_component_name — skills/agents 전체에서 동명 컴포넌트 에러."""
         seen: dict[str, object] = {}
         errors: list[ValidationError] = []
         all_components = [
             *project.skills,
             *project.agents,
-            *project.delegations,
         ]
         for comp in all_components:
             name = getattr(comp, "name", None)
@@ -1317,7 +1169,6 @@ class Validator:
         all_components = [
             *project.skills,
             *project.agents,
-            *project.delegations,
         ]
         errors: list[ValidationError] = []
         for comp in all_components:

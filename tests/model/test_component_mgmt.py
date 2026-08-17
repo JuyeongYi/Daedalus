@@ -9,7 +9,6 @@ from daedalus.model.fsm.state import SimpleState
 from daedalus.model.fsm.transition import Transition
 from daedalus.model.plugin.agent import AgentDefinition
 from daedalus.model.plugin.config import AgentConfig, ProceduralSkillConfig
-from daedalus.model.plugin.delegation import DynamicWorkflowDef, PhaseSpec, TeamSpawnDef, TeammateSpec
 from daedalus.model.plugin.skill import DeclarativeSkill, ProceduralSkill, ReferenceSkill
 from daedalus.model.project import PluginProject, ReferencePlacement, remove_component, rename_component
 
@@ -204,14 +203,6 @@ class TestRemoveComponent:
         assert agent not in proj.agents
         assert log  # 내역 있음
 
-    def test_removes_delegation_from_project(self):
-        proj = _make_project()
-        deleg = TeamSpawnDef(name="team1", description="")
-        proj.delegations.append(deleg)
-
-        log = remove_component(proj, deleg)
-        assert deleg not in proj.delegations
-
     def test_removes_graph_placement_and_transitions(self):
         proj = _make_project()
         skill = _make_proc("foo")
@@ -282,33 +273,6 @@ class TestRemoveComponent:
         remove_component(proj, target)
         assert inner_state.skill_ref is None
 
-    def test_nullifies_team_spawn_agent_ref(self):
-        proj = _make_project()
-        agent = _make_agent("my-ag")
-        proj.agents.append(agent)
-
-        deleg = TeamSpawnDef(name="team1", description="")
-        spec = TeammateSpec(agent_ref=agent, count=1)
-        deleg.teammates.append(spec)
-        proj.delegations.append(deleg)
-
-        log = remove_component(proj, agent)
-        assert spec.agent_ref is None
-        assert any("agent_ref" in line for line in log)
-
-    def test_nullifies_dynamic_workflow_agent_ref(self):
-        proj = _make_project()
-        agent = _make_agent("my-ag")
-        proj.agents.append(agent)
-
-        deleg = DynamicWorkflowDef(name="wf1", description="")
-        phase = PhaseSpec(title="p1", agent_ref=agent)
-        deleg.phases.append(phase)
-        proj.delegations.append(deleg)
-
-        log = remove_component(proj, agent)
-        assert phase.agent_ref is None
-
     def test_returns_log_list(self):
         proj = _make_project()
         skill = _make_proc("foo")
@@ -333,24 +297,16 @@ class TestRemoveComponent:
         assert len(proj.reference_placements) == 1  # 스킬 "x"의 배치 보존
         assert proj.reference_placements[0].skill_name == "x"
 
-    def test_validate_project_no_crash_after_agent_remove_with_team_spawn(self):
-        """에이전트 삭제로 TeammateSpec.agent_ref가 None이 된 뒤
-        Validator.validate_project가 크래시 없이 동작해야 한다 (리뷰 FAIL 2)."""
+    def test_validate_project_no_crash_after_agent_remove(self):
+        """에이전트 삭제 뒤 Validator.validate_project가 크래시 없이 동작해야 한다."""
         from daedalus.model.validation import Validator
 
         proj = _make_project()
         agent = _make_agent("my-ag")
         proj.agents.append(agent)
 
-        deleg = TeamSpawnDef(name="team1", description="")
-        deleg.teammates.append(TeammateSpec(agent_ref=agent, count=1))
-        proj.delegations.append(deleg)
-
         remove_component(proj, agent)
-        assert deleg.teammates[0].agent_ref is None
+        assert agent not in proj.agents
 
-        # 크래시 없이 검증 결과를 반환해야 한다 (None은 dangling이 아니라
-        # 비워진 참조 — empty_delegation 등 다른 규칙이 다룬다)
         errors = Validator.validate_project(proj)
         assert isinstance(errors, list)
-        assert not any(e.rule == "dangling_teammate_ref" for e in errors)

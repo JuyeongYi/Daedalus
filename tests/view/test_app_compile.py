@@ -77,16 +77,13 @@ def test_compile_action_cancel_noop(qapp, monkeypatch):
 
 def test_compile_action_warnings_show_validation_dock(qapp, tmp_path, monkeypatch):
     """경고 동봉 성공 시에도 검증 dock이 표시된다 (F7 흐름과 관례 일치)."""
-    from daedalus.model.plugin.delegation import AgoraDispatchDef
+    from daedalus.model.plugin.tool import UserDefinedTool
 
     window = MainWindow()
-    # msgtype 빈 값 → empty_delegation 경고 (에러 아님)
-    deleg = AgoraDispatchDef(name="orphan-send", description="d", msgtype="")
-    node = SimpleState(name="orphan-send", skill_ref=deleg)
-    end = SimpleState(name="end")
-    fsm = StateMachine(name="m", initial_state=node, states=[node, end], final_states=[end])
-    skill = _make_skill("warn-skill", fsm=fsm)
-    project = PluginProject(name="p", skills=[skill], delegations=[deleg])
+    # 본문 빈 UserDefinedTool → empty_tool_definition 경고 (에러 아님)
+    tool = UserDefinedTool(name="empty-tool", description="d", body="")
+    skill = _make_skill("warn-skill")
+    project = PluginProject(name="p", skills=[skill], tool_shelf=[tool])
     window.set_project(project)
 
     monkeypatch.setattr(

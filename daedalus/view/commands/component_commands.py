@@ -5,7 +5,7 @@
 없었다(AI 편집만 되돌릴 수 없는 비대칭이 생긴다).
 
 **삭제는 아직 커맨드가 아니다.** ``remove_component``는 그래프 placement·skill_ref
-None화·위임 참조·graph_layout·edge_layout까지 훑어 정리하므로, 되돌리려면 그
+None화·graph_layout·edge_layout까지 훑어 정리하므로, 되돌리려면 그
 정리 내역 전부를 기록·복원해야 한다. 부분적으로만 복원하는 커맨드는 없느니만
 못하므로 WP-CE 본편으로 미룬다.
 """
@@ -22,12 +22,9 @@ if TYPE_CHECKING:
 def _bucket(project: PluginProject, component: object) -> list:
     """컴포넌트가 들어갈 프로젝트 리스트를 고른다."""
     from daedalus.model.plugin.agent import AgentDefinition
-    from daedalus.model.plugin.delegation import DelegationDef
 
     if isinstance(component, AgentDefinition):
         return project.agents
-    if isinstance(component, DelegationDef):
-        return project.delegations
     return project.skills
 
 

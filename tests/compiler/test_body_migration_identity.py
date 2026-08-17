@@ -8,9 +8,12 @@ body로 마이그레이션한 뒤 compile_skill/compile_agent한 산출 텍스�
 
 아래 `_legacy_*` 함수들은 WP-SB 이전 compile_skill/compile_agent의 본문 배출
 방식(`blocks.extend(_render_sections(sections, depth=1))`)을 그대로 재현한
-골든 참조 구현이다 — body와 무관한 나머지 블록(프론트매터/FSM 절차/위임/tool_shelf 등)은
+골든 참조 구현이다 — body와 무관한 나머지 블록(프론트매터/FSM 절차/tool_shelf 등)은
 emit.py의 실제 내부 헬퍼를 그대로 재사용해, 이 테스트가 "본문 배출 방식 전환"
 하나만을 격리해서 검증하도록 한다.
+
+(위임(delegation) 노드 산출은 WP-RF-1a로 퇴역 — 이 픽스처 FSM에는 위임 배치가
+없어 골든 참조에서 해당 블록을 제거해도 산출이 동일하다.)
 """
 from __future__ import annotations
 
@@ -65,15 +68,7 @@ def _legacy_compile_skill(skill, sections: list[Section]) -> str:
     blocks: list[str] = [_emit._frontmatter_block(fm_lines)]
     blocks.extend(_legacy_render_sections(sections, depth=1))
     if isinstance(skill, ProceduralSkill):
-        delegations = _emit._collect_delegations(skill.fsm)
-        if delegations:
-            blocks.append("## 위임 전제 조건")
-            blocks.append(_emit._DELEGATION_PREAMBLE)
         blocks.extend(_emit._describe_fsm(skill.fsm, skill))
-        if delegations:
-            blocks.append("## 위임 지침")
-            for ref in delegations:
-                blocks.extend(_emit._delegation_section(ref))
     return _legacy_join_blocks(blocks)
 
 
@@ -89,13 +84,6 @@ def _legacy_compile_agent(agent: AgentDefinition, sections: list[Section]) -> st
     # 없어 ExitPoint 폴백을 타고, 마이그레이션된 쪽은 승계된 transfer_on을 타서
     # 같은 목록이 나온다 — 본문 마이그레이션 동일성 비교에는 영향이 없다.
     blocks.extend(_emit._agent_outputs_section(agent))
-    delegations = _emit._collect_delegations(agent.fsm)
-    if delegations:
-        blocks.append("## 위임 전제 조건")
-        blocks.append(_emit._DELEGATION_PREAMBLE)
-        blocks.append("## 위임 지침")
-        for ref in delegations:
-            blocks.extend(_emit._delegation_section(ref))
     return _legacy_join_blocks(blocks)
 
 

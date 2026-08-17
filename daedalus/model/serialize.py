@@ -6,8 +6,7 @@
 - **소유 객체는 인라인, 참조는 ID 문자열로 평탄화한다.**
   - 참조 필드: ``Transition.source/target`` (state id), ``SimpleState.skill_ref``
     (component id), ``Transition.skill_ref`` (transfer skill id),
-    ``StateMachine.initial_state/final_states`` (state id),
-    ``Delegation`` 의 ``agent_ref`` (agent id) 등.
+    ``StateMachine.initial_state/final_states`` (state id) 등.
 - 다형성은 각 클래스의 ``kind`` property를 태그로 재사용한다. State 계열은
   kind property가 있으므로 그대로 사용한다.
 - enum 은 ``.value`` 로 직렬화하고 역직렬화 시 enum 타입으로 복원한다.
@@ -80,16 +79,6 @@ from daedalus.model.plugin.config import (
     ReferenceSkillConfig,
     TransferSkillConfig,
 )
-from daedalus.model.plugin.delegation import (
-    AgoraDispatchDef,
-    CompositionMode,
-    DispatchMode,
-    DynamicWorkflowDef,
-    PhaseSpec,
-    TeamSpawnDef,
-    TeammateSpec,
-    WaitMode,
-)
 from daedalus.model.plugin.enums import (
     AgentColor,
     AgentIsolation,
@@ -150,7 +139,6 @@ def serialize_project(project: PluginProject) -> dict:
         "reference_placements": [
             _ser_ref_placement(r) for r in project.reference_placements
         ],
-        "delegations": [_ser_delegation(d) for d in project.delegations],
         "tool_shelf": [_ser_tool(t) for t in project.tool_shelf],
         "hook_library": [_ser_hook(h) for h in project.hook_library],
         "blackboard": _ser_blackboard(project.blackboard),
@@ -641,45 +629,6 @@ def _ser_ref_placement(r: ReferencePlacement) -> dict:
     }
 
 
-def _ser_delegation(d: Any) -> dict:
-    out: dict[str, Any] = {
-        "kind": d.kind,
-        "id": d.id,
-        "name": d.name,
-        "description": d.description,
-        "wait_mode": d.wait_mode.value,
-        "composition": d.composition.value,
-        "guidance": d.guidance,
-    }
-    if isinstance(d, TeamSpawnDef):
-        out["teammates"] = [
-            {
-                "agent_ref": tm.agent_ref.id if tm.agent_ref is not None else None,
-                "count": tm.count,
-                "role_note": tm.role_note,
-            }
-            for tm in d.teammates
-        ]
-    elif isinstance(d, DynamicWorkflowDef):
-        out["objective"] = d.objective
-        out["phases"] = [
-            {
-                "title": p.title,
-                "detail": p.detail,
-                "agent_ref": p.agent_ref.id if p.agent_ref is not None else None,
-            }
-            for p in d.phases
-        ]
-    elif isinstance(d, AgoraDispatchDef):
-        out.update(
-            mode=d.mode.value,
-            target=d.target,
-            msgtype=d.msgtype,
-            payload_note=d.payload_note,
-        )
-    return out
-
-
 # ═══════════════════════ 역직렬화 (deserialize) ═══════════════════════
 
 
@@ -753,6 +702,19 @@ def deserialize_project(
     else:
         graph = _make_project_graph()
 
+    # 위임(delegation)은 퇴역한 개념이다(WP-RF-1a) — 구버전 파일에 위임 정의가
+    # 있으면 경고 후 드롭한다. 위임을 가리키던 placement skill_ref는 해당 id가
+    # 레지스트리에 없으므로 pass2에서 dangling 경고와 함께 None으로 정리된다.
+    dropped_delegations = data.get("delegations", [])
+    if dropped_delegations:
+        names = ", ".join(
+            f"'{d.get('name', '?')}'" for d in dropped_delegations
+        )
+        reg.warnings.append(
+            f"위임 정의 {len(dropped_delegations)}건({names})은 퇴역한 개념이라 "
+            f"드롭했습니다 — 위임 지시는 스킬 본문에 서술하세요."
+        )
+
     project = PluginProject(
         name=data.get("name", ""),
         description=data.get("description", ""),
@@ -762,7 +724,6 @@ def deserialize_project(
         reference_placements=[
             _deser_ref_placement(r) for r in data.get("reference_placements", [])
         ],
-        delegations=[_deser_delegation(d, reg) for d in data.get("delegations", [])],
         tool_shelf=[_deser_tool(t) for t in data.get("tool_shelf", [])],
         hook_library=[_deser_hook(h) for h in data.get("hook_library", [])],
         blackboard=blackboard,
@@ -1320,62 +1281,3 @@ def _deser_ref_placement(d: dict) -> ReferencePlacement:
     )
 
 
-def _deser_delegation(d: dict, reg: _Registry) -> Any:
-    kind = d.get("kind")
-    name = d.get("name", "")
-    desc = d.get("description", "")
-    did = d.get("id") or _new_id()
-    wait = _to_enum(WaitMode, d.get("wait_mode"), WaitMode.WAIT)
-    composition = _to_enum(CompositionMode, d.get("composition"), CompositionMode.EXPLICIT)
-    guidance = d.get("guidance", "")
-
-    deleg: Any
-    if kind == "team_spawn":
-        deleg = TeamSpawnDef(name=name, description=desc, id=did, wait_mode=wait,
-                             composition=composition, guidance=guidance)
-        for tm in d.get("teammates", []):
-            spec = TeammateSpec(
-                agent_ref=None,  # type: ignore[arg-type]
-                count=tm.get("count", 1),
-                role_note=tm.get("role_note", ""),
-            )
-            deleg.teammates.append(spec)
-            ref_id = tm.get("agent_ref")
-            if ref_id is not None:
-                reg.add_pending(
-                    lambda spec=spec, ref_id=ref_id: setattr(
-                        spec, "agent_ref", reg.resolve_component(ref_id)
-                    )
-                )
-    elif kind == "dynamic_workflow":
-        deleg = DynamicWorkflowDef(
-            name=name, description=desc, id=did, wait_mode=wait,
-            composition=composition, guidance=guidance,
-            objective=d.get("objective", ""),
-        )
-        for p in d.get("phases", []):
-            spec = PhaseSpec(title=p.get("title", ""), detail=p.get("detail", ""))
-            deleg.phases.append(spec)
-            ref_id = p.get("agent_ref")
-            if ref_id is not None:
-                reg.add_pending(
-                    lambda spec=spec, ref_id=ref_id: setattr(
-                        spec, "agent_ref", reg.resolve_component(ref_id)
-                    )
-                )
-    elif kind == "agora_dispatch":
-        deleg = AgoraDispatchDef(
-            name=name, description=desc, id=did, wait_mode=wait,
-            composition=composition, guidance=guidance,
-            mode=_to_enum(DispatchMode, d.get("mode"), DispatchMode.DISPATCH),
-            target=d.get("target", ""),
-            msgtype=d.get("msgtype", ""),
-            payload_note=d.get("payload_note", ""),
-        )
-    else:
-        deleg = TeamSpawnDef(name=name, description=desc, id=did, wait_mode=wait,
-                             composition=composition, guidance=guidance)
-    # pass2 참조 해소용 등록 — placement의 skill_ref가 위임을 가리킬 수 있다.
-    # (미등록 시 위임 배치가 저장/로드에서 전부 dangling → None으로 유실된다.)
-    reg.components[did] = deleg
-    return deleg

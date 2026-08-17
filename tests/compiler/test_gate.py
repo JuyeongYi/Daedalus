@@ -7,7 +7,7 @@ from daedalus.model.fsm.machine import StateMachine
 from daedalus.model.fsm.state import SimpleState
 from daedalus.model.project import PluginProject
 
-from tests.compiler.builders import make_agora_dispatch, make_delegation_skill, make_procedural
+from tests.compiler.builders import make_procedural
 
 
 def test_error_project_rejected_no_files(tmp_path):
@@ -28,17 +28,17 @@ def test_error_project_rejected_no_files(tmp_path):
 
 
 def test_warning_only_project_compiles_and_includes_warnings(tmp_path):
-    # AgoraDispatch with msgtype empty → empty_delegation 경고. msgtype 채워 다른 경고만 유도.
-    # 간단히: 정상 procedural 스킬 1개 + 경고 유발 위임 노드(미등록 delegation)
-    from daedalus.model.plugin.delegation import AgoraDispatchDef
+    # 정상 procedural 스킬 1개 + 경고 유발 도구(본문 빈 UserDefinedTool →
+    # empty_tool_definition 경고) — 경고만 있는 프로젝트는 컴파일을 통과한다.
+    from daedalus.model.plugin.tool import UserDefinedTool
 
-    deleg = AgoraDispatchDef(name="orphan-send", description="d", msgtype="")  # msgtype 빈값 = 경고
-    skill = make_delegation_skill(deleg, name="warn-skill")
-    project = PluginProject(name="p", skills=[skill], delegations=[deleg])
+    tool = UserDefinedTool(name="empty-tool", description="d", body="")  # body 빈값 = 경고
+    skill = make_procedural(name="warn-skill")
+    project = PluginProject(name="p", skills=[skill], tool_shelf=[tool])
 
     result = compile_project(project, tmp_path)
     assert result.ok, [e.message for e in result.errors]
-    assert result.warnings  # empty_delegation 경고 동봉
+    assert result.warnings  # empty_tool_definition 경고 동봉
     assert result.written
     assert (tmp_path / "skills" / "warn-skill" / "SKILL.md").exists()
 

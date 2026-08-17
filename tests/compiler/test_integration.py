@@ -1,5 +1,5 @@
 # tests/compiler/test_integration.py
-"""통합 — 대표 프로젝트(스킬 2 + 에이전트 1 + 위임 1 + tool 1) 컴파일."""
+"""통합 — 대표 프로젝트(스킬 2 + 에이전트 1 + tool 1) 컴파일."""
 from __future__ import annotations
 
 from daedalus.compiler import compile_project
@@ -18,16 +18,14 @@ from tests.compiler.builders import (
     make_agent,
     make_declarative,
     make_procedural,
-    make_team_spawn,
 )
 
 
 def _representative_project():
     teammate = make_agent("helper-agent")
-    deleg = make_team_spawn("spawn-helpers", teammate)
 
-    # 위임 노드를 가진 procedural 스킬
-    node = SimpleState(name="spawn-helpers", skill_ref=deleg)
+    # 에이전트에 위임하는 노드를 가진 procedural 스킬
+    node = SimpleState(name="delegate-helpers", skill_ref=teammate)
     end = SimpleState(name="finish")
     sm = StateMachine(
         name="main_fsm", initial_state=node, states=[node, end], final_states=[end]
@@ -52,7 +50,6 @@ def _representative_project():
         name="demo",
         skills=[main_skill, kb],
         agents=[teammate],
-        delegations=[deleg],
         tool_shelf=[tool],
     )
 
@@ -73,7 +70,6 @@ def test_integration_core_content(tmp_path):
 
     main = (tmp_path / "skills" / "main-skill" / "SKILL.md").read_text(encoding="utf-8")
     assert "name: main-skill" in main
-    assert "## 위임 지침" in main
     assert "helper-agent" in main
     # tool_shelf 참조 단락
     assert "## 참조: 도구 선반" in main
