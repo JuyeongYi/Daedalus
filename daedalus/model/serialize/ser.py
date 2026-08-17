@@ -147,7 +147,7 @@ def _ser_tool(t: Tool) -> dict:
     if t.kind not in _KNOWN_TOOL_KINDS:
         raise TypeError(
             f"직렬화 미지원 Tool kind: {t.kind!r} ({type(t).__name__}) — "
-            "serialize.py의 _KNOWN_TOOL_KINDS/_ser_tool/_deser_tool에 분기를 추가하라"
+            "ser.py의 _KNOWN_TOOL_KINDS/_ser_tool과 deser.py의 _deser_tool에 분기를 추가하라"
         )
     if isinstance(t, BuiltinTool):
         d["allowed_arguments_note"] = t.allowed_arguments_note
@@ -298,7 +298,7 @@ def _ser_state(s: State) -> dict:
     if d["kind"] not in _KNOWN_STATE_KINDS:
         raise TypeError(
             f"직렬화 미지원 State kind: {d['kind']!r} ({type(s).__name__}) — "
-            "serialize.py의 _KNOWN_STATE_KINDS/_ser_state/_deser_state에 분기를 추가하라"
+            "ser.py의 _KNOWN_STATE_KINDS/_ser_state와 deser.py의 _deser_state에 분기를 추가하라"
         )
     if isinstance(s, SimpleState):
         # skill_ref 는 component id 참조로 평탄화
