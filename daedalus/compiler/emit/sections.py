@@ -355,6 +355,13 @@ def _blackboard_section(project, component=None) -> list[str]:
         reads, writes = _component_access_union(component, project)
     union = reads | writes
 
+    cli_lines = (
+        "`command -v daedalus-bb`로 CLI가 있는지 확인하라. 있으면 파일을 직접 만지지 말고\n"
+        "CLI로 읽고 써라 — 쓰기 전 스키마 검증이 내장되어 있다(`daedalus-bb read` / `daedalus-bb write` /\n"
+        "`daedalus-bb validate` — write는 `--set 필드=값`, 컬렉션 필드는 `--append`/`--remove`). CLI가\n"
+        "없으면 아래 규칙대로 직접 편집하라. 설치: `uv tool install daedalus`."
+    )
+
     rule_lines = (
         "규칙:\n"
         "- 파일을 수정하기 전에 반드시 현재 내용을 읽어라 (읽기-수정-쓰기).\n"
@@ -388,6 +395,7 @@ def _blackboard_section(project, component=None) -> list[str]:
             ),
             "\n".join(intro_lines),
             "\n".join(lines),
+            cli_lines,
             rule_lines,
         ]
 
@@ -403,6 +411,7 @@ def _blackboard_section(project, component=None) -> list[str]:
             "유지한다. 각 파일의 구조는 플러그인의 `schemas/schemas.json`에 정의된 스키마를 따른다."
         ),
         "\n".join(lines),
+        cli_lines,
         rule_lines,
     ]
 

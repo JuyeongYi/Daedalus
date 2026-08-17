@@ -1009,6 +1009,14 @@ dataclass(값 동등성, unhashable) 유지 — 컬렉션 멤버십에는 list/`
     placement의 reads/writes 합집합(`_component_access_union`)이 비어있지 않으면, "이 스킬/에이전트가 읽는
     것/쓰는 것" 문구를 추가하고 파일 목록을 관련 클래스만으로 좁힌다. 합집합이 비면(또는 component 미지정)
     기존 전 클래스 일반 안내 그대로 — 하위 호환, 접근 선언 0개 프로젝트의 산출 문자열은 불변이다.
+    **CLI 우선 지시 (WP-BB2):** 단락이 배출될 때(정의 1개 이상) 기존 3줄 규칙(읽기-수정-쓰기/없으면
+    생성/required) 바로 앞에 `command -v daedalus-bb`로 CLI 존재를 확인해 있으면 파일을 직접 만지지
+    말고 CLI(`daedalus-bb read`/`write`/`validate` — write는 `--set 필드=값`, 컬렉션은
+    `--append`/`--remove`)로 읽고 쓰라는 지시 + `uv tool install daedalus` 설치 안내가 합류한다
+    (CLI가 없으면 기존 3줄 규칙대로 직접 편집). 명령·옵션 이름은
+    `tests/compiler/test_blackboard_section.py`가 `daedalus/cli/blackboard.py`의 실제 파서와
+    문자열 일치로 고정한다(cli는 model/emit을 임포트할 수 없어 상수 공유 대신 테스트로 드리프트를
+    막는다). 정의 0개 프로젝트는 단락 자체가 없으므로 산출 완전 불변.
 11. **요구 환경 자동 언급 (WP-TM)**: `_mcp_servers_from_tools(tools)`가 도구 문자열 목록에서 `mcp__<server>__` 접두의 서버 이름 집합을 추출한다(이름순 정렬 — 결정적). 스킬은 `skill.config.allowed_tools`를 스캔해 서버가 있으면(local 여부·project 인수 여부와 무관) "다음 단계" 단락 앞에 신규 "## 요구 환경" 단락(`_mcp_requirement_section_skill`)을 배출한다(없으면 단락 생략). 에이전트는 `config.tools`에서 추출한 서버를 기존 SETTINGS "요구 환경" 단락(`_settings_note_agent`, 7번 항목)의 `mcp_servers` 선언과 합쳐 하나의 "MCP 서버 연결" 줄로 병합한다(중복 없음).
 12. **작업 재개 (WP-RS)** — 저장 단위는 **플러그인 FSM(프로젝트 그래프 배치)의 위치**다(스킬 내부 FSM 상태는 다루지 않음 — 사용자 확정 설계). 규약 파일 `state/__progress__.json`(`plugin`/`current`/`completed`/`note`/`prev`/`updated` — `prev`는 WP-IC에서 추가된 직전 출처 스킬 이름 필드).
     - **재개 프리앰블**: 프로젝트 그래프에 배치된 `ProceduralSkill`/`DeclarativeSkill`(미배치·에이전트 .md 제외)에 한해, `_resume_preamble_section`이 프론트매터 직후·본문 앞에 "## 작업 재개" 단락(현재 스킬 이름 삽입 + 파일 없을 때 생성 규칙, JSON 예시에 `"prev": ""` 포함)을 배출한다. Declarative 포함 이유: 배치되면 "다음 단계"를 받으므로 갱신 규칙이 빠지면 진행 사슬이 끊긴다. placement 판정은 "다음 단계"(6-b번 항목)와 동일한 `_graph_placements`(skill_ref identity) 로직을 공유한다.
