@@ -977,40 +977,17 @@ class MainWindow(QMainWindow):
         if reply != QMessageBox.StandardButton.Yes:
             return
 
-        # 에이전트 삭제 시 로컬 스킬 탭도 닫아야 함 — 미리 수집
-        local_skill_ids: set[str] = set()
-        local_skills: list[object] = []
-        if isinstance(component, AgentDefinition):
-            fsm = getattr(component, "fsm", None)
-            if fsm is not None:
-                from daedalus.model.fsm.state import SimpleState
-                for state in fsm.states:
-                    if isinstance(state, SimpleState) and state.skill_ref is not None:
-                        sid = getattr(state.skill_ref, "id", None)
-                        if sid is not None:
-                            local_skill_ids.add(sid)
-                            local_skills.append(state.skill_ref)
-
-        # 본문 문서 캐시 정리 — 삭제된 컴포넌트(+로컬 스킬)의 undo 이력을
-        # 들고 있을 이유가 없다 (WP-BU).
+        # 본문 문서 캐시 정리 — 삭제된 컴포넌트의 undo 이력을 들고 있을
+        # 이유가 없다 (WP-BU).
         from daedalus.view.editors import body_documents
-        docs = body_documents.registry()
-        docs.discard(component)
-        for local in local_skills:
-            docs.discard(local)
+        body_documents.registry().discard(component)
 
         # 모델 정리
         remove_component(self._project, component)
 
-        # view 정리 1) 열린 탭 닫기 (해당 컴포넌트 탭 + 로컬 스킬 탭)
-        ids_to_close: set[str] = set()
-        if comp_id is not None:
-            ids_to_close.add(comp_id)
-        ids_to_close.update(local_skill_ids)
-
-        for cid in list(ids_to_close):
-            if cid in self._open_tabs:
-                self._close_tab(self._open_tabs[cid])
+        # view 정리 1) 열린 탭 닫기
+        if comp_id is not None and comp_id in self._open_tabs:
+            self._close_tab(self._open_tabs[comp_id])
 
         # view 정리 2) 캔버스 + 레지스트리 + notify
         self._load_project_graph()

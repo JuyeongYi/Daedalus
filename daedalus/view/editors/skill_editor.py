@@ -786,34 +786,29 @@ class SkillEditor(QWidget):
         self,
         component: ProceduralSkill | DeclarativeSkill | TransferSkill | ReferenceSkill | AgentDefinition,
         on_notify_fn: Callable[[], None] | None = None,
-        show_call_agents: bool = True,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         from daedalus.view.editors.component_editor import ComponentEditor
+        from daedalus.view.panels.file_panel import SkillFilesPanel
 
         right_widgets: list[QWidget] = []
         # 입력 경로 편집 패널은 없다(WP-IP) — (출처, 트리거)가 경로를 특정하고,
         # 무엇을 넘기는지는 출처가 자기 출력 포트에 적는다.
         if isinstance(component, ProceduralSkill):
             right_widgets.append(_TransferOnPanel(component.transfer_on, title="⇄ Transfer On"))
-            if show_call_agents:
-                right_widgets.append(
-                    _TransferOnPanel(component.call_agents, title="🤖 Agent Call", default_color="#8a4a4a", multiline_desc=True)
-                )
-        # 스킬별 동봉 파일 (WP-SF) — 전역 스킬만(로컬은 산출 디렉토리명이
-        # '<agent>--<skill>'이라 이름 매칭이 다르다). 전역 파일 독과 **동시에**
-        # 떠서, 이 스킬 전용 파일을 본문으로 바로 드래그할 수 있다.
-        if show_call_agents:
-            from daedalus.view.panels.file_panel import SkillFilesPanel
-
-            right_widgets.append(SkillFilesPanel(component))
+            right_widgets.append(
+                _TransferOnPanel(component.call_agents, title="🤖 Agent Call", default_color="#8a4a4a", multiline_desc=True)
+            )
+        # 스킬별 동봉 파일 (WP-SF) — 전역 파일 독과 **동시에** 떠서, 이 스킬
+        # 전용 파일을 본문으로 바로 드래그할 수 있다.
+        right_widgets.append(SkillFilesPanel(component))
 
         # Determine skill_kind for field matrix
         if isinstance(component, ProceduralSkill):
-            kind = "local_procedural" if not show_call_agents else "procedural"
+            kind = "procedural"
         elif isinstance(component, TransferSkill):
-            kind = "local_transfer" if not show_call_agents else "transfer"
+            kind = "transfer"
         elif isinstance(component, DeclarativeSkill):
             kind = "declarative"
         elif isinstance(component, ReferenceSkill):

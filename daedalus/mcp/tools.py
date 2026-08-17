@@ -46,18 +46,9 @@ class DaedalusTools:
         project = self._project
         return [*project.skills, *project.agents]
 
-    def _find_component(self, name: str, agent: str = "") -> Any:
-        """이름으로 컴포넌트를 찾는다.
-
-        agent를 주면 그 에이전트의 **로컬 스킬**을 먼저 뒤진다 — 로컬 스킬은
-        project.skills에 없고 agent.skills에만 있다.
-        """
+    def _find_component(self, name: str) -> Any:
+        """이름으로 컴포넌트(전역 스킬/에이전트)를 찾는다."""
         pool = list(self._components())
-        if agent:
-            for comp in self._components():
-                if getattr(comp, "name", None) == agent:
-                    pool = list(getattr(comp, "skills", []) or []) + pool
-                    break
         for comp in pool:
             if getattr(comp, "name", None) == name:
                 return comp
@@ -74,19 +65,12 @@ class DaedalusTools:
 
     # --- 편집 범위 ---
 
-    def _scope(self, agent: str = "") -> tuple[Any, Any]:
-        """편집 대상 (뷰모델, 백킹 StateMachine).
+    def _scope(self) -> tuple[Any, Any]:
+        """편집 대상 (뷰모델, 백킹 StateMachine) — 항상 프로젝트 캔버스.
 
         WP-AF — 에이전트 내부 FSM은 퇴역했다(절차는 본문 산문, 결과 분기는
-        transfer_on). agent를 지정한 캔버스 편집은 거부한다 — 조용히 프로젝트
-        캔버스를 만지면 잘못된 곳을 고치게 된다.
+        transfer_on). 캔버스 편집의 대상은 프로젝트 그래프 하나뿐이다.
         """
-        if agent:
-            raise ValueError(
-                "에이전트 내부 FSM은 퇴역했습니다 — 절차는 set_component_body로 "
-                "본문에, 결과 분기는 set_transfer_on(에이전트 이름)으로 출력 "
-                "포트에 서술하세요."
-            )
         return self._vm, self._project.graph
 
     @staticmethod
@@ -241,12 +225,9 @@ class DaedalusTools:
             "empty": not (nodes or edges or refs),
         }
 
-    def get_component(self, name: str, agent: str = "") -> dict[str, Any]:
-        """스킬/에이전트 하나의 상세 — 본문, 설정, 자체 FSM 요약.
-
-        agent를 지정하면 그 에이전트의 로컬 스킬도 조회 대상에 포함된다.
-        """
-        comp = self._find_component(name, agent=agent)
+    def get_component(self, name: str) -> dict[str, Any]:
+        """스킬/에이전트 하나의 상세 — 본문, 설정, 자체 FSM 요약."""
+        comp = self._find_component(name)
         config = getattr(comp, "config", None)
         body = str(getattr(comp, "body", "") or "")
         truncated = len(body) > _MAX_BODY_PREVIEW
@@ -305,21 +286,17 @@ class DaedalusTools:
             ],
         }
 
-    def compile_preview(self, name: str, agent: str = "") -> dict[str, Any]:
-        """컴포넌트가 어떤 SKILL.md / 에이전트 .md로 컴파일되는지 — 파일은 쓰지 않는다.
-
-        agent를 지정하면 그 에이전트의 로컬 스킬을 미리 본다(로컬 스킬은
-        `skills/<agent>--<skill>/SKILL.md`로 나가며 산출 문구가 조금 다르다).
-        """
+    def compile_preview(self, name: str) -> dict[str, Any]:
+        """컴포넌트가 어떤 SKILL.md / 에이전트 .md로 컴파일되는지 — 파일은 쓰지 않는다."""
         from daedalus.compiler.emit import compile_agent, compile_skill
         from daedalus.model.plugin.agent import AgentDefinition
 
-        comp = self._find_component(name, agent=agent)
+        comp = self._find_component(name)
         project = self._project
         if isinstance(comp, AgentDefinition):
             text = compile_agent(comp, project=project)
         else:
-            text = compile_skill(comp, local=bool(agent), project=project)
+            text = compile_skill(comp, project=project)
         return {"name": comp.name, "kind": self._component_kind(comp), "text": text}
 
     # ------------------------------------------------------------------
@@ -331,13 +308,15 @@ class DaedalusTools:
             raise ValueError(f"'{name}' 이름의 컴포넌트가 이미 있습니다.")
 
     def create_skill(
-        self, name: str, kind: str = "procedural", description: str = "", agent: str = ""
+        self, name: str, kind: str = "procedural", description: str = ""
     ) -> dict[str, Any]:
         """스킬을 만든다.
 
         kind: procedural(작업 지침·자체 FSM) / declarative(배경 지식) /
         transfer(전이 시 실행되는 보조 지침) / reference(참조 문서).
-        agent를 지정하면 그 에이전트의 **로컬 스킬**로 만든다(procedural/transfer만).
+        에이전트에게 줄 지식도 전역 스킬로 만든다 — 전역 declarative와 에이전트
+        노드에 링크된 reference는 컴파일 시 에이전트 skills 프론트매터에 자동
+        합류된다(로컬 스킬은 퇴역, WP-RF-1c).
         """
         from daedalus.model.plugin.skill import (
             DeclarativeSkill,
@@ -345,9 +324,6 @@ class DaedalusTools:
             ReferenceSkill,
             TransferSkill,
         )
-
-        if agent:
-            return self._create_local_skill(name, kind, description, agent)
 
         self._reject_duplicate_name(name)
         win = self._window
@@ -367,21 +343,6 @@ class DaedalusTools:
             )
         win._register_component(factories[kind]())
         return {"created": name, "kind": kind}
-
-    def _create_local_skill(
-        self, name: str, kind: str, description: str, agent: str
-    ) -> dict[str, Any]:
-        """로컬 스킬 생성 — 퇴역 (WP-AF).
-
-        내부 FSM과 함께 사라졌다. 에이전트에게 줄 지식은 전역 스킬로 만들면
-        컴파일이 skills 프론트매터에 자동 합류시킨다(전역 declarative 전부 +
-        링크된 reference). 기존 파일의 로컬 스킬은 계속 읽히고 컴파일된다.
-        """
-        raise ValueError(
-            "로컬 스킬은 퇴역했습니다 — 전역 스킬로 만드세요. 전역 declarative와 "
-            "에이전트 노드에 링크된 reference는 컴파일 시 에이전트 skills "
-            "프론트매터에 자동 합류됩니다."
-        )
 
     def create_agent(self, name: str, description: str = "") -> dict[str, Any]:
         """에이전트를 만든다 — 별도 컨텍스트의 작업자.
@@ -412,12 +373,12 @@ class DaedalusTools:
         return {"renamed": name, "to": new_name}
 
     def set_component_description(
-        self, name: str, description: str, agent: str = ""
+        self, name: str, description: str
     ) -> dict[str, Any]:
         """컴포넌트 설명을 바꾼다(프론트매터 description)."""
         from daedalus.view.commands.attr_commands import SetAttrCmd
 
-        comp = self._find_component(name, agent=agent)
+        comp = self._find_component(name)
         old = getattr(comp, "description", "")
         self._vm.execute(
             SetAttrCmd(
@@ -432,7 +393,7 @@ class DaedalusTools:
         return {"component": name, "old": old, "new": description}
 
     def set_component_when_to_use(
-        self, name: str, when_to_use: str, agent: str = ""
+        self, name: str, when_to_use: str
     ) -> dict[str, Any]:
         """컴포넌트의 when_to_use를 바꾼다.
 
@@ -442,7 +403,7 @@ class DaedalusTools:
         """
         from daedalus.view.commands.attr_commands import SetAttrCmd
 
-        comp = self._find_component(name, agent=agent)
+        comp = self._find_component(name)
         old = getattr(comp, "when_to_use", "")
         self._vm.execute(
             SetAttrCmd(
@@ -576,18 +537,15 @@ class DaedalusTools:
         return {"server": name, "action": action, "old": old, "new": updated.get(name)}
 
     def place_component(
-        self, name: str, x: float = 0.0, y: float = 0.0, agent: str = ""
+        self, name: str, x: float = 0.0, y: float = 0.0
     ) -> dict[str, Any]:
-        """스킬/에이전트를 캔버스에 배치한다.
-
-        agent를 지정하면 그 에이전트의 내부 FSM에 배치한다(로컬 스킬도 이때 찾는다).
-        """
+        """스킬/에이전트를 캔버스에 배치한다."""
         from daedalus.model.fsm.state import SimpleState
         from daedalus.view.commands.state_commands import CreateStateCmd
         from daedalus.view.viewmodel.state_vm import StateViewModel
 
-        vm, fsm = self._scope(agent)
-        comp = self._find_component(name, agent=agent)
+        vm, fsm = self._scope()
+        comp = self._find_component(name)
         state = SimpleState(name=comp.name, skill_ref=comp)
         svm = StateViewModel(model=state, x=float(x), y=float(y))
         vm.execute(CreateStateCmd(vm, svm, fsm=fsm))
@@ -596,49 +554,48 @@ class DaedalusTools:
             "node": state.name,
             "x": float(x),
             "y": float(y),
-            "scope": agent or "project",
         }
 
     def create_state(
-        self, name: str, x: float = 0.0, y: float = 0.0, agent: str = ""
+        self, name: str, x: float = 0.0, y: float = 0.0
     ) -> dict[str, Any]:
         """컴포넌트가 붙지 않은 빈 상태 노드를 만든다."""
         from daedalus.model.fsm.state import SimpleState
         from daedalus.view.commands.state_commands import CreateStateCmd
         from daedalus.view.viewmodel.state_vm import StateViewModel
 
-        vm, fsm = self._scope(agent)
+        vm, fsm = self._scope()
         state = SimpleState(name=name)
         svm = StateViewModel(model=state, x=float(x), y=float(y))
         vm.execute(CreateStateCmd(vm, svm, fsm=fsm))
-        return {"created": name, "x": float(x), "y": float(y), "scope": agent or "project"}
+        return {"created": name, "x": float(x), "y": float(y)}
 
-    def move_state(self, name: str, x: float, y: float, agent: str = "") -> dict[str, Any]:
+    def move_state(self, name: str, x: float, y: float) -> dict[str, Any]:
         """노드를 옮긴다."""
         from daedalus.view.commands.state_commands import MoveStateCmd
 
-        vm, _ = self._scope(agent)
+        vm, _ = self._scope()
         svm = self._find_state_vm(name, vm)
         old_x, old_y = svm.x, svm.y
         vm.execute(MoveStateCmd(svm, old_x, old_y, float(x), float(y)))
         return {"moved": name, "from": [old_x, old_y], "to": [float(x), float(y)]}
 
-    def rename_state(self, name: str, new_name: str, agent: str = "") -> dict[str, Any]:
+    def rename_state(self, name: str, new_name: str) -> dict[str, Any]:
         """노드 이름을 바꾼다(캔버스 노드 이름 — 컴포넌트 이름과는 별개)."""
         from daedalus.view.commands.state_commands import RenameStateCmd
 
-        vm, _ = self._scope(agent)
+        vm, _ = self._scope()
         svm = self._find_state_vm(name, vm)
         vm.execute(RenameStateCmd(svm, name, new_name))
         return {"renamed": name, "to": new_name}
 
-    def delete_state(self, name: str, agent: str = "") -> dict[str, Any]:
+    def delete_state(self, name: str) -> dict[str, Any]:
         """노드와 그에 연결된 전이를 함께 지운다(1 undo 단위)."""
         from daedalus.view.commands.base import MacroCommand
         from daedalus.view.commands.state_commands import DeleteStateCmd
         from daedalus.view.commands.transition_commands import DeleteTransitionCmd
 
-        vm, fsm = self._scope(agent)
+        vm, fsm = self._scope()
         svm = self._find_state_vm(name, vm)
         children: list[Any] = [
             DeleteTransitionCmd(vm, tvm, fsm=fsm) for tvm in vm.get_transitions_for(svm)
@@ -729,7 +686,6 @@ class DaedalusTools:
         target: str,
         trigger: str = "",
         guard: str = "",
-        agent: str = "",
     ) -> dict[str, Any]:
         """두 노드를 전이로 잇는다.
 
@@ -749,7 +705,7 @@ class DaedalusTools:
         from daedalus.view.commands.transition_commands import CreateTransitionCmd
         from daedalus.view.viewmodel.state_vm import TransitionViewModel
 
-        vm, fsm = self._scope(agent)
+        vm, fsm = self._scope()
         src = self._find_state_vm(source, vm)
         tgt = self._find_state_vm(target, vm)
         src_ref = getattr(src.model, "skill_ref", None)
@@ -797,7 +753,6 @@ class DaedalusTools:
             "trigger": trigger or None,
             "guard": guard or None,
             "agent_call": is_agent_call,
-            "scope": agent or "project",
         }
 
     @staticmethod
@@ -827,7 +782,6 @@ class DaedalusTools:
         target: str,
         trigger: str | None = None,
         guard: str | None = None,
-        agent: str = "",
     ) -> dict[str, Any]:
         """이미 있는 전이에 트리거·가드를 설정한다.
 
@@ -836,7 +790,7 @@ class DaedalusTools:
         from daedalus.view.commands.attr_commands import SetAttrCmd
         from daedalus.view.commands.base import MacroCommand
 
-        vm, _ = self._scope(agent)
+        vm, _ = self._scope()
         tvm = self._find_transition_vm(source, target, vm)
         trans = tvm.model
         cmds: list[Any] = []
@@ -896,7 +850,7 @@ class DaedalusTools:
         return out
 
     def set_transfer_on(
-        self, name: str, events: list[dict[str, Any]], agent: str = ""
+        self, name: str, events: list[dict[str, Any]]
     ) -> dict[str, Any]:
         """스킬/에이전트의 **출력 포트**를 정의한다.
 
@@ -906,7 +860,7 @@ class DaedalusTools:
         """
         from daedalus.view.commands.attr_commands import SetAttrCmd
 
-        comp = self._find_component(name, agent=agent)
+        comp = self._find_component(name)
         defs = self._make_event_defs(events)
         self._vm.execute(
             SetAttrCmd(
@@ -991,7 +945,6 @@ class DaedalusTools:
         node: str,
         reads: list[str] | None = None,
         writes: list[str] | None = None,
-        agent: str = "",
     ) -> dict[str, Any]:
         """캔버스 노드가 읽고 쓰는 블랙보드 경로를 선언한다.
 
@@ -1001,7 +954,7 @@ class DaedalusTools:
         from daedalus.view.commands.attr_commands import SetAttrCmd
         from daedalus.view.commands.base import MacroCommand
 
-        vm, _ = self._scope(agent)
+        vm, _ = self._scope()
         svm = self._find_state_vm(node, vm)
         cmds: list[Any] = []
         if reads is not None:
@@ -1333,12 +1286,9 @@ class DaedalusTools:
         return {"deleted": name, "still_referenced_by": referenced}
 
     def _all_hook_owners(self) -> list[Any]:
-        """훅을 참조할 수 있는 컴포넌트 전부 — 에이전트 로컬 스킬까지 포함한다."""
+        """훅을 참조할 수 있는 컴포넌트 전부 — 스킬 + 에이전트."""
         project = self._project
-        owners: list[Any] = [*project.skills, *project.agents]
-        for agent in project.agents:
-            owners.extend(getattr(agent, "skills", []) or [])
-        return owners
+        return [*project.skills, *project.agents]
 
     # --- 프론트매터 필드 ---
 
@@ -1390,7 +1340,7 @@ class DaedalusTools:
             return int(value)
         return value
 
-    def list_component_fields(self, name: str, agent: str = "") -> dict[str, Any]:
+    def list_component_fields(self, name: str) -> dict[str, Any]:
         """이 컴포넌트가 받는 프론트매터 필드와 현재 값.
 
         스킬과 에이전트는 받는 필드가 다르고, 스킬은 종류(procedural/declarative/
@@ -1407,7 +1357,7 @@ class DaedalusTools:
             SKILL_FIELD_MATRIX,
         )
 
-        comp = self._find_component(name, agent=agent)
+        comp = self._find_component(name)
         config = getattr(comp, "config", None)
         if config is None:
             raise ValueError(f"'{name}'에는 config가 없습니다.")
@@ -1415,7 +1365,7 @@ class DaedalusTools:
         if isinstance(comp, AgentDefinition):
             matrix = AGENT_FIELD_MATRIX
         else:
-            matrix = SKILL_FIELD_MATRIX.get(self._skill_matrix_key(comp, agent), {})
+            matrix = SKILL_FIELD_MATRIX.get(self._skill_matrix_key(comp), {})
 
         hints = self._config_field_types(config)
         out: list[dict[str, Any]] = []
@@ -1440,15 +1390,12 @@ class DaedalusTools:
         return {"component": comp.name, "kind": self._component_kind(comp), "fields": out}
 
     @staticmethod
-    def _skill_matrix_key(comp: Any, agent: str) -> str:
-        """SKILL_FIELD_MATRIX의 키 — 로컬 스킬은 local_ 접두를 쓴다."""
-        kind = str(getattr(comp, "kind", "")).replace("_skill", "")
-        if agent and kind in ("procedural", "transfer"):
-            return f"local_{kind}"
-        return kind
+    def _skill_matrix_key(comp: Any) -> str:
+        """SKILL_FIELD_MATRIX의 키."""
+        return str(getattr(comp, "kind", "")).replace("_skill", "")
 
     def set_component_field(
-        self, name: str, field: str, value: Any, agent: str = ""
+        self, name: str, field: str, value: Any
     ) -> dict[str, Any]:
         """스킬/에이전트 프론트매터 필드 하나를 설정한다.
 
@@ -1461,7 +1408,7 @@ class DaedalusTools:
         """
         from daedalus.view.commands.attr_commands import SetAttrCmd
 
-        comp = self._find_component(name, agent=agent)
+        comp = self._find_component(name)
         config = getattr(comp, "config", None)
         if config is None:
             raise ValueError(f"'{name}'에는 config가 없습니다.")
@@ -1469,7 +1416,7 @@ class DaedalusTools:
             raise ValueError("훅 참조는 set_component_hooks를 쓰세요.")
         if not hasattr(config, field):
             known = [
-                f["field"] for f in self.list_component_fields(name, agent=agent)["fields"]
+                f["field"] for f in self.list_component_fields(name)["fields"]
             ]
             raise ValueError(
                 f"'{self._component_kind(comp)}'에는 '{field}' 필드가 없습니다. "
@@ -1496,7 +1443,7 @@ class DaedalusTools:
         }
 
     def set_component_hooks(
-        self, name: str, hooks: list[str], agent: str = ""
+        self, name: str, hooks: list[str]
     ) -> dict[str, Any]:
         """스킬/에이전트가 참조하는 훅 이름 목록을 통째로 지정한다.
 
@@ -1505,7 +1452,7 @@ class DaedalusTools:
         """
         from daedalus.view.commands.attr_commands import SetAttrCmd
 
-        comp = self._find_component(name, agent=agent)
+        comp = self._find_component(name)
         config = getattr(comp, "config", None)
         if config is None:
             raise ValueError(f"'{name}'에는 config가 없어 훅을 붙일 수 없습니다.")
@@ -1622,11 +1569,11 @@ class DaedalusTools:
         self._scene.delete_reference_node(rvm)
         return {"unplaced": name, "index": index, "removed_links": links}
 
-    def disconnect_states(self, source: str, target: str, agent: str = "") -> dict[str, Any]:
+    def disconnect_states(self, source: str, target: str) -> dict[str, Any]:
         """두 노드 사이의 전이를 지운다."""
         from daedalus.view.commands.transition_commands import DeleteTransitionCmd
 
-        vm, fsm = self._scope(agent)
+        vm, fsm = self._scope()
         src = self._find_state_vm(source, vm)
         matches = [
             tvm
@@ -1639,19 +1586,17 @@ class DaedalusTools:
             vm.execute(DeleteTransitionCmd(vm, tvm, fsm=fsm))
         return {"disconnected": [source, target], "count": len(matches)}
 
-    def set_component_body(self, name: str, body: str, agent: str = "") -> dict[str, Any]:
+    def set_component_body(self, name: str, body: str) -> dict[str, Any]:
         """컴포넌트 본문을 교체한다.
 
         본문은 캔버스와 분리된 자체 undo 스택을 쓰므로(WP-BU) 그 문서에 적용한다 —
         에디터가 열려 있으면 화면에 즉시 반영되고, 편집기에서 Ctrl+Z로 되돌릴 수 있다.
-
-        agent를 지정하면 그 에이전트의 로컬 스킬 본문을 고친다.
         """
         from PySide6.QtGui import QTextCursor
 
         from daedalus.view.editors import body_documents
 
-        comp = self._find_component(name, agent=agent)
+        comp = self._find_component(name)
         old = str(getattr(comp, "body", "") or "")
         doc = body_documents.registry().document_for(comp)
 
@@ -1667,7 +1612,7 @@ class DaedalusTools:
         self._vm.notify(scope="content")
         return {"component": comp.name, "old_length": len(old), "new_length": len(body)}
 
-    def get_body_outline(self, name: str, agent: str = "") -> dict[str, Any]:
+    def get_body_outline(self, name: str) -> dict[str, Any]:
         """본문의 헤딩 아웃라인 — 전문을 받지 않고 구조만 본다 (WP-BO).
 
         긴 본문에서 어느 섹션을 읽거나 고칠지 여기서 고른 뒤
@@ -1676,7 +1621,7 @@ class DaedalusTools:
         """
         from daedalus.model import outline
 
-        comp = self._find_component(name, agent=agent)
+        comp = self._find_component(name)
         body = self._body_text(comp)
         entries = outline.parse_outline(body)
         return {
@@ -1694,7 +1639,7 @@ class DaedalusTools:
             ],
         }
 
-    def get_body_section(self, name: str, heading: str, agent: str = "") -> dict[str, Any]:
+    def get_body_section(self, name: str, heading: str) -> dict[str, Any]:
         """본문에서 섹션 하나만 읽는다 — 헤딩 줄 포함, 하위 헤딩 포함 (WP-BO).
 
         heading은 제목("배선 규칙"), 레벨 지정("## 배선 규칙"), 또는
@@ -1703,7 +1648,7 @@ class DaedalusTools:
         """
         from daedalus.model import outline
 
-        comp = self._find_component(name, agent=agent)
+        comp = self._find_component(name)
         body = self._body_text(comp)
         entry = outline.find_section(body, heading)
         return {
@@ -1715,7 +1660,7 @@ class DaedalusTools:
             "text": outline.section_text(body, entry),
         }
 
-    def set_body_section(self, name: str, heading: str, text: str, agent: str = "") -> dict[str, Any]:
+    def set_body_section(self, name: str, heading: str, text: str) -> dict[str, Any]:
         """본문에서 섹션 하나(헤딩 줄 포함)만 교체한다 (WP-BO).
 
         전문 재전송 없이 그 범위만 바꾼다 — `set_component_body`와 같은 문서
@@ -1728,7 +1673,7 @@ class DaedalusTools:
         from daedalus.model import outline
         from daedalus.view.editors import body_documents
 
-        comp = self._find_component(name, agent=agent)
+        comp = self._find_component(name)
         doc = body_documents.registry().document_for(comp)
         body = doc.toPlainText()  # 편집 중에는 문서가 진실이다(WP-BU)
         entry = outline.find_section(body, heading)

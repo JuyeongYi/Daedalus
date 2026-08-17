@@ -81,12 +81,6 @@ def test_agent_output_event_defs():
     assert defs[0].color == "#44aa44"
 
 
-def test_agent_skills_default():
-    fsm = _make_agent_fsm()
-    agent = AgentDefinition(fsm=fsm, name="A", description="d")
-    assert agent.skills == []
-
-
 def test_agent_execution_policy_default():
     fsm = _make_agent_fsm()
     agent = AgentDefinition(fsm=fsm, name="A", description="d")

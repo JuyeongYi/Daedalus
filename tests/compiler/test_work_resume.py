@@ -115,15 +115,6 @@ def test_agent_md_has_no_resume_sections_even_if_placed():
     assert "## 작업 완료" not in text
 
 
-def test_local_skill_no_resume_sections():
-    """로컬 스킬(에이전트 소유)은 프로젝트 그래프 placement 대상이 아니다."""
-    local = make_procedural(name="local-proc")
-    project, a, _ = _placed_pair()
-    text = compile_skill(local, local=True, project=project)
-    assert "## 작업 재개" not in text
-    assert "## 작업 완료" not in text
-
-
 # ── 3) TransferSkill: 전이 중 note ──
 
 
@@ -135,13 +126,6 @@ def test_transfer_skill_has_progress_note():
     assert "## 진행 기록" in text
     assert "state/__progress__.json" in text
     assert "전이 맥락을 기록하라" in text
-
-
-def test_local_transfer_skill_no_progress_note():
-    project, _, _ = _placed_pair()
-    edge = make_transfer("edge-skill")
-    text = compile_skill(edge, local=True, project=project)
-    assert "전이 맥락을 기록하라" not in text
 
 
 def test_transfer_skill_note_requires_placements():

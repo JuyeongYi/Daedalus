@@ -164,55 +164,6 @@ def test_orphan_blackboard_field_is_warning():
     assert "orphan_blackboard_field" in WARNING_RULES
 
 
-# ── 리뷰 반영: 에이전트 로컬 스킬 FSM 스캔 (오탐/미검출 방지) ──
-
-
-def _local_skill_project():
-    from daedalus.model.fsm.blackboard import DynamicClass, DynamicField
-    from daedalus.model.fsm.machine import StateMachine
-    from daedalus.model.fsm.state import SimpleState
-    from daedalus.model.fsm.variable import FieldType
-    from daedalus.model.plugin.agent import AgentDefinition
-    from daedalus.model.plugin.skill import ProceduralSkill
-    from daedalus.model.project import PluginProject
-
-    a_s = SimpleState(name="a")
-    agent = AgentDefinition(
-        fsm=StateMachine(name="af", initial_state=a_s, states=[a_s], final_states=[a_s]),
-        name="worker", description="d",
-    )
-    l_s = SimpleState(name="ls")
-    local = ProceduralSkill(
-        fsm=StateMachine(name="lf", initial_state=l_s, states=[l_s], final_states=[l_s]),
-        name="local-skill", description="d",
-    )
-    agent.skills.append(local)
-    project = PluginProject(name="p", agents=[agent])
-    project.blackboard.class_definitions.append(DynamicClass(
-        name="Findings", description="",
-        fields=[DynamicField(name="files", field_type=FieldType.LIST)],
-    ))
-    return project, l_s
-
-
-def test_dangling_detected_in_agent_local_skill():
-    """로컬 스킬 FSM의 엉터리 참조도 dangling으로 잡는다 (미검출 방지)."""
-    project, local_state = _local_skill_project()
-    local_state.writes = ["NoSuchClass.zzz"]
-    errors = Validator.validate_project(project)
-    hits = [e for e in errors if e.rule == "dangling_blackboard_ref"]
-    assert hits
-    assert ("agent:worker", "skill:local-skill") == hits[0].path
-
-
-def test_local_skill_declaration_prevents_orphan_false_positive():
-    """로컬 스킬만 참조하는 필드가 orphan으로 오탐되지 않는다."""
-    project, local_state = _local_skill_project()
-    local_state.reads = ["Findings.files"]
-    errors = Validator.validate_project(project)
-    assert not any(e.rule == "orphan_blackboard_field" for e in errors)
-
-
 # ── WP-BT: 블랙보드 필드 타입 제한 (스칼라 4종) ──
 
 

@@ -445,23 +445,17 @@ def test_add_agent_call_is_undoable(tools, window):
 # --- 에이전트 내부 FSM 편집 ---
 
 
-def test_agent_scoped_canvas_editing_is_retired(tools, window):
-    """WP-AF — 에이전트 내부 FSM 편집은 거부된다(조용한 오배치 방지)."""
-    tools.create_agent("worker")
-    with pytest.raises(ValueError, match="퇴역"):
-        tools.create_state("step-a", x=10, y=20, agent="worker")
-    with pytest.raises(ValueError, match="퇴역"):
-        tools.connect_states("a", "b", agent="worker")
-    # 프로젝트 캔버스는 건드리지 않는다
-    assert window._project_vm.get_state_vm("step-a") is None
+def test_canvas_tools_have_no_agent_scope_parameter(tools):
+    """WP-RF-1c — 로컬 스킬·에이전트 내부 FSM 퇴역 완결: agent 스코프 파라미터가
+    도구 시그니처에서 아예 사라졌다(스키마 노출 기준)."""
+    import inspect
 
-
-def test_local_skill_creation_is_retired(tools, window):
-    tools.create_agent("worker")
-    with pytest.raises(ValueError, match="퇴역"):
-        tools.create_skill("inner", kind="procedural", agent="worker")
-    agent = next(a for a in window._project.agents if a.name == "worker")
-    assert agent.skills == []
+    for tool_fn in (
+        tools.create_state, tools.connect_states, tools.place_component,
+        tools.create_skill, tools.get_component, tools.set_component_body,
+        tools.list_component_fields, tools.set_component_field,
+    ):
+        assert "agent" not in inspect.signature(tool_fn).parameters, tool_fn
 
 
 # --- 이력 ---

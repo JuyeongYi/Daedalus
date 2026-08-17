@@ -128,14 +128,6 @@ def test_reference_user_invocable_fixed_false():
     assert "user-invocable: false" in fm
 
 
-def test_local_procedural_context_fixed_fork():
-    skill = make_procedural(name="local-skill")
-    fm = _frontmatter(compile_skill(skill, local=True))
-    # local_procedural: CONTEXT FIXED FORK, DISABLE_MODEL FIXED True
-    assert "context: fork" in fm
-    assert "disable-model-invocation: true" in fm
-
-
 # ─────────────────────── 종류별 name/description 항상 ───────────────────────
 
 

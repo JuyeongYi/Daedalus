@@ -3,8 +3,7 @@
 
 CC 플러그인 출력 구조 (project.build_target == MARKETPLACE, 기본):
     <out>/.claude-plugin/plugin.json            # 플러그인 매니페스트 (항상 생성)
-    <out>/skills/<skill-name>/SKILL.md          # 전역 스킬 4종
-    <out>/skills/<agent-name>--<skill-name>/SKILL.md   # 에이전트 로컬 스킬
+    <out>/skills/<skill-name>/SKILL.md          # 스킬 4종
     <out>/agents/<agent-name>.md                # 에이전트
 
 LOCAL 빌드(WP-TG/WP-MW) — **컴파일이 곧 설치**다. out_dir는 스테이징이 아니라
@@ -19,14 +18,12 @@ plugin.json·hooks/hooks.json·설치 스크립트는 만들지 않는다 — �
 동일 hooks 그룹은 중복 삽입하지 않아 재컴파일이 멱등). ``${ROOT}``는
 ``${CLAUDE_PROJECT_DIR}``로 확장된다(본문 저장 정본은 불변).
 
-로컬 스킬의 '--' 결합은 충돌 무결하지 **않다** — 이름 규약이 연속 하이픈을
-허용하므로 (agent 'a--b', skill 'c')와 (agent 'a', skill 'b--c')가 같은
-디렉토리를 산출할 수 있다. 따라서 compile_project는 파일 쓰기 전에 전체 산출
-경로 집합을 계산하고, 중복이 있으면 컴파일을 거부한다(조용한 덮어쓰기 방지).
+compile_project는 파일 쓰기 전에 전체 산출 경로 집합을 계산하고, 중복이 있으면
+컴파일을 거부한다(조용한 덮어쓰기 방지).
 
 컴파일 게이트(정책 8 + 강화 2종):
   - Validator.validate_project의 에러(is_warning=False) 1건 이상 → 거부.
-  - 산출 파일/디렉토리 이름이 되는 컴포넌트(전역 스킬·에이전트·로컬 스킬)의
+  - 산출 파일/디렉토리 이름이 되는 컴포넌트(스킬·에이전트)의
     이름이 `^[a-z0-9][a-z0-9-]*$` 불일치 → 컴파일 에러로 승격해 거부.
     (F7 검증기에서는 경고 등급 유지 — 편집 중에는 경고가 맞다. 게이트만 엄격.)
   - 산출 경로 충돌 → 거부 + 충돌 경로/원인 컴포넌트 보고.
@@ -122,24 +119,14 @@ def _skill_dir_name(skill_name: str) -> str:
     return skill_name
 
 
-def _local_skill_dir_name(agent_name: str, skill_name: str) -> str:
-    """에이전트 로컬 스킬 디렉토리명 — '<agent>--<skill>'.
-
-    주의: 이 결합은 충돌 무결하지 않다(모듈 docstring 참조). 충돌은
-    _plan_outputs의 사전 경로 집합 검사로 잡아 컴파일을 거부한다.
-    """
-    return f"{agent_name}--{skill_name}"
-
-
 @dataclass
 class _PlannedOutput:
     """쓰기 전 계획된 산출물 1건."""
     rel_path: PurePosixPath          # out_dir 기준 상대 경로 (충돌 키)
     label: str                       # 사람이 읽는 원인 컴포넌트 표지
     subject: object                  # 노드 점프용 모델 객체
-    kind: str                        # "skill" | "agent" | "local_skill" | "hook_script" | …
+    kind: str                        # "skill" | "agent" | "hook_script" | …
     component: object                # 컴파일 대상 (skill/agent)
-    agent: object | None = None      # local_skill일 때 소유 에이전트
     script_name: str = ""            # hook_script일 때 파일명 (WP-HS)
     src_path: Path | None = None     # skill_file일 때 복사 원본 (WP-SF)
 
@@ -228,7 +215,7 @@ def _plan_outputs(
             component=skill,
         ))
 
-    # 에이전트 + 로컬 스킬
+    # 에이전트
     for agent in project.agents:
         label = f"에이전트 '{agent.name}'"
         check_name(agent.name, label, agent)
@@ -239,22 +226,6 @@ def _plan_outputs(
             kind="agent",
             component=agent,
         ))
-        for local_skill in agent.skills:
-            local_label = f"에이전트 '{agent.name}'의 로컬 스킬 '{local_skill.name}'"
-            check_name(local_skill.name, local_label, local_skill)
-            skill_dirs[_local_skill_dir_name(agent.name, local_skill.name)] = local_skill
-            plan.append(_PlannedOutput(
-                rel_path=(
-                    cc_prefix / "skills"
-                    / _local_skill_dir_name(agent.name, local_skill.name)
-                    / "SKILL.md"
-                ),
-                label=local_label,
-                subject=local_skill,
-                kind="local_skill",
-                component=local_skill,
-                agent=agent,
-            ))
 
     # 스킬별 동봉 파일 (WP-SF) — 하위 폴더명이 스킬 산출 디렉토리명과 일치할 때만
     # SKILL.md 옆으로 가는 복사 계획에 합류한다. 계획 집합 합류가 곧 충돌 방어다 —
@@ -442,7 +413,7 @@ def _is_link_like(path: Path) -> bool:
 
 
 def _scan_dangling_file_refs(project, files_dir: Path) -> list[ValidationError]:
-    """스킬/에이전트(로컬 스킬 포함) body에서 파일 참조 토큰을 스캔해 files_dir에
+    """스킬/에이전트 body에서 파일 참조 토큰을 스캔해 files_dir에
     실존하지 않는 참조를 `dangling_file_ref` 경고로 반환한다.
 
     Validator가 아닌 컴파일러 소관이다 — 검증기는 파일시스템 무접근 순수성을
@@ -480,12 +451,6 @@ def _scan_dangling_file_refs(project, files_dir: Path) -> list[ValidationError]:
         scan(f"스킬 '{skill.name}'", skill, getattr(skill, "body", ""))
     for agent in project.agents:
         scan(f"에이전트 '{agent.name}'", agent, getattr(agent, "body", ""))
-        for local_skill in agent.skills:
-            scan(
-                f"에이전트 '{agent.name}'의 로컬 스킬 '{local_skill.name}'",
-                local_skill,
-                getattr(local_skill, "body", ""),
-            )
     return warnings
 
 
@@ -533,14 +498,6 @@ def _scan_dangling_skill_file_refs(
             scan(
                 f"스킬 '{skill.name}'", skill,
                 getattr(skill, "body", ""), _skill_dir_name(skill.name),
-            )
-    for agent in project.agents:
-        for local_skill in agent.skills:
-            scan(
-                f"에이전트 '{agent.name}'의 로컬 스킬 '{local_skill.name}'",
-                local_skill,
-                getattr(local_skill, "body", ""),
-                _local_skill_dir_name(agent.name, local_skill.name),
             )
     return warnings
 
@@ -594,7 +551,7 @@ def compile_project(
 
     result = CompileResult(errors=errors, warnings=warnings)
     if errors:
-        # 거부 — 무엇이 막혔는지 skipped에 기록 (산출 계획 전체 = 로컬 스킬 포함)
+        # 거부 — 무엇이 막혔는지 skipped에 기록 (산출 계획 전체)
         for item in plan:
             result.skipped.append(("compile_gate_error", item.label))
         return result
@@ -619,12 +576,12 @@ def compile_project(
             text = compile_schemas_json(project) or ""
         elif item.kind == "plugin_manifest":
             text = compile_plugin_manifest(project)
-        else:  # local_skill
-            text = compile_skill(item.component, local=True, project=project)
+        else:
+            raise ValueError(f"알 수 없는 산출 계획 kind: {item.kind!r}")
 
         # 타깃 중립 토큰 ${ROOT}를 빌드 타깃에 맞는 CC 변수로 확장한다(WP-RT).
         # 본문 정본은 어느 타깃에도 기울지 않고, 여기서만 갈라진다.
-        if item.kind in ("skill", "agent", "local_skill"):
+        if item.kind in ("skill", "agent"):
             text = expand_root_token(text, project)
 
         path = out_dir / item.rel_path

@@ -400,25 +400,6 @@ def test_toplevel_fsm_blackboard_parent_survives_roundtrip():
     assert p2.agents[0].fsm.blackboard.parent is p2.blackboard
 
 
-def test_local_skill_fsm_blackboard_parent_survives_roundtrip():
-    """에이전트 로컬 스킬 FSM의 blackboard.parent가 소유 에이전트 FSM
-    블랙보드로 재연결된다."""
-    entry = EntryPoint(name="e")
-    afsm = StateMachine(name="af", initial_state=entry, states=[entry])
-    agent = AgentDefinition(fsm=afsm, name="ag", description="d")
-
-    ls = SimpleState(name="s")
-    lfsm = StateMachine(name="lf", initial_state=ls, states=[ls])
-    local = ProceduralSkill(fsm=lfsm, name="local-tool", description="d")
-    agent.skills.append(local)
-
-    p2 = _roundtrip(PluginProject(name="P", agents=[agent]))
-    ag2 = p2.agents[0]
-    assert ag2.skills[0].fsm.blackboard.parent is ag2.fsm.blackboard
-    # 에이전트 자신은 프로젝트 블랙보드에 연결
-    assert ag2.fsm.blackboard.parent is p2.blackboard
-
-
 def test_legacy_delegations_dropped_with_warning():
     """구버전(v1) 파일의 위임 정의는 퇴역한 개념이라 로드 시 경고 후 드롭된다 (WP-RF-1a).
 

@@ -33,7 +33,7 @@ def test_field_rule_dataclass():
 
 
 def test_matrix_has_all_skill_kinds():
-    expected = {"procedural", "declarative", "transfer", "reference", "local_procedural", "local_transfer"}
+    expected = {"procedural", "declarative", "transfer", "reference"}
     assert set(SKILL_FIELD_MATRIX.keys()) == expected
 
 
@@ -56,13 +56,6 @@ def test_matrix_reference_user_invocable_fixed():
     rules = SKILL_FIELD_MATRIX["reference"]
     assert rules[SkillField.USER_INVOCABLE].visibility == FieldVisibility.FIXED
     assert rules[SkillField.USER_INVOCABLE].fixed_value is False
-
-
-def test_matrix_local_procedural_context_fixed_fork():
-    from daedalus.model.plugin.enums import SkillContext
-    rules = SKILL_FIELD_MATRIX["local_procedural"]
-    assert rules[SkillField.CONTEXT].visibility == FieldVisibility.FIXED
-    assert rules[SkillField.CONTEXT].fixed_value == SkillContext.FORK
 
 
 def test_matrix_declarative_context_default():
@@ -99,23 +92,6 @@ def test_frontmatter_key_mapping():
     assert SkillField.USER_INVOCABLE.frontmatter_key == "user-invocable"
     assert SkillField.NAME.frontmatter_key == "name"
     assert SkillField.MODEL.frontmatter_key == "model"
-
-
-def test_fixed_values_are_enums():
-    """매트릭스의 CONTEXT fixed_value는 raw 문자열 'fork'가 아닌 SkillContext enum."""
-    from daedalus.model.plugin.enums import SkillContext
-
-    seen_context_fixed = False
-    for kind, rules in SKILL_FIELD_MATRIX.items():
-        ctx = rules[SkillField.CONTEXT]
-        if ctx.visibility == FieldVisibility.FIXED:
-            seen_context_fixed = True
-            assert ctx.fixed_value != "fork", f"{kind} CONTEXT fixed_value가 raw 'fork'"
-            assert isinstance(ctx.fixed_value, SkillContext), (
-                f"{kind} CONTEXT fixed_value 타입: {type(ctx.fixed_value)!r}"
-            )
-            assert ctx.fixed_value is SkillContext.FORK
-    assert seen_context_fixed, "FIXED CONTEXT를 가진 kind가 없음 — 테스트 전제 붕괴"
 
 
 def test_model_default_is_inherit():

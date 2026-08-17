@@ -168,7 +168,6 @@ def remove_component(
     - project.reference_placements + 각 agent reference_placements에서 skill_name 일치 항목 제거
       (skill_name은 스킬 이름 참조 — component가 스킬일 때만, 동명-다른타입 오삭제 방지)
     - 다른 스킬/에이전트 FSM의 skill_ref(SimpleState/Transition.skill_ref)가 삭제 대상이면 None으로
-    - 에이전트 삭제 시 로컬 스킬은 소유 구조상 자동 소멸 (별도 목록 없음)
     """
     from daedalus.model.fsm.state import CompositeState, ParallelState, SimpleState
 

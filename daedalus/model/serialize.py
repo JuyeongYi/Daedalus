@@ -584,8 +584,6 @@ def _ser_agent(a: AgentDefinition) -> dict:
         "config": _ser_config(a.config),
         "execution_policy": _ser_policy(a.execution_policy),
         "body": a.body,
-        # 로컬 스킬 — 소유 인라인
-        "skills": [_ser_skill(s) for s in a.skills],
         "reference_placements": [
             _ser_ref_placement(r) for r in a.reference_placements
         ],
@@ -667,7 +665,15 @@ def deserialize_project(
     fmt = data.get("format")
     if fmt is None or fmt == 1:
         data = _migrate_v1(data, reg.warnings)
-    elif fmt != FORMAT_VERSION:
+    elif fmt == FORMAT_VERSION:
+        # RF-1b 시점(로컬 스킬 승격 이전)의 코드가 저장한 format 2 파일에는
+        # 에이전트 인라인 로컬 스킬("skills" 키)이 남아 있을 수 있다 — format
+        # 게이트만 보고 건너뛰면 스킬 이름·본문이 경고 없이 통째로 드롭된다.
+        # v1과 동일한 승격 마이그레이션을 태운다 (WP-RF-1c 리뷰 지적).
+        if any(a.get("skills") for a in data.get("agents", []) or []):
+            data = copy.deepcopy(data)
+            _promote_local_skills(data, reg.warnings)
+    else:
         raise ValueError(
             f"지원하지 않는 파일 형식 버전: {fmt!r} "
             f"(지원: {FORMAT_VERSION}, 구버전 1은 로드 시 마이그레이션)"
@@ -722,10 +728,11 @@ def deserialize_project(
     reg.run_pending()
 
     # ── 블랙보드 parent 구조 재연결 (최상위) ──
-    # 역직렬화도 생성 경로다 — view 생성 경로(_register_component / 로컬 스킬 생성)와
-    # 동일한 스코핑을 복원한다: 최상위 스킬/에이전트 FSM → 프로젝트 블랙보드,
-    # 에이전트 로컬 스킬 FSM → 소유 에이전트 FSM 블랙보드. 중첩 sub_machine은
-    # _deser_machine의 parent_bb 전달로 이미 구조 재연결되어 있다.
+    # 역직렬화도 생성 경로다 — view 생성 경로(_register_component)와 동일한
+    # 스코핑을 복원한다: 최상위 스킬/에이전트 FSM → 프로젝트 블랙보드.
+    # (v1 파일의 에이전트 로컬 스킬은 _migrate_v1이 전역 스킬로 승격하므로
+    # 여기서 전역 스킬과 같은 경로를 탄다.) 중첩 sub_machine은 _deser_machine의
+    # parent_bb 전달로 이미 구조 재연결되어 있다.
     for skill in project.skills:
         fsm = getattr(skill, "fsm", None)
         if fsm is not None and fsm.blackboard.parent is None:
@@ -733,10 +740,6 @@ def deserialize_project(
     for agent in project.agents:
         if agent.fsm.blackboard.parent is None:
             agent.fsm.blackboard.parent = project.blackboard
-        for local in agent.skills:
-            lfsm = getattr(local, "fsm", None)
-            if lfsm is not None and lfsm.blackboard.parent is None:
-                lfsm.blackboard.parent = agent.fsm.blackboard
 
     # ── 경고 전달 ──
     if collect_warnings is not None:
@@ -753,6 +756,10 @@ def _migrate_v1(data: dict, warnings: list[str]) -> dict:
 
     흩어져 있던 구버전 마이그레이션을 한 함수로 집약했다 (WP-RF-1b):
       1. delegation 정의 드롭 (퇴역 개념 — 경고 후 드롭)
+      1-b. 에이전트 로컬 스킬 → **전역 스킬로 승격** (WP-RF-1c — 이름 충돌 시
+         ``<agent>--<name>``으로 개명, 승격마다 경고 1건. 승격된 스킬은 이후
+         전역 스킬과 완전히 같은 경로를 탄다 — 본문 마이그레이션·블랙보드
+         parent 재배선 포함)
       2. 컴포넌트 본문: ``sections`` 트리 → ``body`` 평탄화(render_markdown) +
          ``${CLAUDE_PLUGIN_ROOT}/files/`` → ``${ROOT}/files/`` 치환(WP-RT)
       3. 퇴역 키 드롭: ``entry_paths`` / ``caller_contracts`` /
@@ -780,6 +787,9 @@ def _migrate_v1(data: dict, warnings: list[str]) -> dict:
             f"드롭했습니다 — 위임 지시는 스킬 본문에 서술하세요."
         )
 
+    # 1-b) 에이전트 로컬 스킬 → 전역 스킬 승격 (WP-RF-1c).
+    _promote_local_skills(data, warnings)
+
     # 2)+3) 컴포넌트 공통 — 본문 평탄화 + 경로 변수 치환 + 퇴역 키 드롭
     def _migrate_component(d: dict) -> None:
         if "body" not in d and "sections" in d:
@@ -795,8 +805,6 @@ def _migrate_v1(data: dict, warnings: list[str]) -> dict:
         _migrate_component(s)
     for a in data.get("agents", []) or []:
         _migrate_component(a)
-        for local in a.get("skills", []) or []:
-            _migrate_component(local)
         # 4) ExitPoint → transfer_on 승계 (이름·색, 단방향 — 경고 없음).
         # ExitPoint 상태 자체는 fsm에 남는다(순수 FSM 개념).
         if not a.get("transfer_on"):
@@ -814,7 +822,7 @@ def _migrate_v1(data: dict, warnings: list[str]) -> dict:
                     for st in exit_states
                 ]
 
-    # 3) 전이의 target_port 드롭 — 모든 머신(스킬/에이전트/로컬 스킬 fsm +
+    # 3) 전이의 target_port 드롭 — 모든 머신(스킬/에이전트 fsm(승격된 로컬 포함) +
     # 프로젝트 그래프, sub_machine/Region 재귀)의 transitions에서.
     for machine in _v1_all_machines(data):
         for t in machine.get("transitions", []) or []:
@@ -853,6 +861,62 @@ def _migrate_v1(data: dict, warnings: list[str]) -> dict:
     return data
 
 
+def _promote_local_skills(data: dict, warnings: list[str]) -> None:
+    """에이전트 인라인 로컬 스킬 dict를 전역 skills로 승격 (제자리 변형).
+
+    이름 충돌(기존 전역 스킬·에이전트·이미 승격된 스킬)이면 "<agent>--<name>"
+    으로 개명하고, 그마저 충돌하면 "-2", "-3"… 접미를 붙여 반드시 유일한
+    이름을 만든다(중복을 통과시키면 duplicate_component_name 게이트에 걸릴
+    때까지 조용히 숨는다). 개명 시 소유 에이전트 config의 ``skills`` 참조도
+    새 이름으로 치환한다 — 그대로 두면 충돌한 전역 스킬로 조용히 재지정된다.
+
+    승격된 dict는 data["skills"]에 합류해 이후 단계(본문 마이그레이션·머신
+    순회)와 역직렬화에서 전역 스킬과 같은 경로를 탄다 — id가 보존되므로
+    에이전트 FSM 전이의 transfer skill_ref도 그대로 해소된다.
+
+    v1 마이그레이션(_migrate_v1 1-b)과, RF-1b 시점 코드가 남긴 인라인 로컬
+    스킬이 든 format 2 파일 로드 양쪽에서 호출된다.
+    """
+    global_skills = data.get("skills")
+    if not isinstance(global_skills, list):
+        global_skills = []
+        data["skills"] = global_skills
+    taken_names = {s.get("name", "") for s in global_skills} | {
+        a.get("name", "") for a in data.get("agents", []) or []
+    }
+    for a in data.get("agents", []) or []:
+        for local in a.pop("skills", []) or []:
+            agent_name = a.get("name", "?")
+            original = local.get("name", "")
+            promoted_name = original
+            if promoted_name in taken_names:
+                promoted_name = f"{agent_name}--{original}"
+                suffix = 2
+                while promoted_name in taken_names:
+                    promoted_name = f"{agent_name}--{original}-{suffix}"
+                    suffix += 1
+            local["name"] = promoted_name
+            taken_names.add(promoted_name)
+            renamed = (
+                f" (개명: '{promoted_name}')" if promoted_name != original else ""
+            )
+            if promoted_name != original:
+                # 소유 에이전트의 수동 skills 선언이 옛 이름을 가리키면 새
+                # 이름으로 따라간다 (다른 에이전트의 동명 참조는 전역 스킬을
+                # 가리키던 것이므로 건드리지 않는다).
+                cfg = a.get("config")
+                if isinstance(cfg, dict) and isinstance(cfg.get("skills"), list):
+                    cfg["skills"] = [
+                        promoted_name if n == original else n
+                        for n in cfg["skills"]
+                    ]
+            warnings.append(
+                f"에이전트 '{agent_name}'의 로컬 스킬 '{original}'을(를) 전역 "
+                f"스킬로 승격했습니다{renamed} — 로컬 스킬은 퇴역한 개념입니다."
+            )
+            global_skills.append(local)
+
+
 def _v1_all_machines(data: dict):
     """v1 dict의 모든 머신 dict를 순회 (sub_machine/Region 재귀 포함)."""
 
@@ -868,11 +932,12 @@ def _v1_all_machines(data: dict):
                     yield from _walk(rsub)
 
     def _components():
+        # 에이전트 로컬 스킬은 이 함수 호출 전에 이미 전역 skills로 승격돼 있다
+        # (WP-RF-1c — _migrate_v1의 1-b 단계가 머신 순회보다 먼저다).
         for s in data.get("skills", []) or []:
             yield s
         for a in data.get("agents", []) or []:
             yield a
-            yield from (a.get("skills", []) or [])
 
     for comp in _components():
         fsm = comp.get("fsm")
@@ -1338,8 +1403,6 @@ def _deser_skill(d: dict, reg: _Registry) -> Any:
 def _deser_agent(d: dict, reg: _Registry) -> AgentDefinition:
     sid = d.get("id") or _new_id()
     fsm = _deser_machine(d["fsm"], reg, parent_bb=None)
-    # 로컬 스킬도 컴포넌트 레지스트리에 등록 (전이의 transfer skill_ref 가 가리킬 수 있음)
-    skills = [_deser_skill(s, reg) for s in d.get("skills", [])]
     agent = AgentDefinition(
         fsm=fsm,
         name=d.get("name", ""),
@@ -1348,7 +1411,6 @@ def _deser_agent(d: dict, reg: _Registry) -> AgentDefinition:
         config=_deser_config(d["config"]) if d.get("config") else AgentConfig(),
         execution_policy=_deser_policy(d.get("execution_policy")),
         body=_deser_body(d),
-        skills=skills,
         reference_placements=[
             _deser_ref_placement(r) for r in d.get("reference_placements", [])
         ],

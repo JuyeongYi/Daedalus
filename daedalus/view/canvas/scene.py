@@ -812,13 +812,11 @@ class AgentFsmScene(FsmScene):
         project_vm: ProjectViewModel,
         agent_fsm: StateMachine,
         skill_lookup: Callable[[str], object] | None = None,
-        agent_skills: list | None = None,
         agent_ref_placements: list | None = None,
     ) -> None:
         super().__init__(project_vm, skill_lookup=skill_lookup)
         self._agent_fsm = agent_fsm
         self._target_fsm = agent_fsm
-        self._agent_skills: list = agent_skills if agent_skills is not None else []
         self._agent_ref_placements: list = agent_ref_placements if agent_ref_placements is not None else []
 
     def _create_node_item(self, vm: StateViewModel) -> StateNodeItem:
@@ -826,35 +824,6 @@ class AgentFsmScene(FsmScene):
 
     def _get_ref_placements(self) -> list:
         return self._agent_ref_placements
-
-    def _get_transfer_skills(self) -> list:
-        """에이전트 로컬 Transfer 스킬 목록."""
-        return [s for s in self._agent_skills if isinstance(s, TransferSkill)]
-
-    def _create_and_assign_transfer_skill(self, tvm: TransitionViewModel) -> None:
-        """로컬 Transfer 스킬 생성 후 전이에 할당. undo 가능."""
-        from daedalus.view.commands.transition_commands import AddSkillToListCmd
-        existing = {s.name for s in self._agent_skills}
-        view = self.views()[0] if self.views() else None
-        while True:
-            name, ok = QInputDialog.getText(view, "새 Transfer Skill", "이름:")
-            if not ok or not name.strip():
-                return
-            name = name.strip()
-            if name in existing:
-                QMessageBox.warning(view, "이름 중복", f"'{name}' 이름이 이미 존재합니다.")
-                continue
-            break
-        s = SimpleState(name="start")
-        fsm = StateMachine(name=f"{name}_fsm", states=[s], initial_state=s)
-        skill = TransferSkill(fsm=fsm, name=name, description="")
-        self._project_vm.execute(MacroCommand(
-            children=[
-                AddSkillToListCmd(self._agent_skills, skill),
-                SetTransitionSkillRefCmd(tvm, skill),
-            ],
-            description=f"Transfer Skill '{name}' 생성 및 설정",
-        ))
 
     def contextMenuEvent(self, event: QGraphicsSceneContextMenuEvent | None) -> None:
         if event is None:

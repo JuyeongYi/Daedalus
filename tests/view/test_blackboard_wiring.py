@@ -44,30 +44,3 @@ def test_register_agent_wires_blackboard_parent(qapp):
 
     assert agent.fsm.blackboard.parent is project.blackboard
     window.close()
-
-
-def test_legacy_local_skill_blackboard_parent_survives_load(qapp):
-    """WP-AF — 로컬 스킬 생성 UI는 퇴역했지만, 기존 파일의 로컬 스킬은
-    역직렬화가 blackboard.parent를 소유 에이전트 FSM으로 재연결한다."""
-    from daedalus.model.fsm.machine import StateMachine
-    from daedalus.model.fsm.pseudo import EntryPoint
-    from daedalus.model.fsm.state import SimpleState
-    from daedalus.model.plugin.agent import AgentDefinition
-    from daedalus.model.plugin.skill import ProceduralSkill
-    from daedalus.model.project import PluginProject
-    from daedalus.model.serialize import deserialize_project, serialize_project
-
-    entry = EntryPoint(name="entry")
-    fsm = StateMachine(name="a_fsm", states=[entry], initial_state=entry)
-    start_state = SimpleState(name="start")
-    local_fsm = StateMachine(
-        name="local_fsm", states=[start_state], initial_state=start_state,
-    )
-    local = ProceduralSkill(fsm=local_fsm, name="local-tool", description="")
-    agent = AgentDefinition(fsm=fsm, name="my-agent", description="", skills=[local])
-
-    loaded = deserialize_project(
-        serialize_project(PluginProject(name="p", agents=[agent]))
-    )
-    restored = loaded.agents[0]
-    assert restored.skills[0].fsm.blackboard.parent is restored.fsm.blackboard

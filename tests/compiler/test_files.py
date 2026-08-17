@@ -126,7 +126,7 @@ def test_no_dangling_warning_when_referenced_file_exists(tmp_path):
     assert dangling == []
 
 
-def test_dangling_scan_covers_agent_and_local_skill_bodies(tmp_path):
+def test_dangling_scan_covers_agent_bodies(tmp_path):
     from tests.compiler.builders import make_agent
 
     src = tmp_path / "src_files"
@@ -134,16 +134,12 @@ def test_dangling_scan_covers_agent_and_local_skill_bodies(tmp_path):
 
     agent = make_agent("worker")
     agent.body = "Agent needs ${ROOT}/files/agent-missing.txt"
-    local_skill = make_procedural(
-        name="local-helper", body="Local ${ROOT}/files/local-missing.txt",
-    )
-    agent.skills = [local_skill]
     project = PluginProject(name="p", agents=[agent])
 
     result = compile_project(project, tmp_path / "out", files_dir=src)
     assert result.ok
     refs = {w.source for w in result.warnings if w.rule == "dangling_file_ref"}
-    assert refs == {"agent-missing.txt", "local-missing.txt"}
+    assert refs == {"agent-missing.txt"}
 
 
 def test_symlinks_are_not_followed(tmp_path):

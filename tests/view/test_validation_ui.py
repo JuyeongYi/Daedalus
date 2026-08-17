@@ -132,7 +132,6 @@ def _make_agent_with_violation() -> tuple[PluginProject, AgentDefinition]:
         initial_state=entry, final_states=[done],
     )
     agent = AgentDefinition(fsm=fsm, name="worker", description="d")
-    agent.skills.extend([sk1, sk2])
     project = PluginProject(name="p", agents=[agent])
     return project, agent
 

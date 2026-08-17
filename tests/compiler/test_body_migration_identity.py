@@ -63,7 +63,7 @@ def _legacy_compile_skill(skill, sections: list[Section]) -> str:
     FSM 절차/위임)만 다룬다 — tool_shelf/블랙보드/다음 단계는 project가 있을
     때만 배출되므로 이 비교에서는 제외.
     """
-    kind_key = _emit._skill_kind_key(skill, local=False)
+    kind_key = _emit._skill_kind_key(skill)
     fm_lines = _emit._frontmatter_lines_skill(skill, kind_key)
     blocks: list[str] = [_emit._frontmatter_block(fm_lines)]
     blocks.extend(_legacy_render_sections(sections, depth=1))

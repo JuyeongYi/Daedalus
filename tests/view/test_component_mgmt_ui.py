@@ -237,20 +237,3 @@ class TestDeleteHandler:
         assert window._tabs.count() == _FIXED_TAB_COUNT  # 고정 탭만
         window.close()
 
-    def test_delete_agent_closes_local_skill_tabs(self, qapp):
-        """에이전트 삭제 시 열린 로컬 스킬 탭(있으면)도 닫힌다."""
-        window = MainWindow()
-        proj = PluginProject(name="p")
-        agent = _make_agent("ag")
-        proj.agents.append(agent)
-
-        # 에이전트에 로컬 스킬 추가
-        local_skill = _make_proc("local-s")
-        local_skill.fsm.blackboard.parent = agent.fsm.blackboard
-        agent.skills.append(local_skill)
-
-        window.set_project(proj)
-        window._open_component(agent)
-
-        assert window._tabs.count() == _FIXED_TAB_COUNT + 1  # 고정 탭 + agent 탭
-        window.close()
