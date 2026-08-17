@@ -384,11 +384,14 @@ daedalus-bb [--state-dir state] [--schemas schemas/schemas.json] <command>
   list                           # 클래스·필드 목록(JSON)
 ```
 
-- **exit code:** 0 성공 / 1 검증 실패 / 2 사용법·스키마·IO 오류 / 3 read 대상 파일 없음.
-  전역 옵션은 **하위 명령 앞**에 온다(argparse 서브파서 구조).
-- **stdout은 항상 JSON, 진단·안내는 stderr.** 소비자가 LLM이라 출력 채널을 섞으면
-  파싱이 깨진다. 오류 경로는 stdout에 아무것도 쓰지 않는다(`validate`만 예외 — 실패해도
-  `{"ok": false, "violations": [...]}`를 stdout에 내고 사람이 읽을 목록을 stderr에 낸다).
+- **exit code:** 0 성공 / 1 검증 실패 / 2 사용법·스키마·IO 오류 / 3 대상 상태 파일 없음
+  (`read`, 그리고 클래스를 **명시한** `validate`). 전역 옵션은 **하위 명령 앞**에 온다
+  (argparse 서브파서 구조).
+- **stdout에 나가는 것은 JSON뿐, 진단·안내는 stderr.** 소비자가 LLM이라 출력 채널을 섞으면
+  파싱이 깨진다. 다만 "항상 JSON이 나온다"는 뜻은 아니다 — 오류 경로(exit 2/3, init·write의
+  exit 1)는 stdout에 **아무것도 쓰지 않으므로** 무조건 `json.loads`를 걸면 그때 깨진다
+  (`validate`만 예외 — 실패해도 `{"ok": false, "violations": [...]}`를 stdout에 내고 사람이
+  읽을 목록을 stderr에 낸다). 본문 지시를 쓸 때는 exit code로 먼저 갈라야 한다.
   Windows에서 파이프 인코딩이 cp949로 잡혀 한국어가 깨지지 않도록 `main()`이 stdout/stderr를
   UTF-8로 reconfigure한다.
 - **왜 `schemas.json`이 단일 진실인가:** CLI는 **설치 대상 프로젝트**(플러그인이 깔린 작업
@@ -408,15 +411,33 @@ daedalus-bb [--state-dir state] [--schemas schemas/schemas.json] <command>
   true/1/yes/y/on ↔ false/0/no/n/off). 컬렉션 필드는 `--append`/`--remove`(원소 단위, `--remove`는
   **모든** 일치 원소 제거 — "이후 그 값은 없다"가 기대 동작) 또는 `--set f='["a","b"]'`(JSON 배열
   통째). `uniqueItems`(SET 컬렉션)면 append·set 양쪽에서 중복 제거. 적용 순서는 set → append → remove.
-- **초기 객체:** required 필드만 타입별 제로값(string `""`/integer `0`/number `0.0`/boolean
-  `false`/array `[]`), 비required는 생략. 스키마의 `default`는 초기 객체에 쓰지 않는다(계약 확정).
+  **`--remove`는 없는 것을 만들지 않는다** — 키가 없으면(비required 필드의 초기 상태) 아무 일도
+  일어나지 않고, 리스트가 아닌 값(스키마 위반)도 건드리지 않는다(빈 배열로 덮으면 고장이 조용히
+  지워진다 — 그 위반은 검증 게이트가 잡는다). 값 형식 검사는 키 유무와 무관하게 그대로 돈다.
+- **초기 객체:** required 필드만 채우고 비required는 생략한다. 값은 **선언 타입에 맞는
+  `default`가 스키마에 있으면 그 값**, 없으면 타입별 제로값(string `""`/integer `0`/number
+  `0.0`/boolean `false`/array `[]`/object `{}`/무제약(ANY) `null`)이다. 컴파일러가 `default`를
+  실제로 배출하므로(`_class_to_json_schema`) 그것을 무시하면 default `true`인 required boolean이
+  `false`로 초기화된다. 다만 default는 **타입이 보장되지 않는다** — 블랙보드 편집기가 default
+  셀을 자유 텍스트로 받아 boolean 필드에 문자열 `"true"`가 실릴 수 있다. 그래서 선언 타입에
+  맞을 때만 쓰고 어긋나면 제로값으로 물러난다(어긋난 default 때문에 `init` 자체가 실패하는 것이
+  더 나쁘다 — 어긋남은 `list` 출력에 그대로 보인다).
 - **`state/__progress__.json`은 스키마 밖 규약 파일**(WP-RS 진행 상태)이라 `validate` 전 클래스
   순회의 대상이 아니다 — 그 파일이 깨져 있어도 블랙보드 검증은 통과한다.
 - **미존재 이름은 즉시 거부한다.** 클래스가 없으면 가용 클래스를, 필드가 없으면 가용 필드를
   stderr에 나열하고 exit 2. 필드 오타는 상태 파일 유무보다 **먼저** 판정한다(파일이 없다고
   대답하면 오타를 못 찾는다).
 - `validate`에서 상태 파일이 없는 클래스는 위반이 아니라 `"missing"`으로 보고한다(아직
-  초기화되지 않은 상태는 고장이 아니다). 파싱 불가 파일은 위반이다.
+  초기화되지 않은 상태는 고장이 아니다). 파싱 불가 파일은 위반이다. **이름을 생략한 전 클래스
+  순회는 미초기화여도 exit 0**이지만, **클래스를 명시한 호출에서 그 파일이 없으면 exit 3**이다
+  (`read`와 같은 뜻) — 물어본 대상이 없다는 것 자체가 대답이고, exit code만 보는 호출자가
+  "검사했고 정상"으로 읽으면 안 된다. 위반이 있으면 그쪽이 우선(exit 1).
+- **컴파일러 산출 형상과의 결합은 테스트가 고정한다.** CLI는 모델을 임포트할 수 없지만
+  `tests/`는 양쪽을 볼 수 있으므로, `tests/cli/test_schema_contract.py`가
+  `compile_schemas_json`이 **실제로 만든 텍스트**를 `schemas.json`으로 깔고 list/init/write/
+  validate를 돌린다(손으로 쓴 픽스처만 쓰면 컴파일러가 형상을 바꿔도 CLI 테스트는 전부 초록인
+  채 런타임만 깨진다). `BLACKBOARD_FIELD_TYPES` 밖 legacy 타입(ANY/JSON/bare LIST)도 경고
+  등급이라 실제로 산출에 나오므로 함께 고정한다.
 
 ### FSM + Blackboard 하이브리드
 

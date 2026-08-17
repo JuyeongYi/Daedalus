@@ -2,7 +2,11 @@
 """블랙보드 CLI (``daedalus-bb``) — work 폴더의 ``state/`` 파일 읽기/쓰기/검증.
 
 컴파일 산출(스킬·에이전트 본문의 블랙보드 지시)이 런타임에 이 CLI를 호출한다.
-소비자가 LLM이므로 **stdout은 항상 JSON**이고, 진단·안내는 stderr로 나간다.
+소비자가 LLM이므로 **stdout에 나가는 것은 JSON뿐**이고, 진단·안내는 stderr로 나간다.
+성공 경로는 stdout에 JSON 한 덩이를 낸다. 오류 경로(exit 2/3, init·write의 exit 1)는
+stdout에 **아무것도 쓰지 않는다** — ``validate``만 예외로, 검증에 실패해도
+``{"ok": false, "violations": [...]}``를 stdout에 낸다. 즉 stdout을 무조건
+``json.loads``에 먹이지 말고 exit code로 먼저 갈라야 한다.
 
 검증의 단일 진실은 **컴파일 산출물 ``schemas/schemas.json`` 파일 자체**다.
 CLI는 설치 대상 프로젝트(플러그인이 깔린 작업 폴더)에서 돌고, 그곳에는
@@ -12,7 +16,8 @@ Daedalus 모델도 프로젝트 파일도 없다 — 있는 것은 산출된 스
 (``type``/``properties``/``required``/``items``/``uniqueItems``)만 다루는
 최소 구현이다. 범용 JSON Schema 구현이 아니다.
 
-exit code: 0 성공 / 1 검증 실패 / 2 사용법·스키마·IO 오류 / 3 read 대상 파일 없음.
+exit code: 0 성공 / 1 검증 실패 / 2 사용법·스키마·IO 오류 /
+3 대상 상태 파일 없음(``read``, 그리고 클래스를 **명시한** ``validate``).
 """
 from __future__ import annotations
 
@@ -152,15 +157,36 @@ def _zero_value(prop: dict) -> Any:
     return zero
 
 
+def _initial_value(prop: dict) -> Any:
+    """required 필드의 초기값 — 선언 타입에 맞는 ``default``가 있으면 그 값.
+
+    스키마의 ``default``는 설계자가 적어 둔 초기값이므로 제로값보다 우선한다
+    (default ``true``인 boolean이 ``false``로 초기화되면 설계와 어긋난다).
+    다만 **타입이 보장되지 않는다** — 편집기가 default 셀을 자유 텍스트로
+    받으므로 boolean 필드에 문자열 ``"true"``가 실려 나올 수 있고, 그대로 쓰면
+    ``init``이 자기가 만든 객체의 검증에 걸려 실패한다. 그래서 선언 타입에
+    맞을 때만 쓰고, 어긋나면 조용히 제로값으로 물러난다(초기화를 아예 못 하게
+    막는 것보다 낫다 — 어긋난 default는 ``list``의 출력으로 드러난다).
+    """
+    if "default" in prop:
+        candidate = prop["default"]
+        if not _check_shape(candidate, prop):
+            return _zero_value(prop)
+        if isinstance(candidate, (list, dict)):
+            return json.loads(json.dumps(candidate))  # 스키마 쪽 객체와 공유 금지
+        return candidate
+    return _zero_value(prop)
+
+
 def initial_object(schema: dict) -> dict:
-    """스키마 기반 초기 객체 — required만 제로값, 비required는 생략."""
+    """스키마 기반 초기 객체 — required만(타입에 맞는 default, 없으면 제로값), 비required는 생략."""
     props = _properties(schema)
     obj: dict[str, Any] = {}
     for name in _required_names(schema):
         prop = props.get(name)
         if prop is None:
             continue
-        obj[name] = _zero_value(prop)
+        obj[name] = _initial_value(prop)
     return obj
 
 
@@ -286,6 +312,13 @@ def _check_value(value: Any, prop: dict, path: str, out: list[str]) -> None:
         return
     if not ok:
         out.append(f"{path}: {declared} 이어야 한다 (실제: {_type_name(value)})")
+
+
+def _check_shape(value: Any, prop: dict) -> bool:
+    """값이 속성 스키마 형상에 맞는가 (메시지 없이 참/거짓만)."""
+    problems: list[str] = []
+    _check_value(value, prop, "", problems)
+    return not problems
 
 
 def validate_object(obj: Any, schema: dict, cls: str) -> list[str]:
@@ -475,7 +508,10 @@ def _apply_operations(
         _require_collection(prop, where, "--remove")
         current = obj.get(name)
         if not isinstance(current, list):
-            obj[name] = []
+            # 제거는 없는 것을 만들지 않는다 — 키가 없으면 그대로 없고, 리스트가
+            # 아닌 값(스키마 위반)은 손대지 않는다(빈 배열로 덮으면 고장을 조용히
+            # 지운다. 그 위반은 아래 검증 게이트가 잡아 쓰기를 막는다).
+            coerce_scalar(value, _items_schema(prop), where)  # 값 형식은 여전히 검사
             continue
         element = coerce_scalar(value, _items_schema(prop), where)
         # 원소 단위 제거 — 같은 값이 여러 번 있으면 전부 없앤다
@@ -532,6 +568,14 @@ def _report_violations(violations: list[str]) -> None:
 
 
 def _cmd_validate(schemas: dict[str, dict], state_dir: Path, names: list[str]) -> int:
+    """상태 파일 검증.
+
+    이름을 생략한 전 클래스 순회에서 상태 파일 부재는 고장이 아니다(아직
+    초기화되지 않았을 뿐) — ``missing``으로 보고하고 exit 0. 반면 **이름을
+    명시한** 호출에서 그 파일이 없으면 exit 3(``read``와 같은 뜻)이다. 물어본
+    대상이 없다는 것 자체가 대답이고, exit code만 보는 호출자가 "검사했고
+    정상"으로 오해하면 안 된다. 위반이 있으면 그쪽이 우선(exit 1).
+    """
     if names:
         for name in names:
             class_schema(schemas, name)  # 존재 검사
@@ -571,8 +615,17 @@ def _cmd_validate(schemas: dict[str, dict], state_dir: Path, names: list[str]) -
         _report_violations(violations)
     if missing:
         _note("상태 파일 없음(검증 생략): " + ", ".join(missing))
+        if names:
+            _note(
+                "지정한 클래스의 상태 파일이 없다 — 먼저 "
+                f"'daedalus-bb init {missing[0]}' 로 만들라."
+            )
     _emit(result)
-    return EXIT_INVALID if violations else EXIT_OK
+    if violations:
+        return EXIT_INVALID
+    if names and missing:
+        return EXIT_NO_FILE
+    return EXIT_OK
 
 
 # ─────────────────────────── 진입점 ───────────────────────────

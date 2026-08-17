@@ -73,6 +73,31 @@ def run(workspace: Path, capsys):
     return _run
 
 
+@pytest.fixture
+def run_with_schemas(tmp_path: Path, capsys):
+    """SCHEMAS 픽스처가 아닌 임의 스키마로 CLI를 도는 러너 팩토리."""
+
+    def _factory(schemas: dict):
+        root = tmp_path / f"ws{len(list(tmp_path.iterdir()))}"
+        schemas_path = root / "schemas" / "schemas.json"
+        schemas_path.parent.mkdir(parents=True)
+        schemas_path.write_text(
+            json.dumps(schemas, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+        )
+
+        def _run(*argv: str):
+            code = main(
+                ["--state-dir", str(root / "state"), "--schemas", str(schemas_path), *argv]
+            )
+            captured = capsys.readouterr()
+            out = json.loads(captured.out) if captured.out.strip() else None
+            return code, out, captured.err
+
+        return root, _run
+
+    return _factory
+
+
 def _state(workspace: Path, cls: str) -> Path:
     return workspace / "state" / f"{cls}.json"
 
@@ -129,6 +154,64 @@ def test_init_creates_zero_valued_required_fields_only(run, workspace):
     assert out == {"title": "", "count": 0, "done": False, "tags": []}
     assert _load(workspace, "Task") == out
     assert "note" not in out and "ratio" not in out
+
+
+def test_init_uses_schema_default_when_type_matches(run_with_schemas):
+    """컴파일러가 배출한 default는 제로값보다 우선한다 (default true → false 금지)."""
+    _, run = run_with_schemas(
+        {
+            "Flag": {
+                "type": "object",
+                "properties": {
+                    "done": {"type": "boolean", "default": True},
+                    "label": {"type": "string", "default": "n/a"},
+                    "items": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "default": ["a"],
+                    },
+                },
+                "required": ["done", "label", "items"],
+            }
+        }
+    )
+    code, out, _ = run("init", "Flag")
+    assert code == 0
+    assert out == {"done": True, "label": "n/a", "items": ["a"]}
+
+
+def test_init_default_is_copied_not_shared(run_with_schemas):
+    """배열 default를 --append로 늘려도 스키마 쪽 객체가 오염되지 않는다."""
+    root, run = run_with_schemas(
+        {
+            "Flag": {
+                "type": "object",
+                "properties": {
+                    "items": {"type": "array", "items": {"type": "string"}, "default": ["a"]}
+                },
+                "required": ["items"],
+            }
+        }
+    )
+    assert run("write", "Flag", "--append", "items=b")[0] == 0
+    schemas = json.loads((root / "schemas" / "schemas.json").read_text(encoding="utf-8"))
+    assert schemas["Flag"]["properties"]["items"]["default"] == ["a"]
+
+
+def test_init_falls_back_to_zero_when_default_type_mismatches(run_with_schemas):
+    """편집기는 default를 자유 텍스트로 받는다 — 타입이 어긋나면 제로값으로 물러난다."""
+    _, run = run_with_schemas(
+        {
+            "Flag": {
+                "type": "object",
+                "properties": {"done": {"type": "boolean", "default": "true"}},
+                "required": ["done"],
+            }
+        }
+    )
+    code, out, _ = run("init", "Flag")
+    assert code == 0, "타입이 어긋난 default 때문에 init 자체가 실패하면 안 된다"
+    assert out == {"done": False}
 
 
 def test_init_refuses_existing_file(run, workspace):
@@ -336,6 +419,30 @@ def test_remove_absent_element_is_noop(run):
     assert out["tags"] == ["a"]
 
 
+def test_remove_on_absent_key_does_not_create_it(run, workspace):
+    """'제거'가 없던 키를 빈 배열로 만들어내면 안 된다 (owners는 비required)."""
+    run("init", "Task")
+    code, out, _ = run("write", "Task", "--remove", "owners=jy")
+    assert code == 0
+    assert "owners" not in out
+    assert "owners" not in _load(workspace, "Task")
+
+
+def test_remove_on_absent_key_still_checks_value_format(run_with_schemas):
+    """키가 없어도 값 형식 오류는 그대로 잡힌다 — 상태에 따라 진단이 달라지면 안 된다."""
+    _, run = run_with_schemas(
+        {
+            "Bag": {
+                "type": "object",
+                "properties": {"nums": {"type": "array", "items": {"type": "integer"}}},
+            }
+        }
+    )
+    code, _, err = run("write", "Bag", "--remove", "nums=abc")
+    assert code == 2
+    assert "정수가 아니다" in err
+
+
 def test_append_on_scalar_field_is_usage_error(run):
     code, _, err = run("write", "Task", "--append", "title=x")
     assert code == 2
@@ -499,6 +606,29 @@ def test_validate_detects_non_object_root(run, workspace):
     code, out, _ = run("validate", "Config")
     assert code == 1
     assert any("JSON 객체가 아니다" in v for v in out["violations"])
+
+
+def test_validate_named_missing_file_is_exit_3(run, workspace):
+    """이름을 명시했는데 파일이 없으면 exit 3 — exit code만 보고 '정상'으로 읽히면 안 된다."""
+    code, out, err = run("validate", "Task")
+    assert code == 3
+    assert out == {"ok": True, "checked": [], "missing": ["Task"], "violations": []}
+    assert "init Task" in err
+
+
+def test_validate_named_missing_is_still_exit_1_when_another_violates(run, workspace):
+    """위반이 우선한다 — 부재(3)보다 고장(1)이 먼저 보고돼야 한다."""
+    _state(workspace, "Config").write_text("[1, 2]", encoding="utf-8")
+    code, out, _ = run("validate", "Config", "Task")
+    assert code == 1
+    assert out["missing"] == ["Task"]
+
+
+def test_validate_all_classes_missing_file_stays_exit_0(run):
+    """이름 없는 전 클래스 순회에서 미초기화는 고장이 아니다 (기존 계약 고정)."""
+    code, out, _ = run("validate")
+    assert code == 0
+    assert sorted(out["missing"]) == ["Config", "Task"]
 
 
 def test_validate_unknown_class_is_usage_error(run):

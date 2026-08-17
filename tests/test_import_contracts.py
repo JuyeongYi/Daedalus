@@ -13,6 +13,7 @@ MCP SDK(mcp)·ASGI 서버(uvicorn)를 임포트할 수 없다.
 from __future__ import annotations
 
 import ast
+import sys
 from pathlib import Path
 
 DAEDALUS_ROOT = Path(__file__).resolve().parent.parent / "daedalus"
@@ -174,11 +175,14 @@ def test_cli_does_not_import_daedalus_model():
 
 
 def test_cli_imports_only_stdlib():
-    """CLI 최상위 임포트가 서드파티/프로젝트 모듈로 새지 않는지 고정."""
-    allowed_first_parts = {
-        "argparse", "json", "os", "sys", "tempfile", "pathlib", "typing",
-        "__future__", "daedalus",
-    }
+    """CLI 임포트가 서드파티 모듈로 새지 않는지 고정.
+
+    판정은 ``sys.stdlib_module_names``(3.10+, requires-python은 >=3.12)로 한다 —
+    손으로 적은 모듈 목록을 쓰면 정당한 stdlib 임포트를 하나 더한 사람이 "stdlib만
+    임포트한다"는 이름의 테스트에 걸려 계약을 위반한 줄 안다. 계약은 "이 여덟 개만"이
+    아니라 "stdlib(+ 우리 패키지)만"이다.
+    """
+    allowed_first_parts = set(sys.stdlib_module_names) | {"__future__", "daedalus"}
     offenders: list[str] = []
     for file in _cli_source_files():
         tree = ast.parse(file.read_text(encoding="utf-8"), filename=str(file))
