@@ -201,10 +201,13 @@ daedalus/
 - **마이그레이션:** v1 파일(transfer_on 키 부재)은 `serialize._migrate_v1`이 내부 FSM ExitPoint의
   이름·색을 승계한다(단방향, 경고 없음). fsm 필드 자체는 WorkflowComponent 계약상 남는다 — 신규
   에이전트는 EntryPoint 하나짜리 빈 기계(`app._make_agent_fsm`) + 기본 출력 포트 `done`.
-- **로컬 스킬 퇴역:** 생성 경로(GUI/MCP) 제거. 에이전트에게 줄 지식은 전역 스킬로 — 컴파일이
-  skills 프론트매터에 자동 합류시킨다(WP-AS: 전역 DeclarativeSkill 전부 + 그 에이전트 placement에
-  링크된 ReferenceSkill + config.skills 수동 선언 순, 중복 제거. `emit._agent_skills_list`).
-  기존 파일의 로컬 스킬은 계속 읽히고 컴파일된다(agent= 인자 조회 경로 유지).
+- **로컬 스킬 퇴역 완결 (WP-RF-1c):** `AgentDefinition.skills` 필드째 삭제. 에이전트에게 줄
+  지식은 전역 스킬로 — 컴파일이 skills 프론트매터에 자동 합류시킨다(WP-AS: 전역 DeclarativeSkill
+  전부 + 그 에이전트 placement에 링크된 ReferenceSkill + config.skills 수동 선언 순, 중복 제거.
+  `emit._agent_skills_list`). v1 파일의 로컬 스킬은 로드 시 **전역 스킬로 승격**된다
+  (`_migrate_v1` 1-b 단계 — 이름 충돌 시 `<agent>--<name>`으로 개명, 승격마다 경고 1건, id
+  보존이라 에이전트 FSM 전이의 transfer skill_ref도 그대로 해소. 블랙보드 parent 재배선·본문
+  마이그레이션은 전역 스킬과 완전히 같은 경로).
 - **호출 계약 = 그래프 유도 (WP-CT):** 수동 계약 카드(caller_contracts 편집·자동 생성)는 퇴역 —
   호출 정보를 양쪽(호출자 포트 + 에이전트 카드)에 적게 하던 중복이었다. **호출자가 무엇을 넘기는지는
   호출자의 call_agents 포트 description에 적는다.** 에이전트 .md의 "## 호출 계약"은
@@ -213,8 +216,9 @@ daedalus/
   v1 파일의 카드는 로드 시 조용히 드롭된다(`_migrate_v1`).
 - **에이전트 편집기:** AgentEditor = ComponentEditor + 출력 포트 패널 — 스킬 편집기와
   같은 레벨(그래프/컨텐츠 탭 구조 제거, 별도 그래프 VM 없음 — undo는 프로젝트 스택).
-- **MCP:** `_scope(agent=...)` 캔버스 편집·`create_skill(agent=...)` 로컬 생성은 명시적 에러로 거부.
-  `set_transfer_on(에이전트 이름)`으로 출력 포트 편집. `create_agent`는 기본 포트 done으로 시작.
+- **MCP:** 도구의 `agent` 스코프 파라미터는 WP-RF-1c에서 시그니처째 제거됐다(스키마 노출 기준 —
+  캔버스 편집의 대상은 프로젝트 그래프 하나뿐이다). `set_transfer_on(에이전트 이름)`으로 출력
+  포트 편집. `create_agent`는 기본 포트 done으로 시작.
 - **컴파일:** "## 내부 워크플로"는 legacy FSM에 실질 상태(SimpleState 등)가 있을 때만 배출.
   "## 출구"는 transfer_on 기반(`_agent_outputs_section` — 완료 보고 첫 줄에 출구 명시 지시 + description 병기).
 
@@ -236,7 +240,7 @@ daedalus/
 - **역할:** 서로 다른 컨텍스트 간에 외부 데이터를 통해 맥락을 공유하는 장치
 - 동일 컨텍스트 내에서는 불필요 — 이미 같은 맥락을 공유
 - 스코핑: 최상위 `Blackboard(parent=None)`, 하위 `Blackboard(parent=부모.blackboard)`
-- **최상위 블랙보드:** `PluginProject.blackboard`(default_factory) — schemas.json의 소스(DynamicClass 단일 진실). 에이전트/스킬 FSM의 `blackboard.parent`는 **생성 경로의 책임**으로 이 객체에 배선한다 (app.py `_register_component`, agent_editor 로컬 스킬 생성, **그리고 `deserialize_project` — 역직렬화도 생성 경로**: 최상위 스킬/에이전트 FSM→프로젝트 블랙보드, 로컬 스킬 FSM→소유 에이전트 FSM 블랙보드로 재연결되어 parent 스코핑이 저장/로드를 견딘다). 마이그레이션 없음 — 메모리 내 기존 객체는 강제하지 않는다. 직렬화는 parent를 ID로 평탄화하지 않고 **소유 구조로 재연결**(`_deser_machine`의 `parent_bb` 전달).
+- **최상위 블랙보드:** `PluginProject.blackboard`(default_factory) — schemas.json의 소스(DynamicClass 단일 진실). 에이전트/스킬 FSM의 `blackboard.parent`는 **생성 경로의 책임**으로 이 객체에 배선한다 (app.py `_register_component`, **그리고 `deserialize_project` — 역직렬화도 생성 경로**: 스킬/에이전트 FSM→프로젝트 블랙보드로 재연결되어 parent 스코핑이 저장/로드를 견딘다. v1 파일의 에이전트 로컬 스킬은 `_migrate_v1`이 전역 승격하므로 같은 경로를 탄다 — WP-RF-1c). 마이그레이션 없음 — 메모리 내 기존 객체는 강제하지 않는다. 직렬화는 parent를 ID로 평탄화하지 않고 **소유 구조로 재연결**(`_deser_machine`의 `parent_bb` 전달).
 - **DynamicClass → JSON Schema 매핑:** `blackboard.py`의 `FIELD_TYPE_TO_JSON_SCHEMA` 정본(STRING→string, INT→integer, FLOAT→number, BOOL→boolean, LIST→array, JSON→object, ANY→{}). CollectionType은 array로 래핑(LIST→items, SET→items+uniqueItems). 컴파일러 `compile_schemas_json(project)`가 프로젝트 블랙보드 class_definitions를 `<out>/schemas/schemas.json`으로(정의 없으면 None).
 - **블랙보드 편집 UI (WP-BB):** 모달이 아니라 `view/editors/blackboard_editor.BlackboardPanel`이 MainWindow의 상주
   최상위 탭(인덱스 1, Project FSM(0)과 동급, 항상 존재·닫기 불가)으로 프로젝트 최상위 블랙보드
@@ -405,7 +409,7 @@ daedalus/
   ("Internal C++ object (MarkdownHighlighter) already deleted"). `MarkdownEditor.__init__`이
   `self._highlighter.setParent(self)`로 부모를 에디터로 옮겨 두는 이유다.
 - **수명주기 배선:** `app.set_project`가 `registry().clear()`(프로젝트 전환),
-  `app._on_delete_component`가 `discard(component)` + 에이전트의 로컬 스킬까지 `discard`.
+  `app._on_delete_component`가 `discard(component)`.
 - **검증 함정:** 왕복 없이 undo만 확인하면 고장이 있어도 통과한다 — 반드시 **다른 컴포넌트로
   전환했다 복귀한 뒤** undo를 검증해야 한다(`tests/view/editors/test_body_documents.py`).
   타이핑 시뮬레이션도 `setPlainText`가 아니라 `QTextCursor.insertText`여야 한다(전자는 undo 스택을 지운다).
@@ -459,10 +463,10 @@ daedalus/
   call_agent 포트는 에이전트로만). 같은 조작인데 경로에 따라 결과가 달라지면 협업 도구로 실격이라
   `connect_states`가 동일 규칙을 검사한다. 포트는 `add_agent_call(skill, event)`로 먼저 만든다.
   (계약 카드 자동 생성은 WP-CT로 퇴역 — 호출 계약은 컴파일이 그래프에서 유도한다.)
-- **에이전트 스코프(WP-AF 이후):** 캔버스 편집 도구의 `agent` 인자는 **명시적 에러로 거부**된다
-  (내부 FSM 퇴역 — 조용히 프로젝트 캔버스를 만지면 오배치). `create_skill(agent=...)` 로컬 생성도
-  거부. 단 **조회·본문·포트·프론트매터 도구의 `agent` 인자는 legacy 로컬 스킬 접근용으로 유지**
-  (`_find_component(name, agent=...)` — 기존 파일의 로컬 스킬은 계속 읽히고 컴파일된다).
+- **에이전트 스코프(WP-RF-1c):** 도구의 `agent` 파라미터는 **시그니처째 제거**됐다(스키마 노출
+  기준). 캔버스 편집(`_scope`)의 대상은 프로젝트 그래프 하나뿐이고,
+  `_find_component(name)`은 전역 스킬/에이전트만 찾는다 — v1 파일의 로컬 스킬은 로드 시 전역
+  승격되므로 별도 접근 경로가 필요 없다.
 - **훅 라이브러리(WP-CE 4차):** `create_hook`/`update_hook`/`delete_hook`(라이브러리 = 정의의
   단일 진실) + `set_component_hooks`(스킬/에이전트가 이름으로 참조). GUI 훅 다이얼로그는 모델에
   직접 쓰지만 MCP 경로는 `AppendToListCmd`/`RemoveFromListCmd`/`SetAttrCmd`를 거쳐 undo된다.
@@ -513,13 +517,13 @@ daedalus/
 
 - **안정 ID:** `State`(베이스)/`Transition`/`StateMachine`/`Region`/`Variable`/`Skill`(베이스)/`AgentDefinition`에 `id: str = field(default_factory=lambda: uuid4().hex, kw_only=True)`. kw_only로 다중 상속 필드 순서 제약을 회피한다. eq=False 클래스는 identity 동등성/해시를 유지(id는 `__eq__`/`__hash__` 무관)하고, 값 동등성 클래스(Variable/Skill/Agent)는 `compare=False`로 값 비교에서 제외한다.
 - **직렬화 원칙:** `serialize_project`/`deserialize_project`는 JSON 호환 dict(`"format": 2` 버전 키)를 만든다. **소유 객체는 인라인, 참조는 ID 문자열로 평탄화**한다 — Transition.source/target(state id), SimpleState.skill_ref·Transition.skill_ref(component id), StateMachine.initial_state/final_states(state id). 다형성은 `kind` property를 태그로 재사용. enum은 `.value`↔타입 복원. 역직렬화는 2-pass(객체 생성+id 레지스트리 → 참조 해소)이고 dangling id는 None+경고. `Blackboard.parent`는 ID가 아니라 sub_machine 소유 구조로 재연결한다. serialize.py는 순수 모델(Qt 무관).
-- **포맷 v2 + `_migrate_v1` (RF-1b):** `serialize_project`는 항상 `"format": 2`를 쓴다. `deserialize_project`는 format 1(또는 키 부재 구버전)을 받으면 **`_migrate_v1` 한 함수로 집약된 단방향 마이그레이션**을 태운 뒤 v2로 읽는다(왕복 보존 없음 — 열면 v2로 저장된다). 미지의 상위 format은 명시 에러. `_migrate_v1`이 다루는 축(입력 dict는 deepcopy로 불변): ① delegations 드롭(경고 — WP-RF-1a. 위임을 가리키던 placement skill_ref는 dangling 경고와 함께 None으로 정리) ② sections 트리→body 평탄화(render_markdown) + `${CLAUDE_PLUGIN_ROOT}/files/`→`${ROOT}/files/` 치환(WP-RT) ③ 퇴역 키 조용히 드롭 — entry_paths/caller_contracts/전이의 target_port(WP-IP/WP-CT, 경고 불필요) ④ 에이전트 transfer_on 부재 시 내부 FSM ExitPoint 이름·색 승계(WP-AF) ⑤ 구버전 훅(커맨드 하나짜리)을 handlers 목록으로 감싸기 + 핸들러 command→script(WP-HK/WP-HS) ⑥ `field_type: "number"`→`"float"`(FieldType.NUMBER 퇴역). 픽스처 고정은 `tests/model/test_migrate_v1.py`(v2 왕복 항등 포함).
+- **포맷 v2 + `_migrate_v1` (RF-1b):** `serialize_project`는 항상 `"format": 2`를 쓴다. `deserialize_project`는 format 1(또는 키 부재 구버전)을 받으면 **`_migrate_v1` 한 함수로 집약된 단방향 마이그레이션**을 태운 뒤 v2로 읽는다(왕복 보존 없음 — 열면 v2로 저장된다). 미지의 상위 format은 명시 에러. `_migrate_v1`이 다루는 축(입력 dict는 deepcopy로 불변): ① delegations 드롭(경고 — WP-RF-1a. 위임을 가리키던 placement skill_ref는 dangling 경고와 함께 None으로 정리) ①-b 에이전트 로컬 스킬 → **전역 스킬 승격**(WP-RF-1c — 이름 충돌(전역 스킬·에이전트·먼저 승격된 스킬) 시 `<agent>--<name>` 개명, 승격마다 경고 1건, id 보존이라 transfer skill_ref 해소 유지. 승격 dict는 data["skills"]에 합류해 이후 단계·역직렬화에서 전역 스킬과 같은 경로) ② sections 트리→body 평탄화(render_markdown) + `${CLAUDE_PLUGIN_ROOT}/files/`→`${ROOT}/files/` 치환(WP-RT) ③ 퇴역 키 조용히 드롭 — entry_paths/caller_contracts/전이의 target_port(WP-IP/WP-CT, 경고 불필요) ④ 에이전트 transfer_on 부재 시 내부 FSM ExitPoint 이름·색 승계(WP-AF) ⑤ 구버전 훅(커맨드 하나짜리)을 handlers 목록으로 감싸기 + 핸들러 command→script(WP-HK/WP-HS) ⑥ `field_type: "number"`→`"float"`(FieldType.NUMBER 퇴역). 픽스처 고정은 `tests/model/test_migrate_v1.py`(v2 왕복 항등 포함).
 - **프로젝트 그래프 직렬화:** `serialize_project`는 `graph`(`_ser_machine` 재사용)와 `graph_layout`을 왕복한다. 그래프 placement의 skill_ref는 component id로 평탄화되고, 역직렬화 시 pass1에서 등록된 skills/agents를 pass2가 해소한다(그래프 `_deser_machine`은 pass1에서 호출). 하위 호환: `"graph"` 키 부재(구버전 파일) → `_make_project_graph()`로 빈 그래프 생성(경고 없음). graph.blackboard.parent는 역직렬화 시 프로젝트 블랙보드로 재연결.
 - `AgentDefinition.graph_layout`/`PluginProject.graph_layout`의 키는 state.name이 아니라 **state.id**다 (이름 변경 시 레이아웃 유실 방지).
 
 ### SKILL_FIELD_MATRIX
 
-스킬 유형(procedural, declarative, transfer, reference, local_*)별로 프론트매터 필드의 `FieldRule`을 정의하는 매트릭스.
+스킬 유형(procedural, declarative, transfer, reference)별로 프론트매터 필드의 `FieldRule`을 정의하는 매트릭스.
 
 ```python
 @dataclass
@@ -618,27 +622,26 @@ ComponentConfig(ABC)          # model, effort, hooks 공통 필드
 |------|------|
 | `duplicate_component_name` | skills/agents 전체에서 동명 컴포넌트 에러 (컴파일 디렉토리 충돌) |
 | `invalid_component_name` | 이름이 `^[a-z0-9][a-z0-9-]*$` 불일치 시 경고, 빈 이름은 에러 |
-| `dangling_string_reference` | `ProceduralSkillConfig.agent`, `AgentConfig.skills`, `reference_placements.skill_name`의 문자열 참조 실존 검사. AgentConfig.skills는 전역 + 에이전트 로컬 스킬 합산 |
+| `dangling_string_reference` | `ProceduralSkillConfig.agent`, `AgentConfig.skills`, `reference_placements.skill_name`의 문자열 참조 실존 검사 (스킬 이름은 전역 skills 기준) |
 | `duplicate_tool_name` | `tool_shelf` 내 동명 Tool 에러 (이름 참조 모호) |
 | `empty_tool_definition` | UserDefinedTool 본문(body) 빈 값 / MCPTool server·tool_name 빈 값 경고 |
 | `dangling_tool_ref` | FSM의 ToolEvaluation/ToolExecution.tool이 `tool_shelf ∪ CC_BUILTIN_TOOLS`에 없으면 경고 (빈 문자열은 스킵). 참조 수집은 상태 훅·custom_events·전이 가드/액션 체인 + Composite 중첩 + sub_machine/Region 재귀 |
 | `duplicate_hook_name` | `hook_library` 내 동명 HookDef 에러 (이름 참조 모호) |
 | `empty_hook_command` | HookDef.command 빈 값 경고 |
 | `hook_matcher_without_tool_event` | matcher가 있는데 event가 Pre/PostToolUse가 아니면 경고 (matcher는 도구 이벤트 전용) |
-| `dangling_hook_ref` | config.hooks 키가 hook_library에 없으면 경고 (스킬·에이전트·에이전트 로컬 스킬 전부 검사) |
+| `dangling_hook_ref` | config.hooks 키가 hook_library에 없으면 경고 (스킬·에이전트 전부 검사) |
 | `dangling_blackboard_ref` | State.reads/writes의 `"Class"`/`"Class.field"` 문자열 참조가 프로젝트 최상위 블랙보드 class_definitions에 없으면 경고 (재귀 — sub_machine/Region + 프로젝트 그래프 포함, 빈 문자열은 스킵) |
 | `orphan_blackboard_field` | 블랙보드 필드 중 어떤 상태의 reads/writes에도 등장하지 않으면 경고 (클래스 전체 참조는 그 필드 전부 커버로 간주, 프로젝트 전체에 접근 선언이 하나도 없으면 스킵 — 경고 폭주 방지) |
 | `mcp_agent_in_marketplace_build` | `project.build_target == MARKETPLACE`인데 에이전트 config.tools에 `mcp__` 도구가 있거나 mcp_servers 선언이 있으면 경고 (CC는 플러그인 배포 에이전트의 MCP 사용을 미지원 — LOCAL 빌드면 무경고, WP-TG) |
-| `plugin_root_in_local_build` | `project.build_target == LOCAL`인데 스킬/에이전트(로컬 스킬 포함) 본문에 files/ 참조 이외 용도의 `${CLAUDE_PLUGIN_ROOT}`가 남아 있으면 경고 (files/ 참조는 컴파일이 자동 치환하므로 제외, WP-TG) |
+| `plugin_root_in_local_build` | `project.build_target == LOCAL`인데 스킬/에이전트 본문에 files/ 참조 이외 용도의 `${CLAUDE_PLUGIN_ROOT}`가 남아 있으면 경고 (files/ 참조는 컴파일이 자동 치환하므로 제외, WP-TG) |
 | `skill_dir_token_in_agent` | 에이전트 본문에 `${CLAUDE_SKILL_DIR}`가 있으면 경고 — 이 변수는 스킬 전용이라 에이전트 .md에서 치환되지 않는다 (코드 표기 제외, 빌드 타깃 무관, WP-SF) |
 
 도구 모델(`tool.py`): `Tool(PluginComponent, ABC)` 단일 진실 + `BuiltinTool`/`MCPTool`/`UserDefinedTool`. shelf = 프로젝트(`PluginProject.tool_shelf`) 소유, FSM은 `Tool.name` 문자열로 참조(fsm/는 plugin 무관 — 객체 참조 금지, Validator가 실존 검증). `CC_BUILTIN_TOOLS`는 validation.py 모듈 frozenset(Read/Write/Edit/Bash/Glob/Grep/WebFetch/WebSearch/Agent/Task/TodoWrite/NotebookEdit/SlashCommand/PowerShell).
 
 블랙보드 접근 선언 검증(`dangling_blackboard_ref`/`orphan_blackboard_field`, WP-BB): 상태
 reads/writes 순회는 `Validator._scan_state_access(sm, visit)` 공용 헬퍼(CompositeState.sub_machine/
-ParallelState.region 재귀)를 쓰며, project.skills(fsm)/project.agents(fsm + **에이전트 로컬
-스킬 fsm**)/project.graph 네 축을 모두 검사한다(`dangling_hook_ref` 전례 — 로컬 스킬을
-제외하면 orphan이 오탐, dangling이 미검출된다).
+ParallelState.region 재귀)를 쓰며, project.skills(fsm)/project.agents(fsm)/project.graph
+세 축을 모두 검사한다.
 
 ### 훅 (HookDef / hook_library)
 
@@ -679,7 +682,7 @@ CC의 구조는 **3단**이다: 이벤트 → 그룹(matcher + 핸들러 목록)
 - **FilePanel(view/panels/file_panel.py):** `QTreeView` + `QFileSystemModel`(root = `<project_dir>/files`). files/ 부재 시 안내 라벨 + "files 폴더 만들기" 버튼, 새로고침 버튼(루트 생성 직후 재바인딩용). `app.py`가 독 위젯 "파일"로 배치하고 `_sync_files_root`(저장/열기/새 프로젝트 등 `_current_path` 변경 지점마다 호출)로 `set_project_dir`을 갱신한다. 드래그 소스는 `QFileSystemModel` 기본 mime(file URL) 그대로 사용.
 - **드롭 치환(widgets/markdown_editor.py):** `MarkdownEditor.dragEnterEvent`/`dragMoveEvent`/`dropEvent`가 mime의 file URL 중 현재 files/ 루트 하위인 것만 `_file_ref_token`으로 변환해 드롭 지점에 삽입(복수 파일이면 줄바꿈 구분). files 밖 파일·비파일 mime(일반 텍스트 드래그 등)은 토큰 후보가 없으므로 그대로 `super()`로 흘러 기존 QPlainTextEdit 기본 드롭 동작을 보존한다. 루트 주입은 TagInput의 도구/블랙보드 후보와 동일한 provider 패턴 — `set_files_root_provider(callable)`/`get_files_root()`(모듈 전역, app이 `_sync_files_root`에서 `lambda: self._file_panel.files_root()`로 등록).
 - **컴파일 복사(compiler/project_compiler.py):** `compile_project(project, out_dir, files_dir=None)` — files_dir가 실존 디렉토리면 게이트 통과 후(에러 시엔 복사도 스킵) `<out>/files/`로 정렬 순회 복사(`_copy_files_tree`, 결정적, 심볼릭 링크 미추종 — 디렉토리는 재귀 안 함·파일은 복사 안 함)한다. 기존 `<out>/files/`는 복사 전 삭제(out 전체가 아니라 files/만 — 스테일 잔존 방지). `CompileResult.copied_files`에 복사된 파일 경로 목록을 담는다. files_dir 생략(None) 시 기존 산출 파일/문자열이 완전히 불변이라 하위 호환이며, 헤드리스 `compile_project` 직접 호출부는 변경 없이 그대로 동작한다. `app._compile_project_dialog`가 `_current_path` 기준 `<project_dir>/files`를 전달.
-- **dangling_file_ref 경고:** `_scan_dangling_file_refs`가 files_dir 지정 시(None이면 스캔 생략) 스킬/에이전트(로컬 스킬 포함) body에서 `${CLAUDE_PLUGIN_ROOT}/files/<경로>` 패턴을 스캔해 files_dir에 실존하지 않는 참조를 `dangling_file_ref` 경고로 `CompileResult.warnings`에 추가한다(게이트 차단 아님). Validator가 아니라 컴파일러 소관 — 검증기는 파일시스템 무접근 순수성을 유지한다. `is_warning` 판정 일관성을 위해 rule 이름은 `validation.py`의 `WARNING_RULES`에도 등록했다(실제 emit은 project_compiler.py — `tests/model/test_validation_severity.py`의 소스 introspection 완전성 테스트는 `_EXTERNALLY_EMITTED_RULES`로 이 예외를 명시).
+- **dangling_file_ref 경고:** `_scan_dangling_file_refs`가 files_dir 지정 시(None이면 스캔 생략) 스킬/에이전트 body에서 `${CLAUDE_PLUGIN_ROOT}/files/<경로>` 패턴을 스캔해 files_dir에 실존하지 않는 참조를 `dangling_file_ref` 경고로 `CompileResult.warnings`에 추가한다(게이트 차단 아님). Validator가 아니라 컴파일러 소관 — 검증기는 파일시스템 무접근 순수성을 유지한다. `is_warning` 판정 일관성을 위해 rule 이름은 `validation.py`의 `WARNING_RULES`에도 등록했다(실제 emit은 project_compiler.py — `tests/model/test_validation_severity.py`의 소스 introspection 완전성 테스트는 `_EXTERNALLY_EMITTED_RULES`로 이 예외를 명시).
 
 ### 스킬별 동봉 파일 (skill-files/) — WP-SF
 
@@ -692,7 +695,7 @@ skills 프론트매터로 전달하거나(WP-AS 자동 합류 — declarative �
 WP-FR과 동일하게 모델 계층 없음 — 파일시스템이 단일 진실.
 
 - **컴파일(project_compiler.py):** `compile_project(..., skill_files_dir=None)` — 하위 폴더명이 스킬 산출
-  디렉토리명(전역=스킬 이름, legacy 로컬=`<agent>--<skill>`)과 일치할 때만 복사 계획(`kind="skill_file"`,
+  디렉토리명(=스킬 이름)과 일치할 때만 복사 계획(`kind="skill_file"`,
   `_iter_tree_files` 정렬 순회·링크 제외)에 합류한다. **계획 집합 합류가 곧 충돌 방어** — 'SKILL.md'라는
   이름의 동봉 파일은 기존 `compile_output_path_conflict` 게이트가 에러로 거부한다. LOCAL은 `.claude/skills/`
   밑으로 간다(cc_prefix 공유). 복사 결과는 `CompileResult.copied_files`. 생략 시 산출 완전 불변(하위 호환).
@@ -779,8 +782,7 @@ dataclass(값 동등성, unhashable) 유지 — 컬렉션 멤버십에는 list/`
 
 **출력 구조 (CC 플러그인 규약, `project.build_target == MARKETPLACE` — 기본):**
 - `<out>/.claude-plugin/plugin.json` — 플러그인 매니페스트 (MARKETPLACE에서 항상 생성 — 이게 없으면 산출 디렉토리를 CC 플러그인으로 설치할 수 없다)
-- `<out>/skills/<skill-name>/SKILL.md` — 전역 스킬 4종 전부 (Declarative/Reference도 SKILL.md)
-- `<out>/skills/<agent-name>--<skill-name>/SKILL.md` — 에이전트 로컬 스킬 (`--` 결합은 충돌 무결하지 **않음** — 이름 규약이 연속 하이픈을 허용하므로 게이트가 사전 경로 집합 검사로 충돌 시 거부)
+- `<out>/skills/<skill-name>/SKILL.md` — 스킬 4종 전부 (Declarative/Reference도 SKILL.md)
 - `<out>/agents/<agent-name>.md` — 에이전트
 
 **`build_target == LOCAL`(WP-TG/WP-MW)일 때 — 컴파일이 곧 설치:** out_dir는 스테이징이 아니라 대상 **작업 폴더**다. `<out>/.claude/skills/`·`<out>/.claude/agents/`(CC가 실제로 읽는 위치), `<out>/files/`·`<out>/schemas/`·`<out>/hooks/scripts/`(본문의 `${CLAUDE_PROJECT_DIR}/…` 참조 대상), `<out>/.mcp.json`·`<out>/.claude/settings.local.json`(생성/병합). `plugin.json`·`hooks/hooks.json`·설치 스크립트는 만들지 않는다. 상세는 컴파일 정책 15번 항목 참조.
@@ -797,33 +799,33 @@ dataclass(값 동등성, unhashable) 유지 — 컬렉션 멤버십에는 list/`
    접미사가 합류한다(reads/writes 각각 이름순 정렬, 선언 없으면 문구 생략 — 하위 호환).
 5. (삭제됨 — WP-RF-1a) 위임(delegation) 노드 산출은 개념 퇴역과 함께 제거됐다. 위임 지시는 스킬 본문에 서술한다. (번호는 뒤 항목들의 교차 참조 보존을 위해 유지.)
 6. **tool_shelf**: 참조 문서 단락으로만(실행 코드 생성은 Tier 2).
-6-b. **다음 단계 (project.graph 기반)**: `compile_skill(skill, project=...)`이 `project.graph`에서 그 스킬 placement(skill_ref identity 일치)의 outgoing 전이를 모아 SKILL.md 본문 끝에 **"## 다음 단계"** 단락을 배출한다(버그 2 — 인보크/전이 문구 누락 해소). 형식: 스킬 타깃은 `- [<조건>] → \`<skill>\` 스킬을 인보크하라`, 에이전트 타깃은 `에이전트 \`X\`에게 위임하라` + **그 에이전트 placement의 outgoing을 한 단계 인라인**("위임 완료 후: [조건] → \`C\` 스킬을 인보크하라" — 에이전트는 별도 컨텍스트라 자기 .md에 호출자 지침을 담을 수 없으므로 호출자 스킬 쪽에 후속 지시를 둔다). 조건은 `_transition_condition`(트리거+가드) 재사용, 무가드·무트리거 전이는 "무조건". outgoing 0개면 단락 생략. **에이전트 .md / 로컬 스킬에는 다음 단계 단락 없음**(전역 스킬 + project 인수 있을 때만). EntryPoint outgoing(시작 스킬)은 v1에서 스킬별 단락에 영향 없음.
+6-b. **다음 단계 (project.graph 기반)**: `compile_skill(skill, project=...)`이 `project.graph`에서 그 스킬 placement(skill_ref identity 일치)의 outgoing 전이를 모아 SKILL.md 본문 끝에 **"## 다음 단계"** 단락을 배출한다(버그 2 — 인보크/전이 문구 누락 해소). 형식: 스킬 타깃은 `- [<조건>] → \`<skill>\` 스킬을 인보크하라`, 에이전트 타깃은 `에이전트 \`X\`에게 위임하라` + **그 에이전트 placement의 outgoing을 한 단계 인라인**("위임 완료 후: [조건] → \`C\` 스킬을 인보크하라" — 에이전트는 별도 컨텍스트라 자기 .md에 호출자 지침을 담을 수 없으므로 호출자 스킬 쪽에 후속 지시를 둔다). 조건은 `_transition_condition`(트리거+가드) 재사용, 무가드·무트리거 전이는 "무조건". outgoing 0개면 단락 생략. **에이전트 .md에는 다음 단계 단락 없음**(스킬 + project 인수 있을 때만). EntryPoint outgoing(시작 스킬)은 v1에서 스킬별 단락에 영향 없음.
 7. **에이전트**: `emit==FRONTMATTER`만 프론트매터, INVOCATION(max_turns/background/isolation)은 "호출 파라미터" 본문 단락,
    SETTINGS(hooks/mcp_servers)는 **MARKETPLACE 빌드에서만** "요구 환경" 언급으로 나간다. `config.tools`의 `mcp__<server>__` 접두에서
    추출한 서버 이름(WP-TM, 11번 항목과 동일 규칙)도 `mcp_servers` 선언과 합쳐(중복 제거·이름순) 같은 "MCP 서버 연결" 줄에 담는다 — 별도 단락을 추가하지 않는다.
    **LOCAL 빌드는 이 둘을 프론트매터로 실제 배출한다(WP-LA, 16번 항목)** — 그때는 "요구 환경" 단락을 내지 않는다(같은 사실을 두 번 말하는 데다 "설정 파일을 생성하지 않음" 문구가 거짓이 된다).
 8. **컴파일 게이트**: `Validator.validate_project`의 에러(`is_warning=False`) 1건이라도 있으면 거부(파일 미생성, errors 반환). 경고는 통과(warnings 동봉).
-   게이트 강화 2종(파일 쓰기 전 산출 계획 단계): ① 산출 이름이 되는 컴포넌트(전역 스킬·에이전트·로컬 스킬) **및 프로젝트 이름**의 이름이
+   게이트 강화 2종(파일 쓰기 전 산출 계획 단계): ① 산출 이름이 되는 컴포넌트(스킬·에이전트) **및 프로젝트 이름**의 이름이
    `^[a-z0-9][a-z0-9-]*$` 불일치면 `compile_invalid_component_name` **에러로 승격** 거부 (F7 검증기에서는 경고 등급 유지 — 편집 중에는 경고가 맞다). 프로젝트 이름은 plugin.json의 `name`(플러그인 식별자)이 되므로 동일 규약을 적용한다.
    ② 전체 산출 경로 집합에 중복이 있으면 `compile_output_path_conflict` 에러로 거부 + 충돌 경로/원인 컴포넌트 보고 (조용한 덮어쓰기 방지).
 9. **plugin.json 매니페스트**: `compile_plugin_manifest(project)`가 `project.name`/`description`/`version`으로 `.claude-plugin/plugin.json`을 무조건 생성한다. 키 순서 `name`→`description`(빈 문자열이면 키 생략)→`version`.
-10. **블랙보드 사용 지침 단락**: 프로젝트 최상위 블랙보드에 `class_definitions`가 1개 이상이면, 전역 `ProceduralSkill`(로컬 스킬 제외)의 tool_shelf 단락 뒤·"다음 단계" 단락 앞, 그리고 에이전트 `.md` 본문 마지막에 `_blackboard_section(project, component)`이 "## 공유 상태 (블랙보드)" 단락(`state/<ClassName>.json` 파일 목록 + 읽기-수정-쓰기 규칙)을 배출한다. 정의가 0개면 단락 생략.
+10. **블랙보드 사용 지침 단락**: 프로젝트 최상위 블랙보드에 `class_definitions`가 1개 이상이면, `ProceduralSkill`의 tool_shelf 단락 뒤·"다음 단계" 단락 앞, 그리고 에이전트 `.md` 본문 마지막에 `_blackboard_section(project, component)`이 "## 공유 상태 (블랙보드)" 단락(`state/<ClassName>.json` 파일 목록 + 읽기-수정-쓰기 규칙)을 배출한다. 정의가 0개면 단락 생략.
     **접근 선언 기반 구체화(WP-BB):** component(스킬/에이전트)가 주어지고 그 자체 FSM(재귀) + 프로젝트 그래프
     placement의 reads/writes 합집합(`_component_access_union`)이 비어있지 않으면, "이 스킬/에이전트가 읽는
     것/쓰는 것" 문구를 추가하고 파일 목록을 관련 클래스만으로 좁힌다. 합집합이 비면(또는 component 미지정)
     기존 전 클래스 일반 안내 그대로 — 하위 호환, 접근 선언 0개 프로젝트의 산출 문자열은 불변이다.
 11. **요구 환경 자동 언급 (WP-TM)**: `_mcp_servers_from_tools(tools)`가 도구 문자열 목록에서 `mcp__<server>__` 접두의 서버 이름 집합을 추출한다(이름순 정렬 — 결정적). 스킬은 `skill.config.allowed_tools`를 스캔해 서버가 있으면(local 여부·project 인수 여부와 무관) "다음 단계" 단락 앞에 신규 "## 요구 환경" 단락(`_mcp_requirement_section_skill`)을 배출한다(없으면 단락 생략). 에이전트는 `config.tools`에서 추출한 서버를 기존 SETTINGS "요구 환경" 단락(`_settings_note_agent`, 7번 항목)의 `mcp_servers` 선언과 합쳐 하나의 "MCP 서버 연결" 줄로 병합한다(중복 없음).
 12. **작업 재개 (WP-RS)** — 저장 단위는 **플러그인 FSM(프로젝트 그래프 배치)의 위치**다(스킬 내부 FSM 상태는 다루지 않음 — 사용자 확정 설계). 규약 파일 `state/__progress__.json`(`plugin`/`current`/`completed`/`note`/`prev`/`updated` — `prev`는 WP-IC에서 추가된 직전 출처 스킬 이름 필드).
-    - **재개 프리앰블**: 프로젝트 그래프에 배치된 전역 `ProceduralSkill`/`DeclarativeSkill`(로컬 스킬·미배치·에이전트 .md 제외)에 한해, `_resume_preamble_section`이 프론트매터 직후·본문 앞에 "## 작업 재개" 단락(현재 스킬 이름 삽입 + 파일 없을 때 생성 규칙, JSON 예시에 `"prev": ""` 포함)을 배출한다. Declarative 포함 이유: 배치되면 "다음 단계"를 받으므로 갱신 규칙이 빠지면 진행 사슬이 끊긴다. placement 판정은 "다음 단계"(6-b번 항목)와 동일한 `_graph_placements`(skill_ref identity) 로직을 공유한다.
+    - **재개 프리앰블**: 프로젝트 그래프에 배치된 `ProceduralSkill`/`DeclarativeSkill`(미배치·에이전트 .md 제외)에 한해, `_resume_preamble_section`이 프론트매터 직후·본문 앞에 "## 작업 재개" 단락(현재 스킬 이름 삽입 + 파일 없을 때 생성 규칙, JSON 예시에 `"prev": ""` 포함)을 배출한다. Declarative 포함 이유: 배치되면 "다음 단계"를 받으므로 갱신 규칙이 빠지면 진행 사슬이 끊긴다. placement 판정은 "다음 단계"(6-b번 항목)와 동일한 `_graph_placements`(skill_ref identity) 로직을 공유한다.
     - **다음 단계 갱신 규칙**: 배치 스킬의 "다음 단계" 단락 끝에 `_PROGRESS_UPDATE_NOTE`(완료 시 `completed`/`current`/`note`/`updated` 갱신 + `prev`에 자신(이 스킬 이름)을 기록[WP-IC] + 에이전트 위임 전이는 2단 갱신: 위임 직전 에이전트 이름, 완료 후 후속 스킬로 — 이때도 `prev`는 위임한 스킬 이름)이 합류한다.
     - **터미널 배치**: **placement의 실제 outgoing 전이가 0개**인 배치는 "다음 단계" 대신 `_progress_terminal_section`이 "## 작업 완료" 단락(자신을 `completed`에 추가 + `current`를 `"done"`으로)을 배출한다. 판정은 "다음 단계 문구 생성 실패"가 아니다 — outgoing 타깃이 빈 상태(skill_ref=None)뿐이라 문구가 안 나와도 터미널이 아니며 이때는 아무 단락도 배출하지 않는다.
-    - **TransferSkill**: local이 아니고 **project에 placement가 1개 이상**일 때 본문 끝에 "## 진행 기록" 헤딩 + `_TRANSFER_PROGRESS_NOTE`(전이 중 note 기록 지시)를 배출한다(진행 파일이 존재하지 않는 프로젝트에서의 고아 지시 방지).
+    - **TransferSkill**: **project에 placement가 1개 이상**일 때 본문 끝에 "## 진행 기록" 헤딩 + `_TRANSFER_PROGRESS_NOTE`(전이 중 note 기록 지시)를 배출한다(진행 파일이 존재하지 않는 프로젝트에서의 고아 지시 방지).
     - **SessionStart 훅 합성**: `PluginProject.emit_progress_hook: bool = True`(직렬화 왕복, 구버전 키 부재 시 기본 True)이고 프로젝트 그래프에 placement가 1개 이상이면, `compile_hooks_json`이 `hook_library`를 오염시키지 않고 컴파일 시점에 SessionStart 이벤트에 진행 상태 주입 커맨드(`cat state/__progress__.json 2>/dev/null || true`)를 합성해 합류시킨다(사용자 정의 SessionStart 훅 뒤에 이어붙어 공존). `emit_progress_hook=False`이거나 placement가 0개면 합성 훅 미배출. 토글은 프로젝트 속성 다이얼로그의 "세션 시작 시 진행 상태 자동 주입 (SessionStart 훅)" 체크박스. 합성 커맨드는 POSIX 셸 전제(`cat`/`||`) — 비POSIX 환경에서는 토글로 끄는 것이 대응책(훅 프리셋과 동일한 전제).
 13. **진입 맥락 + 호출 계약 (WP-IC/WP-IP/WP-CT)**: 배치된 전역 `ProceduralSkill`/`DeclarativeSkill`에서 incoming 전이가 1개 이상이면, `_entry_context_section`이 "## 작업 재개" 프리앰블 뒤·본문 앞에 "## 진입 맥락" 단락을 배출한다("`state/__progress__.json`의 `prev`를 확인하고 아래에서 해당 출처 항목을 따르라" 도입 + 출처 이름순 항목["- `<출처>`에서 [조건]로 진입" + 출처의 transfer_on description 병기, 전이 스킬(TransferSkill) 지침 수행 문구·에이전트 출처의 "위임 완료 후" 문구 합류] — 포트 그룹 헤딩 없음, 그래프에서만 유도(WP-IP)). incoming 0개 배치·미배치·로컬은 산출 변화 없음. `compile_agent`의 "## 호출 계약"은 `_call_contract_section`이 프로젝트 그래프의 incoming 호출 전이에서 유도한다(WP-CT — 수동 카드 없음).
-14. **files/ 복사 + dangling_file_ref 경고 (WP-FR)**: `files_dir`가 실존 디렉토리면(게이트 통과 시에만) `_copy_files_tree`가 `<out>/files/`로 정렬 순회 복사한다(결정적, 심볼릭 링크 미추종 — 디렉토리는 재귀 안 함·파일은 복사 안 함). 기존 `<out>/files/`는 복사 전 삭제(out 전체가 아니라 files/만). 복사된 파일 경로는 `CompileResult.copied_files`에 담긴다. `files_dir`가 주어지면(실존 여부 무관) `_scan_dangling_file_refs`가 전역 스킬·에이전트·로컬 스킬 body에서 `${CLAUDE_PLUGIN_ROOT}/files/<경로>` 참조 토큰을 스캔해 files_dir에 실존하지 않으면 `dangling_file_ref` 경고를 `CompileResult.warnings`에 추가한다(게이트 차단 아님). `files_dir` 생략(None) 시 복사·스캔 모두 생략되어 기존 산출 파일/문자열이 완전히 불변(하위 호환).
+14. **files/ 복사 + dangling_file_ref 경고 (WP-FR)**: `files_dir`가 실존 디렉토리면(게이트 통과 시에만) `_copy_files_tree`가 `<out>/files/`로 정렬 순회 복사한다(결정적, 심볼릭 링크 미추종 — 디렉토리는 재귀 안 함·파일은 복사 안 함). 기존 `<out>/files/`는 복사 전 삭제(out 전체가 아니라 files/만). 복사된 파일 경로는 `CompileResult.copied_files`에 담긴다. `files_dir`가 주어지면(실존 여부 무관) `_scan_dangling_file_refs`가 스킬·에이전트 body에서 `${CLAUDE_PLUGIN_ROOT}/files/<경로>` 참조 토큰을 스캔해 files_dir에 실존하지 않으면 `dangling_file_ref` 경고를 `CompileResult.warnings`에 추가한다(게이트 차단 아님). `files_dir` 생략(None) 시 복사·스캔 모두 생략되어 기존 산출 파일/문자열이 완전히 불변(하위 호환).
 15. **빌드 타깃 — LOCAL 빌드 (WP-TG)**: `project.build_target`(기본 `MARKETPLACE`)에 따라 `_plan_outputs`의 산출 계획이 갈린다.
     - **MARKETPLACE**(기본): 현행과 **바이트 동일** — 하위 호환 게이트(기존 산출 문자열/파일 전부 불변).
-    - **LOCAL — 컴파일이 곧 설치 (WP-MW)**: out_dir가 대상 작업 폴더다. 스킬/에이전트/로컬 스킬은 `.claude/skills/`·`.claude/agents/`(CC가 실제로 읽는 위치)로 나가고, `plugin.json`과 이전의 `INSTALL.md`/`install.ps1`/`install.sh` 동봉은 폐기됐다(별도 설치 단계가 없다). `hooks/hooks.json` 파일도 만들지 않는다 — 훅은 `.claude/settings.local.json`의 `hooks` 섹션에 병합된다(훅 스크립트 파일은 양쪽 타깃 모두 `hooks/scripts/`로 — LOCAL 커맨드가 `${CLAUDE_PROJECT_DIR}/hooks/scripts/…`를 가리킨다). MCP 배선: `referenced_mcp_servers(project)`(스킬 allowed_tools ∪ 에이전트 tools/mcp_servers ∪ 로컬 스킬, 이름순) ∩ `project.mcp_server_defs` 정의를 `<out>/.mcp.json`의 `mcpServers`에 병합하고 그 이름을 `.claude/settings.local.json`의 `enabledMcpjsonServers`에 올린다. 정의 조회는 `project.mcp_server_defs` 우선 + `compile_project(..., extra_server_defs=)`(호출 환경 주입 — 앱이 `_known_server_defs()`로 자기 자신의 daedalus 서버를 넣는다. 서버 미기동이면 기본 포트) 폴백. 참조되지만 정의 없는 서버는 `missing_mcp_server_def` 경고, 깨진 기존 JSON은 건드리지 않고 `unmergeable_settings_json` 경고(수기 설정 보호). 병합은 추가/갱신만·동일 훅 그룹 중복 삽입 없음 — **재컴파일 멱등**. 병합 구현은 `compiler/wiring.py`의 `wire_workspace`가 단일 진실("Claude Code 실행" 메뉴와 공유). files/ 복사는 LOCAL에서 기존 `<out>/files/`를 **삭제하지 않고** 덮어쓰기만 한다(`_copy_files_tree(clear_first=False)` — 사용자 작업 폴더의 파일 삭제 위험 > 스테일 잔존). `${ROOT}` 확장·이름 규약 게이트·`schemas/schemas.json` 산출 조건은 기존 그대로.
+    - **LOCAL — 컴파일이 곧 설치 (WP-MW)**: out_dir가 대상 작업 폴더다. 스킬/에이전트는 `.claude/skills/`·`.claude/agents/`(CC가 실제로 읽는 위치)로 나가고, `plugin.json`과 이전의 `INSTALL.md`/`install.ps1`/`install.sh` 동봉은 폐기됐다(별도 설치 단계가 없다). `hooks/hooks.json` 파일도 만들지 않는다 — 훅은 `.claude/settings.local.json`의 `hooks` 섹션에 병합된다(훅 스크립트 파일은 양쪽 타깃 모두 `hooks/scripts/`로 — LOCAL 커맨드가 `${CLAUDE_PROJECT_DIR}/hooks/scripts/…`를 가리킨다). MCP 배선: `referenced_mcp_servers(project)`(스킬 allowed_tools ∪ 에이전트 tools/mcp_servers, 이름순) ∩ `project.mcp_server_defs` 정의를 `<out>/.mcp.json`의 `mcpServers`에 병합하고 그 이름을 `.claude/settings.local.json`의 `enabledMcpjsonServers`에 올린다. 정의 조회는 `project.mcp_server_defs` 우선 + `compile_project(..., extra_server_defs=)`(호출 환경 주입 — 앱이 `_known_server_defs()`로 자기 자신의 daedalus 서버를 넣는다. 서버 미기동이면 기본 포트) 폴백. 참조되지만 정의 없는 서버는 `missing_mcp_server_def` 경고, 깨진 기존 JSON은 건드리지 않고 `unmergeable_settings_json` 경고(수기 설정 보호). 병합은 추가/갱신만·동일 훅 그룹 중복 삽입 없음 — **재컴파일 멱등**. 병합 구현은 `compiler/wiring.py`의 `wire_workspace`가 단일 진실("Claude Code 실행" 메뉴와 공유). files/ 복사는 LOCAL에서 기존 `<out>/files/`를 **삭제하지 않고** 덮어쓰기만 한다(`_copy_files_tree(clear_first=False)` — 사용자 작업 폴더의 파일 삭제 위험 > 스테일 잔존). `${ROOT}` 확장·이름 규약 게이트·`schemas/schemas.json` 산출 조건은 기존 그대로.
 
 16. **LOCAL 에이전트 프론트매터 — hooks / mcpServers (WP-LA)**: CC는 **보안상 플러그인 서브에이전트의
     `hooks`/`mcpServers`/`permissionMode` 프론트매터를 무시한다**(공식 sub-agents 문서 명시). 즉 이 셋은
