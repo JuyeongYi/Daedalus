@@ -1,12 +1,17 @@
+# daedalus/model/validation/project_rules.py
+"""프로젝트 수준 규칙 — 여러 컴포넌트를 가로질러야 판정되는 검사들.
+
+``_ProjectRules``는 ``Validator``가 상속하는 믹스인이다(WP-RF-3d 분해 — 이동만,
+동작 불변). ``validate_project``가 여기 있고, 각 FSM의 머신 수준 검사는
+``_MachineRules._validate_machine``에 위임한다.
+"""
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
 
-from daedalus.model.fsm.event import CompletionEvent
 from daedalus.model.fsm.machine import StateMachine
-from daedalus.model.fsm.pseudo import ChoiceState, EntryPoint, ExitPoint, TerminateState
-from daedalus.model.fsm.state import CompositeState, ParallelState, State
+from daedalus.model.fsm.pseudo import EntryPoint
+from daedalus.model.fsm.state import CompositeState, ParallelState
 from daedalus.model.fsm.strategy import (
     CompositeEvaluation,
     CompositeExecution,
@@ -15,89 +20,9 @@ from daedalus.model.fsm.strategy import (
     ToolEvaluation,
     ToolExecution,
 )
-from daedalus.model.fsm.transition import Transition
-from daedalus.model.fsm.variable import VariableScope
 from daedalus.model.plugin.enums import BuildTarget, PermissionMode
-
-
-@dataclass
-class ValidationError:
-    """검증 결과 1건.
-
-    subject: 문제의 모델 객체 (노드 점프용). compare=False이므로 UI에서는
-      값 비교가 아니라 ``error.subject is node.model`` 같은 identity 비교로
-      조회해야 한다.
-    path: 중첩 위치. validate_project는 루트를 ``("skill:<이름>",)`` 또는
-      ``("agent:<이름>",)``으로 주입하고, 재귀는 ``"agent:<이름>"``(CompositeState)
-      / ``"region:<이름>"``(Region)을 누적한다.
-    """
-    rule: str
-    message: str
-    source: str = ""
-    subject: object | None = field(default=None, compare=False, repr=False)
-    path: tuple[str, ...] = field(default_factory=tuple)
-
-    @property
-    def is_warning(self) -> bool:
-        """규칙이 경고 등급이면 True, 에러 등급이면 False.
-
-        invalid_component_name은 빈 이름(에러)과 규약 불일치(경고)가 같은 rule 이름을
-        공유한다 — 빈 이름 메시지는 "이름이 비어 있습니다"로 특정하여 에러로 분류.
-        """
-        if self.rule == "invalid_component_name":
-            return "비어 있습니다" not in self.message
-        return self.rule in WARNING_RULES
-
-
-# 경고 등급 규칙 집합 (모델 단일 진실 — view에서 rule 이름 하드코딩 금지).
-# invalid_component_name은 is_warning property에서 메시지 내용으로 세분화.
-WARNING_RULES: frozenset[str] = frozenset({
-    # 머신 수준 경고
-    "missing_required_input",
-    "pseudo_state_hooks",
-    "completion_event_on_composite",
-    "duplicate_state_name",
-    "unreachable_state",
-    "invalid_data_map_source",
-    "trigger_unknown_event",
-    # WP-M FSM 의미론 경고
-    "choice_completeness_missing_else",
-    "parallel_join_count",
-    # 프로젝트 수준 경고
-    "dangling_string_reference",
-    "invalid_component_name",  # 빈 이름 제외는 is_warning에서 처리
-    # 도구(tool_shelf) 경고
-    "dangling_tool_ref",
-    "empty_tool_definition",
-    # 훅(hook_library) 경고
-    "dangling_hook_ref",
-    "empty_hook_command",
-    "hook_matcher_without_tool_event",
-    "hook_matcher_matches_nothing",
-    # 블랙보드(blackboard) 경고 — WP-BB
-    "dangling_blackboard_ref",
-    "orphan_blackboard_field",
-    "invalid_blackboard_field_type",
-    # 파일 참조(files/) 경고 — WP-FR. 검사 로직은 Validator가 아니라
-    # compiler/project_compiler.py 소관(검증기는 파일시스템 무접근 순수성
-    # 유지)이지만, is_warning 판정 일관성을 위해 여기 등록한다.
-    "dangling_file_ref",
-    # 빌드 타깃(build_target) 경고 — WP-TG
-    "mcp_agent_in_marketplace_build",
-    "plugin_root_in_local_build",
-    # WP-LA — 플러그인 서브에이전트가 무시하는 프론트매터 필드
-    "unsupported_agent_field_in_marketplace_build",
-    # WP-MW — LOCAL 직접 설치 배선 경고. 검사·발급은 compiler/project_compiler.py
-    # 소관(dangling_file_ref와 동일 정책 — 검증기는 파일시스템 무접근).
-    "missing_mcp_server_def",
-    "unmergeable_settings_json",
-    # WP-SF — 스킬별 동봉 파일(skill-files/) 경고. dangling/unknown 2종은
-    # compiler/project_compiler.py 소관(파일시스템 검사), 에이전트 토큰 검사는
-    # 본문 문자열만 보므로 검증기 소관.
-    "dangling_skill_file_ref",
-    "unknown_skill_files_dir",
-    "skill_dir_token_in_agent",
-})
+from daedalus.model.validation.machine_rules import _MachineRules
+from daedalus.model.validation.severity import ValidationError
 
 
 # CC 내장 도구 이름 집합 — tool_shelf에 선언하지 않아도 ToolEvaluation/ToolExecution이
@@ -124,626 +49,8 @@ def _strip_markdown_code(text: str) -> str:
     return _INLINE_CODE_RE.sub("", _CODE_FENCE_RE.sub("", text))
 
 
-# skip_rules로 생략을 지원하는 규칙 집합 — 이름 오타/규칙 리네임이 조용한
-# no-op이 되지 않도록 알려진 이름만 허용한다.
-SKIPPABLE_RULES: frozenset[str] = frozenset({"unreachable_state"})
-
-
-class Validator:
-    @staticmethod
-    def validate(
-        sm: StateMachine,
-        skip_rules: frozenset[str] = frozenset(),
-    ) -> list[ValidationError]:
-        return Validator._validate_machine(sm, skip_rules=skip_rules)
-
-    @staticmethod
-    def _validate_machine(
-        sm: StateMachine,
-        path: tuple[str, ...] = (),
-        skip_rules: frozenset[str] = frozenset(),
-    ) -> list[ValidationError]:
-        """머신 수준 규칙을 검증한다.
-
-        skip_rules: 이름이 속한 규칙 검사를 생략한다(기본값 빈 집합 — 하위 호환).
-          재귀(sub_machine/Region)에는 **전파하지 않는다** — 호출부(validate_project)가
-          프로젝트 그래프 자체에만 적용하도록 재귀 호출에는 넘기지 않는다.
-        """
-        unknown = skip_rules - SKIPPABLE_RULES
-        if unknown:
-            raise ValueError(f"skip_rules에 지원되지 않는 규칙: {sorted(unknown)}")
-        errors: list[ValidationError] = []
-        errors.extend(Validator._check_initial_in_states(sm, path))
-        errors.extend(Validator._check_final_in_states(sm, path))
-        errors.extend(Validator._check_nested_agents(sm.states, path))
-        errors.extend(Validator._check_agent_to_agent(sm.transitions, path))
-        errors.extend(Validator._check_required_inputs(sm.transitions, path))
-        errors.extend(Validator._check_pseudo_state_hooks(sm.states, path))
-        errors.extend(Validator._check_completion_events(sm, path))
-        errors.extend(Validator._check_duplicate_skill_ref(sm.states, path))
-        errors.extend(Validator._check_transfer_on_not_empty(sm.states, path))
-        # 신규 머신 수준 규칙
-        errors.extend(Validator._check_transition_endpoints(sm, path))
-        errors.extend(Validator._check_duplicate_state_name(sm, path))
-        if "unreachable_state" not in skip_rules:
-            errors.extend(Validator._check_unreachable_state(sm, path))
-        errors.extend(Validator._check_invalid_data_map_source(sm.transitions, path))
-        errors.extend(Validator._check_trigger_unknown_event(sm, path))
-        # WP-M FSM 의미론 규칙
-        errors.extend(Validator._check_transition_type_consistency(sm.transitions, path))
-        errors.extend(Validator._check_choice_completeness(sm, path))
-        errors.extend(Validator._check_parallel_join_count(sm.states, path))
-        # 재귀
-        for state in sm.states:
-            if isinstance(state, CompositeState):
-                child_path = path + (f"agent:{state.name}",)
-                errors.extend(Validator._validate_machine(state.sub_machine, child_path))
-            elif isinstance(state, ParallelState):
-                for region in state.regions:
-                    child_path = path + (f"region:{region.name}",)
-                    errors.extend(Validator._validate_machine(region.sub_machine, child_path))
-        return errors
-
-    # ------------------------------------------------------------------
-    # 기존 규칙 (path 파라미터 추가)
-    # ------------------------------------------------------------------
-
-    @staticmethod
-    def _check_initial_in_states(
-        sm: StateMachine,
-        path: tuple[str, ...] = (),
-    ) -> list[ValidationError]:
-        if sm.states and sm.initial_state not in sm.states:
-            return [ValidationError(
-                rule="initial_state_in_states",
-                message=(
-                    f"'{sm.name}': 시작 상태 '{sm.initial_state.name}'이 "
-                    f"삭제되었거나 이 FSM에 속하지 않습니다. "
-                    f"FSM 편집기에서 시작 상태를 다시 지정하세요."
-                ),
-                source=sm.name,
-                subject=sm,
-                path=path,
-            )]
-        return []
-
-    @staticmethod
-    def _check_final_in_states(
-        sm: StateMachine,
-        path: tuple[str, ...] = (),
-    ) -> list[ValidationError]:
-        errors: list[ValidationError] = []
-        for fs in sm.final_states:
-            if fs not in sm.states:
-                errors.append(ValidationError(
-                    rule="final_states_in_states",
-                    message=(
-                        f"'{sm.name}': 종료 상태 '{fs.name}'이 "
-                        f"삭제되었거나 이 FSM에 속하지 않습니다. "
-                        f"해당 상태를 다시 추가하거나 종료 상태 목록에서 제거하세요."
-                    ),
-                    source=sm.name,
-                    subject=fs,
-                    path=path,
-                ))
-        return errors
-
-    @staticmethod
-    def _check_nested_agents(
-        states: list[State],
-        path: tuple[str, ...] = (),
-    ) -> list[ValidationError]:
-        errors: list[ValidationError] = []
-        for state in states:
-            if isinstance(state, CompositeState):
-                for child in state.sub_machine.states:
-                    if isinstance(child, CompositeState):
-                        errors.append(ValidationError(
-                            rule="no_nested_agent",
-                            message=(
-                                f"CompositeState '{state.name}' 내부에 "
-                                f"CompositeState '{child.name}'이 존재합니다."
-                            ),
-                            source=state.name,
-                            subject=child,
-                            path=path,
-                        ))
-        return errors
-
-    @staticmethod
-    def _check_agent_to_agent(
-        transitions: list[Transition],
-        path: tuple[str, ...] = (),
-    ) -> list[ValidationError]:
-        errors: list[ValidationError] = []
-        for t in transitions:
-            if isinstance(t.source, CompositeState) and isinstance(t.target, CompositeState):
-                errors.append(ValidationError(
-                    rule="no_agent_to_agent",
-                    message=(
-                        f"Agent '{t.source.name}' → Agent '{t.target.name}' "
-                        f"직접 전이 불가. Skill을 경유해야 합니다."
-                    ),
-                    source=f"{t.source.name}->{t.target.name}",
-                    subject=t,
-                    path=path,
-                ))
-        return errors
-
-    @staticmethod
-    def _check_required_inputs(
-        transitions: list[Transition],
-        path: tuple[str, ...] = (),
-    ) -> list[ValidationError]:
-        errors: list[ValidationError] = []
-        for t in transitions:
-            target_required = [v for v in t.target.inputs if v.required]
-            mapped_targets = set(t.data_map.values())
-            for var in target_required:
-                if var.name not in mapped_targets and var.scope != VariableScope.BLACKBOARD:
-                    errors.append(ValidationError(
-                        rule="missing_required_input",
-                        message=(
-                            f"전이 '{t.source.name}' → '{t.target.name}': "
-                            f"필수 input '{var.name}'이 data_map에 없습니다."
-                        ),
-                        source=f"{t.source.name}->{t.target.name}",
-                        subject=t,
-                        path=path,
-                    ))
-        return errors
-
-    @staticmethod
-    def _check_pseudo_state_hooks(
-        states: list[State],
-        path: tuple[str, ...] = (),
-    ) -> list[ValidationError]:
-        errors: list[ValidationError] = []
-        pseudo_types = (ChoiceState, TerminateState, EntryPoint, ExitPoint)
-        # 라이프사이클 훅 필드 목록은 _STATE_ACTION_FIELDS 단일 진실을 재사용한다
-        # (도구 참조 수집과 동일 집합 — 신규 훅 추가 시 한 곳만 갱신).
-        for state in states:
-            if isinstance(state, pseudo_types):
-                # 라이프사이클 훅 필드 + custom_events(단순 반응) 모두 의사 상태에는 부적절.
-                offending = None
-                for field_name in Validator._STATE_ACTION_FIELDS:
-                    if getattr(state, field_name, []):
-                        offending = field_name
-                        break
-                if offending is None and getattr(state, "custom_events", None):
-                    offending = "custom_events"
-                if offending is not None:
-                    errors.append(ValidationError(
-                        rule="pseudo_state_hooks",
-                        message=(
-                            f"의사 상태 '{state.name}'({state.kind})에 "
-                            f"'{offending}' 훅이 설정되어 있습니다."
-                        ),
-                        source=state.name,
-                        subject=state,
-                        path=path,
-                    ))
-        return errors
-
-    @staticmethod
-    def _check_completion_events(
-        sm: StateMachine,
-        path: tuple[str, ...] = (),
-    ) -> list[ValidationError]:
-        errors: list[ValidationError] = []
-        composite_states = [
-            s for s in sm.states
-            if isinstance(s, (CompositeState, ParallelState))
-        ]
-        for cs in composite_states:
-            outgoing = [t for t in sm.transitions if t.source is cs]
-            if outgoing and not any(isinstance(t.trigger, CompletionEvent) for t in outgoing):
-                errors.append(ValidationError(
-                    rule="completion_event_on_composite",
-                    message=(
-                        f"'{cs.name}'에서 나가는 전이에 CompletionEvent trigger가 없습니다."
-                    ),
-                    source=cs.name,
-                    subject=cs,
-                    path=path,
-                ))
-        return errors
-
-    @staticmethod
-    def _check_duplicate_skill_ref(
-        states: list,
-        path: tuple[str, ...] = (),
-    ) -> list[ValidationError]:
-        from daedalus.model.fsm.state import SimpleState
-        seen: set[int] = set()
-        errors: list[ValidationError] = []
-        for state in states:
-            if not isinstance(state, SimpleState):
-                continue
-            ref = state.skill_ref
-            if ref is None:
-                continue
-            ref_id = id(ref)
-            if ref_id in seen:
-                errors.append(ValidationError(
-                    rule="no_duplicate_skill_ref",
-                    message=(
-                        f"'{ref.name}' 스킬/에이전트가 동일 StateMachine에 "
-                        f"두 번 이상 배치되었습니다."
-                    ),
-                    source=state.name,
-                    subject=state,
-                    path=path,
-                ))
-            else:
-                seen.add(ref_id)
-        return errors
-
-    @staticmethod
-    def _check_transfer_on_not_empty(
-        states: list,
-        path: tuple[str, ...] = (),
-    ) -> list[ValidationError]:
-        from daedalus.model.fsm.state import SimpleState
-        from daedalus.model.plugin.skill import ProceduralSkill
-        from daedalus.model.plugin.agent import AgentDefinition
-        errors: list[ValidationError] = []
-        for state in states:
-            if not isinstance(state, SimpleState):
-                continue
-            ref = state.skill_ref
-            if ref is None:
-                continue
-            if isinstance(ref, ProceduralSkill):
-                if not ref.transfer_on:
-                    errors.append(ValidationError(
-                        rule="transfer_on_not_empty",
-                        message=(
-                            f"'{ref.name}' 스킬의 transfer_on이 비어 있습니다. "
-                            f"최소 하나의 이벤트가 필요합니다."
-                        ),
-                        source=ref.name,
-                        subject=ref,
-                        path=path,
-                    ))
-            elif isinstance(ref, AgentDefinition):
-                # WP-AF — 출력 포트는 transfer_on이 단일 진실.
-                if not ref.output_events:
-                    errors.append(ValidationError(
-                        rule="transfer_on_not_empty",
-                        message=(
-                            f"'{ref.name}' 에이전트의 출력 포트(transfer_on)가 "
-                            f"비어 있습니다. 최소 하나의 출력 이벤트가 필요합니다."
-                        ),
-                        source=ref.name,
-                        subject=ref,
-                        path=path,
-                    ))
-        return errors
-
-    # ------------------------------------------------------------------
-    # 신규 머신 수준 규칙 5종
-    # ------------------------------------------------------------------
-
-    @staticmethod
-    def _check_transition_endpoints(
-        sm: StateMachine,
-        path: tuple[str, ...] = (),
-    ) -> list[ValidationError]:
-        """transition_endpoint_not_in_states — source/target이 sm.states에 없으면 에러."""
-        state_ids = {id(s) for s in sm.states}
-        errors: list[ValidationError] = []
-        for t in sm.transitions:
-            if id(t.source) not in state_ids:
-                errors.append(ValidationError(
-                    rule="transition_endpoint_not_in_states",
-                    message=(
-                        f"'{sm.name}': 전이 source '{t.source.name}'이 states에 없습니다."
-                    ),
-                    source=sm.name,
-                    subject=t,
-                    path=path,
-                ))
-            if id(t.target) not in state_ids:
-                errors.append(ValidationError(
-                    rule="transition_endpoint_not_in_states",
-                    message=(
-                        f"'{sm.name}': 전이 target '{t.target.name}'이 states에 없습니다."
-                    ),
-                    source=sm.name,
-                    subject=t,
-                    path=path,
-                ))
-        return errors
-
-    @staticmethod
-    def _check_duplicate_state_name(
-        sm: StateMachine,
-        path: tuple[str, ...] = (),
-    ) -> list[ValidationError]:
-        """duplicate_state_name — 동일 머신 내 동명 상태 경고."""
-        seen: dict[str, State] = {}
-        errors: list[ValidationError] = []
-        for state in sm.states:
-            if state.name in seen:
-                errors.append(ValidationError(
-                    rule="duplicate_state_name",
-                    message=(
-                        f"'{sm.name}': 상태 이름 '{state.name}'이 중복됩니다."
-                    ),
-                    source=sm.name,
-                    subject=state,
-                    path=path,
-                ))
-            else:
-                seen[state.name] = state
-        return errors
-
-    @staticmethod
-    def _check_unreachable_state(
-        sm: StateMachine,
-        path: tuple[str, ...] = (),
-    ) -> list[ValidationError]:
-        """unreachable_state — initial_state + 모든 EntryPoint에서 도달 불가 상태 경고."""
-        if not sm.states:
-            return []
-
-        state_ids = {id(s) for s in sm.states}
-
-        # 시작점: initial_state + 모든 EntryPoint
-        start_ids: set[int] = {id(sm.initial_state)}
-        for s in sm.states:
-            if isinstance(s, EntryPoint):
-                start_ids.add(id(s))
-
-        # 전이 그래프 BFS (source/target이 states에 속하는 것만)
-        adj: dict[int, list[int]] = {id(s): [] for s in sm.states}
-        for t in sm.transitions:
-            src_id = id(t.source)
-            tgt_id = id(t.target)
-            if src_id in state_ids and tgt_id in state_ids:
-                adj[src_id].append(tgt_id)
-
-        visited: set[int] = set()
-        queue = [sid for sid in start_ids if sid in state_ids]
-        while queue:
-            cur = queue.pop()
-            if cur in visited:
-                continue
-            visited.add(cur)
-            queue.extend(adj.get(cur, []))
-
-        errors: list[ValidationError] = []
-        for state in sm.states:
-            sid = id(state)
-            if sid not in visited and sid not in start_ids:
-                errors.append(ValidationError(
-                    rule="unreachable_state",
-                    message=(
-                        f"'{sm.name}': 상태 '{state.name}'({state.kind})은 "
-                        f"도달 불가능합니다."
-                    ),
-                    source=sm.name,
-                    subject=state,
-                    path=path,
-                ))
-        return errors
-
-    @staticmethod
-    def _check_invalid_data_map_source(
-        transitions: list[Transition],
-        path: tuple[str, ...] = (),
-    ) -> list[ValidationError]:
-        """invalid_data_map_source — data_map key가 source의 outputs에 없으면 경고.
-        pseudo 상태(ChoiceState, EntryPoint, ExitPoint, TerminateState)는 스킵.
-        """
-        errors: list[ValidationError] = []
-        _pseudo = (ChoiceState, EntryPoint, ExitPoint, TerminateState)
-        for t in transitions:
-            if isinstance(t.source, _pseudo):
-                continue
-            source_outputs = getattr(t.source, "outputs", None)
-            if source_outputs is None:
-                continue
-            output_names = {v.name for v in source_outputs}
-            for key in t.data_map:
-                if key not in output_names:
-                    errors.append(ValidationError(
-                        rule="invalid_data_map_source",
-                        message=(
-                            f"전이 '{t.source.name}' → '{t.target.name}': "
-                            f"data_map 키 '{key}'가 source outputs에 없습니다."
-                        ),
-                        source=f"{t.source.name}->{t.target.name}",
-                        subject=t,
-                        path=path,
-                    ))
-        return errors
-
-    @staticmethod
-    def _check_trigger_unknown_event(
-        sm: StateMachine,
-        path: tuple[str, ...] = (),
-    ) -> list[ValidationError]:
-        """trigger_unknown_event — CompletionEvent trigger의 이름이 source 출력 이벤트 집합에 없으면 경고."""
-        from daedalus.model.fsm.state import SimpleState
-        from daedalus.model.plugin.skill import ProceduralSkill
-        from daedalus.model.plugin.agent import AgentDefinition
-
-        errors: list[ValidationError] = []
-        for t in sm.transitions:
-            if not isinstance(t.trigger, CompletionEvent):
-                continue
-            source = t.source
-            known_events: set[str] | None = None
-
-            if isinstance(source, SimpleState) and source.skill_ref is not None:
-                ref = source.skill_ref
-                # ProceduralSkill/AgentDefinition만 출력 이벤트 집합을 정의한다.
-                # DeclarativeSkill 등은 known_events=None → 검사 스킵.
-                # 주의: TransferSkill.output_events는 항상 []이므로 향후 분기에
-                # 추가하면 모든 trigger가 오탐이 된다 — 추가 금지.
-                if isinstance(ref, ProceduralSkill):
-                    # transfer_on(output_events) + call_agents — 캔버스는 Agent Call
-                    # 포트에서도 전이를 만들므로(trigger=CompletionEvent(이벤트명))
-                    # call_agents 이벤트도 합법적 출력 이벤트 집합에 포함한다.
-                    known_events = set(ref.output_events) | {
-                        e.name for e in ref.call_agents
-                    }
-                elif isinstance(ref, AgentDefinition):
-                    known_events = set(ref.output_events)
-            elif isinstance(source, CompositeState):
-                # sub_machine ExitPoint 이름 + "done"
-                exit_names = {
-                    s.name for s in source.sub_machine.states
-                    if isinstance(s, ExitPoint)
-                }
-                exit_names.add("done")
-                known_events = exit_names
-
-            if known_events is not None and t.trigger.name not in known_events:
-                errors.append(ValidationError(
-                    rule="trigger_unknown_event",
-                    message=(
-                        f"전이 '{source.name}' → '{t.target.name}': "
-                        f"trigger 이벤트 '{t.trigger.name}'이 source의 "
-                        f"출력 이벤트 집합 {sorted(known_events)}에 없습니다."
-                    ),
-                    source=f"{source.name}->{t.target.name}",
-                    subject=t,
-                    path=path,
-                ))
-        return errors
-
-    # ------------------------------------------------------------------
-    # WP-M FSM 의미론 규칙 3종
-    # ------------------------------------------------------------------
-
-    @staticmethod
-    def _check_transition_type_consistency(
-        transitions: list[Transition],
-        path: tuple[str, ...] = (),
-    ) -> list[ValidationError]:
-        """transition_type_consistency — INTERNAL/SELF 타입인데 source≠target이면 에러.
-
-        INTERNAL은 상태 비이탈 반응, SELF는 같은 상태로의 재진입이므로 두 경우 모두
-        source와 target이 identity로 동일해야 한다.
-        """
-        from daedalus.model.fsm.transition import TransitionType
-        errors: list[ValidationError] = []
-        for t in transitions:
-            if t.type in (TransitionType.INTERNAL, TransitionType.SELF):
-                if t.source is not t.target:
-                    errors.append(ValidationError(
-                        rule="transition_type_consistency",
-                        message=(
-                            f"전이 '{t.source.name}' → '{t.target.name}': "
-                            f"{t.type.value} 타입은 source와 target이 같아야 합니다."
-                        ),
-                        source=f"{t.source.name}->{t.target.name}",
-                        subject=t,
-                        path=path,
-                    ))
-        return errors
-
-    @staticmethod
-    def _check_choice_completeness(
-        sm: StateMachine,
-        path: tuple[str, ...] = (),
-    ) -> list[ValidationError]:
-        """choice_completeness — ChoiceState 분기 완전성.
-
-        관례: outgoing 중 **무가드 전이 = else 분기**.
-          - outgoing 0개 → 에러 (막다른 분기)
-          - 무가드 outgoing 2개 이상 → 에러 (비결정 else 중복)
-          - 무가드 0개 → 경고 (else 부재 — LLM 해석 결정성 저하)
-        """
-        errors: list[ValidationError] = []
-        for state in sm.states:
-            if not isinstance(state, ChoiceState):
-                continue
-            outgoing = [t for t in sm.transitions if t.source is state]
-            unguarded = [t for t in outgoing if t.guard is None]
-            if not outgoing:
-                errors.append(ValidationError(
-                    rule="choice_completeness",
-                    message=(
-                        f"ChoiceState '{state.name}'에 나가는 전이가 없습니다 "
-                        f"(막다른 분기)."
-                    ),
-                    source=state.name,
-                    subject=state,
-                    path=path,
-                ))
-                continue
-            if len(unguarded) >= 2:
-                errors.append(ValidationError(
-                    rule="choice_completeness",
-                    message=(
-                        f"ChoiceState '{state.name}'에 무가드 전이가 "
-                        f"{len(unguarded)}개입니다 — else 분기는 하나여야 "
-                        f"합니다 (비결정)."
-                    ),
-                    source=state.name,
-                    subject=state,
-                    path=path,
-                ))
-            elif not unguarded:
-                errors.append(ValidationError(
-                    rule="choice_completeness_missing_else",
-                    message=(
-                        f"ChoiceState '{state.name}'에 무가드(else) 전이가 "
-                        f"없습니다 — 어떤 가드도 통과하지 못하면 분기가 멈춥니다."
-                    ),
-                    source=state.name,
-                    subject=state,
-                    path=path,
-                ))
-        return errors
-
-    @staticmethod
-    def _check_parallel_join_count(
-        states: list[State],
-        path: tuple[str, ...] = (),
-    ) -> list[ValidationError]:
-        """parallel_join_count — ParallelState.join이 count형(N_OF)인데
-        join_count가 None이거나 region 수를 초과하면 경고."""
-        from daedalus.model.fsm.join import JoinStrategy
-        errors: list[ValidationError] = []
-        for state in states:
-            if not isinstance(state, ParallelState):
-                continue
-            if state.join is not JoinStrategy.N_OF:
-                continue
-            n_regions = len(state.regions)
-            jc = state.join_count
-            if jc is None:
-                errors.append(ValidationError(
-                    rule="parallel_join_count",
-                    message=(
-                        f"ParallelState '{state.name}'의 join이 N_OF인데 "
-                        f"join_count가 지정되지 않았습니다."
-                    ),
-                    source=state.name,
-                    subject=state,
-                    path=path,
-                ))
-            elif jc > n_regions:
-                errors.append(ValidationError(
-                    rule="parallel_join_count",
-                    message=(
-                        f"ParallelState '{state.name}'의 join_count({jc})가 "
-                        f"region 수({n_regions})를 초과합니다."
-                    ),
-                    source=state.name,
-                    subject=state,
-                    path=path,
-                ))
-        return errors
-
-    # ------------------------------------------------------------------
-    # 프로젝트 수준 규칙
-    # ------------------------------------------------------------------
+class _ProjectRules:
+    """프로젝트 수준 규칙 모음 (Validator 믹스인)."""
 
     @staticmethod
     def _graph_has_placements(graph: StateMachine) -> bool:
@@ -760,11 +67,11 @@ class Validator:
         for skill in project.skills:
             fsm = getattr(skill, "fsm", None)
             if fsm is not None:
-                errors.extend(Validator._validate_machine(
+                errors.extend(_MachineRules._validate_machine(
                     fsm, path=(f"skill:{skill.name}",),
                 ))
         for agent in project.agents:
-            errors.extend(Validator._validate_machine(
+            errors.extend(_MachineRules._validate_machine(
                 agent.fsm, path=(f"agent:{agent.name}",),
             ))
         # 프로젝트 워크플로 그래프 — placement가 하나라도 있을 때만 머신 규칙 적용.
@@ -774,33 +81,33 @@ class Validator:
         # "도달 불가"가 성립하지 않는다. 재귀(에이전트 sub_machine)에는 전파되지
         # 않으므로 에이전트 FSM 내부의 unreachable_state는 기존대로 검사된다.
         graph = getattr(project, "graph", None)
-        if graph is not None and Validator._graph_has_placements(graph):
-            errors.extend(Validator._validate_machine(
+        if graph is not None and _ProjectRules._graph_has_placements(graph):
+            errors.extend(_MachineRules._validate_machine(
                 graph, path=("project",), skip_rules=frozenset({"unreachable_state"}),
             ))
         # 신규 프로젝트 수준 규칙
-        errors.extend(Validator._check_duplicate_component_name(project))
-        errors.extend(Validator._check_invalid_component_name(project))
-        errors.extend(Validator._check_invalid_project_name(project))
-        errors.extend(Validator._check_dangling_string_references(project))
+        errors.extend(_ProjectRules._check_duplicate_component_name(project))
+        errors.extend(_ProjectRules._check_invalid_component_name(project))
+        errors.extend(_ProjectRules._check_invalid_project_name(project))
+        errors.extend(_ProjectRules._check_dangling_string_references(project))
         # 도구(tool_shelf) 규칙
-        errors.extend(Validator._check_duplicate_tool_name(project))
-        errors.extend(Validator._check_empty_tool_definition(project))
-        errors.extend(Validator._check_dangling_tool_refs(project))
+        errors.extend(_ProjectRules._check_duplicate_tool_name(project))
+        errors.extend(_ProjectRules._check_empty_tool_definition(project))
+        errors.extend(_ProjectRules._check_dangling_tool_refs(project))
         # 훅(hook_library) 규칙
-        errors.extend(Validator._check_duplicate_hook_name(project))
-        errors.extend(Validator._check_empty_hook_command(project))
-        errors.extend(Validator._check_hook_matcher_event(project))
-        errors.extend(Validator._check_dangling_hook_refs(project))
+        errors.extend(_ProjectRules._check_duplicate_hook_name(project))
+        errors.extend(_ProjectRules._check_empty_hook_command(project))
+        errors.extend(_ProjectRules._check_hook_matcher_event(project))
+        errors.extend(_ProjectRules._check_dangling_hook_refs(project))
         # 블랙보드(blackboard) 규칙 — WP-BB
-        errors.extend(Validator._check_dangling_blackboard_refs(project))
-        errors.extend(Validator._check_orphan_blackboard_fields(project))
-        errors.extend(Validator._check_blackboard_field_types(project))
+        errors.extend(_ProjectRules._check_dangling_blackboard_refs(project))
+        errors.extend(_ProjectRules._check_orphan_blackboard_fields(project))
+        errors.extend(_ProjectRules._check_blackboard_field_types(project))
         # 빌드 타깃(build_target) 규칙 — WP-TG
-        errors.extend(Validator._check_mcp_agent_in_marketplace_build(project))
-        errors.extend(Validator._check_unsupported_agent_fields(project))
-        errors.extend(Validator._check_plugin_root_in_local_build(project))
-        errors.extend(Validator._check_skill_dir_token_in_agent(project))
+        errors.extend(_ProjectRules._check_mcp_agent_in_marketplace_build(project))
+        errors.extend(_ProjectRules._check_unsupported_agent_fields(project))
+        errors.extend(_ProjectRules._check_plugin_root_in_local_build(project))
+        errors.extend(_ProjectRules._check_skill_dir_token_in_agent(project))
         return errors
 
     @staticmethod
@@ -851,7 +158,7 @@ class Validator:
                 names.append(ev.tool)
         elif isinstance(ev, CompositeEvaluation):
             for child in ev.children:
-                names.extend(Validator._collect_eval_tools(child))
+                names.extend(_ProjectRules._collect_eval_tools(child))
         return names
 
     @staticmethod
@@ -870,17 +177,8 @@ class Validator:
                 names.append(ex.tool)
         elif isinstance(ex, CompositeExecution):
             for child in ex.children:
-                names.extend(Validator._collect_exec_tools(child))
+                names.extend(_ProjectRules._collect_exec_tools(child))
         return names
-
-    # 상태/전이의 액션 체인 훅 필드 이름들 (custom_events는 dict로 별도 처리).
-    _STATE_ACTION_FIELDS = (
-        "on_entry_start", "on_entry", "on_entry_end",
-        "on_exit_start", "on_exit", "on_exit_end", "on_active",
-    )
-    _TRANSITION_ACTION_FIELDS = (
-        "on_guard_check", "on_traverse_start", "on_traverse", "on_traverse_end",
-    )
 
     @staticmethod
     def _collect_machine_tool_refs(sm: StateMachine) -> list[str]:
@@ -895,24 +193,24 @@ class Validator:
 
         def _actions(lst) -> None:
             for a in (lst or []):
-                names.extend(Validator._collect_exec_tools(a.execution))
+                names.extend(_ProjectRules._collect_exec_tools(a.execution))
 
         for state in sm.states:
-            for fname in Validator._STATE_ACTION_FIELDS:
+            for fname in _MachineRules._STATE_ACTION_FIELDS:
                 _actions(getattr(state, fname, None))
             for lst in getattr(state, "custom_events", {}).values():
                 _actions(lst)
             # 재귀
             if isinstance(state, CompositeState):
-                names.extend(Validator._collect_machine_tool_refs(state.sub_machine))
+                names.extend(_ProjectRules._collect_machine_tool_refs(state.sub_machine))
             elif isinstance(state, ParallelState):
                 for region in state.regions:
-                    names.extend(Validator._collect_machine_tool_refs(region.sub_machine))
+                    names.extend(_ProjectRules._collect_machine_tool_refs(region.sub_machine))
 
         for t in sm.transitions:
             if t.guard is not None:
-                names.extend(Validator._collect_eval_tools(t.guard.evaluation))
-            for fname in Validator._TRANSITION_ACTION_FIELDS:
+                names.extend(_ProjectRules._collect_eval_tools(t.guard.evaluation))
+            for fname in _MachineRules._TRANSITION_ACTION_FIELDS:
                 _actions(getattr(t, fname, None))
             for lst in getattr(t, "custom_events", {}).values():
                 _actions(lst)
@@ -976,8 +274,8 @@ class Validator:
         shelf_names = {t.name for t in getattr(project, "tool_shelf", [])}
         valid = shelf_names | CC_BUILTIN_TOOLS
         errors: list[ValidationError] = []
-        for label, fsm in Validator._project_machines(project):
-            for name in Validator._collect_machine_tool_refs(fsm):
+        for label, fsm in _ProjectRules._project_machines(project):
+            for name in _ProjectRules._collect_machine_tool_refs(fsm):
                 if name not in valid:
                     errors.append(ValidationError(
                         rule="dangling_tool_ref",
@@ -1113,7 +411,7 @@ class Validator:
         """dangling_hook_ref — config.hooks 키가 hook_library에 없으면 경고."""
         lib_names = {h.name for h in getattr(project, "hook_library", [])}
         errors: list[ValidationError] = []
-        for label, name, subject in Validator._collect_hook_refs(project):
+        for label, name, subject in _ProjectRules._collect_hook_refs(project):
             if name not in lib_names:
                 errors.append(ValidationError(
                     rule="dangling_hook_ref",
@@ -1175,7 +473,7 @@ class Validator:
                     source="",
                     subject=comp,
                 ))
-            elif not Validator._COMPONENT_NAME_RE.match(name):
+            elif not _ProjectRules._COMPONENT_NAME_RE.match(name):
                 errors.append(ValidationError(
                     rule="invalid_component_name",
                     message=(
@@ -1207,7 +505,7 @@ class Validator:
                 subject=project,
                 path=("project",),
             )]
-        if not Validator._COMPONENT_NAME_RE.match(name):
+        if not _ProjectRules._COMPONENT_NAME_RE.match(name):
             return [ValidationError(
                 rule="invalid_component_name",
                 message=(
@@ -1296,10 +594,10 @@ class Validator:
         for state in sm.states:
             visit(state)
             if isinstance(state, CompositeState):
-                Validator._scan_state_access(state.sub_machine, visit)
+                _ProjectRules._scan_state_access(state.sub_machine, visit)
             elif isinstance(state, ParallelState):
                 for region in state.regions:
-                    Validator._scan_state_access(region.sub_machine, visit)
+                    _ProjectRules._scan_state_access(region.sub_machine, visit)
 
     @staticmethod
     def _check_dangling_blackboard_refs(project) -> list[ValidationError]:
@@ -1339,12 +637,12 @@ class Validator:
         for skill in project.skills:
             fsm = getattr(skill, "fsm", None)
             if fsm is not None:
-                Validator._scan_state_access(fsm, _make_checker((f"skill:{skill.name}",)))
+                _ProjectRules._scan_state_access(fsm, _make_checker((f"skill:{skill.name}",)))
         for agent in project.agents:
-            Validator._scan_state_access(agent.fsm, _make_checker((f"agent:{agent.name}",)))
+            _ProjectRules._scan_state_access(agent.fsm, _make_checker((f"agent:{agent.name}",)))
         graph = getattr(project, "graph", None)
         if graph is not None:
-            Validator._scan_state_access(graph, _make_checker(("project",)))
+            _ProjectRules._scan_state_access(graph, _make_checker(("project",)))
 
         return errors
 
@@ -1367,12 +665,12 @@ class Validator:
         for skill in project.skills:
             fsm = getattr(skill, "fsm", None)
             if fsm is not None:
-                Validator._scan_state_access(fsm, _collect)
+                _ProjectRules._scan_state_access(fsm, _collect)
         for agent in project.agents:
-            Validator._scan_state_access(agent.fsm, _collect)
+            _ProjectRules._scan_state_access(agent.fsm, _collect)
         graph = getattr(project, "graph", None)
         if graph is not None:
-            Validator._scan_state_access(graph, _collect)
+            _ProjectRules._scan_state_access(graph, _collect)
 
         if not declared:
             return []  # 접근 선언 기능 자체를 쓰지 않는 프로젝트 — 스킵
