@@ -27,6 +27,7 @@ from daedalus.model.fsm.strategy import (
 )
 from daedalus.model.plugin.agent import AgentDefinition
 from daedalus.model.plugin.skill import ProceduralSkill, Skill
+from daedalus.model.plugin.variables import ROOT_TOKEN
 
 
 # ─────────────────────────── 가드/트리거 서술 ───────────────────────────
@@ -355,6 +356,23 @@ def _blackboard_section(project, component=None) -> list[str]:
         reads, writes = _component_access_union(component, project)
     union = reads | writes
 
+    # 스키마 경로는 타깃 중립 토큰으로 넘긴다(WP-RT) — CLI의 기본값
+    # `schemas/schemas.json`은 현재 작업 폴더 기준이라, 플러그인 디렉토리와 작업
+    # 폴더가 분리되는 MARKETPLACE 빌드에서는 첫 명령이 그대로 실패한다.
+    # ${ROOT}는 컴파일 시 MARKETPLACE→${CLAUDE_PLUGIN_ROOT} /
+    # LOCAL→${CLAUDE_PROJECT_DIR}로 확장되고, schemas/schemas.json은 양쪽 타깃
+    # 모두 그 루트 밑에 산출되므로 토큰 하나로 둘 다 맞는다.
+    cli_lines = (
+        "`command -v daedalus-bb`로 CLI가 있는지 확인하라(POSIX 셸 기준 — 판정할 수 없으면\n"
+        "CLI가 없는 것으로 보고 아래 규칙대로 직접 편집하면 된다). 있으면 파일을 직접 만지지\n"
+        "말고 CLI로 읽고 써라 — 쓰기 전 스키마 검증이 내장되어 있다(`daedalus-bb read` /\n"
+        "`daedalus-bb write` / `daedalus-bb validate` — write는 `--set 필드=값`, 컬렉션 필드는\n"
+        "`--append`/`--remove`). 스키마 경로는 `--schemas " + ROOT_TOKEN + "/schemas/schemas.json`으로\n"
+        "넘겨라 — 기본값은 현재 작업 폴더 기준이라 플러그인이 다른 곳에 있으면 찾지 못한다.\n"
+        "CLI가 없으면 아래 규칙대로 직접 편집하라(daedalus-bb는 Daedalus 배포에 함께 들어\n"
+        "있다 — 임의로 패키지를 설치하지 마라)."
+    )
+
     rule_lines = (
         "규칙:\n"
         "- 파일을 수정하기 전에 반드시 현재 내용을 읽어라 (읽기-수정-쓰기).\n"
@@ -388,6 +406,7 @@ def _blackboard_section(project, component=None) -> list[str]:
             ),
             "\n".join(intro_lines),
             "\n".join(lines),
+            cli_lines,
             rule_lines,
         ]
 
@@ -403,6 +422,7 @@ def _blackboard_section(project, component=None) -> list[str]:
             "유지한다. 각 파일의 구조는 플러그인의 `schemas/schemas.json`에 정의된 스키마를 따른다."
         ),
         "\n".join(lines),
+        cli_lines,
         rule_lines,
     ]
 
