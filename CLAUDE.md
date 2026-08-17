@@ -127,6 +127,10 @@ daedalus/
     │                       #   session_io.py / compile_actions.py / launch_actions.py / validation_actions.py (아래 각 항목).
     │                       #   **협력 객체가 실체이고 MainWindow에는 같은 이름의 한 줄 위임 메서드만 남는다** — 테스트와 MCP 도구가
     │                       #   window._save_to_path(...)처럼 윈도우의 내부 메서드를 직접 부르기 때문이다(tests/view/test_app_collaborators.py가 고정).
+    │                       #   **위임은 한 방향이다** — 협력 객체끼리·자기 자신의 후속 단계는 self.update_title()처럼 협력 객체 쪽을
+    │                       #   직접 부르고 window의 동명 위임으로 되돌아가지 않는다(실체를 파사드 경유로만 닿게 만들면 방향이 꼬인다).
+    │                       #   따라서 window._update_title 등을 인스턴스 레벨로 가로채도 협력 객체 내부 호출에는 걸리지 않는다(현재
+    │                       #   그렇게 하는 코드는 없다 — 부수효과를 얹으려면 협력 객체 쪽 메서드를 고친다).
     │                       #   **상태(_project/_current_path/_mcp_service/_status_label …)의 단일 진실은 계속 윈도우**이고 협력 객체는
     │                       #   그것을 복제하지 않고 self._w.<attr>로 직접 읽고 쓴다(복제하면 두 곳이 어긋나는 순간 "저장했는데 다른
     │                       #   파일이 열린다"가 된다). 협력 객체는 위젯 배선보다 **먼저** 생성한다 — _setup_menus가 최근 목록을 채우며
@@ -514,7 +518,7 @@ daedalus/
 - **포트:** 기본 `8787`(`endpoint.DEFAULT_PORT`). 점유돼 있으면 위로 훑어 비어 있는 포트를 쓰고
   실제 포트를 `~/.daedalus/mcp-endpoint.json`에 기록한다. `.mcp.json`은 정적 파일이라 고정 포트를
   가리키므로, 여러 창을 띄우면 결과적으로 "먼저 켜진 인스턴스"가 협업 대상이 된다(의도된 동작).
-  저장 경로가 바뀌면 `_sync_files_root`가 접속 정보의 project 필드도 갱신한다(배선 지점 1개 유지).
+  저장 경로가 바뀌면 `SessionIO.sync_files_root`가 접속 정보의 project 필드도 갱신한다(배선 지점 1개 유지).
 - **스레드:** uvicorn이 데몬 스레드에서 돌고, 도구 핸들러는 `MainThreadInvoker`(시그널 +
   `threading.Event`)로 Qt 메인 스레드에 넘겨 실행한다. 위젯·뷰모델을 워커 스레드에서 만지면
   Qt가 깨지기 때문. 모달 다이얼로그로 루프가 막히면 무한 대기 대신 `TimeoutError`(기본 15초).
@@ -775,9 +779,9 @@ CC의 구조는 **3단**이다: 이벤트 → 그룹(matcher + 핸들러 목록)
 - **소스 위치:** 프로젝트 저장 파일 옆(`<dir>/my.daedalus.json` + `<dir>/files/A/c.txt`). 미저장 프로젝트(`_current_path`가 None)는 기능이 비활성화되어 안내만 표시한다.
 - **산출 위치:** `<out>/files/A/c.txt` — 구조 그대로 복사.
 - **참조 토큰(확정):** `${CLAUDE_PLUGIN_ROOT}/files/A/c.txt` — CC 공식 문서(plugins-reference §Environment variables)가 스킬/에이전트 본문 어디서나 치환됨을 명시한다(`$PLUGIN_DIR`는 표준에 없음). 경로 구분자는 POSIX(`/`)로 정규화한다.
-- **FilePanel(view/panels/file_panel.py):** `QTreeView` + `QFileSystemModel`(root = `<project_dir>/files`). files/ 부재 시 안내 라벨 + "files 폴더 만들기" 버튼, 새로고침 버튼(루트 생성 직후 재바인딩용). `app.py`가 독 위젯 "파일"로 배치하고 `_sync_files_root`(저장/열기/새 프로젝트 등 `_current_path` 변경 지점마다 호출)로 `set_project_dir`을 갱신한다. 드래그 소스는 `QFileSystemModel` 기본 mime(file URL) 그대로 사용.
-- **드롭 치환(widgets/markdown/editor.py + widgets/markdown/providers.py):** `MarkdownEditor.dragEnterEvent`/`dragMoveEvent`/`dropEvent`(editor.py)가 mime의 file URL 중 현재 files/ 루트 하위인 것만 `_file_ref_token`(providers.py)으로 변환해 드롭 지점에 삽입(복수 파일이면 줄바꿈 구분). files 밖 파일·비파일 mime(일반 텍스트 드래그 등)은 토큰 후보가 없으므로 그대로 `super()`로 흘러 기존 QPlainTextEdit 기본 드롭 동작을 보존한다. 루트 주입은 TagInput의 도구/블랙보드 후보와 동일한 provider 패턴 — `set_files_root_provider(callable)`/`get_files_root()`(providers.py의 모듈 전역이 단일 진실. app은 파사드 경로 `widgets.markdown_editor`에서 임포트해 `_sync_files_root`에서 `lambda: self._file_panel.files_root()`로 등록한다 — 전역 자체는 파사드로 복사되지 않으므로 반드시 이 함수들을 거쳐야 한다).
-- **컴파일 복사(compiler/project_compiler.py):** `compile_project(project, out_dir, files_dir=None)` — files_dir가 실존 디렉토리면 게이트 통과 후(에러 시엔 복사도 스킵) `<out>/files/`로 정렬 순회 복사(`_copy_files_tree`, 결정적, 심볼릭 링크 미추종 — 디렉토리는 재귀 안 함·파일은 복사 안 함)한다. 기존 `<out>/files/`는 복사 전 삭제(out 전체가 아니라 files/만 — 스테일 잔존 방지). `CompileResult.copied_files`에 복사된 파일 경로 목록을 담는다. files_dir 생략(None) 시 기존 산출 파일/문자열이 완전히 불변이라 하위 호환이며, 헤드리스 `compile_project` 직접 호출부는 변경 없이 그대로 동작한다. `app._compile_project_dialog`가 `_current_path` 기준 `<project_dir>/files`를 전달.
+- **FilePanel(view/panels/file_panel.py):** `QTreeView` + `QFileSystemModel`(root = `<project_dir>/files`). files/ 부재 시 안내 라벨 + "files 폴더 만들기" 버튼, 새로고침 버튼(루트 생성 직후 재바인딩용). `app.py`의 `_setup_docks`가 독 위젯 "플러그인 파일 (공용)"으로 배치하고(WP-SF에서 레지스트리 아래 세로 스택으로 개편), `SessionIO.sync_files_root`(WP-RF-3e 이전에는 `app._sync_files_root` — 저장/열기/새 프로젝트 등 `_current_path` 변경 지점마다 호출)가 `set_project_dir`을 갱신한다. 드래그 소스는 `QFileSystemModel` 기본 mime(file URL) 그대로 사용.
+- **드롭 치환(widgets/markdown/editor.py + widgets/markdown/providers.py):** `MarkdownEditor.dragEnterEvent`/`dragMoveEvent`/`dropEvent`(editor.py)가 mime의 file URL 중 현재 files/ 루트 하위인 것만 `_file_ref_token`(providers.py)으로 변환해 드롭 지점에 삽입(복수 파일이면 줄바꿈 구분). files 밖 파일·비파일 mime(일반 텍스트 드래그 등)은 토큰 후보가 없으므로 그대로 `super()`로 흘러 기존 QPlainTextEdit 기본 드롭 동작을 보존한다. 루트 주입은 TagInput의 도구/블랙보드 후보와 동일한 provider 패턴 — `set_files_root_provider(callable)`/`get_files_root()`(providers.py의 모듈 전역이 단일 진실. app은 파사드 경로 `widgets.markdown_editor`에서 임포트해 `_setup_docks`에서 `lambda: self._file_panel.files_root()`로 등록한다(등록은 배선 1회, 루트 재계산은 `SessionIO.sync_files_root`) — 전역 자체는 파사드로 복사되지 않으므로 반드시 이 함수들을 거쳐야 한다).
+- **컴파일 복사(compiler/project_compiler.py):** `compile_project(project, out_dir, files_dir=None)` — files_dir가 실존 디렉토리면 게이트 통과 후(에러 시엔 복사도 스킵) `<out>/files/`로 정렬 순회 복사(`_copy_files_tree`, 결정적, 심볼릭 링크 미추종 — 디렉토리는 재귀 안 함·파일은 복사 안 함)한다. 기존 `<out>/files/`는 복사 전 삭제(out 전체가 아니라 files/만 — 스테일 잔존 방지). `CompileResult.copied_files`에 복사된 파일 경로 목록을 담는다. files_dir 생략(None) 시 기존 산출 파일/문자열이 완전히 불변이라 하위 호환이며, 헤드리스 `compile_project` 직접 호출부는 변경 없이 그대로 동작한다. `CompileActions.compile_project_dialog`(WP-RF-3e 이전에는 `app._compile_project_dialog`)가 `_current_path` 기준 `<project_dir>/files`를 전달.
 - **dangling_file_ref 경고:** `_scan_dangling_file_refs`가 files_dir 지정 시(None이면 스캔 생략) 스킬/에이전트 body에서 `${CLAUDE_PLUGIN_ROOT}/files/<경로>` 패턴을 스캔해 files_dir에 실존하지 않는 참조를 `dangling_file_ref` 경고로 `CompileResult.warnings`에 추가한다(게이트 차단 아님). Validator가 아니라 컴파일러 소관 — 검증기는 파일시스템 무접근 순수성을 유지한다. `is_warning` 판정 일관성을 위해 rule 이름은 `validation/severity.py`의 `WARNING_RULES`에도 등록했다(실제 emit은 project_compiler.py — `tests/model/test_validation_severity.py`의 소스 introspection 완전성 테스트는 `_EXTERNALLY_EMITTED_RULES`로 이 예외를 명시).
 
 ### 스킬별 동봉 파일 (skill-files/) — WP-SF
