@@ -31,16 +31,16 @@ daedalus/
 │   │   ├── action.py       # Action(name, execution, output_variable)
 │   │   ├── state.py        # State(ABC, reads/writes: list[str] 블랙보드 접근 선언 — WP-BB, "Class"/"Class.field" 문자열 참조), SimpleState, CompositeState, ParallelState, Region
 │   │   ├── pseudo.py       # ChoiceState, TerminateState, EntryPoint, ExitPoint
-│   │   ├── transition.py   # Transition(target_port: str = "" — WP-IC 입력 포트 참조, 빈 값=기본 포트) + TransitionType
-│   │   ├── join.py         # JoinStrategy (병렬 조인 전략 — 순수 FSM 개념, policy.py가 re-export)
+│   │   ├── transition.py   # Transition + TransitionType
+│   │   ├── join.py         # JoinStrategy (병렬 조인 전략 — 순수 FSM 개념. 정본 위치, 필요한 곳이 직수입)
 │   │   ├── blackboard.py   # Blackboard, DynamicClass, DynamicField(FieldType 사용), FIELD_TYPE_TO_JSON_SCHEMA, BLACKBOARD_FIELD_TYPES(WP-BT — 블랙보드 필드 허용 타입 4종)
-│   │   ├── section.py      # Section(자유 콘텐츠 계층 — AgentDefinition.caller_contracts 잠금 계약 카드 전용, WP-SB로 스킬/에이전트 본문에서는 퇴역),
-│   │   │                   #   EventDef(TransferOn 출력 이벤트 + WP-IC entry_paths 입력 포트 정의 공용 — name/color/description),
-│   │   │                   #   render_markdown(WP-SB 구버전 sections→body 마이그레이션 헬퍼)
+│   │   ├── section.py      # Section(자유 콘텐츠 계층 — 이제 v1 sections 트리 마이그레이션 입력으로만 쓰임),
+│   │   │                   #   EventDef(transfer_on 출력 이벤트/에이전트 출력 포트 정의 — name/color/description),
+│   │   │                   #   render_markdown(v1 sections→body 마이그레이션 헬퍼 — serialize._migrate_v1이 사용)
 │   │   └── machine.py      # StateMachine
 │   ├── plugin/       # Claude 플러그인 메타데이터
 │   │   ├── enums.py        # ModelType, EffortLevel, SkillContext, PermissionMode, AgentField, FieldEmit, BuildTarget(WP-TG) 등
-│   │   ├── policy.py       # ExecutionPolicy (병렬 서브에이전트). JoinStrategy는 fsm/join.py에서 re-export(하위 호환)
+│   │   ├── policy.py       # ExecutionPolicy (병렬 서브에이전트). JoinStrategy는 fsm/join.py에서 직수입 (re-export 없음 — RF-1b)
 │   │   ├── config.py       # ComponentConfig(ABC), SkillConfig(ABC), ProceduralSkillConfig,
 │   │   │                   # DeclarativeSkillConfig, TransferSkillConfig, ReferenceSkillConfig, AgentConfig
 │   │   ├── base.py         # PluginComponent(ABC), WorkflowComponent(ABC)
@@ -60,7 +60,8 @@ daedalus/
 │   ├── outline.py           # 본문 아웃라인(WP-BO) — body 마크다운의 파생 인덱스. parse_outline(fence-aware 헤딩 파서)/
 │   │                       #   find_section(제목·"## 제목" 레벨 지정·"부모 > 자식" 경로, 0개·복수 매칭 ValueError)/
 │   │                       #   section_text/char_span/replacement_text/replace_section(비교체 구간 바이트 보존). Qt 무관 순수 stdlib.
-│   ├── serialize.py         # serialize_project/deserialize_project (모델↔JSON dict, 안정 ID 기반)
+│   ├── serialize.py         # serialize_project/deserialize_project (모델↔JSON dict, 안정 ID 기반, format 2)
+│   │                       # + _migrate_v1(v1→v2 단방향 마이그레이션 집약 — RF-1b, "안정 ID + 직렬화" 항목 참조)
 │   └── validation.py        # Validator + ValidationError + WARNING_RULES + is_warning (머신 규칙 20종 + 프로젝트 규칙 17종, 재귀)
 ├── compiler/         # 순수 모델 → 플러그인 파일 (Qt 무관)
 │   ├── emit.py             # compile_skill/compile_agent/compile_hooks_json — model → SKILL.md/agent .md/hooks.json 텍스트 (결정적, LF)
@@ -107,17 +108,13 @@ daedalus/
     │                       #   추가(nearest_segment_index), 드래그 이동, 우클릭/Delete로 제거. FsmScene/AgentFsmScene 공용.
     │                       # node_badges: badges_for(component)(뱃지 로직) + state_access_badges(state)(WP-BB — State.reads/writes → ✏쓰기/📖읽기
     │                       #   뱃지, 선언 있을 때만 렌더). NodeItem.paint가 badges_for(ref)+state_access_badges(model)를 합류해 렌더.
-    │                       # 입력 포트(WP-IC): NodeItem._input_event_defs()가 skill_ref.entry_paths를 읽어 입력 포트 수(max(1, len))·
-    │                       #   라벨(EventDef.color, 출력 포트와 대칭 — 포트 오른쪽·본체 안·좌측 정렬)을 렌더. input_port_scene_pos(port_name)이
-    │                       #   이름으로 포트 위치를 조회하므로 EdgeItem.update_path가 Transition.target_port로 도착점을 앵커 — 같은
-    │                       #   target_port를 향하는 여러 전이는 자연히 한 점에 수렴한다(incoming edge 개수 기반 팬아웃은 폐지).
-    │                       #   scene.end_transition_drag가 드롭 지점에서 nearest_input_port_name으로 스냅해 target_port를 기록(포트
-    │                       #   1개면 빈 값 유지 — 하위 호환).
+    │                       # 입력 포트(WP-IP/RF-1b): 노드당 1개 고정 — input_port_scene_pos()(인자 없음)가 그 한 점을 돌려주고
+    │                       #   들어오는 모든 전이가 자연히 수렴한다(입력 포트 선언·도착 포트 지정은 개념째 삭제).
     │                       # draggable.py(WP-DM): DraggableItemMixin — 드래그 이동 가능 아이템 3종(StateNodeItem/ReferenceNodeItem/
     │                       #   WaypointHandleItem)의 공통 수명주기. 서브클래스는 mousePressEvent에서 begin_drag(), mouseReleaseEvent에서
     │                       #   end_drag()를 호출하고 vm_position()/make_move_command()를 구현한다(ABC 아님 — Qt 메타클래스와 충돌.
     │                       #   믹스인을 QGraphicsItem 앞에 둔다). 상세는 "캔버스 드래그 이동" 항목 참조.
-    ├── commands/           # Undo/Redo 커맨드 (state, transition — Add/Move/Remove/ClearWaypointsCmd(WP-ER) 포함, section, exit_point,
+    ├── commands/           # Undo/Redo 커맨드 (state, transition — Add/Move/Remove/ClearWaypointsCmd(WP-ER) 포함, exit_point,
     │                       #   component — Create/RenameComponentCmd(WP-CE 1차). 삭제는 remove_component의 정리 범위가 넓어 미커맨드화,
     │                       #   attr — SetAttrCmd/AppendToListCmd/RemoveFromListCmd(WP-CE 범용 폼 편집. 편집마다 클래스를 만들지 않고
     │                       #     "속성 하나 바꾸기"+"리스트 넣고 빼기" 둘로 환원한다. SetAttrCmd는 최초 execute에서만 old를 잡는다 —
@@ -138,9 +135,6 @@ daedalus/
     │                       #   목록(＋/삭제/더블클릭 이름변경), 우: description(QLineEdit) + 필드 테이블(name/FieldType/CollectionType/required/default,
     │                       #   ＋필드/필드 삭제). 편집은 project.blackboard.class_definitions를 직접 갱신 + notify(structure 채널 — undo 커맨드화 범위
     │                       #   밖, hook_editor 폼 정책과 동일). blackboard_candidate_strings(project)가 "클래스"+"클래스.필드" 후보 문자열을 만든다.
-    │                       # 입력 경로 편집(WP-IC): 기존 skill_editor._TransferOnPanel(transfer_on 편집 위젯, list[EventDef] 범용)을 그대로
-    │                       #   재사용해 ProceduralSkill/DeclarativeSkill(SkillEditor 우측 패널)과 AgentDefinition(agent_editor Content 탭
-    │                       #   우측 패널, _entry_paths_panel)에 "⇤ 입력 경로" 패널을 추가 — transfer_on(출력 이벤트) 편집과 대칭 위치·패턴.
     ├── panels/             # TreePanel, PropertyPanel, RegistryPanel, HistoryPanel, ValidationPanel (F7 검증 결과), FilePanel(WP-FR)
     │                       # RegistryPanel: component_delete_requested 시그널 + _RegistrySection 우클릭 "삭제" 컨텍스트 메뉴.
     │                       #   종류별 섹션은 QTabWidget 탭(WP-SF 배치 개편 — 이모지 라벨+툴팁)
@@ -203,10 +197,10 @@ daedalus/
 - **살아남은 조각 = 출력 포트.** 프로젝트 그래프가 에이전트의 결과로 분기한다(과거 ExitPoint 이름이
   전이 trigger). `AgentDefinition.transfer_on: list[EventDef]`로 이관 — 스킬과 동일 필드·동일 편집
   패널(_TransferOnPanel)·동일 캔버스 포트 렌더. `output_events`/`output_event_defs`는 transfer_on을
-  단일 진실로 읽되, transfer_on이 빈 구버전 메모리 객체는 legacy ExitPoint로 폴백한다.
-- **마이그레이션:** `deserialize_project`가 transfer_on 키 부재 + ExitPoint 존재 시 이름·색을
-  승계한다(단방향, 경고 없음). fsm 필드 자체는 WorkflowComponent 계약상 남는다 — 신규 에이전트는
-  EntryPoint 하나짜리 빈 기계(`app._make_agent_fsm`) + 기본 출력 포트 `done`.
+  **단일 진실**로 읽는다 (legacy ExitPoint 폴백은 RF-1b에서 삭제 — v1 파일은 로드 시 마이그레이션).
+- **마이그레이션:** v1 파일(transfer_on 키 부재)은 `serialize._migrate_v1`이 내부 FSM ExitPoint의
+  이름·색을 승계한다(단방향, 경고 없음). fsm 필드 자체는 WorkflowComponent 계약상 남는다 — 신규
+  에이전트는 EntryPoint 하나짜리 빈 기계(`app._make_agent_fsm`) + 기본 출력 포트 `done`.
 - **로컬 스킬 퇴역:** 생성 경로(GUI/MCP) 제거. 에이전트에게 줄 지식은 전역 스킬로 — 컴파일이
   skills 프론트매터에 자동 합류시킨다(WP-AS: 전역 DeclarativeSkill 전부 + 그 에이전트 placement에
   링크된 ReferenceSkill + config.skills 수동 선언 순, 중복 제거. `emit._agent_skills_list`).
@@ -215,9 +209,9 @@ daedalus/
   호출 정보를 양쪽(호출자 포트 + 에이전트 카드)에 적게 하던 중복이었다. **호출자가 무엇을 넘기는지는
   호출자의 call_agents 포트 description에 적는다.** 에이전트 .md의 "## 호출 계약"은
   `emit._call_contract_section(agent, project)`이 프로젝트 그래프의 incoming 호출 전이에서 유도한다
-  (호출자·포트·description·가드, 호출자 이름순). caller_contracts 필드는 직렬화 호환용으로만 남고
-  산출·검증에서 제외된다.
-- **에이전트 편집기:** AgentEditor = ComponentEditor + 출력 포트/입력 경로 패널 — 스킬 편집기와
+  (호출자·포트·description·가드, 호출자 이름순). caller_contracts 필드는 RF-1b에서 삭제 —
+  v1 파일의 카드는 로드 시 조용히 드롭된다(`_migrate_v1`).
+- **에이전트 편집기:** AgentEditor = ComponentEditor + 출력 포트 패널 — 스킬 편집기와
   같은 레벨(그래프/컨텐츠 탭 구조 제거, 별도 그래프 VM 없음 — undo는 프로젝트 스택).
 - **MCP:** `_scope(agent=...)` 캔버스 편집·`create_skill(agent=...)` 로컬 생성은 명시적 에러로 거부.
   `set_transfer_on(에이전트 이름)`으로 출력 포트 편집. `create_agent`는 기본 포트 done으로 시작.
@@ -235,7 +229,7 @@ daedalus/
 - `ParallelState` 내 독립 실행 단위
 - `sub_machine: StateMachine`을 포함 — 각 Region은 자신만의 FSM을 가짐
 - 향후 리전별 우선순위, 취소 정책, 동기화 포인트 등 확장 가능
-- **조인 전략:** `ParallelState.join: JoinStrategy = ALL` + `join_count: int | None`. ALL=전 Region, ANY=하나, N_OF=`join_count`개 완료 시 join. `JoinStrategy`는 순수 FSM 개념이라 `model/fsm/join.py`에 있고 `model/plugin/policy.py`가 re-export로 하위 호환 유지(`ExecutionPolicy`도 동일 enum 사용).
+- **조인 전략:** `ParallelState.join: JoinStrategy = ALL` + `join_count: int | None`. ALL=전 Region, ANY=하나, N_OF=`join_count`개 완료 시 join. `JoinStrategy`는 순수 FSM 개념이라 `model/fsm/join.py`가 정본이며 필요한 곳이 직수입한다(RF-1b에서 policy.py re-export 삭제 — `ExecutionPolicy`도 동일 enum 사용).
 
 ### Blackboard = 컨텍스트 간 공유 장치
 
@@ -243,7 +237,7 @@ daedalus/
 - 동일 컨텍스트 내에서는 불필요 — 이미 같은 맥락을 공유
 - 스코핑: 최상위 `Blackboard(parent=None)`, 하위 `Blackboard(parent=부모.blackboard)`
 - **최상위 블랙보드:** `PluginProject.blackboard`(default_factory) — schemas.json의 소스(DynamicClass 단일 진실). 에이전트/스킬 FSM의 `blackboard.parent`는 **생성 경로의 책임**으로 이 객체에 배선한다 (app.py `_register_component`, agent_editor 로컬 스킬 생성, **그리고 `deserialize_project` — 역직렬화도 생성 경로**: 최상위 스킬/에이전트 FSM→프로젝트 블랙보드, 로컬 스킬 FSM→소유 에이전트 FSM 블랙보드로 재연결되어 parent 스코핑이 저장/로드를 견딘다). 마이그레이션 없음 — 메모리 내 기존 객체는 강제하지 않는다. 직렬화는 parent를 ID로 평탄화하지 않고 **소유 구조로 재연결**(`_deser_machine`의 `parent_bb` 전달).
-- **DynamicClass → JSON Schema 매핑:** `blackboard.py`의 `FIELD_TYPE_TO_JSON_SCHEMA` 정본(STRING→string, INT→integer, FLOAT/NUMBER→number, BOOL→boolean, LIST→array, JSON→object, ANY→{}). CollectionType은 array로 래핑(LIST→items, SET→items+uniqueItems). 컴파일러 `compile_schemas_json(project)`가 프로젝트 블랙보드 class_definitions를 `<out>/schemas/schemas.json`으로(정의 없으면 None).
+- **DynamicClass → JSON Schema 매핑:** `blackboard.py`의 `FIELD_TYPE_TO_JSON_SCHEMA` 정본(STRING→string, INT→integer, FLOAT→number, BOOL→boolean, LIST→array, JSON→object, ANY→{}). CollectionType은 array로 래핑(LIST→items, SET→items+uniqueItems). 컴파일러 `compile_schemas_json(project)`가 프로젝트 블랙보드 class_definitions를 `<out>/schemas/schemas.json`으로(정의 없으면 None).
 - **블랙보드 편집 UI (WP-BB):** 모달이 아니라 `view/editors/blackboard_editor.BlackboardPanel`이 MainWindow의 상주
   최상위 탭(인덱스 1, Project FSM(0)과 동급, 항상 존재·닫기 불가)으로 프로젝트 최상위 블랙보드
   `class_definitions`를 편집한다 — 좌: 클래스 목록(추가/삭제/이름변경), 우: description + 필드
@@ -285,8 +279,8 @@ daedalus/
 ### 본문(body) / Section / EventDef
 
 - **본문의 단일 진실은 `body: str`(단일 마크다운 문자열)** — `ProceduralSkill`/`DeclarativeSkill`/`TransferSkill`/`ReferenceSkill`/`AgentDefinition` 전부 동일 필드(WP-SB, 기본값 `""`). 마크다운 에디터(WP-MD1/MD2/MD3, **완료** — 코어 위젯+오버레이 UX+찾기/바꾸기+TOC)가 헤딩·리스트·슬래시 메뉴를 네이티브로 다루면서 수동 섹션 트리 편집의 존재 의의가 사라져 단일 텍스트로 통일했다.
-- `Section`(`model/fsm/section.py`)은 자유 콘텐츠 계층(H1–H6, `children: list[Section]` 재귀 트리) 자체는 그대로 남아 있으나, 이제 **`AgentDefinition.caller_contracts`(잠금 계약 카드) 전용**이다 — 호출 계약 카드는 `_ContractPanel`/`_ContractCard`(skill_editor.py)와 `commands/section_commands.py`(scene.py의 call_agent 연결 시 자동 추가/제거)가 계속 사용한다.
-- `render_markdown(sections, depth=1) -> str`(section.py): 구버전(sections 트리) 파일을 로드할 때 `body`로 평탄화하는 단방향 마이그레이션 헬퍼. `serialize.py`의 `_deser_body`가 `body` 키 부재 + `sections` 키 존재 시에만 호출한다(경고 없음 — 정상 마이그레이션 경로).
+- `Section`(`model/fsm/section.py`)은 자유 콘텐츠 계층(H1–H6, `children: list[Section]` 재귀 트리)으로, 이제 **v1 sections 트리 마이그레이션의 입력**으로만 쓰인다(RF-1b — 계약 카드 용도(caller_contracts)는 필드째 삭제, `commands/section_commands.py`도 함께 제거). 모듈이 남는 이유는 아래 `render_markdown`과 `EventDef`가 여기 살기 때문이다.
+- `render_markdown(sections, depth=1) -> str`(section.py): v1(sections 트리) 파일을 로드할 때 `body`로 평탄화하는 단방향 마이그레이션 헬퍼. `serialize._migrate_v1`이 `body` 키 부재 + `sections` 키 존재 시에만 호출한다(경고 없음 — 정상 마이그레이션 경로).
 - `EventDef`: TransferOn 스킬의 출력 이벤트 정의. 노드 출력 포트에 대응 (`name`, `color`, `description`)
 
 ### 본문 부분 접근 (WP-BO) — 파생 인덱스, 저장 불변
@@ -321,10 +315,11 @@ daedalus/
   이름)**를 기록하도록 지시 — 도착 스킬은 (`prev`, `note`의 갈래)로 진입 경로를 판별한다.
   ③ 도착 스킬 "## 진입 맥락"은 그래프에서만 유도(포트 그룹 헤딩 없음, 출처 이름순 항목 + 출처의
   transfer_on description 병기).
-- **잔재 처리:** 모델 필드(`entry_paths`/`target_port`)는 구버전 파일 왕복 보존용으로만 남는다 —
-  렌더(입력 포트 항상 기본 1개, legacy target_port 앵커 무시)·컴파일·검증(`dangling_target_port`
-  규칙 삭제) 어디서도 읽지 않는다. 편집 UI("⇤ 입력 경로" 패널) 제거. MCP는 `set_entry_paths` 도구 자체를
-  제거했고 `set_transition`/`connect_states`에서 target_port 파라미터도 사라졌다(조회 출력에서도 제외).
+- **잔재 처리:** 모델 필드(`entry_paths`/`target_port`)는 RF-1b에서 **삭제**됐다 — v1 파일의 해당
+  키는 로드 시 조용히 드롭된다(`_migrate_v1`, 퇴역 개념이라 경고 불필요). 렌더는 입력 포트 항상
+  1개(`input_port_scene_pos()` 인자 없음), 검증의 `dangling_target_port` 규칙도 삭제. 편집 UI
+  ("⇤ 입력 경로" 패널) 제거. MCP는 `set_entry_paths` 도구 자체를 제거했고 `set_transition`/
+  `connect_states`에서 target_port 파라미터도 사라졌다(조회 출력에서도 제외).
 
 ### PluginProject.graph = 워크플로 백킹 머신
 
@@ -452,9 +447,9 @@ daedalus/
   QTextDocument에 적용**하는데, 우회가 아니라 본문 전용 undo 스택(WP-BU)에 정확히 올리는 경로다.
 - **`set_component_description`은 아직 undo되지 않는다** — 프론트매터 편집 전반이 WP-CE에서
   커맨드화될 때 함께 옮겨간다. 도구 docstring에 그 사실을 적어 두었다.
-- **포트·분기 의미론(WP-CE):** `set_transfer_on`(출력 포트)/`set_entry_paths`(입력 포트)/
-  `set_transition`(기존 전이의 trigger·guard·target_port)/`connect_states`의 trigger·guard·
-  target_port 인자. **구조(노드+선)만 만들면 분기가 표현되지 않는다** — 여러 갈래로 나가는 노드는
+- **포트·분기 의미론(WP-CE):** `set_transfer_on`(출력 포트)/`set_transition`(기존 전이의
+  trigger·guard)/`connect_states`의 trigger·guard 인자.
+  **구조(노드+선)만 만들면 분기가 표현되지 않는다** — 여러 갈래로 나가는 노드는
   transfer_on에 갈래를 선언하고 각 전이에 trigger를 물려야 캔버스 포트가 갈라지고 라벨이 보인다.
   `set_transition`은 None=건드리지 않음, ""=지움 규약이다.
 - **블랙보드(WP-CE):** `create_blackboard_class`(스칼라 4종 + collection none/list/set 검증)/
@@ -462,10 +457,8 @@ daedalus/
 - **에이전트 호출은 캔버스와 같은 규칙을 강제한다(WP-CE).** 초기 구현은 스킬→에이전트를 그냥
   직결시켰는데, 캔버스는 그걸 **막는다**(`FsmScene`: 에이전트 노드 입력은 call_agent 포트에서만,
   call_agent 포트는 에이전트로만). 같은 조작인데 경로에 따라 결과가 달라지면 협업 도구로 실격이라
-  `connect_states`가 동일 규칙을 검사하고, 연결 시 callee의 `caller_contracts`에 계약 카드
-  (`caller: <스킬> (<포트>)`)를 `MacroCommand`로 함께 만든다. 포트는 `add_agent_call(skill, event)`로
-  먼저 만든다. **제목 규약은 `FsmScene._callee_section_title`과 반드시 같아야 한다** — 어긋나면
-  같은 연결에 계약 카드가 둘 생긴다.
+  `connect_states`가 동일 규칙을 검사한다. 포트는 `add_agent_call(skill, event)`로 먼저 만든다.
+  (계약 카드 자동 생성은 WP-CT로 퇴역 — 호출 계약은 컴파일이 그래프에서 유도한다.)
 - **에이전트 스코프(WP-AF 이후):** 캔버스 편집 도구의 `agent` 인자는 **명시적 에러로 거부**된다
   (내부 FSM 퇴역 — 조용히 프로젝트 캔버스를 만지면 오배치). `create_skill(agent=...)` 로컬 생성도
   거부. 단 **조회·본문·포트·프론트매터 도구의 `agent` 인자는 legacy 로컬 스킬 접근용으로 유지**
@@ -519,7 +512,8 @@ daedalus/
 ### 안정 ID + 직렬화 (serialize.py)
 
 - **안정 ID:** `State`(베이스)/`Transition`/`StateMachine`/`Region`/`Variable`/`Skill`(베이스)/`AgentDefinition`에 `id: str = field(default_factory=lambda: uuid4().hex, kw_only=True)`. kw_only로 다중 상속 필드 순서 제약을 회피한다. eq=False 클래스는 identity 동등성/해시를 유지(id는 `__eq__`/`__hash__` 무관)하고, 값 동등성 클래스(Variable/Skill/Agent)는 `compare=False`로 값 비교에서 제외한다.
-- **직렬화 원칙:** `serialize_project`/`deserialize_project`는 JSON 호환 dict(`"format": 1` 버전 키)를 만든다. **소유 객체는 인라인, 참조는 ID 문자열로 평탄화**한다 — Transition.source/target(state id), SimpleState.skill_ref·Transition.skill_ref(component id), StateMachine.initial_state/final_states(state id). 다형성은 `kind` property를 태그로 재사용. enum은 `.value`↔타입 복원. 역직렬화는 2-pass(객체 생성+id 레지스트리 → 참조 해소)이고 dangling id는 None+경고. `Blackboard.parent`는 ID가 아니라 sub_machine 소유 구조로 재연결한다. serialize.py는 순수 모델(Qt 무관). **구버전 파일의 위임(delegations) 정의는 퇴역한 개념이라 로드 시 경고 후 드롭한다(WP-RF-1a)** — 위임을 가리키던 placement skill_ref는 dangling 경고와 함께 None으로 정리된다.
+- **직렬화 원칙:** `serialize_project`/`deserialize_project`는 JSON 호환 dict(`"format": 2` 버전 키)를 만든다. **소유 객체는 인라인, 참조는 ID 문자열로 평탄화**한다 — Transition.source/target(state id), SimpleState.skill_ref·Transition.skill_ref(component id), StateMachine.initial_state/final_states(state id). 다형성은 `kind` property를 태그로 재사용. enum은 `.value`↔타입 복원. 역직렬화는 2-pass(객체 생성+id 레지스트리 → 참조 해소)이고 dangling id는 None+경고. `Blackboard.parent`는 ID가 아니라 sub_machine 소유 구조로 재연결한다. serialize.py는 순수 모델(Qt 무관).
+- **포맷 v2 + `_migrate_v1` (RF-1b):** `serialize_project`는 항상 `"format": 2`를 쓴다. `deserialize_project`는 format 1(또는 키 부재 구버전)을 받으면 **`_migrate_v1` 한 함수로 집약된 단방향 마이그레이션**을 태운 뒤 v2로 읽는다(왕복 보존 없음 — 열면 v2로 저장된다). 미지의 상위 format은 명시 에러. `_migrate_v1`이 다루는 축(입력 dict는 deepcopy로 불변): ① delegations 드롭(경고 — WP-RF-1a. 위임을 가리키던 placement skill_ref는 dangling 경고와 함께 None으로 정리) ② sections 트리→body 평탄화(render_markdown) + `${CLAUDE_PLUGIN_ROOT}/files/`→`${ROOT}/files/` 치환(WP-RT) ③ 퇴역 키 조용히 드롭 — entry_paths/caller_contracts/전이의 target_port(WP-IP/WP-CT, 경고 불필요) ④ 에이전트 transfer_on 부재 시 내부 FSM ExitPoint 이름·색 승계(WP-AF) ⑤ 구버전 훅(커맨드 하나짜리)을 handlers 목록으로 감싸기 + 핸들러 command→script(WP-HK/WP-HS) ⑥ `field_type: "number"`→`"float"`(FieldType.NUMBER 퇴역). 픽스처 고정은 `tests/model/test_migrate_v1.py`(v2 왕복 항등 포함).
 - **프로젝트 그래프 직렬화:** `serialize_project`는 `graph`(`_ser_machine` 재사용)와 `graph_layout`을 왕복한다. 그래프 placement의 skill_ref는 component id로 평탄화되고, 역직렬화 시 pass1에서 등록된 skills/agents를 pass2가 해소한다(그래프 `_deser_machine`은 pass1에서 호출). 하위 호환: `"graph"` 키 부재(구버전 파일) → `_make_project_graph()`로 빈 그래프 생성(경고 없음). graph.blackboard.parent는 역직렬화 시 프로젝트 블랙보드로 재연결.
 - `AgentDefinition.graph_layout`/`PluginProject.graph_layout`의 키는 state.name이 아니라 **state.id**다 (이름 변경 시 레이아웃 유실 방지).
 
@@ -545,7 +539,6 @@ class FieldType(Enum):
     STRING = "string"   # Variable / DynamicField 공용
     INT = "int"
     FLOAT = "float"
-    NUMBER = "number"   # deprecated: INT/FLOAT 사용, 컴파일 시 JSON Schema "number"로 합류(FLOAT와 동일)
     BOOL = "bool"
     LIST = "list"
     JSON = "json"
@@ -555,7 +548,7 @@ class FieldType(Enum):
 - `VariableType`과 `DynamicFieldType`을 통합한 단일 열거형
 - `Variable.field_type: FieldType`, `DynamicField.field_type: FieldType`
 - **블랙보드 필드는 스칼라 4종만**(WP-BT, 사용자 확정): `BLACKBOARD_FIELD_TYPES = (STRING, INT, FLOAT, BOOL)` — 컨테이너 형상은 CollectionType(none/list/set)이 전담한다("문자열 목록" = STRING × LIST). 편집기 콤보는 이 4종만 노출(legacy 값은 "(legacy)" 표시 유지), `invalid_blackboard_field_type` 경고가 구버전 필드를 짚는다. Variable은 종전 그대로 전 멤버 사용 가능.
-- `NUMBER`는 **deprecated** — 의미가 명확한 INT/FLOAT을 쓰라. 컴파일 시 INT→integer, FLOAT/NUMBER→number로 합류된다(하위 호환용 잔존). 매핑 정본은 `blackboard.py`의 `FIELD_TYPE_TO_JSON_SCHEMA`.
+- 구 `NUMBER` 멤버는 RF-1b에서 **삭제** — v1 파일의 `"number"`는 로드 시 `FLOAT`으로 마이그레이션된다(`_migrate_v1`). 매핑 정본은 `blackboard.py`의 `FIELD_TYPE_TO_JSON_SCHEMA`(INT→integer, FLOAT→number).
 
 ### ComponentConfig 계층
 
@@ -653,13 +646,13 @@ ParallelState.region 재귀)를 쓰며, project.skills(fsm)/project.agents(fsm +
 
 CC의 구조는 **3단**이다: 이벤트 → 그룹(matcher + 핸들러 목록) → 핸들러. `HookDef` 하나가 **그룹 하나**에 대응하고 `handlers: list[HookHandler]`가 그 안의 핸들러다(WP-HK 이전에는 훅 하나가 커맨드 하나였다).
 
-- **이벤트 31종**(`HookEvent`) — 스키마 `properties.hooks`의 키 전체. matcher를 받지 않는 8종은 `NO_MATCHER_EVENTS`(스키마 description이 "does not support matchers"라고 명시한 것들), 여집합이 `MATCHER_EVENTS`. `TOOL_MATCH_EVENTS`는 `MATCHER_EVENTS`의 하위 호환 별칭이다(예전에는 Pre/PostToolUse만 받는다고 보았다). 공식 문서에 없는 2종은 `UNDOCUMENTED_EVENTS`.
+- **이벤트 31종**(`HookEvent`) — 스키마 `properties.hooks`의 키 전체. matcher를 받지 않는 8종은 `NO_MATCHER_EVENTS`(스키마 description이 "does not support matchers"라고 명시한 것들), 여집합이 `MATCHER_EVENTS`(구 `TOOL_MATCH_EVENTS` 별칭은 RF-1b에서 삭제). 공식 문서에 없는 2종은 `UNDOCUMENTED_EVENTS`.
 - **핸들러 5종**(`HookHandler` ABC + `CommandHook`/`PromptHook`/`AgentHook`/`HttpHook`/`McpToolHook`) — 공통 속성은 timeout / `condition`(→`if`, 예약어라 필드명이 다르다) / `status_message`(→`statusMessage`). command는 args·shell(`HookShell`)·`run_async`(→`async`)·`async_rewake`, prompt는 model·`continue_on_block`, http는 headers·`allowed_env_vars`, mcp_tool은 server·tool·`tool_input`(→`input`). `kind`가 CC `type` 값이자 다형성 태그이고, `to_json()`이 CC 스키마 객체를 만든다(빈 값 키 생략 — 결정적). `HOOK_HANDLER_TYPES`/`HOOK_HANDLER_LABELS`가 태그↔클래스↔표시문구의 단일 진실.
 - `HookDef.to_json()`은 **matcher를 그 이벤트가 받을 때만** 배출한다 — 무시되는 키를 내보내면 설정한 사람은 걸린 줄 알지만 아무 일도 일어나지 않는다.
 - `ComponentConfig.hooks: dict`는 **이름 참조**다 — 키=hook_library의 HookDef.name, 값=오버라이드(빈 dict면 정의 그대로). 선언 기본값은 `{}`가 아니라 `None`.
 - `hook_presets.py`의 `BUILTIN_HOOK_PRESETS`는 복사해 출발점으로 쓰는 템플릿이며 `preset_copy`가 **핸들러까지 깊은 복사**한다(얕게 복사하면 한 프로젝트의 수정이 다른 쪽에 샌다). command 외 타입(prompt/agent)의 출발점도 포함한다.
 - **컴파일러**: 참조된 훅을 모아 `<out>/hooks/hooks.json` 생성(이벤트 키=HookEvent 선언 순서, 같은 이벤트 복수 훅=라이브러리 순서, 핸들러 0개인 훅은 배출 안 함). 스킬 프론트매터에는 `hooks: [이름, …]` 목록만. 프로젝트 설치 빌드의 에이전트는 프론트매터에 훅 본체가 나간다(WP-LA, 컴파일 정책 16번).
-- **직렬화**: 핸들러는 `kind` 태그로 다형성 왕복. 구버전 파일(`handlers` 키 없이 `command`/`timeout`)은 로드 시 `CommandHook` 하나로 감싼다(경고 없음). 미지 `kind`는 건너뛴다 — 미래 버전 파일을 열어도 죽지 않는다.
+- **직렬화**: 핸들러는 `kind` 태그로 다형성 왕복. v1 파일(`handlers` 키 없이 `command`/`timeout`)은 `_migrate_v1`이 `CommandHook` 하나로 감싼다(경고 없음). 미지 `kind`는 건너뛴다 — 미래 버전 파일을 열어도 죽지 않는다.
 - **검증**: `empty_hook_command`는 핸들러 0개 또는 핸들러의 필수 값이 빈 경우다. 무엇이 필수인지는 타입마다 다르므로 `handler.summary()`가 `"("`로 시작하는지로 판정한다 — 타입이 늘어도 규칙이 따라간다. `hook_matcher_without_tool_event`는 이름만 예전 그대로이고 판정은 `MATCHER_EVENTS` 기준이다.
 - **UI**: `editors/hook_panel.HookLibraryPanel` — **상주 탭(인덱스 2)**. 모달 다이얼로그(`hook_editor.HookLibraryDialog`)는 3단 구조를 담을 수 없어 제거됐다(도구 메뉴 항목도 함께 — 탭이 늘 보이므로 지름길이 중복이다). 좌: 훅 목록(핸들러 없으면 ⚠). 우: 이벤트 콤보(matcher 미지원/미문서화를 문구에 표시) + matcher(받지 않는 이벤트면 잠금 + 이유 표시) + 핸들러 목록·폼(`_HandlerForm` — 타입이 바뀌면 통째로 다시 만든다). **"서브에이전트 프론트매터로 복사" / "hooks.json으로 복사"** 버튼이 이 프로젝트 밖의 파일에 붙여넣을 텍스트를 클립보드에 넣는다. `widgets/preset_picker`의 `set_hook_name_provider`로 HookPresetPicker가 hook_library 이름을 동적 표시하는 것은 그대로.
 - **MCP**: `create_hook`/`update_hook`은 `handlers=[{...}]`로 CC 스키마 그대로 받는다(`command=` 인자는 커맨드 훅 하나를 만드는 지름길). 그 타입에 없는 속성은 **거부**한다 — 조용히 무시되면 왜 안 먹는지 알 수 없다. `list_hook_events`가 이벤트 31종과 matcher 지원 여부를, `hook_frontmatter_preview`가 서브에이전트 프론트매터 YAML을 돌려준다.
@@ -827,7 +820,7 @@ dataclass(값 동등성, unhashable) 유지 — 컬렉션 멤버십에는 list/`
     - **터미널 배치**: **placement의 실제 outgoing 전이가 0개**인 배치는 "다음 단계" 대신 `_progress_terminal_section`이 "## 작업 완료" 단락(자신을 `completed`에 추가 + `current`를 `"done"`으로)을 배출한다. 판정은 "다음 단계 문구 생성 실패"가 아니다 — outgoing 타깃이 빈 상태(skill_ref=None)뿐이라 문구가 안 나와도 터미널이 아니며 이때는 아무 단락도 배출하지 않는다.
     - **TransferSkill**: local이 아니고 **project에 placement가 1개 이상**일 때 본문 끝에 "## 진행 기록" 헤딩 + `_TRANSFER_PROGRESS_NOTE`(전이 중 note 기록 지시)를 배출한다(진행 파일이 존재하지 않는 프로젝트에서의 고아 지시 방지).
     - **SessionStart 훅 합성**: `PluginProject.emit_progress_hook: bool = True`(직렬화 왕복, 구버전 키 부재 시 기본 True)이고 프로젝트 그래프에 placement가 1개 이상이면, `compile_hooks_json`이 `hook_library`를 오염시키지 않고 컴파일 시점에 SessionStart 이벤트에 진행 상태 주입 커맨드(`cat state/__progress__.json 2>/dev/null || true`)를 합성해 합류시킨다(사용자 정의 SessionStart 훅 뒤에 이어붙어 공존). `emit_progress_hook=False`이거나 placement가 0개면 합성 훅 미배출. 토글은 프로젝트 속성 다이얼로그의 "세션 시작 시 진행 상태 자동 주입 (SessionStart 훅)" 체크박스. 합성 커맨드는 POSIX 셸 전제(`cat`/`||`) — 비POSIX 환경에서는 토글로 끄는 것이 대응책(훅 프리셋과 동일한 전제).
-13. **진입 맥락 + 호출 계약 (WP-IC)**: 배치된 전역 `ProceduralSkill`/`DeclarativeSkill`에서 incoming 전이가 1개 이상이면, `_entry_context_section`이 "## 작업 재개" 프리앰블 뒤·본문 앞에 "## 진입 맥락" 단락을 배출한다("`state/__progress__.json`의 `prev`를 확인하고 아래에서 해당 출처 항목을 따르라" 도입 + entry_paths 선언 순서의 포트별 그룹[`### 경로: <name>` + EventDef.description, 기본 경로 `### 기본 경로`는 항상 마지막] + 그룹 안 출처 이름순 항목["- `<출처>`에서 [조건]로 진입", 전이 스킬(TransferSkill) 지침 수행 문구·에이전트 출처의 "위임 완료 후" 문구 합류]). incoming이 있는 포트만 배출, entry_paths에 없는 target_port(rename 고아)는 기본 경로로 수렴. incoming 0개 배치·미배치·로컬은 산출 변화 없음. `compile_agent`는 `caller_contracts`(잠금 계약 카드)가 비어있지 않으면 본문 뒤에 "## 호출 계약" 단락(각 Section을 `### <title>` + content로 선언 순서 나열)을 배출한다(기존 컴파일 산출 누락 해소).
+13. **진입 맥락 + 호출 계약 (WP-IC/WP-IP/WP-CT)**: 배치된 전역 `ProceduralSkill`/`DeclarativeSkill`에서 incoming 전이가 1개 이상이면, `_entry_context_section`이 "## 작업 재개" 프리앰블 뒤·본문 앞에 "## 진입 맥락" 단락을 배출한다("`state/__progress__.json`의 `prev`를 확인하고 아래에서 해당 출처 항목을 따르라" 도입 + 출처 이름순 항목["- `<출처>`에서 [조건]로 진입" + 출처의 transfer_on description 병기, 전이 스킬(TransferSkill) 지침 수행 문구·에이전트 출처의 "위임 완료 후" 문구 합류] — 포트 그룹 헤딩 없음, 그래프에서만 유도(WP-IP)). incoming 0개 배치·미배치·로컬은 산출 변화 없음. `compile_agent`의 "## 호출 계약"은 `_call_contract_section`이 프로젝트 그래프의 incoming 호출 전이에서 유도한다(WP-CT — 수동 카드 없음).
 14. **files/ 복사 + dangling_file_ref 경고 (WP-FR)**: `files_dir`가 실존 디렉토리면(게이트 통과 시에만) `_copy_files_tree`가 `<out>/files/`로 정렬 순회 복사한다(결정적, 심볼릭 링크 미추종 — 디렉토리는 재귀 안 함·파일은 복사 안 함). 기존 `<out>/files/`는 복사 전 삭제(out 전체가 아니라 files/만). 복사된 파일 경로는 `CompileResult.copied_files`에 담긴다. `files_dir`가 주어지면(실존 여부 무관) `_scan_dangling_file_refs`가 전역 스킬·에이전트·로컬 스킬 body에서 `${CLAUDE_PLUGIN_ROOT}/files/<경로>` 참조 토큰을 스캔해 files_dir에 실존하지 않으면 `dangling_file_ref` 경고를 `CompileResult.warnings`에 추가한다(게이트 차단 아님). `files_dir` 생략(None) 시 복사·스캔 모두 생략되어 기존 산출 파일/문자열이 완전히 불변(하위 호환).
 15. **빌드 타깃 — LOCAL 빌드 (WP-TG)**: `project.build_target`(기본 `MARKETPLACE`)에 따라 `_plan_outputs`의 산출 계획이 갈린다.
     - **MARKETPLACE**(기본): 현행과 **바이트 동일** — 하위 호환 게이트(기존 산출 문자열/파일 전부 불변).
