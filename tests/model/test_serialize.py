@@ -16,7 +16,6 @@ from daedalus.model.fsm.state import (
 from daedalus.model.fsm.transition import Transition
 from daedalus.model.fsm.variable import FieldType, Variable, VariableScope
 from daedalus.model.plugin.agent import AgentDefinition
-from daedalus.model.plugin.delegation import TeamSpawnDef, TeammateSpec
 from daedalus.model.plugin.enums import ModelType
 from daedalus.model.plugin.skill import (
     DeclarativeSkill,
@@ -273,21 +272,6 @@ def test_transfer_skill_ref_on_transition():
     assert proc2.fsm.transitions[0].skill_ref is transfer2
 
 
-def test_delegation_agent_ref_resolved():
-    """DelegationDef의 agent_ref가 id로 평탄화 후 프로젝트 에이전트로 복원."""
-    fsm = StateMachine(name="af", initial_state=EntryPoint(name="e"),
-                       states=[EntryPoint(name="e")])
-    fsm.initial_state = fsm.states[0]
-    agent = AgentDefinition(fsm=fsm, name="ag", description="d")
-    team = TeamSpawnDef(name="team", description="d",
-                        teammates=[TeammateSpec(agent_ref=agent, count=2)])
-    p = PluginProject(name="P", agents=[agent], delegations=[team])
-    p2 = _roundtrip(p)
-    team2 = p2.delegations[0]
-    assert team2.teammates[0].agent_ref is p2.agents[0]
-    assert team2.teammates[0].count == 2
-
-
 def test_reference_skill_and_placement_roundtrip():
     ref = ReferenceSkill(name="conv", description="참조")
     from daedalus.model.project import ReferencePlacement
@@ -435,27 +419,54 @@ def test_local_skill_fsm_blackboard_parent_survives_roundtrip():
     assert ag2.fsm.blackboard.parent is p2.blackboard
 
 
-def test_delegation_placement_survives_round_trip():
-    """위임 placement의 skill_ref가 저장/로드 왕복에서 유실되지 않는다 (WP-DG 리뷰 선재 결함)."""
+def test_legacy_delegations_dropped_with_warning():
+    """구버전(v1) 파일의 위임 정의는 퇴역한 개념이라 로드 시 경고 후 드롭된다 (WP-RF-1a).
+
+    위임을 가리키던 placement skill_ref는 dangling으로 None 정리된다."""
     from daedalus.model.fsm.state import SimpleState
-    from daedalus.model.plugin.delegation import DynamicWorkflowDef
     from daedalus.model.project import PluginProject
     from daedalus.model.serialize import deserialize_project, serialize_project
 
-    deleg = DynamicWorkflowDef(name="wf", description="d", objective="do it")
-    project = PluginProject(name="p", delegations=[deleg])
-    project.graph.states.append(SimpleState(name="wf", skill_ref=deleg))
+    project = PluginProject(name="p")
+    data = serialize_project(project)
+    # 구버전 파일 흉내 — delegations 키 + 위임을 가리키는 placement
+    data["delegations"] = [
+        {"kind": "dynamic_workflow", "id": "d1", "name": "wf",
+         "description": "d", "wait_mode": "wait", "composition": "explicit",
+         "guidance": "", "objective": "do it", "phases": []},
+    ]
+    data["graph"]["states"].append({"kind": "simple", "id": "s-wf", "name": "wf",
+                                    "skill_ref": "d1"})
 
     warnings: list[str] = []
-    restored = deserialize_project(serialize_project(project), collect_warnings=warnings)
+    restored = deserialize_project(data, collect_warnings=warnings)
 
+    assert not hasattr(restored, "delegations")
+    assert any("위임 정의 1건" in w and "드롭" in w for w in warnings)
     placements = [
         s for s in restored.graph.states
         if isinstance(s, SimpleState) and s.name == "wf"
     ]
     assert len(placements) == 1
-    assert placements[0].skill_ref is restored.delegations[0]
-    assert not warnings
+    assert placements[0].skill_ref is None  # dangling → None 정리
+
+
+def test_no_delegations_no_warning():
+    """delegations 키가 없거나 빈 리스트면 드롭 경고가 없다."""
+    from daedalus.model.project import PluginProject
+    from daedalus.model.serialize import deserialize_project, serialize_project
+
+    data = serialize_project(PluginProject(name="p"))
+    assert "delegations" not in data  # 신규 저장 파일에는 키 자체가 없다
+
+    warnings: list[str] = []
+    deserialize_project(data, collect_warnings=warnings)
+    assert not any("위임" in w for w in warnings)
+
+    data["delegations"] = []
+    warnings2: list[str] = []
+    deserialize_project(data, collect_warnings=warnings2)
+    assert not any("위임" in w for w in warnings2)
 
 
 # ─────────────────────── WP-SB: body 단일 마크다운화 ───────────────────────

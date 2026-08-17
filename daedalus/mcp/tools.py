@@ -44,7 +44,7 @@ class DaedalusTools:
 
     def _components(self) -> list[Any]:
         project = self._project
-        return [*project.skills, *project.agents, *project.delegations]
+        return [*project.skills, *project.agents]
 
     def _find_component(self, name: str, agent: str = "") -> Any:
         """이름으로 컴포넌트를 찾는다.

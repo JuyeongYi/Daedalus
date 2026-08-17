@@ -21,7 +21,6 @@ from daedalus.model.fsm.machine import StateMachine
 from daedalus.model.fsm.state import SimpleState
 from daedalus.model.fsm.transition import Transition
 from daedalus.model.plugin.agent import AgentDefinition
-from daedalus.model.plugin.delegation import DelegationDef
 from daedalus.model.plugin.skill import DeclarativeSkill, ReferenceSkill, TransferSkill
 from daedalus.view.canvas.draggable import DraggableItemMixin
 from daedalus.view.canvas.edge_item import TransitionEdgeItem, WaypointHandleItem
@@ -422,11 +421,9 @@ class FsmScene(QGraphicsScene):
         # DeclarativeSkill / TransferSkill은 FSM 노드로 배치 불가 (edge-only)
         if isinstance(skill, (DeclarativeSkill, TransferSkill)):
             return
-        # DelegationDef: 복수 배치 허용 — "이미 배치됨" 가드 스킵
-        if not isinstance(skill, DelegationDef):
-            for svm in self._project_vm.state_vms:
-                if hasattr(svm.model, "skill_ref") and svm.model.skill_ref is skill:  # type: ignore[union-attr]
-                    return  # 이미 배치됨
+        for svm in self._project_vm.state_vms:
+            if hasattr(svm.model, "skill_ref") and svm.model.skill_ref is skill:  # type: ignore[union-attr]
+                return  # 이미 배치됨
         self._state_counter += 1
         model = SimpleState(name=skill.name, skill_ref=skill)  # type: ignore[arg-type,union-attr]
         vm = StateViewModel(model=model, x=scene_pos.x(), y=scene_pos.y())

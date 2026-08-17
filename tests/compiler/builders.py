@@ -16,16 +16,6 @@ from daedalus.model.plugin.config import (
     ReferenceSkillConfig,
     TransferSkillConfig,
 )
-from daedalus.model.plugin.delegation import (
-    AgoraDispatchDef,
-    CompositionMode,
-    DispatchMode,
-    DynamicWorkflowDef,
-    PhaseSpec,
-    TeammateSpec,
-    TeamSpawnDef,
-    WaitMode,
-)
 from daedalus.model.plugin.enums import ModelType
 from daedalus.model.plugin.skill import (
     DeclarativeSkill,
@@ -117,86 +107,4 @@ def make_agent(name: str = "worker") -> AgentDefinition:
         description="A worker agent",
         config=AgentConfig(model=ModelType.SONNET),
         body="# instruction\n\nDo agent work.",
-    )
-
-
-def make_team_spawn(
-    name: str,
-    teammate_agent: AgentDefinition,
-    *,
-    composition: CompositionMode = CompositionMode.EXPLICIT,
-    wait_mode: WaitMode = WaitMode.WAIT,
-    guidance: str = "",
-) -> TeamSpawnDef:
-    return TeamSpawnDef(
-        name=name,
-        description="Spawn a team",
-        composition=composition,
-        wait_mode=wait_mode,
-        guidance=guidance,
-        teammates=[TeammateSpec(agent_ref=teammate_agent, count=2, role_note="reviewer")],
-    )
-
-
-def make_dynamic_workflow(
-    name: str,
-    *,
-    composition: CompositionMode = CompositionMode.EXPLICIT,
-    wait_mode: WaitMode = WaitMode.WAIT,
-    guidance: str = "",
-    phase_agent: AgentDefinition | None = None,
-) -> DynamicWorkflowDef:
-    return DynamicWorkflowDef(
-        name=name,
-        description="Run a workflow",
-        composition=composition,
-        wait_mode=wait_mode,
-        guidance=guidance,
-        objective="ship the feature",
-        phases=[PhaseSpec(title="design", detail="sketch it", agent_ref=phase_agent)],
-    )
-
-
-def make_agora_dispatch(
-    name: str,
-    *,
-    composition: CompositionMode = CompositionMode.EXPLICIT,
-    wait_mode: WaitMode = WaitMode.WAIT,
-    mode: DispatchMode = DispatchMode.DISPATCH,
-) -> AgoraDispatchDef:
-    return AgoraDispatchDef(
-        name=name,
-        description="Send to agora",
-        composition=composition,
-        wait_mode=wait_mode,
-        mode=mode,
-        target="inst-1",
-        msgtype="task.assign",
-        payload_note="include the spec",
-    )
-
-
-def make_delegation_skill(
-    deleg, name: str = "deleg-skill",
-) -> ProceduralSkill:
-    """위임 노드 하나를 SimpleState로 배치한 ProceduralSkill."""
-    node = SimpleState(name=deleg.name, skill_ref=deleg)
-    end = SimpleState(name="end")
-    sm = StateMachine(
-        name=f"{name}_fsm",
-        initial_state=node,
-        states=[node, end],
-        final_states=[end],
-    )
-    sm.transitions.append(
-        Transition(source=node, target=end, trigger=CompletionEvent(name="done"))
-    )
-    return ProceduralSkill(
-        fsm=sm,
-        name=name,
-        description="Skill with delegation",
-        when_to_use="delegating",
-        config=ProceduralSkillConfig(),
-        body="# Instructions\n\nDelegate the work.",
-        transfer_on=[EventDef("done")],
     )

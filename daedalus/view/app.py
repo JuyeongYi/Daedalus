@@ -572,14 +572,13 @@ class MainWindow(QMainWindow):
         return (
             bool(project.skills)
             or bool(project.agents)
-            or bool(project.delegations)
             or len(project.graph.states) > 1  # EntryPoint 제외
         )
 
     def _new_project(self) -> None:
         """Ctrl+N — 새 빈 프로젝트를 생성한다.
 
-        현재 프로젝트가 비어 있지 않으면(스킬/에이전트/위임/graph placement 중
+        현재 프로젝트가 비어 있지 않으면(스킬/에이전트/graph placement 중
         하나라도 존재) 저장 여부를 확인하는 다이얼로그를 표시한다. 빌드 타깃
         선택(WP-TG)을 취소하면 새 프로젝트 생성 자체를 취소한다.
         """
@@ -828,9 +827,6 @@ class MainWindow(QMainWindow):
         for agent in self._project.agents:
             if agent.name == name:
                 return agent
-        for deleg in self._project.delegations:
-            if deleg.name == name:
-                return deleg
         return None
 
     def _get_placed_ids(self) -> set[int]:
@@ -863,7 +859,6 @@ class MainWindow(QMainWindow):
         읽어 탭 텍스트가 달라졌으면 갱신한다. 키스트로크마다 notify가 오더라도
         문자열 비교로 갱신 여부를 판단하므로 비용이 낮다.
         """
-        from daedalus.model.plugin.delegation import DelegationDef
         for comp_id, tab_idx in self._open_tabs.items():
             widget = self._tabs.widget(tab_idx)
             if widget is None:
@@ -890,9 +885,6 @@ class MainWindow(QMainWindow):
             current_text = self._tabs.tabText(tab_idx)
             if isinstance(comp, AgentDefinition):
                 expected = f"🤖 {name}"
-            elif isinstance(comp, DelegationDef):
-                icon = {"team_spawn": "👥", "dynamic_workflow": "🔀", "agora_dispatch": "🛰"}.get(comp.kind, "🛰")
-                expected = f"{icon} {name}"
             else:
                 expected = name
             if current_text != expected:
@@ -914,7 +906,6 @@ class MainWindow(QMainWindow):
         existing = (
             {s.name for s in self._project.skills if s is not component}
             | {a.name for a in self._project.agents if a is not component}
-            | {d.name for d in self._project.delegations if d is not component}
         )
         if new_name in existing:
             QMessageBox.warning(
@@ -950,7 +941,6 @@ class MainWindow(QMainWindow):
         ref_lines: list[str] = []
         if self._project is not None:
             from daedalus.model.fsm.state import SimpleState
-            from daedalus.model.plugin.delegation import DynamicWorkflowDef, TeamSpawnDef
 
             def _scan_fsm_refs(sm_obj) -> int:
                 count = 0
@@ -969,15 +959,6 @@ class MainWindow(QMainWindow):
                 n = _scan_fsm_refs(getattr(ag, "fsm", None))
                 if n:
                     ref_lines.append(f"  에이전트 '{ag.name}'의 FSM: {n}개 배치")
-            for dl in self._project.delegations:
-                if isinstance(dl, TeamSpawnDef):
-                    for spec in dl.teammates:
-                        if spec.agent_ref is component:
-                            ref_lines.append(f"  위임 '{dl.name}' teammates 참조")
-                elif isinstance(dl, DynamicWorkflowDef):
-                    for phase in dl.phases:
-                        if phase.agent_ref is component:
-                            ref_lines.append(f"  위임 '{dl.name}' phases 참조")
 
         msg = f"'{comp_name}'을(를) 삭제하시겠습니까?"
         if ref_lines:
@@ -1040,8 +1021,7 @@ class MainWindow(QMainWindow):
     # --- 탭 관리 ---
 
     def _open_component(self, component: object) -> None:
-        """레지스트리에서 더블클릭 → SkillEditor/AgentEditor/DelegationEditor 탭 열기."""
-        from daedalus.model.plugin.delegation import DelegationDef
+        """레지스트리에서 더블클릭 → SkillEditor/AgentEditor 탭 열기."""
         name = getattr(component, "name", None)
         comp_id = getattr(component, "id", None)
         if name is None or comp_id is None:
@@ -1058,17 +1038,6 @@ class MainWindow(QMainWindow):
             if fm is not None and hasattr(fm, "renamed"):
                 fm.renamed.connect(self._on_component_renamed)
             idx = self._tabs.addTab(editor, f"🤖 {name}")
-            self._open_tabs[comp_id] = idx
-            self._tabs.setCurrentIndex(idx)
-        elif isinstance(component, DelegationDef):
-            from daedalus.view.editors.delegation_editor import DelegationEditor
-            editor = DelegationEditor(
-                component,
-                on_notify_fn=self._project_vm.notify,
-                project=self._project,
-            )
-            icon = {"team_spawn": "👥", "dynamic_workflow": "🔀", "agora_dispatch": "🛰"}.get(component.kind, "🛰")
-            idx = self._tabs.addTab(editor, f"{icon} {name}")
             self._open_tabs[comp_id] = idx
             self._tabs.setCurrentIndex(idx)
         elif isinstance(component, (ProceduralSkill, DeclarativeSkill, TransferSkill, ReferenceSkill)):
@@ -1088,7 +1057,6 @@ class MainWindow(QMainWindow):
         existing = (
             {s.name for s in self._project.skills}
             | {a.name for a in self._project.agents}
-            | {d.name for d in self._project.delegations}
         )
         while True:
             name, ok = QInputDialog.getText(self, dialog_title, "이름:")
@@ -1144,7 +1112,7 @@ class MainWindow(QMainWindow):
 
     def _on_new_component(self, kind: str) -> None:
         if kind not in self._COMPONENT_TITLES:
-            return  # delegation 등 생성이 격하된 종류 — 프로그램적 발화 방어
+            return  # 알 수 없는 종류 — 프로그램적 발화 방어
         name = self._ask_unique_name(self._COMPONENT_TITLES.get(kind, "새 컴포넌트"))
         if name is None:
             return

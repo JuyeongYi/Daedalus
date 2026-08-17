@@ -11,8 +11,7 @@
   2. when_to_use: description과 합류 — "<description> Use when <when_to_use>".
   3. 본문: body(단일 마크다운 문자열)을 그대로 배출(공백뿐이면 블록 생략, WP-SB).
   4. ProceduralSkill FSM → 사람이 읽는 절차 단락.
-  5. 위임 노드: 스펙 4절 + 1-b절(guided) 문구.
-  6. tool_shelf: 참조 문서 단락.
+  5. tool_shelf: 참조 문서 단락.
 """
 from __future__ import annotations
 
@@ -42,15 +41,6 @@ from daedalus.model.fsm.strategy import (
 )
 from daedalus.model.plugin.agent import AgentDefinition
 from daedalus.model.plugin.config import ComponentConfig
-from daedalus.model.plugin.delegation import (
-    AgoraDispatchDef,
-    CompositionMode,
-    DelegationDef,
-    DispatchMode,
-    DynamicWorkflowDef,
-    TeamSpawnDef,
-    WaitMode,
-)
 from daedalus.model.plugin.enums import (
     AgentField,
     FieldEmit,
@@ -368,24 +358,11 @@ def _describe_node_action(state: SimpleState) -> str:
     ref = state.skill_ref
     if ref is None:
         return ""
-    if isinstance(ref, DelegationDef):
-        return _describe_delegation_inline(ref)
     if isinstance(ref, AgentDefinition):
         return f"에이전트 '{ref.name}'에 위임한다"
     # 스킬 참조
     name = getattr(ref, "name", "")
     return f"skill '{name}'을(를) 사용한다"
-
-
-def _describe_delegation_inline(ref: DelegationDef) -> str:
-    """절차 흐름 안에서 위임 노드를 한 줄로 요약(상세 단락은 별도)."""
-    if isinstance(ref, TeamSpawnDef):
-        return f"위임: 팀 '{ref.name}' 구성·spawn (아래 위임 지침 참조)"
-    if isinstance(ref, DynamicWorkflowDef):
-        return f"위임: 동적 워크플로 '{ref.name}' 실행 (아래 위임 지침 참조)"
-    if isinstance(ref, AgoraDispatchDef):
-        return f"위임: Agora 송신 '{ref.name}' (아래 위임 지침 참조)"
-    return f"위임: '{ref.name}'"
 
 
 def _ordered_states(sm: StateMachine) -> list[State]:
@@ -518,140 +495,6 @@ def _describe_join(state: ParallelState) -> str:
     return "모든 리전 완료 후 종합"
 
 
-# ─────────────────────────── 위임 단락 ───────────────────────────
-
-_WAIT_NOTE = {
-    WaitMode.WAIT: "전원/전체 완료를 기다려 결과를 종합한 뒤 다음 단계로 진행하라.",
-    WaitMode.FIRE_AND_FORGET: "백그라운드에 두고 결과를 기다리지 말고 즉시 다음 단계로 진행하라.",
-}
-
-
-def _delegation_section(ref: DelegationDef) -> list[str]:
-    """단일 위임 노드를 본문 지침 단락 블록으로 컴파일 (스펙 4절 + 1-b절)."""
-    is_guided = ref.composition is CompositionMode.GUIDED
-    blocks: list[str] = [f"### 위임: {ref.name}"]
-    if ref.description:
-        blocks.append(ref.description.strip())
-
-    if isinstance(ref, TeamSpawnDef):
-        blocks.append(_team_spawn_body(ref, is_guided))
-    elif isinstance(ref, DynamicWorkflowDef):
-        blocks.append(_dynamic_workflow_body(ref, is_guided))
-    elif isinstance(ref, AgoraDispatchDef):
-        blocks.append(_agora_dispatch_body(ref, is_guided))
-
-    blocks.append(_WAIT_NOTE[ref.wait_mode])
-    if is_guided and ref.guidance.strip():
-        blocks.append(f"보충 지침: {ref.guidance.strip()}")
-    return blocks
-
-
-def _team_spawn_body(ref: TeamSpawnDef, is_guided: bool) -> str:
-    if is_guided:
-        lines = [
-            "이 노드가 속한 문서 본문(위 섹션 계층)을 근거로 필요한 역할과 인원을 "
-            "스스로 판단해 팀을 구성하고, TeamCreate로 팀을 만든 뒤 팀원을 spawn하라."
-        ]
-        if ref.teammates:
-            lines.append("다음 구성을 출발점(힌트)으로 삼되, 본문이 요구하면 조정하라:")
-            lines.extend(_teammate_hint_lines(ref))
-        return "\n".join(lines)
-    # EXPLICIT
-    lines = ["TeamCreate로 팀을 만들고 다음 팀원을 spawn하라:"]
-    lines.extend(_teammate_hint_lines(ref))
-    return "\n".join(lines)
-
-
-def _teammate_hint_lines(ref: TeamSpawnDef) -> list[str]:
-    out: list[str] = []
-    for tm in ref.teammates:
-        note = f" — {tm.role_note}" if tm.role_note else ""
-        out.append(f"- 에이전트 '{tm.agent_ref.name}' × {tm.count}{note}")
-    return out
-
-
-def _dynamic_workflow_body(ref: DynamicWorkflowDef, is_guided: bool) -> str:
-    if is_guided:
-        lines = [
-            "본문이 기술하는 작업을 달성하는 워크플로우를 스스로 설계해 Workflow "
-            "도구로 작성·실행하라."
-        ]
-        if ref.objective:
-            lines.append(f"목표 힌트: {ref.objective}")
-        if ref.phases:
-            lines.append("다음 단계를 힌트로 삼되 본문에 맞춰 조정하라:")
-            lines.extend(_phase_hint_lines(ref))
-        return "\n".join(lines)
-    # EXPLICIT
-    lines = [
-        "Workflow 도구로 다음 구성의 워크플로우를 작성·실행하라:",
-        f"- 목표: {ref.objective}" if ref.objective else "- 목표: (미지정)",
-    ]
-    if ref.phases:
-        lines.append("- 단계:")
-        lines.extend(f"  {ln}" for ln in _phase_hint_lines(ref))
-    lines.append(
-        "단계에 에이전트가 지정되어 있으면 해당 에이전트 타입으로 agentType을 지정하라."
-    )
-    return "\n".join(lines)
-
-
-def _phase_hint_lines(ref: DynamicWorkflowDef) -> list[str]:
-    out: list[str] = []
-    for ph in ref.phases:
-        agent = f" [에이전트 '{ph.agent_ref.name}']" if ph.agent_ref is not None else ""
-        detail = f" — {ph.detail}" if ph.detail else ""
-        out.append(f"- {ph.title}{agent}{detail}")
-    return out
-
-
-def _agora_dispatch_body(ref: AgoraDispatchDef, is_guided: bool) -> str:
-    verb = "agora.broadcast" if ref.mode is DispatchMode.BROADCAST else "agora.dispatch"
-    if ref.mode is DispatchMode.BROADCAST:
-        target_clause = "자신을 제외한 전원에게"
-    else:
-        target_clause = f"target '{ref.target}'에게" if ref.target else "스키마 라우팅 대상에게"
-    lines = [
-        f"`{verb}`를 호출해 {target_clause} payload를 msgtype '{ref.msgtype}'로 보내라."
-    ]
-    if is_guided:
-        lines.append("payload 내용은 본문 맥락에서 구성하라 (msgtype/target은 위 명시 값 고정).")
-    elif ref.payload_note:
-        lines.append(f"payload 구성: {ref.payload_note}")
-    if ref.wait_mode is WaitMode.WAIT:
-        lines.append("agora.flush로 답신을 대기한 뒤 전이하라.")
-    return "\n".join(lines)
-
-
-def _collect_delegations(sm: StateMachine) -> list[DelegationDef]:
-    """머신(재귀)에서 배치된 DelegationDef를 선언 순서·중복 제거로 수집."""
-    found: list[DelegationDef] = []
-    seen: set[int] = set()
-
-    def scan(machine: StateMachine) -> None:
-        for state in machine.states:
-            if isinstance(state, SimpleState):
-                ref = state.skill_ref
-                if isinstance(ref, DelegationDef) and id(ref) not in seen:
-                    seen.add(id(ref))
-                    found.append(ref)
-            elif isinstance(state, CompositeState):
-                scan(state.sub_machine)
-            elif isinstance(state, ParallelState):
-                for region in state.regions:
-                    scan(region.sub_machine)
-
-    scan(sm)
-    return found
-
-
-_DELEGATION_PREAMBLE = (
-    "이 절차는 CC 실행 단위에 일을 위임하는 노드를 포함한다. 다음 환경을 전제한다: "
-    "팀(TeamCreate)/워크플로(Workflow) 도구 가용성, AgoraDispatch 사용 시 "
-    "`.mcp.json`의 agora 연결(`X-Agora-Instance-Id` 헤더)."
-)
-
-
 # ─────────────────────────── 프로젝트 그래프: 다음 단계 ───────────────────────────
 
 
@@ -695,9 +538,7 @@ def _next_step_invoke_line(target_state, sm: StateMachine) -> str | None:
 
 
 def _invoke_phrase(ref, name: str) -> str:
-    """skill_ref 종류별 인보크 지시 문구 — 위임 노드를 '스킬'로 오라벨하지 않는다."""
-    if isinstance(ref, DelegationDef):
-        return f"`{name}` 위임 노드를 수행하라"
+    """skill_ref 종류별 인보크 지시 문구."""
     return f"`{name}` 스킬을 인보크하라"
 
 
@@ -1174,17 +1015,9 @@ def compile_skill(
         blocks.append("## 진행 기록")
         blocks.append(_TRANSFER_PROGRESS_NOTE)
 
-    # ProceduralSkill — FSM 절차 + 위임 + tool_shelf
+    # ProceduralSkill — FSM 절차 + tool_shelf
     if isinstance(skill, ProceduralSkill):
-        delegations = _collect_delegations(skill.fsm)
-        if delegations:
-            blocks.append("## 위임 전제 조건")
-            blocks.append(_DELEGATION_PREAMBLE)
         blocks.extend(_describe_fsm(skill.fsm, skill))
-        if delegations:
-            blocks.append("## 위임 지침")
-            for ref in delegations:
-                blocks.extend(_delegation_section(ref))
         if project is not None:
             blocks.extend(_tool_shelf_section(project))
         if project is not None and not local:
@@ -1554,15 +1387,6 @@ def compile_agent(agent: AgentDefinition, project=None) -> str:
 
     # 출구 — 출력 포트(transfer_on). 호출자 그래프가 이 이름으로 분기한다.
     blocks.extend(_agent_outputs_section(agent))
-
-    # 위임 지침 (에이전트 그래프 내부)
-    delegations = _collect_delegations(agent.fsm)
-    if delegations:
-        blocks.append("## 위임 전제 조건")
-        blocks.append(_DELEGATION_PREAMBLE)
-        blocks.append("## 위임 지침")
-        for ref in delegations:
-            blocks.extend(_delegation_section(ref))
 
     if project is not None:
         blocks.extend(_tool_shelf_section(project))

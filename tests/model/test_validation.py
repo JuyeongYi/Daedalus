@@ -295,18 +295,10 @@ def test_transfer_on_not_empty_ignores_declarative_skill():
 
 
 # ===========================================================================
-# 위임 노드 검증 규칙
+# validate_project 재귀
 # ===========================================================================
 
 from daedalus.model.plugin.agent import AgentDefinition
-from daedalus.model.plugin.delegation import (
-    AgoraDispatchDef,
-    DynamicWorkflowDef,
-    PhaseSpec,
-    TeammateSpec,
-    TeamSpawnDef,
-    WaitMode,
-)
 from daedalus.model.project import PluginProject
 
 
@@ -320,163 +312,13 @@ def _agent(name: str = "worker") -> AgentDefinition:
     return AgentDefinition(fsm=fsm, name=name, description="")
 
 
-def _machine_with(*states, transitions=()):
-    sm = StateMachine(name="m", states=list(states), initial_state=states[0])
-    sm.transitions = list(transitions)
-    return sm
-
-
-# --- empty_delegation ---
-
-def test_empty_team_spawn_warns():
-    d = TeamSpawnDef(name="t", description="")
-    s = SimpleState(name="t_node", skill_ref=d)
-    errors = Validator.validate(_machine_with(s))
-    assert any(e.rule == "empty_delegation" for e in errors)
-
-
-def test_zero_count_teammate_warns():
-    d = TeamSpawnDef(
-        name="t", description="",
-        teammates=[TeammateSpec(agent_ref=_agent(), count=0)],
-    )
-    s = SimpleState(name="t_node", skill_ref=d)
-    errors = Validator.validate(_machine_with(s))
-    assert any(e.rule == "empty_delegation" for e in errors)
-
-
-def test_empty_objective_warns():
-    d = DynamicWorkflowDef(name="w", description="")
-    s = SimpleState(name="w_node", skill_ref=d)
-    errors = Validator.validate(_machine_with(s))
-    assert any(e.rule == "empty_delegation" for e in errors)
-
-
-def test_empty_msgtype_warns():
-    d = AgoraDispatchDef(name="a", description="")
-    s = SimpleState(name="a_node", skill_ref=d)
-    errors = Validator.validate(_machine_with(s))
-    assert any(e.rule == "empty_delegation" for e in errors)
-
-
-def test_filled_delegations_pass():
-    team = TeamSpawnDef(
-        name="t", description="",
-        teammates=[TeammateSpec(agent_ref=_agent())],
-    )
-    wf = DynamicWorkflowDef(name="w", description="", objective="감사")
-    ag = AgoraDispatchDef(name="a", description="", msgtype="task_request")
-    states = [
-        SimpleState(name="n1", skill_ref=team),
-        SimpleState(name="n2", skill_ref=wf),
-        SimpleState(name="n3", skill_ref=ag),
-    ]
-    errors = Validator.validate(_machine_with(*states))
-    assert not any(e.rule == "empty_delegation" for e in errors)
-
-
-# --- forget_completion_mismatch ---
-
-def test_forget_with_result_branching_warns():
-    d = AgoraDispatchDef(
-        name="a", description="", msgtype="m",
-        wait_mode=WaitMode.FIRE_AND_FORGET,
-    )
-    src = SimpleState(name="src", skill_ref=d)
-    t1 = SimpleState(name="t1")
-    t2 = SimpleState(name="t2")
-    transitions = [
-        Transition(source=src, target=t1, trigger=CompletionEvent(name="ok")),
-        Transition(source=src, target=t2, trigger=CompletionEvent(name="fail")),
-    ]
-    errors = Validator.validate(_machine_with(src, t1, t2, transitions=transitions))
-    assert any(e.rule == "forget_completion_mismatch" for e in errors)
-
-
-def test_forget_with_single_done_passes():
-    d = AgoraDispatchDef(
-        name="a", description="", msgtype="m",
-        wait_mode=WaitMode.FIRE_AND_FORGET,
-    )
-    src = SimpleState(name="src", skill_ref=d)
-    t1 = SimpleState(name="t1")
-    transitions = [
-        Transition(source=src, target=t1, trigger=CompletionEvent(name="done")),
-    ]
-    errors = Validator.validate(_machine_with(src, t1, transitions=transitions))
-    assert not any(e.rule == "forget_completion_mismatch" for e in errors)
-
-
-def test_wait_mode_branching_is_fine():
-    d = AgoraDispatchDef(name="a", description="", msgtype="m")  # WAIT 기본
-    src = SimpleState(name="src", skill_ref=d)
-    t1 = SimpleState(name="t1")
-    t2 = SimpleState(name="t2")
-    transitions = [
-        Transition(source=src, target=t1, trigger=CompletionEvent(name="ok")),
-        Transition(source=src, target=t2, trigger=CompletionEvent(name="fail")),
-    ]
-    errors = Validator.validate(_machine_with(src, t1, t2, transitions=transitions))
-    assert not any(e.rule == "forget_completion_mismatch" for e in errors)
-
-
-# --- no_duplicate_skill_ref 면제 ---
-
-def test_delegation_def_exempt_from_duplicate_skill_ref():
-    d = AgoraDispatchDef(name="a", description="", msgtype="m")
-    s1 = SimpleState(name="n1", skill_ref=d)
-    s2 = SimpleState(name="n2", skill_ref=d)
-    errors = Validator.validate(_machine_with(s1, s2))
-    assert not any(e.rule == "no_duplicate_skill_ref" for e in errors)
-
-
-# --- validate_project / dangling_teammate_ref ---
-
-def test_dangling_teammate_ref():
-    project = PluginProject(name="p")
-    orphan = _agent("ghost")  # 프로젝트에 등록 안 됨
-    project.delegations.append(TeamSpawnDef(
-        name="t", description="",
-        teammates=[TeammateSpec(agent_ref=orphan)],
-    ))
-    errors = Validator.validate_project(project)
-    assert any(e.rule == "dangling_teammate_ref" for e in errors)
-
-
-def test_dangling_phase_agent_ref():
-    project = PluginProject(name="p")
-    orphan = _agent("ghost")
-    project.delegations.append(DynamicWorkflowDef(
-        name="w", description="", objective="x",
-        phases=[PhaseSpec(title="검증", agent_ref=orphan)],
-    ))
-    errors = Validator.validate_project(project)
-    assert any(e.rule == "dangling_teammate_ref" for e in errors)
-
-
-def test_registered_refs_pass():
-    project = PluginProject(name="p")
-    a = _agent("worker")
-    project.agents.append(a)
-    project.delegations.append(TeamSpawnDef(
-        name="t", description="",
-        teammates=[TeammateSpec(agent_ref=a)],
-    ))
-    project.delegations.append(DynamicWorkflowDef(
-        name="w", description="", objective="x",
-        phases=[PhaseSpec(title="검증", agent_ref=a), PhaseSpec(title="종합")],
-    ))
-    errors = Validator.validate_project(project)
-    assert not any(e.rule == "dangling_teammate_ref" for e in errors)
-
-
 def test_validate_project_recurses_into_machines():
     """validate_project가 스킬/에이전트 FSM의 머신 수준 규칙도 수집한다."""
     project = PluginProject(name="p")
     a = _agent("worker")
-    # 에이전트 FSM에 empty_delegation 위반 노드 심기
-    bad = SimpleState(name="bad", skill_ref=TeamSpawnDef(name="empty_t", description=""))
-    a.fsm.states.append(bad)
+    # 에이전트 FSM에 duplicate_state_name 위반(동명 상태 2개) 심기
+    a.fsm.states.append(SimpleState(name="dup"))
+    a.fsm.states.append(SimpleState(name="dup"))
     project.agents.append(a)
     errors = Validator.validate_project(project)
-    assert any(e.rule == "empty_delegation" for e in errors)
+    assert any(e.rule == "duplicate_state_name" for e in errors)

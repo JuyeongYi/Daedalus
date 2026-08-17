@@ -46,8 +46,6 @@ daedalus/
 │   │   ├── base.py         # PluginComponent(ABC), WorkflowComponent(ABC)
 │   │   ├── skill.py        # Skill(ABC), ProceduralSkill, DeclarativeSkill, TransferSkill, ReferenceSkill
 │   │   ├── agent.py        # AgentDefinition
-│   │   ├── delegation.py   # DelegationDef(CompositionMode/guidance 포함) + TeamSpawnDef/DynamicWorkflowDef/AgoraDispatchDef (CC 위임 노드)
-│   │   │                   # (deprecated — 신규 생성 UI 제거, 기존 프로젝트 호환용 존치. 권장 경로: 스킬 본문에 위임 지시 서술)
 │   │   ├── tool.py         # Tool(ABC) + BuiltinTool/MCPTool/UserDefinedTool (tool_shelf 도구 단일 진실)
 │   │   ├── hook.py         # HookDef + HookEvent(CC 9종) (hook_library 훅 단일 진실)
 │   │   ├── hook_presets.py # BUILTIN_HOOK_PRESETS (복사용 훅 템플릿) + preset_copy(핸들러까지 깊은 복사)
@@ -55,7 +53,7 @@ daedalus/
 │   │   └── field_matrix.py # FieldRule(emit 포함), SKILL_FIELD_MATRIX, AGENT_FIELD_MATRIX (스킬/에이전트 유형별 프론트매터 필드 규칙)
 │   ├── project.py           # PluginProject (최상위 컨테이너, name+description+version — plugin.json 매니페스트 소스), ReferencePlacement, tool_shelf, hook_library, blackboard(최상위), graph(워크플로 백킹 머신)+graph_layout+edge_layout(WP-ER 엣지 웨이포인트, 키: Transition.id), emit_progress_hook(WP-RS SessionStart 진행 상태 훅 토글, 기본 True), build_target(WP-TG 빌드 타깃 — MARKETPLACE/LOCAL, 기본 MARKETPLACE), mcp_server_defs(WP-MW — 이름→.mcp.json 서버 객체, LOCAL 설치 배선 소스)
 │   │                       # + rename_component(project, component, new_name) — 이름 변경 + 문자열 참조 3종 일괄 갱신 (Qt 무관)
-│   │                       # + remove_component(project, component) → list[str] — 모델 정리 (graph placement, skill_ref None화, 위임 agent_ref None화 등)
+│   │                       # + remove_component(project, component) → list[str] — 모델 정리 (graph placement, skill_ref None화 등)
 │   ├── package.py           # 프로젝트 패키지(WP-PK) — 폴더가 곧 프로젝트. PROJECT_FILENAME(".daedalus.json")/ARCHIVE_SUFFIX(".ddpj"),
 │   │                       #   resolve_project_file(저장 대상)/find_project_file(열 대상)/project_dir/display_name,
 │   │                       #   pack(결정적 zip)/unpack(zip slip 방어). Qt 무관 순수 stdlib.
@@ -124,7 +122,7 @@ daedalus/
     │                       #   attr — SetAttrCmd/AppendToListCmd/RemoveFromListCmd(WP-CE 범용 폼 편집. 편집마다 클래스를 만들지 않고
     │                       #     "속성 하나 바꾸기"+"리스트 넣고 빼기" 둘로 환원한다. SetAttrCmd는 최초 execute에서만 old를 잡는다 —
     │                       #     redo가 old를 덮으면 undo가 깨진다. 값은 복사하지 않으므로 호출자가 새 객체를 넘겨야 한다))
-    ├── editors/            # 속성 편집기 (skill, agent, delegation, hook, body, body_documents, component, variable_loader, catalogue_loader, field_widgets, project_properties, blackboard_editor)
+    ├── editors/            # 속성 편집기 (skill, agent, hook, body, body_documents, component, variable_loader, catalogue_loader, field_widgets, project_properties, blackboard_editor)
     │                       # catalogue_loader: 도구/MCP 카탈로그 로더(WP-TM) — ~/.daedalus/catalogue/*.json(글로벌) + <프로젝트>/.daedalus/catalogue/*.json(프로젝트, 이름 충돌 시 우선)
     │                       #   병합. 파일 1개=항목 1개(CatalogueEntry: name=파일명 stem, description, tools="tool" 키, mcp="mcp" 키). expanded_mcp()가 mcp 항목을
     │                       #   mcp__<entry.name>__<도구>로 확장(이미 mcp__ 접두면 그대로). candidate_strings(entries, project)가 CC_BUILTIN_TOOLS(정렬)+카탈로그 tool/expanded_mcp+
@@ -145,7 +143,7 @@ daedalus/
     │                       #   우측 패널, _entry_paths_panel)에 "⇤ 입력 경로" 패널을 추가 — transfer_on(출력 이벤트) 편집과 대칭 위치·패턴.
     ├── panels/             # TreePanel, PropertyPanel, RegistryPanel, HistoryPanel, ValidationPanel (F7 검증 결과), FilePanel(WP-FR)
     │                       # RegistryPanel: component_delete_requested 시그널 + _RegistrySection 우클릭 "삭제" 컨텍스트 메뉴.
-    │                       #   종류별 섹션은 QTabWidget 탭(WP-SF 배치 개편 — 이모지 라벨+툴팁, 위임 탭은 setTabVisible로 노출 제어)
+    │                       #   종류별 섹션은 QTabWidget 탭(WP-SF 배치 개편 — 이모지 라벨+툴팁)
     │                       # FilePanel(WP-FR/WP-SF): _FileTreeBase(트리+안내+생성+새로고침+"탐색기" 버튼) 기반 전역 files/ 독("플러그인 파일 (공용)",
     │                       #   레지스트리 아래 세로 스택). set_project_dir(path|None) — 저장/열기/새 프로젝트 시 app이 호출. files_root()/skill_files_root()가
     │                       #   실존 시에만 경로 문자열 반환(드롭 provider 단일 진실). SkillFilesPanel(WP-SF): 스킬 에디터 우측 — skill-files/<스킬>/ 트리,
@@ -513,15 +511,15 @@ daedalus/
 - **아직 노출하지 않은 편집:** 컴포넌트 삭제(아래). 커맨드를 만들기만 하면 `TOOL_NAMES`에 이름을
   더해 노출된다.
 - **컴포넌트 삭제는 의도적으로 빠져 있다:** `remove_component`가 그래프 placement·skill_ref
-  None화·위임 참조·graph_layout·edge_layout까지 훑어 정리하므로, 되돌리려면 그 정리 내역 전부를
+  None화·graph_layout·edge_layout까지 훑어 정리하므로, 되돌리려면 그 정리 내역 전부를
   기록·복원해야 한다. 부분 복원 커맨드는 없느니만 못하므로 WP-CE 본편으로 미뤘다(GUI 삭제는 종전대로 동작).
 - **연결 방법:** 도구 메뉴 → "MCP 서버 정보..."가 접속 주소와 `.mcp.json` 스니펫
   (`{"mcpServers": {"daedalus": {"type": "http", "url": "http://127.0.0.1:8787/mcp"}}}`)을 보여준다.
 
 ### 안정 ID + 직렬화 (serialize.py)
 
-- **안정 ID:** `State`(베이스)/`Transition`/`StateMachine`/`Region`/`Variable`/`Skill`(베이스)/`AgentDefinition`/`DelegationDef`(베이스)에 `id: str = field(default_factory=lambda: uuid4().hex, kw_only=True)`. kw_only로 다중 상속 필드 순서 제약을 회피한다. eq=False 클래스는 identity 동등성/해시를 유지(id는 `__eq__`/`__hash__` 무관)하고, 값 동등성 클래스(Variable/Skill/Agent/Delegation)는 `compare=False`로 값 비교에서 제외한다.
-- **직렬화 원칙:** `serialize_project`/`deserialize_project`는 JSON 호환 dict(`"format": 1` 버전 키)를 만든다. **소유 객체는 인라인, 참조는 ID 문자열로 평탄화**한다 — Transition.source/target(state id), SimpleState.skill_ref·Transition.skill_ref(component id), StateMachine.initial_state/final_states(state id), Delegation.agent_ref(agent id). 다형성은 `kind` property를 태그로 재사용. enum은 `.value`↔타입 복원. 역직렬화는 2-pass(객체 생성+id 레지스트리 → 참조 해소)이고 dangling id는 None+경고. `Blackboard.parent`는 ID가 아니라 sub_machine 소유 구조로 재연결한다. serialize.py는 순수 모델(Qt 무관).
+- **안정 ID:** `State`(베이스)/`Transition`/`StateMachine`/`Region`/`Variable`/`Skill`(베이스)/`AgentDefinition`에 `id: str = field(default_factory=lambda: uuid4().hex, kw_only=True)`. kw_only로 다중 상속 필드 순서 제약을 회피한다. eq=False 클래스는 identity 동등성/해시를 유지(id는 `__eq__`/`__hash__` 무관)하고, 값 동등성 클래스(Variable/Skill/Agent)는 `compare=False`로 값 비교에서 제외한다.
+- **직렬화 원칙:** `serialize_project`/`deserialize_project`는 JSON 호환 dict(`"format": 1` 버전 키)를 만든다. **소유 객체는 인라인, 참조는 ID 문자열로 평탄화**한다 — Transition.source/target(state id), SimpleState.skill_ref·Transition.skill_ref(component id), StateMachine.initial_state/final_states(state id). 다형성은 `kind` property를 태그로 재사용. enum은 `.value`↔타입 복원. 역직렬화는 2-pass(객체 생성+id 레지스트리 → 참조 해소)이고 dangling id는 None+경고. `Blackboard.parent`는 ID가 아니라 sub_machine 소유 구조로 재연결한다. serialize.py는 순수 모델(Qt 무관). **구버전 파일의 위임(delegations) 정의는 퇴역한 개념이라 로드 시 경고 후 드롭한다(WP-RF-1a)** — 위임을 가리키던 placement skill_ref는 dangling 경고와 함께 None으로 정리된다.
 - **프로젝트 그래프 직렬화:** `serialize_project`는 `graph`(`_ser_machine` 재사용)와 `graph_layout`을 왕복한다. 그래프 placement의 skill_ref는 component id로 평탄화되고, 역직렬화 시 pass1에서 등록된 skills/agents를 pass2가 해소한다(그래프 `_deser_machine`은 pass1에서 호출). 하위 호환: `"graph"` 키 부재(구버전 파일) → `_make_project_graph()`로 빈 그래프 생성(경고 없음). graph.blackboard.parent는 역직렬화 시 프로젝트 블랙보드로 재연결.
 - `AgentDefinition.graph_layout`/`PluginProject.graph_layout`의 키는 state.name이 아니라 **state.id**다 (이름 변경 시 레이아웃 유실 방지).
 
@@ -586,7 +584,7 @@ ComponentConfig(ABC)          # model, effort, hooks 공통 필드
 
 `ValidationError.is_warning` property — 규칙이 경고 등급이면 True, 에러 등급이면 False. `WARNING_RULES: frozenset[str]` 모듈 상수가 경고 등급 규칙 집합을 단일 진실로 보유 (view에서 rule 이름 하드코딩 금지). `invalid_component_name`은 빈 이름=에러/불일치=경고를 `is_warning`에서 메시지 내용으로 세분화한다.
 
-#### 머신 수준 (20규칙명)
+#### 머신 수준 (18규칙명)
 
 | 규칙 | 설명 |
 |------|------|
@@ -597,16 +595,13 @@ ComponentConfig(ABC)          # model, effort, hooks 공통 필드
 | `missing_required_input` | LOCAL scope 필수 input이 data_map에 없으면 경고 |
 | `pseudo_state_hooks` | 의사 상태에 lifecycle 훅 설정 시 경고 |
 | `completion_event_on_composite` | Composite/ParallelState 출발 전이에 CompletionEvent 없으면 경고 |
-| `no_duplicate_skill_ref` | 동일 스킬/에이전트의 중복 배치 금지 (DelegationDef는 면제) |
+| `no_duplicate_skill_ref` | 동일 스킬/에이전트의 중복 배치 금지 |
 | `transfer_on_not_empty` | ProceduralSkill transfer_on / Agent ExitPoint 최소 1개 |
-| `empty_delegation` | 위임 노드 내용 누락 (팀원 0명·count<1, objective/msgtype 빈 값) 경고 |
-| `forget_completion_mismatch` | forget 모드 위임 노드의 결과 분기 시도 경고 |
 | `transition_endpoint_not_in_states` | Transition.source/target이 sm.states에 없으면 에러 (initial/final 비대칭 해소) |
 | `duplicate_state_name` | 동일 머신 내 동명 상태 경고 (컴파일/직렬화 혼동 방지) |
 | `unreachable_state` | initial_state + 모든 EntryPoint에서 전이 그래프로 도달 불가 상태 경고 (스킬/에이전트 FSM 대상. 프로젝트 그래프 자체는 WP-EP로 스킵 — 아래 "프로젝트 그래프 검증" 참조) |
 | `invalid_data_map_source` | Transition.data_map의 key가 source.outputs에 없으면 경고 (pseudo 상태 스킵) |
 | `trigger_unknown_event` | CompletionEvent trigger.name이 source 출력 이벤트 집합에 없으면 경고 (EventDef rename 고아 전이 검출) |
-| `dangling_target_port` | Transition.target_port가 비어있지 않은데 타깃 skill_ref의 entry_paths 이름 집합에 없으면 경고 (trigger_unknown_event의 입력판, WP-IC — 타깃이 skill_ref 없는 상태면 스킵) |
 | `transition_type_consistency` | INTERNAL/SELF 타입인데 `source is not target`이면 에러 |
 | `choice_completeness` | ChoiceState outgoing 0개=에러, 무가드 2개 이상=에러(else 중복/비결정) |
 | `choice_completeness_missing_else` | ChoiceState 무가드(else) 전이 0개=경고 (LLM 해석 결정성 저하) |
@@ -622,15 +617,13 @@ ComponentConfig(ABC)          # model, effort, hooks 공통 필드
 
 **프로젝트 그래프 검증:** `validate_project`는 `project.graph`도 머신 규칙으로 검증하며 root path는 `("project",)`다. 단 그래프에 placement(EntryPoint 외 노드)가 0개면 검증을 스킵(`_graph_has_placements`) — 빈 캔버스 경고 폭주 방지. `transfer_on_not_empty` 같은 컴포넌트 수준 규칙은 머신 검증에 없으므로 무관. **`unreachable_state`는 `skip_rules={"unreachable_state"}`로 스킵된다(WP-EP)** — CC 플러그인 의미론상 프로젝트 그래프의 모든 배치는 user_invocable 스킬 등으로 독립 시작 가능해 "EntryPoint에서 도달 불가"가 성립하지 않는다. skip_rules는 재귀에 전파되지 않으므로 에이전트 sub_machine 내부의 `unreachable_state`는 기존대로 검사된다.
 
-#### 프로젝트 수준 (17종)
+#### 프로젝트 수준 (15종)
 
 `Validator.validate_project(project)` — 전체 FSM 검증 후 추가:
 
 | 규칙 | 설명 |
 |------|------|
-| `dangling_teammate_ref` | 위임 정의의 agent_ref가 project.agents에 실존하지 않으면 경고 |
-| `unregistered_delegation` | 배치된 SimpleState.skill_ref가 DelegationDef인데 project.delegations에 미등록이면 경고 |
-| `duplicate_component_name` | skills/agents/delegations 전체에서 동명 컴포넌트 에러 (컴파일 디렉토리 충돌) |
+| `duplicate_component_name` | skills/agents 전체에서 동명 컴포넌트 에러 (컴파일 디렉토리 충돌) |
 | `invalid_component_name` | 이름이 `^[a-z0-9][a-z0-9-]*$` 불일치 시 경고, 빈 이름은 에러 |
 | `dangling_string_reference` | `ProceduralSkillConfig.agent`, `AgentConfig.skills`, `reference_placements.skill_name`의 문자열 참조 실존 검사. AgentConfig.skills는 전역 + 에이전트 로컬 스킬 합산 |
 | `duplicate_tool_name` | `tool_shelf` 내 동명 Tool 에러 (이름 참조 모호) |
@@ -723,8 +716,7 @@ WP-FR과 동일하게 모델 계층 없음 — 파일시스템이 단일 진실.
   프로젝트 폴더를 조회하고(component.name은 매번 읽어 rename 추적, showEvent마다 refresh),
   `FilePanel.files_root()`/`skill_files_root()`는 드롭 provider용으로 유지.
 - **배치 개편(사용자 확정):** RegistryPanel의 종류별 섹션 세로 스택 → **QTabWidget 탭**(이모지 라벨 +
-  전체 이름 툴팁, deprecated 위임 탭은 `tabBar().setTabVisible`로 노출 제어 — 위젯 setVisible은 탭을 못
-  숨긴다). 파일 독은 레지스트리 **아래** 세로 스택(`splitDockWidget(..., Vertical)`) — 좌측 열이 좁아져
+  전체 이름 툴팁). 파일 독은 레지스트리 **아래** 세로 스택(`splitDockWidget(..., Vertical)`) — 좌측 열이 좁아져
   에디터가 가로 공간을 가져간다. 탭 페이지는 비활성 시 항상 hidden이므로 노출 판정 테스트는 탭 가시성 기준.
 - **드롭 치환:** `_skill_file_ref_token` — skill-files/<스킬>/ 하위 파일이면 `${CLAUDE_SKILL_DIR}/<스킬 폴더
   안 상대경로>`(첫 조각인 스킬 폴더명은 토큰에서 제거 — 런타임 SKILL_DIR가 그 폴더다). 루트 직속 파일은
@@ -811,8 +803,7 @@ dataclass(값 동등성, unhashable) 유지 — 컬렉션 멤버십에는 list/`
    각 SimpleState skill_ref는 "skill 이름 사용", CompositeState는 "에이전트 X에 위임", 전이별 트리거/가드 조건 + transfer_on 출력 이벤트.
    **상태 접근 선언(WP-BB):** State.reads/writes가 있으면 상태 항목 끝에 `(읽기: \`A.x\`, \`B\` / 쓰기: \`A.y\`)`
    접미사가 합류한다(reads/writes 각각 이름순 정렬, 선언 없으면 문구 생략 — 하위 호환).
-5. **위임 노드** (deprecated — 신규 생성 UI 없음, 기존 위임의 컴파일 산출은 존치): 스펙 4절 문구(TeamSpawn/DynamicWorkflow/AgoraDispatch 도구 호출 지침) + 1-b절 GUIDED(유도문 + teammates/phases "힌트" 격하 + guidance).
-   wait/forget 의미론 + 공통 전제(팀/워크플로 도구·Agora `.mcp.json`) 단락.
+5. (삭제됨 — WP-RF-1a) 위임(delegation) 노드 산출은 개념 퇴역과 함께 제거됐다. 위임 지시는 스킬 본문에 서술한다. (번호는 뒤 항목들의 교차 참조 보존을 위해 유지.)
 6. **tool_shelf**: 참조 문서 단락으로만(실행 코드 생성은 Tier 2).
 6-b. **다음 단계 (project.graph 기반)**: `compile_skill(skill, project=...)`이 `project.graph`에서 그 스킬 placement(skill_ref identity 일치)의 outgoing 전이를 모아 SKILL.md 본문 끝에 **"## 다음 단계"** 단락을 배출한다(버그 2 — 인보크/전이 문구 누락 해소). 형식: 스킬 타깃은 `- [<조건>] → \`<skill>\` 스킬을 인보크하라`, 에이전트 타깃은 `에이전트 \`X\`에게 위임하라` + **그 에이전트 placement의 outgoing을 한 단계 인라인**("위임 완료 후: [조건] → \`C\` 스킬을 인보크하라" — 에이전트는 별도 컨텍스트라 자기 .md에 호출자 지침을 담을 수 없으므로 호출자 스킬 쪽에 후속 지시를 둔다). 조건은 `_transition_condition`(트리거+가드) 재사용, 무가드·무트리거 전이는 "무조건". outgoing 0개면 단락 생략. **에이전트 .md / 로컬 스킬에는 다음 단계 단락 없음**(전역 스킬 + project 인수 있을 때만). EntryPoint outgoing(시작 스킬)은 v1에서 스킬별 단락에 영향 없음.
 7. **에이전트**: `emit==FRONTMATTER`만 프론트매터, INVOCATION(max_turns/background/isolation)은 "호출 파라미터" 본문 단락,
