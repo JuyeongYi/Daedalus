@@ -1,5 +1,11 @@
 """MCP 도구 구현 (WP-MCP) — CC가 Daedalus를 함께 보고 함께 편집하는 표면.
 
+**계층: 이 모듈은 GUI 어댑터다 (WP-RF-2 명시).** core(model/compiler)가 아니라
+MainWindow·ProjectViewModel·CommandStack·body_documents 등 view 표면에 깊이
+결합된 코드로, core 경계 계약(tests/test_import_contracts.py)의 **대상이 아니다**.
+RF-3b 분해 시 이 성격이 근거가 된다 — 순수 조회/편집 로직과 Qt(뷰) 마샬링을
+나눌 때, 여기 있는 것은 어댑터 쪽이다.
+
 모든 메서드는 **Qt 메인 스레드에서 실행되는 것을 전제**로 한다(service가
 MainThreadInvoker로 마샬링한다). 여기서 스레드 안전성을 다시 걱정할 필요는 없다.
 
