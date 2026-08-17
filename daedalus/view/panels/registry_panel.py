@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QMenu,
     QPushButton,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -83,6 +84,7 @@ class _RegistrySection(QWidget):
         self._color = color
         self._no_place = no_place
         self._no_add = no_add
+        self.label_text = label  # RegistryPanel이 탭 툴팁으로 재사용
 
         lay = QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
@@ -185,13 +187,26 @@ class RegistryPanel(QWidget):
             "agent": _RegistrySection("🤖 AGENTS", QColor("#cc8888")),
             "delegation": _RegistrySection("🛰 DELEGATION (deprecated)", QColor("#aa9955"), no_add=True),
         }
+        # 종류별 세로 스택 대신 **탭**으로 담는다 (사용자 확정 — 좌측 열을
+        # 컴팩트하게 만들어 파일 독을 아래에 두고 에디터가 공간을 가져간다).
+        # 탭 라벨은 짧게, 전체 이름은 툴팁으로.
+        self._tabs = QTabWidget()
+        self._tabs.setDocumentMode(True)
+        tab_labels = {
+            "procedural": "⚙",
+            "declarative": "📄",
+            "transfer": "⚡",
+            "reference": "📖",
+            "agent": "🤖",
+            "delegation": "🛰",
+        }
         for kind, section in self._sections.items():
             section.add_requested.connect(lambda k=kind: self.new_component_requested.emit(k))
             section.item_double_clicked.connect(self.component_double_clicked)
             section.delete_requested.connect(self.component_delete_requested)
-            layout.addWidget(section)
-
-        layout.addStretch()
+            idx = self._tabs.addTab(section, tab_labels[kind])
+            self._tabs.setTabToolTip(idx, section.label_text)
+        layout.addWidget(self._tabs)
 
     def set_project(self, project: PluginProject) -> None:
         self._project = project
@@ -205,7 +220,7 @@ class RegistryPanel(QWidget):
         for section in self._sections.values():
             section.clear()
         if self._project is None:
-            self._sections["delegation"].setVisible(False)
+            self._set_delegation_tab_visible(False)
             return
         for skill in self._project.skills:
             placed = id(skill) in self._placed_ids
@@ -224,4 +239,10 @@ class RegistryPanel(QWidget):
             # 위임 정의는 복수 배치 허용 — placed dim 없이 항상 드래그 가능
             self._sections["delegation"].add_item(deleg, placed=False)
         # deprecated — 신규 생성 불가. 기존 위임 보유 프로젝트만 섹션을 노출한다.
-        self._sections["delegation"].setVisible(bool(self._project.delegations))
+        self._set_delegation_tab_visible(bool(self._project.delegations))
+
+    def _set_delegation_tab_visible(self, visible: bool) -> None:
+        """deprecated 위임 탭 노출 제어 — 위젯 setVisible은 탭을 못 숨긴다."""
+        idx = self._tabs.indexOf(self._sections["delegation"])
+        if idx >= 0:
+            self._tabs.tabBar().setTabVisible(idx, visible)

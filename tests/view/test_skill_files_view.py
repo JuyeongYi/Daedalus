@@ -71,10 +71,11 @@ def test_token_for_path_tries_both_roots(qapp, tmp_path):
         set_skill_files_root_provider(None)
 
 
-# --- FilePanel 루트 전환 ---
+# --- FilePanel (전역 독) ---
 
 
 def test_file_panel_exposes_both_roots(qapp, tmp_path):
+    """전역 독은 files/를 보여주되, 드롭 provider용 skill_files_root도 노출한다."""
     from daedalus.view.panels.file_panel import FilePanel
 
     (tmp_path / "files").mkdir()
@@ -85,29 +86,83 @@ def test_file_panel_exposes_both_roots(qapp, tmp_path):
     assert panel.skill_files_root() == str(tmp_path / "skill-files")
 
 
-def test_file_panel_combo_switches_tree_root(qapp, tmp_path):
+def test_file_panel_has_explorer_button(qapp, tmp_path):
     from daedalus.view.panels.file_panel import FilePanel
 
-    (tmp_path / "files").mkdir()
-    (tmp_path / "skill-files" / "alpha").mkdir(parents=True)
     panel = FilePanel()
     panel.set_project_dir(tmp_path)
-    assert panel._tree.isVisible() or panel._model is not None  # files 루트 바인딩
+    assert not panel._explorer_btn.isEnabled()  # files/ 없음 — 열 폴더가 없다
+    (tmp_path / "files").mkdir()
+    panel.refresh()
+    assert panel._explorer_btn.isEnabled()
 
-    panel._root_combo.setCurrentIndex(1)  # 스킬별
-    assert panel._model is not None
+
+# --- SkillFilesPanel (스킬 에디터 우측 — 전역 독과 동시 표시) ---
+
+
+def _with_project_dir(tmp_path):
+    from daedalus.view.panels.file_panel import set_project_dir_provider
+
+    set_project_dir_provider(lambda: str(tmp_path))
+
+
+def test_skill_files_panel_binds_own_skill_dir(qapp, tmp_path):
     from pathlib import Path
 
-    # QFileSystemModel.rootPath()는 구분자를 '/'로 돌려준다 — Path로 정규화 비교
-    assert Path(panel._model.rootPath()) == tmp_path / "skill-files"
+    from daedalus.view.panels.file_panel import SkillFilesPanel, set_project_dir_provider
+
+    (tmp_path / "skill-files" / "alpha").mkdir(parents=True)
+    _with_project_dir(tmp_path)
+    try:
+
+        class _C:
+            name = "alpha"
+
+        panel = SkillFilesPanel(_C())
+        assert panel._model is not None
+        # QFileSystemModel.rootPath()는 구분자를 '/'로 돌려준다 — Path 정규화 비교
+        assert Path(panel._model.rootPath()) == tmp_path / "skill-files" / "alpha"
+    finally:
+        set_project_dir_provider(None)
 
 
-def test_file_panel_create_button_creates_selected_root(qapp, tmp_path):
-    from daedalus.view.panels.file_panel import FilePanel
+def test_skill_files_panel_create_button_makes_own_dir(qapp, tmp_path):
+    from daedalus.view.panels.file_panel import SkillFilesPanel, set_project_dir_provider
 
-    panel = FilePanel()
-    panel.set_project_dir(tmp_path)
-    panel._root_combo.setCurrentIndex(1)  # 스킬별 — 아직 폴더 없음
-    panel._create_root_folder()
-    assert (tmp_path / "skill-files").is_dir()
-    assert not (tmp_path / "files").exists()  # 선택된 루트만 만든다
+    _with_project_dir(tmp_path)
+    try:
+
+        class _C:
+            name = "beta"
+
+        panel = SkillFilesPanel(_C())
+        assert panel._model is None  # 아직 폴더 없음 — 안내 + 생성 버튼
+        panel._create_root_folder()
+        assert (tmp_path / "skill-files" / "beta").is_dir()
+    finally:
+        set_project_dir_provider(None)
+
+
+def test_skill_files_panel_without_project_shows_guidance(qapp):
+    from daedalus.view.panels.file_panel import SkillFilesPanel, set_project_dir_provider
+
+    set_project_dir_provider(lambda: None)  # 미저장 프로젝트
+    try:
+
+        class _C:
+            name = "alpha"
+
+        panel = SkillFilesPanel(_C())
+        assert panel._model is None
+        assert "저장" in panel._info_label.text()
+    finally:
+        set_project_dir_provider(None)
+
+
+def test_skill_editor_embeds_skill_files_panel(qapp):
+    from daedalus.view.editors.skill_editor import SkillEditor
+    from daedalus.view.panels.file_panel import SkillFilesPanel
+    from tests.compiler.builders import make_procedural
+
+    editor = SkillEditor(make_procedural(name="alpha"))
+    assert editor.findChildren(SkillFilesPanel)

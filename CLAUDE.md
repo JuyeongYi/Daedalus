@@ -144,9 +144,12 @@ daedalus/
     │                       #   재사용해 ProceduralSkill/DeclarativeSkill(SkillEditor 우측 패널)과 AgentDefinition(agent_editor Content 탭
     │                       #   우측 패널, _entry_paths_panel)에 "⇤ 입력 경로" 패널을 추가 — transfer_on(출력 이벤트) 편집과 대칭 위치·패턴.
     ├── panels/             # TreePanel, PropertyPanel, RegistryPanel, HistoryPanel, ValidationPanel (F7 검증 결과), FilePanel(WP-FR)
-    │                       # RegistryPanel: component_delete_requested 시그널 + _RegistrySection 우클릭 "삭제" 컨텍스트 메뉴
-    │                       # FilePanel(WP-FR): QTreeView + QFileSystemModel(root=<project_dir>/files). files/ 부재 시 안내+생성 버튼, 새로고침 버튼.
-    │                       #   set_project_dir(path|None) — 저장/열기/새 프로젝트 시 app이 호출. files_root()가 실존 시에만 경로 문자열 반환(provider 단일 진실).
+    │                       # RegistryPanel: component_delete_requested 시그널 + _RegistrySection 우클릭 "삭제" 컨텍스트 메뉴.
+    │                       #   종류별 섹션은 QTabWidget 탭(WP-SF 배치 개편 — 이모지 라벨+툴팁, 위임 탭은 setTabVisible로 노출 제어)
+    │                       # FilePanel(WP-FR/WP-SF): _FileTreeBase(트리+안내+생성+새로고침+"탐색기" 버튼) 기반 전역 files/ 독("플러그인 파일 (공용)",
+    │                       #   레지스트리 아래 세로 스택). set_project_dir(path|None) — 저장/열기/새 프로젝트 시 app이 호출. files_root()/skill_files_root()가
+    │                       #   실존 시에만 경로 문자열 반환(드롭 provider 단일 진실). SkillFilesPanel(WP-SF): 스킬 에디터 우측 — skill-files/<스킬>/ 트리,
+    │                       #   set_project_dir_provider/get_project_dir 모듈 provider로 프로젝트 폴더 조회(에디터마다 생겨 직접 배선 불가)
     │                       # PropertyPanel.show_state(WP-BB): reads/writes TagInput 2개 — get_blackboard_candidates()로 자동완성 후보(호출 시점
     │                       #   스냅샷, get_tool_candidates와 동일 정책), tags_changed → state.reads/writes 직접 기록(커맨드화 범위 밖) + notify. 프로젝트
     │                       #   캔버스 placement와 에이전트 FSM 상태(agent_editor 그래프 탭에 임베드된 PropertyPanel) 양쪽에서 동일하게 편집 가능.
@@ -712,8 +715,17 @@ WP-FR과 동일하게 모델 계층 없음 — 파일시스템이 단일 진실.
   파일을 참조하는 실수도 잡힌다. 이상 2종은 컴파일러 emit, `_EXTERNALLY_EMITTED_RULES` 등록),
   `skill_dir_token_in_agent`(에이전트 본문의 이 토큰은 치환되지 않는다 — Validator 소관, 코드 표기 제외
   `_strip_markdown_code`, 빌드 타깃 무관).
-- **FilePanel:** 루트 전환 콤보(공용 files/ ↔ 스킬별 skill-files/) — `files_root()`/`skill_files_root()`
-  provider 2종, "폴더 만들기" 버튼은 선택된 루트를 만든다.
+- **UI(사용자 확정 — 전역과 스킬별은 동시에 떠 있는 별개 표면, 콤보 전환 아님):** 독의 `FilePanel`은
+  공용 files/ 전용("플러그인 파일 (공용)"), 스킬별은 **스킬 에디터 우측 `SkillFilesPanel`**(전역 스킬만 —
+  로컬은 산출 디렉토리명이 달라 제외). 공통 뼈대는 `_FileTreeBase`(트리 바인딩/안내/폴더 만들기/새로고침 +
+  **"탐색기" 버튼** — `QDesktopServices.openUrl`로 OS 탐색기 열기, 루트 실존 시에만 활성).
+  `SkillFilesPanel`은 에디터마다 생기므로 모듈 provider `set_project_dir_provider`/`get_project_dir`로
+  프로젝트 폴더를 조회하고(component.name은 매번 읽어 rename 추적, showEvent마다 refresh),
+  `FilePanel.files_root()`/`skill_files_root()`는 드롭 provider용으로 유지.
+- **배치 개편(사용자 확정):** RegistryPanel의 종류별 섹션 세로 스택 → **QTabWidget 탭**(이모지 라벨 +
+  전체 이름 툴팁, deprecated 위임 탭은 `tabBar().setTabVisible`로 노출 제어 — 위젯 setVisible은 탭을 못
+  숨긴다). 파일 독은 레지스트리 **아래** 세로 스택(`splitDockWidget(..., Vertical)`) — 좌측 열이 좁아져
+  에디터가 가로 공간을 가져간다. 탭 페이지는 비활성 시 항상 hidden이므로 노출 판정 테스트는 탭 가시성 기준.
 - **드롭 치환:** `_skill_file_ref_token` — skill-files/<스킬>/ 하위 파일이면 `${CLAUDE_SKILL_DIR}/<스킬 폴더
   안 상대경로>`(첫 조각인 스킬 폴더명은 토큰에서 제거 — 런타임 SKILL_DIR가 그 폴더다). 루트 직속 파일은
   None(기본 드롭으로). `MarkdownEditor._token_for_path`가 files→skill-files 순으로 시도,

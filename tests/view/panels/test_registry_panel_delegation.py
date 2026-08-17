@@ -31,31 +31,32 @@ def _make_agent(name: str = "worker") -> AgentDefinition:
 
 # ─────────────────────── RegistryPanel ───────────────────────
 
-def test_empty_project_hides_delegation_section(qapp):
-    """빈 프로젝트 → delegation 섹션이 비표시.
+def _delegation_tab_visible(panel: RegistryPanel) -> bool:
+    """레지스트리 탭화(WP-SF 배치 개편) 이후 노출 판정은 탭 가시성이다 —
+    비활성 탭 페이지는 QTabWidget이 항상 숨기므로 위젯 isHidden은 무의미하다."""
+    idx = panel._tabs.indexOf(panel._sections["delegation"])
+    return panel._tabs.tabBar().isTabVisible(idx)
 
-    최상위 위젯을 show()한 적이 없어 isVisible()은 항상 False이므로(Qt 조상 체인
-    의존), 명시적 표시/은닉 플래그를 반영하는 isHidden()으로 판정한다
-    (tests/view/test_app_compile.py의 기존 관례와 동일).
-    """
+
+def test_empty_project_hides_delegation_section(qapp):
+    """빈 프로젝트 → delegation 탭이 비표시."""
     panel = RegistryPanel()
     proj = PluginProject(name="p")
     panel.set_project(proj)
 
-    assert panel._sections["delegation"].isHidden() is True
+    assert _delegation_tab_visible(panel) is False
 
 
 def test_project_with_delegation_shows_section_and_renders_item(qapp):
-    """위임 보유 프로젝트 → 섹션 표시 + 항목 렌더."""
+    """위임 보유 프로젝트 → 탭 표시 + 항목 렌더."""
     panel = RegistryPanel()
     proj = PluginProject(name="p")
     deleg = TeamSpawnDef(name="team-a", description="")
     proj.delegations.append(deleg)
     panel.set_project(proj)
 
-    section = panel._sections["delegation"]
-    assert section.isHidden() is False
-    assert section._list.count() == 1
+    assert _delegation_tab_visible(panel) is True
+    assert panel._sections["delegation"]._list.count() == 1
 
 
 def test_delegation_double_click_signal_path_intact(qapp):
