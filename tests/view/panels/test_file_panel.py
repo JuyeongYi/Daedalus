@@ -35,7 +35,7 @@ def test_project_dir_without_files_folder_shows_create_button(tmp_path):
 def test_create_files_folder_button_creates_dir_and_shows_tree(tmp_path):
     panel = FilePanel()
     panel.set_project_dir(tmp_path)
-    panel._create_files_folder()
+    panel._create_root_folder()  # 기본 선택 = 공용 files/ (WP-SF에서 루트 콤보화)
 
     files_dir = tmp_path / "files"
     assert files_dir.is_dir()

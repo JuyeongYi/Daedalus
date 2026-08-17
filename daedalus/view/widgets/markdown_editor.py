@@ -442,6 +442,22 @@ def get_files_root() -> str | None:
     return None
 
 
+_SKILL_FILES_ROOT_PROVIDER: Callable[[], str | None] | None = None
+
+
+def set_skill_files_root_provider(provider: Callable[[], str | None] | None) -> None:
+    """skill-files/ 루트 제공자를 등록한다 (WP-SF — files 제공자와 동일 패턴)."""
+    global _SKILL_FILES_ROOT_PROVIDER
+    _SKILL_FILES_ROOT_PROVIDER = provider
+
+
+def get_skill_files_root() -> str | None:
+    """등록된 제공자에서 현재 skill-files/ 루트 경로를 가져온다 (없으면 None)."""
+    if _SKILL_FILES_ROOT_PROVIDER is not None:
+        return _SKILL_FILES_ROOT_PROVIDER()
+    return None
+
+
 
 # --- 단축키 판정 (Ctrl+숫자 / Ctrl+Shift+기호, 플랫폼 키맵 차이 대응) ---
 # 일부 플랫폼/키보드 배열에서는 Ctrl+Shift+숫자 조합이 event.key()로 오지 않고
@@ -525,6 +541,27 @@ def _file_ref_token(local_path: str, files_root: str) -> str | None:
     posix_rel = PurePosixPath(rel.as_posix())
     token = file_ref_token(str(posix_rel))
     return f"<{token}>" if " " in str(posix_rel) else token
+
+
+def _skill_file_ref_token(local_path: str, skill_files_root: str) -> str | None:
+    """local_path가 skill-files/<스킬>/ 하위 파일이면 참조 토큰을 계산한다 (WP-SF).
+
+    토큰은 ``${CLAUDE_SKILL_DIR}/<스킬 폴더 안 상대경로>`` — 첫 경로 조각(스킬
+    폴더 이름)은 토큰에 들어가지 않는다. 런타임에 CC가 이 변수를 그 스킬의
+    디렉토리로 치환하기 때문이다. skill-files/ 바로 밑 파일(스킬 폴더 없음)은
+    소속을 알 수 없어 None — 기본 드롭으로 흘린다(컴파일도 복사하지 않는다).
+    공백 경로의 ``<...>`` 감싸기는 files 토큰과 같은 이유다.
+    """
+    try:
+        rel = Path(local_path).resolve().relative_to(Path(skill_files_root).resolve())
+    except ValueError:
+        return None
+    parts = PurePosixPath(rel.as_posix()).parts
+    if len(parts) < 2:
+        return None  # 루트 자체 또는 스킬 폴더 미소속 파일
+    inner = "/".join(parts[1:])
+    token = "${CLAUDE_SKILL_DIR}/" + inner
+    return f"<{token}>" if " " in inner else token
 
 
 class MarkdownEditor(QPlainTextEdit):
@@ -1283,28 +1320,35 @@ class MarkdownEditor(QPlainTextEdit):
         """
         if mime is None or not mime.hasUrls():
             return []
-        files_root = get_files_root()
-        if not files_root:
-            return []
         tokens: list[str] = []
         for url in mime.urls():
             if not url.isLocalFile():
                 continue
-            token = _file_ref_token(url.toLocalFile(), files_root)
+            token = self._token_for_path(url.toLocalFile())
             if token is not None:
                 tokens.append(token)
         return tokens
+
+    @staticmethod
+    def _token_for_path(local_path: str) -> str | None:
+        """files/·skill-files/ 두 루트에 대해 참조 토큰을 시도한다 (WP-FR/WP-SF)."""
+        files_root = get_files_root()
+        if files_root:
+            token = _file_ref_token(local_path, files_root)
+            if token is not None:
+                return token
+        skill_root = get_skill_files_root()
+        if skill_root:
+            return _skill_file_ref_token(local_path, skill_root)
+        return None
 
     def _non_file_ref_urls(self, mime) -> list[str]:
         """토큰으로 변환되지 **않은** URL의 원문 목록 (혼합 드롭 보존용)."""
         if mime is None or not mime.hasUrls():
             return []
-        files_root = get_files_root()
         rest: list[str] = []
         for url in mime.urls():
-            if url.isLocalFile() and files_root and _file_ref_token(
-                url.toLocalFile(), files_root
-            ):
+            if url.isLocalFile() and self._token_for_path(url.toLocalFile()):
                 continue
             rest.append(url.toString())
         return rest

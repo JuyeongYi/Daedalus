@@ -49,7 +49,7 @@
       "id": "c001763402534697a03d67a118df67cc",
       "name": "graph-orient",
       "description": "Daedalus 편집 세션의 진입점 — 지금 무엇이 열려 있고 사용자가 무엇을 보고 있는지 파악한다.",
-      "when_to_use": "",
+      "when_to_use": "Daedalus MCP로 플러그인 설계 세션을 시작할 때 — 어떤 작업이든 현황 파악이 첫 단계다.",
       "body": "# 지금 무엇이 열려 있는지부터 본다\n\nDaedalus MCP는 **사람이 GUI에서 작업하는 중에 같은 프로젝트를 함께 만지는 통로**다.\n조회용 API가 아니다. 그래서 첫 동작은 항상 현황 파악이다.\n\n## 1. 연결과 현황\n\n`get_project`로 프로젝트 이름·빌드 타깃·컴포넌트·배치·전이·블랙보드를 한 번에 받는다.\n\n도구 호출이 전부 실패하면 서버가 안 떠 있는 것이다. Daedalus GUI가 실행 중인지\n확인하고, 여러 인스턴스를 띄웠다면 `--mcp-port`로 어느 쪽에 붙는지 확인하라.\n\n## 2. 사용자가 무엇을 보고 있는가\n\n`get_selection`을 부른다. 사용자가 \"이거 고쳐줘\"라고 할 때 그 \"이거\"가 여기 있다.\n선택이 비어 있으면 무엇을 대상으로 하는지 먼저 물어라 — 짐작해서 엉뚱한 노드를\n고치면 사용자가 되돌려야 한다.\n\n`get_history`는 사용자가 방금 한 편집을 보여준다. 대화가 중간부터 시작됐을 때\n맥락을 따라잡는 데 쓴다.\n\n## 3. 목표를 받아 적는다\n\n`DesignSession`에 이번 작업이 무엇인지 기록한다.\n\n- `goal` — 무엇을 자동화하려는 플러그인인가. 한 문장.\n- `target_project` — 이 플러그인을 어디에 설치할 것인가.\n- `build_target` — `local`(프로젝트 설치) 또는 `marketplace`.\n\n**빌드 타깃은 여기서 정한다.** 에이전트에 `hooks`/`mcpServers`/`permissionMode`가\n하나라도 필요하면 `local`이어야 한다. 마켓플레이스는 그 셋을 무시하기 때문이다.\n나중에 바꾸려면 `set_project_properties(build_target=...)`로 바꿀 수 있지만,\n설계를 다 해 놓고 바꾸면 쓸 수 없는 필드를 걷어내야 한다.\n\n## 4. 갈림길\n\n- 캔버스가 비어 있거나 사용자가 새 워크플로를 원한다 → **new**\n- 이미 배치된 그래프가 있다 → **existing**. 손대기 전에 현황부터 검증한다.\n  기존 그래프에는 대개 미완성 배선이 남아 있고, 그걸 모르고 새로 그리면 충돌한다.\n\n## 편집 원칙\n\n여기서 하는 모든 편집은 **사용자의 undo 스택에 들어간다**. 사용자가 Ctrl+Z로\n되돌릴 수 있고, 스크립트 리스너에 사람 편집과 같은 형식으로 남는다. 되돌릴 수\n있다고 해서 함부로 해도 된다는 뜻은 아니다 — 사용자가 작업 중인 캔버스를 말없이\n크게 바꾸지 마라.\n",
       "config": {
         "kind": "procedural",
@@ -125,8 +125,8 @@
       "id": "36540c762a1943d7a90751f441818311",
       "name": "graph-design",
       "description": "컴포넌트를 만들고 캔버스에 배치해 워크플로의 뼈대를 세운다.",
-      "when_to_use": "",
-      "body": "",
+      "when_to_use": "설계 목표는 정해졌는데 캔버스에 컴포넌트가 없거나, 기존 워크플로에 새 단계를 추가해야 할 때.",
+      "body": "# 뼈대 — 컴포넌트를 만들고 캔버스에 놓는다\n\n구조가 먼저다. 본문·분기·공유 상태는 다음 단계들이 채운다 — 여기서는 **무엇이\n있고 어디에 놓이는가**만 결정한다.\n\n## 1. 단계를 컴포넌트로 나눈다\n\n`DesignSession.goal`을 읽고 워크플로를 단계로 쪼갠 뒤, 단계마다 맞는 종류를\n고른다(판단 기준은 daedalus-model 참조):\n\n- 절차가 있는 단계 → **procedural_skill**\n- 여러 단계가 공유하는 배경 지식 → **declarative_skill**\n- 여러 노드가 참조하는 문서 → **reference_skill** (참조 노드로 복수 배치 가능)\n- 별도 컨텍스트가 필요한 작업(대량 반복, 독립 판단, 격리 권한) → **agent**.\n  에이전트는 내부 FSM이 없다 — 절차는 본문에 적고, 결과 분기는 출력 포트\n  (transfer_on)로 낸다.\n\n**과하게 쪼개지 마라.** 한 컨텍스트에서 자연스럽게 이어지는 일은 한 스킬이다.\n컨텍스트 경계(다른 시점, 다른 권한, 위임)가 있을 때만 나눈다 — 나눌수록\n블랙보드로 넘겨야 할 상태가 늘어난다.\n\n## 2. 만들고 배치한다\n\n`create_skill`/`create_agent`로 만들고 `place_component`로 캔버스에 놓는다.\n\n- 이름은 `^[a-z0-9][a-z0-9-]*$` — 어기면 컴파일 게이트가 거부한다.\n- **description은 만들 때 바로 채워라.** 모델이 이 스킬을 고르는 근거다.\n  빈 채로 두면 나중 단계에서 누락되기 쉽다.\n- 같은 컴포넌트를 두 번 배치할 수 없다(no_duplicate_skill_ref 에러). 여러 곳에서\n  같은 문서가 필요하면 reference_skill을 만들어 참조 노드로 놓는 것이 맞다.\n\n## 3. 배치 지형\n\n왼쪽→오른쪽이 시간 순서로 읽히게 놓는다. 검증→수정 같은 루프백은 아래쪽으로\n돌린다. 노드가 겹치면 다음 단계에서 배선이 읽히지 않는다.\n\n## 완료 갈림길\n\n- 노드가 많아 재배선을 한 컨텍스트에서 감당하기 어렵다 → **bulk-rewire**로\n  graph-surgeon에 위임한다.\n- 컴포넌트와 배치가 끝났다 → **done**. 아직 선에는 의미가 없다 — 다음 단계가\n  포트와 트리거를 물린다.\n",
       "config": {
         "kind": "procedural",
         "model": "inherit",
@@ -209,8 +209,8 @@
       "id": "81e81814a3d24c55bf208d225bc9010b",
       "name": "graph-wire",
       "description": "포트를 선언하고 전이에 트리거·가드를 물려 분기 의미론을 완성한다.",
-      "when_to_use": "",
-      "body": "",
+      "when_to_use": "노드와 선은 있는데 갈래 선언(transfer_on)·트리거가 비어 분기 의미가 없을 때, 또는 검증이 배선 문제를 짚어 되돌아왔을 때.",
+      "body": "# 배선 — 갈래에 의미를 물린다\n\n노드와 선만으로는 분기가 표현되지 않는다. 갈래마다 이름과 설명이 있어야 컴파일\n산출에 \"언제 어디로\"가 실리고, 도착한 쪽이 자기가 왜 왔는지 안다.\n\n## 1. 출력 포트 선언이 먼저다\n\n`set_transfer_on(컴포넌트, 갈래 목록)`으로 갈래를 선언한다.\n\n**description을 반드시 채워라.** 인터페이스 선언은 값을 만드는 쪽에만 있다 —\n이 description이 출발 스킬의 \"다음 단계\"와 도착 스킬의 \"진입 맥락\"에 그대로\n실린다. 도착 노드에는 입력 포트가 없다: (출처, 트리거) 쌍이 경로를 특정하므로,\n경로별 대응이 필요하면 그 내용은 도착 스킬 **본문**에 쓴다.\n\n- 갈래가 하나여도 `done` 하나는 선언한다(transfer_on_not_empty 에러).\n- 에이전트로 가는 전이는 일반 포트가 아니라 `add_agent_call`로 만든 **호출\n  포트**에서만 나간다. 호출 포트 description에는 **호출자가 무엇을 넘기는지**\n  적는다 — 에이전트 .md의 \"호출 계약\" 단락이 여기서 유도된다.\n\n## 2. 전이에 트리거를 물린다\n\n`connect_states(출발, 도착, trigger=갈래이름)`. 기존 전이는 `set_transition`으로\n고친다(None=유지, \"\"=지움).\n\n- 트리거는 출발 노드 transfer_on의 이름과 일치해야 한다 — 어긋나면\n  trigger_unknown_event 경고(포트 rename 후 고아 전이가 전형).\n- 조건 세분이 필요하면 guard를 쓰되, 같은 트리거를 가드로 가르는 것보다 갈래\n  이름을 나누는 편이 산출이 읽기 쉽다.\n\n## 3. 검증 루프에서 돌아왔다면\n\n`VerifyResult.blocking`에 재진입 사유가 있다. **그 항목만 고치고** 다시 검증으로\n보내라 — 배선 전체를 다시 훑으면 이미 맞는 배선을 건드리게 된다.\n\n## 완료\n\n모든 다분기 노드에 갈래가 선언되고 모든 전이에 트리거가 물렸으면 **done**.\n",
       "config": {
         "kind": "procedural",
         "model": "inherit",
@@ -224,7 +224,6 @@
           "mcp__daedalus__disconnect_states",
           "mcp__daedalus__set_transition",
           "mcp__daedalus__set_transfer_on",
-          "mcp__daedalus__set_entry_paths",
           "mcp__daedalus__add_agent_call",
           "mcp__daedalus__remove_agent_call",
           "mcp__daedalus__validate_project",
@@ -283,8 +282,8 @@
       "id": "7e757d90f0214999b9d913caecd72848",
       "name": "graph-state",
       "description": "컨텍스트를 넘나드는 공유 상태를 블랙보드로 설계하고 노드별 읽기·쓰기를 선언한다.",
-      "when_to_use": "",
-      "body": "",
+      "when_to_use": "여러 컨텍스트가 공유해야 할 값이 있는데 블랙보드 클래스나 노드별 reads/writes 선언이 아직 없을 때.",
+      "body": "# 공유 상태 — 컨텍스트 경계를 넘는 데이터만 블랙보드로\n\n블랙보드는 서로 다른 컨텍스트(스킬 인보크 사이, 에이전트 위임 전후)가 맥락을\n공유하는 장치다. 같은 컨텍스트 안에서는 쓰지 마라 — 이미 같은 맥락을 보고\n있으므로 파일을 거치는 것은 낭비일 뿐이다.\n\n## 1. 무엇이 경계를 넘는가\n\n그래프를 훑으며 전이마다 \"이 값을 다음 단계가 아는가?\"를 묻는다. 경계를 넘는\n값만 클래스로 만든다. 전형적인 세 종류:\n\n- 모두가 읽는 세션 목표·설정 → 선언 클래스 하나\n- 단계별 진행 산출물 → 진행 클래스\n- 루프백으로 되넘기는 결과(검증 결과 등) → 결과 클래스\n\n`create_blackboard_class(이름, 필드들)`. 필드 타입은 **스칼라 4종**(string/int/\nfloat/bool) × collection(none/list/set)뿐이다. 복잡한 구조가 필요하면 JSON을\n문자열에 욱여넣지 말고 클래스를 나눠라 — 런타임에 읽는 것은 LLM이고, 스키마가\n쪼개져 있을수록 읽기-수정-쓰기가 안전하다.\n\n## 2. 노드별 접근 선언\n\n`set_state_access(노드, reads=[...], writes=[...])`. 값은 `\"Class\"` 또는\n`\"Class.field\"`.\n\n- **읽지 않는 것을 선언하지 마라.** 선언은 컴파일 시 그 스킬 본문의 블랙보드\n  단락을 관련 클래스로 좁히는 데 쓰인다 — 넓게 선언하면 안내도 넓어져 잡음이\n  된다.\n- 필드 수준(`Class.field`)이 클래스 전체(`Class`)보다 낫다. 어느 필드를 만지는지\n  산출에 그대로 실린다.\n\n## 3. 검증\n\n`validate_project`로 두 가지를 확인한다:\n\n- **dangling_blackboard_ref** — 선언 오타이거나 클래스/필드 삭제 잔재. 고쳐라.\n- **orphan_blackboard_field** — 아무도 안 쓰는 필드. 진짜 고아면 지우고, 쓸\n  노드가 아직 안 만들어진 것이면 그 노드의 선언을 먼저 채워라.\n\n## 완료\n\n클래스 정의와 노드별 접근 선언이 끝났으면 **done**.\n",
       "config": {
         "kind": "procedural",
         "model": "inherit",
@@ -350,8 +349,8 @@
       "id": "d9bebaaac3cd42bdbbea9dcde7ebc559",
       "name": "plugin-verify",
       "description": "프로젝트를 검증하고 경고를 원인별로 해석해 무엇을 고쳐야 하는지 정한다.",
-      "when_to_use": "",
-      "body": "",
+      "when_to_use": "그래프 편집이 일단락되어 컴파일 가능 여부를 판정하고 경고를 해석해야 할 때.",
+      "body": "# 검증 — 에러는 막고 경고는 해석한다\n\n컴파일 게이트는 에러 1건이면 파일을 하나도 만들지 않는다. 경고는 통과하지만,\n통과한다고 무시해도 된다는 뜻이 아니다 — 경고마다 \"왜 나왔고 무엇을 의미하는가\"를\n해석하고 나서 넘어간다.\n\n## 1. `validate_project`\n\n에러와 경고가 구분되어 온다. 에러부터 처리한다.\n\n## 2. 에러 — 무조건 고친다\n\n빈번한 것들:\n\n- **transfer_on_not_empty** — 출력 포트 미선언. 배선 단계로 되돌린다.\n- **duplicate_component_name** — 컴파일 디렉토리가 충돌한다. 이름을 바꾼다.\n- **no_duplicate_skill_ref** — 같은 컴포넌트 중복 배치. 참조 스킬로 바꿀 일이다.\n- **choice_completeness** — 선택 노드의 갈래 불완전.\n\n## 3. 경고 — 원인별 해석\n\n- **dangling_\\*** 계열(hook/tool/blackboard/string) — 참조 오타이거나 삭제\n  잔재다. 거의 항상 고쳐야 한다.\n- **trigger_unknown_event** — 포트 rename 뒤 남은 고아 전이. 배선 단계 소관.\n- **orphan_blackboard_field** — 진짜 고아면 필드를 지우고, 쓸 노드의 선언이\n  빠진 것이면 선언을 채운다.\n- **invalid_component_name**(불일치) — 검증에서는 경고지만 **컴파일 게이트에서\n  에러로 승격**된다. 지금 고쳐라.\n- **mcp_agent_in_marketplace_build** — 빌드 타깃과 설계가 어긋났다. 타깃을\n  local로 바꿀지 에이전트에서 MCP를 뺄지는 설계 결정이다 — 사용자에게 물어라.\n- **missing_mcp_server_def** — 컴파일 시점 경고다. `set_mcp_server_def`로 서버\n  정의를 등록하면 해소된다(graph-tools 소관).\n\n## 4. 산출 미리보기\n\n에러 0건이면 `compile_preview`로 실제 산출 텍스트를 확인한다. **빈 본문과 빈\nwhen_to_use는 검증기가 잡지 않는다** — 산출을 읽고 껍데기 스킬이 없는지, 다음\n단계·진입 맥락 단락이 의도대로 실렸는지 본다.\n\n## 완료 갈림길\n\n- 에러 0건 + 경고 해석 완료 → **pass**\n- 에러가 있거나 설계 수정이 필요한 경고가 남았다 → **fix-needed**.\n  `VerifyResult.blocking`에 **무엇을 왜 고쳐야 하는지** 기록하고 넘긴다 —\n  받은 쪽은 그 목록만 고치고 전체를 다시 훑지 않는다.\n",
       "config": {
         "kind": "procedural",
         "model": "inherit",
@@ -422,8 +421,8 @@
       "id": "2e4bb8795b2a451d963c012bf3aefb4a",
       "name": "plugin-compile",
       "description": "빌드 타깃을 확인하고 플러그인 파일을 산출한다.",
-      "when_to_use": "",
-      "body": "",
+      "when_to_use": "검증을 통과한 프로젝트를 실제 플러그인 파일로 산출할 때 — local 타깃이면 산출이 곧 설치다.",
+      "body": "# 산출 — 타깃에 따라 컴파일의 의미가 다르다\n\n## 1. 빌드 타깃 확인\n\n`get_project`의 `build_target`을 본다.\n\n- **local** — **컴파일이 곧 설치다.** 출력 폴더가 스테이징이 아니라 대상 작업\n  폴더이고, 스킬/에이전트는 그 안의 `.claude/` 밑으로 들어가며 `.mcp.json`과\n  `.claude/settings.local.json`이 병합된다(추가/갱신만, 재컴파일 멱등). 어느\n  작업 폴더에 설치할지 `DesignSession.target_project`를 확인하고, 없으면\n  사용자에게 물어라.\n- **marketplace** — 출력 폴더가 플러그인 루트가 된다(`.claude-plugin/plugin.json`\n  포함). 에이전트의 hooks/mcpServers/permissionMode는 이 타깃에서 무시된다는\n  점을 기억하라.\n\n## 2. 마지막 게이트\n\n`validate_project`로 에러 0건을 재확인한다. 검증 통과 후에 편집이 있었다면\n결과가 달라졌을 수 있다 — 에러가 있으면 컴파일은 파일을 하나도 만들지 않는다.\n\n## 3. 저장 후 컴파일\n\n`save_project`로 먼저 저장한다. `files/` 동봉 복사는 저장 경로 기준이라\n미저장 프로젝트는 files/가 통째로 빠진다.\n\n실제 컴파일은 MCP에 없다 — **사용자가 GUI에서 Ctrl+B를 눌러야 한다.** 타깃에\n맞는 폴더(local이면 설치 대상 작업 폴더, marketplace면 산출 폴더)를 고르도록\n안내하고 결과를 기다려라.\n\n## 4. 산출 확인\n\n- **local**: 대상 폴더의 `.claude/skills/`·`.claude/agents/`·`.mcp.json`·\n  `.claude/settings.local.json`이 생겼는지 확인한다. `missing_mcp_server_def`\n  경고가 나왔다면 `set_mcp_server_def`로 정의를 등록하고 다시 컴파일한다\n  (멱등이라 안전하다).\n- **marketplace**: `.claude-plugin/plugin.json` + `skills/` + `agents/` 구조를\n  확인한다.\n\n경고 목록은 컴파일 결과에 동봉된다 — 남은 경고를 사용자에게 요약해 보고한다.\n\n## 완료\n\n산출이 확인되면 **done** — 워크플로 종료.\n",
       "config": {
         "kind": "procedural",
         "model": "inherit",
@@ -478,7 +477,7 @@
         {
           "name": "done",
           "color": "#4488ff",
-          "description": ""
+          "description": "산출(local이면 설치까지) 확인 완료 — 워크플로 종료"
         }
       ],
       "call_agents": [],
@@ -601,7 +600,7 @@
       "name": "graph-tools",
       "description": "설계된 워크플로가 새 CLI 도구나 MCP 서버를 필요로 하는지 점검하고 조달 방법을 정한다.",
       "when_to_use": "구조·블랙보드 설계가 끝났고, 각 단계가 실제로 어떤 도구로 일할지 아직 확정하지 않았을 때.",
-      "body": "# 도구 점검 — 각 단계는 무엇으로 일하는가\n\n구조가 완성돼도 단계가 쓸 도구가 없으면 그 지침은 실행 불가능한 소망이다.\n배치된 노드를 하나씩 보며 **\"이 단계는 어떤 도구로 이 일을 하는가\"**를 묻는다.\n\n## 판정 순서\n\n노드마다 필요한 능력을 적고, 아래 순서로 조달 방법을 고른다. 위가 쌀수록 좋다 —\n아래로 갈수록 만들고 유지할 것이 늘어난다.\n\n1. **CC 내장 도구로 충분** (Read/Write/Edit/Bash/Glob/Grep/WebFetch …)\n   → 조달 없음. 본문 작성 단계에서 `allowed_tools`만 좁힌다.\n2. **기존 MCP 서버가 이미 제공** (`mcp__<서버>__<도구>`)\n   → 도구 이름을 기록해 두고, **서버 정의를 `set_mcp_server_def`로 등록**한다.\n   정의(이름 → `.mcp.json` 객체)가 없으면 로컬 빌드가 설치 배선을 못 해\n   `missing_mcp_server_def` 경고가 난다.\n3. **반복 스크립트/검증 로직이 필요** (파서, 포맷 변환, 일괄 검사)\n   → CLI 스크립트를 `files/`에 동봉하고 본문이 `${ROOT}/files/…`로 참조,\n   실행 단계의 `allowed_tools`에 `Bash`를 연다. 프롬프트로 매번 시키는 것보다\n   스크립트 하나가 결정적이고 싸다.\n4. **새 MCP 서버를 만들어야 함** (상태 유지 서비스, GUI 연동, 외부 시스템)\n   → 가장 비싸다. 정말 2·3으로 안 되는지 다시 보라. 만들기로 했다면 그 서버\n   구축은 이 플러그인 범위 밖의 별도 작업임을 사용자에게 명시하라.\n\n## 점검 항목\n\n- 본문에 \"~를 실행한다\"고 썼는데 그 도구가 어디에도 없는 단계\n- `mcp__` 도구를 참조하는데 `mcp_server_defs`에 정의가 없는 서버 (`get_project`로 확인)\n- 에이전트가 도구 미지정(전 도구 상속)인 채로 남아 있는 것 — 과하다\n\n## 완료\n\n노드별 조달 결정(내장/기존 MCP/동봉 CLI/신규)을 정리해 `GraphDraft`에 기록하고\n**done**으로 본문 작성 단계에 넘긴다 — 결정된 도구 목록이 그 단계에서\n`allowed_tools`/`tools` 프론트매터가 된다.\n",
+      "body": "# 도구 점검 — 각 단계는 무엇으로 일하는가\n\n구조가 완성돼도 단계가 쓸 도구가 없으면 그 지침은 실행 불가능한 소망이다.\n배치된 노드를 하나씩 보며 **\"이 단계는 어떤 도구로 이 일을 하는가\"**를 묻는다.\n\n## 판정 순서\n\n노드마다 필요한 능력을 적고, 아래 순서로 조달 방법을 고른다. 위가 쌀수록 좋다 —\n아래로 갈수록 만들고 유지할 것이 늘어난다.\n\n1. **CC 내장 도구로 충분** (Read/Write/Edit/Bash/Glob/Grep/WebFetch …)\n   → 조달 없음. 본문 작성 단계에서 `allowed_tools`만 좁힌다.\n2. **기존 MCP 서버가 이미 제공** (`mcp__<서버>__<도구>`)\n   → 도구 이름을 기록해 두고, **서버 정의를 `set_mcp_server_def`로 등록**한다.\n   정의(이름 → `.mcp.json` 객체)가 없으면 로컬 빌드가 설치 배선을 못 해\n   `missing_mcp_server_def` 경고가 난다.\n3. **반복 스크립트/검증 로직이 필요** (파서, 포맷 변환, 일괄 검사)\n   → CLI 스크립트를 `files/`에 동봉하고 본문이 `${ROOT}/files/…`로 참조,\n   실행 단계의 `allowed_tools`에 `Bash`를 연다. 프롬프트로 매번 시키는 것보다\n   스크립트 하나가 결정적이고 싸다.\n4. **새 CLI 도구를 만들어야 함** — 3의 동봉 스크립트로 감당이 안 될 때다:\n   런타임·의존성 설치가 필요하거나(컴파일 언어, 패키지), 이 플러그인 밖에서도\n   재사용하거나, 성능이 스크립트 수준을 넘어야 하는 경우.\n   → 만들기로 했다면 **먼저 인터페이스를 계약으로 확정**하라: 도구 이름,\n   인자, 출력 형식(LLM이 파싱하므로 JSON이나 고정 포맷), 실패 시 종료 코드.\n   그 계약을 사용할 단계의 본문에 적는다 — 구현은 이 플러그인 범위 밖의 **별도\n   작업**이므로 사용자와 합의하고, 완성 전까지 그 단계는 실행 불가임을 남겨라.\n   설치를 전제하므로 존재 확인(`command -v <도구>`)을 해당 스킬 본문 첫 단계나\n   SessionStart 훅에 넣고, 설치 방법을 플러그인의 요구 환경으로 명시한다.\n5. **새 MCP 서버를 만들어야 함** (세션 유지 서비스, GUI 연동, 외부 시스템)\n   → 가장 비싸다. 정말 2·3·4로 안 되는지 다시 보라. 상태 없는 단발 실행이면\n   CLI(4)로 충분하다 — MCP가 필요한 것은 살아 있는 프로세스와 대화해야 할\n   때뿐이다. 만들기로 했다면 그 서버 구축도 플러그인 범위 밖의 별도 작업임을\n   사용자에게 명시하라.\n\n## 점검 항목\n\n- 본문에 \"~를 실행한다\"고 썼는데 그 도구가 어디에도 없는 단계\n- `mcp__` 도구를 참조하는데 `mcp_server_defs`에 정의가 없는 서버 (`get_project`로 확인)\n- 에이전트가 도구 미지정(전 도구 상속)인 채로 남아 있는 것 — 과하다\n\n## 완료\n\n노드별 조달 결정(내장/기존 MCP/동봉 CLI/신규)을 정리해 `GraphDraft`에 기록하고\n**done**으로 본문 작성 단계에 넘긴다 — 결정된 도구 목록이 그 단계에서\n`allowed_tools`/`tools` 프론트매터가 된다.\n",
       "config": {
         "kind": "procedural",
         "model": "inherit",

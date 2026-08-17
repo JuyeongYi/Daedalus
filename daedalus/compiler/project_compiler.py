@@ -84,6 +84,17 @@ COMPILER_ERROR_RULES: frozenset[str] = frozenset({
     "compile_output_path_conflict",
 })
 
+# 스킬별 동봉 파일 소스 디렉토리명 (WP-SF) — <프로젝트 폴더>/skill-files/<스킬 산출
+# 디렉토리명>/… 이 그 스킬의 SKILL.md **옆으로** 복사된다. 공용 files/와 분리한
+# 이유: files/는 통째로 <out>/files/로 가는 규칙이라, 섞으면 스킬 파일이 양쪽에
+# 이중 산출된다. 참조 토큰은 `${CLAUDE_SKILL_DIR}/<상대경로>` — CC 공식 변수로
+# 마켓플레이스/로컬 동일 동작이라 ${ROOT} 같은 타깃 중립화가 필요 없다.
+SKILL_FILES_DIRNAME = "skill-files"
+
+# 본문의 스킬 파일 참조 토큰 스캔 패턴 — _FILE_REF_*와 동일한 두 형태.
+_SKILL_FILE_REF_ANGLE_RE = re.compile(r"<\$\{CLAUDE_SKILL_DIR\}/([^>]+)>")
+_SKILL_FILE_REF_BARE_RE = re.compile(r"\$\{CLAUDE_SKILL_DIR\}/([^\s)\]`\"'<>,;]+)")
+
 
 @dataclass
 class CompileResult:
@@ -130,6 +141,7 @@ class _PlannedOutput:
     component: object                # 컴파일 대상 (skill/agent)
     agent: object | None = None      # local_skill일 때 소유 에이전트
     script_name: str = ""            # hook_script일 때 파일명 (WP-HS)
+    src_path: Path | None = None     # skill_file일 때 복사 원본 (WP-SF)
 
 
 def _is_local_build(project) -> bool:
@@ -142,15 +154,24 @@ def _hook_script_bodies(project) -> dict[str, str]:
     return dict(compile_hook_scripts(project))
 
 
-def _plan_outputs(project) -> tuple[list[_PlannedOutput], list[ValidationError]]:
+def _plan_outputs(
+    project, skill_files_dir: Path | None = None,
+) -> tuple[list[_PlannedOutput], list[ValidationError], list[ValidationError]]:
     """파일 쓰기 전에 전체 산출 경로 집합을 계산하고 게이트 에러를 수집한다.
 
     에러 2종:
       compile_invalid_component_name — 산출 이름 규약 불일치 (게이트에서 에러 승격)
       compile_output_path_conflict   — 동일 산출 경로 중복 (조용한 덮어쓰기 방지)
+
+    skill_files_dir(WP-SF, 선택): 스킬별 동봉 파일 트리. 하위 폴더 이름이 스킬
+    산출 디렉토리명과 일치하면 그 파일들이 SKILL.md 옆으로 가는 복사 계획으로
+    합류한다 — 계획 집합에 넣기 때문에 SKILL.md를 덮는 파일이 있으면 기존
+    `compile_output_path_conflict` 게이트가 잡는다. 일치하는 스킬이 없는 하위
+    폴더는 `unknown_skill_files_dir` 경고(세 번째 반환값).
     """
     plan: list[_PlannedOutput] = []
     errors: list[ValidationError] = []
+    warnings: list[ValidationError] = []
     is_local = _is_local_build(project)
     # LOCAL은 컴파일이 곧 설치 — 스킬/에이전트가 CC가 실제로 읽는 <작업 폴더>/.claude/
     # 밑으로 바로 나간다. files/·schemas/·hooks/scripts/는 루트 그대로다(본문의
@@ -189,12 +210,16 @@ def _plan_outputs(project) -> tuple[list[_PlannedOutput], list[ValidationError]]
             subject=project,
         ))
 
+    # 스킬 산출 디렉토리명 → 컴포넌트 (WP-SF skill-files 매칭용)
+    skill_dirs: dict[str, object] = {}
+
     # 전역 스킬
     for skill in project.skills:
         if not isinstance(skill, Skill):
             continue
         label = f"스킬 '{skill.name}'"
         check_name(skill.name, label, skill)
+        skill_dirs[_skill_dir_name(skill.name)] = skill
         plan.append(_PlannedOutput(
             rel_path=cc_prefix / "skills" / _skill_dir_name(skill.name) / "SKILL.md",
             label=label,
@@ -217,6 +242,7 @@ def _plan_outputs(project) -> tuple[list[_PlannedOutput], list[ValidationError]]
         for local_skill in agent.skills:
             local_label = f"에이전트 '{agent.name}'의 로컬 스킬 '{local_skill.name}'"
             check_name(local_skill.name, local_label, local_skill)
+            skill_dirs[_local_skill_dir_name(agent.name, local_skill.name)] = local_skill
             plan.append(_PlannedOutput(
                 rel_path=(
                     cc_prefix / "skills"
@@ -229,6 +255,49 @@ def _plan_outputs(project) -> tuple[list[_PlannedOutput], list[ValidationError]]
                 component=local_skill,
                 agent=agent,
             ))
+
+    # 스킬별 동봉 파일 (WP-SF) — 하위 폴더명이 스킬 산출 디렉토리명과 일치할 때만
+    # SKILL.md 옆으로 가는 복사 계획에 합류한다. 계획 집합 합류가 곧 충돌 방어다 —
+    # 'SKILL.md'라는 이름의 동봉 파일은 아래 경로 충돌 검사가 에러로 거부한다.
+    if skill_files_dir is not None and skill_files_dir.is_dir():
+        for sub in sorted(skill_files_dir.iterdir(), key=lambda p: p.name):
+            if _is_link_like(sub):
+                continue
+            if not sub.is_dir():
+                warnings.append(ValidationError(
+                    rule="unknown_skill_files_dir",
+                    message=(
+                        f"{SKILL_FILES_DIRNAME}/ 바로 밑의 파일 '{sub.name}'은 어느 "
+                        f"스킬 소속인지 알 수 없어 복사하지 않았습니다 — "
+                        f"{SKILL_FILES_DIRNAME}/<스킬 이름>/ 하위에 두세요."
+                    ),
+                    source=sub.name,
+                    subject=project,
+                ))
+                continue
+            component = skill_dirs.get(sub.name)
+            if component is None:
+                warnings.append(ValidationError(
+                    rule="unknown_skill_files_dir",
+                    message=(
+                        f"{SKILL_FILES_DIRNAME}/{sub.name}/과 이름이 일치하는 스킬이 "
+                        f"없어 복사하지 않았습니다 — 폴더 이름은 스킬 이름과 같아야 "
+                        f"합니다(스킬 이름 변경 뒤에 남은 옛 폴더일 수 있습니다)."
+                    ),
+                    source=sub.name,
+                    subject=project,
+                ))
+                continue
+            for src in _iter_tree_files(sub):
+                rel_parts = src.relative_to(sub).parts
+                plan.append(_PlannedOutput(
+                    rel_path=cc_prefix / "skills" / sub.name / PurePosixPath(*rel_parts),
+                    label=f"스킬 파일 '{sub.name}/{'/'.join(rel_parts)}'",
+                    subject=component,
+                    kind="skill_file",
+                    component=component,
+                    src_path=src,
+                ))
 
     # hooks.json (SETTINGS) — 프로젝트가 참조하는 훅이 있을 때만 계획에 합류.
     # LOCAL은 hooks/hooks.json 파일을 만들지 않는다 — 컴파일이 곧 설치이므로 훅은
@@ -301,7 +370,24 @@ def _plan_outputs(project) -> tuple[list[_PlannedOutput], list[ValidationError]]
         else:
             seen[item.rel_path] = item
 
-    return plan, errors
+    return plan, errors, warnings
+
+
+def _iter_tree_files(root: Path) -> list[Path]:
+    """root 트리의 파일을 정렬 순회로 열거한다 (WP-SF — 복사 계획용).
+
+    ``_copy_files_tree``와 같은 규칙: 심볼릭 링크/정션은 디렉토리든 파일이든
+    제외한다(따라가면 트리 밖 내용이 산출물로 샌다).
+    """
+    files: list[Path] = []
+    for walk_root, dirnames, filenames in os.walk(root, followlinks=False):
+        root_path = Path(walk_root)
+        dirnames[:] = sorted(d for d in dirnames if not _is_link_like(root_path / d))
+        for filename in sorted(filenames):
+            src = root_path / filename
+            if not _is_link_like(src):
+                files.append(src)
+    return files
 
 
 def _copy_files_tree(
@@ -403,6 +489,62 @@ def _scan_dangling_file_refs(project, files_dir: Path) -> list[ValidationError]:
     return warnings
 
 
+def _scan_dangling_skill_file_refs(
+    project, skill_files_dir: Path,
+) -> list[ValidationError]:
+    """스킬 body의 `${CLAUDE_SKILL_DIR}/…` 참조를 스캔해 그 스킬의 skill-files
+    폴더에 실존하지 않는 참조를 `dangling_skill_file_ref` 경고로 반환한다 (WP-SF).
+
+    검사 기준은 **그 스킬 자신의** 폴더다 — 스킬 A의 파일을 스킬 B 본문에서
+    참조하는 실수(런타임에 B의 SKILL_DIR에는 그 파일이 없다)도 여기서 잡힌다.
+    에이전트 본문의 이 토큰은 Validator의 `skill_dir_token_in_agent`가 짚는다
+    (파일시스템 무접근 검사라 검증기 소관).
+    """
+    warnings: list[ValidationError] = []
+
+    def _iter_refs(body: str):
+        text = body or ""
+        for match in _SKILL_FILE_REF_ANGLE_RE.finditer(text):
+            yield match.group(1)
+        stripped = _SKILL_FILE_REF_ANGLE_RE.sub("", text)
+        for match in _SKILL_FILE_REF_BARE_RE.finditer(stripped):
+            yield match.group(1).rstrip(".")
+
+    def scan(label: str, subject: object, body: str, dir_name: str) -> None:
+        skill_root = skill_files_dir / dir_name
+        for rel in _iter_refs(body):
+            candidate = skill_root.joinpath(*rel.split("/"))
+            if candidate.exists():
+                continue
+            warnings.append(ValidationError(
+                rule="dangling_skill_file_ref",
+                message=(
+                    f"{label}의 본문이 참조하는 파일이 "
+                    f"{SKILL_FILES_DIRNAME}/{dir_name}/ 아래에 없습니다: "
+                    f"${{CLAUDE_SKILL_DIR}}/{rel} — 다른 스킬의 파일을 참조했다면 "
+                    f"그 파일은 이 스킬의 SKILL_DIR에 실리지 않습니다."
+                ),
+                source=rel,
+                subject=subject,
+            ))
+
+    for skill in project.skills:
+        if isinstance(skill, Skill):
+            scan(
+                f"스킬 '{skill.name}'", skill,
+                getattr(skill, "body", ""), _skill_dir_name(skill.name),
+            )
+    for agent in project.agents:
+        for local_skill in agent.skills:
+            scan(
+                f"에이전트 '{agent.name}'의 로컬 스킬 '{local_skill.name}'",
+                local_skill,
+                getattr(local_skill, "body", ""),
+                _local_skill_dir_name(agent.name, local_skill.name),
+            )
+    return warnings
+
+
 def _write_text(path: Path, text: str) -> None:
     """LF 줄바꿈 + UTF-8(BOM 없음)으로 쓴다 (결정적)."""
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -414,6 +556,7 @@ def _write_text(path: Path, text: str) -> None:
 def compile_project(
     project, out_dir: Path | str, files_dir: Path | str | None = None,
     extra_server_defs: dict[str, dict] | None = None,
+    skill_files_dir: Path | str | None = None,
 ) -> CompileResult:
     """프로젝트를 out_dir에 컴파일한다.
 
@@ -430,15 +573,24 @@ def compile_project(
     (프로젝트에 명시된 정의가 항상 우선). Daedalus 앱이 자기 자신의 daedalus
     서버 접속 정보를 여기로 주입한다 — 앱이 이미 아는 것을 사용자에게 등록시키지
     않기 위해서다. 컴파일러는 환경을 추측하지 않으므로 파라미터로 받는다(결정성).
+
+    skill_files_dir(WP-SF, 선택): 스킬별 동봉 파일 루트(`skill-files/`). 하위
+    `<스킬 이름>/…`이 그 스킬 SKILL.md 옆으로 복사되고, 본문의
+    `${CLAUDE_SKILL_DIR}/…` 참조 중 실존하지 않는 것은 `dangling_skill_file_ref`
+    경고. 생략 시 복사·스캔 모두 생략 — 기존 산출 완전 불변(하위 호환).
     """
     out_dir = Path(out_dir)
+    skill_files_path = Path(skill_files_dir) if skill_files_dir is not None else None
     all_findings = Validator.validate_project(project)
     errors = [e for e in all_findings if not e.is_warning]
     warnings = [e for e in all_findings if e.is_warning]
 
     # 파일 쓰기 전에 산출 계획 수립 — 이름 규약 + 경로 충돌 게이트
-    plan, gate_errors = _plan_outputs(project)
+    plan, gate_errors, plan_warnings = _plan_outputs(
+        project, skill_files_dir=skill_files_path,
+    )
     errors = errors + gate_errors
+    warnings = warnings + plan_warnings
 
     result = CompileResult(errors=errors, warnings=warnings)
     if errors:
@@ -448,6 +600,13 @@ def compile_project(
         return result
 
     for item in plan:
+        if item.kind == "skill_file" and item.src_path is not None:
+            # 스킬별 동봉 파일 (WP-SF) — 텍스트 산출이 아니라 복사다.
+            dst = out_dir / item.rel_path
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(item.src_path, dst)
+            result.copied_files.append(dst)
+            continue
         if item.kind == "skill":
             text = compile_skill(item.component, project=project)
         elif item.kind == "agent":
@@ -483,6 +642,11 @@ def compile_project(
                 clear_first=not _is_local_build(project),
             )
         result.warnings.extend(_scan_dangling_file_refs(project, files_dir_path))
+
+    if skill_files_path is not None:
+        result.warnings.extend(
+            _scan_dangling_skill_file_refs(project, skill_files_path)
+        )
 
     if _is_local_build(project):
         _wire_local_install(project, out_dir, result, extra_server_defs)

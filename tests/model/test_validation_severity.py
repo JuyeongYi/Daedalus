@@ -58,6 +58,9 @@ _WARN_RULES = frozenset({
     "hook_matcher_matches_nothing",  # WP-HS
     "missing_mcp_server_def",  # WP-MW — 아래 _EXTERNALLY_EMITTED_RULES 참조
     "unmergeable_settings_json",  # WP-MW
+    "dangling_skill_file_ref",  # WP-SF — 아래 _EXTERNALLY_EMITTED_RULES 참조
+    "unknown_skill_files_dir",  # WP-SF
+    "skill_dir_token_in_agent",  # WP-SF
 })
 
 # validation.py 밖(컴파일러 등)에서 emit되지만 WARNING_RULES에는 등록된 규칙 —
@@ -68,6 +71,8 @@ _EXTERNALLY_EMITTED_RULES = frozenset({
     "dangling_file_ref",  # daedalus/compiler/project_compiler.py 소관 (WP-FR)
     "missing_mcp_server_def",  # daedalus/compiler/project_compiler.py 소관 (WP-MW)
     "unmergeable_settings_json",  # daedalus/compiler/project_compiler.py 소관 (WP-MW)
+    "dangling_skill_file_ref",  # daedalus/compiler/project_compiler.py 소관 (WP-SF)
+    "unknown_skill_files_dir",  # daedalus/compiler/project_compiler.py 소관 (WP-SF)
 })
 
 

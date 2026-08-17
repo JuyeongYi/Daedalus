@@ -95,6 +95,12 @@ WARNING_RULES: frozenset[str] = frozenset({
     # 소관(dangling_file_ref와 동일 정책 — 검증기는 파일시스템 무접근).
     "missing_mcp_server_def",
     "unmergeable_settings_json",
+    # WP-SF — 스킬별 동봉 파일(skill-files/) 경고. dangling/unknown 2종은
+    # compiler/project_compiler.py 소관(파일시스템 검사), 에이전트 토큰 검사는
+    # 본문 문자열만 보므로 검증기 소관.
+    "dangling_skill_file_ref",
+    "unknown_skill_files_dir",
+    "skill_dir_token_in_agent",
 })
 
 
@@ -872,6 +878,7 @@ class Validator:
         errors.extend(Validator._check_mcp_agent_in_marketplace_build(project))
         errors.extend(Validator._check_unsupported_agent_fields(project))
         errors.extend(Validator._check_plugin_root_in_local_build(project))
+        errors.extend(Validator._check_skill_dir_token_in_agent(project))
         return errors
 
     @staticmethod
@@ -1707,4 +1714,38 @@ class Validator:
                     local, getattr(local, "body", ""),
                     (f"agent:{agent.name}", f"skill:{local.name}"),
                 )
+        return errors
+
+    @staticmethod
+    def _check_skill_dir_token_in_agent(project) -> list[ValidationError]:
+        """skill_dir_token_in_agent — 에이전트 본문에 `${CLAUDE_SKILL_DIR}`가
+        있으면 경고 (WP-SF).
+
+        CC의 이 변수는 **스킬 전용**이다(공식 skills 문서의 치환 표 — 에이전트는
+        단일 .md라 자기 디렉토리 개념 자체가 없다). 에이전트 .md에 남으면
+        치환되지 않고 리터럴 문자열로 남는다. 파일을 주려면 스킬에 실어
+        에이전트 skills 프론트매터로 전달하거나(WP-AS 자동 합류), 공용 files/를
+        `${ROOT}/files/…`로 참조하라.
+
+        코드로 표시된 부분(백틱·펜스)은 검사하지 않는다 —
+        `plugin_root_in_local_build`와 같은 이유(규격 설명 문서의 언급까지
+        짚으면 고칠 수 없는 경고가 남는다). 빌드 타깃 무관 — 양쪽 다 안 된다.
+        """
+        token = "${CLAUDE_SKILL_DIR}"
+        errors: list[ValidationError] = []
+        for agent in getattr(project, "agents", []):
+            remaining = _strip_markdown_code(getattr(agent, "body", "") or "")
+            if token in remaining:
+                errors.append(ValidationError(
+                    rule="skill_dir_token_in_agent",
+                    message=(
+                        f"에이전트 '{agent.name}'의 본문에 '{token}'가 있습니다 — "
+                        f"이 변수는 스킬에서만 치환됩니다(에이전트는 전용 디렉토리가 "
+                        f"없습니다). 파일은 스킬에 동봉해 skills 프론트매터로 "
+                        f"전달하거나 공용 files/를 '${{ROOT}}/files/…'로 참조하세요."
+                    ),
+                    source=agent.name,
+                    subject=agent,
+                    path=(f"agent:{agent.name}",),
+                ))
         return errors

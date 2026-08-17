@@ -136,8 +136,12 @@ class MainWindow(QMainWindow):
         file_dock.setWidget(self._file_panel)
         self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, file_dock)
         self.splitDockWidget(registry_dock, file_dock, Qt.Orientation.Horizontal)
-        from daedalus.view.widgets.markdown_editor import set_files_root_provider
+        from daedalus.view.widgets.markdown_editor import (
+            set_files_root_provider,
+            set_skill_files_root_provider,
+        )
         set_files_root_provider(lambda: self._file_panel.files_root())
+        set_skill_files_root_provider(lambda: self._file_panel.skill_files_root())
 
         self._history_panel = HistoryPanel(
             self._project_vm.command_stack, on_goto=self._project_vm.notify,
@@ -500,30 +504,36 @@ class MainWindow(QMainWindow):
         return True
 
     def _carry_files_dir(self, new_file: str) -> int:
-        """다른 폴더로 저장할 때 `files/`를 함께 옮긴다 (WP-PK).
+        """다른 폴더로 저장할 때 `files/`·`skill-files/`를 함께 옮긴다 (WP-PK/WP-SF).
 
         폴더가 곧 프로젝트이므로, 프로젝트를 다른 폴더에 저장했는데 동봉 파일이
         옛 폴더에 남아 있으면 그건 반쪽짜리 프로젝트다 — 컴파일하면 파일이
         빠지고, `dangling_file_ref` 경고로야 뒤늦게 드러난다.
 
-        목적지에 이미 `files/`가 있으면 **건드리지 않는다** — 남의 것을 덮어쓰는
-        것보다 아무것도 안 하는 편이 낫다(그 경우는 사용자가 의도한 배치다).
+        목적지에 이미 같은 이름 폴더가 있으면 **건드리지 않는다** — 남의 것을
+        덮어쓰는 것보다 아무것도 안 하는 편이 낫다(그 경우는 사용자가 의도한
+        배치다).
         """
         import shutil
+
+        from daedalus.compiler.project_compiler import SKILL_FILES_DIRNAME
 
         old = self._current_path
         if not old:
             return 0
-        source = Path(old).parent / "files"
-        dest = Path(new_file).parent / "files"
-        if source.resolve() == dest.resolve() or not source.is_dir() or dest.exists():
-            return 0
-        try:
-            shutil.copytree(source, dest, symlinks=False)
-        except (OSError, shutil.Error) as exc:
-            self._status_label.setText(f"files/ 복사 실패: {exc}")
-            return 0
-        return sum(1 for p in dest.rglob("*") if p.is_file())
+        copied = 0
+        for dirname in ("files", SKILL_FILES_DIRNAME):
+            source = Path(old).parent / dirname
+            dest = Path(new_file).parent / dirname
+            if source.resolve() == dest.resolve() or not source.is_dir() or dest.exists():
+                continue
+            try:
+                shutil.copytree(source, dest, symlinks=False)
+            except (OSError, shutil.Error) as exc:
+                self._status_label.setText(f"{dirname}/ 복사 실패: {exc}")
+                continue
+            copied += sum(1 for p in dest.rglob("*") if p.is_file())
+        return copied
 
     def _save_project(self) -> None:
         if self._current_path:
@@ -1275,12 +1285,17 @@ class MainWindow(QMainWindow):
 
         from daedalus.compiler import compile_project
 
-        files_dir = Path(self._current_path).parent / "files" if self._current_path else None
+        from daedalus.compiler.project_compiler import SKILL_FILES_DIRNAME
+
+        project_dir = Path(self._current_path).parent if self._current_path else None
+        files_dir = project_dir / "files" if project_dir else None
+        skill_files_dir = project_dir / SKILL_FILES_DIRNAME if project_dir else None
         result = compile_project(
             self._project, out_dir, files_dir=files_dir,
             # 앱이 이미 아는 서버 정의(자기 자신의 daedalus 서버)를 주입한다 —
             # 아는 것을 사용자에게 등록시키지 않는다(WP-MW).
             extra_server_defs=self._known_server_defs(),
+            skill_files_dir=skill_files_dir,
         )
         if not result.ok:
             # 에러 — 검증 패널에 동봉(경고 포함) 표시

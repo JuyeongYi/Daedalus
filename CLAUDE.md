@@ -63,7 +63,7 @@ daedalus/
 │   │                       #   find_section(제목·"## 제목" 레벨 지정·"부모 > 자식" 경로, 0개·복수 매칭 ValueError)/
 │   │                       #   section_text/char_span/replacement_text/replace_section(비교체 구간 바이트 보존). Qt 무관 순수 stdlib.
 │   ├── serialize.py         # serialize_project/deserialize_project (모델↔JSON dict, 안정 ID 기반)
-│   └── validation.py        # Validator + ValidationError + WARNING_RULES + is_warning (머신 규칙 20종 + 프로젝트 규칙 16종, 재귀)
+│   └── validation.py        # Validator + ValidationError + WARNING_RULES + is_warning (머신 규칙 20종 + 프로젝트 규칙 17종, 재귀)
 ├── compiler/         # 순수 모델 → 플러그인 파일 (Qt 무관)
 │   ├── emit.py             # compile_skill/compile_agent/compile_hooks_json — model → SKILL.md/agent .md/hooks.json 텍스트 (결정적, LF)
 │   ├── project_compiler.py # compile_project(project, out_dir, files_dir=None) → CompileResult (검증 게이트 + 파일 쓰기)
@@ -619,7 +619,7 @@ ComponentConfig(ABC)          # model, effort, hooks 공통 필드
 
 **프로젝트 그래프 검증:** `validate_project`는 `project.graph`도 머신 규칙으로 검증하며 root path는 `("project",)`다. 단 그래프에 placement(EntryPoint 외 노드)가 0개면 검증을 스킵(`_graph_has_placements`) — 빈 캔버스 경고 폭주 방지. `transfer_on_not_empty` 같은 컴포넌트 수준 규칙은 머신 검증에 없으므로 무관. **`unreachable_state`는 `skip_rules={"unreachable_state"}`로 스킵된다(WP-EP)** — CC 플러그인 의미론상 프로젝트 그래프의 모든 배치는 user_invocable 스킬 등으로 독립 시작 가능해 "EntryPoint에서 도달 불가"가 성립하지 않는다. skip_rules는 재귀에 전파되지 않으므로 에이전트 sub_machine 내부의 `unreachable_state`는 기존대로 검사된다.
 
-#### 프로젝트 수준 (16종)
+#### 프로젝트 수준 (17종)
 
 `Validator.validate_project(project)` — 전체 FSM 검증 후 추가:
 
@@ -641,6 +641,7 @@ ComponentConfig(ABC)          # model, effort, hooks 공통 필드
 | `orphan_blackboard_field` | 블랙보드 필드 중 어떤 상태의 reads/writes에도 등장하지 않으면 경고 (클래스 전체 참조는 그 필드 전부 커버로 간주, 프로젝트 전체에 접근 선언이 하나도 없으면 스킵 — 경고 폭주 방지) |
 | `mcp_agent_in_marketplace_build` | `project.build_target == MARKETPLACE`인데 에이전트 config.tools에 `mcp__` 도구가 있거나 mcp_servers 선언이 있으면 경고 (CC는 플러그인 배포 에이전트의 MCP 사용을 미지원 — LOCAL 빌드면 무경고, WP-TG) |
 | `plugin_root_in_local_build` | `project.build_target == LOCAL`인데 스킬/에이전트(로컬 스킬 포함) 본문에 files/ 참조 이외 용도의 `${CLAUDE_PLUGIN_ROOT}`가 남아 있으면 경고 (files/ 참조는 컴파일이 자동 치환하므로 제외, WP-TG) |
+| `skill_dir_token_in_agent` | 에이전트 본문에 `${CLAUDE_SKILL_DIR}`가 있으면 경고 — 이 변수는 스킬 전용이라 에이전트 .md에서 치환되지 않는다 (코드 표기 제외, 빌드 타깃 무관, WP-SF) |
 
 도구 모델(`tool.py`): `Tool(PluginComponent, ABC)` 단일 진실 + `BuiltinTool`/`MCPTool`/`UserDefinedTool`. shelf = 프로젝트(`PluginProject.tool_shelf`) 소유, FSM은 `Tool.name` 문자열로 참조(fsm/는 plugin 무관 — 객체 참조 금지, Validator가 실존 검증). `CC_BUILTIN_TOOLS`는 validation.py 모듈 frozenset(Read/Write/Edit/Bash/Glob/Grep/WebFetch/WebSearch/Agent/Task/TodoWrite/NotebookEdit/SlashCommand/PowerShell).
 
@@ -690,6 +691,36 @@ CC의 구조는 **3단**이다: 이벤트 → 그룹(matcher + 핸들러 목록)
 - **드롭 치환(widgets/markdown_editor.py):** `MarkdownEditor.dragEnterEvent`/`dragMoveEvent`/`dropEvent`가 mime의 file URL 중 현재 files/ 루트 하위인 것만 `_file_ref_token`으로 변환해 드롭 지점에 삽입(복수 파일이면 줄바꿈 구분). files 밖 파일·비파일 mime(일반 텍스트 드래그 등)은 토큰 후보가 없으므로 그대로 `super()`로 흘러 기존 QPlainTextEdit 기본 드롭 동작을 보존한다. 루트 주입은 TagInput의 도구/블랙보드 후보와 동일한 provider 패턴 — `set_files_root_provider(callable)`/`get_files_root()`(모듈 전역, app이 `_sync_files_root`에서 `lambda: self._file_panel.files_root()`로 등록).
 - **컴파일 복사(compiler/project_compiler.py):** `compile_project(project, out_dir, files_dir=None)` — files_dir가 실존 디렉토리면 게이트 통과 후(에러 시엔 복사도 스킵) `<out>/files/`로 정렬 순회 복사(`_copy_files_tree`, 결정적, 심볼릭 링크 미추종 — 디렉토리는 재귀 안 함·파일은 복사 안 함)한다. 기존 `<out>/files/`는 복사 전 삭제(out 전체가 아니라 files/만 — 스테일 잔존 방지). `CompileResult.copied_files`에 복사된 파일 경로 목록을 담는다. files_dir 생략(None) 시 기존 산출 파일/문자열이 완전히 불변이라 하위 호환이며, 헤드리스 `compile_project` 직접 호출부는 변경 없이 그대로 동작한다. `app._compile_project_dialog`가 `_current_path` 기준 `<project_dir>/files`를 전달.
 - **dangling_file_ref 경고:** `_scan_dangling_file_refs`가 files_dir 지정 시(None이면 스캔 생략) 스킬/에이전트(로컬 스킬 포함) body에서 `${CLAUDE_PLUGIN_ROOT}/files/<경로>` 패턴을 스캔해 files_dir에 실존하지 않는 참조를 `dangling_file_ref` 경고로 `CompileResult.warnings`에 추가한다(게이트 차단 아님). Validator가 아니라 컴파일러 소관 — 검증기는 파일시스템 무접근 순수성을 유지한다. `is_warning` 판정 일관성을 위해 rule 이름은 `validation.py`의 `WARNING_RULES`에도 등록했다(실제 emit은 project_compiler.py — `tests/model/test_validation_severity.py`의 소스 introspection 완전성 테스트는 `_EXTERNALLY_EMITTED_RULES`로 이 예외를 명시).
+
+### 스킬별 동봉 파일 (skill-files/) — WP-SF
+
+스킬 하나에만 딸린 파일(참조 문서·스크립트)을 `<프로젝트 폴더>/skill-files/<스킬 이름>/`에 두면 컴파일 시
+그 스킬의 **SKILL.md 옆으로** 복사되고, 본문은 `${CLAUDE_SKILL_DIR}/<상대경로>`로 참조한다. 근거(2026-08
+공식 문서 확인): `${CLAUDE_SKILL_DIR}`는 CC 공식 변수(마켓플레이스/로컬 동일 동작 — `${ROOT}` 같은 타깃
+중립화 불필요)이고, 스킬 디렉토리 보조 파일 + 상대 참조가 공식 progressive-disclosure 패턴이다.
+**에이전트는 대상이 아니다** — 단일 .md라 전용 디렉토리·변수가 없다. 에이전트에 파일을 주려면 스킬에 실어
+skills 프론트매터로 전달하거나(WP-AS 자동 합류 — declarative 전역/링크된 reference) 공용 `files/`를 쓴다.
+WP-FR과 동일하게 모델 계층 없음 — 파일시스템이 단일 진실.
+
+- **컴파일(project_compiler.py):** `compile_project(..., skill_files_dir=None)` — 하위 폴더명이 스킬 산출
+  디렉토리명(전역=스킬 이름, legacy 로컬=`<agent>--<skill>`)과 일치할 때만 복사 계획(`kind="skill_file"`,
+  `_iter_tree_files` 정렬 순회·링크 제외)에 합류한다. **계획 집합 합류가 곧 충돌 방어** — 'SKILL.md'라는
+  이름의 동봉 파일은 기존 `compile_output_path_conflict` 게이트가 에러로 거부한다. LOCAL은 `.claude/skills/`
+  밑으로 간다(cc_prefix 공유). 복사 결과는 `CompileResult.copied_files`. 생략 시 산출 완전 불변(하위 호환).
+- **경고 3종:** `unknown_skill_files_dir`(스킬과 이름이 안 맞는 하위 폴더/루트 직속 파일 — rename 잔재 검출),
+  `dangling_skill_file_ref`(본문 `${CLAUDE_SKILL_DIR}/…` 참조가 **그 스킬 자신의** 폴더에 없음 — 다른 스킬
+  파일을 참조하는 실수도 잡힌다. 이상 2종은 컴파일러 emit, `_EXTERNALLY_EMITTED_RULES` 등록),
+  `skill_dir_token_in_agent`(에이전트 본문의 이 토큰은 치환되지 않는다 — Validator 소관, 코드 표기 제외
+  `_strip_markdown_code`, 빌드 타깃 무관).
+- **FilePanel:** 루트 전환 콤보(공용 files/ ↔ 스킬별 skill-files/) — `files_root()`/`skill_files_root()`
+  provider 2종, "폴더 만들기" 버튼은 선택된 루트를 만든다.
+- **드롭 치환:** `_skill_file_ref_token` — skill-files/<스킬>/ 하위 파일이면 `${CLAUDE_SKILL_DIR}/<스킬 폴더
+  안 상대경로>`(첫 조각인 스킬 폴더명은 토큰에서 제거 — 런타임 SKILL_DIR가 그 폴더다). 루트 직속 파일은
+  None(기본 드롭으로). `MarkdownEditor._token_for_path`가 files→skill-files 순으로 시도,
+  `set_skill_files_root_provider`/`get_skill_files_root` provider는 files와 동일 패턴.
+- **Save As 동반:** `_carry_files_dir`가 files/와 skill-files/ 둘 다 데려간다(목적지에 있으면 불가침).
+- **후속(컴파일 분할):** 큰 본문의 섹션을 스킬 디렉토리 보조 파일로 산출하는 점진 공개 — WP-BO 아웃라인
+  파서가 분할 지점, 이 WP가 파일 위치를 제공한다.
 
 ### 전략 패턴 (Guard / Action 공통)
 

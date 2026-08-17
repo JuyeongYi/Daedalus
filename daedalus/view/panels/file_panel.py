@@ -1,10 +1,12 @@
 # daedalus/view/panels/file_panel.py
-"""파일 독 패널 — 프로젝트 옆 files/ 트리 뷰 (WP-FR).
+"""파일 독 패널 — 프로젝트 옆 files/·skill-files/ 트리 뷰 (WP-FR/WP-SF).
 
-files/ 소스 위치는 프로젝트 저장 파일 옆(``<dir>/files``)이다. 미저장
-프로젝트(``project_dir`` 미설정)는 기능이 비활성화되어 안내만 표시한다.
-드래그 소스는 ``QFileSystemModel``의 기본 mime(file URL)을 그대로 쓴다 —
-``MarkdownEditor``의 드롭 처리(WP-FR Part B)가 이를 소비한다.
+소스 위치는 프로젝트 저장 파일 옆이다: 공용 ``<dir>/files``(플러그인 루트로
+통째 복사, ``${ROOT}/files/…`` 참조)와 스킬별 ``<dir>/skill-files/<스킬>/``
+(그 스킬 SKILL.md 옆으로 복사, ``${CLAUDE_SKILL_DIR}/…`` 참조). 상단 콤보로
+루트를 전환한다. 미저장 프로젝트(``project_dir`` 미설정)는 기능이 비활성화되어
+안내만 표시한다. 드래그 소스는 ``QFileSystemModel``의 기본 mime(file URL)을
+그대로 쓴다 — ``MarkdownEditor``의 드롭 처리가 이를 소비한다.
 """
 from __future__ import annotations
 
@@ -12,6 +14,7 @@ from pathlib import Path
 
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QComboBox,
     QFileSystemModel,
     QHBoxLayout,
     QLabel,
@@ -21,9 +24,17 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from daedalus.compiler.project_compiler import SKILL_FILES_DIRNAME
+
+# 콤보 인덱스 순서 = 이 튜플 순서 (라벨, 디렉토리명)
+_ROOTS: tuple[tuple[str, str], ...] = (
+    ("공용 (files/)", "files"),
+    (f"스킬별 ({SKILL_FILES_DIRNAME}/)", SKILL_FILES_DIRNAME),
+)
+
 
 class FilePanel(QWidget):
-    """files/ 트리 뷰 + 안내/새로고침. app.py가 독 위젯으로 배치한다."""
+    """files/·skill-files/ 트리 뷰 + 안내/새로고침. app.py가 독 위젯으로 배치한다."""
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -35,7 +46,16 @@ class FilePanel(QWidget):
         lay.setSpacing(4)
 
         header = QHBoxLayout()
-        header.addStretch(1)
+        self._root_combo = QComboBox()
+        for label, _dirname in _ROOTS:
+            self._root_combo.addItem(label)
+        self._root_combo.setToolTip(
+            "공용: 플러그인 루트 files/로 복사 (${ROOT}/files/… 참조)\n"
+            f"스킬별: {SKILL_FILES_DIRNAME}/<스킬 이름>/이 그 스킬 SKILL.md 옆으로 "
+            "복사 (${CLAUDE_SKILL_DIR}/… 참조)"
+        )
+        self._root_combo.currentIndexChanged.connect(lambda _i: self.refresh())
+        header.addWidget(self._root_combo, 1)
         self._refresh_btn = QPushButton("새로고침")
         self._refresh_btn.setToolTip("파일시스템 변경 반영 (루트 생성 직후 등)")
         self._refresh_btn.clicked.connect(self.refresh)
@@ -46,8 +66,8 @@ class FilePanel(QWidget):
         self._info_label.setWordWrap(True)
         lay.addWidget(self._info_label)
 
-        self._create_btn = QPushButton("files 폴더 만들기")
-        self._create_btn.clicked.connect(self._create_files_folder)
+        self._create_btn = QPushButton()
+        self._create_btn.clicked.connect(self._create_root_folder)
         lay.addWidget(self._create_btn)
 
         self._tree = QTreeView()
@@ -67,16 +87,17 @@ class FilePanel(QWidget):
         self.refresh()
 
     def files_root(self) -> str | None:
-        """현재 files/ 루트 경로 — 실존할 때만 반환(provider가 조회하는 단일 진실)."""
-        if self._project_dir is None:
-            return None
-        root = self._project_dir / "files"
-        return str(root) if root.is_dir() else None
+        """공용 files/ 루트 경로 — 실존할 때만 반환(provider가 조회하는 단일 진실)."""
+        return self._existing_root("files")
+
+    def skill_files_root(self) -> str | None:
+        """skill-files/ 루트 경로 — 실존할 때만 반환 (WP-SF provider)."""
+        return self._existing_root(SKILL_FILES_DIRNAME)
 
     def refresh(self) -> None:
         """파일시스템 변경을 반영한다 — QFileSystemModel은 자동 감시하지만 루트
         생성 직후에는 재바인딩이 필요하다."""
-        root = self.files_root()
+        root = self._existing_root(self._current_dirname())
         if root is None:
             self._model = None
             self._tree.setModel(None)
@@ -93,18 +114,37 @@ class FilePanel(QWidget):
 
     # --- 내부 ---
 
-    def _create_files_folder(self) -> None:
+    def _current_dirname(self) -> str:
+        return _ROOTS[self._root_combo.currentIndex()][1]
+
+    def _existing_root(self, dirname: str) -> str | None:
+        if self._project_dir is None:
+            return None
+        root = self._project_dir / dirname
+        return str(root) if root.is_dir() else None
+
+    def _create_root_folder(self) -> None:
         if self._project_dir is None:
             return
-        (self._project_dir / "files").mkdir(parents=True, exist_ok=True)
+        (self._project_dir / self._current_dirname()).mkdir(parents=True, exist_ok=True)
         self.refresh()
 
     def _refresh_visibility(self, *, active: bool) -> None:
         has_project = self._project_dir is not None
+        dirname = self._current_dirname()
         if not has_project:
-            self._info_label.setText("프로젝트를 저장하면 files/ 폴더를 사용할 수 있습니다.")
+            self._info_label.setText(
+                f"프로젝트를 저장하면 {dirname}/ 폴더를 사용할 수 있습니다."
+            )
         elif not active:
-            self._info_label.setText("files/ 폴더가 없습니다. 아래 버튼으로 만드세요.")
+            hint = (
+                "" if dirname == "files"
+                else " 하위에 <스킬 이름>/ 폴더를 만들어 파일을 넣으세요."
+            )
+            self._info_label.setText(
+                f"{dirname}/ 폴더가 없습니다. 아래 버튼으로 만드세요.{hint}"
+            )
+        self._create_btn.setText(f"{dirname} 폴더 만들기")
         self._info_label.setVisible(not active)
         self._create_btn.setVisible(has_project and not active)
         self._tree.setVisible(active)
