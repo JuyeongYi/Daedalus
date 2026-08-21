@@ -1,5 +1,5 @@
 {
-  "format": 1,
+  "format": 2,
   "name": "daedalus",
   "description": "Daedalus GUI를 MCP로 함께 조작해 FSM 기반 Claude Code 플러그인을 설계한다.",
   "version": "0.1.0",
@@ -21,8 +21,7 @@
         "paths": null,
         "disable_model_invocation": false,
         "user_invocable": true
-      },
-      "entry_paths": []
+      }
     },
     {
       "kind": "declarative_skill",
@@ -41,8 +40,7 @@
         "paths": null,
         "disable_model_invocation": false,
         "user_invocable": true
-      },
-      "entry_paths": []
+      }
     },
     {
       "kind": "procedural_skill",
@@ -117,8 +115,7 @@
           "description": "이미 배치된 그래프가 있고 그것을 고치려 한다"
         }
       ],
-      "call_agents": [],
-      "entry_paths": []
+      "call_agents": []
     },
     {
       "kind": "procedural_skill",
@@ -126,7 +123,7 @@
       "name": "graph-design",
       "description": "컴포넌트를 만들고 캔버스에 배치해 워크플로의 뼈대를 세운다.",
       "when_to_use": "설계 목표는 정해졌는데 캔버스에 컴포넌트가 없거나, 기존 워크플로에 새 단계를 추가해야 할 때.",
-      "body": "# 뼈대 — 컴포넌트를 만들고 캔버스에 놓는다\n\n구조가 먼저다. 본문·분기·공유 상태는 다음 단계들이 채운다 — 여기서는 **무엇이\n있고 어디에 놓이는가**만 결정한다.\n\n## 1. 단계를 컴포넌트로 나눈다\n\n`DesignSession.goal`을 읽고 워크플로를 단계로 쪼갠 뒤, 단계마다 맞는 종류를\n고른다(판단 기준은 daedalus-model 참조):\n\n- 절차가 있는 단계 → **procedural_skill**\n- 여러 단계가 공유하는 배경 지식 → **declarative_skill**\n- 여러 노드가 참조하는 문서 → **reference_skill** (참조 노드로 복수 배치 가능)\n- 별도 컨텍스트가 필요한 작업(대량 반복, 독립 판단, 격리 권한) → **agent**.\n  에이전트는 내부 FSM이 없다 — 절차는 본문에 적고, 결과 분기는 출력 포트\n  (transfer_on)로 낸다.\n\n**과하게 쪼개지 마라.** 한 컨텍스트에서 자연스럽게 이어지는 일은 한 스킬이다.\n컨텍스트 경계(다른 시점, 다른 권한, 위임)가 있을 때만 나눈다 — 나눌수록\n블랙보드로 넘겨야 할 상태가 늘어난다.\n\n## 2. 만들고 배치한다\n\n`create_skill`/`create_agent`로 만들고 `place_component`로 캔버스에 놓는다.\n\n- 이름은 `^[a-z0-9][a-z0-9-]*$` — 어기면 컴파일 게이트가 거부한다.\n- **description은 만들 때 바로 채워라.** 모델이 이 스킬을 고르는 근거다.\n  빈 채로 두면 나중 단계에서 누락되기 쉽다.\n- 같은 컴포넌트를 두 번 배치할 수 없다(no_duplicate_skill_ref 에러). 여러 곳에서\n  같은 문서가 필요하면 reference_skill을 만들어 참조 노드로 놓는 것이 맞다.\n\n## 3. 배치 지형\n\n왼쪽→오른쪽이 시간 순서로 읽히게 놓는다. 검증→수정 같은 루프백은 아래쪽으로\n돌린다. 노드가 겹치면 다음 단계에서 배선이 읽히지 않는다.\n\n## 완료 갈림길\n\n- 노드가 많아 재배선을 한 컨텍스트에서 감당하기 어렵다 → **bulk-rewire**로\n  graph-surgeon에 위임한다.\n- 컴포넌트와 배치가 끝났다 → **done**. 아직 선에는 의미가 없다 — 다음 단계가\n  포트와 트리거를 물린다.\n",
+      "body": "# 뼈대 — 컴포넌트를 만들고 캔버스에 놓는다\n\n구조가 먼저다. 본문·분기·공유 상태는 다음 단계들이 채운다 — 여기서는 **무엇이\n있고 어디에 놓이는가**만 결정한다.\n\n## 1. 단계를 컴포넌트로 나눈다\n\n`DesignSession.goal`을 읽고 워크플로를 단계로 쪼갠 뒤, 단계마다 맞는 종류를\n고른다(판단 기준은 daedalus-model 참조):\n\n- 절차가 있는 단계 → **procedural_skill**\n- 여러 단계가 공유하는 배경 지식 → **declarative_skill**\n- 여러 노드가 참조하는 문서 → **reference_skill** (참조 노드로 복수 배치 가능)\n- 별도 컨텍스트가 필요한 작업(대량 반복, 독립 판단, 격리 권한) → **agent**.\n  에이전트는 내부 FSM이 없다 — 절차는 본문에 적고, 결과 분기는 출력 포트\n  (transfer_on)로 낸다.\n\n**과하게 쪼개지 마라.** 한 컨텍스트에서 자연스럽게 이어지는 일은 한 스킬이다.\n컨텍스트 경계(다른 시점, 다른 권한, 위임)가 있을 때만 나눈다 — 나눌수록\n블랙보드로 넘겨야 할 상태가 늘어난다.\n\n## 2. 만들고 배치한다\n\n`create_skill`/`create_agent`로 만들고 `place_component`로 캔버스에 놓는다.\n\n- 이름은 `^[a-z0-9][a-z0-9-]*$` — 어기면 컴파일 게이트가 거부한다.\n- **description은 만들 때 바로 채워라.** 모델이 이 스킬을 고르는 근거다.\n  빈 채로 두면 나중 단계에서 누락되기 쉽다.\n- 같은 컴포넌트를 두 번 배치할 수 없다(no_duplicate_skill_ref 에러). 여러 곳에서\n  같은 문서가 필요하면 reference_skill을 만들어 참조 노드로 놓는 것이 맞다.\n\n## 3. 배치 지형\n\n왼쪽→오른쪽이 시간 순서로 읽히게 놓는다. 검증→수정 같은 루프백은 아래쪽으로\n돌린다. 노드가 겹치면 다음 단계에서 배선이 읽히지 않는다.\n\n## 완료 갈림길\n\n- 노드가 많아 재배선을 한 컨텍스트에서 감당하기 어렵다 → **bulk-rewire**로\n  graph-surgeon에 위임한다.\n- 컴포넌트와 배치가 끝났다 → **done**. 아직 선에는 의미가 없다 — 다음 단계가\n  포트와 트리거를 물린다.\n<${CLAUDE_SKILL_DIR}/새 폴더/새 텍스트 문서.txt>",
       "config": {
         "kind": "procedural",
         "model": "inherit",
@@ -152,7 +149,7 @@
         ],
         "paths": null,
         "disable_model_invocation": false,
-        "user_invocable": true,
+        "user_invocable": false,
         "context": "inline",
         "agent": null,
         "shell": "bash"
@@ -201,8 +198,7 @@
           "color": "#4488ff",
           "description": "노드가 많아 한 컨텍스트에서 재배선하면 흐름을 놓칠 때 위임한다."
         }
-      ],
-      "entry_paths": []
+      ]
     },
     {
       "kind": "procedural_skill",
@@ -231,7 +227,7 @@
         ],
         "paths": null,
         "disable_model_invocation": false,
-        "user_invocable": true,
+        "user_invocable": false,
         "context": "inline",
         "agent": null,
         "shell": "bash"
@@ -274,8 +270,7 @@
           "description": "모든 분기에 포트와 트리거가 물렸다"
         }
       ],
-      "call_agents": [],
-      "entry_paths": []
+      "call_agents": []
     },
     {
       "kind": "procedural_skill",
@@ -298,7 +293,7 @@
         ],
         "paths": null,
         "disable_model_invocation": false,
-        "user_invocable": true,
+        "user_invocable": false,
         "context": "inline",
         "agent": null,
         "shell": "bash"
@@ -341,8 +336,7 @@
           "description": "블랙보드 설계와 노드별 접근 선언이 끝났다"
         }
       ],
-      "call_agents": [],
-      "entry_paths": []
+      "call_agents": []
     },
     {
       "kind": "procedural_skill",
@@ -365,7 +359,7 @@
         ],
         "paths": null,
         "disable_model_invocation": false,
-        "user_invocable": true,
+        "user_invocable": false,
         "context": "inline",
         "agent": null,
         "shell": "bash"
@@ -413,8 +407,7 @@
           "description": "에러가 있거나 무시할 수 없는 경고가 남았다"
         }
       ],
-      "call_agents": [],
-      "entry_paths": []
+      "call_agents": []
     },
     {
       "kind": "procedural_skill",
@@ -437,7 +430,7 @@
         ],
         "paths": null,
         "disable_model_invocation": false,
-        "user_invocable": true,
+        "user_invocable": false,
         "context": "inline",
         "agent": null,
         "shell": "bash"
@@ -480,8 +473,7 @@
           "description": "산출(local이면 설치까지) 확인 완료 — 워크플로 종료"
         }
       ],
-      "call_agents": [],
-      "entry_paths": []
+      "call_agents": []
     },
     {
       "kind": "reference_skill",
@@ -548,7 +540,7 @@
         ],
         "paths": null,
         "disable_model_invocation": false,
-        "user_invocable": true,
+        "user_invocable": false,
         "context": "inline",
         "agent": null,
         "shell": "bash"
@@ -591,8 +583,7 @@
           "description": "모든 배치 컴포넌트의 본문·프론트매터 작성 완료"
         }
       ],
-      "call_agents": [],
-      "entry_paths": []
+      "call_agents": []
     },
     {
       "kind": "procedural_skill",
@@ -615,7 +606,7 @@
         ],
         "paths": null,
         "disable_model_invocation": false,
-        "user_invocable": true,
+        "user_invocable": false,
         "context": "inline",
         "agent": null,
         "shell": "bash"
@@ -658,8 +649,148 @@
           "description": "도구 조달 계획 확정 — 본문 작성 단계가 allowed_tools에 반영한다"
         }
       ],
-      "call_agents": [],
-      "entry_paths": []
+      "call_agents": []
+    },
+    {
+      "kind": "procedural_skill",
+      "id": "1f633022ac3f4671819bd991d83a8d7c",
+      "name": "survey-graph",
+      "description": "그래프 전체를 훑어 고쳐야 할 전이·포트 목록을 뽑는다.",
+      "when_to_use": "",
+      "body": "# 그래프 조사 — 고칠 목록부터\n\n편집하기 전에 전체를 본다. `get_project`로 배치·전이·포트를 받아 다음을 점검한다.\n\n## 점검 항목\n\n1. **트리거 없는 다중 분기** — 한 노드에서 나가는 전이가 2개 이상인데 trigger가\n   없는 것. 어느 갈래인지 표현되지 않아 LLM이 임의로 고른다.\n2. **선언 안 된 포트 참조** — 전이의 trigger가 출발 노드의 transfer_on에 없거나,\n   target_port가 도착 노드의 entry_paths에 없는 것 (rename 고아).\n3. **에이전트 직결** — 에이전트로 가는 전이가 call_agent 포트를 거치지 않는 것.\n4. **고립 노드** — 들어오는 전이도 나가는 전이도 없는 배치.\n5. `validate_project`의 경고 — 위 항목과 겹치지 않는 것만 추가한다.\n\n## 산출\n\n고칠 항목을 **하나씩 실행 가능한 편집 단위**로 목록화한다:\n\"survey → rewire: `A`의 transfer_on에 `ok` 추가, `A→B` 전이 trigger를 `ok`로\".\n\n목록이 확정되면 **done**으로 rewire-edges에 넘긴다. 빈 목록이면 그대로 done —\n고칠 것이 없다는 것도 유효한 조사 결과다.\n",
+      "config": {
+        "kind": "procedural",
+        "model": "inherit",
+        "effort": null,
+        "hooks": null,
+        "argument_hint": null,
+        "allowed_tools": [],
+        "paths": null,
+        "disable_model_invocation": false,
+        "user_invocable": true,
+        "context": "inline",
+        "agent": null,
+        "shell": "bash"
+      },
+      "fsm": {
+        "id": "7430ec470fb9433fbbd0f3bf56447cde",
+        "name": "survey-graph_fsm",
+        "states": [
+          {
+            "kind": "simple",
+            "id": "82881521a9784b898c76cc1f52236282",
+            "name": "start",
+            "on_entry_start": [],
+            "on_entry": [],
+            "on_entry_end": [],
+            "on_exit_start": [],
+            "on_exit": [],
+            "on_exit_end": [],
+            "on_active": [],
+            "custom_events": {},
+            "inputs": [],
+            "outputs": [],
+            "reads": [],
+            "writes": [],
+            "skill_ref": null
+          }
+        ],
+        "transitions": [],
+        "initial_state": "82881521a9784b898c76cc1f52236282",
+        "final_states": [],
+        "blackboard": {
+          "class_definitions": [],
+          "variables": {}
+        }
+      },
+      "transfer_on": [
+        {
+          "name": "done",
+          "color": "#4488ff",
+          "description": ""
+        }
+      ],
+      "call_agents": []
+    },
+    {
+      "kind": "procedural_skill",
+      "id": "8130677bfeca4b5dbbc6daa3d6ce6392",
+      "name": "rewire-edges",
+      "description": "뽑아둔 목록대로 배선을 고치고 무엇을 바꿨는지 보고한다.",
+      "when_to_use": "",
+      "body": "# 배선 수리 — 목록대로만\n\nsurvey-graph가 만든 목록을 위에서부터 하나씩 실행한다.\n\n## 실행 순서\n\n항목마다: **포트 선언 먼저, 전이 수정 나중**. 전이의 trigger는 출발 노드의\ntransfer_on에 그 이름이 있어야 유효하다 — 순서를 바꾸면 중간 상태가\n`trigger_unknown_event` 경고를 낸다.\n\n- 포트 추가: `set_transfer_on` / `set_entry_paths` (기존 목록에 **추가**한다 —\n  통째로 교체하는 도구이므로 먼저 현재 목록을 읽어라)\n- 전이 수정: `set_transition` (None=건드리지 않음, \"\"=지움)\n- 새 전이: `connect_states`, 삭제: `disconnect_states`\n- 에이전트 호출 경로: `add_agent_call`로 포트를 만든 뒤 연결\n\n## 실수했을 때\n\n방금 한 편집이 잘못됐으면 `undo`로 되돌린다. 여러 단계 전 실수는 undo 연타보다\n반대 편집이 안전하다 — 그 사이 편집까지 되돌리기 때문이다.\n\n## 완료\n\n목록을 다 소진하면 `validate_project`로 에러 0을 확인하고, 바꾼 내역 요약과 함께\n**done**으로 나간다. 에러가 남으면 해소할 때까지 이 단계를 벗어나지 마라.\n",
+      "config": {
+        "kind": "procedural",
+        "model": "inherit",
+        "effort": null,
+        "hooks": null,
+        "argument_hint": null,
+        "allowed_tools": [],
+        "paths": null,
+        "disable_model_invocation": false,
+        "user_invocable": true,
+        "context": "inline",
+        "agent": null,
+        "shell": "bash"
+      },
+      "fsm": {
+        "id": "b4876045f86648e1a194b0f8087ecd29",
+        "name": "rewire-edges_fsm",
+        "states": [
+          {
+            "kind": "simple",
+            "id": "ce412fd827cf4e96907862939178341e",
+            "name": "start",
+            "on_entry_start": [],
+            "on_entry": [],
+            "on_entry_end": [],
+            "on_exit_start": [],
+            "on_exit": [],
+            "on_exit_end": [],
+            "on_active": [],
+            "custom_events": {},
+            "inputs": [],
+            "outputs": [],
+            "reads": [],
+            "writes": [],
+            "skill_ref": null
+          }
+        ],
+        "transitions": [],
+        "initial_state": "ce412fd827cf4e96907862939178341e",
+        "final_states": [],
+        "blackboard": {
+          "class_definitions": [],
+          "variables": {}
+        }
+      },
+      "transfer_on": [
+        {
+          "name": "done",
+          "color": "#4488ff",
+          "description": ""
+        }
+      ],
+      "call_agents": []
+    },
+    {
+      "kind": "declarative_skill",
+      "id": "4e1cd4503bd14f29a2c5aba1abccee78",
+      "name": "blackboard-cli",
+      "description": "daedalus-bb CLI로 블랙보드 상태 파일을 읽고 쓰고 검증하는 방법 — 명령 5종, 옵션, exit code 계약.",
+      "when_to_use": "블랙보드 공유 상태(state/*.json)를 읽거나 쓰거나 검증해야 할 때 — 파일을 직접 편집하기 전에 반드시 이 CLI 사용법을 따른다.",
+      "body": "# daedalus-bb — 블랙보드 상태 CLI\n\n블랙보드 상태 파일(`state/<Class>.json`)은 **직접 편집하지 말고 이 CLI로\n읽고 써라.** 쓰기 전 스키마 검증이 내장되어 있어(검증 실패 시 파일 불변,\n원자적 쓰기) 손으로 JSON을 고칠 때 나는 타입 오타·required 누락이 원천\n차단된다. `command -v daedalus-bb`로 존재를 확인하고, 없으면 기존 규칙\n(읽기-수정-쓰기, 없으면 스키마대로 생성, required 채움)대로 직접 편집하라.\n**임의로 패키지를 설치하지 마라** — CLI는 Daedalus 배포에 함께 들어 있다.\n\n## 명령 5종\n\n```sh\ndaedalus-bb [--state-dir state] [--schemas schemas/schemas.json] <command>\n\ndaedalus-bb list                          # 스키마의 클래스·필드 목록 (JSON)\ndaedalus-bb read <Class> [--field NAME]   # 파일 전체 또는 필드 값 하나\ndaedalus-bb init <Class> [--force]        # 스키마 기반 초기 객체 생성\ndaedalus-bb write <Class> --set f=v [--set f2=v2] [--append f=v] [--remove f=v]\ndaedalus-bb validate [Class ...]          # 생략 시 전 클래스 검증\n```\n\n- **전역 옵션(`--state-dir`/`--schemas`)은 하위 명령 앞에만** 온다 —\n  `write Task --schemas …`처럼 뒤에 붙이면 사용법 오류(exit 2)다.\n- 마켓플레이스 플러그인 안에서는 스키마가 cwd에 없다 —\n  `--schemas ${CLAUDE_PLUGIN_ROOT}/schemas/schemas.json`을 명시하라\n  (프로젝트 설치 빌드는 작업 폴더 루트라 기본값이 맞는다).\n\n## write 의미론\n\n- `--set 필드=값` — 값은 스키마 타입으로 코어션된다(integer/number/boolean/\n  string). 컬렉션 필드는 `--set f='[\"a\",\"b\"]'`(JSON 배열 통째)도 받는다.\n- `--append f=v` / `--remove f=v` — 컬렉션 원소 단위 추가/제거.\n  set 컬렉션은 중복이 자동 제거되고, `--remove`는 없는 키면 no-op이다.\n- 파일이 없으면 초기 객체(스키마 default 존중, 없으면 타입별 제로값)에서\n  시작한다. 검증에 걸리면 **아무것도 쓰지 않고** exit 1.\n\n## exit code와 출력 계약\n\n| exit | 의미 |\n|---|---|\n| 0 | 성공 |\n| 1 | 검증 실패 (write는 파일 불변) |\n| 2 | 사용법·스키마·IO 오류 (가용 클래스/필드를 stderr에 나열) |\n| 3 | read/이름 명시 validate의 대상 파일 없음 — \"아직 안 만들어짐\" |\n\n- **성공 경로의 stdout은 JSON**이다(파싱해서 써라). 오류 경로(exit 2/3,\n  init·write의 1)는 stdout이 비고 진단은 stderr로 나온다 — 예외로\n  `validate`는 실패해도 위반 목록을 JSON으로 낸다.\n- exit 3은 고장이 아니다 — 앞 단계가 아직 그 클래스를 안 쓴 정상 상태일 수\n  있다. 문맥으로 판단하라(써야 할 단계가 지났는데 없으면 그게 고장이다).\n\n## 규약 파일\n\n`state/__progress__.json`(작업 재개 규약)은 블랙보드 스키마 밖이다 —\nvalidate 대상이 아니며, 기존 규약대로 직접 다룬다.\n",
+      "config": {
+        "kind": "declarative",
+        "model": "inherit",
+        "effort": null,
+        "hooks": null,
+        "argument_hint": null,
+        "allowed_tools": [],
+        "paths": null,
+        "disable_model_invocation": false,
+        "user_invocable": true
+      }
     }
   ],
   "agents": [
@@ -758,8 +889,7 @@
             "on_traverse_end": [],
             "custom_events": {},
             "data_map": {},
-            "skill_ref": null,
-            "target_port": ""
+            "skill_ref": null
           },
           {
             "id": "21e97de97cca4d33a9eae9edb1f59799",
@@ -777,8 +907,7 @@
             "on_traverse_end": [],
             "custom_events": {},
             "data_map": {},
-            "skill_ref": null,
-            "target_port": ""
+            "skill_ref": null
           },
           {
             "id": "f2dc816477984e51a735e1b0205a262f",
@@ -796,8 +925,7 @@
             "on_traverse_end": [],
             "custom_events": {},
             "data_map": {},
-            "skill_ref": null,
-            "target_port": ""
+            "skill_ref": null
           }
         ],
         "initial_state": "cb18bfdb234446ef8a6bddcf5d0a0ad5",
@@ -853,202 +981,7 @@
         "join_count": null
       },
       "body": "# 대규모 그래프 재배선\n\n호출자가 캔버스를 크게 갈아엎는 작업을 넘겼다. 별도 컨텍스트에서 도는 이유는\n호출자의 대화를 수십 번의 편집 호출로 오염시키지 않기 위해서다.\n\n## 작업 규율\n\n- **조사 없이 자르지 마라.** 먼저 `survey-graph`로 전체 그래프를 훑어 고칠 목록을\n  만들고, 그 목록대로만 `rewire-edges`에서 편집한다. 목록에 없는 것을 \"겸사겸사\"\n  고치지 마라 — 호출자가 의도한 범위를 넘는다.\n- **모든 편집은 사용자의 undo 스택에 들어간다.** 되돌릴 수 있지만, 수십 개의\n  편집을 되돌리는 것은 사용자에게 고역이다. 편집 전에 계획을 확정하라.\n- **분기 의미론을 지켜라.** 노드와 선만 만들면 분기가 표현되지 않는다. 여러 갈래로\n  나가는 노드는 `set_transfer_on`으로 갈래를 선언하고 각 전이에 trigger를 물려라.\n  에이전트로 가는 전이는 `add_agent_call`로 만든 호출 포트에서만 나갈 수 있다.\n- **끝나면 검증하라.** `validate_project`가 에러 0인 상태로 반환한다. 경고는\n  원인과 함께 보고에 적는다.\n\n## 보고\n\n완료 시 무엇을 바꿨는지 요약한다: 만든/지운 전이 수, 선언한 포트, 남은 경고.\n블랙보드 `GraphDraft.wired`에 배선 완료 여부를 기록한다.\n",
-      "skills": [
-        {
-          "kind": "procedural_skill",
-          "id": "49e77594912b4778aa76f169dded7ad5",
-          "name": "ff",
-          "description": "",
-          "when_to_use": "",
-          "body": "",
-          "config": {
-            "kind": "procedural",
-            "model": "inherit",
-            "effort": null,
-            "hooks": null,
-            "argument_hint": null,
-            "allowed_tools": [],
-            "paths": null,
-            "disable_model_invocation": false,
-            "user_invocable": true,
-            "context": "inline",
-            "agent": null,
-            "shell": "bash"
-          },
-          "fsm": {
-            "id": "6a079d5ff6d14792b8eb329afb430e3e",
-            "name": "ff_fsm",
-            "states": [
-              {
-                "kind": "simple",
-                "id": "ad0e4466b8fe43458e3b56d6b0dea769",
-                "name": "start",
-                "on_entry_start": [],
-                "on_entry": [],
-                "on_entry_end": [],
-                "on_exit_start": [],
-                "on_exit": [],
-                "on_exit_end": [],
-                "on_active": [],
-                "custom_events": {},
-                "inputs": [],
-                "outputs": [],
-                "reads": [],
-                "writes": [],
-                "skill_ref": null
-              }
-            ],
-            "transitions": [],
-            "initial_state": "ad0e4466b8fe43458e3b56d6b0dea769",
-            "final_states": [],
-            "blackboard": {
-              "class_definitions": [],
-              "variables": {}
-            }
-          },
-          "transfer_on": [
-            {
-              "name": "done",
-              "color": "#4488ff",
-              "description": ""
-            }
-          ],
-          "call_agents": [],
-          "entry_paths": []
-        },
-        {
-          "kind": "procedural_skill",
-          "id": "1f633022ac3f4671819bd991d83a8d7c",
-          "name": "survey-graph",
-          "description": "그래프 전체를 훑어 고쳐야 할 전이·포트 목록을 뽑는다.",
-          "when_to_use": "",
-          "body": "# 그래프 조사 — 고칠 목록부터\n\n편집하기 전에 전체를 본다. `get_project`로 배치·전이·포트를 받아 다음을 점검한다.\n\n## 점검 항목\n\n1. **트리거 없는 다중 분기** — 한 노드에서 나가는 전이가 2개 이상인데 trigger가\n   없는 것. 어느 갈래인지 표현되지 않아 LLM이 임의로 고른다.\n2. **선언 안 된 포트 참조** — 전이의 trigger가 출발 노드의 transfer_on에 없거나,\n   target_port가 도착 노드의 entry_paths에 없는 것 (rename 고아).\n3. **에이전트 직결** — 에이전트로 가는 전이가 call_agent 포트를 거치지 않는 것.\n4. **고립 노드** — 들어오는 전이도 나가는 전이도 없는 배치.\n5. `validate_project`의 경고 — 위 항목과 겹치지 않는 것만 추가한다.\n\n## 산출\n\n고칠 항목을 **하나씩 실행 가능한 편집 단위**로 목록화한다:\n\"survey → rewire: `A`의 transfer_on에 `ok` 추가, `A→B` 전이 trigger를 `ok`로\".\n\n목록이 확정되면 **done**으로 rewire-edges에 넘긴다. 빈 목록이면 그대로 done —\n고칠 것이 없다는 것도 유효한 조사 결과다.\n",
-          "config": {
-            "kind": "procedural",
-            "model": "inherit",
-            "effort": null,
-            "hooks": null,
-            "argument_hint": null,
-            "allowed_tools": [],
-            "paths": null,
-            "disable_model_invocation": false,
-            "user_invocable": true,
-            "context": "inline",
-            "agent": null,
-            "shell": "bash"
-          },
-          "fsm": {
-            "id": "7430ec470fb9433fbbd0f3bf56447cde",
-            "name": "survey-graph_fsm",
-            "states": [
-              {
-                "kind": "simple",
-                "id": "82881521a9784b898c76cc1f52236282",
-                "name": "start",
-                "on_entry_start": [],
-                "on_entry": [],
-                "on_entry_end": [],
-                "on_exit_start": [],
-                "on_exit": [],
-                "on_exit_end": [],
-                "on_active": [],
-                "custom_events": {},
-                "inputs": [],
-                "outputs": [],
-                "reads": [],
-                "writes": [],
-                "skill_ref": null
-              }
-            ],
-            "transitions": [],
-            "initial_state": "82881521a9784b898c76cc1f52236282",
-            "final_states": [],
-            "blackboard": {
-              "class_definitions": [],
-              "variables": {}
-            }
-          },
-          "transfer_on": [
-            {
-              "name": "done",
-              "color": "#4488ff",
-              "description": ""
-            }
-          ],
-          "call_agents": [],
-          "entry_paths": []
-        },
-        {
-          "kind": "procedural_skill",
-          "id": "8130677bfeca4b5dbbc6daa3d6ce6392",
-          "name": "rewire-edges",
-          "description": "뽑아둔 목록대로 배선을 고치고 무엇을 바꿨는지 보고한다.",
-          "when_to_use": "",
-          "body": "# 배선 수리 — 목록대로만\n\nsurvey-graph가 만든 목록을 위에서부터 하나씩 실행한다.\n\n## 실행 순서\n\n항목마다: **포트 선언 먼저, 전이 수정 나중**. 전이의 trigger는 출발 노드의\ntransfer_on에 그 이름이 있어야 유효하다 — 순서를 바꾸면 중간 상태가\n`trigger_unknown_event` 경고를 낸다.\n\n- 포트 추가: `set_transfer_on` / `set_entry_paths` (기존 목록에 **추가**한다 —\n  통째로 교체하는 도구이므로 먼저 현재 목록을 읽어라)\n- 전이 수정: `set_transition` (None=건드리지 않음, \"\"=지움)\n- 새 전이: `connect_states`, 삭제: `disconnect_states`\n- 에이전트 호출 경로: `add_agent_call`로 포트를 만든 뒤 연결\n\n## 실수했을 때\n\n방금 한 편집이 잘못됐으면 `undo`로 되돌린다. 여러 단계 전 실수는 undo 연타보다\n반대 편집이 안전하다 — 그 사이 편집까지 되돌리기 때문이다.\n\n## 완료\n\n목록을 다 소진하면 `validate_project`로 에러 0을 확인하고, 바꾼 내역 요약과 함께\n**done**으로 나간다. 에러가 남으면 해소할 때까지 이 단계를 벗어나지 마라.\n",
-          "config": {
-            "kind": "procedural",
-            "model": "inherit",
-            "effort": null,
-            "hooks": null,
-            "argument_hint": null,
-            "allowed_tools": [],
-            "paths": null,
-            "disable_model_invocation": false,
-            "user_invocable": true,
-            "context": "inline",
-            "agent": null,
-            "shell": "bash"
-          },
-          "fsm": {
-            "id": "b4876045f86648e1a194b0f8087ecd29",
-            "name": "rewire-edges_fsm",
-            "states": [
-              {
-                "kind": "simple",
-                "id": "ce412fd827cf4e96907862939178341e",
-                "name": "start",
-                "on_entry_start": [],
-                "on_entry": [],
-                "on_entry_end": [],
-                "on_exit_start": [],
-                "on_exit": [],
-                "on_exit_end": [],
-                "on_active": [],
-                "custom_events": {},
-                "inputs": [],
-                "outputs": [],
-                "reads": [],
-                "writes": [],
-                "skill_ref": null
-              }
-            ],
-            "transitions": [],
-            "initial_state": "ce412fd827cf4e96907862939178341e",
-            "final_states": [],
-            "blackboard": {
-              "class_definitions": [],
-              "variables": {}
-            }
-          },
-          "transfer_on": [
-            {
-              "name": "done",
-              "color": "#4488ff",
-              "description": ""
-            }
-          ],
-          "call_agents": [],
-          "entry_paths": []
-        }
-      ],
       "reference_placements": [],
-      "caller_contracts": [
-        {
-          "title": "caller: graph-design (bulk-rewire)",
-          "content": "",
-          "children": []
-        }
-      ],
       "graph_layout": {
         "cb18bfdb234446ef8a6bddcf5d0a0ad5": [
           0.0,
@@ -1068,7 +1001,6 @@
         ]
       },
       "edge_layout": {},
-      "entry_paths": [],
       "transfer_on": [
         {
           "name": "done",
@@ -1081,8 +1013,8 @@
   "reference_placements": [
     {
       "skill_name": "daedalus-model",
-      "x": 478.47912500000007,
-      "y": 583.857,
+      "x": 355.28825000000006,
+      "y": 705.5269999999998,
       "connected_states": [
         "graph-design",
         "graph-wire",
@@ -1092,8 +1024,8 @@
     },
     {
       "skill_name": "cc-plugin-spec",
-      "x": 921.1500000000002,
-      "y": 650.5499999999998,
+      "x": 902.8995000000002,
+      "y": 769.1782499999999,
       "connected_states": [
         "plugin-verify",
         "plugin-compile",
@@ -1103,7 +1035,6 @@
       ]
     }
   ],
-  "delegations": [],
   "tool_shelf": [],
   "hook_library": [
     {
@@ -1476,8 +1407,7 @@
         "on_traverse_end": [],
         "custom_events": {},
         "data_map": {},
-        "skill_ref": null,
-        "target_port": ""
+        "skill_ref": null
       },
       {
         "id": "f2db256870b94d1b91c78009772e1ba2",
@@ -1500,8 +1430,7 @@
         "on_traverse_end": [],
         "custom_events": {},
         "data_map": {},
-        "skill_ref": null,
-        "target_port": ""
+        "skill_ref": null
       },
       {
         "id": "161273b929d642ac923987be53f8be99",
@@ -1519,8 +1448,7 @@
         "on_traverse_end": [],
         "custom_events": {},
         "data_map": {},
-        "skill_ref": null,
-        "target_port": ""
+        "skill_ref": null
       },
       {
         "id": "eb85ec1396714c2a8c339d0358f0dcd5",
@@ -1543,8 +1471,7 @@
         "on_traverse_end": [],
         "custom_events": {},
         "data_map": {},
-        "skill_ref": null,
-        "target_port": ""
+        "skill_ref": null
       },
       {
         "id": "d171e12704d94f7ba310e8fbbb9d97c3",
@@ -1562,8 +1489,7 @@
         "on_traverse_end": [],
         "custom_events": {},
         "data_map": {},
-        "skill_ref": null,
-        "target_port": ""
+        "skill_ref": null
       },
       {
         "id": "73405d2a58bf40baa88ee5255bc54114",
@@ -1581,8 +1507,7 @@
         "on_traverse_end": [],
         "custom_events": {},
         "data_map": {},
-        "skill_ref": null,
-        "target_port": ""
+        "skill_ref": null
       },
       {
         "id": "27b65abd37e0461e935775cf6f1bc3e2",
@@ -1600,8 +1525,7 @@
         "on_traverse_end": [],
         "custom_events": {},
         "data_map": {},
-        "skill_ref": null,
-        "target_port": ""
+        "skill_ref": null
       },
       {
         "id": "c1637db902b44b4c8f3bced39f1fee99",
@@ -1619,8 +1543,7 @@
         "on_traverse_end": [],
         "custom_events": {},
         "data_map": {},
-        "skill_ref": null,
-        "target_port": ""
+        "skill_ref": null
       },
       {
         "id": "2c052d63ad6548c294788948414aa60d",
@@ -1638,8 +1561,7 @@
         "on_traverse_end": [],
         "custom_events": {},
         "data_map": {},
-        "skill_ref": null,
-        "target_port": ""
+        "skill_ref": null
       },
       {
         "id": "49169ecf26af41188b2a328cc86b5a43",
@@ -1657,8 +1579,7 @@
         "on_traverse_end": [],
         "custom_events": {},
         "data_map": {},
-        "skill_ref": null,
-        "target_port": ""
+        "skill_ref": null
       },
       {
         "id": "6c985c7e945a431788c94b020f28bcf7",
@@ -1676,8 +1597,7 @@
         "on_traverse_end": [],
         "custom_events": {},
         "data_map": {},
-        "skill_ref": null,
-        "target_port": ""
+        "skill_ref": null
       }
     ],
     "initial_state": "07c498a5d4ce47508cd495bf7c13a626",
@@ -1709,8 +1629,8 @@
       -95.04725897920603
     ],
     "17d8711d1a4e4c7f89775b5a25c4f064": [
-      828.1776444480976,
-      210.4511054491657
+      938.5776444480977,
+      240.35110544916574
     ],
     "746db47c57db4d249cd543d3f317b4e4": [
       1682.104347826087,
