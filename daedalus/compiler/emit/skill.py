@@ -38,7 +38,7 @@ from daedalus.model.plugin.skill import (
 def _next_step_condition(t) -> str:
     """프로젝트 그래프 전이의 조건 문구. 무가드 전이는 '무조건'."""
     cond = _transition_condition(t)
-    return cond if cond else "무조건"
+    return cond if cond else "always"
 
 
 def _transfer_prefix(transition) -> str:
@@ -56,8 +56,8 @@ def _transfer_prefix(transition) -> str:
         return ""
     name = getattr(ref, "name", "")
     desc = (getattr(ref, "description", "") or "").strip()
-    shown = f"`{name}`(`{desc}`)" if desc else f"`{name}`"
-    return f"전이 스킬 {shown}의 지침을 수행한 뒤 "
+    shown = f"`{name}` (`{desc}`)" if desc else f"`{name}`"
+    return f"follow transition skill {shown}, then "
 
 
 def _next_step_invoke_line(transition, sm: StateMachine) -> str | None:
@@ -77,7 +77,7 @@ def _next_step_invoke_line(transition, sm: StateMachine) -> str | None:
     name = getattr(ref, "name", "")
     prefix = _transfer_prefix(transition)
     if isinstance(ref, AgentDefinition):
-        line = f"{prefix}에이전트 `{name}`에게 위임하라"
+        line = f"{prefix}delegate to agent `{name}`"
         # 에이전트 placement의 outgoing을 한 단계 인라인 (별도 컨텍스트라 호출자
         # 쪽에 후속 지시를 둔다 — 에이전트 .md는 호출자 지침을 담을 수 없음).
         inline_parts: list[str] = []
@@ -89,7 +89,7 @@ def _next_step_invoke_line(transition, sm: StateMachine) -> str | None:
                 tgt_name = getattr(tgt_ref, "name", "")
                 cond = _next_step_condition(t)
                 inline_parts.append(
-                    f"위임 완료 후: [{cond}] → "
+                    f"after the agent returns: [{cond}] → "
                     f"{_transfer_prefix(t)}{_invoke_phrase(tgt_ref, tgt_name)}"
                 )
         if inline_parts:
@@ -100,7 +100,7 @@ def _next_step_invoke_line(transition, sm: StateMachine) -> str | None:
 
 def _invoke_phrase(ref, name: str) -> str:
     """skill_ref 종류별 인보크 지시 문구."""
-    return f"`{name}` 스킬을 인보크하라"
+    return f"invoke skill `{name}`"
 
 
 def _next_steps_section(component, project) -> list[str]:
@@ -137,8 +137,8 @@ def _next_steps_section(component, project) -> list[str]:
     if not lines:
         return []
     return [
-        "## 다음 단계",
-        "이 스킬 완료 후 다음 조건에 따라 워크플로를 이어가라:",
+        "## Next Steps",
+        "When this skill is done, continue the workflow by the matching branch:",
         "\n".join(lines),
     ]
 
@@ -149,18 +149,20 @@ def _next_steps_section(component, project) -> list[str]:
 # 단일 파일. 스킬 내부 FSM 상태는 기록하지 않는다(사용자 확정 설계).
 
 _PROGRESS_UPDATE_NOTE = (
-    "전이 시 `state/__progress__.json`을 갱신하라 — 이 스킬을 `completed`에 추가하고 "
-    "`current`를 다음 대상으로, `prev`에 자신(이 스킬 이름)을, `note`에 **어느 갈래"
-    "(출력 이벤트 이름)로 넘어가는지와 인계 한 줄**을, "
-    "`updated`에 현재 시각(ISO8601)을 남겨라. 도착 스킬은 (`prev`, `note`의 갈래)로 "
-    "자기가 어떤 경로로 진입했는지 판별한다 — 갈래를 빼먹으면 같은 출처의 서로 다른 "
-    "결과를 구분할 수 없다. 에이전트에게 위임하는 전이는 두 번 갱신한다: "
-    "위임 직전 `current`를 에이전트 이름으로, 위임 완료 후 후속 스킬 이름으로(이때도 `prev`는 "
-    "위임한 스킬 이름으로 남긴다)."
+    "Before handing off, update `state/__progress__.json`: add this skill to "
+    "`completed`, set `current` to the next target, set `prev` to this skill's "
+    "own name, and write **which branch (output event name) you took plus a "
+    "one-line handoff** into `note`. Set `updated` to the current time (ISO 8601). "
+    "The receiving skill works out which path it came in on from (`prev`, the "
+    "branch in `note`) — omit the branch and it cannot tell apart two different "
+    "outcomes from the same source. When delegating to an agent, update twice: set "
+    "`current` to the agent name just before delegating, then to the follow-up "
+    "skill once the agent returns (keep `prev` as the delegating skill both times)."
 )
 
 _TRANSFER_PROGRESS_NOTE = (
-    "이 전이 스킬 실행 중에는 `state/__progress__.json`의 `note`에 전이 맥락을 기록하라."
+    "While this transition skill runs, record the transition context in `note` "
+    "in `state/__progress__.json`."
 )
 
 
@@ -172,20 +174,23 @@ def _resume_preamble_section(project, skill_name: str) -> list[str]:
     """
     plugin_name = getattr(project, "name", "")
     body = "\n".join([
-        "시작 전에 `state/__progress__.json`을 확인하라.",
+        "Read `state/__progress__.json` before you start.",
         (
-            f"- `current`가 이 스킬(`{skill_name}`)이면: `note`를 참고해 중단 지점부터 "
-            "이어서 진행하라."
+            f"- If `current` is this skill (`{skill_name}`), resume from where it "
+            "stopped, using `note` for context."
         ),
-        "- `current`가 다른 스킬이면: 워크플로 위치가 그쪽이다 — 진행을 멈추고 사용자에게 확인하라.",
         (
-            "- 파일이 없으면: "
+            "- If `current` is a different skill, the workflow is somewhere else — "
+            "stop and confirm with the user before continuing."
+        ),
+        (
+            "- If the file does not exist, create it as "
             f'`{{"plugin": "{plugin_name}", "current": "{skill_name}", "completed": [], '
-            '"note": "", "prev": "", "updated": "<현재 시각 ISO8601>"}`'
-            "로 생성하고 진행하라."
+            '"note": "", "prev": "", "updated": "<current time, ISO 8601>"}`'
+            " and continue."
         ),
     ])
-    return ["## 작업 재개", body]
+    return ["## Resuming Work", body]
 
 
 # ─────────────────────────── 진입 맥락 (WP-IC) ───────────────────────────
@@ -231,7 +236,7 @@ def _entry_item_line(t, project) -> str:
     cond = _transition_condition(t)
     cond_str = f" [{cond}]" if cond else ""
     if isinstance(ref, AgentDefinition):
-        line = f"- 에이전트 `{name}`의 위임 완료 후{cond_str}로 진입"
+        line = f"- entered after agent `{name}` returned{cond_str}"
         delegators = sorted({
             getattr(getattr(tr.source, "skill_ref", None), "name", "")
             for tr in getattr(project.graph, "transitions", [])
@@ -239,9 +244,9 @@ def _entry_item_line(t, project) -> str:
         } - {""})
         if delegators:
             names = ", ".join(f"`{d}`" for d in delegators)
-            line += f" (이때 `prev`는 위임을 시작한 스킬 — {names})"
+            line += f" (`prev` holds the delegating skill here — {names})"
     else:
-        line = f"- `{name}`에서{cond_str}로 진입"
+        line = f"- entered from `{name}`{cond_str}"
     # 출처가 그 출력 포트에 적어 둔 설명 — "무엇을 넘기는가"는 호출자가 말한다
     # (WP-IP: 인터페이스 선언은 값을 만드는 쪽에만 — 호출 계약(WP-CT)과 같은 원칙).
     trig_name = getattr(getattr(t, "trigger", None), "name", "")
@@ -251,8 +256,11 @@ def _entry_item_line(t, project) -> str:
                 line += f" — {ev.description.strip()}"
                 break
     if t.skill_ref is not None:
-        desc = f"(`{t.skill_ref.description}`)" if t.skill_ref.description else ""
-        line += f": 전이 스킬 `{t.skill_ref.name}`{desc}의 지침을 수행한 상태다"
+        desc = f" (`{t.skill_ref.description}`)" if t.skill_ref.description else ""
+        line += (
+            f": transition skill `{t.skill_ref.name}`{desc} has already been "
+            f"followed"
+        )
     return line
 
 
@@ -272,12 +280,13 @@ def _entry_context_section(component, project) -> list[str]:
     if not incoming:
         return []
     blocks: list[str] = [
-        "## 진입 맥락",
+        "## Entry Context",
         (
-            "`state/__progress__.json`의 `prev`(직전 스킬)와 `note`(넘어온 갈래)를 "
-            "확인하고 아래에서 해당 출처 항목을 따르라. 같은 출처의 항목이 여럿이면 "
-            "`note`에 기록된 갈래(출력 이벤트 이름)로 특정한다. 에이전트 위임에서 "
-            "복귀한 경우 `prev`에는 에이전트가 아니라 위임을 시작한 스킬 이름이 남아 있다."
+            "Read `prev` (the previous skill) and `note` (the branch taken) from "
+            "`state/__progress__.json`, then follow the matching source entry "
+            "below. When one source has several entries, the branch name recorded "
+            "in `note` picks the right one. After returning from an agent "
+            "delegation, `prev` holds the delegating skill, not the agent."
         ),
     ]
     ordered = sorted(incoming, key=_entry_source_ref_name)
@@ -288,11 +297,12 @@ def _entry_context_section(component, project) -> list[str]:
 def _progress_terminal_section() -> list[str]:
     """WP-RS Part A-3: 터미널 배치(outgoing 0개) — "다음 단계" 대신 배출된다."""
     return [
-        "## 작업 완료",
+        "## Finishing Up",
         (
-            "이 스킬이 워크플로의 마지막 단계다. 완료 시 `state/__progress__.json`에서 "
-            "이 스킬을 `completed`에 추가하고 `current`를 `\"done\"`으로 바꾼 뒤, "
-            "`note`에 결과 요약을, `updated`에 현재 시각(ISO8601)을 남겨라."
+            "This skill is the last step of the workflow. When it is done, update "
+            "`state/__progress__.json`: add this skill to `completed`, set "
+            "`current` to `\"done\"`, put a result summary in `note`, and set "
+            "`updated` to the current time (ISO 8601)."
         ),
     ]
 
@@ -356,7 +366,7 @@ def compile_skill(
         and project is not None
         and _graph_placements_any(project)
     ):
-        blocks.append("## 진행 기록")
+        blocks.append("## Progress Record")
         blocks.append(_TRANSFER_PROGRESS_NOTE)
 
     # ProceduralSkill — FSM 절차 + tool_shelf

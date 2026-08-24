@@ -36,20 +36,20 @@ from daedalus.model.plugin.variables import ROOT_TOKEN
 def _describe_evaluation(ev: EvaluationStrategy) -> str:
     """EvaluationStrategy를 사람이 읽는 한 줄 조건으로."""
     if isinstance(ev, LLMEvaluation):
-        return f"LLM 판단({ev.prompt})" if ev.prompt else "LLM 판단"
+        return f"LLM judgment ({ev.prompt})" if ev.prompt else "LLM judgment"
     if isinstance(ev, ToolEvaluation):
-        cond = f" (성공 조건: {ev.success_condition})" if ev.success_condition else ""
-        tool = ev.tool or "도구"
-        return f"도구 '{tool}' 실행 결과{cond}"
+        cond = f" (success when: {ev.success_condition})" if ev.success_condition else ""
+        tool = ev.tool or "tool"
+        return f"result of running `{tool}`{cond}"
     if isinstance(ev, MCPEvaluation):
-        return f"MCP '{ev.server}.{ev.tool}' 결과"
+        return f"result of MCP `{ev.server}.{ev.tool}`"
     if isinstance(ev, ExpressionEvaluation):
-        return f"표현식 `{ev.expression}`" if ev.expression else "표현식"
+        return f"expression `{ev.expression}`" if ev.expression else "expression"
     if isinstance(ev, CompositeEvaluation):
         op = " AND " if ev.operator == "and" else " OR "
         inner = op.join(_describe_evaluation(c) for c in ev.children)
-        return f"({inner})" if inner else "복합 조건"
-    return "조건"
+        return f"({inner})" if inner else "compound condition"
+    return "condition"
 
 
 def _describe_guard(guard: Guard | None) -> str:
@@ -63,8 +63,8 @@ def _describe_trigger(trigger: object) -> str:
         return ""
     name = getattr(trigger, "name", "")
     if isinstance(trigger, CompletionEvent):
-        return f"완료 이벤트 '{name}'"
-    return f"이벤트 '{name}'" if name else ""
+        return f"completion event `{name}`"
+    return f"event `{name}`" if name else ""
 
 
 def _describe_access(state: State) -> str:
@@ -79,9 +79,9 @@ def _describe_access(state: State) -> str:
         return ""
     parts: list[str] = []
     if reads:
-        parts.append("읽기: " + ", ".join(f"`{r}`" for r in reads))
+        parts.append("reads " + ", ".join(f"`{r}`" for r in reads))
     if writes:
-        parts.append("쓰기: " + ", ".join(f"`{w}`" for w in writes))
+        parts.append("writes " + ", ".join(f"`{w}`" for w in writes))
     return " (" + " / ".join(parts) + ")"
 
 
@@ -93,7 +93,7 @@ def _transition_condition(t) -> str:
         parts.append(trig)
     g = _describe_guard(t.guard)
     if g:
-        parts.append(f"가드: {g}")
+        parts.append(f"guard: {g}")
     return ", ".join(parts)
 
 
@@ -111,10 +111,10 @@ def _describe_node_action(state: SimpleState) -> str:
     if ref is None:
         return ""
     if isinstance(ref, AgentDefinition):
-        return f"에이전트 '{ref.name}'에 위임한다"
+        return f"delegate to agent `{ref.name}`"
     # 스킬 참조
     name = getattr(ref, "name", "")
-    return f"skill '{name}'을(를) 사용한다"
+    return f"use skill `{name}`"
 
 
 def _ordered_states(sm: StateMachine) -> list[State]:
@@ -155,12 +155,15 @@ def _describe_fsm(sm: StateMachine, skill: ProceduralSkill) -> list[str]:
     """
     blocks: list[str] = []
     if sm.states and sm.initial_state is not None:
-        blocks.append("## 워크플로 절차")
+        blocks.append("## Procedure")
         blocks.extend(_fsm_procedure_blocks(sm))
 
     # transfer_on 출구 이벤트 의미
     if skill.transfer_on:
-        ev_lines = ["## 출력 이벤트", "이 스킬은 다음 결과 이벤트로 종료한다:"]
+        ev_lines = [
+            "## Output Events",
+            "End this skill with exactly one of the following outcome events:",
+        ]
         for ev in skill.transfer_on:
             desc = f" — {ev.description}" if ev.description else ""
             ev_lines.append(f"- `{ev.name}`{desc}")
@@ -177,8 +180,7 @@ def _fsm_procedure_blocks(sm: StateMachine) -> list[str]:
     final_ids = {id(s) for s in sm.final_states}
 
     intro = (
-        f"이 스킬은 '{sm.initial_state.name}' 상태에서 시작하는 상태 기계로 동작한다. "
-        "각 단계를 순서대로 수행하라."
+        f"Work through the steps below in order, starting at `{sm.initial_state.name}`."
     )
     blocks.append(intro)
 
@@ -186,9 +188,9 @@ def _fsm_procedure_blocks(sm: StateMachine) -> list[str]:
     for idx, state in enumerate(states, start=1):
         marks: list[str] = []
         if state is initial:
-            marks.append("시작")
+            marks.append("start")
         if id(state) in final_ids:
-            marks.append("종료")
+            marks.append("end")
         mark_str = f" ({', '.join(marks)})" if marks else ""
 
         head = f"{idx}. **{_state_label(state)}**{mark_str}"
@@ -199,17 +201,17 @@ def _fsm_procedure_blocks(sm: StateMachine) -> list[str]:
             else:
                 head += "."
         elif isinstance(state, CompositeState):
-            head += f": 에이전트 '{state.name}'에 위임한다 (별도 컨텍스트 상태 기계)."
+            head += f": delegate to agent `{state.name}` (runs in its own context)."
         elif isinstance(state, ParallelState):
             regs = ", ".join(r.name for r in state.regions)
             join_note = _describe_join(state)
-            head += f": 병렬 실행 — 리전 {regs}을(를) 동시에 진행한다 ({join_note})."
+            head += f": run {regs} in parallel ({join_note})."
         elif isinstance(state, ChoiceState):
-            head += ": 즉시 조건을 평가해 분기한다 (머무르지 않음)."
+            head += ": evaluate the conditions and branch immediately — do not stop here."
         elif isinstance(state, TerminateState):
-            head += ": 상태 기계를 강제 종료한다."
+            head += ": stop the workflow here."
         elif isinstance(state, (EntryPoint, ExitPoint)):
-            head += f" — 의사 상태({state.kind})."
+            head += f" — pseudo state ({state.kind})."
         else:
             head += "."
         head += _describe_access(state)
@@ -227,7 +229,7 @@ def _fsm_procedure_blocks(sm: StateMachine) -> list[str]:
                 cond_str = f" [{cond}]" if cond else ""
             xfer = ""
             if t.skill_ref is not None:
-                xfer = f" (전이 시 skill '{t.skill_ref.name}' 실행)"
+                xfer = f" (first follow transition skill `{t.skill_ref.name}`)"
             lines.append(
                 f"    - → **{t.target.name}**{cond_str}{xfer}"
             )
@@ -240,11 +242,11 @@ def _describe_join(state: ParallelState) -> str:
     """ParallelState.join 전략을 사람이 읽는 문구로."""
     from daedalus.model.fsm.join import JoinStrategy
     if state.join is JoinStrategy.ANY:
-        return "리전 중 하나라도 완료하면 다음으로 진행"
+        return "continue as soon as any region finishes"
     if state.join is JoinStrategy.N_OF:
         n = state.join_count if state.join_count is not None else "?"
-        return f"리전 {n}개가 완료하면 다음으로 진행"
-    return "모든 리전 완료 후 종합"
+        return f"continue once {n} regions finish"
+    return "continue after every region finishes"
 
 
 # ─────────────────────────── 요구 환경: MCP 서버 자동 언급 (WP-TM Part C) ───────────────────────────
@@ -275,8 +277,8 @@ def _mcp_requirement_section_skill(skill: Skill) -> list[str]:
         return []
     names = ", ".join(f"`{s}`" for s in servers)
     return [
-        "## 요구 환경",
-        f"이 스킬은 다음 MCP 서버가 연결되어 있어야 한다: {names}",
+        "## Requirements",
+        f"This skill requires these MCP servers to be connected: {names}",
     ]
 
 
@@ -363,21 +365,25 @@ def _blackboard_section(project, component=None) -> list[str]:
     # LOCAL→${CLAUDE_PROJECT_DIR}로 확장되고, schemas/schemas.json은 양쪽 타깃
     # 모두 그 루트 밑에 산출되므로 토큰 하나로 둘 다 맞는다.
     cli_lines = (
-        "`command -v daedalus-bb`로 CLI가 있는지 확인하라(POSIX 셸 기준 — 판정할 수 없으면\n"
-        "CLI가 없는 것으로 보고 아래 규칙대로 직접 편집하면 된다). 있으면 파일을 직접 만지지\n"
-        "말고 CLI로 읽고 써라 — 쓰기 전 스키마 검증이 내장되어 있다(`daedalus-bb read` /\n"
-        "`daedalus-bb write` / `daedalus-bb validate` — write는 `--set 필드=값`, 컬렉션 필드는\n"
-        "`--append`/`--remove`). 스키마 경로는 `--schemas " + ROOT_TOKEN + "/schemas/schemas.json`으로\n"
-        "넘겨라 — 기본값은 현재 작업 폴더 기준이라 플러그인이 다른 곳에 있으면 찾지 못한다.\n"
-        "CLI가 없으면 아래 규칙대로 직접 편집하라(daedalus-bb는 Daedalus 배포에 함께 들어\n"
-        "있다 — 임의로 패키지를 설치하지 마라)."
+        "Run `command -v daedalus-bb` to check whether the CLI is available (this assumes\n"
+        "a POSIX shell; if you cannot tell, assume it is missing and edit the files\n"
+        "directly per the rules below). If it is available, do not edit the state files\n"
+        "by hand — read and write them through the CLI, which validates against the\n"
+        "schema before writing:\n"
+        "- `daedalus-bb --schemas " + ROOT_TOKEN + "/schemas/schemas.json read <Class>`\n"
+        "- `daedalus-bb --schemas " + ROOT_TOKEN + "/schemas/schemas.json write <Class> --set <field>=<value>`\n"
+        "  (use `--append` / `--remove` for collection fields)\n"
+        "- `daedalus-bb --schemas " + ROOT_TOKEN + "/schemas/schemas.json validate`\n"
+        "Always pass `--schemas` as shown: the default is relative to the current working\n"
+        "directory, so it will not find the schema when the plugin lives elsewhere.\n"
+        "`daedalus-bb` ships with Daedalus — do not install any package to obtain it."
     )
 
     rule_lines = (
-        "규칙:\n"
-        "- 파일을 수정하기 전에 반드시 현재 내용을 읽어라 (읽기-수정-쓰기).\n"
-        "- 파일이 없으면 스키마에 맞는 초기 객체로 생성하라.\n"
-        "- 스키마의 required 필드는 항상 채워라."
+        "Rules:\n"
+        "- Always read a state file before changing it (read, modify, write).\n"
+        "- If the file does not exist, create it from the schema.\n"
+        "- Always fill every field the schema marks as required."
     )
 
     if union:
@@ -388,21 +394,25 @@ def _blackboard_section(project, component=None) -> list[str]:
             desc = f" — {cls.description}" if cls.description else ""
             lines.append(f"- `{cls.name}` → `state/{cls.name}.json`{desc}")
 
-        # 주어+조사 — "스킬이"(받침 있음)/"에이전트가"(받침 없음).
-        subject = "에이전트가" if isinstance(component, AgentDefinition) else "스킬이"
+        subject = "agent" if isinstance(component, AgentDefinition) else "skill"
         intro_lines: list[str] = []
         if reads:
-            intro_lines.append(f"이 {subject} 읽는 것: " + ", ".join(f"`{r}`" for r in sorted(reads)))
+            intro_lines.append(
+                f"This {subject} reads: " + ", ".join(f"`{r}`" for r in sorted(reads))
+            )
         if writes:
-            intro_lines.append(f"이 {subject} 쓰는 것: " + ", ".join(f"`{w}`" for w in sorted(writes)))
+            intro_lines.append(
+                f"This {subject} writes: " + ", ".join(f"`{w}`" for w in sorted(writes))
+            )
 
         # 총론(디렉토리·스키마 설명)은 선언 유무와 무관하게 유지 — 선언은
         # "덧붙이는" 정보이지 총론을 대체하지 않는다 (리뷰 지적 1).
         return [
-            "## 공유 상태 (블랙보드)",
+            "## Shared State (Blackboard)",
             (
-                "이 워크플로의 컨텍스트 간 공유 상태는 작업 폴더의 `state/` 디렉토리에 JSON 파일로\n"
-                "유지한다. 각 파일의 구조는 플러그인의 `schemas/schemas.json`에 정의된 스키마를 따른다."
+                "State shared across contexts in this workflow lives as JSON files in the\n"
+                "`state/` directory of the working folder. Each file follows the schema\n"
+                "defined in the plugin's `schemas/schemas.json`."
             ),
             "\n".join(intro_lines),
             "\n".join(lines),
@@ -416,10 +426,11 @@ def _blackboard_section(project, component=None) -> list[str]:
         lines.append(f"- `{cls.name}` → `state/{cls.name}.json`{desc}")
 
     return [
-        "## 공유 상태 (블랙보드)",
+        "## Shared State (Blackboard)",
         (
-            "이 워크플로의 컨텍스트 간 공유 상태는 작업 폴더의 `state/` 디렉토리에 JSON 파일로\n"
-            "유지한다. 각 파일의 구조는 플러그인의 `schemas/schemas.json`에 정의된 스키마를 따른다."
+            "State shared across contexts in this workflow lives as JSON files in the\n"
+            "`state/` directory of the working folder. Each file follows the schema\n"
+            "defined in the plugin's `schemas/schemas.json`."
         ),
         "\n".join(lines),
         cli_lines,
@@ -435,8 +446,8 @@ def _tool_shelf_section(project) -> list[str]:
     shelf = getattr(project, "tool_shelf", None) or []
     if not shelf:
         return []
-    blocks = ["## 참조: 도구 선반"]
-    intro = "이 플러그인이 참조하는 도구 정의 (실행 래퍼는 별도):"
+    blocks = ["## Reference: Tool Shelf"]
+    intro = "Tool definitions this plugin refers to (execution wrappers are separate):"
     blocks.append(intro)
     lines: list[str] = []
     for tool in shelf:
@@ -447,10 +458,10 @@ def _tool_shelf_section(project) -> list[str]:
         server = getattr(tool, "server", "")
         tool_name = getattr(tool, "tool_name", "")
         if server or tool_name:
-            lines.append(f"  - MCP: 서버 '{server}', 도구 '{tool_name}'")
+            lines.append(f"  - MCP: server `{server}`, tool `{tool_name}`")
         if note:
-            lines.append(f"  - 인자 메모: {note}")
+            lines.append(f"  - Argument notes: {note}")
         if body.strip():
-            lines.append(f"  - 본문:\n\n```\n{body.strip()}\n```")
+            lines.append(f"  - Body:\n\n```\n{body.strip()}\n```")
     blocks.append("\n".join(lines))
     return blocks

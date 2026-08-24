@@ -174,8 +174,8 @@ def _invocation_section_agent(agent: AgentDefinition) -> list[str]:
     if not rows:
         return []
     blocks = [
-        "## 호출 파라미터",
-        "이 에이전트는 Agent/Task 도구로 호출될 때 다음 파라미터를 권장한다:",
+        "## Invocation Parameters",
+        "Use these parameters when invoking this agent with the Agent/Task tool:",
         "\n".join(rows),
     ]
     return blocks
@@ -271,16 +271,16 @@ def _settings_note_agent(agent: AgentDefinition, project=None) -> list[str]:
     hooks = getattr(config, "hooks", None)
     if hooks:
         names = ", ".join(str(n) for n in hooks)
-        needs.append(f"lifecycle hooks: {names} (hooks/hooks.json 생성됨)")
+        needs.append(f"lifecycle hooks: {names} (emitted to hooks/hooks.json)")
     mcp_all = _agent_mcp_server_names(agent)
     if mcp_all:
         names = ", ".join(mcp_all)
-        needs.append(f"MCP 서버 연결: {names} (`.mcp.json`)")
+        needs.append(f"MCP servers connected: {names} (`.mcp.json`)")
     if not needs:
         return []
     blocks = [
-        "## 요구 환경",
-        "이 에이전트는 다음 외부 설정을 전제한다 (v0 컴파일러는 설정 파일을 생성하지 않음):",
+        "## Requirements",
+        "This agent assumes the following is already set up outside the plugin:",
         "\n".join(f"- {n}" for n in needs),
     ]
     return blocks
@@ -331,20 +331,25 @@ def _call_contract_section(agent: AgentDefinition, project) -> list[str]:
         return []
     entries.sort(key=lambda e: (e[0], e[1]))
     blocks: list[str] = [
-        "## 호출 계약",
+        "## Invocation Contract",
         (
-            "이 에이전트는 다음 경로로 호출된다. 넘겨받는 데이터는 공유 상태"
-            "(블랙보드) 단락의 읽기 선언을 따른다."
+            "This agent is invoked through the paths below. What you receive is "
+            "whatever the Shared State (Blackboard) section declares as reads."
         ),
     ]
     for caller, port, desc, guard, transfer in entries:
-        line = f"- `{caller}`의 `{port}` 포트에서 호출" if port else f"- `{caller}`에서 호출"
+        line = (
+            f"- from `{caller}` via port `{port}`" if port else f"- from `{caller}`"
+        )
         if guard:
-            line += f" [가드: {guard}]"
+            line += f" [guard: {guard}]"
         if desc:
             line += f" — {desc}"
         if transfer:
-            line += f" (호출자가 전이 스킬 `{transfer}`의 지침을 수행하고 위임한다)"
+            line += (
+                f" (the caller follows transition skill `{transfer}` before "
+                f"delegating)"
+            )
         blocks.append(line)
     return blocks
 
@@ -409,9 +414,10 @@ def _describe_agent_fsm(agent: AgentDefinition) -> list[str]:
         not isinstance(s, (_Entry, ExitPoint)) for s in sm.states
     ):
         return []
-    blocks: list[str] = ["## 내부 워크플로"]
+    blocks: list[str] = ["## Internal Workflow"]
     blocks.append(
-        f"이 에이전트는 '{sm.initial_state.name}'에서 시작하는 상태 기계로 동작한다."
+        f"Work through the steps below in order, starting at "
+        f"`{sm.initial_state.name}`."
     )
     states = _ordered_states(sm)
     final_ids = {id(s) for s in sm.final_states}
@@ -419,18 +425,18 @@ def _describe_agent_fsm(agent: AgentDefinition) -> list[str]:
     for idx, state in enumerate(states, start=1):
         marks: list[str] = []
         if state is sm.initial_state:
-            marks.append("시작")
+            marks.append("start")
         if id(state) in final_ids:
-            marks.append("종료")
+            marks.append("end")
         if isinstance(state, ExitPoint):
-            marks.append("출구")
+            marks.append("exit")
         mark_str = f" ({', '.join(marks)})" if marks else ""
         head = f"{idx}. **{state.name}**{mark_str}"
         if isinstance(state, SimpleState):
             action = _describe_node_action(state)
             head += f": {action}." if action else "."
         elif isinstance(state, CompositeState):
-            head += f": 에이전트 '{state.name}'에 위임한다."
+            head += f": delegate to agent `{state.name}`."
         else:
             head += "."
         head += _describe_access(state)
@@ -459,9 +465,9 @@ def _agent_outputs_section(agent: AgentDefinition) -> list[str]:
     if not events:
         return []
     lines = [
-        "## 출구",
-        "이 에이전트는 다음 출구 중 하나로 종료한다. 완료 보고의 첫 줄에 어느 "
-        "출구인지 명시하라 — 호출자가 이 이름으로 다음 단계를 가른다:",
+        "## Exits",
+        "End with exactly one of the exits below. State which exit you took on "
+        "the first line of your final report — the caller branches on that name:",
     ]
     for ev in events:
         desc = (getattr(ev, "description", "") or "").strip()
