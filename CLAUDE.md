@@ -495,6 +495,9 @@ daedalus-bb [--state-dir state] [--schemas schemas/schemas.json] <command>
 - **후속 예정:** 컴파일 분할(점진 공개 — 큰 본문의 섹션을 스킬 디렉토리 보조 파일로 산출.
   `${CLAUDE_SKILL_DIR}`가 공식 변수이고 스킬 디렉토리 상대 참조가 CC 공식 패턴임을 확인, 2026-08.
   에이전트는 단일 .md라 전용 폴더 없음 — 대상 아님), 스킬별 파일 탭(files-per-skill).
+  **설계 문서 있음(구현 전, 사용자 확정 대기):** `docs/plans/2026-08-25-a5-progressive-disclosure.md`
+  — 분할 지점(본문 최상위 헤딩)·산출 형상(`skills/<이름>/sections/<slug>.md` + 색인)·결정성 규칙·
+  자동 단락 불가침·확정 필요 결정 7건(D1~D7).
 
 ### 입력 포트 퇴역 (WP-IP) — 인터페이스 선언은 값을 만드는 쪽에만
 
@@ -1026,7 +1029,8 @@ WP-FR과 동일하게 모델 계층 없음 — 파일시스템이 단일 진실.
   `set_skill_files_root_provider`/`get_skill_files_root` provider는 files와 동일 패턴.
 - **Save As 동반:** `_carry_files_dir`가 files/와 skill-files/ 둘 다 데려간다(목적지에 있으면 불가침).
 - **후속(컴파일 분할):** 큰 본문의 섹션을 스킬 디렉토리 보조 파일로 산출하는 점진 공개 — WP-BO 아웃라인
-  파서가 분할 지점, 이 WP가 파일 위치를 제공한다.
+  파서가 분할 지점, 이 WP가 파일 위치를 제공한다. 설계 문서:
+  `docs/plans/2026-08-25-a5-progressive-disclosure.md`(구현 전, 사용자 확정 대기).
 
 ### 전략 패턴 (Guard / Action 공통)
 
