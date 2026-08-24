@@ -216,6 +216,9 @@ class _FrontmatterPanel(QScrollArea):
         self._entry_preset_combo: QComboBox | None = None
         self._build_entry_preset_row(lay, component)
 
+        # 미리보기 / 관련 경고 (A9-1, A9-3) — 역시 캔버스 메뉴와 같은 함수.
+        self._build_component_action_row(lay)
+
         # SKILL_FIELD_MATRIX / AGENT_FIELD_MATRIX 기반 필드 생성
         # 위젯 클래스는 view 측 FIELD_WIDGETS / AGENT_FIELD_WIDGETS에서 조회한다(model→view 의존 역전).
         from daedalus.model.plugin.field_matrix import AGENT_FIELD_MATRIX, SKILL_FIELD_MATRIX
@@ -486,6 +489,46 @@ class _FrontmatterPanel(QScrollArea):
 
         setattr(config, attr, value)
         self.changed.emit()
+
+    def _build_component_action_row(self, lay) -> None:
+        """"미리보기" / "관련 경고" 버튼 행 (A9-1, A9-3).
+
+        캔버스 우클릭 메뉴와 **같은 함수**를 부른다 — 여기서 산출을 따로
+        만들거나 검증을 따로 돌리면 두 표면이 다른 답을 내게 된다.
+        """
+        row = QHBoxLayout()
+        preview = QPushButton("미리보기")
+        preview.setToolTip("이 컴포넌트가 어떤 파일로 나가는지 — 파일은 쓰지 않는다")
+        preview.clicked.connect(self._show_preview)
+        row.addWidget(preview)
+
+        warn = QPushButton("관련 경고")
+        warn.setToolTip("이 컴포넌트에 관한 검증 결과만 검증 패널에 표시한다")
+        warn.clicked.connect(self._show_findings)
+        row.addWidget(warn)
+        row.addStretch()
+        lay.addLayout(row)
+        self._preview_btn = preview
+        self._findings_btn = warn
+
+    def _main_window(self):
+        """이 패널이 놓인 최상위 창 — 프로젝트/검증 패널에 닿는 통로."""
+        return self.window()
+
+    def _show_preview(self) -> None:
+        from daedalus.view.actions.preview import show_preview_dialog
+
+        window = self._main_window()
+        project = getattr(window, "_project", None)
+        resolved = window.resolved_hooks() if hasattr(window, "resolved_hooks") else None
+        show_preview_dialog(
+            window, self._component, project=project, resolved_hooks=resolved,
+        )
+
+    def _show_findings(self) -> None:
+        window = self._main_window()
+        if hasattr(window, "show_component_findings"):
+            window.show_component_findings(self._component)
 
     def _build_entry_preset_row(self, lay, component) -> None:
         """진입 의미론 프리셋 콤보 (A8).

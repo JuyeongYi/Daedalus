@@ -717,6 +717,9 @@ class MainWindow(QMainWindow):
     def _on_validation_item_activated(self, error: ValidationError) -> None:
         self._validation_actions.on_validation_item_activated(error)
 
+    def show_component_findings(self, component: object) -> int:
+        return self._validation_actions.show_component_findings(component)
+
     def _focus_in_project_canvas(self, subject: object) -> None:
         self._validation_actions.focus_in_project_canvas(subject)
 

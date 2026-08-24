@@ -193,14 +193,25 @@ daedalus/
     │                       #   부르는 **호출부**일 뿐이다(한쪽에 로직을 넣고 다른 쪽이 흉내 내면 같은 조작의 결과가 표면마다 달라진다 —
     │                       #   wire_workspace 공유와 같은 결). 입력은 모델/뷰모델, 편집은 CommandStack 경유. 테스트는 액션 함수 단위로 쓰고
     │                       #   호출부는 "이 함수를 부르는가"만 확인한다.
-    │   └── entrypoint.py   #   진입점 프리셋 4종(A8) — EntryPreset/ENTRY_PRESETS/supports_entry_presets/current_entry_preset/
-    │                       #     apply_entry_preset. 상세는 "진입점 프리셋 (A8)" 개념 섹션 참조.
+    │   ├── entrypoint.py   #   진입점 프리셋 4종(A8) — EntryPreset/ENTRY_PRESETS/supports_entry_presets/current_entry_preset/
+    │   │                   #     apply_entry_preset. 상세는 "진입점 프리셋 (A8)" 개념 섹션 참조.
+    │   ├── preview.py      #   컴파일 미리보기(A9-1) — preview_text/preview_title(테스트 대상) + show_preview_dialog(표시).
+    │   │                   #     파일은 쓰지 않는다. 산출은 **원문 그대로** 보인다(렌더하면 프론트매터가 사라진다).
+    │   ├── model_effort.py #   모델/effort 지정(A9-2) — MODEL_CHOICES/EFFORT_CHOICES(표시 순서 단일 진실) + set_model/set_effort.
+    │   │                   #     새로 만드는 것은 UI가 아니라 **쓰기 경로의 단일 진실**이다(에디터 콤보와 같은 SetAttrCmd 경로).
+    │   └── warnings.py     #   컴포넌트별 검증 결과 필터(A9-3) — findings_for(errors, component, project). subject==컴포넌트 /
+    │                       #     path 루트(`skill:<이름>`) / **그래프 placement 노드** 세 경로를 모두 본다 — placement를 빼면
+    │                       #     mid_chain_user_invocable처럼 subject가 노드인 규칙을 통째로 놓친다. dock 표시는
+    │                       #     ValidationActions.show_component_findings가 계속 전담(검증 패널을 채우는 경로는 하나여야 한다).
     ├── canvas/             # GraphicsView/Scene, NodeItem, EdgeItem, RefNodeItem, RefEdgeItem, sync(VM→모델 동기화 — Qt 무관)
     │                       # 엣지 리루트(WP-ER): TransitionEdgeItem.update_path가 TransitionViewModel.waypoints(경유점)를 경유하는
     │                       #   구간별 베지어 곡선을 그린다. 선택 시 자식 WaypointHandleItem(작은 원)을 표시 — 더블클릭/컨텍스트 메뉴로
     │                       #   추가(nearest_segment_index), 드래그 이동, 우클릭/Delete로 제거. FsmScene/AgentFsmScene 공용.
-    │                       # 노드 우클릭 메뉴(A8): '진입점 설정' 서브메뉴 — _add_entry_preset_menu/_apply_entry_preset가
-    │                       #   view/actions/entrypoint를 부르는 **호출부**다(로직 없음). 스킬 placement에만 붙는다.
+    │                       # 노드 우클릭 메뉴(A8/A9): '진입점 설정' 서브메뉴(_add_entry_preset_menu — 스킬 placement에만) +
+    │                       #   컴파일 미리보기·모델/effort 서브메뉴·관련 경고 보기(_add_component_actions_menu — placement 전반).
+    │                       #   전부 view/actions/를 부르는 **호출부**다(로직 없음). 메뉴는 항목이 많아 exec 반환값 elif 사슬이
+    │                       #   아니라 {QAction: 콜러블} **디스패치 표**를 쓴다. 창이 필요한 액션은 main_window()(views()[0].window())로
+    │                       #   거슬러 올라간다 — 씬은 MainWindow를 참조하지 않는다.
     │                       # node_badges: badges_for(component)(뱃지 로직) + state_access_badges(state)(WP-BB — State.reads/writes → ✏쓰기/📖읽기
     │                       #   뱃지, 선언 있을 때만 렌더). NodeItem.paint가 badges_for(ref)+state_access_badges(model)를 합류해 렌더.
     │                       # 입력 포트(WP-IP/RF-1b): 노드당 1개 고정 — input_port_scene_pos()(인자 없음)가 그 한 점을 돌려주고

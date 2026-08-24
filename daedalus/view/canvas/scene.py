@@ -447,15 +447,23 @@ class FsmScene(QGraphicsScene):
                 return
             # 진입점 프리셋 (A8) — 스킬 placement에만. 실체는
             # view/actions/entrypoint.py이고 여기는 호출부일 뿐이다.
-            entry_actions = self._add_entry_preset_menu(menu, item.state_vm)  # noqa: E501
+            # 노드 메뉴는 항목이 많아 exec 반환값 비교 대신 **디스패치 표**를
+            # 쓴다 — 항목이 늘 때마다 elif 사슬이 길어지면 어느 분기가 어느
+            # 항목인지 눈으로 짝지어야 한다.
+            dispatch: dict = {}
+            entry_actions = self._add_entry_preset_menu(menu, item.state_vm)
+            for act, preset in entry_actions.items():
+                dispatch[act] = (
+                    lambda vm=item.state_vm, p=preset: self._apply_entry_preset(vm, p)
+                )
+            dispatch.update(self._add_component_actions_menu(menu, item.state_vm))
             delete_act = menu.addAction(f"'{item.state_vm.model.name}' 삭제")
+            dispatch[delete_act] = lambda vm=item.state_vm: self._delete_state(vm)
+
             chosen = menu.exec(event.screenPos())
-            if chosen is None:
-                return
-            if chosen == delete_act:
-                self._delete_state(item.state_vm)
-            elif chosen in entry_actions:
-                self._apply_entry_preset(item.state_vm, entry_actions[chosen])
+            handler = dispatch.get(chosen) if chosen is not None else None
+            if handler is not None:
+                handler()
         elif isinstance(item, ReferenceNodeItem):
             name = getattr(item.ref_vm.model, "name", "?")
             delete_act = menu.addAction(f"참조 '{name}' 삭제")
@@ -516,6 +524,84 @@ class FsmScene(QGraphicsScene):
         component = getattr(state_vm.model, "skill_ref", None)
         if component is not None:
             apply_entry_preset(self._project_vm, component, preset)
+
+    # --- 컴포넌트 공통 액션 (A9-1/2/3) — 실체는 view/actions/ ---
+
+    def main_window(self):
+        """이 씬이 놓인 최상위 창. 없으면 None.
+
+        씬은 MainWindow를 참조하지 않는다(캔버스가 창을 알 이유가 없다) —
+        다이얼로그 부모나 프로젝트 수준 액션이 필요할 때만 뷰를 통해 거슬러
+        올라간다. 뷰가 아직 붙지 않은 헤드리스 생성 경로에서는 None이다.
+        """
+        views = self.views()
+        return views[0].window() if views else None
+
+    def _add_component_actions_menu(self, menu: QMenu, state_vm: StateViewModel) -> dict:
+        """스킬/에이전트 placement 공통 항목 — 미리보기·모델/effort·관련 경고.
+
+        {QAction: 무인자 콜러블} 디스패치 표를 돌려준다. placement가 아닌
+        노드(빈 상태)에는 아무것도 붙이지 않는다.
+        """
+        from daedalus.view.actions import model_effort as me
+
+        component = getattr(state_vm.model, "skill_ref", None)
+        if component is None:
+            return {}
+
+        dispatch: dict = {}
+
+        preview_act = menu.addAction("컴파일 미리보기…")
+        if preview_act is not None:
+            preview_act.setToolTip("이 컴포넌트가 어떤 파일로 나가는지 — 파일은 쓰지 않는다")
+            dispatch[preview_act] = lambda c=component: self._show_preview(c)
+
+        if me.supports_model_effort(component):
+            model_menu = menu.addMenu("모델 지정")
+            if model_menu is not None:
+                current = me.current_model(component)
+                for model, label in me.MODEL_CHOICES:
+                    act = model_menu.addAction(label)
+                    if act is None:
+                        continue
+                    act.setCheckable(True)
+                    act.setChecked(current is model)
+                    dispatch[act] = (
+                        lambda c=component, m=model: me.set_model(self._project_vm, c, m)
+                    )
+            effort_menu = menu.addMenu("effort 지정")
+            if effort_menu is not None:
+                current_effort = me.current_effort(component)
+                for effort, label in me.EFFORT_CHOICES:
+                    act = effort_menu.addAction(label)
+                    if act is None:
+                        continue
+                    act.setCheckable(True)
+                    act.setChecked(current_effort is effort)
+                    dispatch[act] = (
+                        lambda c=component, e=effort: me.set_effort(self._project_vm, c, e)
+                    )
+
+        warn_act = menu.addAction("관련 경고 보기")
+        if warn_act is not None:
+            dispatch[warn_act] = lambda c=component: self._show_component_findings(c)
+
+        menu.addSeparator()
+        return dispatch
+
+    def _show_preview(self, component: object) -> None:
+        from daedalus.view.actions.preview import show_preview_dialog
+
+        window = self.main_window()
+        resolved = window.resolved_hooks() if hasattr(window, "resolved_hooks") else None
+        show_preview_dialog(
+            window, component, project=self._project, resolved_hooks=resolved,
+        )
+
+    def _show_component_findings(self, component: object) -> None:
+        window = self.main_window()
+        if hasattr(window, "show_component_findings"):
+            window.show_component_findings(component)
 
     def _handle_transition_edge_menu(
         self, menu: QMenu, item: TransitionEdgeItem, scene_pos: QPointF, screen_pos

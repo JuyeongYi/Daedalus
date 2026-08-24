@@ -50,6 +50,31 @@ class ValidationActions:
                 f"검증: 오류 {error_count} / 경고 {warning_count}"
             )
 
+    def show_component_findings(self, component: object) -> int:
+        """이 컴포넌트에 관한 검증 결과만 패널에 채우고 dock을 연다 (A9-3).
+
+        캔버스 노드 우클릭 "관련 경고 보기"와 에디터의 같은 항목이 공유한다.
+        결과 건수를 돌려준다 — 0건이면 상태바로 그 사실을 말한다(빈 패널만
+        띄우면 "필터가 안 먹은 것"과 구분되지 않는다).
+        """
+        from daedalus.view.actions.warnings import findings_for
+
+        w = self._w
+        if w._project is None:
+            return 0
+        errors = Validator.validate_project(
+            w._project, known_hook_names=frozenset(w.resolved_hooks()),
+        )
+        found = findings_for(errors, component, w._project)
+        name = getattr(component, "name", "?")
+        w._validation_panel.set_errors(found)
+        self.show_validation_dock()
+        if found:
+            w._status_label.setText(f"'{name}' 관련 검증 결과 {len(found)}건")
+        else:
+            w._status_label.setText(f"'{name}'에 관한 검증 결과가 없습니다.")
+        return len(found)
+
     def show_validation_dock(self) -> None:
         """검증 dock을 표시하고 앞으로 올린다 (F7/컴파일 공용)."""
         validation_dock = self.find_validation_dock()
