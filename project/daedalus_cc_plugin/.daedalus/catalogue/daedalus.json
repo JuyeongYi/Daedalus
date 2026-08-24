@@ -1,0 +1,4 @@
+{
+  "description": "Daedalus MCP 서버 — 편집 세션 협업 도구",
+  "mcp": ["get_project", "get_selection", "get_component", "create_skill", "create_agent", "place_component", "set_component_body", "validate_project", "compile_preview", "save_project"]
+}
