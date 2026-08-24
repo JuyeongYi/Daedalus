@@ -92,10 +92,12 @@ def _load_entry_file(path: Path, source: Literal["global", "project"]) -> Catalo
 def expanded_mcp(entry: CatalogueEntry) -> list[str]:
     """entry.mcp의 각 도구 이름을 ``mcp__<entry.name>__<도구>``로 확장한다.
 
-    이미 ``mcp__``로 시작하는 항목은 그대로 둔다(사용자가 완전한 이름을 직접
-    적어둔 경우).
+    서버 전체 허용 패턴(``mcp__<entry.name>__*``)을 맨 앞에 추가한다 —
+    개별 도구보다 서버 전체를 여는 경우가 흔하고, 자동완성 첫 후보로 뜨는 게
+    자연스럽다. 이미 ``mcp__``로 시작하는 항목은 그대로 둔다(사용자가 완전한
+    이름을 직접 적어둔 경우).
     """
-    result: list[str] = []
+    result: list[str] = [f"mcp__{entry.name}__*"]
     for tool_name in entry.mcp:
         if tool_name.startswith("mcp__"):
             result.append(tool_name)

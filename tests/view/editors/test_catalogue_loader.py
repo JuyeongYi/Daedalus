@@ -126,10 +126,10 @@ def test_expanded_mcp_prefixes_with_entry_name():
         mcp=("browser_click", "browser_navigate"),
         source="project",
     )
-    assert expanded_mcp(entry) == [
-        "mcp__playwright__browser_click",
-        "mcp__playwright__browser_navigate",
-    ]
+    result = expanded_mcp(entry)
+    assert result[0] == "mcp__playwright__*"  # 서버 전체 허용 와일드카드가 맨 앞
+    assert "mcp__playwright__browser_click" in result
+    assert "mcp__playwright__browser_navigate" in result
 
 
 def test_expanded_mcp_leaves_already_prefixed_names_alone():
@@ -140,7 +140,9 @@ def test_expanded_mcp_leaves_already_prefixed_names_alone():
         mcp=("mcp__other-server__browser_click",),
         source="project",
     )
-    assert expanded_mcp(entry) == ["mcp__other-server__browser_click"]
+    result = expanded_mcp(entry)
+    assert result[0] == "mcp__playwright__*"  # 와일드카드는 entry.name 기준
+    assert "mcp__other-server__browser_click" in result  # 이미 접두된 항목은 그대로
 
 
 def test_candidate_strings_includes_builtins():
