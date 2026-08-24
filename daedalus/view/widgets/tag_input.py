@@ -72,7 +72,13 @@ class TagInput(QWidget):
         completer = QCompleter(self._candidates, self)
         completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
         completer.setFilterMode(Qt.MatchFlag.MatchContains)
-        completer.setCompletionMode(QCompleter.CompletionMode.PopupCompletion)
+        # UnfilteredPopupCompletion — 빈 입력에서도 전체 목록이 뜬다
+        # (사용자 요청: "아무것도 안 입력하면 아무것도 안 뜬다").
+        # 타이핑하면 MatchContains로 좁혀진다.
+        completer.setCompletionMode(
+            QCompleter.CompletionMode.UnfilteredPopupCompletion
+        )
+        completer.setMaxVisibleItems(15)
         self._input.setCompleter(completer)
         self._completer = completer
 
