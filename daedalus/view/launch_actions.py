@@ -72,19 +72,40 @@ class LaunchActions:
             return
 
         port = service.port
-        # Show Details를 누르게 하지 않는다 — 정보 전부를 본문에 바로 보여준다
-        # (사용자 요청). 스니펫은 복사해 쓰는 텍스트라 고정폭이 읽기 좋다.
-        box = QMessageBox(w)
-        box.setWindowTitle("MCP 서버")
-        box.setTextFormat(Qt.TextFormat.RichText)
-        box.setText(
+        # 정보 전부를 본문에 바로 보여주되, JSON 스니펫은 선택·복사가 가능한
+        # 읽기 전용 TextEdit에 넣는다(사용자 요청 — QLabel/RichText <pre>는
+        # 드래그 선택이 안 된다).
+        from PySide6.QtWidgets import QDialog, QDialogButtonBox, QTextEdit, QVBoxLayout
+
+        dlg = QDialog(w)
+        dlg.setWindowTitle("MCP 서버")
+        dlg.setMinimumWidth(520)
+        lay = QVBoxLayout(dlg)
+
+        from PySide6.QtWidgets import QLabel as _Lbl
+
+        lay.addWidget(_Lbl(
             "<b>Claude Code와 협업할 준비가 되었습니다.</b><br><br>"
             f"접속 주소: <code>{service.url}</code><br><br>"
-            "Claude Code에서 쓰려면 프로젝트의 <code>.mcp.json</code>에 아래를 넣으세요:"
-            f"<pre>{endpoint.mcp_json_snippet(port)}</pre>"
-            f"접속 정보 파일: <code>{endpoint.ENDPOINT_PATH}</code>"
+            "프로젝트의 <code>.mcp.json</code>에 아래를 넣으세요:"
+        ))
+
+        snippet = QTextEdit()
+        snippet.setReadOnly(True)
+        snippet.setPlainText(endpoint.mcp_json_snippet(port))
+        snippet.setStyleSheet(
+            "QTextEdit { font-family: Consolas, monospace; font-size: 12px; "
+            "background: #1e1e2e; color: #cdd6f4; border: 1px solid #45475a; }"
         )
-        box.exec()
+        snippet.setFixedHeight(120)
+        lay.addWidget(snippet)
+
+        lay.addWidget(_Lbl(f"접속 정보 파일: <code>{endpoint.ENDPOINT_PATH}</code>"))
+
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok)
+        buttons.accepted.connect(dlg.accept)
+        lay.addWidget(buttons)
+        dlg.exec()
 
     # --- Claude Code 실행 ---
 
