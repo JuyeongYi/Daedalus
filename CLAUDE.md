@@ -1015,6 +1015,26 @@ CC의 구조는 **3단**이다: 이벤트 → 그룹(matcher + 핸들러 목록)
 - **컴파일러**: 참조된 훅을 모아 `<out>/hooks/hooks.json` 생성(이벤트 키=HookEvent 선언 순서, 같은 이벤트 복수 훅=라이브러리 순서, 핸들러 0개인 훅은 배출 안 함). 스킬 프론트매터에는 `hooks: [이름, …]` 목록만. 프로젝트 설치 빌드의 에이전트는 프론트매터에 훅 본체가 나간다(WP-LA, 컴파일 정책 16번).
 - **직렬화**: 핸들러는 `kind` 태그로 다형성 왕복. v1 파일(`handlers` 키 없이 `command`/`timeout`)은 `_migrate_v1`이 `CommandHook` 하나로 감싼다(경고 없음). 미지 `kind`는 건너뛴다 — 미래 버전 파일을 열어도 죽지 않는다.
 - **검증**: `empty_hook_command`는 핸들러 0개 또는 핸들러의 필수 값이 빈 경우다. 무엇이 필수인지는 타입마다 다르므로 `handler.summary()`가 `"("`로 시작하는지로 판정한다 — 타입이 늘어도 규칙이 따라간다. `hook_matcher_without_tool_event`는 이름만 예전 그대로이고 판정은 `MATCHER_EVENTS` 기준이다.
+- **라이프사이클 피커 (A10)**: 이벤트 콤보 옆 "라이프사이클에서 선택…" 버튼이
+  `widgets/lifecycle_picker.HookLifecycleDialog`를 연다 — CC 훅 라이프사이클
+  다이어그램을 **QGraphicsScene으로 재구현**한 것이다(SVG를 렌더하지 않는다:
+  박스마다 hover·클릭·툴팁·현재 선택 강조를 붙여야 하고, 원본
+  `hooks-lifecycle-dark.svg`의 좌표·색은 `_LAYOUT`/팔레트 상수로 옮겼다).
+  - **`_LAYOUT` 키는 `HookEvent` 멤버**(값 문자열이 아니다 — 개명이 조용히
+    빠져나간다)이고, 키 집합이 `set(HookEvent)`와 **정확히 일치**해야 한다.
+    `tests/view/widgets/test_lifecycle_picker.py`가 그것을 고정하므로 이벤트가
+    늘거나 줄면 테스트가 깨져 다이어그램 갱신을 강제한다(드리프트 방지의 핵심).
+    박스 겹침·캔버스 이탈·라벨=이벤트 값도 함께 고정한다.
+  - 원본에서 **한 박스에 묶여 있던 이벤트들**(`PostToolUse / PostToolUseFailure`,
+    `SubagentStart / SubagentStop`, `Stop / StopFailure`, 환경 반응 3종)은
+    이벤트별로 쪼갰다 — footprint와 색은 그대로 두되 클릭 대상이 하나로 정해져야
+    한다. `[tool executes]`와 그룹 라벨(EACH TURN / AGENTIC LOOP)은 **비선택 장식**이다.
+  - 툴팁에 **matcher 지원 여부**(`NO_MATCHER_EVENTS` 8종은 "matcher 없음")와
+    미문서화 여부(`UNDOCUMENTED_EVENTS` 2종)를 병기한다 — 받지 않는 이벤트에
+    matcher를 넣으면 설정한 사람은 걸린 줄 알지만 CC는 무시한다.
+  - 다이얼로그는 **재사용 위젯**이다: 훅 패널 버튼은 열고 결과를 콤보에 반영하는
+    호출부일 뿐이고(모델 쓰기는 기존 `currentIndexChanged` → `_save_head` 경로),
+    이벤트를 고르는 다른 표면이 생기면 같은 것을 쓴다.
 - **UI**: `editors/hook_panel.HookLibraryPanel` — **상주 탭(인덱스 2)**. 모달 다이얼로그(`hook_editor.HookLibraryDialog`)는 3단 구조를 담을 수 없어 제거됐다(도구 메뉴 항목도 함께 — 탭이 늘 보이므로 지름길이 중복이다). 좌: 훅 목록(핸들러 없으면 ⚠). 우: 이벤트 콤보(matcher 미지원/미문서화를 문구에 표시) + matcher(받지 않는 이벤트면 잠금 + 이유 표시) + 핸들러 목록·폼(`_HandlerForm` — 타입이 바뀌면 통째로 다시 만든다). **"서브에이전트 프론트매터로 복사" / "hooks.json으로 복사"** 버튼이 이 프로젝트 밖의 파일에 붙여넣을 텍스트를 클립보드에 넣는다. `widgets/preset_picker`의 `set_hook_name_provider`로 HookPresetPicker가 훅 이름을 동적 표시한다(A1 이후 **전역 훅 이름도 포함** — `app.set_project`가 `self.resolved_hooks()`를 등록). 전역 훅 표시는 아래 "전역 훅 2단 스코프 (A1)" 참조.
 - **MCP**: `create_hook`/`update_hook`은 `handlers=[{...}]`로 CC 스키마 그대로 받는다(`command=` 인자는 커맨드 훅 하나를 만드는 지름길). 그 타입에 없는 속성은 **거부**한다 — 조용히 무시되면 왜 안 먹는지 알 수 없다. `list_hook_events`가 이벤트 31종과 matcher 지원 여부를, `hook_frontmatter_preview`가 서브에이전트 프론트매터 YAML을 돌려준다.
 

@@ -17,6 +17,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QCheckBox,
+    QDialog,
     QComboBox,
     QFormLayout,
     QGroupBox,
@@ -373,7 +374,19 @@ class HookLibraryPanel(QWidget):
         for event in HookEvent:
             self._event.addItem(event_label(event), event)
         self._event.currentIndexChanged.connect(self._save_head)
-        form.addRow("event *", self._event)
+        # 이벤트가 31종이라 콤보만으로는 "이게 언제 도는 건데?"를 알 수 없다 —
+        # 라이프사이클 다이어그램에서 고를 수 있게 한다 (A10).
+        event_row = QHBoxLayout()
+        event_row.addWidget(self._event, 1)
+        self._lifecycle_btn = QPushButton("라이프사이클에서 선택…")
+        self._lifecycle_btn.setToolTip(
+            "CC 훅 라이프사이클 다이어그램에서 이벤트를 고른다"
+        )
+        self._lifecycle_btn.clicked.connect(self._pick_event_from_lifecycle)
+        event_row.addWidget(self._lifecycle_btn)
+        event_widget = QWidget()
+        event_widget.setLayout(event_row)
+        form.addRow("event *", event_widget)
 
         self._matcher = QLineEdit()
         self._matcher.setPlaceholderText(
@@ -656,6 +669,26 @@ class HookLibraryPanel(QWidget):
         library.pop(row)
         self._reload_list(select=min(row, len(self._library()) - 1))
         self._notify()
+
+    def _pick_event_from_lifecycle(self) -> None:
+        """라이프사이클 다이얼로그를 열고 결과를 콤보에 반영한다 (A10).
+
+        여기는 **호출부일 뿐**이다 — 다이얼로그는 재사용 위젯이고, 이벤트를
+        고르는 다른 표면이 생기면 같은 것을 쓴다. 콤보에 반영하면 기존
+        `currentIndexChanged` → `_save_head` 경로가 그대로 돌아, 이 버튼만
+        모델 쓰기를 따로 하지 않는다.
+        """
+        from daedalus.view.widgets.lifecycle_picker import HookLifecycleDialog
+
+        hook = self._current_hook()
+        if hook is None or self._current_is_global():
+            return
+        dialog = HookLifecycleDialog(hook.event, parent=self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        chosen = dialog.selected
+        if chosen is not None:
+            self._event.setCurrentIndex(list(HookEvent).index(chosen))
 
     def _copy_global_to_project(self) -> None:
         """선택한 전역 훅을 이 프로젝트 라이브러리로 복사한다 (A1).
