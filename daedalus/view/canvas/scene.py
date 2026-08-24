@@ -483,9 +483,13 @@ class FsmScene(QGraphicsScene):
         elif isinstance(item, WaypointHandleItem):
             self._handle_waypoint_handle_menu(menu, item, event.screenPos())
         else:
+            dispatch = context_menus.add_canvas_creation_menu(self, menu, pos)
             add_act = menu.addAction("빈 상태 추가")
-            if menu.exec(event.screenPos()) == add_act:
-                self._create_state(pos)
+            dispatch[add_act] = lambda p=pos: self._create_state(p)
+            chosen = menu.exec(event.screenPos())
+            handler = dispatch.get(chosen) if chosen is not None else None
+            if handler is not None:
+                handler()
 
 
     # --- 컨텍스트 메뉴 위임 (실체는 canvas/context_menus.py) ---

@@ -199,6 +199,9 @@ daedalus/
     │   │                   #     파일은 쓰지 않는다. 산출은 **원문 그대로** 보인다(렌더하면 프론트매터가 사라진다).
     │   ├── model_effort.py #   모델/effort 지정(A9-2) — MODEL_CHOICES/EFFORT_CHOICES(표시 순서 단일 진실) + set_model/set_effort.
     │   │                   #     새로 만드는 것은 UI가 아니라 **쓰기 경로의 단일 진실**이다(에디터 콤보와 같은 SetAttrCmd 경로).
+    │   ├── creation.py     #   캔버스에서 생성+배치(A9-9) — CREATABLE_KINDS/NO_PLACE_KINDS(레지스트리 no_place와 같은 규칙)/
+    │   │                   #     make_component(창의 _make_fsm 재사용 — 레지스트리와 같은 물건이어야 한다)/create_and_place.
+    │   │                   #     생성(CreateComponentCmd)+배치(CreateStateCmd 또는 CreateRefCmd)를 MacroCommand로 묶어 1 undo 단위.
     │   ├── transitions.py  #   전이 트리거 지정(A9-8) — trigger_choices(출발 노드의 transfer_on + call_agents)/current_trigger/
     │   │                   #     set_trigger. **CompletionEvent를 새로 만들어** 넣는다(제자리 수정이면 SetAttrCmd의 old/new가 같은
     │   │                   #     객체가 되어 undo가 죽는다). 지금까지 트리거 변경 GUI가 없어 전이를 지우고 다시 긋는 수밖에 없었다.

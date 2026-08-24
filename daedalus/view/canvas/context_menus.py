@@ -64,6 +64,43 @@ def apply_entry_preset_to_node(scene, state_vm: StateViewModel, preset) -> None:
 
 # --- 컴포넌트 공통 액션 (A9-1/2/3) — 실체는 view/actions/ ---
 
+def add_canvas_creation_menu(scene, menu: QMenu, pos) -> dict:
+    """빈 캔버스 우클릭 — "여기에 만들기" 서브메뉴 (A9-9).
+
+    레지스트리에서 만들고 → 목록에서 찾아 → 캔버스로 드래그하는 세 걸음을,
+    놓고 싶은 자리에서 바로 만드는 한 걸음으로 줄인다. 프로젝트가 없으면
+    항목을 만들지 않는다(만들 곳이 없다).
+    """
+    from daedalus.view.actions.creation import CREATABLE_KINDS
+
+    if getattr(scene, "_project", None) is None:
+        return {}
+    submenu = menu.addMenu("여기에 만들기")
+    if submenu is None:
+        return {}
+    dispatch: dict = {}
+    for kind, label in CREATABLE_KINDS:
+        act = submenu.addAction(f"{label}…")
+        if act is None:
+            continue
+        dispatch[act] = lambda k=kind, p=pos: create_component_at(scene, k, p)
+    menu.addSeparator()
+    return dispatch
+
+
+def create_component_at(scene, kind: str, pos) -> object | None:
+    """이름을 묻고 **공유 함수**에 넘긴다 — 생성·배치 로직은 여기 없다."""
+    from daedalus.view.actions.creation import create_and_place
+
+    window = main_window(scene)
+    if window is None or not hasattr(window, "_ask_unique_name"):
+        return None
+    name = window._ask_unique_name(f"새 {kind}")
+    if name is None:
+        return None
+    return create_and_place(scene, window, kind, name, pos.x(), pos.y())
+
+
 def add_trigger_menu(menu: QMenu, transition_vm) -> dict:
     """"트리거 지정" 서브메뉴 — {QAction: 트리거 이름} (A9-8).
 
