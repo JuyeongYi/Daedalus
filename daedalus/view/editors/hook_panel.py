@@ -637,7 +637,10 @@ class HookLibraryPanel(QWidget):
 
     def _show_handler(self, handler: Any) -> None:
         if self._handler_form is not None:
-            self._handler_form.setParent(None)
+            # setParent(None)하면 한 프레임 동안 최상위 윈도우가 돼서 빈 "python"
+            # 창이 깜빡인다(사용자 보고) — hide()로 즉시 숨긴 뒤 deleteLater로
+            # 이벤트 루프 복귀 후 삭제한다. 레이아웃에서 빼는 것은 hide가 처리.
+            self._handler_form.hide()
             self._handler_form.deleteLater()
             self._handler_form = None
         if handler is None:
