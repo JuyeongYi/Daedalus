@@ -913,6 +913,12 @@ class _ProjectRules:
         - EntryPoint에서 오는 전이는 incoming으로 세지 않는다 — 그것이 곧
           "여기서 시작한다"는 뜻이다(WP-EP로 캔버스에 그리지 않을 뿐, 구버전
           파일의 시작 전이는 모델에 남아 있다).
+
+        **tri-state(A8) 판정은 실효값 기준이다.** `None`(미지정)은 프론트매터
+        키가 생략되어 CC 기본값 **true**로 동작하므로 경고 대상이다 — 설계에서
+        선언하지 않았다는 이유로 넘어가면, 실제로는 `/스킬`로 시작할 수 있는
+        중간 노드가 조용히 남는다. 다만 메시지에 미지정임을 병기해 무엇을
+        고쳐야 하는지 알린다. **명시 `False`만 통과한다.**
         """
         from daedalus.model.fsm.state import SimpleState
         from daedalus.model.plugin.skill import ProceduralSkill
@@ -936,16 +942,22 @@ class _ProjectRules:
                 continue
             if not incoming.get(id(state)):
                 continue  # 진입점 후보
-            if not getattr(skill.config, "user_invocable", False):
-                continue
+            declared = getattr(skill.config, "user_invocable", None)
+            if declared is False:
+                continue  # 명시적으로 끔 — 유일한 통과 조건
+            note = (
+                "user-invocable입니다"
+                if declared
+                else "user_invocable이 미지정(생략 시 CC 기본값 true)입니다"
+            )
             errors.append(ValidationError(
                 rule="mid_chain_user_invocable",
                 message=(
                     f"스킬 '{skill.name}'은 체인 중간(선행 전이 있음)에 배치돼 "
-                    f"있는데 user-invocable입니다 — 사용자가 앞 단계의 맥락 없이 "
+                    f"있는데 {note} — 사용자가 앞 단계의 맥락 없이 "
                     f"직접 시작할 수 있습니다. 진입점으로 쓸 것이 아니면 "
-                    f"user_invocable을 끄세요(모델 인보크는 그대로 되므로 체인은 "
-                    f"끊기지 않습니다)."
+                    f"user_invocable을 false로 지정하세요(모델 인보크는 그대로 "
+                    f"되므로 체인은 끊기지 않습니다)."
                 ),
                 source=skill.name,
                 subject=state,

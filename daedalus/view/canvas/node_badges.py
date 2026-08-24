@@ -99,17 +99,27 @@ def badges_for(component: object) -> list[tuple[str, str]]:
 
     result: list[tuple[str, str]] = []
 
-    # user_invocable — 기본값 대비 변화만 뱃지
-    diff, val = _differs(config, "user_invocable")
-    if diff:
-        if val:
-            result.append(("↪", "유저 직접 호출 가능"))
+    # 진입 의미론 (A8) — user_invocable × disable_model_invocation을 **한 뱃지로**
+    # 합친다. 두 필드가 따로 뱃지를 달면 "유저 전용 진입점"에 뱃지가 둘 붙어
+    # 같은 사실을 두 번 말하게 된다. tri-state이므로 미지정(None)은 선언 기본값과
+    # 같아 _differs가 False — 노이즈 방지 원칙 그대로 뱃지가 없다.
+    entry_diff, entry_val = _differs(config, "user_invocable")
+    disable_val = getattr(config, "disable_model_invocation", None)
+    if entry_diff:
+        if entry_val:
+            tooltip = (
+                "진입점 — /스킬로만 시작 가능 (유저 전용, 모델 자동 호출 금지)"
+                if disable_val is True
+                else "진입점 — /스킬로 시작 가능"
+            )
+            result.append(("🚪", tooltip))
         else:
-            result.append(("⛔", "유저 호출 차단"))
+            result.append(("⛔", "유저 호출 차단 — 체인 중간 노드"))
 
-    # disable_model_invocation=True (기본 False)
+    # disable_model_invocation=True (기본값 대비 변화). 진입점 뱃지가 이미
+    # 그 사실을 말했으면 생략한다.
     diff, val = _differs(config, "disable_model_invocation")
-    if diff and val:
+    if diff and val and not (entry_diff and entry_val):
         result.append(("🚫", "모델 자동 호출 금지"))
 
     # context=FORK (기본 INLINE)

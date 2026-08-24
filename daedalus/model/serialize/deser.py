@@ -569,16 +569,18 @@ def _deser_config(d: dict) -> Any:
 
     if kind == "procedural":
         c = ProceduralSkillConfig(
-            disable_model_invocation=d.get("disable_model_invocation", False),
-            user_invocable=d.get("user_invocable", True),
+            # tri-state (A8) — 키 부재는 **미지정(None)**이다. 저장된 true/false는
+            # 그대로 왕복한다(스크럽 금지 — 사용자가 명시 지정한 값이다).
+            disable_model_invocation=d.get("disable_model_invocation"),
+            user_invocable=d.get("user_invocable"),
             context=_to_enum(SkillContext, d.get("context"), SkillContext.INLINE),
             agent=d.get("agent"),
             shell=_to_enum(SkillShell, d.get("shell"), SkillShell.BASH),
         )
     elif kind == "declarative":
         c = DeclarativeSkillConfig(
-            disable_model_invocation=d.get("disable_model_invocation", False),
-            user_invocable=d.get("user_invocable", True),
+            disable_model_invocation=d.get("disable_model_invocation"),  # tri-state (A8)
+            user_invocable=d.get("user_invocable"),
         )
     elif kind == "transfer":
         c = TransferSkillConfig(

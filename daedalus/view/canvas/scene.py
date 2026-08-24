@@ -445,9 +445,17 @@ class FsmScene(QGraphicsScene):
                     act.setEnabled(False)
                 menu.exec(event.screenPos())
                 return
+            # 진입점 프리셋 (A8) — 스킬 placement에만. 실체는
+            # view/actions/entrypoint.py이고 여기는 호출부일 뿐이다.
+            entry_actions = self._add_entry_preset_menu(menu, item.state_vm)  # noqa: E501
             delete_act = menu.addAction(f"'{item.state_vm.model.name}' 삭제")
-            if menu.exec(event.screenPos()) == delete_act:
+            chosen = menu.exec(event.screenPos())
+            if chosen is None:
+                return
+            if chosen == delete_act:
                 self._delete_state(item.state_vm)
+            elif chosen in entry_actions:
+                self._apply_entry_preset(item.state_vm, entry_actions[chosen])
         elif isinstance(item, ReferenceNodeItem):
             name = getattr(item.ref_vm.model, "name", "?")
             delete_act = menu.addAction(f"참조 '{name}' 삭제")
@@ -465,6 +473,49 @@ class FsmScene(QGraphicsScene):
             add_act = menu.addAction("빈 상태 추가")
             if menu.exec(event.screenPos()) == add_act:
                 self._create_state(pos)
+
+    # --- 진입점 프리셋 (A8) — 실체는 view/actions/entrypoint.py ---
+
+    def _add_entry_preset_menu(self, menu: QMenu, state_vm: StateViewModel) -> dict:
+        """"진입점 설정" 서브메뉴를 붙이고 {QAction: EntryPreset}을 돌려준다.
+
+        프리셋을 지원하지 않는 노드(에이전트·빈 상태·FIXED 종류 스킬)에는
+        **메뉴를 만들지 않는다** — 눌러도 아무 일도 일어나지 않는 항목은
+        없느니만 못하다.
+        """
+        from daedalus.view.actions.entrypoint import (
+            ENTRY_PRESETS,
+            current_entry_preset,
+            supports_entry_presets,
+        )
+
+        component = getattr(state_vm.model, "skill_ref", None)
+        if component is None or not supports_entry_presets(component):
+            return {}
+
+        submenu = menu.addMenu("진입점 설정")
+        if submenu is None:
+            return {}
+        submenu.setToolTipsVisible(True)
+        current = current_entry_preset(component)
+        mapping: dict = {}
+        for spec in ENTRY_PRESETS:
+            act = submenu.addAction(spec.label)
+            if act is None:
+                continue
+            act.setToolTip(spec.description)
+            act.setCheckable(True)
+            act.setChecked(spec.preset is current)
+            mapping[act] = spec.preset
+        menu.addSeparator()
+        return mapping
+
+    def _apply_entry_preset(self, state_vm: StateViewModel, preset) -> None:
+        from daedalus.view.actions.entrypoint import apply_entry_preset
+
+        component = getattr(state_vm.model, "skill_ref", None)
+        if component is not None:
+            apply_entry_preset(self._project_vm, component, preset)
 
     def _handle_transition_edge_menu(
         self, menu: QMenu, item: TransitionEdgeItem, scene_pos: QPointF, screen_pos

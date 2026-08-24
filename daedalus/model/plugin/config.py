@@ -43,8 +43,15 @@ class SkillConfig(ComponentConfig, ABC):
 
 @dataclass
 class ProceduralSkillConfig(SkillConfig):
-    disable_model_invocation: bool = False
-    user_invocable: bool = True
+# 진입 의미론 두 필드는 **tri-state**다 (A8): None = 미지정(프론트매터 키 생략 →
+# CC 기본값에 위임) / True·False = 명시 지정. 순수 bool이면 "기본값을 쓴다"와
+# "기본값과 같은 값을 못 박았다"가 구분되지 않아, 캔버스 프리셋의 "일반 상태로"
+# (두 필드 미지정)를 표현할 수 없다. 컴파일은 기존 규칙 그대로 동작한다 —
+# "OPTIONAL 값이 선언 기본값과 같으면 생략"에서 선언 기본값이 None이 되므로
+# None은 생략되고 명시 True/False는 발행된다(`user-invocable: true`가 나가는 것은
+# 사용자가 진입점으로 못 박았다는 뜻이라 정상이다).
+    disable_model_invocation: bool | None = None
+    user_invocable: bool | None = None
     context: SkillContext = SkillContext.INLINE
     agent: str | None = None
     shell: SkillShell = SkillShell.BASH
@@ -56,8 +63,9 @@ class ProceduralSkillConfig(SkillConfig):
 
 @dataclass
 class DeclarativeSkillConfig(SkillConfig):
-    disable_model_invocation: bool = False
-    user_invocable: bool = True
+    # tri-state — ProceduralSkillConfig의 같은 필드 주석 참조 (A8).
+    disable_model_invocation: bool | None = None
+    user_invocable: bool | None = None
 
     @property
     def kind(self) -> str:

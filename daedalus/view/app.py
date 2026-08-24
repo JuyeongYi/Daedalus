@@ -933,7 +933,10 @@ class MainWindow(QMainWindow):
 
         if isinstance(component, AgentDefinition):
             from daedalus.view.editors.agent_editor import AgentEditor
-            editor = AgentEditor(component, on_notify_fn=self._project_vm.notify, project=self._project)
+            editor = AgentEditor(
+                component, on_notify_fn=self._project_vm.notify, project=self._project,
+                project_vm=self._project_vm,
+            )
             # AgentEditor._component_editor._fm.renamed → 이름 변경 처리
             fm = getattr(getattr(editor, "_component_editor", None), "_fm", None)
             if fm is not None and hasattr(fm, "renamed"):
@@ -942,7 +945,10 @@ class MainWindow(QMainWindow):
             self._open_tabs[comp_id] = idx
             self._tabs.setCurrentIndex(idx)
         elif isinstance(component, (ProceduralSkill, DeclarativeSkill, TransferSkill, ReferenceSkill)):
-            editor = SkillEditor(component, on_notify_fn=self._project_vm.notify)
+            editor = SkillEditor(
+                component, on_notify_fn=self._project_vm.notify,
+                project_vm=self._project_vm,
+            )
             # SkillEditor._editor._fm.renamed → 이름 변경 처리
             fm = getattr(getattr(editor, "_editor", None), "_fm", None)
             if fm is not None and hasattr(fm, "renamed"):

@@ -336,22 +336,28 @@ def test_optional_row_uncheck_clears_value(qapp):
 
 
 def test_user_invocable_uncheck_restores_declared_default(qapp):
-    """non-Optional 필드(user_invocable: bool = True)는 행 해제 시 None이 아닌
-    dataclass 선언 기본값으로 리셋된다 (Issue 1)."""
+    """행 해제는 dataclass 선언 기본값으로 리셋한다 (Issue 1).
+
+    A8의 tri-state 전환 이후 그 선언 기본값이 **None(미지정)**이다 — 체크 해제가
+    곧 "프론트매터 키를 내보내지 않는다"는 뜻이 되어 프리셋 "일반 상태로"와
+    같은 상태가 된다.
+    """
     from daedalus.view.editors.skill_editor import _FrontmatterPanel, _OptionalRow
     from daedalus.model.plugin.enums import SkillField
     comp = _make_procedural()
-    assert comp.config.user_invocable is True  # 선언 기본값
+    assert comp.config.user_invocable is None  # 선언 기본값 = 미지정
+    comp.config.user_invocable = True          # 명시 지정 상태에서 시작
     panel = _FrontmatterPanel(comp)
 
     widget = panel._field_widgets.get(SkillField.USER_INVOCABLE)
     assert widget is not None, "user_invocable 위젯 없음"
     parent = widget.parent()
     assert isinstance(parent, _OptionalRow), "user_invocable이 _OptionalRow 안에 없음"
+    assert parent.is_checked() is True, "명시 지정 값은 체크된 상태로 로드돼야 한다"
 
     parent.set_checked(False)
-    assert comp.config.user_invocable is True, (
-        f"user_invocable이 선언 기본값(True)으로 리셋되지 않음: "
+    assert comp.config.user_invocable is None, (
+        f"user_invocable이 선언 기본값(None=미지정)으로 리셋되지 않음: "
         f"{comp.config.user_invocable!r}"
     )
 

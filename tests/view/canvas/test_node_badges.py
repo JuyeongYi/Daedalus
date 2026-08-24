@@ -90,11 +90,16 @@ def test_user_invocable_off_badge():
 
 
 def test_user_invocable_on_badge_when_default_false():
-    """ReferenceSkillConfig user_invocable=True(기본 False와 다름) → ↪ 뱃지."""
+    """ReferenceSkillConfig user_invocable=True(기본 False와 다름) → 🚪 진입점 뱃지.
+
+    A8에서 ↪/⛔ 두 뱃지를 진입 의미론 하나로 합쳤다 — user_invocable과
+    disable_model_invocation이 따로 뱃지를 달면 "유저 전용 진입점"에 뱃지가 둘
+    붙어 같은 사실을 두 번 말한다.
+    """
     cfg = ReferenceSkillConfig(user_invocable=True)
     skill = _FakeSkill(cfg)
     emojis = _emojis(skill)
-    assert "↪" in emojis
+    assert "🚪" in emojis
 
 
 # ---------------------------------------------------------------------------

@@ -42,6 +42,7 @@ class ComponentEditor(QWidget):
         skill_kind: str | None = None,
         parent: QWidget | None = None,
         build_target=None,
+        project_vm=None,
     ) -> None:
         super().__init__(parent)
         self._component = component
@@ -58,6 +59,7 @@ class ComponentEditor(QWidget):
         # --- 좌측: FrontmatterPanel ---
         self._fm = _FrontmatterPanel(
             component, skill_kind=skill_kind, build_target=build_target,
+            project_vm=project_vm,
         )
         self._fm.setMinimumWidth(_LEFT_MIN_W)
         self._fm.changed.connect(self._on_model_changed)

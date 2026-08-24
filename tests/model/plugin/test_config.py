@@ -39,8 +39,9 @@ def test_procedural_skill_config_defaults():
     assert c.argument_hint is None
     assert c.allowed_tools == []
     assert c.paths is None
-    assert c.disable_model_invocation is False
-    assert c.user_invocable is True
+    # tri-state (A8) — 선언 기본값은 **미지정**이다(프론트매터 키 생략).
+    assert c.disable_model_invocation is None
+    assert c.user_invocable is None
     assert c.context == SkillContext.INLINE
     assert c.agent is None
     assert c.shell == SkillShell.BASH
@@ -64,7 +65,8 @@ def test_procedural_skill_config_custom():
 def test_declarative_skill_config():
     c = DeclarativeSkillConfig(user_invocable=False)
     assert c.user_invocable is False
-    assert c.disable_model_invocation is False
+    # tri-state (A8) — 지정하지 않은 쪽은 None(미지정)이다.
+    assert c.disable_model_invocation is None
 
 
 def test_agent_config_defaults():

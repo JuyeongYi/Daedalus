@@ -7,6 +7,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QCheckBox,
+    QComboBox,
     QFrame,
     QGraphicsOpacityEffect,
     QHBoxLayout,
@@ -172,9 +173,13 @@ class _FrontmatterPanel(QScrollArea):
         skill_kind: str | None = None,
         parent: QWidget | None = None,
         build_target=None,
+        project_vm=None,
     ) -> None:
         super().__init__(parent)
         self._component = component
+        # 커맨드 스택 — 진입점 프리셋(A8)처럼 undo 가능해야 하는 편집에 쓴다.
+        # None이면 그 UI를 만들지 않는다(에디터 단독 생성 경로 호환).
+        self._project_vm = project_vm
         # 빌드 타깃에 따라 CC가 무시하는 필드를 잠근다 (WP-EL). None이면
         # 마켓플레이스로 취급 — 기존 호출부·테스트 호환.
         from daedalus.model.plugin.enums import BuildTarget
@@ -206,6 +211,10 @@ class _FrontmatterPanel(QScrollArea):
         self._w_desc.setFixedHeight(44)
         self._w_desc.textChanged.connect(self._save_desc)
         lay.addWidget(self._w_desc)
+
+        # 진입점 프리셋 (A8) — 캔버스 노드 우클릭과 **같은 함수**를 부른다.
+        self._entry_preset_combo: QComboBox | None = None
+        self._build_entry_preset_row(lay, component)
 
         # SKILL_FIELD_MATRIX / AGENT_FIELD_MATRIX 기반 필드 생성
         # 위젯 클래스는 view 측 FIELD_WIDGETS / AGENT_FIELD_WIDGETS에서 조회한다(model→view 의존 역전).
@@ -281,7 +290,7 @@ class _FrontmatterPanel(QScrollArea):
                         lay.addWidget(widget)
                 elif rule.visibility == FieldVisibility.OPTIONAL:
                     current = self._get_current(config, component, fld)
-                    enabled = current is not None and current != "" and current != [] and current is not False
+                    enabled = self._is_field_set(config, component, fld, current)
                     opt_row = _OptionalRow(fld.value, widget, initially_enabled=enabled)
                     # _OptionalRow 해제 시 config/component 값 클리어
                     opt_row.toggled.connect(
@@ -477,6 +486,112 @@ class _FrontmatterPanel(QScrollArea):
 
         setattr(config, attr, value)
         self.changed.emit()
+
+    def _build_entry_preset_row(self, lay, component) -> None:
+        """진입 의미론 프리셋 콤보 (A8).
+
+        `user_invocable`/`disable_model_invocation` 개별 체크 행은 그대로 남는다 —
+        이 콤보는 그 둘을 **뜻으로 고르는 지름길**이고, 캔버스 노드 우클릭 메뉴와
+        `view/actions/entrypoint.apply_entry_preset` 하나를 공유한다.
+
+        `project_vm`이 없으면(에디터를 단독으로 띄우는 테스트 등) 콤보를 만들지
+        않는다 — 적용이 커맨드 스택을 거쳐야 하는데 스택이 없기 때문이다.
+        """
+        from daedalus.view.actions.entrypoint import (
+            ENTRY_PRESETS,
+            current_entry_preset,
+            supports_entry_presets,
+        )
+
+        if self._project_vm is None or not supports_entry_presets(component):
+            return
+
+        row = QHBoxLayout()
+        row.addWidget(QLabel("진입 설정"))
+        combo = QComboBox()
+        combo.addItem("(직접 지정)", None)
+        for spec in ENTRY_PRESETS:
+            combo.addItem(spec.label, spec.preset)
+            combo.setItemData(
+                combo.count() - 1, spec.description, Qt.ItemDataRole.ToolTipRole
+            )
+        combo.setCurrentIndex(self._entry_preset_index(component))
+        combo.currentIndexChanged.connect(self._on_entry_preset_chosen)
+        row.addWidget(combo, 1)
+        lay.addLayout(row)
+        self._entry_preset_combo = combo
+
+    def _entry_preset_index(self, component) -> int:
+        """현재 값에 맞는 콤보 인덱스. 어느 프리셋도 아니면 0("(직접 지정)")."""
+        from daedalus.view.actions.entrypoint import ENTRY_PRESETS, current_entry_preset
+
+        current = current_entry_preset(component)
+        for i, spec in enumerate(ENTRY_PRESETS, start=1):
+            if spec.preset is current:
+                return i
+        return 0
+
+    def _on_entry_preset_chosen(self, _index: int) -> None:
+        from daedalus.view.actions.entrypoint import apply_entry_preset
+
+        combo = self._entry_preset_combo
+        if self._loading or combo is None or self._project_vm is None:
+            return
+        preset = combo.currentData()
+        if preset is None:
+            return
+        if apply_entry_preset(self._project_vm, self._component, preset):
+            # 개별 체크 행이 새 값을 보이도록 패널을 다시 그린다 — 프리셋과
+            # 개별 행이 다른 값을 말하면 어느 쪽이 진실인지 알 수 없다.
+            self.changed.emit()
+            self._reload_entry_fields()
+
+    def _reload_entry_fields(self) -> None:
+        """프리셋 적용 후 두 필드의 위젯/체크 상태를 모델과 다시 맞춘다."""
+        config = getattr(self._component, "config", None)
+        if config is None:
+            return
+        self._loading = True
+        try:
+            for fld, attr in (
+                (SkillField.USER_INVOCABLE, "user_invocable"),
+                (SkillField.DISABLE_MODEL, "disable_model_invocation"),
+            ):
+                widget = self._field_widgets.get(fld)
+                if widget is None:
+                    continue
+                value = getattr(config, attr, None)
+                if isinstance(widget, QCheckBox):
+                    widget.setChecked(bool(value))
+                row = widget.parent()
+                if isinstance(row, _OptionalRow):
+                    row.set_checked(value is not None)
+        finally:
+            self._loading = False
+
+    @classmethod
+    def _is_field_set(
+        cls, config: object, component: object, fld: SkillField | AgentField, current: object
+    ) -> bool:
+        """OPTIONAL 행의 체크 상태 — 이 값이 "지정된" 것인가.
+
+        기본 판정은 "빈 값이 아님"이다. **tri-state 필드(A8 — 선언 기본값이 None인
+        bool)에서는 명시 `False`도 지정**이므로 예외로 살린다 — 그렇지 않으면
+        `user_invocable=False`(순수 상태로)를 지정한 스킬이 미지정처럼 보이고,
+        패널을 다시 그리는 것만으로 체크가 풀린 것처럼 읽힌다.
+
+        `background: bool = False`처럼 선언 기본값이 `False`인 필드는 종전대로
+        미지정 취급이다(선언 기본값과 같은 값은 지정이 아니다).
+        """
+        if current is None or current == "" or current == []:
+            return False
+        if current is False:
+            attr = _FIELD_ATTR_MAP.get(fld)
+            owner = config if config is not None else component
+            if attr is None or owner is None:
+                return False
+            return cls._declared_default(owner, attr, fld) is None
+        return True
 
     @staticmethod
     def _declared_default(obj: object, attr: str, fld: SkillField | AgentField) -> object:
@@ -787,6 +902,7 @@ class SkillEditor(QWidget):
         component: ProceduralSkill | DeclarativeSkill | TransferSkill | ReferenceSkill | AgentDefinition,
         on_notify_fn: Callable[[], None] | None = None,
         parent: QWidget | None = None,
+        project_vm=None,
     ) -> None:
         super().__init__(parent)
         from daedalus.view.editors.component_editor import ComponentEditor
@@ -821,6 +937,7 @@ class SkillEditor(QWidget):
             right_widgets=right_widgets,
             on_notify_fn=self._on_notify,
             skill_kind=kind,
+            project_vm=project_vm,
         )
 
         self._on_notify_fn = on_notify_fn

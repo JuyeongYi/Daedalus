@@ -310,10 +310,22 @@ class PropsTools(_BaseTools):
         import enum
         from typing import get_args, get_origin
 
-        args = [a for a in get_args(target) if a is not type(None)]
+        raw_args = get_args(target)
+        optional = type(None) in raw_args
+        args = [a for a in raw_args if a is not type(None)]
         if args:
             target = args[0]
         origin = get_origin(target)
+
+        # None = 미지정으로 되돌리기 (A8 tri-state). Optional 선언(`bool | None`
+        # 등)일 때만 받는다 — 아무 필드에나 null을 허용하면 non-Optional 필드에
+        # None이 들어가 타입 계약이 깨진다.
+        if value is None:
+            if optional:
+                return None
+            raise ValueError(
+                f"'{field}'는 미지정(null)을 받지 않습니다 — 값을 주세요."
+            )
 
         if origin in (list, set):
             if not isinstance(value, (list, tuple)):
@@ -410,6 +422,11 @@ class PropsTools(_BaseTools):
         permission_mode / allowed_tools / …). value는 JSON 값이며 enum 필드는 값
         문자열로 준다(예: model="sonnet", permission_mode="acceptEdits").
         목록 필드는 배열로 준다.
+
+        **null = 미지정**(A8). `user_invocable` / `disable_model_invocation`처럼
+        tri-state인 필드에 null을 주면 프론트매터 키 자체가 생략되어 CC 기본값에
+        위임된다 — "기본값과 같은 값을 못 박는 것"과 다르다. Optional로 선언되지
+        않은 필드에 null을 주면 거절한다.
 
         description / when_to_use / hooks는 전용 도구를 쓴다.
         """

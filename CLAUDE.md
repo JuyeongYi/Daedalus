@@ -189,10 +189,18 @@ daedalus/
     │                       #   run_validation(Validator.validate_project → ValidationPanel + dock 표시)/show_validation_dock(컴파일 경로와 공용)/
     │                       #   find_validation_dock/on_validation_item_activated → focus_in_project_canvas | focus_in_agent_tab.
     │                       #   탭 인덱스 상수(_FSM_TAB_INDEX)는 app.py 소유라 **메서드 안에서 지역 임포트**한다(최상단이면 순환 임포트).
+    ├── actions/            # **UI 무관 편집 액션** (A8/A9) — 기능의 실체. 캔버스 우클릭 메뉴와 에디터 위젯은 둘 다 여기를
+    │                       #   부르는 **호출부**일 뿐이다(한쪽에 로직을 넣고 다른 쪽이 흉내 내면 같은 조작의 결과가 표면마다 달라진다 —
+    │                       #   wire_workspace 공유와 같은 결). 입력은 모델/뷰모델, 편집은 CommandStack 경유. 테스트는 액션 함수 단위로 쓰고
+    │                       #   호출부는 "이 함수를 부르는가"만 확인한다.
+    │   └── entrypoint.py   #   진입점 프리셋 4종(A8) — EntryPreset/ENTRY_PRESETS/supports_entry_presets/current_entry_preset/
+    │                       #     apply_entry_preset. 상세는 "진입점 프리셋 (A8)" 개념 섹션 참조.
     ├── canvas/             # GraphicsView/Scene, NodeItem, EdgeItem, RefNodeItem, RefEdgeItem, sync(VM→모델 동기화 — Qt 무관)
     │                       # 엣지 리루트(WP-ER): TransitionEdgeItem.update_path가 TransitionViewModel.waypoints(경유점)를 경유하는
     │                       #   구간별 베지어 곡선을 그린다. 선택 시 자식 WaypointHandleItem(작은 원)을 표시 — 더블클릭/컨텍스트 메뉴로
     │                       #   추가(nearest_segment_index), 드래그 이동, 우클릭/Delete로 제거. FsmScene/AgentFsmScene 공용.
+    │                       # 노드 우클릭 메뉴(A8): '진입점 설정' 서브메뉴 — _add_entry_preset_menu/_apply_entry_preset가
+    │                       #   view/actions/entrypoint를 부르는 **호출부**다(로직 없음). 스킬 placement에만 붙는다.
     │                       # node_badges: badges_for(component)(뱃지 로직) + state_access_badges(state)(WP-BB — State.reads/writes → ✏쓰기/📖읽기
     │                       #   뱃지, 선언 있을 때만 렌더). NodeItem.paint가 badges_for(ref)+state_access_badges(model)를 합류해 렌더.
     │                       # 입력 포트(WP-IP/RF-1b): 노드당 1개 고정 — input_port_scene_pos()(인자 없음)가 그 한 점을 돌려주고
@@ -806,12 +814,67 @@ class FieldType(Enum):
 - **블랙보드 필드는 스칼라 4종만**(WP-BT, 사용자 확정): `BLACKBOARD_FIELD_TYPES = (STRING, INT, FLOAT, BOOL)` — 컨테이너 형상은 CollectionType(none/list/set)이 전담한다("문자열 목록" = STRING × LIST). 편집기 콤보는 이 4종만 노출(legacy 값은 "(legacy)" 표시 유지), `invalid_blackboard_field_type` 경고가 구버전 필드를 짚는다. Variable은 종전 그대로 전 멤버 사용 가능.
 - 구 `NUMBER` 멤버는 RF-1b에서 **삭제** — v1 파일의 `"number"`는 로드 시 `FLOAT`으로 마이그레이션된다(`_migrate_v1`). 매핑 정본은 `blackboard.py`의 `FIELD_TYPE_TO_JSON_SCHEMA`(INT→integer, FLOAT→number).
 
+### 진입 의미론 tri-state + 진입점 프리셋 (A8)
+
+**두 필드는 tri-state다:** `ProceduralSkillConfig`/`DeclarativeSkillConfig`의
+`user_invocable: bool | None = None`, `disable_model_invocation: bool | None = None`.
+`None` = **미지정**(프론트매터 키 생략 → CC 기본값 위임), `True`/`False` = 명시 지정.
+순수 bool이면 "기본값을 쓴다"와 "기본값과 같은 값을 못 박았다"가 구분되지 않아,
+프리셋 "일반 상태로"(두 필드 미지정)를 표현할 수 없었다.
+
+- **컴파일은 기존 규칙 그대로다** — "OPTIONAL 값이 선언 기본값과 같으면 생략"에서
+  선언 기본값이 None이 되므로 None은 생략되고 명시 True/False는 발행된다.
+  `user-invocable: true`가 나가는 것은 **정상**이다(사용자가 진입점으로 못 박은
+  선언). `_emit_skill_field`가 `value is None`을 이미 생략 처리하므로 emit 경로는
+  변경 없음. FIXED 종류(transfer/reference)는 config를 읽지 않아 무영향.
+- **직렬화:** 저장된 true/false는 **그대로 왕복**한다(스크럽 금지 — 사용자가 명시
+  지정한 값이다). 키 부재 → None. `_deser_config`가 `d.get(...)`의 기본값을 뺀 것이 전부.
+- **검증:** `mid_chain_user_invocable`(A3)의 판정은 **실효값 기준**이다 — `None`은
+  키가 생략되어 CC 기본 **true**로 동작하므로 경고 대상이고(메시지에 "미지정(생략 시
+  CC 기본값 true)" 병기), **명시 `False`만 통과**한다. 설계에서 선언하지 않았다는
+  이유로 넘어가면 실제로는 `/스킬`로 시작할 수 있는 중간 노드가 조용히 남는다.
+- **편집기:** `_OptionalRow` 체크 해제 = `_declared_default` → None(미지정)이라
+  자연 적합. 다만 **명시 `False`도 "지정"**이므로 `_is_field_set`이 그 경우를
+  살린다(선언 기본값이 None인 tri-state 필드에 한해 — `background: bool = False`
+  처럼 선언 기본값이 False인 필드는 종전대로 미지정 취급).
+- **MCP:** `set_component_field(..., value=None)` = 미지정으로 되돌리기.
+  `bool | None` 등 **Optional 선언인 필드에서만** 받는다(아무 필드에나 null을
+  허용하면 non-Optional 필드에 None이 들어가 타입 계약이 깨진다).
+
+**진입점 프리셋 4종** — `view/actions/entrypoint.py`가 실체이고 캔버스 노드 우클릭
+"진입점 설정" 서브메뉴와 스킬 에디터 프론트매터 "진입 설정" 콤보가 **같은 함수를
+공유**한다:
+
+| 프리셋 | user_invocable | disable_model_invocation | 뜻 |
+|---|---|---|---|
+| 진입점으로 | True | False | 유저도 모델도 시작 가능 |
+| 유저 전용 진입점으로 | True | True | 슬래시로만 시작 |
+| 순수 상태로 | False | False | 체인 중간 — 모델 인보크만 |
+| 일반 상태로 | None | None | 미지정 — CC 기본값 위임 |
+
+- 두 필드를 **따로 두지 않고 세트로 고르게 하는 이유**: 따로면 (False, True) 같은
+  "아무 데서도 부를 수 없는 죽은 노드"를 실수로 만들 수 있고, 프론트매터만 봐서는
+  무엇을 의도했는지 알기 어렵다.
+- **적용은 `SetAttrCmd` 2개를 `MacroCommand`로 묶은 1 undo 단위**다 — 한 필드씩
+  되돌아가면 중간에 그 의미 없는 조합을 거친다. 같은 프리셋을 다시 고르면
+  아무것도 하지 않는다(값이 같은데 커맨드를 쌓으면 Ctrl+Z가 빈 단계를 센다).
+- **노출은 매트릭스에서 두 필드가 OPTIONAL인 종류에만**(`supports_entry_presets`).
+  FIXED 종류(transfer/reference)에 걸면 컴파일이 `fixed_value`를 강제해 "설정했는데
+  아무 일도 일어나지 않는" 상태가 된다. 에이전트는 두 필드 자체가 없다.
+- 어느 프리셋에도 맞지 않는 조합(반쪽만 지정)은 체크가 하나도 없고 콤보는
+  "(직접 지정)"을 보인다 — 프리셋은 지름길이지 표현 가능한 상태의 전부가 아니다.
+- **캔버스 뱃지:** `node_badges.badges_for`가 진입 의미론을 **한 뱃지로** 합친다 —
+  명시 True면 🚪("진입점 — /스킬로 시작 가능", disable까지 True면 "유저 전용"
+  병기), 명시 False면 ⛔. 미지정은 선언 기본값과 같아 뱃지 없음(노이즈 방지 원칙).
+  🚫(모델 자동 호출 금지)는 🚪가 이미 그 사실을 말했으면 생략한다. A3 경고 규칙의
+  시각적 짝이다.
+
 ### ComponentConfig 계층
 
 ```
 ComponentConfig(ABC)          # model, effort, hooks 공통 필드
 ├── SkillConfig(ABC)          # argument_hint, allowed_tools, paths
-│   ├── ProceduralSkillConfig # disable_model_invocation, context, agent, shell 등
+│   ├── ProceduralSkillConfig # disable_model_invocation·user_invocable(**tri-state**, A8), context, agent, shell 등
 │   ├── DeclarativeSkillConfig
 │   ├── TransferSkillConfig
 │   └── ReferenceSkillConfig
@@ -902,7 +965,7 @@ ComponentConfig(ABC)          # model, effort, hooks 공통 필드
 | `unsupported_agent_field_in_marketplace_build` | MARKETPLACE 빌드인데 에이전트가 `hooks` 또는 기본값 아닌 `permissionMode`를 쓰면 경고 (CC가 보안상 무시 — MCP는 위 규칙이 전담, WP-LA) |
 | `plugin_root_in_local_build` | `project.build_target == LOCAL`인데 스킬/에이전트 본문에 files/ 참조 이외 용도의 `${CLAUDE_PLUGIN_ROOT}`가 남아 있으면 경고 (files/ 참조는 컴파일이 자동 치환하므로 제외, WP-TG) |
 | `skill_dir_token_in_agent` | 에이전트 본문에 `${CLAUDE_SKILL_DIR}`가 있으면 경고 — 이 변수는 스킬 전용이라 에이전트 .md에서 치환되지 않는다 (코드 표기 제외, 빌드 타깃 무관, WP-SF) |
-| `mid_chain_user_invocable` | 프로젝트 그래프에 배치된 ProceduralSkill 중 **incoming 전이가 1개 이상**인데 `config.user_invocable`이 True면 경고 (A3) — user-invocable은 진입점으로 기능할 노드만 true여야 한다(중간 노드로 사용자가 맥락 없이 진입하는 사고 방지. false여도 모델 인보크는 되므로 체인은 안 끊긴다). incoming 0개(진입점 후보)·미배치 스킬(독립 스킬)은 대상 아님. **EntryPoint 출발 전이는 incoming으로 세지 않는다** — 그것이 곧 "여기서 시작한다"는 선언이다(WP-EP로 캔버스에 그리지 않을 뿐 구버전 파일의 시작 전이는 모델에 남아 있다) |
+| `mid_chain_user_invocable` | 프로젝트 그래프에 배치된 ProceduralSkill 중 **incoming 전이가 1개 이상**인데 `config.user_invocable`의 **실효값**이 true면 경고 (A3 + A8 tri-state — `None`(미지정)은 CC 기본 true이므로 경고 대상이고 메시지에 병기, **명시 `False`만 통과**) — user-invocable은 진입점으로 기능할 노드만 true여야 한다(중간 노드로 사용자가 맥락 없이 진입하는 사고 방지. false여도 모델 인보크는 되므로 체인은 안 끊긴다). incoming 0개(진입점 후보)·미배치 스킬(독립 스킬)은 대상 아님. **EntryPoint 출발 전이는 incoming으로 세지 않는다** — 그것이 곧 "여기서 시작한다"는 선언이다(WP-EP로 캔버스에 그리지 않을 뿐 구버전 파일의 시작 전이는 모델에 남아 있다) |
 
 도구 모델(`tool.py`): `Tool(PluginComponent, ABC)` 단일 진실 + `BuiltinTool`/`MCPTool`/`UserDefinedTool`. shelf = 프로젝트(`PluginProject.tool_shelf`) 소유, FSM은 `Tool.name` 문자열로 참조(fsm/는 plugin 무관 — 객체 참조 금지, Validator가 실존 검증). `CC_BUILTIN_TOOLS`는 `validation/project_rules.py` 모듈 frozenset이다(파사드 재-export로 `daedalus.model.validation`에서도 임포트 가능 — Read/Write/Edit/Bash/Glob/Grep/WebFetch/WebSearch/Agent/Task/TodoWrite/NotebookEdit/SlashCommand/PowerShell).
 

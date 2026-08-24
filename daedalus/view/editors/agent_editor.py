@@ -35,6 +35,7 @@ class AgentEditor(QWidget):
         on_notify_fn: Callable[[], None] | None = None,
         project: PluginProject | None = None,
         parent: QWidget | None = None,
+        project_vm=None,
     ) -> None:
         super().__init__(parent)
         self._agent = agent
@@ -57,6 +58,7 @@ class AgentEditor(QWidget):
             on_notify_fn=self._on_model_changed,
             # 빌드 타깃이 지원하지 않는 필드를 잠그기 위해 전달 (WP-EL)
             build_target=getattr(self._project, "build_target", None),
+            project_vm=project_vm,
         )
 
         root_lay = QVBoxLayout(self)

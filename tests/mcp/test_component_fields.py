@@ -101,6 +101,28 @@ def test_set_bool_field(tools):
     assert _config(tools, "init").disable_model_invocation is True
 
 
+def test_set_null_clears_tristate_field(tools):
+    """null = 미지정 (A8) — 프론트매터 키 자체를 내보내지 않는 상태로 되돌린다."""
+    tools.set_component_field("init", "user_invocable", True)
+    assert _config(tools, "init").user_invocable is True
+
+    tools.set_component_field("init", "user_invocable", None)
+    assert _config(tools, "init").user_invocable is None
+
+
+def test_set_null_is_undoable(tools):
+    tools.set_component_field("init", "user_invocable", True)
+    tools.set_component_field("init", "user_invocable", None)
+    tools.undo()
+    assert _config(tools, "init").user_invocable is True
+
+
+def test_set_null_rejected_for_non_optional_field(tools):
+    """Optional로 선언되지 않은 필드에 null을 넣으면 타입 계약이 깨진다."""
+    with pytest.raises(ValueError, match="null"):
+        tools.set_component_field("init", "context", None)
+
+
 def test_set_int_field(tools):
     tools.set_component_field("worker", "max_turns", 12)
     assert _config(tools, "worker").max_turns == 12
