@@ -125,7 +125,10 @@ def test_transfer_skill_has_progress_note():
     text = compile_skill(edge, project=project)
     assert "## Progress Record" in text
     assert "state/__progress__.json" in text
-    assert "record the transition context" in text
+    # transfer는 전이 위의 중간 상태지 워크플로 위치가 아니다 — `current`를
+    # 건드리지 말라는 지시가 출발 스킬의 "current를 다음 대상으로"와 짝이다.
+    assert "leave `current`" in text
+    assert "not a position in the workflow" in text
 
 
 def test_transfer_skill_note_requires_placements():
@@ -141,7 +144,7 @@ def test_transfer_skill_note_after_body():
     edge = make_transfer("edge-skill")
     text = compile_skill(edge, project=project)
     body_idx = text.index("Run on edge.")
-    note_idx = text.index("record the transition context")
+    note_idx = text.index("not a position in the workflow")
     assert body_idx < note_idx
 
 

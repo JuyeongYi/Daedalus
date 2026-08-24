@@ -154,7 +154,100 @@ def test_delegation_inline_followup_carries_its_own_transfer():
 def test_call_contract_mentions_the_transfer(scenario):
     project, _alpha, _beta, agent, *_ = scenario
     section = _section(compile_agent(agent, project=project), "## Invocation Contract")
-    assert "the caller follows transition skill `handoff` before delegating" in section
+    assert "transition skill `handoff`" in section
+    assert "before delegating" in section
+
+
+def test_agent_arrival_has_no_entry_context_section(scenario):
+    """**호출 계약이 에이전트에게 유일한 채널이다** (A11-2, 사용자 실증).
+
+    "## Entry Context"는 배치된 Procedural/Declarative 스킬 전용이라(WP-IC)
+    에이전트 도착에는 아예 없다 — 그래서 호출 계약이 transfer를 말하지 않으면
+    에이전트는 자기가 받는 입력의 전처리 상태를 영영 알 수 없다. 이 단언이
+    깨지면(에이전트에도 진입 맥락이 생기면) 항목 2의 필요성 근거가 달라지므로
+    그때 다시 판단해야 한다.
+    """
+    project, _alpha, _beta, agent, *_ = scenario
+    assert "## Entry Context" not in compile_agent(agent, project=project)
+
+
+def test_agent_contract_carries_transfer_name_and_description():
+    """사용자 실증 시나리오 그대로: init 스킬 → worker 에이전트, 호출 전이에
+    validate transfer 부착. 에이전트 .md에 transfer **이름과 설명**이 있어야 한다.
+
+    이전에는 worker가 init에서 **바로** 받는 것처럼 서술됐다.
+    """
+    init = _proc("init")
+    init.call_agents = [
+        EventDef(name="delegate", description="hand over the collected file list"),
+    ]
+    validate = _transfer("validate", "normalize and schema-check the payload")
+    worker = _agent("worker")
+    project = PluginProject(name="p", skills=[init, validate], agents=[worker])
+    ni = SimpleState(name="init", skill_ref=init)
+    nw = SimpleState(name="worker", skill_ref=worker)
+    project.graph.states.extend([ni, nw])
+    project.graph.transitions.append(
+        Transition(
+            source=ni, target=nw, trigger=CompletionEvent(name="delegate"),
+            skill_ref=validate,
+        )
+    )
+
+    section = _section(
+        compile_agent(worker, project=project), "## Invocation Contract"
+    )
+    assert "`validate`" in section                                  # 이름
+    assert "normalize and schema-check the payload" in section      # 설명
+    assert "work from what that step produced" in section           # 전제 지시
+    assert "hand over the collected file list" in section           # 포트 설명은 유지
+
+
+def test_agent_contract_line_is_not_a_run_on(scenario):
+    """포트 설명과 transfer 문장이 문장부호 없이 붙지 않는다."""
+    init = _proc("init")
+    init.call_agents = [EventDef(name="delegate", description="pass the payload")]
+    validate = _transfer("validate", "check it")
+    worker = _agent("worker")
+    project = PluginProject(name="p", skills=[init, validate], agents=[worker])
+    ni = SimpleState(name="init", skill_ref=init)
+    nw = SimpleState(name="worker", skill_ref=worker)
+    project.graph.states.extend([ni, nw])
+    project.graph.transitions.append(
+        Transition(
+            source=ni, target=nw, trigger=CompletionEvent(name="delegate"),
+            skill_ref=validate,
+        )
+    )
+
+    section = _section(
+        compile_agent(worker, project=project), "## Invocation Contract"
+    )
+    assert "pass the payload. The caller follows" in section
+
+
+def test_agent_contract_transfer_without_description():
+    """설명이 없으면 이름만 — 빈 괄호를 만들지 않는다."""
+    init = _proc("init")
+    init.call_agents = [EventDef(name="delegate")]
+    validate = _transfer("validate")
+    worker = _agent("worker")
+    project = PluginProject(name="p", skills=[init, validate], agents=[worker])
+    ni = SimpleState(name="init", skill_ref=init)
+    nw = SimpleState(name="worker", skill_ref=worker)
+    project.graph.states.extend([ni, nw])
+    project.graph.transitions.append(
+        Transition(
+            source=ni, target=nw, trigger=CompletionEvent(name="delegate"),
+            skill_ref=validate,
+        )
+    )
+
+    section = _section(
+        compile_agent(worker, project=project), "## Invocation Contract"
+    )
+    assert "transition skill `validate` before delegating" in section
+    assert "()" not in section
 
 
 def test_call_contract_without_transfer_is_unchanged():
@@ -323,3 +416,44 @@ def test_compile_gate_rejects_reuse(scenario, tmp_path):
     result = compile_project(project, tmp_path)
     assert not result.ok
     assert "transfer_skill_reused" in {e.rule for e in result.errors}
+
+
+# --- 5. 1:1 중간 상태 프레이밍 (진행 기록 정합) ---
+
+
+def test_transfer_progress_note_does_not_own_current(scenario):
+    """transfer는 전이 위의 중간 상태지 워크플로 위치가 아니다.
+
+    출발 스킬은 "T를 수행한 뒤 B로"라고 말하고 `current`를 B(또는 에이전트)로
+    옮긴다 — T가 자기를 `current`에 쓰면 두 지시가 충돌한다. transfer 자신의
+    진행 기록 단락이 그것을 명시적으로 막는지 고정한다.
+    """
+    project, _alpha, _beta, _agent, validate, _handoff = scenario
+    text = compile_skill(validate, project=project)
+    section = _section(text, "## Progress Record")
+    assert "not a position in the workflow" in section
+    assert "leave `current`" in section
+    assert "`note`" in section
+
+
+def test_caller_and_transfer_instructions_agree(scenario):
+    """출발 스킬의 "T 수행 후 진행"과 T의 "current는 그대로" 지시가 공존한다."""
+    project, alpha, *_ = scenario
+    caller = _section(compile_skill(alpha, project=project), "## Next Steps")
+    assert "follow transition skill `validate`" in caller
+    # 출발 쪽은 current를 **다음 대상**으로 옮기라고 말한다(T가 아니라).
+    assert "set `current` to the next target" in caller
+
+
+def test_reuse_message_carries_the_one_to_one_logic(scenario):
+    """규칙 메시지가 프레이밍(하나의 상태는 두 자리에 있을 수 없다)과 대안을 담는다."""
+    project, alpha, beta, _agent, validate, _handoff = scenario
+    na = next(s for s in project.graph.states if getattr(s, "skill_ref", None) is alpha)
+    nb = next(s for s in project.graph.states if getattr(s, "skill_ref", None) is beta)
+    project.graph.transitions.append(
+        Transition(source=nb, target=na, skill_ref=validate)
+    )
+
+    message = _reuse_errors(project)[0].message
+    assert "no_duplicate_skill_ref" in message      # 같은 논리임을 명시
+    assert "Declarative" in message                 # 대안 안내

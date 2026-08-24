@@ -161,8 +161,9 @@ _PROGRESS_UPDATE_NOTE = (
 )
 
 _TRANSFER_PROGRESS_NOTE = (
-    "While this transition skill runs, record the transition context in `note` "
-    "in `state/__progress__.json`."
+    "You are a step on the transition itself, not a position in the workflow: "
+    "leave `current` in `state/__progress__.json` as the caller set it, and record "
+    "what happened during this transition in `note`."
 )
 
 

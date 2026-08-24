@@ -305,10 +305,16 @@ def _call_contract_section(agent: AgentDefinition, project) -> list[str]:
     if graph is None:
         return []
 
-    # (caller, port, desc, guard, transfer) — transfer는 호출 전이에 붙은
-    # TransferSkill 이름(A11). 호출자가 위임 **전에** 그 지침을 수행하므로,
-    # 에이전트는 그것이 이미 수행된 상태를 전제로 일을 시작한다.
-    entries: list[tuple[str, str, str, str, str]] = []
+    # (caller, port, desc, guard, transfer, transfer_desc) — transfer는 호출
+    # 전이에 붙은 TransferSkill(A11). 호출자가 위임 **전에** 그 지침을 수행하므로,
+    # 에이전트는 그 산출물을 전제로 일을 시작한다.
+    #
+    # **이 단락이 에이전트에게 유일한 채널이다**(A11-2, 사용자 실증): "## Entry
+    # Context"는 배치된 Procedural/Declarative 스킬 전용이라(WP-IC) 에이전트
+    # 도착에는 아예 없다. 스킬 도착은 진입 맥락이 transfer를 말해 주지만
+    # 에이전트는 여기서 말하지 않으면 자기가 받는 입력의 전처리 상태를 영영
+    # 알 수 없다 — 호출자에게서 바로 받은 것처럼 서술된다.
+    entries: list[tuple[str, str, str, str, str, str]] = []
     for trans in getattr(graph, "transitions", []) or []:
         tgt_ref = getattr(trans.target, "skill_ref", None)
         if tgt_ref is not agent:
@@ -324,8 +330,10 @@ def _call_contract_section(agent: AgentDefinition, project) -> list[str]:
                 desc = (ev.description or "").strip()
                 break
         guard = _describe_guard(getattr(trans, "guard", None))
-        transfer = getattr(getattr(trans, "skill_ref", None), "name", "") or ""
-        entries.append((caller, port, desc, guard, transfer))
+        transfer_ref = getattr(trans, "skill_ref", None)
+        transfer = getattr(transfer_ref, "name", "") or ""
+        transfer_desc = (getattr(transfer_ref, "description", "") or "").strip()
+        entries.append((caller, port, desc, guard, transfer, transfer_desc))
 
     if not entries:
         return []
@@ -337,7 +345,7 @@ def _call_contract_section(agent: AgentDefinition, project) -> list[str]:
             "whatever the Shared State (Blackboard) section declares as reads."
         ),
     ]
-    for caller, port, desc, guard, transfer in entries:
+    for caller, port, desc, guard, transfer, transfer_desc in entries:
         line = (
             f"- from `{caller}` via port `{port}`" if port else f"- from `{caller}`"
         )
@@ -346,9 +354,16 @@ def _call_contract_section(agent: AgentDefinition, project) -> list[str]:
         if desc:
             line += f" — {desc}"
         if transfer:
+            shown = f"`{transfer}` ({transfer_desc})" if transfer_desc else f"`{transfer}`"
+            # 포트 description이 문장부호 없이 끝나면 두 문장이 붙어 버린다 —
+            # `_compose_description`과 같은 관례로 마침표를 보충한다.
+            if line and line[-1] not in ".!?":
+                line += "."
+            # 이름만으로는 무엇이 전처리됐는지 알 수 없다 — 설명과 "그 산출물을
+            # 전제로 작업하라"까지 함께 말한다.
             line += (
-                f" (the caller follows transition skill `{transfer}` before "
-                f"delegating)"
+                f" The caller follows transition skill {shown} before delegating — "
+                f"work from what that step produced."
             )
         blocks.append(line)
     return blocks

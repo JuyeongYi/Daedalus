@@ -915,11 +915,14 @@ class _ProjectRules:
     def _check_transfer_skill_reused(project) -> list[ValidationError]:
         """transfer_skill_reused — 한 TransferSkill이 2개 이상 전이에 붙으면 에러 (A11).
 
-        **전이 스킬도 재사용할 수 없다**(사용자 확정) — `no_duplicate_skill_ref`가
-        스킬 placement에 대해 말하는 것과 같은 결이다. 전이 스킬은 "이 갈래를
-        건널 때 할 일"이라 그 갈래에 고유하고, 한 정의를 여러 전이가 공유하면
-        어느 경로의 지침인지가 본문에서 흐려진다. 산출에서도 도착 스킬의 진입
-        맥락과 출발 스킬의 다음 단계가 같은 이름을 서로 다른 뜻으로 가리키게 된다.
+        **프레이밍(사용자 확정): TransferSkill은 전이 위에 놓인 1:1 중간 상태다.**
+        A→B 전이에 T가 붙으면 의미론은 A→T→B이고, T는 입력 하나(그 전이)·출력
+        하나(계속 진행)뿐인 통과 노드다. 그래서 재사용 금지는 특별 규칙이 아니라
+        `no_duplicate_skill_ref`와 **같은 논리**다 — 하나의 상태가 두 자리에
+        동시에 있을 수 없다.
+
+        모델 구조는 그대로다(`Transition.skill_ref`) — 이건 산출 의미론과 검증의
+        프레이밍이지 그래프에 실제 중간 노드를 만든다는 뜻이 아니다.
 
         순회 범위는 프로젝트 그래프 + 각 스킬/에이전트 FSM(재귀)이다 —
         `dangling_tool_ref`/블랙보드 규칙과 같은 범위.
@@ -954,10 +957,12 @@ class _ProjectRules:
                 rule="transfer_skill_reused",
                 message=(
                     f"전이 스킬 '{skill.name}'이 전이 {len(places)}곳에 붙어 "
-                    f"있습니다 ({', '.join(places)}). 전이 스킬은 그 갈래를 건널 "
-                    f"때 할 일이라 갈래마다 고유해야 합니다 — 갈래별로 따로 "
-                    f"만드세요(공통 지식은 Declarative/Reference 스킬로 빼고 "
-                    f"각 전이 스킬이 참조하게 합니다)."
+                    f"있습니다 ({', '.join(places)}). 전이 스킬은 그 전이 위에 "
+                    f"놓인 중간 상태이므로 전이 하나에만 속합니다 — 하나의 상태가 "
+                    f"두 자리에 동시에 있을 수 없다는 점에서 "
+                    f"no_duplicate_skill_ref와 같은 논리입니다. 전이마다 따로 "
+                    f"만드세요. 같은 지침이 여러 전이에 필요하면 그 내용을 "
+                    f"Declarative 스킬로 만들어 각 전이 스킬이 참조하게 하세요."
                 ),
                 source=skill.name,
                 subject=skill,
