@@ -345,7 +345,6 @@ class _FrontmatterPanel(QScrollArea):
         """현재 값(config / component)을 위젯에 채운다."""
         from PySide6.QtWidgets import QComboBox, QCheckBox, QLineEdit, QSpinBox, QTextEdit
         from daedalus.view.widgets.tag_input import TagInput
-        from daedalus.view.widgets.preset_picker import PresetPicker
         current = _FrontmatterPanel._get_current(config, component, fld)
 
         if isinstance(widget, QSpinBox):
@@ -370,10 +369,9 @@ class _FrontmatterPanel(QScrollArea):
         elif isinstance(widget, TagInput):
             if isinstance(current, list):
                 widget.set_tags(current)
-        elif isinstance(widget, PresetPicker):
-            # hooks: dict[str, Any] — 키 집합 ↔ 선택된 프리셋 이름 목록
-            if isinstance(current, dict):
-                widget.set_selected(list(current.keys()))
+            elif isinstance(current, dict):
+                # hooks: dict[str, Any] — 키 집합을 태그 목록으로 (WP-SF hooks TagInput 전환)
+                widget.set_tags(list(current.keys()))
         elif isinstance(widget, QTextEdit):
             if current is not None:
                 widget.setPlainText(str(current))
@@ -389,19 +387,23 @@ class _FrontmatterPanel(QScrollArea):
         """ALLOWED_TOOLS/TOOLS/DISALLOWED_TOOLS TagInput에 동적 후보를 부착한다.
 
         후보는 app.py가 프로젝트 로드 시 등록한 제공자(카탈로그+빌트인+
-        Agent(이름))에서 조회한다 — 생성 시점 스냅샷(HookPresetPicker의
-        refresh()와 달리 실시간 갱신은 하지 않음).
+        Agent(이름))에서 조회한다 — 생성 시점 스냅샷.
+
+        HOOKS TagInput에는 hook_library 이름을 부착한다(같은 provider 패턴).
         """
         from daedalus.view.widgets.tag_input import TagInput, get_tool_candidates
         if fld in _TOOL_CANDIDATE_FIELDS and isinstance(widget, TagInput):
             widget.set_candidates(get_tool_candidates())
+        elif fld in (SkillField.HOOKS, AgentField.HOOKS) and isinstance(widget, TagInput):
+            from daedalus.view.widgets.preset_picker import _HOOK_NAME_PROVIDER
+            if _HOOK_NAME_PROVIDER is not None:
+                widget.set_candidates(_HOOK_NAME_PROVIDER())
 
     @staticmethod
     def _read_widget_value(fld: SkillField | AgentField, widget: QWidget) -> object:
         """위젯의 현재 표시값을 추출한다 (시그널 연결과 재체크 복원이 공유)."""
         from PySide6.QtWidgets import QComboBox, QCheckBox, QLineEdit, QSpinBox, QTextEdit
         from daedalus.view.widgets.tag_input import TagInput
-        from daedalus.view.widgets.preset_picker import PresetPicker
 
         if isinstance(widget, QSpinBox):
             return widget.value()
@@ -411,8 +413,6 @@ class _FrontmatterPanel(QScrollArea):
             return widget.isChecked()
         if isinstance(widget, TagInput):
             return widget.get_tags()
-        if isinstance(widget, PresetPicker):
-            return widget.get_selected()
         if isinstance(widget, QTextEdit):
             return widget.toPlainText()
         if isinstance(widget, QLineEdit):
@@ -423,7 +423,6 @@ class _FrontmatterPanel(QScrollArea):
         """위젯 타입에 맞는 시그널을 공용 핸들러에 연결한다."""
         from PySide6.QtWidgets import QComboBox, QCheckBox, QLineEdit, QSpinBox, QTextEdit
         from daedalus.view.widgets.tag_input import TagInput
-        from daedalus.view.widgets.preset_picker import PresetPicker
 
         def handler(*_args, f=fld, w=widget) -> None:
             self._write_field(f, self._read_widget_value(f, w))
@@ -436,8 +435,6 @@ class _FrontmatterPanel(QScrollArea):
             widget.toggled.connect(handler)
         elif isinstance(widget, TagInput):
             widget.tags_changed.connect(handler)
-        elif isinstance(widget, PresetPicker):
-            widget.selection_changed.connect(handler)
         elif isinstance(widget, QTextEdit):
             widget.textChanged.connect(handler)
         elif isinstance(widget, QLineEdit):

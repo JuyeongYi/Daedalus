@@ -471,33 +471,30 @@ def test_paths_tag_input_does_not_get_tool_candidates(qapp):
         set_tool_candidate_provider(None)
 
 
-def test_hooks_load_into_picker_and_toggle_keeps_dict(qapp, tmp_path, monkeypatch):
-    """hooks dict가 PresetPicker에 로드되고, 토글 후에도 dict 타입이 유지된다 (결함 2)."""
-    from daedalus.model.plugin.enums import SkillField
-    from daedalus.view.widgets.preset_picker import PresetPicker
+def test_hooks_load_into_taginput_and_add_keeps_dict(qapp):
+    """hooks dict가 TagInput에 로드되고, 추가 후에도 dict 타입이 유지된다.
 
-    # HookPresetPicker는 cwd 기준 .claude/hooks/*.json을 스캔
-    hooks_dir = tmp_path / ".claude" / "hooks"
-    hooks_dir.mkdir(parents=True)
-    (hooks_dir / "lint.json").write_text("{}", encoding="utf-8")
-    (hooks_dir / "fmt.json").write_text("{}", encoding="utf-8")
-    monkeypatch.chdir(tmp_path)
+    체크박스(PresetPicker) → TagInput 전환(사용자 요청) 후의 회귀 테스트.
+    """
+    from daedalus.model.plugin.enums import SkillField
+    from daedalus.view.widgets.tag_input import TagInput
 
     from daedalus.view.editors.skill_editor import _FrontmatterPanel
     comp = _make_procedural()
     comp.config.hooks = {"lint": {"cmd": "ruff"}}
     panel = _FrontmatterPanel(comp)
 
-    picker = panel._field_widgets.get(SkillField.HOOKS)
-    assert picker is not None and isinstance(picker, PresetPicker), "hooks PresetPicker 없음"
+    widget = panel._field_widgets.get(SkillField.HOOKS)
+    assert widget is not None and isinstance(widget, TagInput), "hooks TagInput 없음"
 
-    # (b-1) 로드: hooks dict의 키가 picker에 선택 상태로 반영
-    assert picker.get_selected() == ["lint"], (
-        f"hooks 로드 실패: {picker.get_selected()!r}"
+    # (b-1) 로드: hooks dict의 키가 태그로 반영
+    assert widget.get_tags() == ["lint"], (
+        f"hooks 로드 실패: {widget.get_tags()!r}"
     )
 
-    # (b-2) 토글: dict 타입 유지 + 기존 본문 보존
-    picker._checkboxes["fmt"].setChecked(True)
+    # (b-2) 태그 추가: dict 타입 유지 + 기존 본문 보존
+    widget.set_tags(["lint", "fmt"])
+    widget.tags_changed.emit()
     assert isinstance(comp.config.hooks, dict), (
         f"hooks가 dict가 아님: {type(comp.config.hooks)!r}"
     )

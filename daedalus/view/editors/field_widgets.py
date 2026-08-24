@@ -41,7 +41,7 @@ FIELD_WIDGETS: dict[SkillField, type[QWidget]] = {
     SkillField.AGENT:          QLineEdit,
     SkillField.SHELL:          ShellComboBox,
     SkillField.PATHS:          TagInput,
-    SkillField.HOOKS:          HookPresetPicker,
+    SkillField.HOOKS:          TagInput,
     SkillField.DISABLE_MODEL:  QCheckBox,
     SkillField.USER_INVOCABLE: QCheckBox,
 }
@@ -56,7 +56,7 @@ AGENT_FIELD_WIDGETS: dict[AgentField, type[QWidget]] = {
     AgentField.SKILLS:           TagInput,
     AgentField.MEMORY:           MemoryScopeComboBox,
     AgentField.COLOR:            AgentColorComboBox,
-    AgentField.HOOKS:            HookPresetPicker,
+    AgentField.HOOKS:            TagInput,
     AgentField.MAX_TURNS:        QSpinBox,
     AgentField.BACKGROUND:       QCheckBox,
     AgentField.ISOLATION:        AgentIsolationComboBox,
