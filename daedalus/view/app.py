@@ -294,6 +294,22 @@ class MainWindow(QMainWindow):
             self._launch_cc_action.triggered.connect(self._launch_claude_code)
             tools_menu.addAction(self._launch_cc_action)
 
+            tools_menu.addSeparator()
+
+            cat_global = QAction("도구 카탈로그 (전역)...", self)
+            cat_global.setToolTip(
+                "~/.daedalus/catalogue/ — 모든 프로젝트에서 쓸 MCP·도구 후보"
+            )
+            cat_global.triggered.connect(self._open_global_catalogue)
+            tools_menu.addAction(cat_global)
+
+            cat_project = QAction("도구 카탈로그 (프로젝트)...", self)
+            cat_project.setToolTip(
+                "<프로젝트>/.daedalus/catalogue/ — 이 프로젝트 전용 후보 (전역을 덮음)"
+            )
+            cat_project.triggered.connect(self._open_project_catalogue)
+            tools_menu.addAction(cat_project)
+
         view_menu = menubar.addMenu("View")
         if view_menu is None:
             return
@@ -557,6 +573,25 @@ class MainWindow(QMainWindow):
 
     def _ensure_daedalus_mcp_json(self, work_dir: str) -> None:
         self._launch_actions.ensure_daedalus_mcp_json(work_dir)
+
+    def _open_global_catalogue(self) -> None:
+        """도구 메뉴 — 전역 카탈로그 폴더를 탐색기로 연다 (없으면 만든다)."""
+        cat_dir = Path.home() / ".daedalus" / "catalogue"
+        cat_dir.mkdir(parents=True, exist_ok=True)
+        from PySide6.QtCore import QUrl
+        from PySide6.QtGui import QDesktopServices
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(cat_dir)))
+
+    def _open_project_catalogue(self) -> None:
+        """도구 메뉴 — 프로젝트 카탈로그 폴더를 탐색기로 연다 (없으면 만든다)."""
+        if not self._current_path:
+            self._status_label.setText("프로젝트를 먼저 저장하세요.")
+            return
+        cat_dir = Path(self._current_path).parent / ".daedalus" / "catalogue"
+        cat_dir.mkdir(parents=True, exist_ok=True)
+        from PySide6.QtCore import QUrl
+        from PySide6.QtGui import QDesktopServices
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(cat_dir)))
 
     def closeEvent(self, event) -> None:  # noqa: N802 (Qt override)
         """앱이 닫히면 MCP 서버도 함께 내린다."""
