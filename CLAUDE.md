@@ -199,6 +199,9 @@ daedalus/
     │   │                   #     파일은 쓰지 않는다. 산출은 **원문 그대로** 보인다(렌더하면 프론트매터가 사라진다).
     │   ├── model_effort.py #   모델/effort 지정(A9-2) — MODEL_CHOICES/EFFORT_CHOICES(표시 순서 단일 진실) + set_model/set_effort.
     │   │                   #     새로 만드는 것은 UI가 아니라 **쓰기 경로의 단일 진실**이다(에디터 콤보와 같은 SetAttrCmd 경로).
+    │   ├── agent_links.py  #   에이전트 호출자 유도(A9-4) — callers_of(agent, project) → CallerRef 목록(호출자·포트·설명·
+    │   │                   #     포커스 대상 노드), 호출자 이름·포트 순. 정렬·유도가 컴파일 "## 호출 계약"과 **같아야** 화면과
+    │   │                   #     산출이 같은 말을 한다. 누가 부르는지는 모델에 없고 그래프에서 유도할 뿐이다(WP-CT).
     │   └── warnings.py     #   컴포넌트별 검증 결과 필터(A9-3) — findings_for(errors, component, project). subject==컴포넌트 /
     │                       #     path 루트(`skill:<이름>`) / **그래프 placement 노드** 세 경로를 모두 본다 — placement를 빼면
     │                       #     mid_chain_user_invocable처럼 subject가 노드인 규칙을 통째로 놓친다. dock 표시는

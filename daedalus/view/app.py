@@ -960,6 +960,23 @@ class MainWindow(QMainWindow):
             self._open_tabs[comp_id] = idx
             self._tabs.setCurrentIndex(idx)
 
+    def open_component_ports(self, component: object) -> None:
+        """컴포넌트 편집 탭을 열고 출력 포트 패널로 포커스를 옮긴다 (A9-5).
+
+        캔버스에서 "출력 포트 편집…"을 고른 사용자는 그 패널을 보려는 것이지
+        탭이 열리기만 하면 되는 것이 아니다 — 우측 패널이 접혀 있거나 스크롤
+        밖이면 열어도 못 찾는다.
+        """
+        self._open_component(component)
+        comp_id = getattr(component, "id", None)
+        if comp_id is None or comp_id not in self._open_tabs:
+            return
+        widget = self._tabs.widget(self._open_tabs[comp_id])
+        panel = getattr(widget, "_transfer_on_panel", None)
+        if panel is not None:
+            panel.setFocus()
+            panel.raise_()
+
     def _ask_unique_name(self, dialog_title: str) -> str | None:
         """이름 입력 다이얼로그 + 중복 검증. 취소 시 None."""
         if self._project is None:

@@ -586,8 +586,53 @@ class FsmScene(QGraphicsScene):
         if warn_act is not None:
             dispatch[warn_act] = lambda c=component: self._show_component_findings(c)
 
+        dispatch.update(self._add_agent_actions_menu(menu, component))
+
         menu.addSeparator()
         return dispatch
+
+    # --- 에이전트 전용 (A9-4/5) ---
+
+    def _add_agent_actions_menu(self, menu: QMenu, component: object) -> dict:
+        """에이전트 placement에만 붙는 항목 — 호출자 목록 / 출력 포트 편집."""
+        from daedalus.model.plugin.agent import AgentDefinition
+        from daedalus.view.actions.agent_links import callers_of
+
+        if not isinstance(component, AgentDefinition):
+            return {}
+
+        dispatch: dict = {}
+        callers = callers_of(component, self._project)
+        callers_menu = menu.addMenu("호출자 목록")
+        if callers_menu is not None:
+            callers_menu.setToolTipsVisible(True)
+            if not callers:
+                act = callers_menu.addAction("(없음)")
+                if act is not None:
+                    act.setEnabled(False)
+            for ref in callers:
+                act = callers_menu.addAction(ref.label)
+                if act is None:
+                    continue
+                if ref.description:
+                    act.setToolTip(ref.description)
+                dispatch[act] = lambda r=ref: self._focus_state(r.source_state)
+
+        ports_act = menu.addAction("출력 포트 편집…")
+        if ports_act is not None:
+            dispatch[ports_act] = lambda c=component: self._open_ports(c)
+        return dispatch
+
+    def _focus_state(self, state: object) -> None:
+        """그 상태의 노드를 캔버스에서 선택·센터링한다 (검증 결과 점프와 같은 경로)."""
+        window = self.main_window()
+        if hasattr(window, "_focus_in_project_canvas"):
+            window._focus_in_project_canvas(state)
+
+    def _open_ports(self, component: object) -> None:
+        window = self.main_window()
+        if hasattr(window, "open_component_ports"):
+            window.open_component_ports(component)
 
     def _show_preview(self, component: object) -> None:
         from daedalus.view.actions.preview import show_preview_dialog
