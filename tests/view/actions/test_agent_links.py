@@ -1,7 +1,7 @@
 """에이전트 호출자 유도 (A9-4) — 공유 함수.
 
 누가 이 에이전트를 부르는지는 모델 어디에도 적혀 있지 않고 프로젝트 그래프에서
-유도할 뿐이다(WP-CT). 컴파일의 "## 호출 계약"과 **같은 유도**여야 화면과 산출이
+유도할 뿐이다(WP-CT). 컴파일의 "## Invocation Contract"과 **같은 유도**여야 화면과 산출이
 같은 말을 한다.
 """
 from __future__ import annotations
@@ -141,7 +141,7 @@ def test_matches_compiler_call_contract():
 
     text = compile_agent(agent, project=project)
     (ref,) = callers_of(agent, project)
-    assert "## 호출 계약" in text
+    assert "## Invocation Contract" in text
     assert ref.caller_name in text
     assert ref.port in text
 

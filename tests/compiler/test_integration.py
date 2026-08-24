@@ -72,7 +72,7 @@ def test_integration_core_content(tmp_path):
     assert "name: main-skill" in main
     assert "helper-agent" in main
     # tool_shelf 참조 단락
-    assert "## 참조: 도구 선반" in main
+    assert "## Reference: Tool Shelf" in main
     assert "my-tool" in main
     assert "echo hi" in main
 

@@ -182,8 +182,8 @@ def test_compile_next_steps_skill_invoke():
         guard=Guard(evaluation=LLMEvaluation(prompt="B 필요시")),
     ))
     txt = compile_skill(a, project=p)
-    assert "## 다음 단계" in txt
-    assert "`b` 스킬을 인보크하라" in txt
+    assert "## Next Steps" in txt
+    assert "invoke skill `b`" in txt
     # 가드 조건이 표기된다
     assert "B 필요시" in txt
 
@@ -204,10 +204,10 @@ def test_compile_next_steps_agent_inline_chain():
         source=sw, target=sc, trigger=CompletionEvent(name="done")))
 
     txt = compile_skill(a, project=p)
-    assert "## 다음 단계" in txt
-    assert "에이전트 `w`에게 위임하라" in txt
-    assert "위임 완료 후" in txt
-    assert "`c` 스킬을 인보크하라" in txt
+    assert "## Next Steps" in txt
+    assert "delegate to agent `w`" in txt
+    assert "after the agent returns" in txt
+    assert "invoke skill `c`" in txt
 
 
 def test_compile_no_next_steps_when_no_outgoing():
@@ -216,7 +216,7 @@ def test_compile_no_next_steps_when_no_outgoing():
     sa = SimpleState(name="a", skill_ref=a)
     p.graph.states.append(sa)
     txt = compile_skill(a, project=p)
-    assert "## 다음 단계" not in txt
+    assert "## Next Steps" not in txt
 
 
 def test_agent_md_has_no_next_steps():
@@ -230,7 +230,7 @@ def test_agent_md_has_no_next_steps():
     p.graph.transitions.append(Transition(
         source=sw, target=sc, trigger=CompletionEvent(name="done")))
     txt = compile_agent(w, project=p)
-    assert "## 다음 단계" not in txt
+    assert "## Next Steps" not in txt
 
 
 def test_compile_next_steps_unguarded_with_trigger_shows_trigger():
@@ -244,9 +244,9 @@ def test_compile_next_steps_unguarded_with_trigger_shows_trigger():
     p.graph.transitions.append(Transition(
         source=sa, target=sb, trigger=CompletionEvent(name="done")))
     txt = compile_skill(a, project=p)
-    section = txt[txt.index("## 다음 단계"):]
-    assert "완료 이벤트 'done'" in section
-    assert "`b` 스킬을 인보크하라" in section
+    section = txt[txt.index("## Next Steps"):]
+    assert "completion event `done`" in section
+    assert "invoke skill `b`" in section
 
 
 def test_compile_next_steps_no_trigger_no_guard_unconditional():
@@ -259,4 +259,4 @@ def test_compile_next_steps_no_trigger_no_guard_unconditional():
     p.graph.states += [sa, sb]
     p.graph.transitions.append(Transition(source=sa, target=sb, trigger=None))
     txt = compile_skill(a, project=p)
-    assert "무조건" in txt[txt.index("## 다음 단계"):]
+    assert "[always]" in txt[txt.index("## Next Steps"):]

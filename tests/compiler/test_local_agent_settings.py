@@ -213,7 +213,7 @@ def test_marketplace_still_mentions_requirements_in_body():
     )
 
     text = compile_agent(agent, project=project)
-    assert "## 요구 환경" in text
+    assert "## Requirements" in text
 
 
 def test_local_build_drops_requirement_paragraph():
@@ -222,7 +222,7 @@ def test_local_build_drops_requirement_paragraph():
     agent.config = AgentConfig(hooks={"guard": {}}, mcp_servers=["github"])
     project = _local_project(agent, [_hook(matcher="Bash")])
 
-    assert "## 요구 환경" not in compile_agent(agent, project=project)
+    assert "## Requirements" not in compile_agent(agent, project=project)
 
 
 def test_no_project_argument_behaves_as_marketplace():

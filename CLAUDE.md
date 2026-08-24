@@ -1308,6 +1308,31 @@ dataclass(값 동등성, unhashable) 유지 — 컬렉션 멤버십에는 list/`
 
 출력은 결정적(같은 모델 → 같은 텍스트), LF 줄바꿈, UTF-8(BOM 없음). 텍스트 생성(`compile_skill`/`compile_agent`)은 파일시스템과 분리되어 문자열 단위 테스트 가능.
 
+**산출 언어는 영어다 (A12).** 컴파일러가 **생성하는** 텍스트(헤딩·지시문·조건
+문구·FSM 절차 서술·진행 상태 규칙·블랙보드 CLI 지시 …)는 전부 영어이고,
+**사용자가 입력한 값**(body, description, when_to_use, transfer_on/call_agents
+description, 블랙보드 클래스·필드 설명 …)은 손대지 않고 그대로 나간다 — 한국어
+값이 영어 문장 안에 삽입되는 형태(`— <desc>` 병기)는 정상이다.
+
+- **왜:** 산출을 읽는 소비자가 LLM이고, 자동 단락은 **모든 스킬에 반복해서**
+  실려 토큰 비용이 곧 사용료다. 문구는 직역이 아니라 CC 스킬 지시문으로
+  자연스러운 영어(명령형·간결·모호성 없음)로 재작성했다.
+- **주요 헤딩 대응:** `## Next Steps` / `## Resuming Work` / `## Entry Context` /
+  `## Shared State (Blackboard)` / `## Invocation Contract` / `## Exits` /
+  `## Procedure` / `## Output Events` / `## Requirements` /
+  `## Invocation Parameters` / `## Progress Record` / `## Finishing Up` /
+  `## Internal Workflow` / `## Reference: Tool Shelf`.
+- **제외(한국어 유지):** `ValidationError` 메시지와 컴파일 게이트 경고(설계자가
+  읽는 것이지 산출에 나가지 않는다), 내부 예외 메시지, GUI 문자열, 사용자 정의
+  훅 스크립트, `plugin.json` 값. `description`+`when_to_use` 합류 접속어
+  (`Use when …`)는 원래부터 영어라 그대로다.
+- **게이트 테스트:** `tests/compiler/test_output_language.py`가 **사용자 값을
+  전부 영어로 채운 픽스처**를 컴파일해 산출 전체에 한글 유니코드가 없음을
+  단언한다(스킬 4종·에이전트·전체 `compile_project`·LOCAL 빌드·schemas/hooks/
+  plugin.json). 픽스처가 영어이므로 남는 한글은 정의상 컴파일러가 만든 것이다 —
+  새 자동 단락에 한국어가 스미면 그 자리에서 깨진다. 같은 파일이 **사용자
+  한국어 값은 그대로 통과하는지**도 함께 고정한다(영어화가 그것을 삼키면 안 된다).
+
 ## 미구현 예정
 
 - `compiler/` Tier 2: ToolExecution/ToolEvaluation 실행 래퍼(인자 이스케이프·shell 분기·success_condition), MCP 서버 실행 코드

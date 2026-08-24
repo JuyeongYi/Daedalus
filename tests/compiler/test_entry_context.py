@@ -1,5 +1,5 @@
 # tests/compiler/test_entry_context.py
-"""WP-IC Part C: "## 진입 맥락" 단락 + prev 규약 + "## 호출 계약" 그래프 유도.
+"""WP-IC Part C: "## Entry Context" 단락 + prev 규약 + "## Invocation Contract" 그래프 유도.
 
 단일 진실: docs/plans/2026-08-02-wp-ic-input-ports-entry-context.md Part C.
 """
@@ -41,11 +41,11 @@ def test_entry_context_section_basic_default_port():
         Transition(source=sa, target=sb, trigger=CompletionEvent(name="done"))
     )
     text = compile_skill(b, project=project)
-    assert "## 진입 맥락" in text
-    assert "`state/__progress__.json`의 `prev`" in text
+    assert "## Entry Context" in text
+    assert "Read `prev` (the previous skill)" in text
     # WP-IP — 포트 그룹 헤딩은 퇴역, 출처 항목만 나열된다
     assert "### 기본 경로" not in text
-    assert "- `a`에서 [완료 이벤트 'done']로 진입" in text
+    assert "- entered from `a` [completion event `done`]" in text
 
 
 def test_entry_context_position_after_preamble_before_body():
@@ -59,8 +59,8 @@ def test_entry_context_position_after_preamble_before_body():
         Transition(source=sa, target=sb, trigger=CompletionEvent(name="done"))
     )
     text = compile_skill(b, project=project)
-    preamble_idx = text.index("## 작업 재개")
-    entry_idx = text.index("## 진입 맥락")
+    preamble_idx = text.index("## Resuming Work")
+    entry_idx = text.index("## Entry Context")
     body_idx = text.index("Do the work.")
     assert preamble_idx < entry_idx < body_idx
 
@@ -72,14 +72,14 @@ def test_entry_context_omitted_when_no_incoming():
     sa = SimpleState(name="a", skill_ref=a)
     project.graph.states += [sa]
     text = compile_skill(a, project=project)
-    assert "## 진입 맥락" not in text
+    assert "## Entry Context" not in text
 
 
 def test_entry_context_omitted_when_unplaced():
     a = make_procedural(name="a")
     project = PluginProject(name="p", skills=[a])  # 미배치
     text = compile_skill(a, project=project)
-    assert "## 진입 맥락" not in text
+    assert "## Entry Context" not in text
 
 
 def test_entry_context_declarative_skill_also_gets_section():
@@ -94,7 +94,7 @@ def test_entry_context_declarative_skill_also_gets_section():
         Transition(source=sa, target=sd, trigger=CompletionEvent(name="done"))
     )
     text = compile_skill(d, project=project)
-    assert "## 진입 맥락" in text
+    assert "## Entry Context" in text
 
 
 # ── 2) 포트 그룹 없음 (WP-IP — 입력 포트 개념 자체가 없다) ──
@@ -115,7 +115,7 @@ def test_entry_context_has_no_port_group_headings():
     text = compile_skill(t, project=project)
     assert "### 경로:" not in text
     assert "### 기본 경로" not in text
-    assert "- `a`에서 [완료 이벤트 'done']로 진입" in text
+    assert "- entered from `a` [completion event `done`]" in text
 
 
 def test_entry_context_carries_caller_output_description():
@@ -132,7 +132,7 @@ def test_entry_context_carries_caller_output_description():
         Transition(source=sa, target=sb, trigger=CompletionEvent(name="done"))
     )
     text = compile_skill(b, project=project)
-    assert "- `a`에서 [완료 이벤트 'done']로 진입 — 초안 완성 — 배선은 비어 있다" in text
+    assert "- entered from `a` [completion event `done`] — 초안 완성 — 배선은 비어 있다" in text
 
 
 def test_next_steps_carry_caller_output_description():
@@ -148,12 +148,12 @@ def test_next_steps_carry_caller_output_description():
         Transition(source=sa, target=sb, trigger=CompletionEvent(name="done"))
     )
     text = compile_skill(a, project=project)
-    assert "→ `b` 스킬을 인보크하라 — 초안 완성" in text
+    assert "→ invoke skill `b` — 초안 완성" in text
 
 
 def test_progress_note_records_branch():
-    """진행 규약이 어느 갈래로 넘어갔는지 note에 남기도록 지시한다(WP-IP)."""
-    assert "어느 갈래" in _PROGRESS_UPDATE_NOTE
+    """진행 규약이 which branch로 넘어갔는지 note에 남기도록 지시한다(WP-IP)."""
+    assert "which branch" in _PROGRESS_UPDATE_NOTE
 
 
 # ── 3) 출처 항목: 정렬 + TransferSkill 합류 + 에이전트 출처 문구 ──
@@ -173,8 +173,8 @@ def test_entry_context_sources_sorted_by_name():
         Transition(source=sa, target=st, trigger=CompletionEvent(name="done")),
     ]
     text = compile_skill(t, project=project)
-    idx_a = text.index("`asrc`에서")
-    idx_z = text.index("`zsrc`에서")
+    idx_a = text.index("from `asrc`")
+    idx_z = text.index("from `zsrc`")
     assert idx_a < idx_z
 
 
@@ -194,7 +194,7 @@ def test_entry_context_includes_transfer_skill_note():
         )
     )
     text = compile_skill(t, project=project)
-    assert "전이 스킬 `edge-skill`(`인계 정리`)의 지침을 수행한 상태다" in text
+    assert "transition skill `edge-skill` (`인계 정리`) has already been followed" in text
 
 
 def test_entry_context_agent_source_phrase():
@@ -208,7 +208,7 @@ def test_entry_context_agent_source_phrase():
         Transition(source=s_agent, target=st, trigger=CompletionEvent(name="done"))
     )
     text = compile_skill(t, project=project)
-    assert "에이전트 `worker`의 위임 완료 후" in text
+    assert "entered after agent `worker` returned" in text
 
 
 # ── 4) prev 규약 ──
@@ -216,7 +216,7 @@ def test_entry_context_agent_source_phrase():
 
 def test_progress_update_note_mentions_prev():
     assert "`prev`" in _PROGRESS_UPDATE_NOTE
-    assert "이 스킬 이름" in _PROGRESS_UPDATE_NOTE
+    assert "this skill's own name" in _PROGRESS_UPDATE_NOTE
 
 
 def test_resume_preamble_json_example_includes_prev():
@@ -247,7 +247,7 @@ def test_call_contract_absent_without_project_graph():
         transfer_on=[EventDef("done")],
     )
     text = compile_agent(agent)
-    assert "## 호출 계약" not in text
+    assert "## Invocation Contract" not in text
 
 
 def test_agent_origin_mentions_delegator_for_prev_matching():
@@ -283,5 +283,5 @@ def test_agent_origin_mentions_delegator_for_prev_matching():
     ])
 
     text = compile_skill(beta, project=project)
-    assert "에이전트 위임에서 복귀한 경우" in text
-    assert "위임을 시작한 스킬 — `beta`" in text
+    assert "After returning from an agent delegation" in text
+    assert "delegating skill here — `beta`" in text

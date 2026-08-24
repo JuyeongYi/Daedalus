@@ -44,7 +44,7 @@ def test_choice_else_branch_in_procedure():
     text = compile_skill(_proc(fsm))
     # 가드 전이는 조건 표시, 무가드 전이는 [else]
     assert "→ **B** [else]" in text
-    assert "→ **A** [가드: 표현식 `x == 1`]" in text
+    assert "→ **A** [guard: expression `x == 1`]" in text
 
 
 def test_parallel_join_all_description():
@@ -58,7 +58,7 @@ def test_parallel_join_all_description():
                                 trigger=CompletionEvent(name="done"))],
     )
     text = compile_skill(_proc(fsm))
-    assert "모든 리전 완료 후 종합" in text
+    assert "continue after every region finishes" in text
 
 
 def test_parallel_join_n_of_description():
@@ -79,4 +79,4 @@ def test_parallel_join_n_of_description():
                                 trigger=CompletionEvent(name="done"))],
     )
     text = compile_skill(_proc(fsm))
-    assert "리전 1개가 완료하면 다음으로 진행" in text
+    assert "continue once 1 regions finish" in text

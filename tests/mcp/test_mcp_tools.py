@@ -413,8 +413,8 @@ def test_add_agent_call_then_connect_derives_contract_at_compile(tools, with_age
     assert not hasattr(agent, "caller_contracts")
 
     text = compile_agent(agent, project=with_agent._project)
-    assert "## 호출 계약" in text
-    assert "`init`의 `delegate` 포트에서 호출" in text
+    assert "## Invocation Contract" in text
+    assert "from `init` via port `delegate`" in text
     assert "작업 위임" in text
 
     tools.undo()

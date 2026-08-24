@@ -1,8 +1,8 @@
-"""전이 스킬(TransferSkill) 산출 의미론 + 재사용 금지 (A11).
+"""transition skill(TransferSkill) 산출 의미론 + 재사용 금지 (A11).
 
-**고장이었다:** 도착 스킬의 "진입 맥락"은 "전이 스킬 X의 지침을 수행한
+**고장이었다:** 도착 스킬의 "진입 맥락"은 "transition skill X의 지침을 수행한
 상태다"라고 가정하는데, 출발 스킬의 "다음 단계"에는 그것을 **수행하라는 지시가
-없었다** — 아무도 전이 스킬을 실행하지 않는 구조였다. 에이전트 .md의 호출
+없었다** — 아무도 transition skill을 실행하지 않는 구조였다. 에이전트 .md의 호출
 계약도 호출 전이의 transfer를 언급하지 않았다.
 """
 from __future__ import annotations
@@ -84,28 +84,28 @@ def _section(text: str, heading: str) -> str:
     return heading + (rest if end < 0 else rest[:end])
 
 
-# --- 1. 출발 스킬 "다음 단계"가 전이 스킬을 수행하라고 지시한다 ---
+# --- 1. 출발 스킬 "다음 단계"가 transition skill을 수행하라고 지시한다 ---
 
 
 def test_next_step_instructs_running_the_transfer_skill(scenario):
     project, alpha, *_ = scenario
-    section = _section(compile_skill(alpha, project=project), "## 다음 단계")
+    section = _section(compile_skill(alpha, project=project), "## Next Steps")
 
-    assert "전이 스킬 `validate`" in section
-    assert "지침을 수행한 뒤" in section
-    assert "`beta` 스킬을 인보크하라" in section
+    assert "transition skill `validate`" in section
+    assert ", then" in section
+    assert "invoke skill `beta`" in section
 
 
 def test_transfer_description_is_carried(scenario):
     project, alpha, *_ = scenario
-    section = _section(compile_skill(alpha, project=project), "## 다음 단계")
+    section = _section(compile_skill(alpha, project=project), "## Next Steps")
     assert "`검증 규칙`" in section
 
 
 def test_delegation_line_also_runs_the_transfer(scenario):
     project, alpha, *_ = scenario
-    section = _section(compile_skill(alpha, project=project), "## 다음 단계")
-    assert "전이 스킬 `handoff`의 지침을 수행한 뒤 에이전트 `runner`에게 위임하라" in section
+    section = _section(compile_skill(alpha, project=project), "## Next Steps")
+    assert "follow transition skill `handoff`, then delegate to agent `runner`" in section
 
 
 def test_no_transfer_keeps_the_plain_wording():
@@ -120,13 +120,13 @@ def test_no_transfer_keeps_the_plain_wording():
         Transition(source=na, target=nb, trigger=CompletionEvent(name="done"))
     )
 
-    section = _section(compile_skill(alpha, project=project), "## 다음 단계")
-    assert "전이 스킬" not in section
-    assert "- [완료 이벤트 'done'] → `beta` 스킬을 인보크하라" in section
+    section = _section(compile_skill(alpha, project=project), "## Next Steps")
+    assert "transition skill" not in section
+    assert "- [completion event `done`] → invoke skill `beta`" in section
 
 
 def test_delegation_inline_followup_carries_its_own_transfer():
-    """위임 인라인("위임 완료 후: …")의 후속 전이도 각자의 transfer를 갖는다."""
+    """위임 인라인("after the agent returns: …")의 후속 전이도 각자의 transfer를 갖는다."""
     alpha, beta = _proc("alpha"), _proc("beta")
     alpha.call_agents = [EventDef(name="delegate")]
     after = _transfer("after-agent")
@@ -143,9 +143,9 @@ def test_delegation_inline_followup_carries_its_own_transfer():
         ),
     ])
 
-    section = _section(compile_skill(alpha, project=project), "## 다음 단계")
-    assert "위임 완료 후:" in section
-    assert "전이 스킬 `after-agent`의 지침을 수행한 뒤 `beta` 스킬을 인보크하라" in section
+    section = _section(compile_skill(alpha, project=project), "## Next Steps")
+    assert "after the agent returns:" in section
+    assert "follow transition skill `after-agent`, then invoke skill `beta`" in section
 
 
 # --- 2. 에이전트 호출 계약이 transfer를 언급한다 ---
@@ -153,8 +153,8 @@ def test_delegation_inline_followup_carries_its_own_transfer():
 
 def test_call_contract_mentions_the_transfer(scenario):
     project, _alpha, _beta, agent, *_ = scenario
-    section = _section(compile_agent(agent, project=project), "## 호출 계약")
-    assert "호출자가 전이 스킬 `handoff`의 지침을 수행하고 위임한다" in section
+    section = _section(compile_agent(agent, project=project), "## Invocation Contract")
+    assert "the caller follows transition skill `handoff` before delegating" in section
 
 
 def test_call_contract_without_transfer_is_unchanged():
@@ -169,9 +169,9 @@ def test_call_contract_without_transfer_is_unchanged():
         Transition(source=na, target=ng, trigger=CompletionEvent(name="delegate"))
     )
 
-    section = _section(compile_agent(agent, project=project), "## 호출 계약")
-    assert "전이 스킬" not in section
-    assert "- `alpha`의 `delegate` 포트에서 호출" in section
+    section = _section(compile_agent(agent, project=project), "## Invocation Contract")
+    assert "transition skill" not in section
+    assert "- from `alpha` via port `delegate`" in section
 
 
 # --- 3. 도착 스킬 "진입 맥락"은 기존 문구 유지 (수행된 것을 전제로 읽는다) ---
@@ -179,8 +179,11 @@ def test_call_contract_without_transfer_is_unchanged():
 
 def test_entry_context_still_assumes_the_transfer_ran(scenario):
     project, _alpha, beta, *_ = scenario
-    section = _section(compile_skill(beta, project=project), "## 진입 맥락")
-    assert "전이 스킬 `validate`(`검증 규칙`)의 지침을 수행한 상태다" in section
+    section = _section(compile_skill(beta, project=project), "## Entry Context")
+    assert (
+        "transition skill `validate` (`검증 규칙`) has already been followed"
+        in section
+    )
 
 
 # --- 4. 재사용 금지 규칙 ---
@@ -248,7 +251,7 @@ def test_reuse_across_skill_fsm_is_caught():
     project.graph.transitions.append(
         Transition(source=na, target=nb, skill_ref=shared)
     )
-    # 같은 전이 스킬이 host의 자체 FSM 전이에도 붙어 있다
+    # 같은 transition skill이 host의 자체 FSM 전이에도 붙어 있다
     inner_a = SimpleState(name="x")
     inner_b = SimpleState(name="y")
     host.fsm.states.extend([inner_a, inner_b])

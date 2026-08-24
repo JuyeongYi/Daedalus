@@ -23,7 +23,7 @@ def test_max_turns_background_isolation_go_to_frontmatter():
         isolation=AgentIsolation.WORKTREE,
     )
     text = compile_agent(agent)
-    assert "## 호출 파라미터" not in text
+    assert "## Invocation Parameters" not in text
 
     fm = text[4:text.index("\n---", 4)]
     assert "maxTurns: 10" in fm
@@ -35,7 +35,7 @@ def test_default_invocation_fields_omitted_from_frontmatter():
     agent = make_agent()
     agent.config = AgentConfig(model=ModelType.SONNET)  # max_turns None, background False, isolation NONE
     text = compile_agent(agent)
-    assert "## 호출 파라미터" not in text
+    assert "## Invocation Parameters" not in text
     for key in ("maxTurns:", "background:", "isolation:"):
         assert key not in text
 
@@ -48,7 +48,7 @@ def test_agent_settings_note_mentions_mcp_and_hooks():
         hooks={"PreToolUse": []},
     )
     text = compile_agent(agent)
-    assert "## 요구 환경" in text
+    assert "## Requirements" in text
     assert "agora" in text
     assert "github" in text
     assert "hooks.json" in text
@@ -57,15 +57,15 @@ def test_agent_settings_note_mentions_mcp_and_hooks():
 def test_agent_settings_note_omitted_when_none():
     agent = make_agent()
     text = compile_agent(agent)
-    assert "## 요구 환경" not in text
+    assert "## Requirements" not in text
 
 
 def test_agent_fsm_internal_workflow_and_exits():
     agent = make_agent()
     text = compile_agent(agent)
-    assert "## 내부 워크플로" in text
+    assert "## Internal Workflow" in text
     assert "**work**" in text
-    assert "## 출구" in text
+    assert "## Exits" in text
     assert "`done`" in text
 
 
@@ -83,11 +83,11 @@ def test_agent_fsm_shows_access_declarations():
     work.reads = ["TaskState"]
     work.writes = ["ReviewFindings.files"]
     text = compile_agent(agent)
-    assert "(읽기: `TaskState` / 쓰기: `ReviewFindings.files`)" in text
+    assert "(reads `TaskState` / writes `ReviewFindings.files`)" in text
 
 
 def test_agent_fsm_no_access_declaration_no_suffix():
     agent = make_agent()
     text = compile_agent(agent)
-    assert "읽기:" not in text
-    assert "쓰기:" not in text
+    assert "reads" not in text
+    assert "writes" not in text

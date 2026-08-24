@@ -74,7 +74,7 @@ def test_preview_includes_graph_derived_sections():
     project.graph.transitions.append(Transition(source=na, target=nb))
 
     text = preview_text(a, project=project)
-    assert "## 다음 단계" in text
+    assert "## Next Steps" in text
     assert "beta" in text
 
 

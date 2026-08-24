@@ -1,5 +1,5 @@
 # tests/compiler/test_blackboard_section.py
-"""WP-T Part B: 블랙보드 사용 지침 단락 ('## 공유 상태 (블랙보드)')."""
+"""WP-T Part B: 블랙보드 사용 지침 단락 ('## Shared State (Blackboard)')."""
 from __future__ import annotations
 
 from daedalus.compiler.emit import compile_agent, compile_skill
@@ -36,34 +36,34 @@ def test_global_procedural_skill_has_blackboard_section_before_next_steps():
     )
 
     text = compile_skill(a, project=project)
-    assert "## 공유 상태 (블랙보드)" in text
+    assert "## Shared State (Blackboard)" in text
     assert "`TaskState` → `state/TaskState.json`" in text
-    assert "## 다음 단계" in text
-    assert text.index("## 공유 상태 (블랙보드)") < text.index("## 다음 단계")
+    assert "## Next Steps" in text
+    assert text.index("## Shared State (Blackboard)") < text.index("## Next Steps")
 
 
 def test_no_class_definitions_no_section():
     a = make_procedural(name="a")
     project = PluginProject(name="p", skills=[a])
     text = compile_skill(a, project=project)
-    assert "## 공유 상태 (블랙보드)" not in text
+    assert "## Shared State (Blackboard)" not in text
 
 
 def test_declarative_skill_no_section():
     kb = make_declarative("kb")
     project = _project_with_classes(skills=[kb])
     text = compile_skill(kb, project=project)
-    assert "## 공유 상태 (블랙보드)" not in text
+    assert "## Shared State (Blackboard)" not in text
 
 
 def test_compile_agent_has_blackboard_section_at_end():
     agent = make_agent("worker")
     project = _project_with_classes(agents=[agent])
     text = compile_agent(agent, project=project)
-    assert "## 공유 상태 (블랙보드)" in text
+    assert "## Shared State (Blackboard)" in text
     # 본문 마지막 단락 — 다른 텍스트가 이후에 없어야 한다
     assert text.rstrip().endswith(
-        "- 스키마의 required 필드는 항상 채워라."
+        "- Always fill every field the schema marks as required."
     )
 
 
@@ -77,7 +77,7 @@ def test_blackboard_section_includes_cli_directive_before_rules():
     text = compile_skill(a, project=project)
     assert "`command -v daedalus-bb`" in text
     cli_idx = text.index("command -v daedalus-bb")
-    rule_idx = text.index("규칙:\n- 파일을 수정하기 전에")
+    rule_idx = text.index("Rules:\n- Always read a state file")
     assert cli_idx < rule_idx
 
 
@@ -113,7 +113,10 @@ def test_blackboard_section_cli_directive_matches_actual_cli_surface():
     }
     assert {"--set", "--append", "--remove"} <= write_option_strings
 
-    for token in ("daedalus-bb read", "daedalus-bb write", "daedalus-bb validate",
+    # 지시문은 `daedalus-bb --schemas <경로> <명령>` 형태라 명령 이름이
+    # 실행 파일 바로 뒤에 붙지 않는다 — 토큰 단위로 대조한다.
+    assert "daedalus-bb" in text
+    for token in ("read <Class>", "write <Class>", "validate",
                   "--set", "--append", "--remove"):
         assert token in text
 
@@ -167,10 +170,12 @@ def test_cli_directive_present_in_access_declared_branch():
     project = _project_with_two_classes(skills=[a])
     text = compile_skill(a, project=project)
 
-    assert "이 스킬이 읽는 것: `TaskState`" in text  # union 분기임을 확정
+    assert "This skill reads: `TaskState`" in text  # union 분기임을 확정
     assert "`command -v daedalus-bb`" in text
     assert "--schemas ${ROOT}/schemas/schemas.json" in text
-    assert text.index("command -v daedalus-bb") < text.index("규칙:\n- 파일을 수정하기 전에")
+    assert text.index("command -v daedalus-bb") < text.index(
+        "Rules:\n- Always read a state file"
+    )
 
 
 def test_cli_directive_present_in_agent_access_declared_branch():
@@ -181,9 +186,11 @@ def test_cli_directive_present_in_agent_access_declared_branch():
     project = _project_with_two_classes(agents=[agent])
     text = compile_agent(agent, project=project)
 
-    assert "이 에이전트가 쓰는 것: `TaskState.step`" in text
+    assert "This agent writes: `TaskState.step`" in text
     assert "`command -v daedalus-bb`" in text
-    assert text.index("command -v daedalus-bb") < text.index("규칙:\n- 파일을 수정하기 전에")
+    assert text.index("command -v daedalus-bb") < text.index(
+        "Rules:\n- Always read a state file"
+    )
 
 
 def test_no_class_definitions_no_cli_directive():
@@ -220,8 +227,8 @@ def test_only_blackboard_section_differs_outside_it_is_byte_identical():
     )
     text_without = compile_skill(a2, project=project_without)
 
-    start = text_with.index("## 공유 상태 (블랙보드)")
-    end = text_with.index("## 다음 단계")
+    start = text_with.index("## Shared State (Blackboard)")
+    end = text_with.index("## Next Steps")
     stripped = text_with[:start] + text_with[end:]
     assert stripped == text_without
 
@@ -252,9 +259,9 @@ def test_skill_with_access_declarations_shows_specific_reads_writes():
     project = _project_with_two_classes(skills=[a])
 
     text = compile_skill(a, project=project)
-    assert "## 공유 상태 (블랙보드)" in text
-    assert "이 스킬이 읽는 것: `TaskState`" in text
-    assert "이 스킬이 쓰는 것: `ReviewFindings.files`" in text
+    assert "## Shared State (Blackboard)" in text
+    assert "This skill reads: `TaskState`" in text
+    assert "This skill writes: `ReviewFindings.files`" in text
     # 관련 클래스만 나열 — TaskState/ReviewFindings 둘 다 관련.
     assert "`TaskState` → `state/TaskState.json`" in text
     assert "`ReviewFindings` → `state/ReviewFindings.json`" in text
@@ -277,8 +284,8 @@ def test_skill_no_access_declarations_falls_back_to_general_guidance():
     a = make_procedural(name="a")
     project = _project_with_two_classes(skills=[a])
     text = compile_skill(a, project=project)
-    assert "이 스킬이 읽는 것" not in text
-    assert "이 스킬이 쓰는 것" not in text
+    assert "This skill reads" not in text
+    assert "This skill writes" not in text
     assert "`TaskState` → `state/TaskState.json`" in text
     assert "`ReviewFindings` → `state/ReviewFindings.json`" in text
 
@@ -291,7 +298,7 @@ def test_skill_access_declarations_include_graph_placement_own_access():
     project.graph.states.append(sa)
 
     text = compile_skill(a, project=project)
-    assert "이 스킬이 읽는 것: `ReviewFindings`" in text
+    assert "This skill reads: `ReviewFindings`" in text
 
 
 def test_agent_with_access_declarations_shows_specific_reads_writes():
@@ -301,7 +308,7 @@ def test_agent_with_access_declarations_shows_specific_reads_writes():
     project = _project_with_two_classes(agents=[agent])
 
     text = compile_agent(agent, project=project)
-    assert "이 에이전트가 쓰는 것: `TaskState.step`" in text
+    assert "This agent writes: `TaskState.step`" in text
     assert "`TaskState` → `state/TaskState.json`" in text
     assert "`ReviewFindings` → `state/ReviewFindings.json`" not in text
 
@@ -341,4 +348,4 @@ def test_declared_branch_keeps_overview_paragraph():
     ))
     text = compile_skill(skill, project=project)
     assert "schemas/schemas.json" in text          # 총론 유지
-    assert "쓰는 것" in text                        # 선언 문구 병존
+    assert "This skill writes" in text                        # 선언 문구 병존

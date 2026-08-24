@@ -36,7 +36,7 @@ def test_body_blank_omits_block():
     skill = make_procedural(body="   \n\n  ")
     text = compile_skill(skill)
     # 프론트매터 뒤에 바로 절차 단락이 오고, 빈 본문 블록으로 인한 잉여 공백이 없다.
-    assert "---\n\n## 워크플로 절차" in text
+    assert "---\n\n## Procedure" in text
 
 
 # ─────────────────────── FSM 절차 서술 ───────────────────────
@@ -45,10 +45,10 @@ def test_body_blank_omits_block():
 def test_fsm_procedure_lists_states_in_order():
     skill = make_procedural()  # analyze → report
     text = compile_skill(skill)
-    assert "## 워크플로 절차" in text
+    assert "## Procedure" in text
     # 시작/종료 표지
-    assert "**analyze** (시작)" in text
-    assert "**report** (종료)" in text
+    assert "**analyze** (start)" in text
+    assert "**report** (end)" in text
     # analyze가 report보다 먼저 등장
     assert text.index("**analyze**") < text.index("**report**")
 
@@ -57,7 +57,7 @@ def test_fsm_procedure_shows_transition_trigger():
     skill = make_procedural()
     text = compile_skill(skill)
     assert "→ **report**" in text
-    assert "완료 이벤트 'done'" in text
+    assert "completion event `done`" in text
 
 
 def test_fsm_procedure_shows_guard():
@@ -74,7 +74,7 @@ def test_fsm_procedure_shows_guard():
     )
     skill = make_procedural(fsm=sm)
     text = compile_skill(skill)
-    assert "가드:" in text
+    assert "guard:" in text
     assert "x > 0" in text
 
 
@@ -90,7 +90,7 @@ def test_fsm_procedure_skill_ref_uses_skill_name():
     )
     skill = make_procedural(fsm=sm)
     text = compile_skill(skill)
-    assert "skill 'helper-kb'" in text
+    assert "use skill `helper-kb`" in text
 
 
 def test_transfer_on_output_events_documented():
@@ -100,7 +100,7 @@ def test_transfer_on_output_events_documented():
         EventDef("failure", description="bad"),
     ]
     text = compile_skill(skill)
-    assert "## 출력 이벤트" in text
+    assert "## Output Events" in text
     assert "`success` — all good" in text
     assert "`failure` — bad" in text
 
@@ -122,7 +122,7 @@ def test_transition_transfer_skill_documented():
     )
     skill = make_procedural(fsm=sm)
     text = compile_skill(skill)
-    assert "skill 'edge-helper'" in text
+    assert "transition skill `edge-helper`" in text
 
 
 # ─────────────────────── WP-BB: 상태 접근 선언 서술 ───────────────────────
@@ -138,16 +138,16 @@ def test_fsm_procedure_shows_access_declarations_sorted():
     skill = make_procedural(fsm=sm)
     text = compile_skill(skill)
     # 이름순 정렬: A.x, A.y, B
-    assert "(읽기: `A.x`, `A.y`, `B`)" in text
-    assert "(쓰기: `C.z`)" in text
+    assert "(reads `A.x`, `A.y`, `B`)" in text
+    assert "(writes `C.z`)" in text
 
 
 def test_fsm_procedure_no_access_declaration_no_suffix():
     """reads/writes가 없으면 접미사 문구가 붙지 않는다 (하위 호환)."""
     skill = make_procedural()  # analyze → report, reads/writes 없음
     text = compile_skill(skill)
-    assert "읽기:" not in text
-    assert "쓰기:" not in text
+    assert "reads" not in text
+    assert "writes" not in text
 
 
 def test_fsm_procedure_shows_both_read_and_write():
@@ -155,7 +155,7 @@ def test_fsm_procedure_shows_both_read_and_write():
     sm = StateMachine(name="g", initial_state=s1, states=[s1])
     skill = make_procedural(fsm=sm)
     text = compile_skill(skill)
-    assert "(읽기: `A` / 쓰기: `B`)" in text
+    assert "(reads `A` / writes `B`)" in text
 
 
 # ─────────────────────── 불완전 FSM 방어 가드 ───────────────────────
@@ -170,9 +170,9 @@ def test_incomplete_fsm_direct_compile_does_not_crash():
     empty = StateMachine(name="empty", initial_state=None, states=[])  # type: ignore[arg-type]
     skill = make_procedural(fsm=empty)
     text = compile_skill(skill)
-    assert "## 워크플로 절차" not in text  # 절차 단락 생략
-    assert "## 출력 이벤트" in text       # 출력 이벤트는 유지
+    assert "## Procedure" not in text  # 절차 단락 생략
+    assert "## Output Events" in text       # 출력 이벤트는 유지
 
     agent = AgentDefinition(fsm=empty, name="a1", description="d")
     atext = compile_agent(agent)
-    assert "## 내부 워크플로" not in atext
+    assert "## Internal Workflow" not in atext

@@ -54,8 +54,8 @@ def _placed_terminal():
 def test_placed_skill_has_resume_preamble_with_name():
     project, a, _ = _placed_pair()
     text = compile_skill(a, project=project)
-    assert "## 작업 재개" in text
-    assert "이 스킬(`a`)" in text
+    assert "## Resuming Work" in text
+    assert "this skill (`a`)" in text
     assert "state/__progress__.json" in text
 
 
@@ -63,7 +63,7 @@ def test_resume_preamble_before_body():
     project, a, _ = _placed_pair()
     text = compile_skill(a, project=project)
     fm_end = text.index("\n---\n") + len("\n---\n")
-    preamble_idx = text.index("## 작업 재개")
+    preamble_idx = text.index("## Resuming Work")
     body_idx = text.index("Do the work.")
     assert fm_end <= preamble_idx < body_idx
 
@@ -71,20 +71,20 @@ def test_resume_preamble_before_body():
 def test_placed_skill_next_steps_has_progress_update_rule():
     project, a, _ = _placed_pair()
     text = compile_skill(a, project=project)
-    assert "## 다음 단계" in text
-    assert "`completed`에 추가하고" in text
-    assert "## 작업 완료" not in text
+    assert "## Next Steps" in text
+    assert "add this skill to `completed`" in text
+    assert "## Finishing Up" not in text
     # 갱신 규칙은 "다음 단계" 단락 뒤쪽에 위치한다.
-    assert text.index("## 다음 단계") < text.index("`completed`에 추가하고")
+    assert text.index("## Next Steps") < text.index("add this skill to `completed`")
 
 
 def test_terminal_placement_gets_completion_section_instead_of_next_steps():
     project, c = _placed_terminal()
     text = compile_skill(c, project=project)
-    assert "## 작업 재개" in text  # 배치된 ProceduralSkill이므로 프리앰블은 여전히 있음
-    assert "## 작업 완료" in text
-    assert "## 다음 단계" not in text
-    assert '`current`를 `"done"`으로' in text
+    assert "## Resuming Work" in text  # 배치된 ProceduralSkill이므로 프리앰블은 여전히 있음
+    assert "## Finishing Up" in text
+    assert "## Next Steps" not in text
+    assert 'set `current` to `"done"`' in text
 
 
 # ── 2) 미배치 스킬 / 에이전트 .md / 로컬 스킬: 단락 부재 ──
@@ -94,15 +94,15 @@ def test_unplaced_skill_no_resume_sections():
     a = make_procedural(name="a")
     project = PluginProject(name="p", skills=[a])  # 그래프에 배치 안 함
     text = compile_skill(a, project=project)
-    assert "## 작업 재개" not in text
-    assert "## 작업 완료" not in text
+    assert "## Resuming Work" not in text
+    assert "## Finishing Up" not in text
 
 
 def test_no_project_no_resume_sections():
     a = make_procedural(name="a")
     text = compile_skill(a)  # project 없음
-    assert "## 작업 재개" not in text
-    assert "## 작업 완료" not in text
+    assert "## Resuming Work" not in text
+    assert "## Finishing Up" not in text
 
 
 def test_agent_md_has_no_resume_sections_even_if_placed():
@@ -111,8 +111,8 @@ def test_agent_md_has_no_resume_sections_even_if_placed():
     sa = SimpleState(name="worker", skill_ref=agent)
     project.graph.states += [sa]
     text = compile_agent(agent, project=project)
-    assert "## 작업 재개" not in text
-    assert "## 작업 완료" not in text
+    assert "## Resuming Work" not in text
+    assert "## Finishing Up" not in text
 
 
 # ── 3) TransferSkill: 전이 중 note ──
@@ -123,17 +123,17 @@ def test_transfer_skill_has_progress_note():
     project, _, _ = _placed_pair()
     edge = make_transfer("edge-skill")
     text = compile_skill(edge, project=project)
-    assert "## 진행 기록" in text
+    assert "## Progress Record" in text
     assert "state/__progress__.json" in text
-    assert "전이 맥락을 기록하라" in text
+    assert "record the transition context" in text
 
 
 def test_transfer_skill_note_requires_placements():
     """placement 0개 프로젝트/프로젝트 없음 → note 미배출 (리뷰 지적 ②)."""
     edge = make_transfer("edge-skill")
-    assert "전이 맥락을 기록하라" not in compile_skill(edge)
+    assert "record the transition context" not in compile_skill(edge)
     empty = PluginProject(name="p", skills=[edge])
-    assert "전이 맥락을 기록하라" not in compile_skill(edge, project=empty)
+    assert "record the transition context" not in compile_skill(edge, project=empty)
 
 
 def test_transfer_skill_note_after_body():
@@ -141,7 +141,7 @@ def test_transfer_skill_note_after_body():
     edge = make_transfer("edge-skill")
     text = compile_skill(edge, project=project)
     body_idx = text.index("Run on edge.")
-    note_idx = text.index("전이 맥락을 기록하라")
+    note_idx = text.index("record the transition context")
     assert body_idx < note_idx
 
 
@@ -277,7 +277,7 @@ def test_middle_skill_with_unrenderable_next_is_not_terminal():
         Transition(source=mid, target=sb, trigger=CompletionEvent(name="done")),
     ]
     text = compile_skill(a, project=project)
-    assert "## 작업 완료" not in text
+    assert "## Finishing Up" not in text
 
 
 def test_placed_declarative_gets_progress_sections():
@@ -292,20 +292,20 @@ def test_placed_declarative_gets_progress_sections():
         Transition(source=sd, target=sb, trigger=CompletionEvent(name="done"))
     )
     text = compile_skill(d, project=project)
-    assert "## 작업 재개" in text
-    assert "`completed`에 추가하고" in text
+    assert "## Resuming Work" in text
+    assert "add this skill to `completed`" in text
 
 
 def test_update_rule_mentions_two_phase_agent_update():
     """에이전트 경유 전이의 2단 갱신(위임 직전/완료 후) 문구 (리뷰 지적 ③)."""
     project, a, _ = _placed_pair()
     text = compile_skill(a, project=project)
-    assert "두 번 갱신" in text
+    assert "update twice" in text
 
 
 def test_terminal_section_adds_self_to_completed():
     """터미널 완료 단락도 자신을 completed에 추가한다 (리뷰 지적 ⑤)."""
     project, c = _placed_terminal()
     text = compile_skill(c, project=project)
-    assert "## 작업 완료" in text
-    assert "`completed`에 추가" in text
+    assert "## Finishing Up" in text
+    assert "add this skill to `completed`" in text
