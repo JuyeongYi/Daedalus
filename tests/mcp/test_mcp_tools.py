@@ -493,3 +493,35 @@ def test_tools_without_project_raise(qapp):
             DaedalusTools(win).get_project()
     finally:
         win.close()
+
+
+# --- 전이 transfer 스킬 부착 (WP-TR) ---
+
+
+def test_set_transition_attaches_transfer_skill(tools):
+    """transfer= 로 전이에 TransferSkill을 붙이고 ""로 해제한다."""
+    tools.create_skill("hand-off", kind="transfer", description="인계 지침")
+    tools.create_skill("a2", kind="procedural")
+    tools.create_skill("b2", kind="procedural")
+    tools.place_component("a2")
+    tools.place_component("b2")
+    tools.connect_states("a2", "b2")
+
+    tools.set_transition("a2", "b2", transfer="hand-off")
+    vm, fsm = tools._scope()
+    trans = next(t for t in fsm.transitions
+                 if t.source.name == "a2" and t.target.name == "b2")
+    assert trans.skill_ref is not None and trans.skill_ref.name == "hand-off"
+
+    tools.set_transition("a2", "b2", transfer="")
+    assert trans.skill_ref is None
+
+
+def test_set_transition_rejects_unknown_transfer(tools):
+    tools.create_skill("a3", kind="procedural")
+    tools.create_skill("b3", kind="procedural")
+    tools.place_component("a3")
+    tools.place_component("b3")
+    tools.connect_states("a3", "b3")
+    with pytest.raises(ValueError, match="TransferSkill"):
+        tools.set_transition("a3", "b3", transfer="no-such")

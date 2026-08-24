@@ -193,10 +193,13 @@ class CanvasTools(_BaseTools):
         target: str,
         trigger: str | None = None,
         guard: str | None = None,
+        transfer: str | None = None,
     ) -> dict[str, Any]:
-        """이미 있는 전이에 트리거·가드를 설정한다.
+        """이미 있는 전이에 트리거·가드·transfer 스킬을 설정한다.
 
         None을 넘긴 항목은 건드리지 않는다. 빈 문자열("")을 넘기면 그 항목을 지운다.
+        transfer는 전이 도중 실행할 TransferSkill의 이름이다 — 라이브러리에 없는
+        이름은 후보를 나열하며 거부한다(오타가 조용히 None이 되는 것 방지).
         """
         from daedalus.view.commands.attr_commands import SetAttrCmd
         from daedalus.view.commands.base import MacroCommand
@@ -225,6 +228,16 @@ class CanvasTools(_BaseTools):
                     script=f'set_transition("{source}", "{target}", guard="{guard}")',
                 )
             )
+        if transfer is not None:
+            cmds.append(
+                SetAttrCmd(
+                    trans,
+                    "skill_ref",
+                    self._find_transfer_skill(transfer) if transfer else None,
+                    label=f"전이 '{source}→{target}' transfer: {transfer or '(해제)'}",
+                    script=f'set_transition("{source}", "{target}", transfer="{transfer}")',
+                )
+            )
         if not cmds:
             return {"transition": [source, target], "changed": []}
         vm.execute(
@@ -236,7 +249,24 @@ class CanvasTools(_BaseTools):
             "transition": [source, target],
             "trigger": trigger,
             "guard": guard,
+            "transfer": transfer,
         }
+
+    def _find_transfer_skill(self, name: str) -> Any:
+        """이름으로 전역 TransferSkill을 찾는다 — 없으면 후보 나열 거부."""
+        from daedalus.model.plugin.skill import TransferSkill
+
+        transfers = [
+            s for s in self._project.skills if isinstance(s, TransferSkill)
+        ]
+        for skill in transfers:
+            if skill.name == name:
+                return skill
+        known = ", ".join(s.name for s in transfers) or "(없음)"
+        raise ValueError(
+            f"TransferSkill '{name}'이 없습니다. 사용 가능: {known} — "
+            f"create_skill(kind=\"transfer\")로 먼저 만드세요."
+        )
 
     # --- 참조 노드 (ReferenceSkill 배치) ---
 
