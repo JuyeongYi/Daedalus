@@ -1,6 +1,13 @@
 from __future__ import annotations
 
-from PySide6.QtWidgets import QFormLayout, QLabel, QLineEdit, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QComboBox,
+    QFormLayout,
+    QLabel,
+    QLineEdit,
+    QVBoxLayout,
+    QWidget,
+)
 
 from daedalus.view.viewmodel.state_vm import StateViewModel, TransitionViewModel
 from daedalus.view.commands.state_commands import RenameStateCmd
@@ -64,6 +71,38 @@ class PropertyPanel(QWidget):
         self._form.addRow("Source", QLabel(transition_vm.source_vm.model.name))
         self._form.addRow("Target", QLabel(transition_vm.target_vm.model.name))
         self._form.addRow("Type", QLabel(transition_vm.model.type.value))
+        self._form.addRow("Trigger", self._build_trigger_combo(transition_vm))
+
+    def _build_trigger_combo(self, transition_vm: TransitionViewModel) -> QComboBox:
+        """트리거 콤보 (A9-8) — 캔버스 엣지 우클릭과 **같은 함수**를 쓴다.
+
+        여기는 지금까지 읽기 전용 라벨이었다. 포트 이름을 바꾸거나 갈래를 잘못
+        물린 뒤에는 전이를 지우고 다시 긋는 수밖에 없었다.
+        """
+        from daedalus.view.actions.transitions import current_trigger, trigger_choices
+
+        combo = QComboBox()
+        combo.addItem("(없음)", "")
+        current = current_trigger(transition_vm)
+        choices = trigger_choices(transition_vm)
+        for name in choices:
+            combo.addItem(name, name)
+        # 포트에 없는 이름이 이미 붙어 있으면(포트 개명 잔재) 그것도 보여 준다 —
+        # 안 보이면 무엇이 걸려 있는지 모른 채 고르게 된다.
+        if current and current not in choices:
+            combo.addItem(f"{current} (포트에 없음)", current)
+        index = combo.findData(current)
+        combo.setCurrentIndex(index if index >= 0 else 0)
+        combo.currentIndexChanged.connect(
+            lambda _i, tvm=transition_vm, c=combo: self._set_trigger(tvm, c)
+        )
+        self._trigger_combo = combo
+        return combo
+
+    def _set_trigger(self, transition_vm: TransitionViewModel, combo: QComboBox) -> None:
+        from daedalus.view.actions.transitions import set_trigger
+
+        set_trigger(self._project_vm, transition_vm, combo.currentData() or "")
 
     def set_project_vm(self, project_vm: ProjectViewModel) -> None:
         """활성 탭이 바뀔 때 커맨드 실행 대상 VM을 교체."""

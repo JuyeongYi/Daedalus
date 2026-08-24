@@ -563,6 +563,9 @@ class FsmScene(QGraphicsScene):
                 f"On Transfer 스킬 해제 ({transition.skill_ref.name})"
             )
 
+        # 트리거 지정 (A9-8) — 실체는 view/actions/transitions.py.
+        trigger_actions = context_menus.add_trigger_menu(menu, tvm)
+
         add_wp_act = menu.addAction("경유점 추가")
         clear_wp_act = menu.addAction("경유점 모두 제거") if tvm.waypoints else None
 
@@ -585,6 +588,13 @@ class FsmScene(QGraphicsScene):
             self._project_vm.execute(
                 SetTransitionSkillRefCmd(tvm, skill_actions[chosen])
             )
+        elif chosen in trigger_actions:
+            self.set_transition_trigger(tvm, trigger_actions[chosen])
+
+    def set_transition_trigger(self, transition_vm, name: str) -> bool:
+        from daedalus.view.actions.transitions import set_trigger
+
+        return set_trigger(self._project_vm, transition_vm, name)
 
     def _handle_waypoint_handle_menu(
         self, menu: QMenu, item: WaypointHandleItem, screen_pos

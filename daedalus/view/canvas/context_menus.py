@@ -64,6 +64,50 @@ def apply_entry_preset_to_node(scene, state_vm: StateViewModel, preset) -> None:
 
 # --- 컴포넌트 공통 액션 (A9-1/2/3) — 실체는 view/actions/ ---
 
+def add_trigger_menu(menu: QMenu, transition_vm) -> dict:
+    """"트리거 지정" 서브메뉴 — {QAction: 트리거 이름} (A9-8).
+
+    후보는 출발 노드가 선언한 출력 이벤트뿐이다. 자유 입력을 주지 않는 이유는
+    포트에 없는 이름을 넣으면 캔버스에서 어느 갈래인지 그릴 수 없고
+    `trigger_unknown_event` 경고만 남기 때문이다 — 갈래를 새로 만들려면
+    출발 스킬의 transfer_on을 먼저 늘려야 한다.
+    """
+    from daedalus.view.actions.transitions import current_trigger, trigger_choices
+
+    submenu = menu.addMenu("트리거 지정")
+    if submenu is None:
+        return {}
+    current = current_trigger(transition_vm)
+    mapping: dict = {}
+
+    none_act = submenu.addAction("(없음)")
+    if none_act is not None:
+        none_act.setCheckable(True)
+        none_act.setChecked(not current)
+        mapping[none_act] = ""
+
+    choices = trigger_choices(transition_vm)
+    if choices:
+        submenu.addSeparator()
+    for name in choices:
+        act = submenu.addAction(name)
+        if act is None:
+            continue
+        act.setCheckable(True)
+        act.setChecked(name == current)
+        mapping[act] = name
+
+    # 포트에 없는 이름이 이미 붙어 있으면(포트 개명 잔재) 그것도 보여 준다 —
+    # 안 보이면 무엇이 걸려 있는지 모른 채 고르게 된다.
+    if current and current not in choices:
+        act = submenu.addAction(f"{current} (포트에 없음)")
+        if act is not None:
+            act.setCheckable(True)
+            act.setChecked(True)
+            act.setEnabled(False)
+    return mapping
+
+
 def main_window(scene):
     """이 씬이 놓인 최상위 창. 없으면 None.
 
