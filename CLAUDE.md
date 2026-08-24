@@ -62,7 +62,8 @@ daedalus/
 │   │   └── field_matrix.py # FieldRule(emit 포함), SKILL_FIELD_MATRIX, AGENT_FIELD_MATRIX (스킬/에이전트 유형별 프론트매터 필드 규칙)
 │   ├── project.py           # PluginProject (최상위 컨테이너, name+description+version — plugin.json 매니페스트 소스), ReferencePlacement, tool_shelf, hook_library, blackboard(최상위), graph(워크플로 백킹 머신)+graph_layout+edge_layout(WP-ER 엣지 웨이포인트, 키: Transition.id), emit_progress_hook(WP-RS SessionStart 진행 상태 훅 토글, 기본 True), build_target(WP-TG 빌드 타깃 — MARKETPLACE/LOCAL, 기본 MARKETPLACE), mcp_server_defs(WP-MW — 이름→.mcp.json 서버 객체, LOCAL 설치 배선 소스)
 │   │                       # + rename_component(project, component, new_name) — 이름 변경 + 문자열 참조 3종 일괄 갱신 (Qt 무관)
-│   │                       # + remove_component(project, component) → list[str] — 모델 정리 (graph placement, skill_ref None화 등)
+│   │                       # + remove_component(project, component) → list[str] — 모델 정리 (graph placement, skill_ref None화 등).
+│   │                       #   undo 가능한 삭제는 view/commands의 RemoveComponentCmd가 이것을 감싼다(A2) — 이 함수 자체는 계속 순수 모델
 │   ├── package.py           # 프로젝트 패키지(WP-PK) — 폴더가 곧 프로젝트. PROJECT_FILENAME(".daedalus.json")/ARCHIVE_SUFFIX(".ddpj"),
 │   │                       #   resolve_project_file(저장 대상)/find_project_file(열 대상)/project_dir/display_name,
 │   │                       #   pack(결정적 zip)/unpack(zip slip 방어). Qt 무관 순수 stdlib.
@@ -149,7 +150,8 @@ daedalus/
     │                       # 메뉴: Ctrl+N "새 프로젝트"(기본 이름 "new-plugin", 빌드 타깃 선택 다이얼로그 — WP-TG, 취소 시 생성 취소),
     │                       #   F7 "프로젝트 검증", Ctrl+B "컴파일", 파일→"프로젝트 속성...", 도구→"MCP 서버 정보..."/"Claude Code 실행".
     │                       # 컴포넌트 이름 변경: _FrontmatterPanel.renamed → _on_component_renamed (중복 거부 + rename_component 호출 + 탭 타이틀 동기화)
-    │                       # 컴포넌트 삭제: 레지스트리 우클릭 → _on_delete_component (확인 다이얼로그 + remove_component + 탭 닫기 + notify)
+    │                       # 컴포넌트 삭제(A2): 레지스트리 우클릭 → _on_delete_component(확인 다이얼로그) → delete_component(공용 실체 —
+    │                       #   MCP도 이것을 부른다. 본문 문서 캐시 정리 + 탭 닫기 + RemoveComponentCmd 실행. **_load_project_graph를 부르지 않는다**)
     │                       # 탭 구조(WP-BB/WP-HK): 인덱스 0=프로젝트 FSM 캔버스, 1=블랙보드 편집(BlackboardPanel), 2=훅 라이브러리(HookLibraryPanel)
     │                       #   — 상주·닫기 불가 고정 3개. _close_tab이 세 인덱스 모두 거부, load_project의 탭 정리 루프는 인덱스 3부터 닫는다.
     │                       #   set_project가 blackboard_panel.set_project(project) + tag_input.set_blackboard_candidate_provider(...)를 배선.
@@ -198,7 +200,8 @@ daedalus/
     │                       #   end_drag()를 호출하고 vm_position()/make_move_command()를 구현한다(ABC 아님 — Qt 메타클래스와 충돌.
     │                       #   믹스인을 QGraphicsItem 앞에 둔다). 상세는 "캔버스 드래그 이동" 항목 참조.
     ├── commands/           # Undo/Redo 커맨드 (state, transition — Add/Move/Remove/ClearWaypointsCmd(WP-ER) 포함, exit_point,
-    │                       #   component — Create/RenameComponentCmd(WP-CE 1차). 삭제는 remove_component의 정리 범위가 넓어 미커맨드화,
+    │                       #   component — Create/RenameComponentCmd(WP-CE 1차) + RemoveComponentCmd(A2 — MacroCommand 서브클래스.
+    │                       #     캔버스 정리는 기존 DeleteRef/DeleteTransition/DeleteStateCmd 조립, 모델 잔여분만 _DetachComponentCmd),
     │                       #   attr — SetAttrCmd/AppendToListCmd/RemoveFromListCmd(WP-CE 범용 폼 편집. 편집마다 클래스를 만들지 않고
     │                       #     "속성 하나 바꾸기"+"리스트 넣고 빼기" 둘로 환원한다. SetAttrCmd는 최초 execute에서만 old를 잡는다 —
     │                       #     redo가 old를 덮으면 undo가 깨진다. 값은 복사하지 않으므로 호출자가 새 객체를 넘겨야 한다))
@@ -582,6 +585,37 @@ daedalus-bb [--state-dir state] [--schemas schemas/schemas.json] <command>
   전환했다 복귀한 뒤** undo를 검증해야 한다(`tests/view/editors/test_body_documents.py`).
   타이핑 시뮬레이션도 `setPlainText`가 아니라 `QTextCursor.insertText`여야 한다(전자는 undo 스택을 지운다).
 
+### 컴포넌트 삭제 커맨드 (A2)
+
+삭제만 undo가 안 되던 이유는 `remove_component`의 정리 범위가 넓어서였다 —
+되돌리려면 그 내역 전부를 기록·복원해야 하고, 부분 복원 커맨드는 없느니만 못하다.
+
+- **수제 스냅샷 대신 기존 커맨드 조립.** `RemoveComponentCmd`(MacroCommand 서브클래스)는
+  캔버스 정리를 `DeleteRefCmd` → `DeleteTransitionCmd` → `DeleteStateCmd` 순서로
+  조립하고(`_canvas_cleanup_commands`), **모델 전용 잔여분만** `_DetachComponentCmd`가
+  맡는다. 순서 덕에 잔여분이 작아진다 — 캔버스 커맨드가 placement를 먼저 떼어내므로
+  `remove_component`가 그 단계에서 할 일이 남아 있지 않고, 남는 것은 목록 제거·잔여
+  reference_placements·다른 FSM의 skill_ref None화 셋뿐이다.
+- **재사용이 나은 실질적 이유는 뷰모델 identity 보존이다.** undo가 **같은**
+  `StateViewModel`/`TransitionViewModel` 객체를 되돌려 놓으므로 노드 좌표·엣지
+  경유점이 layout dict 왕복 없이 그대로 살아난다. 모델만 복원하고 VM을 새로 만들면
+  전이 VM이 캔버스에 없는 유령 노드를 가리켜 엣지가 허공에 그려진다.
+- **그래서 `delete_component`는 `_load_project_graph()`를 부르지 않는다.** 부르면
+  VM이 통째로 새 객체로 갈리고, undo가 되돌려 놓을 옛 VM과 캔버스의 VM이 서로 다른
+  물건이 된다. 레지스트리 갱신도 따로 하지 않는다 — `execute`의 notify가
+  `_on_project_vm_changed` → `set_placed_ids` → `_rebuild`를 태우고, 그 rebuild가
+  프로젝트 목록을 처음부터 다시 읽으므로 undo 복원도 같은 경로로 반영된다.
+- **이름 참조는 건드리지 않는다.** `AgentConfig.skills` / `ProceduralSkillConfig.agent`에
+  남은 이름은 `remove_component`도 지우지 않으므로 커맨드도 지우지 않는다 — 지우면
+  되돌려도 참조가 돌아오지 않는 비대칭이 된다. MCP `delete_component`가 그 목록을
+  `still_referenced_by`로 보고하고, `dangling_string_reference` 경고가 F7에서 짚는다.
+- **graph_layout/edge_layout의 스테일 키는 남는다**(캔버스 커맨드가 dict를 건드리지
+  않으므로). 무해하다 — `_save_graph_layout`이 저장 직전 VM으로부터 dict를 **통째로
+  새로 만들어** 대입하므로 저장 시점에 사라진다.
+- **본문 문서 캐시(WP-BU)는 삭제 시 버린다.** 되돌리면 본문 자체는 모델에 살아
+  돌아오고 탭을 다시 열 때 문서가 새로 만들어진다 — 잃는 것은 본문 편집 이력뿐이다.
+  닫힌 편집 탭도 undo로 다시 열리지는 않는다.
+
 ### 미저장 변경 확인 (A7)
 
 편집 결과는 저장 전까지 **메모리에만** 있다. MCP로 편집하고 GUI를 그냥 닫아
@@ -700,11 +734,12 @@ daedalus-bb [--state-dir state] [--schemas schemas/schemas.json] <command>
   하고, 버리려면 `save_current=False`를 명시해야 한다. 이를 위해 `MainWindow._save_to_path`/
   `open_path`가 `bool`을 돌려준다(GUI 경로는 상태바 문구로 결과를 말하므로 무시한다 — 반환값은
   성공을 전제로 다음 단계를 진행하는 호출자를 위한 것이다). 저장은 파일 쓰기라 undo 대상이 아니다.
-- **아직 노출하지 않은 편집:** 컴포넌트 삭제(아래). 커맨드를 만들기만 하면 `TOOL_NAMES`에 이름을
-  더해 노출된다.
-- **컴포넌트 삭제는 의도적으로 빠져 있다:** `remove_component`가 그래프 placement·skill_ref
-  None화·graph_layout·edge_layout까지 훑어 정리하므로, 되돌리려면 그 정리 내역 전부를
-  기록·복원해야 한다. 부분 복원 커맨드는 없느니만 못하므로 WP-CE 본편으로 미뤘다(GUI 삭제는 종전대로 동작).
+- **컴포넌트 삭제(A2):** `delete_component(name)` — `RemoveComponentCmd`를 거쳐 **undo 가능**하고
+  GUI 레지스트리 삭제(`MainWindow.delete_component`)와 **같은 커맨드**를 쓴다(조작 경로에 따라
+  Ctrl+Z가 듣고 안 듣고가 갈리면 협업 도구로 실격). 상세는 아래 "컴포넌트 삭제 커맨드 (A2)" 참조.
+  이름 참조(`AgentConfig.skills`/`ProceduralSkillConfig.agent`)는 정리하지 않고 결과의
+  `still_referenced_by`로 **보고**한다 — 지워 버리면 되돌려도 참조가 돌아오지 않는 비대칭이 된다.
+  남은 참조는 `dangling_string_reference` 경고가 짚는다. 미노출 편집은 이제 없다.
 - **연결 방법:** 도구 메뉴 → "MCP 서버 정보..."가 접속 주소와 `.mcp.json` 스니펫
   (`{"mcpServers": {"daedalus": {"type": "http", "url": "http://127.0.0.1:8787/mcp"}}}`)을 보여준다.
 

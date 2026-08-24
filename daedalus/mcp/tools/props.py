@@ -84,6 +84,41 @@ class PropsTools(_BaseTools):
         self._window._registry_panel.set_project(self._project)
         return {"renamed": name, "to": new_name}
 
+    def delete_component(self, name: str) -> dict[str, Any]:
+        """컴포넌트(스킬/에이전트)를 삭제한다 — **undo 가능**(Ctrl+Z).
+
+        캔버스 배치와 연결 전이, 참조 노드 배치, 다른 FSM 안에서 이 컴포넌트를
+        가리키던 skill_ref까지 함께 정리하고, 전부 한 번의 undo로 되돌아온다.
+
+        **이름 참조는 정리하지 않는다** — 에이전트 `config.skills`나
+        `ProceduralSkillConfig.agent`에 남은 이름은 그대로 둔다(되돌렸을 때
+        참조가 돌아오지 않는 비대칭을 만들지 않기 위해서다). 남은 참조는
+        `validate_project`의 `dangling_string_reference` 경고가 짚어 준다 —
+        결과의 `still_referenced_by`로 그 목록을 함께 돌려준다.
+        """
+        from daedalus.model.plugin.agent import AgentDefinition
+        from daedalus.model.plugin.config import AgentConfig, ProceduralSkillConfig
+        from daedalus.model.plugin.skill import Skill
+
+        comp = self._find_component(name)
+        project = self._project
+
+        still: list[str] = []
+        if isinstance(comp, AgentDefinition):
+            for skill in project.skills:
+                cfg = getattr(skill, "config", None)
+                if isinstance(cfg, ProceduralSkillConfig) and cfg.agent == name:
+                    still.append(f"skill:{skill.name}.agent")
+        if isinstance(comp, Skill):
+            for agent in project.agents:
+                cfg = getattr(agent, "config", None)
+                if isinstance(cfg, AgentConfig) and name in (cfg.skills or []):
+                    still.append(f"agent:{agent.name}.skills")
+
+        kind = getattr(comp, "kind", type(comp).__name__)
+        self._window.delete_component(comp)
+        return {"deleted": name, "kind": kind, "still_referenced_by": still}
+
     def set_component_description(
         self, name: str, description: str
     ) -> dict[str, Any]:

@@ -42,6 +42,7 @@ TOOL_NAMES = (
     "add_agent_call",
     "remove_agent_call",
     "rename_component",
+    "delete_component",
     "set_component_description",
     "set_component_when_to_use",
     "set_component_field",
@@ -83,8 +84,7 @@ Daedalus(FSM 기반 Claude Code 플러그인 설계 도구)의 열려 있는 편
 - 편집 도구는 즉시 캔버스에 반영되며 전부 사용자의 undo 스택에 들어갑니다 — \
 사용자가 Ctrl+Z로 되돌릴 수 있고, 스크립트 리스너에 사람 편집과 같은 형식으로 남습니다.
 - 노출된 편집: 캔버스 구조(노드/전이/배치/참조 노드), 포트와 분기 의미론, \
-블랙보드, 훅 라이브러리, 프로젝트 속성, 컴포넌트 본문. 컴포넌트 삭제와 나머지 \
-프론트매터 필드는 아직 GUI에서만 가능합니다.
+블랙보드, 훅 라이브러리, 프로젝트 속성, 컴포넌트 본문, 컴포넌트 생성·이름 변경·삭제.
 - **프로젝트의 단위는 폴더**입니다(`<폴더>/.daedalus.json` + `<폴더>/files/`). \
 `open_project`에는 폴더 경로를 주세요(구버전 `<이름>.daedalus.json` 파일도 열립니다). \
 경로는 `list_recent_projects`로 찾을 수 있습니다.

@@ -796,14 +796,11 @@ class MainWindow(QMainWindow):
     # --- 컴포넌트 삭제 ---
 
     def _on_delete_component(self, component: object) -> None:
-        """레지스트리 우클릭 '삭제' → 확인 후 모델·뷰 정리."""
-        from daedalus.model.project import remove_component
-
+        """레지스트리 우클릭 '삭제' → 확인 후 삭제 커맨드 실행."""
         if self._project is None:
             return
 
         comp_name = getattr(component, "name", str(component))
-        comp_id = getattr(component, "id", None)
 
         # 참조 요약 수집 (간략 — validate 없이 빠른 사전 검사)
         ref_lines: list[str] = []
@@ -845,23 +842,43 @@ class MainWindow(QMainWindow):
         if reply != QMessageBox.StandardButton.Yes:
             return
 
-        # 본문 문서 캐시 정리 — 삭제된 컴포넌트의 undo 이력을 들고 있을
-        # 이유가 없다 (WP-BU).
+        self.delete_component(component)
+        self._status_label.setText(f"'{comp_name}' 삭제됨 (Ctrl+Z로 되돌릴 수 있습니다)")
+
+    def delete_component(self, component: object) -> None:
+        """컴포넌트 삭제 — 확인 다이얼로그 없이 커맨드로 실행한다 (A2).
+
+        GUI 레지스트리 삭제와 MCP `delete_component`가 공유하는 실체다. 조작
+        경로에 따라 Ctrl+Z가 듣고 안 듣고가 갈리면 협업 도구로 실격이다.
+
+        **`_load_project_graph()`를 부르지 않는다** — 커맨드가 캔버스 VM을 직접
+        떼어냈고, 여기서 모델로부터 VM을 다시 만들면 undo가 되돌려 놓을 VM 객체와
+        캔버스에 있는 VM 객체가 서로 다른 물건이 되어(전이 VM이 사라진 노드 VM을
+        가리킨다) 되돌린 그래프가 깨진다.
+        """
+        from daedalus.view.commands.component_commands import RemoveComponentCmd
+
+        if self._project is None:
+            return
+
+        comp_id = getattr(component, "id", None)
+
+        # 본문 문서 캐시 정리 — 삭제된 컴포넌트의 undo 이력을 들고 있을 이유가
+        # 없다 (WP-BU). 되돌리면 본문 자체는 모델에 살아 돌아오고, 탭을 다시 열
+        # 때 문서가 새로 만들어진다(본문 편집 이력만 잃는다).
         from daedalus.view.editors import body_documents
         body_documents.registry().discard(component)
 
-        # 모델 정리
-        remove_component(self._project, component)
-
-        # view 정리 1) 열린 탭 닫기
+        # 열린 탭 닫기
         if comp_id is not None and comp_id in self._open_tabs:
             self._close_tab(self._open_tabs[comp_id])
 
-        # view 정리 2) 캔버스 + 레지스트리 + notify
-        self._load_project_graph()
-        self._registry_panel.set_project(self._project)
-        self._project_vm.notify()
-        self._status_label.setText(f"'{comp_name}' 삭제됨")
+        # 레지스트리는 별도로 갱신하지 않는다 — execute의 notify가
+        # _on_project_vm_changed → set_placed_ids → _rebuild를 태우고, 그 rebuild가
+        # 프로젝트 목록을 처음부터 다시 읽으므로 undo 복원도 같은 경로로 반영된다.
+        self._project_vm.execute(
+            RemoveComponentCmd(self._project, self._project_vm, component)
+        )
 
     # --- 탭 관리 ---
 
