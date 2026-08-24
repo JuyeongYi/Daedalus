@@ -395,9 +395,12 @@ class _FrontmatterPanel(QScrollArea):
         if fld in _TOOL_CANDIDATE_FIELDS and isinstance(widget, TagInput):
             widget.set_candidates(get_tool_candidates())
         elif fld in (SkillField.HOOKS, AgentField.HOOKS) and isinstance(widget, TagInput):
-            from daedalus.view.widgets.preset_picker import _HOOK_NAME_PROVIDER
-            if _HOOK_NAME_PROVIDER is not None:
-                widget.set_candidates(_HOOK_NAME_PROVIDER())
+            # hook_library 이름을 자동완성 후보로 — provider 함수를 호출해야
+            # 모듈 변수 캡처 문제(임포트 시점 None)를 피한다.
+            from daedalus.view.widgets.preset_picker import get_hook_names
+            names = get_hook_names()
+            if names:
+                widget.set_candidates(names)
 
     @staticmethod
     def _read_widget_value(fld: SkillField | AgentField, widget: QWidget) -> object:

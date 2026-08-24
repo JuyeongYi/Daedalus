@@ -113,6 +113,13 @@ def set_hook_name_provider(provider: Callable[[], list[str]] | None) -> None:
     _HOOK_NAME_PROVIDER = provider
 
 
+def get_hook_names() -> list[str]:
+    """등록된 제공자에서 현재 hook_library 이름 목록을 가져온다 (없으면 빈 리스트)."""
+    if _HOOK_NAME_PROVIDER is not None:
+        return list(_HOOK_NAME_PROVIDER())
+    return []
+
+
 class HookPresetPicker(PresetPicker):
     """Hooks 피커 — 등록된 hook_library 이름을 동적 표시(폴백: .claude/hooks 스캔)."""
 
