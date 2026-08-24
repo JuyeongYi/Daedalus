@@ -122,6 +122,8 @@ class _ProjectRules:
         errors.extend(_ProjectRules._check_skill_dir_token_in_agent(project))
         # 진입점 의미론 규칙 — A3
         errors.extend(_ProjectRules._check_mid_chain_user_invocable(project))
+        # 전이 스킬 재사용 금지 — A11
+        errors.extend(_ProjectRules._check_transfer_skill_reused(project))
         return errors
 
     @staticmethod
@@ -891,6 +893,75 @@ class _ProjectRules:
                     subject=agent,
                     path=(f"agent:{agent.name}",),
                 ))
+        return errors
+
+    @staticmethod
+    def _scan_transitions(sm: StateMachine, visit) -> None:
+        """머신(재귀 — sub_machine/Region 포함)의 모든 전이에 visit(transition)를 적용.
+
+        `_scan_state_access`의 전이판이다 — 같은 재귀 범위를 두 번 적으면
+        한쪽만 고쳐졌을 때 규칙마다 보는 그래프가 달라진다.
+        """
+        for trans in getattr(sm, "transitions", None) or []:
+            visit(trans)
+        for state in sm.states:
+            if isinstance(state, CompositeState):
+                _ProjectRules._scan_transitions(state.sub_machine, visit)
+            elif isinstance(state, ParallelState):
+                for region in state.regions:
+                    _ProjectRules._scan_transitions(region.sub_machine, visit)
+
+    @staticmethod
+    def _check_transfer_skill_reused(project) -> list[ValidationError]:
+        """transfer_skill_reused — 한 TransferSkill이 2개 이상 전이에 붙으면 에러 (A11).
+
+        **전이 스킬도 재사용할 수 없다**(사용자 확정) — `no_duplicate_skill_ref`가
+        스킬 placement에 대해 말하는 것과 같은 결이다. 전이 스킬은 "이 갈래를
+        건널 때 할 일"이라 그 갈래에 고유하고, 한 정의를 여러 전이가 공유하면
+        어느 경로의 지침인지가 본문에서 흐려진다. 산출에서도 도착 스킬의 진입
+        맥락과 출발 스킬의 다음 단계가 같은 이름을 서로 다른 뜻으로 가리키게 된다.
+
+        순회 범위는 프로젝트 그래프 + 각 스킬/에이전트 FSM(재귀)이다 —
+        `dangling_tool_ref`/블랙보드 규칙과 같은 범위.
+        """
+        from daedalus.model.plugin.skill import TransferSkill
+
+        # id(스킬) → (스킬, [경로 표지…]) — 어디에 붙었는지 알려 줘야 고칠 수 있다.
+        uses: dict[int, tuple[object, list[str]]] = {}
+
+        def _make_visitor(label: str):
+            def _visit(trans) -> None:
+                ref = getattr(trans, "skill_ref", None)
+                if not isinstance(ref, TransferSkill):
+                    return
+                entry = uses.setdefault(id(ref), (ref, []))
+                src = getattr(getattr(trans, "source", None), "name", "?")
+                tgt = getattr(getattr(trans, "target", None), "name", "?")
+                entry[1].append(f"{label}: {src}→{tgt}")
+            return _visit
+
+        graph = getattr(project, "graph", None)
+        if graph is not None:
+            _ProjectRules._scan_transitions(graph, _make_visitor("project"))
+        for label, sm in _ProjectRules._project_machines(project):
+            _ProjectRules._scan_transitions(sm, _make_visitor(label))
+
+        errors: list[ValidationError] = []
+        for _key, (skill, places) in uses.items():
+            if len(places) < 2:
+                continue
+            errors.append(ValidationError(
+                rule="transfer_skill_reused",
+                message=(
+                    f"전이 스킬 '{skill.name}'이 전이 {len(places)}곳에 붙어 "
+                    f"있습니다 ({', '.join(places)}). 전이 스킬은 그 갈래를 건널 "
+                    f"때 할 일이라 갈래마다 고유해야 합니다 — 갈래별로 따로 "
+                    f"만드세요(공통 지식은 Declarative/Reference 스킬로 빼고 "
+                    f"각 전이 스킬이 참조하게 합니다)."
+                ),
+                source=skill.name,
+                subject=skill,
+            ))
         return errors
 
     @staticmethod

@@ -305,7 +305,10 @@ def _call_contract_section(agent: AgentDefinition, project) -> list[str]:
     if graph is None:
         return []
 
-    entries: list[tuple[str, str, str, str]] = []  # (caller, port, desc, guard)
+    # (caller, port, desc, guard, transfer) — transfer는 호출 전이에 붙은
+    # TransferSkill 이름(A11). 호출자가 위임 **전에** 그 지침을 수행하므로,
+    # 에이전트는 그것이 이미 수행된 상태를 전제로 일을 시작한다.
+    entries: list[tuple[str, str, str, str, str]] = []
     for trans in getattr(graph, "transitions", []) or []:
         tgt_ref = getattr(trans.target, "skill_ref", None)
         if tgt_ref is not agent:
@@ -321,7 +324,8 @@ def _call_contract_section(agent: AgentDefinition, project) -> list[str]:
                 desc = (ev.description or "").strip()
                 break
         guard = _describe_guard(getattr(trans, "guard", None))
-        entries.append((caller, port, desc, guard))
+        transfer = getattr(getattr(trans, "skill_ref", None), "name", "") or ""
+        entries.append((caller, port, desc, guard, transfer))
 
     if not entries:
         return []
@@ -333,12 +337,14 @@ def _call_contract_section(agent: AgentDefinition, project) -> list[str]:
             "(블랙보드) 단락의 읽기 선언을 따른다."
         ),
     ]
-    for caller, port, desc, guard in entries:
+    for caller, port, desc, guard, transfer in entries:
         line = f"- `{caller}`의 `{port}` 포트에서 호출" if port else f"- `{caller}`에서 호출"
         if guard:
             line += f" [가드: {guard}]"
         if desc:
             line += f" — {desc}"
+        if transfer:
+            line += f" (호출자가 전이 스킬 `{transfer}`의 지침을 수행하고 위임한다)"
         blocks.append(line)
     return blocks
 

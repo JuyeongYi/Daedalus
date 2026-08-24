@@ -41,20 +41,43 @@ def _next_step_condition(t) -> str:
     return cond if cond else "무조건"
 
 
-def _next_step_invoke_line(target_state, sm: StateMachine) -> str | None:
+def _transfer_prefix(transition) -> str:
+    """전이에 붙은 TransferSkill을 **수행하라는 지시**로 (A11).
+
+    도착 스킬의 "진입 맥락"은 "전이 스킬 X의 지침을 수행한 상태다"라고 가정하는데,
+    출발 스킬의 "다음 단계"에는 그것을 수행하라는 지시가 없었다 — 아무도
+    전이 스킬을 실행하지 않는 구조였다. 지시를 만드는 쪽은 **출발 스킬**이다
+    (도착 쪽은 이미 수행된 것을 전제로 읽는다).
+
+    transfer가 없으면 빈 문자열이라 기존 문구가 그대로 나온다.
+    """
+    ref = getattr(transition, "skill_ref", None)
+    if ref is None:
+        return ""
+    name = getattr(ref, "name", "")
+    desc = (getattr(ref, "description", "") or "").strip()
+    shown = f"`{name}`(`{desc}`)" if desc else f"`{name}`"
+    return f"전이 스킬 {shown}의 지침을 수행한 뒤 "
+
+
+def _next_step_invoke_line(transition, sm: StateMachine) -> str | None:
     """전이 타깃 placement에 대한 한 줄 지시문.
 
     - 스킬 placement: "[조건] → `<skill>` 스킬을 인보크하라"
     - 에이전트 placement: "[조건] → 에이전트 `X`에게 위임하라" + 그 에이전트
       placement의 outgoing을 한 단계 인라인("위임 완료 후: …")
+    전이에 TransferSkill이 붙어 있으면 앞에 그 지침을 수행하라는 지시가 붙는다
+    (A11) — 위임 인라인의 후속 전이도 각자의 transfer를 갖는다.
     EntryPoint 등 skill_ref 없는 타깃은 None(스킵).
     """
+    target_state = transition.target
     ref = getattr(target_state, "skill_ref", None)
     if ref is None:
         return None
     name = getattr(ref, "name", "")
+    prefix = _transfer_prefix(transition)
     if isinstance(ref, AgentDefinition):
-        line = f"에이전트 `{name}`에게 위임하라"
+        line = f"{prefix}에이전트 `{name}`에게 위임하라"
         # 에이전트 placement의 outgoing을 한 단계 인라인 (별도 컨텍스트라 호출자
         # 쪽에 후속 지시를 둔다 — 에이전트 .md는 호출자 지침을 담을 수 없음).
         inline_parts: list[str] = []
@@ -66,12 +89,13 @@ def _next_step_invoke_line(target_state, sm: StateMachine) -> str | None:
                 tgt_name = getattr(tgt_ref, "name", "")
                 cond = _next_step_condition(t)
                 inline_parts.append(
-                    f"위임 완료 후: [{cond}] → {_invoke_phrase(tgt_ref, tgt_name)}"
+                    f"위임 완료 후: [{cond}] → "
+                    f"{_transfer_prefix(t)}{_invoke_phrase(tgt_ref, tgt_name)}"
                 )
         if inline_parts:
             line += " (" + "; ".join(inline_parts) + ")"
         return line
-    return _invoke_phrase(ref, name)
+    return f"{prefix}{_invoke_phrase(ref, name)}"
 
 
 def _invoke_phrase(ref, name: str) -> str:
@@ -98,7 +122,7 @@ def _next_steps_section(component, project) -> list[str]:
         for t in graph.transitions:
             if t.source is not placement:
                 continue
-            invoke = _next_step_invoke_line(t.target, graph)
+            invoke = _next_step_invoke_line(t, graph)
             if invoke is None:
                 continue
             cond = _next_step_condition(t)

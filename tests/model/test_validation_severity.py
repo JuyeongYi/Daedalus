@@ -26,6 +26,7 @@ _ERROR_RULES = frozenset({
     "duplicate_hook_name",
     "transition_type_consistency",
     "choice_completeness",
+    "transfer_skill_reused",  # A11 — no_duplicate_skill_ref와 같은 결(에러)
 })
 
 # 경고로 분류되어야 하는 규칙 목록 (WARNING_RULES와 동일)
