@@ -24,6 +24,7 @@ from daedalus.model.plugin.agent import AgentDefinition
 from daedalus.model.plugin.skill import DeclarativeSkill, ReferenceSkill, TransferSkill
 from daedalus.view.canvas.draggable import DraggableItemMixin
 from daedalus.view.canvas.edge_item import TransitionEdgeItem, WaypointHandleItem
+from daedalus.view.canvas import context_menus
 from daedalus.view.canvas.node_item import StateNodeItem
 from daedalus.view.canvas.ref_edge_item import ReferenceEdgeItem
 from daedalus.view.canvas.ref_node_item import ReferenceNodeItem
@@ -466,9 +467,13 @@ class FsmScene(QGraphicsScene):
                 handler()
         elif isinstance(item, ReferenceNodeItem):
             name = getattr(item.ref_vm.model, "name", "?")
+            dispatch = self._add_reference_actions_menu(menu, item.ref_vm)
             delete_act = menu.addAction(f"참조 '{name}' 삭제")
-            if menu.exec(event.screenPos()) == delete_act:
-                self.delete_reference_node(item.ref_vm)
+            dispatch[delete_act] = lambda rvm=item.ref_vm: self.delete_reference_node(rvm)
+            chosen = menu.exec(event.screenPos())
+            handler = dispatch.get(chosen) if chosen is not None else None
+            if handler is not None:
+                handler()
         elif isinstance(item, ReferenceEdgeItem):
             delete_act = menu.addAction("참조 연결 삭제")
             if menu.exec(event.screenPos()) == delete_act:
@@ -482,171 +487,48 @@ class FsmScene(QGraphicsScene):
             if menu.exec(event.screenPos()) == add_act:
                 self._create_state(pos)
 
-    # --- 진입점 프리셋 (A8) — 실체는 view/actions/entrypoint.py ---
 
-    def _add_entry_preset_menu(self, menu: QMenu, state_vm: StateViewModel) -> dict:
-        """"진입점 설정" 서브메뉴를 붙이고 {QAction: EntryPreset}을 돌려준다.
-
-        프리셋을 지원하지 않는 노드(에이전트·빈 상태·FIXED 종류 스킬)에는
-        **메뉴를 만들지 않는다** — 눌러도 아무 일도 일어나지 않는 항목은
-        없느니만 못하다.
-        """
-        from daedalus.view.actions.entrypoint import (
-            ENTRY_PRESETS,
-            current_entry_preset,
-            supports_entry_presets,
-        )
-
-        component = getattr(state_vm.model, "skill_ref", None)
-        if component is None or not supports_entry_presets(component):
-            return {}
-
-        submenu = menu.addMenu("진입점 설정")
-        if submenu is None:
-            return {}
-        submenu.setToolTipsVisible(True)
-        current = current_entry_preset(component)
-        mapping: dict = {}
-        for spec in ENTRY_PRESETS:
-            act = submenu.addAction(spec.label)
-            if act is None:
-                continue
-            act.setToolTip(spec.description)
-            act.setCheckable(True)
-            act.setChecked(spec.preset is current)
-            mapping[act] = spec.preset
-        menu.addSeparator()
-        return mapping
-
-    def _apply_entry_preset(self, state_vm: StateViewModel, preset) -> None:
-        from daedalus.view.actions.entrypoint import apply_entry_preset
-
-        component = getattr(state_vm.model, "skill_ref", None)
-        if component is not None:
-            apply_entry_preset(self._project_vm, component, preset)
-
-    # --- 컴포넌트 공통 액션 (A9-1/2/3) — 실체는 view/actions/ ---
+    # --- 컨텍스트 메뉴 위임 (실체는 canvas/context_menus.py) ---
+    #
+    # 메뉴 항목이 늘면서 씬이 코드 위생 상한(1,200줄)을 넘어 떼어 냈다. 여기에는
+    # 같은 이름의 한 줄 위임만 남는다 — 테스트와 다른 호출부가 씬의 메서드를
+    # 직접 부르기 때문이다(WP-RF-3e가 MainWindow 협력 객체에서 쓴 관례와 같다).
 
     def main_window(self):
-        """이 씬이 놓인 최상위 창. 없으면 None.
+        return context_menus.main_window(self)
 
-        씬은 MainWindow를 참조하지 않는다(캔버스가 창을 알 이유가 없다) —
-        다이얼로그 부모나 프로젝트 수준 액션이 필요할 때만 뷰를 통해 거슬러
-        올라간다. 뷰가 아직 붙지 않은 헤드리스 생성 경로에서는 None이다.
-        """
-        views = self.views()
-        return views[0].window() if views else None
+    def _add_entry_preset_menu(self, menu: QMenu, state_vm: StateViewModel) -> dict:
+        return context_menus.add_entry_preset_menu(self, menu, state_vm)
+
+    def _apply_entry_preset(self, state_vm: StateViewModel, preset) -> None:
+        context_menus.apply_entry_preset_to_node(self, state_vm, preset)
 
     def _add_component_actions_menu(self, menu: QMenu, state_vm: StateViewModel) -> dict:
-        """스킬/에이전트 placement 공통 항목 — 미리보기·모델/effort·관련 경고.
-
-        {QAction: 무인자 콜러블} 디스패치 표를 돌려준다. placement가 아닌
-        노드(빈 상태)에는 아무것도 붙이지 않는다.
-        """
-        from daedalus.view.actions import model_effort as me
-
-        component = getattr(state_vm.model, "skill_ref", None)
-        if component is None:
-            return {}
-
-        dispatch: dict = {}
-
-        preview_act = menu.addAction("컴파일 미리보기…")
-        if preview_act is not None:
-            preview_act.setToolTip("이 컴포넌트가 어떤 파일로 나가는지 — 파일은 쓰지 않는다")
-            dispatch[preview_act] = lambda c=component: self._show_preview(c)
-
-        if me.supports_model_effort(component):
-            model_menu = menu.addMenu("모델 지정")
-            if model_menu is not None:
-                current = me.current_model(component)
-                for model, label in me.MODEL_CHOICES:
-                    act = model_menu.addAction(label)
-                    if act is None:
-                        continue
-                    act.setCheckable(True)
-                    act.setChecked(current is model)
-                    dispatch[act] = (
-                        lambda c=component, m=model: me.set_model(self._project_vm, c, m)
-                    )
-            effort_menu = menu.addMenu("effort 지정")
-            if effort_menu is not None:
-                current_effort = me.current_effort(component)
-                for effort, label in me.EFFORT_CHOICES:
-                    act = effort_menu.addAction(label)
-                    if act is None:
-                        continue
-                    act.setCheckable(True)
-                    act.setChecked(current_effort is effort)
-                    dispatch[act] = (
-                        lambda c=component, e=effort: me.set_effort(self._project_vm, c, e)
-                    )
-
-        warn_act = menu.addAction("관련 경고 보기")
-        if warn_act is not None:
-            dispatch[warn_act] = lambda c=component: self._show_component_findings(c)
-
-        dispatch.update(self._add_agent_actions_menu(menu, component))
-
-        menu.addSeparator()
-        return dispatch
-
-    # --- 에이전트 전용 (A9-4/5) ---
+        return context_menus.add_component_actions_menu(self, menu, state_vm)
 
     def _add_agent_actions_menu(self, menu: QMenu, component: object) -> dict:
-        """에이전트 placement에만 붙는 항목 — 호출자 목록 / 출력 포트 편집."""
-        from daedalus.model.plugin.agent import AgentDefinition
-        from daedalus.view.actions.agent_links import callers_of
+        return context_menus.add_agent_actions_menu(self, menu, component)
 
-        if not isinstance(component, AgentDefinition):
-            return {}
+    def _add_reference_actions_menu(self, menu: QMenu, ref_vm) -> dict:
+        return context_menus.add_reference_actions_menu(self, menu, ref_vm)
 
-        dispatch: dict = {}
-        callers = callers_of(component, self._project)
-        callers_menu = menu.addMenu("호출자 목록")
-        if callers_menu is not None:
-            callers_menu.setToolTipsVisible(True)
-            if not callers:
-                act = callers_menu.addAction("(없음)")
-                if act is not None:
-                    act.setEnabled(False)
-            for ref in callers:
-                act = callers_menu.addAction(ref.label)
-                if act is None:
-                    continue
-                if ref.description:
-                    act.setToolTip(ref.description)
-                dispatch[act] = lambda r=ref: self._focus_state(r.source_state)
+    def highlight_reference_links(self, ref_vm) -> list:
+        return context_menus.highlight_reference_links(self, ref_vm)
 
-        ports_act = menu.addAction("출력 포트 편집…")
-        if ports_act is not None:
-            dispatch[ports_act] = lambda c=component: self._open_ports(c)
-        return dispatch
+    def add_reference_link(self, ref_vm, state_vm) -> None:
+        context_menus.add_reference_link_on(self, ref_vm, state_vm)
 
     def _focus_state(self, state: object) -> None:
-        """그 상태의 노드를 캔버스에서 선택·센터링한다 (검증 결과 점프와 같은 경로)."""
-        window = self.main_window()
-        if hasattr(window, "_focus_in_project_canvas"):
-            window._focus_in_project_canvas(state)
+        context_menus.focus_state(self, state)
 
     def _open_ports(self, component: object) -> None:
-        window = self.main_window()
-        if hasattr(window, "open_component_ports"):
-            window.open_component_ports(component)
+        context_menus.open_ports(self, component)
 
     def _show_preview(self, component: object) -> None:
-        from daedalus.view.actions.preview import show_preview_dialog
-
-        window = self.main_window()
-        resolved = window.resolved_hooks() if hasattr(window, "resolved_hooks") else None
-        show_preview_dialog(
-            window, component, project=self._project, resolved_hooks=resolved,
-        )
+        context_menus.show_preview(self, component)
 
     def _show_component_findings(self, component: object) -> None:
-        window = self.main_window()
-        if hasattr(window, "show_component_findings"):
-            window.show_component_findings(component)
+        context_menus.show_component_findings(self, component)
 
     def _handle_transition_edge_menu(
         self, menu: QMenu, item: TransitionEdgeItem, scene_pos: QPointF, screen_pos

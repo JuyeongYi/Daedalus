@@ -199,6 +199,9 @@ daedalus/
     │   │                   #     파일은 쓰지 않는다. 산출은 **원문 그대로** 보인다(렌더하면 프론트매터가 사라진다).
     │   ├── model_effort.py #   모델/effort 지정(A9-2) — MODEL_CHOICES/EFFORT_CHOICES(표시 순서 단일 진실) + set_model/set_effort.
     │   │                   #     새로 만드는 것은 UI가 아니라 **쓰기 경로의 단일 진실**이다(에디터 콤보와 같은 SetAttrCmd 경로).
+    │   ├── references.py   #   참조 노드(A9-6/7) — linked_state_vms/linkable_state_vms(캔버스 드래그와 같은 **스킬 기준** 중복
+    │   │                   #     방지)/reference_vms_for/add_reference_link(씬의 create_reference_link 경유 — 링크 생성은 모델
+    │   │                   #     reference_placements 재구성 sync가 따라붙어야 하고 그 함수는 씬이 쥐고 있다).
     │   ├── agent_links.py  #   에이전트 호출자 유도(A9-4) — callers_of(agent, project) → CallerRef 목록(호출자·포트·설명·
     │   │                   #     포커스 대상 노드), 호출자 이름·포트 순. 정렬·유도가 컴파일 "## 호출 계약"과 **같아야** 화면과
     │   │                   #     산출이 같은 말을 한다. 누가 부르는지는 모델에 없고 그래프에서 유도할 뿐이다(WP-CT).
@@ -207,6 +210,10 @@ daedalus/
     │                       #     mid_chain_user_invocable처럼 subject가 노드인 규칙을 통째로 놓친다. dock 표시는
     │                       #     ValidationActions.show_component_findings가 계속 전담(검증 패널을 채우는 경로는 하나여야 한다).
     ├── canvas/             # GraphicsView/Scene, NodeItem, EdgeItem, RefNodeItem, RefEdgeItem, sync(VM→모델 동기화 — Qt 무관)
+    │                       # context_menus.py(A8/A9): 컨텍스트 메뉴 조립을 FsmScene에서 떼어 낸 모듈(코드 위생 상한 —
+    │                       #   메뉴 항목이 늘며 씬이 1,200줄을 넘었다). 씬에는 같은 이름의 **한 줄 위임**만 남는다(테스트와
+    │                       #   호출부가 scene._add_component_actions_menu(...)처럼 씬 메서드를 직접 부른다). 여기 함수는
+    │                       #   메뉴를 조립해 {QAction: 콜러블} 디스패치 표를 돌려줄 뿐이고 편집 로직은 전부 view/actions/에 있다.
     │                       # 엣지 리루트(WP-ER): TransitionEdgeItem.update_path가 TransitionViewModel.waypoints(경유점)를 경유하는
     │                       #   구간별 베지어 곡선을 그린다. 선택 시 자식 WaypointHandleItem(작은 원)을 표시 — 더블클릭/컨텍스트 메뉴로
     │                       #   추가(nearest_segment_index), 드래그 이동, 우클릭/Delete로 제거. FsmScene/AgentFsmScene 공용.
