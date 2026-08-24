@@ -41,6 +41,11 @@ EXIT_INVALID = 1
 EXIT_USAGE = 2
 EXIT_NO_FILE = 3
 
+# write의 낙관적 잠금 재시도 횟수 (A6). 충돌은 "남이 방금 썼다"는 뜻이므로 다시
+# 읽어 적용하면 대개 한 번에 끝난다 — 무한 재시도는 살아 있는 락 경쟁에서
+# 프로세스가 돌아오지 않게 만들 뿐이라 상한을 둔다.
+_WRITE_MAX_ATTEMPTS = 3
+
 
 class CliError(Exception):
     """사용자에게 stderr로 알리고 정해진 코드로 끝내는 오류."""
@@ -360,6 +365,38 @@ def read_state(path: Path) -> Any:
         raise CliError(f"상태 파일 JSON 파싱 실패: {path.as_posix()}: {exc}") from exc
 
 
+def read_raw(path: Path) -> str | None:
+    """상태 파일의 원문. 없으면 None (A6 — 낙관적 잠금의 비교 기준).
+
+    mtime이 아니라 **내용**을 비교한다. Windows의 mtime 해상도(파일시스템에 따라
+    수십 ms~2초)로는 빠른 연속 쓰기를 구분하지 못해, 남의 쓰기를 못 본 채
+    덮어쓰는 경우가 생긴다.
+    """
+    try:
+        return path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return None
+    except OSError as exc:  # pragma: no cover - 권한 등 환경 의존
+        raise CliError(f"상태 파일을 읽을 수 없다: {path.as_posix()}: {exc}") from exc
+
+
+def write_state_checked(path: Path, obj: Any, expected_raw: str | None) -> bool:
+    """디스크 내용이 `expected_raw` 그대로일 때만 쓴다 (A6). 달랐으면 False.
+
+    읽기-수정-쓰기 사이에 다른 프로세스가 쓴 것을 덮지 않기 위한 낙관적 잠금이다
+    (병렬 서브에이전트가 같은 클래스를 갱신하는 시나리오에서 lost update가 났다).
+
+    **완전한 상호배제는 아니다.** 비교와 `os.replace` 사이에도 남이 끼어들 수
+    있는 창은 남는다 — 그것까지 막으려면 파일 잠금이 필요한데, 크래시로 남은
+    잠금 파일을 깨는 휴리스틱이 그 자체로 새 고장을 만든다. 창이 마이크로초
+    수준으로 좁아지는 것이 실질적인 이득이고, 잃는 것은 없다.
+    """
+    if read_raw(path) != expected_raw:
+        return False
+    write_state(path, obj)
+    return True
+
+
 def write_state(path: Path, obj: Any) -> None:
     """원자적 쓰기 — 임시 파일에 완전히 쓴 뒤 os.replace.
 
@@ -543,22 +580,40 @@ def _cmd_write(
     if not (sets or appends or removes):
         raise CliError("--set / --append / --remove 중 최소 하나가 필요하다")
     path = state_path(state_dir, cls)
-    if path.is_file():
-        obj = read_state(path)
-        if not isinstance(obj, dict):
-            raise CliError(f"{cls}: 상태 파일 최상위가 JSON 객체가 아니다: {path.as_posix()}")
-        obj = dict(obj)
-    else:
-        obj = initial_object(schema)
-    _apply_operations(obj, schema, cls, sets, appends, removes)
-    violations = validate_object(obj, schema, cls)
-    if violations:
-        _report_violations(violations)
-        _note(f"쓰지 않았다 — {path.as_posix()}는 그대로다.")
-        return EXIT_INVALID
-    write_state(path, obj)
-    _emit(obj)
-    return EXIT_OK
+
+    # 낙관적 잠금 + 재시도 (A6). 남이 그 사이에 썼으면 **다시 읽어 수정을 새
+    # 내용 위에 다시 적용한다** — 병합할 수 없는 충돌이 아니라 잃어버린 갱신을
+    # 막는 것이 목적이므로, 되풀이하면 두 쓰기가 모두 살아남는다.
+    for attempt in range(1, _WRITE_MAX_ATTEMPTS + 1):
+        expected_raw = read_raw(path)
+        if expected_raw is None:
+            obj: Any = initial_object(schema)
+        else:
+            obj = read_state(path)
+            if not isinstance(obj, dict):
+                raise CliError(
+                    f"{cls}: 상태 파일 최상위가 JSON 객체가 아니다: {path.as_posix()}"
+                )
+            obj = dict(obj)
+        _apply_operations(obj, schema, cls, sets, appends, removes)
+        violations = validate_object(obj, schema, cls)
+        if violations:
+            _report_violations(violations)
+            _note(f"쓰지 않았다 — {path.as_posix()}는 그대로다.")
+            return EXIT_INVALID
+        if write_state_checked(path, obj, expected_raw):
+            _emit(obj)
+            return EXIT_OK
+        _note(
+            f"{path.as_posix()}가 읽은 뒤에 바뀌었다 — 다시 읽어 적용한다 "
+            f"({attempt}/{_WRITE_MAX_ATTEMPTS})."
+        )
+
+    _note(
+        f"쓰지 않았다 — {path.as_posix()}를 {_WRITE_MAX_ATTEMPTS}번 시도하는 동안 "
+        f"다른 프로세스가 계속 고쳤다. 동시 쓰기를 줄이거나 잠시 뒤 다시 시도하라."
+    )
+    return EXIT_INVALID
 
 
 def _report_violations(violations: list[str]) -> None:
