@@ -81,6 +81,9 @@ class MainWindow(QMainWindow):
 
         self._project: PluginProject | None = None
         self._current_path: str | None = None  # 현재 저장 경로 (.daedalus.json)
+        # 미저장 변경 플래그 (A7) — notify 양 채널 리스너가 True로 올리고,
+        # 저장/로드/새 프로젝트가 내린다. closeEvent가 이 값으로 종료를 막는다.
+        self._dirty = False
         self._project_vm = ProjectViewModel()
         self._fsm_scene: FsmScene | None = None
         self._open_tabs: dict[str, int] = {}  # 컴포넌트 id → 탭 인덱스
@@ -143,6 +146,11 @@ class MainWindow(QMainWindow):
 
         # 프로젝트 VM 변경 시 레지스트리 dim 갱신
         self._project_vm.add_listener(self._on_project_vm_changed)
+        # 미저장 변경 감지 (A7) — **양 채널 모두** 등록해야 한다. notify("content")는
+        # content 리스너만 부르므로(project_vm.notify) structure 한쪽만 등록하면
+        # 본문 타이핑(body_documents 경로)이 통째로 새어 나간다.
+        self._project_vm.add_listener(self._mark_dirty)
+        self._project_vm.add_listener(self._mark_dirty, scope="content")
 
     def _setup_docks(self) -> None:
         self._registry_panel = RegistryPanel()
@@ -490,6 +498,56 @@ class MainWindow(QMainWindow):
         # (notify는 set_project → _load_project_graph 끝에서 1회 발화 — 중복 금지)
         self.set_project(project)
 
+        # 4) 방금 로드한 상태는 미저장 변경이 아니다 (A7). 위 notify가 _mark_dirty를
+        # 깨우므로 **로드 뒤에** 내려야 한다 — 호출자(open_path/new_project)가
+        # 각자 내리게 하면 새 경로가 생길 때마다 빠뜨린다.
+        self.mark_clean()
+
+    # --- 미저장 변경 (A7) ---
+
+    def _mark_dirty(self) -> None:
+        """편집이 일어났다 — 창 제목에 `*`를 붙인다.
+
+        키스트로크마다 오는 content notify가 여기로 들어오므로, 이미 dirty면
+        즉시 돌아가 setWindowTitle 재호출을 피한다.
+        """
+        if self._dirty:
+            return
+        self._dirty = True
+        self._update_title()
+
+    def mark_clean(self) -> None:
+        """저장/로드 직후 — 미저장 변경 없음으로 표시하고 제목의 `*`를 지운다."""
+        if not self._dirty:
+            return
+        self._dirty = False
+        self._update_title()
+
+    def confirm_discard_changes(self) -> bool:
+        """미저장 변경이 있으면 저장 여부를 묻는다. 진행해도 되면 True.
+
+        "저장 후 종료"를 골랐는데 저장이 실패하거나(경로 선택 취소 포함) 여전히
+        dirty면 **종료를 막는다** — 저장하겠다고 답한 사용자의 변경을 그대로
+        버리는 것이 이 기능이 막으려던 사고 그 자체다.
+        """
+        if not self._dirty or self._project is None:
+            return True
+        reply = QMessageBox.question(
+            self,
+            "저장하지 않은 변경",
+            "저장하지 않은 변경이 있습니다.\n저장한 뒤 종료할까요?",
+            QMessageBox.StandardButton.Save
+            | QMessageBox.StandardButton.Discard
+            | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Save,
+        )
+        if reply == QMessageBox.StandardButton.Cancel:
+            return False
+        if reply == QMessageBox.StandardButton.Save:
+            self._save_project()
+            return not self._dirty
+        return True  # Discard — 버리고 진행
+
     # --- 세션 입출력 위임 (실체는 view/session_io.SessionIO) ---
 
     def _sync_files_root(self) -> None:
@@ -594,7 +652,15 @@ class MainWindow(QMainWindow):
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(cat_dir)))
 
     def closeEvent(self, event) -> None:  # noqa: N802 (Qt override)
-        """앱이 닫히면 MCP 서버도 함께 내린다."""
+        """미저장 변경을 확인한 뒤 닫고, 닫으면 MCP 서버도 함께 내린다 (A7).
+
+        MCP/GUI 편집은 메모리에만 있으므로 확인 없이 닫으면 그대로 사라진다
+        (실사고 3회). 취소를 고르면 `event.ignore()`로 창을 유지한다 — MCP
+        서버도 내리지 않는다(닫지 않았으니 세션은 계속된다).
+        """
+        if not self.confirm_discard_changes():
+            event.ignore()
+            return
         self._launch_actions.stop_mcp_service()
         super().closeEvent(event)
 

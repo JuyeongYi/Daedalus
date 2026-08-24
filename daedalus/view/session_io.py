@@ -80,12 +80,16 @@ class SessionIO:
             service.update_project_path(w._current_path)  # type: ignore[attr-defined]
 
     def update_title(self) -> None:
+        """창 제목 갱신 — 미저장 변경이 있으면 앞에 `*`를 붙인다 (A7 관례)."""
         w = self._w
         base = "Daedalus — FSM Plugin Designer"
         if w._current_path:
-            w.setWindowTitle(f"{package.display_name(w._current_path)} — {base}")
+            title = f"{package.display_name(w._current_path)} — {base}"
         else:
-            w.setWindowTitle(base)
+            title = base
+        if w._dirty:
+            title = f"*{title}"
+        w.setWindowTitle(title)
 
     def save_to_path(self, path: str) -> bool:
         """프로젝트를 경로에 쓴다. 성공 여부를 돌려준다.
@@ -116,6 +120,9 @@ class SessionIO:
         moved_files = self.carry_files_dir(target)
         path = target
         w._current_path = path
+        # 디스크와 메모리가 일치했다 (A7). update_title 전에 내려야 제목의 `*`가
+        # 같은 호출에서 지워진다.
+        w._dirty = False
         self.update_title()
         self.sync_files_root()
         self.remember_recent(path)

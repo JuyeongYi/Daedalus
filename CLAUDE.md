@@ -155,6 +155,8 @@ daedalus/
     │                       #   set_project가 blackboard_panel.set_project(project) + tag_input.set_blackboard_candidate_provider(...)를 배선.
     │                       # 파일 독(WP-FR): _setup_docks가 FilePanel을 "플러그인 파일 (공용)" 독으로 배치하고
     │                       #   markdown_editor.set_files_root_provider(lambda: self._file_panel.files_root())를 등록.
+    │                       # 미저장 변경(A7): _dirty 플래그 + _mark_dirty/mark_clean/confirm_discard_changes.
+    │                       #   상세는 "미저장 변경 확인 (A7)" 개념 섹션 참조.
     ├── session_io.py       # SessionIO(window) — 저장/열기/최근 목록/패키지(.ddpj) (WP-RF-3e에서 app.py로부터 추출).
     │                       # 프로젝트 패키지(WP-PK): 열기/저장이 **폴더** 단위. open_project_dialog(폴더 선택)/open_file_dialog(구버전 파일 직접)/
     │                       #   save_project_as(폴더 선택 — 형식이 새 형식으로 바뀌는 유일한 지점)/export_package_dialog/import_package_dialog.
@@ -579,6 +581,33 @@ daedalus-bb [--state-dir state] [--schemas schemas/schemas.json] <command>
 - **검증 함정:** 왕복 없이 undo만 확인하면 고장이 있어도 통과한다 — 반드시 **다른 컴포넌트로
   전환했다 복귀한 뒤** undo를 검증해야 한다(`tests/view/editors/test_body_documents.py`).
   타이핑 시뮬레이션도 `setPlainText`가 아니라 `QTextCursor.insertText`여야 한다(전자는 undo 스택을 지운다).
+
+### 미저장 변경 확인 (A7)
+
+편집 결과는 저장 전까지 **메모리에만** 있다. MCP로 편집하고 GUI를 그냥 닫아
+통째로 잃은 사고가 세 번 났다 — `closeEvent`가 확인 없이 닫았기 때문이다.
+
+- **더티 판정은 notify 양 채널 구독이다.** `MainWindow._dirty`를 `_setup_central`이
+  `ProjectViewModel`의 **structure + content 두 채널 모두**에 `_mark_dirty`로 등록해
+  올린다. `notify("content")`는 content 리스너만 부르므로(구조 리스너에게 전파되지
+  않는다) 한쪽만 등록하면 **본문 타이핑이 통째로 새어 나간다**. 본문 편집은
+  `body_documents`의 QTextDocument → `SectionContentPanel.content_changed` →
+  content 채널을 타므로 이 등록이 그것을 잡는 유일한 경로다.
+- **내리는 지점은 둘뿐이다.** `SessionIO.save_to_path` 성공 직후(제목 갱신 **전** —
+  같은 호출에서 `*`가 지워져야 한다)와 `MainWindow.load_project` **끝**. 후자가
+  로드 뒤인 이유는 로드 과정의 notify가 `_mark_dirty`를 깨우기 때문이고, 호출자
+  (`open_path`/`new_project`)마다 내리게 하면 새 경로가 생길 때 빠뜨린다.
+- **제목의 `*`**: `SessionIO.update_title`이 dirty면 앞에 붙인다. `_mark_dirty`는
+  이미 dirty면 즉시 반환해 키스트로크마다 `setWindowTitle`이 돌지 않게 한다.
+- **`confirm_discard_changes()`가 종료 가부를 돌려준다**(저장/버리기/취소). "저장 후
+  종료"인데 저장이 실패하거나 경로 선택을 취소해 여전히 dirty면 **False** —
+  저장하겠다고 답한 사용자의 변경을 버리는 것이 바로 이 기능이 막으려던 사고다.
+  취소로 닫기를 막으면 MCP 서버도 내리지 않는다(세션이 계속되므로).
+- **테스트 함정:** 편집 직후 `window.close()`를 부르는 테스트가 수십 개라 확인
+  다이얼로그가 그대로 뜨면 헤드리스 스위트가 멈춘다. 루트 `tests/conftest.py`의
+  autouse 픽스처가 `MainWindow.confirm_discard_changes`를 항상 True로 덮어쓴다.
+  확인 로직 자체를 검증하는 `tests/view/test_unsaved_changes.py`는 **모듈 임포트
+  시점**에 잡아 둔 원본 함수를 직접 호출한다(임포트가 픽스처보다 먼저 돈다).
 
 ### 앱 내장 MCP 서버 (WP-MCP)
 
