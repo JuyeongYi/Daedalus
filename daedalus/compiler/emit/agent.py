@@ -193,7 +193,9 @@ def _agent_mcp_server_names(agent: AgentDefinition) -> list[str]:
     return sorted(declared | from_tools)
 
 
-def _agent_hook_groups(agent: AgentDefinition, project) -> dict[str, Any]:
+def _agent_hook_groups(
+    agent: AgentDefinition, project, resolved_hooks: dict[str, HookDef] | None = None
+) -> dict[str, Any]:
     """에이전트가 참조하는 훅을 CC hooks 스키마(이벤트 → 그룹 목록)로.
 
     구조는 `compile_hooks_json`이 만드는 것과 같다 — 서브에이전트 프론트매터의
@@ -204,7 +206,10 @@ def _agent_hook_groups(agent: AgentDefinition, project) -> dict[str, Any]:
     if not referenced or project is None:
         return {}
     wanted = set(referenced)
-    library = getattr(project, "hook_library", None) or []
+    # A1 — 전역 훅 2단 스코프. resolved_hooks 생략 시 프로젝트 라이브러리만(하위 호환).
+    from daedalus.compiler.emit.hooks import hook_library
+
+    library = hook_library(project, resolved_hooks)
 
     buckets: dict[HookEvent, list[HookDef]] = {}
     for hook in library:  # 라이브러리 선언 순서 = 결정적
@@ -219,7 +224,9 @@ def _agent_hook_groups(agent: AgentDefinition, project) -> dict[str, Any]:
     return out
 
 
-def _local_settings_frontmatter_lines(agent: AgentDefinition, project) -> list[str]:
+def _local_settings_frontmatter_lines(
+    agent: AgentDefinition, project, resolved_hooks: dict[str, HookDef] | None = None
+) -> list[str]:
     """LOCAL 빌드에서만 나가는 에이전트 프론트매터 줄 — hooks / mcpServers (WP-LA).
 
     CC는 **플러그인 서브에이전트의 `hooks`/`mcpServers`/`permissionMode`를 보안상
@@ -232,7 +239,7 @@ def _local_settings_frontmatter_lines(agent: AgentDefinition, project) -> list[s
         return []
 
     lines: list[str] = []
-    hook_groups = _agent_hook_groups(agent, project)
+    hook_groups = _agent_hook_groups(agent, project, resolved_hooks)
     if hook_groups:
         lines.append(f"{AgentField.HOOKS.frontmatter_key}:")
         lines.extend(_yaml_block_lines(hook_groups, 2))
@@ -336,11 +343,14 @@ def _call_contract_section(agent: AgentDefinition, project) -> list[str]:
     return blocks
 
 
-def compile_agent(agent: AgentDefinition, project=None) -> str:
+def compile_agent(
+    agent: AgentDefinition, project=None,
+    resolved_hooks: dict[str, HookDef] | None = None,
+) -> str:
     """에이전트 → agent .md 텍스트 (LF, BOM 없음, 결정적)."""
     fm_lines = _frontmatter_lines_agent(agent, project)
     # LOCAL 빌드에서만 hooks/mcpServers가 프론트매터로 나간다 (WP-LA)
-    fm_lines.extend(_local_settings_frontmatter_lines(agent, project))
+    fm_lines.extend(_local_settings_frontmatter_lines(agent, project, resolved_hooks))
     blocks: list[str] = [_frontmatter_block(fm_lines)]
 
     # 본문(body)

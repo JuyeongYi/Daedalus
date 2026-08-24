@@ -53,8 +53,12 @@ def test_hook_tab_exists_and_is_not_closable(qapp):
         window.close()
 
 
-def test_tools_menu_has_no_hook_shortcut(qapp):
-    """탭이 늘 보이므로 메뉴 지름길은 중복이다."""
+def test_tools_menu_has_no_hook_library_shortcut(qapp):
+    """탭이 늘 보이므로 훅 **라이브러리** 편집 지름길은 중복이다.
+
+    A1의 "전역 훅 폴더 열기"는 이 금지 대상이 아니다 — 편집기를 여는 것이
+    아니라 탭에서 다룰 수 없는 것(프로젝트 밖 폴더)으로 가는 통로다.
+    """
     from PySide6.QtWidgets import QMenu
 
     window = MainWindow()
@@ -62,7 +66,9 @@ def test_tools_menu_has_no_hook_shortcut(qapp):
         # findChildren으로 잡아야 메뉴 객체가 살아 있다 — QAction.menu()가
         # 돌려주는 임시 참조는 평가 직후 파괴될 수 있다.
         tools = next(m for m in window.findChildren(QMenu) if m.title() == "도구")
-        assert all("훅" not in a.text() for a in tools.actions())
+        labels = [a.text() for a in tools.actions()]
+        assert all("훅 라이브러리" not in label for label in labels)
+        assert any("전역 훅 폴더" in label for label in labels)
     finally:
         window.close()
 

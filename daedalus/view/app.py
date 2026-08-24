@@ -318,6 +318,13 @@ class MainWindow(QMainWindow):
             cat_project.triggered.connect(self._open_project_catalogue)
             tools_menu.addAction(cat_project)
 
+            global_hooks = QAction("전역 훅 폴더 열기...", self)
+            global_hooks.setToolTip(
+                "~/.daedalus/hooks/ — 모든 프로젝트에서 이름으로 참조할 수 있는 훅"
+            )
+            global_hooks.triggered.connect(self._open_global_hooks_dir)
+            tools_menu.addAction(global_hooks)
+
         view_menu = menubar.addMenu("View")
         if view_menu is None:
             return
@@ -360,8 +367,11 @@ class MainWindow(QMainWindow):
         if self._fsm_scene is not None:
             self._fsm_scene.set_project(project)
         # HookPresetPicker가 이 프로젝트의 hook_library 이름을 동적으로 표시하도록 연결.
+        # 전역 훅(A1)도 이름으로 참조할 수 있으므로 후보에 함께 낸다 — 목록에
+        # 안 보이면 있는 줄 모르고, set_component_hooks가 거절하지 않는 이름이
+        # 피커에서만 빠져 있으면 둘이 다른 말을 하는 셈이 된다.
         from daedalus.view.widgets.preset_picker import set_hook_name_provider
-        set_hook_name_provider(lambda p=project: [h.name for h in p.hook_library])
+        set_hook_name_provider(lambda: list(self.resolved_hooks()))
         # ALLOWED_TOOLS/TOOLS/DISALLOWED_TOOLS TagInput이 카탈로그+빌트인+
         # Agent(이름) 후보를 동적으로 표시하도록 연결 (WP-TM).
         from daedalus.view.editors.catalogue_loader import candidate_strings, load_catalogue
@@ -502,6 +512,35 @@ class MainWindow(QMainWindow):
         # 깨우므로 **로드 뒤에** 내려야 한다 — 호출자(open_path/new_project)가
         # 각자 내리게 하면 새 경로가 생길 때마다 빠뜨린다.
         self.mark_clean()
+
+    # --- 훅 해소 (A1) ---
+
+    def resolved_hooks(self) -> dict:
+        """이름 → HookDef, 전역(`~/.daedalus/hooks/`) ← 프로젝트 순 (A1).
+
+        **파일시스템을 읽는 지점은 여기 하나다.** 검증기와 컴파일러는 순수하게
+        유지되고(같은 프로젝트가 검증한 사람의 홈에 따라 다른 결과를 내면 안
+        된다), 해소된 사전을 이 메서드가 만들어 그쪽에 주입한다 — F7 검증,
+        Ctrl+B 컴파일, MCP 도구가 전부 이것을 부른다.
+
+        캐시하지 않는다 — 전역 폴더에 파일을 떨어뜨리고 곧바로 F7을 누르면
+        반영되는 것이 기대 동작이고, 파일 몇 개짜리 glob이라 비용이 없다.
+        """
+        from daedalus.model.plugin.hook_store import resolve_hooks
+
+        if self._project is None:
+            return {}
+        return resolve_hooks(self._project)
+
+    def _open_global_hooks_dir(self) -> None:
+        """도구 메뉴 — 전역 훅 폴더를 탐색기로 연다 (없으면 만든다)."""
+        from daedalus.model.plugin.hook_store import global_hooks_dir
+
+        hooks_dir = global_hooks_dir()
+        hooks_dir.mkdir(parents=True, exist_ok=True)
+        from PySide6.QtCore import QUrl
+        from PySide6.QtGui import QDesktopServices
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(hooks_dir)))
 
     # --- 미저장 변경 (A7) ---
 

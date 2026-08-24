@@ -15,6 +15,25 @@ def _isolate_recent_projects(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _isolate_global_hooks(tmp_path, monkeypatch):
+    """전역 훅 폴더(A1)를 사용자 홈에서 떼어낸다.
+
+    `~/.daedalus/hooks/`를 그대로 읽으면 개발자가 거기 둔 훅에 따라 검증·컴파일
+    결과가 달라져 테스트가 그 사람의 머신에서만 통과하거나 실패한다. 기본값은
+    **빈 폴더**(존재하지 않음)이고, 전역 훅을 다루는 테스트가 여기에 파일을 깐다.
+    """
+    from daedalus.model.plugin import hook_store
+
+    monkeypatch.setattr(
+        hook_store, "global_hooks_dir",
+        lambda home_dir=None: (
+            (home_dir if home_dir is not None else tmp_path / "home")
+            / ".daedalus" / hook_store.GLOBAL_HOOKS_DIRNAME
+        ),
+    )
+
+
+@pytest.fixture(autouse=True)
 def _auto_discard_unsaved_changes(monkeypatch):
     """`window.close()`의 미저장 변경 확인(A7)이 테스트를 모달로 멈추지 않게 한다.
 

@@ -136,13 +136,13 @@ def _is_local_build(project) -> bool:
     return getattr(project, "build_target", BuildTarget.MARKETPLACE) is BuildTarget.LOCAL
 
 
-def _hook_script_bodies(project) -> dict[str, str]:
+def _hook_script_bodies(project, resolved_hooks=None) -> dict[str, str]:
     """훅 스크립트 파일명 → 내용 (WP-HS). 계획과 쓰기가 같은 원본을 본다."""
-    return dict(compile_hook_scripts(project))
+    return dict(compile_hook_scripts(project, resolved_hooks))
 
 
 def _plan_outputs(
-    project, skill_files_dir: Path | None = None,
+    project, skill_files_dir: Path | None = None, resolved_hooks=None,
 ) -> tuple[list[_PlannedOutput], list[ValidationError], list[ValidationError]]:
     """파일 쓰기 전에 전체 산출 경로 집합을 계산하고 게이트 에러를 수집한다.
 
@@ -275,7 +275,7 @@ def _plan_outputs(
     # <out>/.claude/settings.local.json의 hooks 섹션에 병합된다(compile_project의
     # 병합 단계, WP-MW). 훅 스크립트 파일은 양쪽 타깃 모두 hooks/scripts/로 나간다
     # (LOCAL의 커맨드가 ${CLAUDE_PROJECT_DIR}/hooks/scripts/…를 가리킨다).
-    hooks_text = compile_hooks_json(project)
+    hooks_text = compile_hooks_json(project, resolved_hooks)
     if hooks_text is not None:
         if not is_local:
             plan.append(_PlannedOutput(
@@ -287,7 +287,7 @@ def _plan_outputs(
             ))
         # 훅 스크립트 — 커맨드는 아무리 짧아도 파일로 나가고 hooks.json에는
         # 루트 기반 경로만 남는다 (WP-HS).
-        for filename, _body in compile_hook_scripts(project):
+        for filename, _body in compile_hook_scripts(project, resolved_hooks):
             plan.append(_PlannedOutput(
                 rel_path=PurePosixPath(HOOK_SCRIPT_DIR) / filename,
                 label=f"훅 스크립트 {filename}",
@@ -514,6 +514,7 @@ def compile_project(
     project, out_dir: Path | str, files_dir: Path | str | None = None,
     extra_server_defs: dict[str, dict] | None = None,
     skill_files_dir: Path | str | None = None,
+    resolved_hooks: dict | None = None,
 ) -> CompileResult:
     """프로젝트를 out_dir에 컴파일한다.
 
@@ -535,16 +536,29 @@ def compile_project(
     `<스킬 이름>/…`이 그 스킬 SKILL.md 옆으로 복사되고, 본문의
     `${CLAUDE_SKILL_DIR}/…` 참조 중 실존하지 않는 것은 `dangling_skill_file_ref`
     경고. 생략 시 복사·스캔 모두 생략 — 기존 산출 완전 불변(하위 호환).
+
+    resolved_hooks(A1, 선택): 이름 → HookDef로 **해소된** 훅 사전(전역
+    `~/.daedalus/hooks/` ← 프로젝트 `hook_library` 순). 컴파일러는 파일시스템에서
+    훅을 읽지 않는다 — 읽으면 "이 프로젝트를 컴파일한 결과"가 컴파일한 사람의
+    홈 디렉토리에 따라 달라지는 것이 코드에서 보이지 않게 된다. 그래서 호출자
+    (앱/MCP)가 `model.plugin.hook_store.resolve_hooks(project)`로 만들어 주입한다.
+    이 값이 주어지면 `dangling_hook_ref` 판정도 그 이름 집합을 기준으로 한다.
+    생략 시 `project.hook_library`만 본다 — 기존 산출 완전 불변(하위 호환).
     """
     out_dir = Path(out_dir)
     skill_files_path = Path(skill_files_dir) if skill_files_dir is not None else None
-    all_findings = Validator.validate_project(project)
+    known_hook_names = (
+        frozenset(resolved_hooks) if resolved_hooks is not None else None
+    )
+    all_findings = Validator.validate_project(
+        project, known_hook_names=known_hook_names,
+    )
     errors = [e for e in all_findings if not e.is_warning]
     warnings = [e for e in all_findings if e.is_warning]
 
     # 파일 쓰기 전에 산출 계획 수립 — 이름 규약 + 경로 충돌 게이트
     plan, gate_errors, plan_warnings = _plan_outputs(
-        project, skill_files_dir=skill_files_path,
+        project, skill_files_dir=skill_files_path, resolved_hooks=resolved_hooks,
     )
     errors = errors + gate_errors
     warnings = warnings + plan_warnings
@@ -567,11 +581,12 @@ def compile_project(
         if item.kind == "skill":
             text = compile_skill(item.component, project=project)
         elif item.kind == "agent":
-            text = compile_agent(item.component, project=project)
+            text = compile_agent(item.component, project=project,
+                                 resolved_hooks=resolved_hooks)
         elif item.kind == "hooks_json":
-            text = compile_hooks_json(project) or ""
+            text = compile_hooks_json(project, resolved_hooks) or ""
         elif item.kind == "hook_script":
-            text = _hook_script_bodies(project).get(item.script_name, "")
+            text = _hook_script_bodies(project, resolved_hooks).get(item.script_name, "")
         elif item.kind == "schemas_json":
             text = compile_schemas_json(project) or ""
         elif item.kind == "plugin_manifest":
@@ -606,7 +621,9 @@ def compile_project(
         )
 
     if _is_local_build(project):
-        _wire_local_install(project, out_dir, result, extra_server_defs)
+        _wire_local_install(
+            project, out_dir, result, extra_server_defs, resolved_hooks,
+        )
 
     return result
 
@@ -617,6 +634,7 @@ def compile_project(
 def _wire_local_install(
     project, out_dir: Path, result: CompileResult,
     extra_server_defs: dict[str, dict] | None = None,
+    resolved_hooks: dict | None = None,
 ) -> None:
     """LOCAL 빌드의 설치 배선 — 대상 작업 폴더의 설정 파일을 생성/수정한다.
 
@@ -648,7 +666,7 @@ def _wire_local_install(
                 subject=project,
             ))
 
-    hooks_text = compile_hooks_json(project)
+    hooks_text = compile_hooks_json(project, resolved_hooks)
     hooks_map = json.loads(hooks_text).get("hooks", {}) if hooks_text else None
 
     wired = wire_workspace(out_dir, entries, hooks_map)

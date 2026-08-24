@@ -214,7 +214,11 @@ class QueryTools(_BaseTools):
         """F7 검증과 같은 결과 — 컴파일을 막는 에러와 경고를 구분해 돌려준다."""
         from daedalus.model.validation import Validator
 
-        errors = Validator().validate_project(self._project)
+        # 전역 훅(A1)을 포함한 이름 집합을 주입 — 검증기는 파일시스템 무접근.
+        errors = Validator().validate_project(
+            self._project,
+            known_hook_names=frozenset(self._window.resolved_hooks()),
+        )
         return {
             "error_count": sum(1 for e in errors if not e.is_warning),
             "warning_count": sum(1 for e in errors if e.is_warning),
@@ -237,7 +241,11 @@ class QueryTools(_BaseTools):
         comp = self._find_component(name)
         project = self._project
         if isinstance(comp, AgentDefinition):
-            text = compile_agent(comp, project=project)
+            # 전역 훅(A1)까지 해소해 넘긴다 — LOCAL 빌드의 에이전트
+            # 프론트매터 hooks가 실제 컴파일과 같은 내용이어야 미리보기다.
+            text = compile_agent(
+                comp, project=project, resolved_hooks=self._window.resolved_hooks(),
+            )
         else:
             text = compile_skill(comp, project=project)
         return {"name": comp.name, "kind": self._component_kind(comp), "text": text}

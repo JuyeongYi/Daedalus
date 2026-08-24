@@ -31,7 +31,11 @@ class ValidationActions:
             w._status_label.setText("검증: 프로젝트가 없습니다.")
             return
 
-        errors = Validator.validate_project(w._project)
+        # 전역 훅(A1)까지 아는 이름 집합을 주입한다 — 검증기는 파일시스템을
+        # 읽지 않으므로, 넘기지 않으면 전역 훅 참조가 전부 dangling으로 보인다.
+        errors = Validator.validate_project(
+            w._project, known_hook_names=frozenset(w.resolved_hooks()),
+        )
         w._validation_panel.set_errors(errors)
 
         # 검증 패널이 숨겨져 있으면 표시

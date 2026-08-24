@@ -305,6 +305,29 @@ def test_set_component_hooks_rejects_unknown_hook(tools):
         tools.set_component_hooks("init", ["typo"])
 
 
+def test_set_component_hooks_accepts_global_hook(tools, tmp_path, monkeypatch):
+    """전역 훅(A1) 이름도 유효하다 — 피커가 후보로 내는 이름을 도구가 거절하면
+    둘이 다른 말을 하는 셈이다."""
+    import json
+
+    from daedalus.model.plugin import hook_store
+    from daedalus.model.plugin.hook import CommandHook, HookDef, HookEvent
+
+    directory = tmp_path / "globalhooks"
+    directory.mkdir()
+    monkeypatch.setattr(hook_store, "global_hooks_dir", lambda home_dir=None: directory)
+    (directory / "shared.json").write_text(
+        json.dumps(hook_store.hook_to_json(HookDef(
+            name="shared", description="", event=HookEvent.PRE_TOOL_USE,
+            handlers=[CommandHook(script="echo hi")],
+        ))),
+        encoding="utf-8",
+    )
+
+    tools.set_component_hooks("init", ["shared"])
+    assert list(tools._find_component("init").config.hooks) == ["shared"]
+
+
 def test_set_component_hooks_preserves_overrides(tools):
     tools.create_hook("a", command="x")
     tools.create_hook("b", command="y")

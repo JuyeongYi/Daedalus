@@ -59,6 +59,9 @@ class CompileActions:
             # 아는 것을 사용자에게 등록시키지 않는다(WP-MW).
             extra_server_defs=self.known_server_defs(),
             skill_files_dir=skill_files_dir,
+            # 전역 훅(~/.daedalus/hooks/)까지 해소해서 넘긴다 — 컴파일러는
+            # 파일시스템을 읽지 않으므로 여기가 주입 지점이다 (A1).
+            resolved_hooks=w.resolved_hooks(),
         )
         if not result.ok:
             # 에러 — 검증 패널에 동봉(경고 포함) 표시

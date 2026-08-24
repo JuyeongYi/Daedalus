@@ -61,8 +61,18 @@ class _ProjectRules:
         return any(not isinstance(s, EntryPoint) for s in graph.states)
 
     @staticmethod
-    def validate_project(project) -> list[ValidationError]:
-        """프로젝트 전체 검증 — 모든 FSM의 머신 수준 규칙 + 프로젝트 수준 규칙."""
+    def validate_project(
+        project, known_hook_names: frozenset[str] | None = None
+    ) -> list[ValidationError]:
+        """프로젝트 전체 검증 — 모든 FSM의 머신 수준 규칙 + 프로젝트 수준 규칙.
+
+        known_hook_names(A1, 선택): `config.hooks`가 참조해도 되는 훅 이름의 전체
+        집합. 전역 훅(`~/.daedalus/hooks/`)이 도입되면서 "프로젝트 라이브러리에
+        없다"가 곧 dangling이 아니게 됐는데, **검증기는 파일시스템을 읽지 않는다**
+        (읽으면 같은 프로젝트의 검증 결과가 검증한 사람의 홈에 따라 달라진다).
+        그래서 호출자가 해소된 이름 집합을 주입한다 — 생략하면 종전대로
+        `project.hook_library`만 본다(하위 호환).
+        """
         errors: list[ValidationError] = []
         for skill in project.skills:
             fsm = getattr(skill, "fsm", None)
@@ -98,7 +108,9 @@ class _ProjectRules:
         errors.extend(_ProjectRules._check_duplicate_hook_name(project))
         errors.extend(_ProjectRules._check_empty_hook_command(project))
         errors.extend(_ProjectRules._check_hook_matcher_event(project))
-        errors.extend(_ProjectRules._check_dangling_hook_refs(project))
+        errors.extend(
+            _ProjectRules._check_dangling_hook_refs(project, known_hook_names)
+        )
         # 블랙보드(blackboard) 규칙 — WP-BB
         errors.extend(_ProjectRules._check_dangling_blackboard_refs(project))
         errors.extend(_ProjectRules._check_orphan_blackboard_fields(project))
@@ -409,9 +421,19 @@ class _ProjectRules:
         return errors
 
     @staticmethod
-    def _check_dangling_hook_refs(project) -> list[ValidationError]:
-        """dangling_hook_ref — config.hooks 키가 hook_library에 없으면 경고."""
-        lib_names = {h.name for h in getattr(project, "hook_library", [])}
+    def _check_dangling_hook_refs(
+        project, known_hook_names: frozenset[str] | None = None
+    ) -> list[ValidationError]:
+        """dangling_hook_ref — config.hooks 키가 알려진 훅 이름에 없으면 경고.
+
+        known_hook_names가 주어지면 그것이 유효 집합이다(전역 훅 포함, A1).
+        생략하면 `project.hook_library`만 — validate_project docstring 참조.
+        """
+        lib_names = (
+            set(known_hook_names)
+            if known_hook_names is not None
+            else {h.name for h in getattr(project, "hook_library", [])}
+        )
         errors: list[ValidationError] = []
         for label, name, subject in _ProjectRules._collect_hook_refs(project):
             if name not in lib_names:
@@ -419,7 +441,7 @@ class _ProjectRules:
                     rule="dangling_hook_ref",
                     message=(
                         f"{label}: config.hooks가 참조하는 훅 '{name}'이 "
-                        f"hook_library에 없습니다."
+                        f"훅 라이브러리(프로젝트·전역)에 없습니다."
                     ),
                     source=name,
                     subject=subject,

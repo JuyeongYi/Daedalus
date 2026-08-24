@@ -58,6 +58,8 @@ daedalus/
 │   │   ├── tool.py         # Tool(ABC) + BuiltinTool/MCPTool/UserDefinedTool (tool_shelf 도구 단일 진실)
 │   │   ├── hook.py         # HookDef + HookEvent(CC 9종) (hook_library 훅 단일 진실)
 │   │   ├── hook_presets.py # BUILTIN_HOOK_PRESETS (복사용 훅 템플릿) + preset_copy(핸들러까지 깊은 복사)
+│   │   ├── hook_store.py  # 전역 훅 저장소(A1) — ~/.daedalus/hooks/*.json 로더. global_hooks_dir/load_global_hooks/
+│   │   │                  #   resolve_hooks(전역 ← 프로젝트 병합의 단일 진실)/hook_to_json. **파일시스템을 아는 유일한 훅 모듈**
 │   │   ├── variables.py    # 본문 경로 변수(WP-RT) — ${ROOT} 타깃 중립 토큰, 타깃별 확장 매핑, 구버전 마이그레이션
 │   │   └── field_matrix.py # FieldRule(emit 포함), SKILL_FIELD_MATRIX, AGENT_FIELD_MATRIX (스킬/에이전트 유형별 프론트매터 필드 규칙)
 │   ├── project.py           # PluginProject (최상위 컨테이너, name+description+version — plugin.json 매니페스트 소스), ReferencePlacement, tool_shelf, hook_library, blackboard(최상위), graph(워크플로 백킹 머신)+graph_layout+edge_layout(WP-ER 엣지 웨이포인트, 키: Transition.id), emit_progress_hook(WP-RS SessionStart 진행 상태 훅 토글, 기본 True), build_target(WP-TG 빌드 타깃 — MARKETPLACE/LOCAL, 기본 MARKETPLACE), mcp_server_defs(WP-MW — 이름→.mcp.json 서버 객체, LOCAL 설치 배선 소스)
@@ -97,7 +99,7 @@ daedalus/
 │   │   ├── agent.py        #   에이전트 .md 조립 — 프론트매터(skills 합류·LOCAL hooks/mcpServers)·호출 계약·출구 + compile_agent
 │   │   ├── hooks.py        #   compile_hooks_json/compile_hook_scripts (진행 상태 합성 훅 포함)
 │   │   └── manifest.py     #   compile_plugin_manifest/compile_schemas_json + 경로 변수 확장(expand_root_token/substitute_local_file_refs)
-│   ├── project_compiler.py # compile_project(project, out_dir, files_dir=None) → CompileResult (검증 게이트 + 파일 쓰기)
+│   ├── project_compiler.py # compile_project(project, out_dir, files_dir=None, resolved_hooks=None) → CompileResult (검증 게이트 + 파일 쓰기)
 │   │                       # files_dir(WP-FR, 선택): 실존 디렉토리면 <out>/files/ 정렬 순회 복사(_copy_files_tree, 심볼릭 링크 미추종) +
 │   │                       #   dangling_file_ref 스캔(_scan_dangling_file_refs). 생략 시 기존 산출 완전 불변(하위 호환).
 │   │                       # LOCAL 빌드는 컴파일이 곧 설치(WP-MW) — .claude/ 반입 + _wire_local_install(컴파일 정책 15번 참조).
@@ -904,8 +906,49 @@ CC의 구조는 **3단**이다: 이벤트 → 그룹(matcher + 핸들러 목록)
 - **컴파일러**: 참조된 훅을 모아 `<out>/hooks/hooks.json` 생성(이벤트 키=HookEvent 선언 순서, 같은 이벤트 복수 훅=라이브러리 순서, 핸들러 0개인 훅은 배출 안 함). 스킬 프론트매터에는 `hooks: [이름, …]` 목록만. 프로젝트 설치 빌드의 에이전트는 프론트매터에 훅 본체가 나간다(WP-LA, 컴파일 정책 16번).
 - **직렬화**: 핸들러는 `kind` 태그로 다형성 왕복. v1 파일(`handlers` 키 없이 `command`/`timeout`)은 `_migrate_v1`이 `CommandHook` 하나로 감싼다(경고 없음). 미지 `kind`는 건너뛴다 — 미래 버전 파일을 열어도 죽지 않는다.
 - **검증**: `empty_hook_command`는 핸들러 0개 또는 핸들러의 필수 값이 빈 경우다. 무엇이 필수인지는 타입마다 다르므로 `handler.summary()`가 `"("`로 시작하는지로 판정한다 — 타입이 늘어도 규칙이 따라간다. `hook_matcher_without_tool_event`는 이름만 예전 그대로이고 판정은 `MATCHER_EVENTS` 기준이다.
-- **UI**: `editors/hook_panel.HookLibraryPanel` — **상주 탭(인덱스 2)**. 모달 다이얼로그(`hook_editor.HookLibraryDialog`)는 3단 구조를 담을 수 없어 제거됐다(도구 메뉴 항목도 함께 — 탭이 늘 보이므로 지름길이 중복이다). 좌: 훅 목록(핸들러 없으면 ⚠). 우: 이벤트 콤보(matcher 미지원/미문서화를 문구에 표시) + matcher(받지 않는 이벤트면 잠금 + 이유 표시) + 핸들러 목록·폼(`_HandlerForm` — 타입이 바뀌면 통째로 다시 만든다). **"서브에이전트 프론트매터로 복사" / "hooks.json으로 복사"** 버튼이 이 프로젝트 밖의 파일에 붙여넣을 텍스트를 클립보드에 넣는다. `widgets/preset_picker`의 `set_hook_name_provider`로 HookPresetPicker가 hook_library 이름을 동적 표시하는 것은 그대로.
+- **UI**: `editors/hook_panel.HookLibraryPanel` — **상주 탭(인덱스 2)**. 모달 다이얼로그(`hook_editor.HookLibraryDialog`)는 3단 구조를 담을 수 없어 제거됐다(도구 메뉴 항목도 함께 — 탭이 늘 보이므로 지름길이 중복이다). 좌: 훅 목록(핸들러 없으면 ⚠). 우: 이벤트 콤보(matcher 미지원/미문서화를 문구에 표시) + matcher(받지 않는 이벤트면 잠금 + 이유 표시) + 핸들러 목록·폼(`_HandlerForm` — 타입이 바뀌면 통째로 다시 만든다). **"서브에이전트 프론트매터로 복사" / "hooks.json으로 복사"** 버튼이 이 프로젝트 밖의 파일에 붙여넣을 텍스트를 클립보드에 넣는다. `widgets/preset_picker`의 `set_hook_name_provider`로 HookPresetPicker가 훅 이름을 동적 표시한다(A1 이후 **전역 훅 이름도 포함** — `app.set_project`가 `self.resolved_hooks()`를 등록). 전역 훅 표시는 아래 "전역 훅 2단 스코프 (A1)" 참조.
 - **MCP**: `create_hook`/`update_hook`은 `handlers=[{...}]`로 CC 스키마 그대로 받는다(`command=` 인자는 커맨드 훅 하나를 만드는 지름길). 그 타입에 없는 속성은 **거부**한다 — 조용히 무시되면 왜 안 먹는지 알 수 없다. `list_hook_events`가 이벤트 31종과 matcher 지원 여부를, `hook_frontmatter_preview`가 서브에이전트 프론트매터 YAML을 돌려준다.
+
+### 전역 훅 2단 스코프 (A1)
+
+훅은 프로젝트를 넘어 재사용된다 — 같은 "커밋 전 포맷 검사"를 프로젝트마다 다시
+만드는 것은 카탈로그(도구/MCP 후보) 이전과 똑같은 상황이었고, 해법도 같다:
+**전역 `~/.daedalus/hooks/*.json` + 프로젝트 `hook_library`, 동명이면 프로젝트 우선.**
+
+- **로더는 `model/plugin/hook_store.py` 하나뿐이다.** 파일 1개 = 훅 1개이고
+  **파일명 stem이 이름의 단일 진실**(파일 안의 `name`은 무시 — 진실이 둘이면 파일을
+  복사해 이름을 바꿨을 때 어느 쪽이 이겼는지 알 수 없다). 내용 형상은 `serialize`의
+  훅 직렬화와 같아서(`kind` 태그 handlers) `_deser_hook`을 그대로 재사용하고,
+  `hook_to_json`이 역방향(`name`/`id` 제외)이다. 깨진 파일은 stderr 경고 후 스킵
+  (카탈로그 관례 — 파일 하나 때문에 앱이 안 뜨면 안 된다).
+- **`resolve_hooks(project)`가 병합의 단일 진실**(전역 ← 프로젝트 순 `dict.update`).
+  전역이 없으면 결과가 `hook_library` 그대로라 기존 산출이 바이트 단위로 불변이다.
+- **검증기와 컴파일러는 파일시스템을 읽지 않는다 — 호출자가 주입한다.** 이것이
+  이 설계의 핵심 경계다: 읽어 버리면 "이 프로젝트의 검증/컴파일 결과"가 **그것을
+  실행한 사람의 홈 디렉토리에 따라 달라지는 것**이 코드에서 보이지 않게 된다.
+  - 컴파일: `compile_project(..., resolved_hooks=)` → `compile_hooks_json` /
+    `compile_hook_scripts` / `compile_agent`(LOCAL 프론트매터) / LOCAL settings 병합이
+    전부 `emit.hooks.hook_library(project, resolved_hooks)`를 거친다. 생략하면
+    `project.hook_library`만(하위 호환 게이트).
+  - 검증: `Validator.validate_project(project, known_hook_names=)` — 주어지면 그것이
+    `dangling_hook_ref`의 유효 집합이다. 생략하면 종전대로.
+  - 주입 지점은 **`MainWindow.resolved_hooks()` 하나**다(F7·Ctrl+B·MCP
+    `validate_project`/`compile_preview`/`set_component_hooks`가 전부 여기를 부른다).
+    캐시하지 않는다 — 전역 폴더에 파일을 떨어뜨리고 곧바로 F7을 누르면 반영되는
+    것이 기대 동작이고, 파일 몇 개짜리 glob이라 비용이 없다.
+- **UI:** `HookLibraryPanel` 목록에 프로젝트 훅이 앞, 전역 훅이 뒤(🌐 + 회색,
+  읽기 전용)로 붙는다. **동명 프로젝트 훅에 가려진 전역은 목록에서 뺀다** — 둘 다
+  보이면 어느 쪽이 실제로 쓰이는지 화면만 봐서는 알 수 없다. 행 → 훅 매핑은
+  `_entries: list[tuple[HookDef, bool]]`이고, 삭제는 인덱스가 아니라 **identity**로
+  찾는다(목록에 전역이 섞여 있다). 전역 편집은 **"프로젝트로 복사"**(이름 유지 +
+  `preset_copy` 깊은 복사)로 사본을 만든 뒤 그 사본을 고친다 — 전역 파일을 앱에서
+  직접 고치게 하면 다른 프로젝트가 조용히 함께 바뀌고 어디서 고쳤는지 알 길이 없다.
+  이름을 유지하는 이유는 병합 규칙이 그것을 요구하기 때문이다(이름을 바꾸면 참조가
+  전역을 계속 가리켜 고친 사본이 아무 데도 쓰이지 않는다). 도구 메뉴 → **"전역 훅
+  폴더 열기..."**가 폴더를 만들고 탐색기로 연다(전역 파일 편집 UI는 범위 밖).
+- **테스트 격리:** 루트 `tests/conftest.py`의 autouse 픽스처가 `global_hooks_dir`를
+  tmp 경로로 바꾼다 — 실제 홈을 읽으면 개발자가 거기 둔 훅에 따라 결과가 달라져
+  그 사람의 머신에서만 통과하거나 실패하는 테스트가 된다.
 
 ### 프로젝트 패키지 — 폴더가 곧 프로젝트 (WP-PK)
 
@@ -1038,7 +1081,8 @@ dataclass(값 동등성, unhashable) 유지 — 컬렉션 멤버십에는 list/`
 
 ## 컴파일러 (compiler/)
 
-`compile_project(project, out_dir, files_dir=None) → CompileResult`. 순수 stdlib(Qt 무관, import 순수성 테스트로 고정).
+`compile_project(project, out_dir, files_dir=None, resolved_hooks=None) → CompileResult`. 순수 stdlib(Qt 무관, import 순수성 테스트로 고정).
+`resolved_hooks`(A1)는 호출자가 주입하는 이름→HookDef 사전 — 컴파일러는 파일시스템에서 훅을 읽지 않는다("전역 훅 2단 스코프" 섹션 참조).
 
 **출력 구조 (CC 플러그인 규약, `project.build_target == MARKETPLACE` — 기본):**
 - `<out>/.claude-plugin/plugin.json` — 플러그인 매니페스트 (MARKETPLACE에서 항상 생성 — 이게 없으면 산출 디렉토리를 CC 플러그인으로 설치할 수 없다)

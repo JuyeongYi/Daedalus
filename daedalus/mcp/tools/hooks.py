@@ -331,7 +331,8 @@ class HookTools(_BaseTools):
         """스킬/에이전트가 참조하는 훅 이름 목록을 통째로 지정한다.
 
         라이브러리에 없는 이름은 거부한다 — 오타는 컴파일까지 조용히 흘러가
-        `dangling_hook_ref` 경고로만 드러나기 때문이다.
+        `dangling_hook_ref` 경고로만 드러나기 때문이다. 유효 집합은 프로젝트
+        `hook_library` **∪ 전역 훅**(`~/.daedalus/hooks/`)이다 (A1).
         """
         from daedalus.view.commands.attr_commands import SetAttrCmd
 
@@ -340,7 +341,7 @@ class HookTools(_BaseTools):
         if config is None:
             raise ValueError(f"'{name}'에는 config가 없어 훅을 붙일 수 없습니다.")
 
-        known = {h.name for h in self._project.hook_library}
+        known = set(self._window.resolved_hooks())
         unknown = [h for h in hooks if h not in known]
         if unknown:
             raise ValueError(

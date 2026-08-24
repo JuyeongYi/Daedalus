@@ -14,6 +14,7 @@ from __future__ import annotations
 from typing import Any, Callable
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -298,6 +299,9 @@ class HookLibraryPanel(QWidget):
         self._project: Any = None
         self._on_notify_fn = on_notify_fn
         self._loading = False
+        # 목록 행 → (훅, 전역 여부) (A1). 프로젝트 훅이 앞, 전역 훅이 뒤.
+        # 전역 훅은 읽기 전용이라 편집 위젯을 잠그고 "프로젝트로 복사"만 연다.
+        self._entries: list[tuple[HookDef, bool]] = []
 
         root = QVBoxLayout(self)
         splitter = QSplitter(Qt.Orientation.Horizontal)
@@ -332,10 +336,21 @@ class HookLibraryPanel(QWidget):
         preset.clicked.connect(self._add_from_preset)
         row.addWidget(preset)
 
-        remove = QPushButton("삭제")
-        remove.clicked.connect(self._delete_hook)
-        row.addWidget(remove)
+        self._remove_btn = QPushButton("삭제")
+        self._remove_btn.clicked.connect(self._delete_hook)
+        row.addWidget(self._remove_btn)
         lay.addLayout(row)
+
+        # 전역 훅은 여기서 고치지 않는다 — 프로젝트로 복사한 뒤 그 사본을 고친다.
+        # 전역 파일을 앱에서 직접 편집하게 하면 다른 프로젝트가 조용히 함께
+        # 바뀐다(어느 프로젝트에서 고쳤는지 나중에 알 길이 없다).
+        self._copy_to_project_btn = QPushButton("프로젝트로 복사")
+        self._copy_to_project_btn.setToolTip(
+            "선택한 전역 훅(🌐)을 이 프로젝트의 라이브러리로 복사한다 — 사본은 편집할 수 있고 "
+            "같은 이름이면 컴파일에서 전역을 덮는다"
+        )
+        self._copy_to_project_btn.clicked.connect(self._copy_global_to_project)
+        lay.addWidget(self._copy_to_project_btn)
         return box
 
     def _build_right(self) -> QWidget:
@@ -407,13 +422,13 @@ class HookLibraryPanel(QWidget):
             self._handler_type.addItem(label, kind)
         row.addWidget(self._handler_type, 1)
 
-        add = QPushButton("＋ 추가")
-        add.clicked.connect(self._add_handler)
-        row.addWidget(add)
+        self._handler_add_btn = QPushButton("＋ 추가")
+        self._handler_add_btn.clicked.connect(self._add_handler)
+        row.addWidget(self._handler_add_btn)
 
-        remove = QPushButton("삭제")
-        remove.clicked.connect(self._delete_handler)
-        row.addWidget(remove)
+        self._handler_remove_btn = QPushButton("삭제")
+        self._handler_remove_btn.clicked.connect(self._delete_handler)
+        row.addWidget(self._handler_remove_btn)
         lay.addLayout(row)
 
         self._handler_list = QListWidget()
@@ -441,9 +456,27 @@ class HookLibraryPanel(QWidget):
     def _library(self) -> list[HookDef]:
         return getattr(self._project, "hook_library", None) or []
 
-    def _set_enabled(self, on: bool) -> None:
+    def _global_hooks(self) -> list[HookDef]:
+        """이 프로젝트가 이름으로 쓸 수 있는 전역 훅 중 **가려지지 않은** 것 (A1).
+
+        프로젝트에 동명 훅이 있으면 그쪽이 이기므로(컴파일·검증과 같은 규칙)
+        전역 쪽은 목록에서 뺀다 — 둘 다 보이면 어느 것이 실제로 쓰이는지
+        화면만 봐서는 알 수 없다.
+        """
+        from daedalus.model.plugin.hook_store import load_global_hooks
+
+        shadowed = {h.name for h in self._library()}
+        return [h for h in load_global_hooks() if h.name not in shadowed]
+
+    def _set_enabled(self, on: bool, *, read_only: bool = False) -> None:
+        """편집 위젯 활성화. read_only면 값은 보이되 고칠 수 없다 (전역 훅, A1)."""
+        editable = on and not read_only
         for w in (self._name, self._description, self._event, self._matcher):
-            w.setEnabled(on)
+            w.setEnabled(editable)
+        self._remove_btn.setEnabled(editable)
+        self._handler_add_btn.setEnabled(editable)
+        self._handler_remove_btn.setEnabled(editable)
+        self._copy_to_project_btn.setEnabled(on and read_only)
 
     def _notify(self) -> None:
         if self._on_notify_fn is not None:
@@ -471,11 +504,17 @@ class HookLibraryPanel(QWidget):
     def _reload_list(self, select: int | None = None) -> None:
         self._loading = True
         self._list.clear()
-        for hook in self._library():
-            label = f"{hook.name or '(이름 없음)'}  ·  {hook.event.value}"
-            if not hook.handlers:
-                label += "  ⚠"
-            self._list.addItem(QListWidgetItem(label))
+        # 프로젝트 훅이 앞, 전역 훅이 뒤 (A1). 프로젝트 훅의 행 번호가
+        # hook_library 인덱스와 일치해야 기존 추가/선택 경로가 그대로 동작한다.
+        self._entries = [(h, False) for h in self._library()]
+        if self._project is not None:
+            self._entries += [(h, True) for h in self._global_hooks()]
+        for hook, is_global in self._entries:
+            item = QListWidgetItem(self._hook_label(hook, is_global))
+            if is_global:
+                item.setForeground(QColor("#888888"))
+                item.setToolTip("전역 훅 (~/.daedalus/hooks/) — 읽기 전용")
+            self._list.addItem(item)
         self._loading = False
 
         count = self._list.count()
@@ -485,10 +524,21 @@ class HookLibraryPanel(QWidget):
         row = select if select is not None else 0
         self._list.setCurrentRow(max(0, min(row, count - 1)))
 
+    @staticmethod
+    def _hook_label(hook: HookDef, is_global: bool = False) -> str:
+        label = f"{hook.name or '(이름 없음)'}  ·  {hook.event.value}"
+        if not hook.handlers:
+            label += "  ⚠"
+        return f"🌐 {label}" if is_global else label
+
     def _current_hook(self) -> HookDef | None:
         row = self._list.currentRow()
-        library = self._library()
-        return library[row] if 0 <= row < len(library) else None
+        return self._entries[row][0] if 0 <= row < len(self._entries) else None
+
+    def _current_is_global(self) -> bool:
+        """선택된 것이 전역 훅인가 — 편집을 막는 판정의 단일 진실 (A1)."""
+        row = self._list.currentRow()
+        return bool(0 <= row < len(self._entries) and self._entries[row][1])
 
     def _on_row_changed(self, _row: int) -> None:
         if not self._loading:
@@ -502,7 +552,7 @@ class HookLibraryPanel(QWidget):
             if hook is not None:
                 self._event.setCurrentIndex(list(HookEvent).index(hook.event))
             self._matcher.setText(hook.matcher if hook else "")
-            self._set_enabled(hook is not None)
+            self._set_enabled(hook is not None, read_only=self._current_is_global())
             self._sync_matcher_state(hook)
         finally:
             self._loading = False
@@ -538,7 +588,7 @@ class HookLibraryPanel(QWidget):
 
     def _save_head(self) -> None:
         hook = self._current_hook()
-        if hook is None or self._loading:
+        if hook is None or self._loading or self._current_is_global():
             return
         hook.name = self._name.text()
         hook.description = self._description.text()
@@ -554,10 +604,7 @@ class HookLibraryPanel(QWidget):
         item = self._list.currentItem()
         if hook is None or item is None:
             return
-        label = f"{hook.name or '(이름 없음)'}  ·  {hook.event.value}"
-        if not hook.handlers:
-            label += "  ⚠"
-        item.setText(label)
+        item.setText(self._hook_label(hook, self._current_is_global()))
 
     def _add_hook(self) -> None:
         if self._project is None:
@@ -599,11 +646,35 @@ class HookLibraryPanel(QWidget):
 
     def _delete_hook(self) -> None:
         hook = self._current_hook()
-        if hook is None:
+        if hook is None or self._current_is_global():
             return
-        row = self._list.currentRow()
-        self._project.hook_library.pop(row)
+        # 인덱스가 아니라 identity로 지운다 — 목록에는 전역 훅도 섞여 있다.
+        library = self._project.hook_library
+        row = next((i for i, h in enumerate(library) if h is hook), -1)
+        if row < 0:
+            return
+        library.pop(row)
         self._reload_list(select=min(row, len(self._library()) - 1))
+        self._notify()
+
+    def _copy_global_to_project(self) -> None:
+        """선택한 전역 훅을 이 프로젝트 라이브러리로 복사한다 (A1).
+
+        **이름을 그대로 유지한다** — 복사의 목적이 "이 프로젝트에서는 이 훅을
+        이렇게 쓴다"이고, 동명 프로젝트 훅이 전역을 덮는 것이 병합 규칙이므로
+        참조하는 컴포넌트를 손댈 필요가 없다(이름을 바꾸면 참조가 전역을 계속
+        가리켜, 고친 사본이 아무 데도 쓰이지 않는 일이 생긴다).
+
+        복사는 `preset_copy`와 같은 이유로 **깊은 복사**다 — 얕게 복사하면 이
+        프로젝트에서 고친 핸들러가 다음번 전역 로드 결과를 오염시킨다.
+        """
+        hook = self._current_hook()
+        if self._project is None or hook is None or not self._current_is_global():
+            return
+        copy = preset_copy(hook)
+        copy.name = hook.name  # preset_copy는 이름을 보존하지만 의도를 명시한다
+        self._project.hook_library.append(copy)
+        self._reload_list(select=len(self._library()) - 1)
         self._notify()
 
     # ── 핸들러 ──
@@ -675,7 +746,7 @@ class HookLibraryPanel(QWidget):
 
     def _add_handler(self) -> None:
         hook = self._current_hook()
-        if hook is None:
+        if hook is None or self._current_is_global():
             return
         cls = HOOK_HANDLER_TYPES[self._handler_type.currentData()]
         hook.handlers.append(cls())
@@ -686,7 +757,9 @@ class HookLibraryPanel(QWidget):
     def _delete_handler(self) -> None:
         hook = self._current_hook()
         row = self._handler_list.currentRow()
-        if hook is None or not (0 <= row < len(hook.handlers)):
+        if hook is None or self._current_is_global():
+            return
+        if not (0 <= row < len(hook.handlers)):
             return
         hook.handlers.pop(row)
         self._reload_handlers(select=min(row, len(hook.handlers) - 1))

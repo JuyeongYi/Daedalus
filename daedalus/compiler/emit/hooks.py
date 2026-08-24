@@ -14,6 +14,22 @@ from daedalus.model.plugin.hook import (
 )
 
 
+def hook_library(project, resolved_hooks: dict[str, HookDef] | None = None) -> list[HookDef]:
+    """이 컴파일이 볼 훅 정의 목록 (A1 — 전역 훅 2단 스코프).
+
+    ``resolved_hooks``는 **호출자가 주입**한다(``model/plugin/hook_store``의
+    ``resolve_hooks``). 컴파일러는 파일시스템을 읽지 않는다 — 읽어 버리면
+    "이 프로젝트를 컴파일한 결과"가 컴파일한 사람의 홈 디렉토리에 따라
+    달라지는 것을 코드에서 볼 수 없게 된다.
+
+    생략(None)하면 ``project.hook_library``만 본다 — 기존 호출부의 산출이
+    바이트 단위로 불변이다(하위 호환 게이트).
+    """
+    if resolved_hooks is None:
+        return list(getattr(project, "hook_library", None) or [])
+    return list(resolved_hooks.values())
+
+
 def _collect_referenced_hook_names(project) -> list[str]:
     """프로젝트 전체 config.hooks 키(훅 이름 참조)를 첫 등장 순서·중복 제거로 수집.
 
@@ -51,7 +67,9 @@ def _progress_hook_entry() -> dict[str, Any]:
     return {"type": "command", "command": _PROGRESS_SCRIPT_REF}
 
 
-def compile_hook_scripts(project) -> list[tuple[str, str]]:
+def compile_hook_scripts(
+    project, resolved_hooks: dict[str, HookDef] | None = None
+) -> list[tuple[str, str]]:
     """훅 스크립트 파일 — [(``hooks/scripts/`` 기준 상대경로, 내용), …] (WP-HS).
 
     커맨드는 아무리 짧아도 파일로 나간다 — hooks.json에는 루트 기반 경로만
@@ -62,7 +80,7 @@ def compile_hook_scripts(project) -> list[tuple[str, str]]:
     같은 파일명이 둘 나오면 나중 것이 앞의 것을 덮으므로 **먼저 선언된 훅이
     이긴다** — 이름 충돌은 `duplicate_hook_script`가 컴파일 게이트에서 잡는다.
     """
-    library = getattr(project, "hook_library", None) or []
+    library = hook_library(project, resolved_hooks)
     referenced = set(_collect_referenced_hook_names(project))
 
     out: list[tuple[str, str]] = []
@@ -95,7 +113,9 @@ def _should_emit_progress_hook(project) -> bool:
     )
 
 
-def compile_hooks_json(project) -> str | None:
+def compile_hooks_json(
+    project, resolved_hooks: dict[str, HookDef] | None = None
+) -> str | None:
     """프로젝트가 참조하는 HookDef를 모아 CC settings hooks.json 텍스트로.
 
     스키마:
@@ -114,7 +134,7 @@ def compile_hooks_json(project) -> str | None:
 
     LF·UTF-8 보장 텍스트(끝 개행 1개). json.loads 왕복 가능.
     """
-    library = getattr(project, "hook_library", None) or []
+    library = hook_library(project, resolved_hooks)
     by_name = {h.name: h for h in library}
     referenced = _collect_referenced_hook_names(project)
     resolved = [by_name[n] for n in referenced if n in by_name]
