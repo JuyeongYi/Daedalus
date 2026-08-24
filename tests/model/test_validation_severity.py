@@ -59,6 +59,7 @@ _WARN_RULES = frozenset({
     "dangling_skill_file_ref",  # WP-SF — 아래 _EXTERNALLY_EMITTED_RULES 참조
     "unknown_skill_files_dir",  # WP-SF
     "skill_dir_token_in_agent",  # WP-SF
+    "mid_chain_user_invocable",  # A3
 })
 
 # validation 패키지 밖(컴파일러 등)에서 emit되지만 WARNING_RULES에는 등록된 규칙 —

@@ -85,4 +85,6 @@ WARNING_RULES: frozenset[str] = frozenset({
     "dangling_skill_file_ref",
     "unknown_skill_files_dir",
     "skill_dir_token_in_agent",
+    # A3 — user-invocable은 진입점으로 기능할 노드만 true여야 한다
+    "mid_chain_user_invocable",
 })

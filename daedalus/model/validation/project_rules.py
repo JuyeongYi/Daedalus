@@ -108,6 +108,8 @@ class _ProjectRules:
         errors.extend(_ProjectRules._check_unsupported_agent_fields(project))
         errors.extend(_ProjectRules._check_plugin_root_in_local_build(project))
         errors.extend(_ProjectRules._check_skill_dir_token_in_agent(project))
+        # 진입점 의미론 규칙 — A3
+        errors.extend(_ProjectRules._check_mid_chain_user_invocable(project))
         return errors
 
     @staticmethod
@@ -867,4 +869,64 @@ class _ProjectRules:
                     subject=agent,
                     path=(f"agent:{agent.name}",),
                 ))
+        return errors
+
+    @staticmethod
+    def _check_mid_chain_user_invocable(project) -> list[ValidationError]:
+        """mid_chain_user_invocable — 체인 중간 배치인데 user-invocable이면 경고 (A3).
+
+        원칙(사용자 확정): **user-invocable은 진입점으로 기능할 노드만 true여야
+        한다.** `/skill`로 직접 부를 수 있다는 것은 "여기서 시작해도 된다"는
+        선언인데, 앞 단계가 채워 놓은 블랙보드·진행 상태를 전제하는 중간 스킬을
+        맥락 없이 시작하면 그 전제가 통째로 비어 있는 채로 돈다.
+
+        false로 두어도 **모델 인보크는 그대로 되므로 체인은 끊기지 않는다** —
+        앞 스킬의 "다음 단계" 지시가 여전히 이 스킬을 부른다. 잃는 것은 사람이
+        직접 부르는 통로뿐이고, 그것이 정확히 막고 싶은 것이다.
+
+        대상은 **프로젝트 그래프에 배치된 ProceduralSkill 중 incoming 전이가
+        1개 이상**인 것뿐이다:
+        - incoming 0개 = 진입점 후보이므로 정상.
+        - 배치 안 된 스킬 = 독립 스킬이라 user_invocable true가 정상.
+        - EntryPoint에서 오는 전이는 incoming으로 세지 않는다 — 그것이 곧
+          "여기서 시작한다"는 뜻이다(WP-EP로 캔버스에 그리지 않을 뿐, 구버전
+          파일의 시작 전이는 모델에 남아 있다).
+        """
+        from daedalus.model.fsm.state import SimpleState
+        from daedalus.model.plugin.skill import ProceduralSkill
+
+        graph = getattr(project, "graph", None)
+        if graph is None:
+            return []
+
+        incoming: dict[int, int] = {}
+        for trans in graph.transitions:
+            if isinstance(trans.source, EntryPoint):
+                continue
+            incoming[id(trans.target)] = incoming.get(id(trans.target), 0) + 1
+
+        errors: list[ValidationError] = []
+        for state in graph.states:
+            if not isinstance(state, SimpleState):
+                continue
+            skill = state.skill_ref
+            if not isinstance(skill, ProceduralSkill):
+                continue
+            if not incoming.get(id(state)):
+                continue  # 진입점 후보
+            if not getattr(skill.config, "user_invocable", False):
+                continue
+            errors.append(ValidationError(
+                rule="mid_chain_user_invocable",
+                message=(
+                    f"스킬 '{skill.name}'은 체인 중간(선행 전이 있음)에 배치돼 "
+                    f"있는데 user-invocable입니다 — 사용자가 앞 단계의 맥락 없이 "
+                    f"직접 시작할 수 있습니다. 진입점으로 쓸 것이 아니면 "
+                    f"user_invocable을 끄세요(모델 인보크는 그대로 되므로 체인은 "
+                    f"끊기지 않습니다)."
+                ),
+                source=skill.name,
+                subject=state,
+                path=("project",),
+            ))
         return errors
