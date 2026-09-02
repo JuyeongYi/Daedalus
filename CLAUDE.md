@@ -18,7 +18,8 @@ pytest는 `python -m pytest`로 실행한다 (`pytest` 직접 실행 시 command
 
 **컴파일러 패턴:** 순수 모델(model/) → 컴파일러(compiler/) → 플러그인 파일
 
-현재 구현 범위: **model/ + view/ + compiler/** (FSM 코어 + 플러그인 메타데이터 + PySide6 에디터 + SKILL.md/agent .md 생성).
+현재 구현 범위: **model/ + view/ + compiler/ + mcp/ + cli/** (FSM 코어 + 플러그인 메타데이터 + PySide6 에디터 +
+SKILL.md/agent .md/plugin.json/hooks/schemas 생성 + 앱 내장 MCP 서버(WP-MCP) + 블랙보드 CLI `daedalus-bb`(WP-BB1)).
 
 **경계 계약 (WP-RF-2, B안 — 물리 이동 없음):** core = `model/` + `compiler/` + `mcp/endpoint.py` + `cli/`.
 core는 Qt 바인딩(PySide6/PyQt6/shiboken6)·GUI 레이어(`daedalus.view`)·MCP SDK(`mcp`)·`uvicorn`을
@@ -182,7 +183,9 @@ daedalus/
     │                       #   known_server_defs: 앱이 스스로 아는 daedalus 서버 정의(서버 미기동이면 기본 포트) — extra_server_defs로 주입.
     ├── launch_actions.py   # LaunchActions(window) — MCP 서버 수명주기 + Claude Code 실행 (WP-RF-3e에서 추출).
     │                       #   start_mcp_service(port)(__main__.main만 호출 — 테스트가 MainWindow를 수십 개 만들어 자동 기동은 포트 충돌)/
-    │                       #   stop_mcp_service(MainWindow.closeEvent가 호출)/show_mcp_info(정보 전부 본문 즉시 표시 — Show Details 없음)/
+    │                       #   stop_mcp_service(MainWindow.closeEvent가 호출)/show_mcp_info(McpInfoDialog — 정보 전부 즉시 표시.
+    │                       #     스니펫은 읽기 전용 QPlainTextEdit + "스니펫 복사" 버튼(ActionRole이라 눌러도 안 닫힘) — QMessageBox
+    │                       #     본문은 Qt 기본 스타일 힌트상 선택 불가라 붙여넣을 텍스트를 긁어갈 수 없다)/
     │                       #   launch_claude_code(프로젝트 저장 폴더에서 새 콘솔로 claude 실행. 미저장·서버 미기동이면 상태바 안내 후 중단)/
     │                       #   ensure_daedalus_mcp_json(wiring.wire_workspace로 daedalus 서버를 .mcp.json/settings.local.json에 배선).
     ├── validation_actions.py  # ValidationActions(window) — F7 검증 + 결과 항목 → 노드 포커스 (WP-RF-3e에서 추출).
@@ -257,7 +260,7 @@ daedalus/
     │                       # blackboard_editor.py(WP-BB): BlackboardPanel(QWidget) — 프로젝트 최상위 블랙보드(class_definitions) 편집 상주 탭. 좌: 클래스
     │                       #   목록(＋/삭제/더블클릭 이름변경), 우: description(QLineEdit) + 필드 테이블(name/FieldType/CollectionType/required/default,
     │                       #   ＋필드/필드 삭제). 편집은 project.blackboard.class_definitions를 직접 갱신 + notify(structure 채널 — undo 커맨드화 범위
-    │                       #   밖, hook_editor 폼 정책과 동일). blackboard_candidate_strings(project)가 "클래스"+"클래스.필드" 후보 문자열을 만든다.
+    │                       #   밖, hook_panel 폼 정책과 동일). blackboard_candidate_strings(project)가 "클래스"+"클래스.필드" 후보 문자열을 만든다.
     ├── panels/             # TreePanel, PropertyPanel, RegistryPanel, HistoryPanel, ValidationPanel (F7 검증 결과), FilePanel(WP-FR)
     │                       # RegistryPanel: component_delete_requested 시그널 + _RegistrySection 우클릭 "삭제" 컨텍스트 메뉴.
     │                       #   종류별 섹션은 QTabWidget 탭(WP-SF 배치 개편 — 이모지 라벨+툴팁)
@@ -753,7 +756,7 @@ daedalus-bb [--state-dir state] [--schemas schemas/schemas.json] <command>
   `_find_component(name)`은 전역 스킬/에이전트만 찾는다 — v1 파일의 로컬 스킬은 로드 시 전역
   승격되므로 별도 접근 경로가 필요 없다.
 - **훅 라이브러리(WP-CE 4차):** `create_hook`/`update_hook`/`delete_hook`(라이브러리 = 정의의
-  단일 진실) + `set_component_hooks`(스킬/에이전트가 이름으로 참조). GUI 훅 다이얼로그는 모델에
+  단일 진실) + `set_component_hooks`(스킬/에이전트가 이름으로 참조). GUI 훅 패널(상주 탭)은 모델에
   직접 쓰지만 MCP 경로는 `AppendToListCmd`/`RemoveFromListCmd`/`SetAttrCmd`를 거쳐 undo된다.
   `update_hook`은 빈 문자열/None = 건드리지 않음, matcher·description은 ""로 지움, timeout은 0이
   지정 없음이다. **삭제는 참조를 건드리지 않는다**(GUI와 같은 정책) — 남은 참조는
@@ -1340,5 +1343,4 @@ description, 블랙보드 클래스·필드 설명 …)은 손대지 않고 그�
 ## 미구현 예정
 
 - `compiler/` Tier 2: ToolExecution/ToolEvaluation 실행 래퍼(인자 이스케이프·shell 분기·success_condition), MCP 서버 실행 코드
-- `hooks.json` / `.mcp.json` 설정 파일 생성 (WP-HOOK)
 - CLI: 기존 Claude Code CLI 툴 연동 (플러그인 내 명시)

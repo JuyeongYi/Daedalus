@@ -10,12 +10,114 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QMessageBox
+from PySide6.QtGui import QFont
+from PySide6.QtWidgets import (
+    QApplication,
+    QDialog,
+    QDialogButtonBox,
+    QLabel,
+    QMessageBox,
+    QPlainTextEdit,
+    QVBoxLayout,
+)
 
 from daedalus.model import package
 
 if TYPE_CHECKING:  # pragma: no cover - 타입 전용
     from daedalus.view.app import MainWindow
+
+
+class McpInfoDialog(QDialog):
+    """MCP 접속 정보 — 주소·`.mcp.json` 스니펫·접속 정보 파일 경로.
+
+    `QMessageBox`가 아닌 전용 다이얼로그인 이유: 메시지 박스의 본문은 Qt 기본
+    스타일 힌트가 링크 클릭만 허용해 **드래그 선택이 되지 않는다**. 이 창의
+    내용물은 전부 "다른 파일에 붙여넣을 텍스트"라 선택·복사가 기능 그 자체다.
+    스니펫은 읽기 전용 텍스트 박스에 넣어 전체 선택이 한 번에 되게 하고,
+    한 손으로 끝내려는 경우를 위해 복사 버튼도 둔다.
+    """
+
+    def __init__(
+        self,
+        parent,
+        *,
+        url: str,
+        snippet: str,
+        endpoint_path: str,
+    ) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("MCP 서버")
+        self.setMinimumWidth(520)
+        layout = QVBoxLayout(self)
+
+        heading = QLabel("<b>Claude Code와 협업할 준비가 되었습니다.</b>", self)
+        layout.addWidget(heading)
+
+        self._url_label = self._make_selectable_label(f"접속 주소: {url}")
+        layout.addWidget(self._url_label)
+
+        layout.addWidget(
+            QLabel(
+                "Claude Code에서 쓰려면 프로젝트의 <code>.mcp.json</code>에 "
+                "아래를 넣으세요:",
+                self,
+            )
+        )
+
+        self._snippet_view = QPlainTextEdit(snippet, self)
+        self._snippet_view.setReadOnly(True)
+        # 읽기 전용이어도 선택은 되어야 한다 — setReadOnly만으로는 마우스·키보드
+        # 선택 플래그가 보장되지 않으므로 명시한다.
+        self._snippet_view.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+            | Qt.TextInteractionFlag.TextSelectableByKeyboard
+        )
+        self._snippet_view.setFont(QFont("Consolas", 10))
+        self._snippet_view.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
+        self._snippet_view.setMinimumHeight(140)
+        layout.addWidget(self._snippet_view)
+
+        self._endpoint_label = self._make_selectable_label(
+            f"접속 정보 파일: {endpoint_path}"
+        )
+        layout.addWidget(self._endpoint_label)
+
+        self._notice = QLabel("", self)
+        layout.addWidget(self._notice)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close, self)
+        copy_button = buttons.addButton(
+            "스니펫 복사", QDialogButtonBox.ButtonRole.ActionRole
+        )
+        # ActionRole이라 눌러도 창이 닫히지 않는다(복사는 확인이 아니다).
+        copy_button.clicked.connect(self.copy_snippet)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+        self._snippet = snippet
+
+    def _make_selectable_label(self, text: str) -> QLabel:
+        label = QLabel(text, self)
+        label.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+            | Qt.TextInteractionFlag.TextSelectableByKeyboard
+        )
+        return label
+
+    # --- 테스트·호출자가 쓰는 접근자 ---
+
+    def snippet_view(self) -> QPlainTextEdit:
+        return self._snippet_view
+
+    def selectable_labels(self) -> list[QLabel]:
+        return [self._url_label, self._endpoint_label]
+
+    def copy_snippet(self) -> None:
+        clipboard = QApplication.clipboard()
+        if clipboard is not None:
+            clipboard.setText(self._snippet)
+        # 모달을 하나 더 띄우지 않는다 — 복사는 흐름을 끊을 일이 아니다.
+        self._notice.setText("클립보드에 복사했습니다.")
 
 
 class LaunchActions:
@@ -72,40 +174,16 @@ class LaunchActions:
             return
 
         port = service.port
-        # 정보 전부를 본문에 바로 보여주되, JSON 스니펫은 선택·복사가 가능한
-        # 읽기 전용 TextEdit에 넣는다(사용자 요청 — QLabel/RichText <pre>는
-        # 드래그 선택이 안 된다).
-        from PySide6.QtWidgets import QDialog, QDialogButtonBox, QTextEdit, QVBoxLayout
-
-        dlg = QDialog(w)
-        dlg.setWindowTitle("MCP 서버")
-        dlg.setMinimumWidth(520)
-        lay = QVBoxLayout(dlg)
-
-        from PySide6.QtWidgets import QLabel as _Lbl
-
-        lay.addWidget(_Lbl(
-            "<b>Claude Code와 협업할 준비가 되었습니다.</b><br><br>"
-            f"접속 주소: <code>{service.url}</code><br><br>"
-            "프로젝트의 <code>.mcp.json</code>에 아래를 넣으세요:"
-        ))
-
-        snippet = QTextEdit()
-        snippet.setReadOnly(True)
-        snippet.setPlainText(endpoint.mcp_json_snippet(port))
-        snippet.setStyleSheet(
-            "QTextEdit { font-family: Consolas, monospace; font-size: 12px; "
-            "background: #1e1e2e; color: #cdd6f4; border: 1px solid #45475a; }"
+        # Show Details를 누르게 하지 않는다 — 정보 전부를 본문에 바로 보여준다
+        # (사용자 요청). 스니펫은 복사해 쓰는 텍스트라 읽기 전용 텍스트 박스에
+        # 담아 선택·복사가 되게 한다(QMessageBox 본문은 선택이 막혀 있다).
+        dialog = McpInfoDialog(
+            w,
+            url=service.url,
+            snippet=endpoint.mcp_json_snippet(port),
+            endpoint_path=str(endpoint.ENDPOINT_PATH),
         )
-        snippet.setFixedHeight(120)
-        lay.addWidget(snippet)
-
-        lay.addWidget(_Lbl(f"접속 정보 파일: <code>{endpoint.ENDPOINT_PATH}</code>"))
-
-        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok)
-        buttons.accepted.connect(dlg.accept)
-        lay.addWidget(buttons)
-        dlg.exec()
+        dialog.exec()
 
     # --- Claude Code 실행 ---
 
