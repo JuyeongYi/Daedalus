@@ -10,6 +10,7 @@ from daedalus.model.plugin.enums import BuildTarget
 from daedalus.model.plugin.hook import HookDef
 from daedalus.model.plugin.skill import Skill
 from daedalus.model.plugin.tool import Tool
+from daedalus.model.plugin.workspace_doc import WorkspaceDoc
 
 
 def _make_project_graph() -> StateMachine:
@@ -52,6 +53,12 @@ class PluginProject:
     # 훅 라이브러리 — HookDef의 단일 진실 (tool_shelf와 동일 shelf 패턴).
     # ComponentConfig.hooks의 키는 여기 HookDef.name을 이름으로 참조한다.
     hook_library: list[HookDef] = field(default_factory=list)
+    # WP-WD — 작업 폴더 문서. LOCAL 빌드에서만 배출된다(마켓플레이스 플러그인은
+    # 작업 폴더에 쓸 수 없다). claude_md는 `.claude/CLAUDE.md`의 이 플러그인 구역
+    # 이고 **최대 하나**라 리스트가 아니다 — 불변식을 검증이 아니라 구조로 지킨다.
+    # rules는 `.claude/rules/<name>.md`로, 파일 하나가 문서 하나다.
+    claude_md: WorkspaceDoc | None = None
+    rules: list[WorkspaceDoc] = field(default_factory=list)
     # 최상위 블랙보드 — schemas.json의 소스 (DynamicClass 정의의 단일 진실).
     # 에이전트/스킬 FSM의 blackboard.parent가 이 객체를 가리키도록 생성 경로에서 배선한다.
     blackboard: Blackboard = field(default_factory=Blackboard)

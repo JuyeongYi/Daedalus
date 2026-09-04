@@ -95,6 +95,7 @@ from daedalus.model.plugin.tool import (
     Tool,
     UserDefinedTool,
 )
+from daedalus.model.plugin.workspace_doc import WorkspaceDoc
 from daedalus.model.project import (
     PluginProject,
     ReferencePlacement,
@@ -220,6 +221,9 @@ def deserialize_project(
         mcp_server_defs={
             k: dict(v) for k, v in data.get("mcp_server_defs", {}).items()
         },
+        # WP-WD — 구버전 파일(키 부재) → None / 빈 리스트 (경고 없음).
+        claude_md=_deser_workspace_doc(data.get("claude_md")),
+        rules=_deser_workspace_docs(data.get("rules")),
     )
 
     # ── pass 2: 모든 참조(state/skill/agent id) 해소 ──
@@ -733,6 +737,18 @@ def _deser_hook_handler(d: dict):
             value = _to_enum(HookShell, value, HookShell.DEFAULT)
         kwargs[f.name] = value
     return cls(**kwargs, id=d.get("id") or _new_id())
+
+
+def _deser_workspace_doc(d) -> WorkspaceDoc | None:
+    """작업 폴더 문서 (WP-WD). 비-dict는 None — 구버전 파일 대비."""
+    if not isinstance(d, dict):
+        return None
+    return WorkspaceDoc(d.get("name", ""), d.get("body", ""), id=d.get("id") or _new_id())
+
+
+def _deser_workspace_docs(raw) -> list[WorkspaceDoc]:
+    """규칙 문서 목록 — 읽을 수 없는 항목은 빼고, 키 부재는 빈 리스트."""
+    return [d for d in map(_deser_workspace_doc, raw or []) if d is not None]
 
 
 def _deser_hook(d: dict) -> HookDef:

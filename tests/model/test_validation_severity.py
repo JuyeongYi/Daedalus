@@ -27,6 +27,7 @@ _ERROR_RULES = frozenset({
     "transition_type_consistency",
     "choice_completeness",
     "transfer_skill_reused",  # A11 — no_duplicate_skill_ref와 같은 결(에러)
+    "duplicate_rule_name",  # WP-WD — 같은 파일명이라 서로 덮어쓴다
 })
 
 # 경고로 분류되어야 하는 규칙 목록 (WARNING_RULES와 동일)
@@ -51,6 +52,9 @@ _WARN_RULES = frozenset({
     "dangling_blackboard_ref",
     "orphan_blackboard_field",
     "dangling_file_ref",  # WP-FR — 아래 _EXTERNALLY_EMITTED_RULES 참조
+    "invalid_rule_name",
+    "workspace_doc_in_marketplace_build",
+    "unmergeable_claude_md",
     "mcp_agent_in_marketplace_build",  # WP-TG
     "plugin_root_in_local_build",  # WP-TG
     "unsupported_agent_field_in_marketplace_build",  # WP-LA
@@ -71,6 +75,7 @@ _EXTERNALLY_EMITTED_RULES = frozenset({
     "dangling_file_ref",  # daedalus/compiler/project_compiler.py 소관 (WP-FR)
     "missing_mcp_server_def",  # daedalus/compiler/project_compiler.py 소관 (WP-MW)
     "unmergeable_settings_json",  # daedalus/compiler/project_compiler.py 소관 (WP-MW)
+    "unmergeable_claude_md",  # daedalus/compiler/project_compiler.py 소관 (WP-WD)
     "dangling_skill_file_ref",  # daedalus/compiler/project_compiler.py 소관 (WP-SF)
     "unknown_skill_files_dir",  # daedalus/compiler/project_compiler.py 소관 (WP-SF)
 })

@@ -100,7 +100,19 @@ def serialize_project(project: PluginProject) -> dict:
         "build_target": project.build_target.value,
         # WP-MW — MCP 서버 정의(이름 → .mcp.json 서버 객체). 구버전 파일(키 부재)은 빈 dict.
         "mcp_server_defs": {k: dict(v) for k, v in project.mcp_server_defs.items()},
+        # WP-WD — 작업 폴더 문서. 구버전 파일(키 부재)은 각각 None / 빈 리스트.
+        "claude_md": _ser_workspace_doc(project.claude_md),
+        "rules": [_ser_workspace_doc(doc) for doc in project.rules],
     }
+
+
+# ── workspace docs (WP-WD) ──
+
+def _ser_workspace_doc(doc):
+    """WorkspaceDoc → dict. None이면 None(키는 남긴다 — 부재와 빈 문서를 구분한다)."""
+    if doc is None:
+        return None
+    return {"id": doc.id, "name": doc.name, "body": doc.body}
 
 
 # ── hook library ──

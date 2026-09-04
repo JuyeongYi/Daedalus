@@ -70,6 +70,11 @@ WARNING_RULES: frozenset[str] = frozenset({
     # compiler/project_compiler.py 소관(검증기는 파일시스템 무접근 순수성
     # 유지)이지만, is_warning 판정 일관성을 위해 여기 등록한다.
     "dangling_file_ref",
+    # WP-WD — 작업 폴더 문서(.claude/CLAUDE.md·.claude/rules/). 이름 규약은
+    # 컴포넌트와 같은 관례로 편집 중에는 경고이고 컴파일 게이트가 에러로 승격한다.
+    # duplicate_rule_name은 서로 덮어쓰므로 에러 등급(여기 등재하지 않는다).
+    "invalid_rule_name",
+    "workspace_doc_in_marketplace_build",
     # 빌드 타깃(build_target) 경고 — WP-TG
     "mcp_agent_in_marketplace_build",
     "plugin_root_in_local_build",
@@ -79,6 +84,9 @@ WARNING_RULES: frozenset[str] = frozenset({
     # 소관(dangling_file_ref와 동일 정책 — 검증기는 파일시스템 무접근).
     "missing_mcp_server_def",
     "unmergeable_settings_json",
+    # WP-WD — .claude/CLAUDE.md 구역 병합 실패(손상된 표식). 파일을 건드리지 않고
+    # 경고만 낸다 — 구역의 끝을 추측하면 사용자 내용을 지운다. emit은 컴파일러 소관.
+    "unmergeable_claude_md",
     # WP-SF — 스킬별 동봉 파일(skill-files/) 경고. dangling/unknown 2종은
     # compiler/project_compiler.py 소관(파일시스템 검사), 에이전트 토큰 검사는
     # 본문 문자열만 보므로 검증기 소관.

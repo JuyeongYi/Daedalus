@@ -302,6 +302,22 @@ def _plan_outputs(
     # 폴더에 ddls 플러그인이 둘 깔리면 나중 것이 앞의 것을 조용히 덮어썼다(경로
     # 충돌 게이트는 한 번의 컴파일 안에서만 도므로 잡지 못한다). 이름은 컴파일
     # 게이트가 '^[a-z0-9][a-z0-9-]*$'를 강제하므로 파일명으로 안전하다.
+    # 작업 폴더 문서 — LOCAL 전용(WP-WD). 마켓플레이스 플러그인은 설치 대상 작업
+    # 폴더의 .claude/에 쓸 수 없으므로 계획에 넣지 않는다(경고는 Validator 소관).
+    # 규칙 이름은 파일명이 되므로 컴포넌트와 같은 이름 게이트를 통과해야 한다.
+    if is_local:
+        for doc in getattr(project, "rules", None) or []:
+            if not doc.has_content():
+                continue  # 배출할 내용이 없으면 빈 파일을 만들지 않는다
+            check_name(doc.name, f"규칙 문서 '{doc.name}'", doc)
+            plan.append(_PlannedOutput(
+                rel_path=cc_prefix / "rules" / f"{doc.name}.md",
+                label=f"rules/{doc.name}.md (workspace rule)",
+                subject=doc,
+                kind="workspace_rule",
+                component=doc,
+            ))
+
     schemas_text = compile_schemas_json(project)
     if schemas_text is not None:
         plan.append(_PlannedOutput(
@@ -589,6 +605,10 @@ def compile_project(
             text = compile_hooks_json(project, resolved_hooks) or ""
         elif item.kind == "hook_script":
             text = _hook_script_bodies(project, resolved_hooks).get(item.script_name, "")
+        elif item.kind == "workspace_rule":
+            # 본문 그대로 — 편집만 제공한다(WP-WD/D7). 프론트매터가 필요하면
+            # 사용자가 본문 맨 위에 직접 쓴다.
+            text = item.component.body.strip("\n") + "\n"
         elif item.kind == "schemas_json":
             text = compile_schemas_json(project) or ""
         elif item.kind == "plugin_manifest":
@@ -626,8 +646,54 @@ def compile_project(
         _wire_local_install(
             project, out_dir, result, extra_server_defs, resolved_hooks,
         )
+        _merge_claude_md_region(project, out_dir, result)
 
     return result
+
+
+def _merge_claude_md_region(project, out_dir: Path, result: CompileResult) -> None:
+    """`.claude/CLAUDE.md`의 이 플러그인 구역을 갱신한다 (WP-WD/D9).
+
+    산출 계획(`_plan_outputs`)에 넣지 않는 이유: 이 파일은 **쓰기 전에 읽어야**
+    하고 결과가 기존 내용에 달려 있어, "경로 하나 = 산출 하나"라는 계획의 전제와
+    맞지 않는다. `.mcp.json`·`settings.local.json` 병합이 `_wire_local_install`에
+    따로 있는 것과 같은 이유다.
+    """
+    from daedalus.compiler.workspace import merge_claude_md
+
+    doc = getattr(project, "claude_md", None)
+    path = out_dir / ".claude" / "CLAUDE.md"
+    existing: str | None = None
+    if path.is_file():
+        try:
+            existing = path.read_text(encoding="utf-8")
+        except OSError as exc:  # pragma: no cover - 권한 등 환경 의존
+            result.warnings.append(ValidationError(
+                rule="unmergeable_claude_md",
+                message=f"'{path}'를 읽을 수 없어 병합하지 않았습니다: {exc}",
+                source=str(path), subject=project,
+            ))
+            return
+    elif doc is None or not doc.has_content():
+        return  # 쓸 내용도 없고 기존 파일도 없다 — 빈 파일을 만들지 않는다
+
+    text, warning = merge_claude_md(
+        existing,
+        project.name,
+        title=(doc.name if doc is not None and doc.name else project.name),
+        body=(doc.body if doc is not None else ""),
+    )
+    if warning is not None:
+        result.warnings.append(ValidationError(
+            rule="unmergeable_claude_md",
+            message=f"{warning} 표식을 고친 뒤 다시 컴파일하세요: {path}",
+            source=str(path), subject=project,
+        ))
+        return
+    if text is None:
+        return
+    _write_text(path, text)
+    result.written.append(path)
 
 
 # ─────────────────────── LOCAL 설치 배선 — JSON 병합 (WP-MW) ───────────────────────
