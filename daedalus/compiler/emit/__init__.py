@@ -131,8 +131,7 @@ from daedalus.compiler.emit.sections import (
     referenced_mcp_servers,
 )
 from daedalus.compiler.emit.skill import (
-    _PROGRESS_UPDATE_NOTE,
-    _TRANSFER_PROGRESS_NOTE,
+    _PROGRESS_MANUAL_FALLBACK,
     _entry_context_section,
     _entry_incoming_transitions,
     _entry_item_line,
@@ -141,8 +140,11 @@ from daedalus.compiler.emit.skill import (
     _next_step_condition,
     _next_step_invoke_line,
     _next_steps_section,
+    _progress_cli,
     _progress_terminal_section,
+    _progress_update_note,
     _resume_preamble_section,
+    _transfer_progress_note,
     _skill_kind_key,
     compile_skill,
 )

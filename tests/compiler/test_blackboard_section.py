@@ -37,7 +37,7 @@ def test_global_procedural_skill_has_blackboard_section_before_next_steps():
 
     text = compile_skill(a, project=project)
     assert "## Shared State (Blackboard)" in text
-    assert "`TaskState` → `state/TaskState.json`" in text
+    assert "`TaskState` → `state/p/TaskState.json`" in text
     assert "## Next Steps" in text
     assert text.index("## Shared State (Blackboard)") < text.index("## Next Steps")
 
@@ -122,20 +122,20 @@ def test_blackboard_section_cli_directive_matches_actual_cli_surface():
 
 
 def test_cli_directive_passes_schemas_path_as_neutral_root_token():
-    """CLI 기본 스키마 경로는 cwd 기준이라 지시문이 경로를 명시해야 한다.
+    """`--schemas`는 필수이므로 지시문이 경로를 반드시 명시해야 한다.
 
     정본은 타깃 중립 토큰 ``${ROOT}``이고 컴파일이 타깃별 CC 변수로 확장한다.
     """
     a = make_procedural(name="a")
     project = _project_with_classes(skills=[a])
     text = compile_skill(a, project=project)
-    assert "--schemas ${ROOT}/schemas/schemas.json" in text
+    assert "--schemas ${ROOT}/schemas/p.json" in text
 
 
 def test_cli_schemas_path_expands_per_build_target(tmp_path):
     """MARKETPLACE는 플러그인 루트, LOCAL은 작업 폴더 루트로 확장된다.
 
-    두 타깃 모두 ``<루트>/schemas/schemas.json``에 스키마를 산출하므로 토큰
+    두 타깃 모두 ``<루트>/schemas/p.json``에 스키마를 산출하므로 토큰
     하나가 양쪽에서 실제로 존재하는 경로를 가리킨다.
     """
     from daedalus.model.plugin.enums import BuildTarget
@@ -152,10 +152,10 @@ def test_cli_schemas_path_expands_per_build_target(tmp_path):
         result = compile_project(project, out)
         assert result.ok, result.errors
         text = (out / rel).read_text(encoding="utf-8")
-        assert f"--schemas {expected}/schemas/schemas.json" in text
+        assert f"--schemas {expected}/schemas/p.json" in text
         assert "${ROOT}" not in text
         # 지시문이 가리키는 경로에 스키마가 실제로 산출됐는지.
-        assert (out / "schemas" / "schemas.json").is_file()
+        assert (out / "schemas" / "p.json").is_file()
 
 
 def test_cli_directive_present_in_access_declared_branch():
@@ -172,7 +172,7 @@ def test_cli_directive_present_in_access_declared_branch():
 
     assert "This skill reads: `TaskState`" in text  # union 분기임을 확정
     assert "`command -v daedalus-bb`" in text
-    assert "--schemas ${ROOT}/schemas/schemas.json" in text
+    assert "--schemas ${ROOT}/schemas/p.json" in text
     assert text.index("command -v daedalus-bb") < text.index(
         "Rules:\n- Always read a state file"
     )
@@ -263,8 +263,8 @@ def test_skill_with_access_declarations_shows_specific_reads_writes():
     assert "This skill reads: `TaskState`" in text
     assert "This skill writes: `ReviewFindings.files`" in text
     # 관련 클래스만 나열 — TaskState/ReviewFindings 둘 다 관련.
-    assert "`TaskState` → `state/TaskState.json`" in text
-    assert "`ReviewFindings` → `state/ReviewFindings.json`" in text
+    assert "`TaskState` → `state/p/TaskState.json`" in text
+    assert "`ReviewFindings` → `state/p/ReviewFindings.json`" in text
 
 
 def test_skill_access_declarations_narrow_file_list_to_relevant_classes():
@@ -275,8 +275,8 @@ def test_skill_access_declarations_narrow_file_list_to_relevant_classes():
     project = _project_with_two_classes(skills=[a])
 
     text = compile_skill(a, project=project)
-    assert "`TaskState` → `state/TaskState.json`" in text
-    assert "`ReviewFindings` → `state/ReviewFindings.json`" not in text
+    assert "`TaskState` → `state/p/TaskState.json`" in text
+    assert "`ReviewFindings` → `state/p/ReviewFindings.json`" not in text
 
 
 def test_skill_no_access_declarations_falls_back_to_general_guidance():
@@ -286,8 +286,8 @@ def test_skill_no_access_declarations_falls_back_to_general_guidance():
     text = compile_skill(a, project=project)
     assert "This skill reads" not in text
     assert "This skill writes" not in text
-    assert "`TaskState` → `state/TaskState.json`" in text
-    assert "`ReviewFindings` → `state/ReviewFindings.json`" in text
+    assert "`TaskState` → `state/p/TaskState.json`" in text
+    assert "`ReviewFindings` → `state/p/ReviewFindings.json`" in text
 
 
 def test_skill_access_declarations_include_graph_placement_own_access():
@@ -309,8 +309,8 @@ def test_agent_with_access_declarations_shows_specific_reads_writes():
 
     text = compile_agent(agent, project=project)
     assert "This agent writes: `TaskState.step`" in text
-    assert "`TaskState` → `state/TaskState.json`" in text
-    assert "`ReviewFindings` → `state/ReviewFindings.json`" not in text
+    assert "`TaskState` → `state/p/TaskState.json`" in text
+    assert "`ReviewFindings` → `state/p/ReviewFindings.json`" not in text
 
 
 def test_description_less_class_no_suffix():
@@ -323,8 +323,8 @@ def test_description_less_class_no_suffix():
         skills=[make_procedural(name="a")],
     )
     text = compile_skill(project.skills[0], project=project)
-    assert "`Plain` → `state/Plain.json`" in text
-    assert "`Plain` → `state/Plain.json` —" not in text
+    assert "`Plain` → `state/p/Plain.json`" in text
+    assert "`Plain` → `state/p/Plain.json` —" not in text
 
 
 def test_declared_branch_keeps_overview_paragraph():
@@ -347,5 +347,5 @@ def test_declared_branch_keeps_overview_paragraph():
         fields=[DynamicField(name="files", field_type=FieldType.LIST)],
     ))
     text = compile_skill(skill, project=project)
-    assert "schemas/schemas.json" in text          # 총론 유지
+    assert "schemas/p.json" in text          # 총론 유지
     assert "This skill writes" in text                        # 선언 문구 병존

@@ -28,7 +28,7 @@ core는 Qt 바인딩(PySide6/PyQt6/shiboken6)·GUI 레이어(`daedalus.view`)·M
 core가 아니라 **GUI 어댑터**(MainWindow·VM·커맨드 스택 결합 표면 — 각 믹스인 모듈 docstring 명시)이고,
 `mcp/invoker.py`의 Qt 의존과 `mcp/service.py`의 SDK/uvicorn 의존은 의도된 설계다. view→compiler 방향
 임포트는 정상(컴파일러 패턴의 방향과 일치). **`cli/`는 core 금지 목록에 더해 `daedalus.model`도 임포트할
-수 없다**(WP-BB1 — 설치 대상 프로젝트에서 도는 물건이라 검증 정본이 산출 `schemas.json` 파일 자체다).
+수 없다**(WP-BB1 — 설치 대상 프로젝트에서 도는 물건이라 검증 정본이 산출 `schemas/<플러그인>.json` 파일 자체다).
 
 ```
 daedalus/
@@ -129,9 +129,13 @@ daedalus/
 ├── cli/              # 블랙보드 CLI (WP-RF-2 신설 → WP-BB1 구현) — C+A 설계: uv tool install로 앱과 함께 설치되고,
 │   │                 #   컴파일 산출의 블랙보드 지시가 런타임에 이 CLI를 호출해 work 폴더의 state/를 읽고 쓴다.
 │   │                 #   core 경계 소속 — Qt·view·MCP SDK·uvicorn 금지 + **daedalus.model도 금지**(순수 stdlib).
-│   └── blackboard.py # daedalus-bb 전부 (pyproject [project.scripts] 등록 완료). read/init/write/validate/list +
-│                     #   최소 JSON Schema 검증기(type/properties/required/items/uniqueItems) + 원자적 쓰기.
-│                     #   상세는 "블랙보드 CLI (WP-BB1)" 개념 섹션 참조.
+│   ├── blackboard.py # daedalus-bb 진입점·인자 계약·스키마·상태 IO (pyproject [project.scripts] 등록 완료).
+│   │                 #   read/init/write/validate/list + 최소 JSON Schema 검증기
+│   │                 #   (type/properties/required/items/uniqueItems) + 원자적 쓰기·낙관적 잠금.
+│   │                 #   상세는 "블랙보드 CLI (WP-BB1)" 개념 섹션 참조.
+│   └── progress.py   # progress read/set — state/__progress__.json (WP-NS/D13). 최상위 키가 플러그인
+│                     #   이름인 **공유 파일**이라 병합을 코드가 보장한다. blackboard의 쓰기·잠금 재사용
+│                     #   (순환 회피로 blackboard 쪽 dispatch만 지역 임포트).
 └── view/             # PySide6 기반 노드 에디터
     ├── recent.py           # 최근 프로젝트 목록(WP-RP) — ~/.daedalus/recent.json 읽기/쓰기 (Qt 무관 순수 stdlib).
     │                       #   load/save/push/remove/clear + MAX_RECENT. 기록 실패는 삼킨다(endpoint.py와 같은 정책).
@@ -380,7 +384,7 @@ daedalus/
 - 동일 컨텍스트 내에서는 불필요 — 이미 같은 맥락을 공유
 - 스코핑: 최상위 `Blackboard(parent=None)`, 하위 `Blackboard(parent=부모.blackboard)`
 - **최상위 블랙보드:** `PluginProject.blackboard`(default_factory) — schemas.json의 소스(DynamicClass 단일 진실). 에이전트/스킬 FSM의 `blackboard.parent`는 **생성 경로의 책임**으로 이 객체에 배선한다 (app.py `_register_component`, **그리고 `deserialize_project` — 역직렬화도 생성 경로**: 스킬/에이전트 FSM→프로젝트 블랙보드로 재연결되어 parent 스코핑이 저장/로드를 견딘다. v1 파일의 에이전트 로컬 스킬은 `_migrate_v1`이 전역 승격하므로 같은 경로를 탄다 — WP-RF-1c). 마이그레이션 없음 — 메모리 내 기존 객체는 강제하지 않는다. 직렬화는 parent를 ID로 평탄화하지 않고 **소유 구조로 재연결**(`_deser_machine`의 `parent_bb` 전달).
-- **DynamicClass → JSON Schema 매핑:** `blackboard.py`의 `FIELD_TYPE_TO_JSON_SCHEMA` 정본(STRING→string, INT→integer, FLOAT→number, BOOL→boolean, LIST→array, JSON→object, ANY→{}). CollectionType은 array로 래핑(LIST→items, SET→items+uniqueItems). 컴파일러 `compile_schemas_json(project)`가 프로젝트 블랙보드 class_definitions를 `<out>/schemas/schemas.json`으로(정의 없으면 None).
+- **DynamicClass → JSON Schema 매핑:** `blackboard.py`의 `FIELD_TYPE_TO_JSON_SCHEMA` 정본(STRING→string, INT→integer, FLOAT→number, BOOL→boolean, LIST→array, JSON→object, ANY→{}). CollectionType은 array로 래핑(LIST→items, SET→items+uniqueItems). 컴파일러 `compile_schemas_json(project)`가 프로젝트 블랙보드 class_definitions를 `<out>/schemas/<프로젝트 이름>.json`으로(정의 없으면 None). 파일 이름이 프로젝트 이름인 이유는 WP-NS — 고정 경로였을 때 한 작업 폴더에 ddls 플러그인이 둘 깔리면 나중 것이 앞의 것을 조용히 덮어썼다(경로 충돌 게이트는 한 번의 컴파일 안에서만 돈다).
 - **블랙보드 편집 UI (WP-BB):** 모달이 아니라 `view/editors/blackboard_editor.BlackboardPanel`이 MainWindow의 상주
   최상위 탭(인덱스 1, Project FSM(0)과 동급, 항상 존재·닫기 불가)으로 프로젝트 최상위 블랙보드
   `class_definitions`를 편집한다 — 좌: 클래스 목록(추가/삭제/이름변경), 우: description + 필드
@@ -421,12 +425,14 @@ daedalus/
 `uv tool install`로 앱과 **함께 설치**된다(C+A 설계의 C).
 
 ```
-daedalus-bb [--state-dir state] [--schemas schemas/schemas.json] <command>
+daedalus-bb --schemas <경로> [--state-dir DIR] <command>
   read <Class> [--field NAME]    # 파일 전체(JSON) 또는 필드 값
   init <Class> [--force]         # 스키마 기반 초기 객체 (있으면 거부, --force로 재생성)
   write <Class> --set f=v [--append f=v] [--remove f=v]
   validate [Class ...]           # 생략 시 전 클래스
   list                           # 클래스·필드 목록(JSON)
+  progress read                  # 이 플러그인의 진행 항목 (없으면 exit 3)
+  progress set [--current S] [--completed S]... [--note T] [--prev S]
 ```
 
 - **exit code:** 0 성공 / 1 **쓰기가 반영되지 않음**(검증 실패, 또는 A6의 쓰기 충돌
@@ -442,7 +448,7 @@ daedalus-bb [--state-dir state] [--schemas schemas/schemas.json] <command>
   UTF-8로 reconfigure한다.
 - **왜 `schemas.json`이 단일 진실인가:** CLI는 **설치 대상 프로젝트**(플러그인이 깔린 작업
   폴더)에서 돈다. 그곳에는 Daedalus 모델도 `.daedalus.json`도 없다 — 있는 것은 컴파일 산출
-  `schemas/schemas.json`뿐이다. 그래서 `daedalus/cli/**`는 **`daedalus.model`을 임포트하지
+  `schemas/<플러그인>.json`뿐이다. 그래서 `daedalus/cli/**`는 **`daedalus.model`을 임포트하지
   않는다**(순수 stdlib. `tests/test_import_contracts.py`가 core 금지 목록에 더해 AST로 강제).
   모델을 끌어오면 "편집 시점 모델"과 "산출 스키마" 중 무엇이 정본인지가 흐려진다.
 - **검증기는 최소 구현이다.** 범용 JSON Schema가 아니라 컴파일러(`FIELD_TYPE_TO_JSON_SCHEMA`
@@ -495,7 +501,7 @@ daedalus-bb [--state-dir state] [--schemas schemas/schemas.json] <command>
   "검사했고 정상"으로 읽으면 안 된다. 위반이 있으면 그쪽이 우선(exit 1).
 - **컴파일러 산출 형상과의 결합은 테스트가 고정한다.** CLI는 모델을 임포트할 수 없지만
   `tests/`는 양쪽을 볼 수 있으므로, `tests/cli/test_schema_contract.py`가
-  `compile_schemas_json`이 **실제로 만든 텍스트**를 `schemas.json`으로 깔고 list/init/write/
+  `compile_schemas_json`이 **실제로 만든 텍스트**를 스키마 파일로 깔고 list/init/write/
   validate를 돌린다(손으로 쓴 픽스처만 쓰면 컴파일러가 형상을 바꿔도 CLI 테스트는 전부 초록인
   채 런타임만 깨진다). `BLACKBOARD_FIELD_TYPES` 밖 legacy 타입(ANY/JSON/bare LIST)도 경고
   등급이라 실제로 산출에 나오므로 함께 고정한다.
@@ -570,7 +576,7 @@ daedalus-bb [--state-dir state] [--schemas schemas/schemas.json] <command>
 - **모델:** `model/plugin/enums.py`의 `BuildTarget(Enum)`: `MARKETPLACE`(기본) / `LOCAL`. `PluginProject.build_target: BuildTarget = BuildTarget.MARKETPLACE`.
 - **직렬화:** `.value` 왕복. 구버전 파일(키 부재)·미지 값은 `MARKETPLACE`로 조용히 폴백(경고 없음) — 하위 호환 게이트.
 - **생성 흐름:** `app._new_project`(Ctrl+N)가 이름 결정 전에 `QInputDialog.getItem`으로 "마켓플레이스 플러그인"/"로컬 플러그인"을 고르게 한다(`_prompt_build_target`). 취소하면 새 프로젝트 생성 자체가 취소된다(기존 프로젝트 유지). 표시 문구·enum 매핑은 `view/editors/project_properties.py`의 `BUILD_TARGET_LABELS`가 단일 진실(app.py가 재사용). `ProjectPropertiesDialog`에도 콤보로 노출해 생성 후 변경 가능.
-- **컴파일:** MARKETPLACE는 현행과 바이트 동일(하위 호환 게이트) — `plugin.json` 생성. LOCAL은 **컴파일이 곧 설치**(WP-MW) — out_dir가 대상 작업 폴더이고 산출이 `.claude/` 밑으로 바로 나간다. 상세는 컴파일 정책 15번 항목 참조.
+- **컴파일:** MARKETPLACE는 `plugin.json`을 생성한다(산출 구조는 LOCAL과 다르되 `state/`·`schemas/` 네임스페이스 규약은 공유 — WP-NS/D12). LOCAL은 **컴파일이 곧 설치**(WP-MW) — out_dir가 대상 작업 폴더이고 산출이 `.claude/` 밑으로 바로 나간다. 상세는 컴파일 정책 15번 항목 참조.
 - **검증:** `mcp_agent_in_marketplace_build`/`plugin_root_in_local_build` — Validator 프로젝트 수준 규칙 표 참조.
 
 ### 연결선 리루트 — 엣지 웨이포인트 (WP-ER)
@@ -1254,7 +1260,7 @@ dataclass(값 동등성, unhashable) 유지 — 컬렉션 멤버십에는 list/`
    `^[a-z0-9][a-z0-9-]*$` 불일치면 `compile_invalid_component_name` **에러로 승격** 거부 (F7 검증기에서는 경고 등급 유지 — 편집 중에는 경고가 맞다). 프로젝트 이름은 plugin.json의 `name`(플러그인 식별자)이 되므로 동일 규약을 적용한다.
    ② 전체 산출 경로 집합에 중복이 있으면 `compile_output_path_conflict` 에러로 거부 + 충돌 경로/원인 컴포넌트 보고 (조용한 덮어쓰기 방지).
 9. **plugin.json 매니페스트**: `compile_plugin_manifest(project)`가 `project.name`/`description`/`version`으로 `.claude-plugin/plugin.json`을 무조건 생성한다. 키 순서 `name`→`description`(빈 문자열이면 키 생략)→`version`.
-10. **블랙보드 사용 지침 단락**: 프로젝트 최상위 블랙보드에 `class_definitions`가 1개 이상이면, `ProceduralSkill`의 tool_shelf 단락 뒤·"다음 단계" 단락 앞, 그리고 에이전트 `.md` 본문 마지막에 `_blackboard_section(project, component)`이 "## 공유 상태 (블랙보드)" 단락(`state/<ClassName>.json` 파일 목록 + 읽기-수정-쓰기 규칙)을 배출한다. 정의가 0개면 단락 생략.
+10. **블랙보드 사용 지침 단락**: 프로젝트 최상위 블랙보드에 `class_definitions`가 1개 이상이면, `ProceduralSkill`의 tool_shelf 단락 뒤·"다음 단계" 단락 앞, 그리고 에이전트 `.md` 본문 마지막에 `_blackboard_section(project, component)`이 "## 공유 상태 (블랙보드)" 단락(`state/<플러그인>/<ClassName>.json` 파일 목록 + 읽기-수정-쓰기 규칙)을 배출한다. 정의가 0개면 단락 생략.
     **접근 선언 기반 구체화(WP-BB):** component(스킬/에이전트)가 주어지고 그 자체 FSM(재귀) + 프로젝트 그래프
     placement의 reads/writes 합집합(`_component_access_union`)이 비어있지 않으면, "이 스킬/에이전트가 읽는
     것/쓰는 것" 문구를 추가하고 파일 목록을 관련 클래스만으로 좁힌다. 합집합이 비면(또는 component 미지정)
@@ -1263,11 +1269,11 @@ dataclass(값 동등성, unhashable) 유지 — 컬렉션 멤버십에는 list/`
     생성/required) 바로 앞에 `command -v daedalus-bb`로 CLI 존재를 확인해 있으면 파일을 직접 만지지
     말고 CLI(`daedalus-bb read`/`write`/`validate` — write는 `--set 필드=값`, 컬렉션은
     `--append`/`--remove`)로 읽고 쓰라는 지시가 합류한다(CLI가 없으면 기존 3줄 규칙대로 직접 편집).
-    - **스키마 경로를 반드시 명시한다.** CLI의 `--schemas` 기본값 `schemas/schemas.json`은 **현재
+    - **스키마 경로를 반드시 명시한다.** `--schemas`는 **필수**이고(WP-NS/D10) 상태 폴더도 그것에서
       작업 폴더 기준**이라, 플러그인 디렉토리와 작업 폴더가 갈리는 MARKETPLACE 빌드에서는 첫
-      명령이 그대로 exit 2로 죽는다. 그래서 지시문이 `--schemas ${ROOT}/schemas/schemas.json`을
+      유도되므로, 지시문이 `--schemas ${ROOT}/schemas/<플러그인>.json`을
       함께 적는다 — 타깃 중립 토큰(WP-RT)이라 MARKETPLACE→`${CLAUDE_PLUGIN_ROOT}` /
-      LOCAL→`${CLAUDE_PROJECT_DIR}`로 확장되고, `schemas/schemas.json`은 양쪽 타깃 모두 그 루트
+      LOCAL→`${CLAUDE_PROJECT_DIR}`로 확장되고, `schemas/<플러그인>.json`은 양쪽 타깃 모두 그 루트
       밑에 산출되므로 토큰 하나가 둘 다 맞는다(빌드 타깃 분기 불필요).
     - **설치 명령은 지시하지 않는다.** `daedalus`는 PyPI 배포 패키지가 아니므로
       `uv tool install daedalus`는 동명의 무관한 패키지를 깔거나 실패한다 — 어느 쪽이든
@@ -1283,7 +1289,7 @@ dataclass(값 동등성, unhashable) 유지 — 컬렉션 멤버십에는 list/`
     두 분기 모두에서 CLI 지시를 고정하는 테스트가 있다 — 한쪽만 검사하면 다른 쪽이 통째로 비어도
     초록이다. 정의 0개 프로젝트는 단락 자체가 없으므로 산출 완전 불변.
 11. **요구 환경 자동 언급 (WP-TM)**: `_mcp_servers_from_tools(tools)`가 도구 문자열 목록에서 `mcp__<server>__` 접두의 서버 이름 집합을 추출한다(이름순 정렬 — 결정적). 스킬은 `skill.config.allowed_tools`를 스캔해 서버가 있으면(local 여부·project 인수 여부와 무관) "다음 단계" 단락 앞에 신규 "## 요구 환경" 단락(`_mcp_requirement_section_skill`)을 배출한다(없으면 단락 생략). 에이전트는 `config.tools`에서 추출한 서버를 기존 SETTINGS "요구 환경" 단락(`_settings_note_agent`, 7번 항목)의 `mcp_servers` 선언과 합쳐 하나의 "MCP 서버 연결" 줄로 병합한다(중복 없음).
-12. **작업 재개 (WP-RS)** — 저장 단위는 **플러그인 FSM(프로젝트 그래프 배치)의 위치**다(스킬 내부 FSM 상태는 다루지 않음 — 사용자 확정 설계). 규약 파일 `state/__progress__.json`(`plugin`/`current`/`completed`/`note`/`prev`/`updated` — `prev`는 WP-IC에서 추가된 직전 출처 스킬 이름 필드).
+12. **작업 재개 (WP-RS)** — 저장 단위는 **플러그인 FSM(프로젝트 그래프 배치)의 위치**다(스킬 내부 FSM 상태는 다루지 않음 — 사용자 확정 설계). 규약 파일 `state/__progress__.json` — **최상위 키가 플러그인 이름**이고 그 아래에 항목(`current`/`completed`/`note`/`prev`/`updated`)이 온다(WP-NS/D13. `prev`는 WP-IC에서 추가된 직전 출처 스킬 이름). 파일은 `state/` 루트에 **하나로 남는다** — 블랙보드가 `state/<플러그인>/`로 갈라지는 것과 다른 이유는, 워크스페이스 전체를 한눈에 보는 것이 이 파일의 목적이고 스키마 밖 규약 파일이라 클래스 순회 대상도 아니기 때문이다. **갱신은 `daedalus-bb progress` 서브커맨드가 전담한다** — 공유 파일의 병합을 산문으로 시키면 모델이 한 번만 놓쳐도 남의 진행 기록이 통째로 사라진다(CLI를 못 쓰는 환경용 폴백 지시는 '자기 키만 고치라'까지 못 박는다).
     - **재개 프리앰블**: 프로젝트 그래프에 배치된 `ProceduralSkill`/`DeclarativeSkill`(미배치·에이전트 .md 제외)에 한해, `_resume_preamble_section`이 프론트매터 직후·본문 앞에 "## 작업 재개" 단락(현재 스킬 이름 삽입 + 파일 없을 때 생성 규칙, JSON 예시에 `"prev": ""` 포함)을 배출한다. Declarative 포함 이유: 배치되면 "다음 단계"를 받으므로 갱신 규칙이 빠지면 진행 사슬이 끊긴다. placement 판정은 "다음 단계"(6-b번 항목)와 동일한 `_graph_placements`(skill_ref identity) 로직을 공유한다.
     - **다음 단계 갱신 규칙**: 배치 스킬의 "다음 단계" 단락 끝에 `_PROGRESS_UPDATE_NOTE`(완료 시 `completed`/`current`/`note`/`updated` 갱신 + `prev`에 자신(이 스킬 이름)을 기록[WP-IC] + 에이전트 위임 전이는 2단 갱신: 위임 직전 에이전트 이름, 완료 후 후속 스킬로 — 이때도 `prev`는 위임한 스킬 이름)이 합류한다.
     - **터미널 배치**: **placement의 실제 outgoing 전이가 0개**인 배치는 "다음 단계" 대신 `_progress_terminal_section`이 "## 작업 완료" 단락(자신을 `completed`에 추가 + `current`를 `"done"`으로)을 배출한다. 판정은 "다음 단계 문구 생성 실패"가 아니다 — outgoing 타깃이 빈 상태(skill_ref=None)뿐이라 문구가 안 나와도 터미널이 아니며 이때는 아무 단락도 배출하지 않는다.
@@ -1292,8 +1298,8 @@ dataclass(값 동등성, unhashable) 유지 — 컬렉션 멤버십에는 list/`
 13. **진입 맥락 + 호출 계약 (WP-IC/WP-IP/WP-CT)**: 배치된 전역 `ProceduralSkill`/`DeclarativeSkill`에서 incoming 전이가 1개 이상이면, `_entry_context_section`이 "## 작업 재개" 프리앰블 뒤·본문 앞에 "## 진입 맥락" 단락을 배출한다("`state/__progress__.json`의 `prev`를 확인하고 아래에서 해당 출처 항목을 따르라" 도입 + 출처 이름순 항목["- `<출처>`에서 [조건]로 진입" + 출처의 transfer_on description 병기, 전이 스킬(TransferSkill) 지침 수행 문구·에이전트 출처의 "위임 완료 후" 문구 합류] — 포트 그룹 헤딩 없음, 그래프에서만 유도(WP-IP)). incoming 0개 배치·미배치·로컬은 산출 변화 없음. `compile_agent`의 "## 호출 계약"은 `_call_contract_section`이 프로젝트 그래프의 incoming 호출 전이에서 유도한다(WP-CT — 수동 카드 없음).
 14. **files/ 복사 + dangling_file_ref 경고 (WP-FR)**: `files_dir`가 실존 디렉토리면(게이트 통과 시에만) `_copy_files_tree`가 `<out>/files/`로 정렬 순회 복사한다(결정적, 심볼릭 링크 미추종 — 디렉토리는 재귀 안 함·파일은 복사 안 함). 기존 `<out>/files/`는 복사 전 삭제(out 전체가 아니라 files/만). 복사된 파일 경로는 `CompileResult.copied_files`에 담긴다. `files_dir`가 주어지면(실존 여부 무관) `_scan_dangling_file_refs`가 스킬·에이전트 body에서 `${CLAUDE_PLUGIN_ROOT}/files/<경로>` 참조 토큰을 스캔해 files_dir에 실존하지 않으면 `dangling_file_ref` 경고를 `CompileResult.warnings`에 추가한다(게이트 차단 아님). `files_dir` 생략(None) 시 복사·스캔 모두 생략되어 기존 산출 파일/문자열이 완전히 불변(하위 호환).
 15. **빌드 타깃 — LOCAL 빌드 (WP-TG)**: `project.build_target`(기본 `MARKETPLACE`)에 따라 `_plan_outputs`의 산출 계획이 갈린다.
-    - **MARKETPLACE**(기본): 현행과 **바이트 동일** — 하위 호환 게이트(기존 산출 문자열/파일 전부 불변).
-    - **LOCAL — 컴파일이 곧 설치 (WP-MW)**: out_dir가 대상 작업 폴더다. 스킬/에이전트는 `.claude/skills/`·`.claude/agents/`(CC가 실제로 읽는 위치)로 나가고, `plugin.json`과 이전의 `INSTALL.md`/`install.ps1`/`install.sh` 동봉은 폐기됐다(별도 설치 단계가 없다). `hooks/hooks.json` 파일도 만들지 않는다 — 훅은 `.claude/settings.local.json`의 `hooks` 섹션에 병합된다(훅 스크립트 파일은 양쪽 타깃 모두 `hooks/scripts/`로 — LOCAL 커맨드가 `${CLAUDE_PROJECT_DIR}/hooks/scripts/…`를 가리킨다). MCP 배선: `referenced_mcp_servers(project)`(스킬 allowed_tools ∪ 에이전트 tools/mcp_servers, 이름순) ∩ `project.mcp_server_defs` 정의를 `<out>/.mcp.json`의 `mcpServers`에 병합하고 그 이름을 `.claude/settings.local.json`의 `enabledMcpjsonServers`에 올린다. 정의 조회는 `project.mcp_server_defs` 우선 + `compile_project(..., extra_server_defs=)`(호출 환경 주입 — 앱이 `_known_server_defs()`로 자기 자신의 daedalus 서버를 넣는다. 서버 미기동이면 기본 포트) 폴백. 참조되지만 정의 없는 서버는 `missing_mcp_server_def` 경고, 깨진 기존 JSON은 건드리지 않고 `unmergeable_settings_json` 경고(수기 설정 보호). 병합은 추가/갱신만·동일 훅 그룹 중복 삽입 없음 — **재컴파일 멱등**. 병합 구현은 `compiler/wiring.py`의 `wire_workspace`가 단일 진실("Claude Code 실행" 메뉴와 공유). files/ 복사는 LOCAL에서 기존 `<out>/files/`를 **삭제하지 않고** 덮어쓰기만 한다(`_copy_files_tree(clear_first=False)` — 사용자 작업 폴더의 파일 삭제 위험 > 스테일 잔존). `${ROOT}` 확장·이름 규약 게이트·`schemas/schemas.json` 산출 조건은 기존 그대로.
+    - **MARKETPLACE**(기본): `plugin.json` + `skills/`·`agents/` 산출. **"현행과 바이트 동일"이라는 하위 호환 게이트는 WP-NS에서 폐기됐다** — `state/`에는 `${ROOT}` 토큰이 붙지 않아 작업 폴더 CWD 기준이라, 마켓플레이스 플러그인이 한쪽에만 끼어도 `state/<Class>.json`과 고정 파일명 `state/__progress__.json`이 충돌한다. 배포 전이라 지킬 대상이 없어 네임스페이스를 양쪽 타깃에 적용했다.
+    - **LOCAL — 컴파일이 곧 설치 (WP-MW)**: out_dir가 대상 작업 폴더다. 스킬/에이전트는 `.claude/skills/`·`.claude/agents/`(CC가 실제로 읽는 위치)로 나가고, `plugin.json`과 이전의 `INSTALL.md`/`install.ps1`/`install.sh` 동봉은 폐기됐다(별도 설치 단계가 없다). `hooks/hooks.json` 파일도 만들지 않는다 — 훅은 `.claude/settings.local.json`의 `hooks` 섹션에 병합된다(훅 스크립트 파일은 양쪽 타깃 모두 `hooks/scripts/`로 — LOCAL 커맨드가 `${CLAUDE_PROJECT_DIR}/hooks/scripts/…`를 가리킨다). MCP 배선: `referenced_mcp_servers(project)`(스킬 allowed_tools ∪ 에이전트 tools/mcp_servers, 이름순) ∩ `project.mcp_server_defs` 정의를 `<out>/.mcp.json`의 `mcpServers`에 병합하고 그 이름을 `.claude/settings.local.json`의 `enabledMcpjsonServers`에 올린다. 정의 조회는 `project.mcp_server_defs` 우선 + `compile_project(..., extra_server_defs=)`(호출 환경 주입 — 앱이 `_known_server_defs()`로 자기 자신의 daedalus 서버를 넣는다. 서버 미기동이면 기본 포트) 폴백. 참조되지만 정의 없는 서버는 `missing_mcp_server_def` 경고, 깨진 기존 JSON은 건드리지 않고 `unmergeable_settings_json` 경고(수기 설정 보호). 병합은 추가/갱신만·동일 훅 그룹 중복 삽입 없음 — **재컴파일 멱등**. 병합 구현은 `compiler/wiring.py`의 `wire_workspace`가 단일 진실("Claude Code 실행" 메뉴와 공유). files/ 복사는 LOCAL에서 기존 `<out>/files/`를 **삭제하지 않고** 덮어쓰기만 한다(`_copy_files_tree(clear_first=False)` — 사용자 작업 폴더의 파일 삭제 위험 > 스테일 잔존). `${ROOT}` 확장·이름 규약 게이트·`schemas/<플러그인>.json` 산출 조건은 기존 그대로.
 
 16. **LOCAL 에이전트 프론트매터 — hooks / mcpServers (WP-LA)**: CC는 **보안상 플러그인 서브에이전트의
     `hooks`/`mcpServers`/`permissionMode` 프론트매터를 무시한다**(공식 sub-agents 문서 명시). 즉 이 셋은

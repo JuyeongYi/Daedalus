@@ -433,7 +433,7 @@ def test_transfer_progress_note_does_not_own_current(scenario):
     section = _section(text, "## Progress Record")
     assert "not a position in the workflow" in section
     assert "leave `current`" in section
-    assert "`note`" in section
+    assert "progress set --note" in section
 
 
 def test_caller_and_transfer_instructions_agree(scenario):
@@ -442,7 +442,7 @@ def test_caller_and_transfer_instructions_agree(scenario):
     caller = _section(compile_skill(alpha, project=project), "## Next Steps")
     assert "follow transition skill `validate`" in caller
     # 출발 쪽은 current를 **다음 대상**으로 옮기라고 말한다(T가 아니라).
-    assert "set `current` to the next target" in caller
+    assert "--current <next target>" in caller
 
 
 def test_reuse_message_carries_the_one_to_one_logic(scenario):

@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 from daedalus.compiler.emit import (
-    _PROGRESS_UPDATE_NOTE,
+    _progress_update_note,
     compile_agent,
     compile_skill,
 )
@@ -152,8 +152,9 @@ def test_next_steps_carry_caller_output_description():
 
 
 def test_progress_note_records_branch():
-    """진행 규약이 which branch로 넘어갔는지 note에 남기도록 지시한다(WP-IP)."""
-    assert "which branch" in _PROGRESS_UPDATE_NOTE
+    """진행 규약이 어느 갈래로 넘어갔는지 note에 남기도록 지시한다(WP-IP)."""
+    note = _progress_update_note(PluginProject(name="p"))
+    assert "branch you took" in note
 
 
 # ── 3) 출처 항목: 정렬 + TransferSkill 합류 + 에이전트 출처 문구 ──
@@ -215,8 +216,8 @@ def test_entry_context_agent_source_phrase():
 
 
 def test_progress_update_note_mentions_prev():
-    assert "`prev`" in _PROGRESS_UPDATE_NOTE
-    assert "this skill's own name" in _PROGRESS_UPDATE_NOTE
+    note = _progress_update_note(PluginProject(name="p"))
+    assert "--prev <this skill>" in note
 
 
 def test_resume_preamble_json_example_includes_prev():
@@ -230,7 +231,7 @@ def test_resume_preamble_json_example_includes_prev():
         Transition(source=sa, target=sb, trigger=CompletionEvent(name="done"))
     )
     text = compile_skill(a, project=project)
-    assert '"prev": ""' in text
+    assert "--prev <this skill>" in text
 
 
 # ── 5) 호출 계약 — 그래프에서만 유도 (WP-CT — 수동 카드 개념 없음) ──

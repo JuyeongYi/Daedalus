@@ -72,10 +72,12 @@ def test_placed_skill_next_steps_has_progress_update_rule():
     project, a, _ = _placed_pair()
     text = compile_skill(a, project=project)
     assert "## Next Steps" in text
-    assert "add this skill to `completed`" in text
+    assert "progress set --completed <this skill>" in text
     assert "## Finishing Up" not in text
     # 갱신 규칙은 "다음 단계" 단락 뒤쪽에 위치한다.
-    assert text.index("## Next Steps") < text.index("add this skill to `completed`")
+    assert text.index("## Next Steps") < text.index(
+        "progress set --completed <this skill>"
+    )
 
 
 def test_terminal_placement_gets_completion_section_instead_of_next_steps():
@@ -84,7 +86,7 @@ def test_terminal_placement_gets_completion_section_instead_of_next_steps():
     assert "## Resuming Work" in text  # 배치된 ProceduralSkill이므로 프리앰블은 여전히 있음
     assert "## Finishing Up" in text
     assert "## Next Steps" not in text
-    assert 'set `current` to `"done"`' in text
+    assert "--current done" in text
 
 
 # ── 2) 미배치 스킬 / 에이전트 .md / 로컬 스킬: 단락 부재 ──
@@ -124,7 +126,7 @@ def test_transfer_skill_has_progress_note():
     edge = make_transfer("edge-skill")
     text = compile_skill(edge, project=project)
     assert "## Progress Record" in text
-    assert "state/__progress__.json" in text
+    assert "progress set --note" in text
     # transfer는 전이 위의 중간 상태지 워크플로 위치가 아니다 — `current`를
     # 건드리지 말라는 지시가 출발 스킬의 "current를 다음 대상으로"와 짝이다.
     assert "leave `current`" in text
@@ -296,14 +298,14 @@ def test_placed_declarative_gets_progress_sections():
     )
     text = compile_skill(d, project=project)
     assert "## Resuming Work" in text
-    assert "add this skill to `completed`" in text
+    assert "progress set --completed <this skill>" in text
 
 
 def test_update_rule_mentions_two_phase_agent_update():
     """에이전트 경유 전이의 2단 갱신(위임 직전/완료 후) 문구 (리뷰 지적 ③)."""
     project, a, _ = _placed_pair()
     text = compile_skill(a, project=project)
-    assert "update twice" in text
+    assert "run it twice" in text
 
 
 def test_terminal_section_adds_self_to_completed():
@@ -311,4 +313,4 @@ def test_terminal_section_adds_self_to_completed():
     project, c = _placed_terminal()
     text = compile_skill(c, project=project)
     assert "## Finishing Up" in text
-    assert "add this skill to `completed`" in text
+    assert "progress set --completed <this skill>" in text

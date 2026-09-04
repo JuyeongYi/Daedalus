@@ -297,14 +297,16 @@ def _plan_outputs(
                 script_name=filename,
             ))
 
-    # schemas.json (블랙보드 class_definitions) — 정의가 있을 때만 계획에 합류.
-    # 고정 경로 'schemas/schemas.json'이라 컴포넌트 산출(skills/·agents/)과 충돌
-    # 불가하지만, 경로 집합·결정성 일관성을 위해 plan에 포함한다.
+    # 블랙보드 스키마 — 정의가 있을 때만 계획에 합류. 파일 이름이 **프로젝트
+    # 이름**인 이유는 WP-NS다: 이전의 고정 경로 'schemas/schemas.json'은 한 작업
+    # 폴더에 ddls 플러그인이 둘 깔리면 나중 것이 앞의 것을 조용히 덮어썼다(경로
+    # 충돌 게이트는 한 번의 컴파일 안에서만 도므로 잡지 못한다). 이름은 컴파일
+    # 게이트가 '^[a-z0-9][a-z0-9-]*$'를 강제하므로 파일명으로 안전하다.
     schemas_text = compile_schemas_json(project)
     if schemas_text is not None:
         plan.append(_PlannedOutput(
-            rel_path=PurePosixPath("schemas") / "schemas.json",
-            label="schemas.json (blackboard class definitions)",
+            rel_path=PurePosixPath("schemas") / f"{project.name}.json",
+            label=f"schemas/{project.name}.json (blackboard class definitions)",
             subject=project,
             kind="schemas_json",
             component=project,

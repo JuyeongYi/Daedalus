@@ -696,9 +696,16 @@ def test_help_is_exit_0(capsys):
     assert main(["--help"]) == 0
 
 
-def test_defaults_are_relative_state_and_schemas(workspace, monkeypatch, capsys):
-    """기본값은 cwd 기준 state/ · schemas/schemas.json — 산출 폴더 구조 그대로."""
+def test_state_dir_is_derived_from_schemas(workspace, monkeypatch, capsys):
+    """`--state-dir` 기본값은 cwd 기준 `state/<스키마 stem>` (WP-NS/D10).
+
+    이전에는 `state/`와 `schemas/schemas.json`이 각각 기본값이었다. 두 플러그인이
+    한 작업 폴더에 있으면 그 고정 경로가 서로를 덮어써서, 스키마 파일 이름으로
+    네임스페이스를 나누고 상태 폴더를 거기서 유도하도록 바뀌었다.
+    """
     monkeypatch.chdir(workspace)
-    assert main(["init", "Config"]) == 0
+    schemas = workspace / "schemas" / "schemas.json"
+    assert main(["--schemas", str(schemas), "init", "Config"]) == 0
     capsys.readouterr()
-    assert (workspace / "state" / "Config.json").is_file()
+    assert (workspace / "state" / "schemas" / "Config.json").is_file()
+    assert not (workspace / "state" / "Config.json").exists()

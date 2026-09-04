@@ -22,6 +22,7 @@ from daedalus.compiler.emit.sections import (
     _transition_condition,
 )
 from daedalus.model.fsm.machine import StateMachine
+from daedalus.model.plugin.variables import ROOT_TOKEN
 from daedalus.model.plugin.agent import AgentDefinition
 from daedalus.model.plugin.skill import (
     DeclarativeSkill,
@@ -148,23 +149,49 @@ def _next_steps_section(component, project) -> list[str]:
 # state/__progress__.json 규약 — 플러그인 FSM(프로젝트 그래프)의 진행 위치를 담는
 # 단일 파일. 스킬 내부 FSM 상태는 기록하지 않는다(사용자 확정 설계).
 
-_PROGRESS_UPDATE_NOTE = (
-    "Before handing off, update `state/__progress__.json`: add this skill to "
-    "`completed`, set `current` to the next target, set `prev` to this skill's "
-    "own name, and write **which branch (output event name) you took plus a "
-    "one-line handoff** into `note`. Set `updated` to the current time (ISO 8601). "
-    "The receiving skill works out which path it came in on from (`prev`, the "
-    "branch in `note`) — omit the branch and it cannot tell apart two different "
-    "outcomes from the same source. When delegating to an agent, update twice: set "
-    "`current` to the agent name just before delegating, then to the follow-up "
-    "skill once the agent returns (keep `prev` as the delegating skill both times)."
+def _progress_cli(project) -> str:
+    """진행 파일을 다루는 CLI 접두 — `daedalus-bb --schemas <스키마> progress`.
+
+    갱신을 CLI에 맡기는 이유(WP-NS/D13): 진행 파일은 최상위 키가 플러그인 이름인
+    **공유 파일**이라, 손편집을 시키면 "남의 키는 건드리지 말라"는 병합을 모델이
+    매번 정확히 해내야 한다. 한 번만 놓쳐도 파일을 통째 덮어써 다른 플러그인의
+    진행 기록이 사라진다. CLI는 그 병합을 코드로 보장한다.
+    """
+    plugin = getattr(project, "name", "") or "plugin"
+    return f"daedalus-bb --schemas {ROOT_TOKEN}/schemas/{plugin}.json progress"
+
+
+#: CLI를 못 쓸 때의 폴백. 없앨 수는 없지만(대안이 없다) 위험한 지점을 못 박는다.
+_PROGRESS_MANUAL_FALLBACK = (
+    "If `daedalus-bb` is unavailable, edit `state/__progress__.json` by hand — but "
+    "change only this plugin's top-level key and leave every other key untouched; "
+    "the file is shared with any other Daedalus plugin installed here."
 )
 
-_TRANSFER_PROGRESS_NOTE = (
-    "You are a step on the transition itself, not a position in the workflow: "
-    "leave `current` in `state/__progress__.json` as the caller set it, and record "
-    "what happened during this transition in `note`."
-)
+
+def _progress_update_note(project) -> str:
+    cli = _progress_cli(project)
+    return (
+        "Before handing off, record progress:\n"
+        f"- `{cli} set --completed <this skill> --current <next target> "
+        '--prev <this skill> --note "<branch you took> — <one-line handoff>"`\n'
+        "Name the branch (the output event) in `note`: the receiving skill works out "
+        "which path it came in on from (`prev`, the branch in `note`), and without "
+        "the branch it cannot tell apart two different outcomes from the same source. "
+        "When delegating to an agent, run it twice — `--current <agent name>` just "
+        "before delegating, then `--current <follow-up skill>` once the agent returns "
+        "(keep `--prev` as this skill both times).\n"
+        + _PROGRESS_MANUAL_FALLBACK
+    )
+
+
+def _transfer_progress_note(project) -> str:
+    cli = _progress_cli(project)
+    return (
+        "You are a step on the transition itself, not a position in the workflow: "
+        "leave `current` as the caller set it and only record what happened during "
+        f'this transition — `{cli} set --note "<what happened>"`.'
+    )
 
 
 def _resume_preamble_section(project, skill_name: str) -> list[str]:
@@ -173,9 +200,9 @@ def _resume_preamble_section(project, skill_name: str) -> list[str]:
     프로젝트 그래프에 배치된 전역 ProceduralSkill에만 배출된다(게이트는 호출부).
     WP-IC: JSON 예시에 `prev`(직전 출처 스킬 이름) 필드를 포함한다.
     """
-    plugin_name = getattr(project, "name", "")
+    cli = _progress_cli(project)
     body = "\n".join([
-        "Read `state/__progress__.json` before you start.",
+        f"Run `{cli} read` before you start.",
         (
             f"- If `current` is this skill (`{skill_name}`), resume from where it "
             "stopped, using `note` for context."
@@ -185,10 +212,8 @@ def _resume_preamble_section(project, skill_name: str) -> list[str]:
             "stop and confirm with the user before continuing."
         ),
         (
-            "- If the file does not exist, create it as "
-            f'`{{"plugin": "{plugin_name}", "current": "{skill_name}", "completed": [], '
-            '"note": "", "prev": "", "updated": "<current time, ISO 8601>"}`'
-            " and continue."
+            "- Exit code 3 means this plugin has no progress entry yet. Start from "
+            f'the beginning and record it: `{cli} set --current {skill_name}`.'
         ),
     ])
     return ["## Resuming Work", body]
@@ -295,15 +320,17 @@ def _entry_context_section(component, project) -> list[str]:
     return blocks
 
 
-def _progress_terminal_section() -> list[str]:
+def _progress_terminal_section(project) -> list[str]:
     """WP-RS Part A-3: 터미널 배치(outgoing 0개) — "다음 단계" 대신 배출된다."""
+    cli = _progress_cli(project)
     return [
         "## Finishing Up",
         (
-            "This skill is the last step of the workflow. When it is done, update "
-            "`state/__progress__.json`: add this skill to `completed`, set "
-            "`current` to `\"done\"`, put a result summary in `note`, and set "
-            "`updated` to the current time (ISO 8601)."
+            "This skill is the last step of the workflow. When it is done, record "
+            "that the workflow finished:\n"
+            f'- `{cli} set --completed <this skill> --current done '
+            '--note "<result summary>"`\n'
+            + _PROGRESS_MANUAL_FALLBACK
         ),
     ]
 
@@ -368,7 +395,7 @@ def compile_skill(
         and _graph_placements_any(project)
     ):
         blocks.append("## Progress Record")
-        blocks.append(_TRANSFER_PROGRESS_NOTE)
+        blocks.append(_transfer_progress_note(project))
 
     # ProceduralSkill — FSM 절차 + tool_shelf
     if isinstance(skill, ProceduralSkill):
@@ -397,9 +424,11 @@ def compile_skill(
         if next_blocks:
             if progress_placements:
                 next_blocks = list(next_blocks)
-                next_blocks[-1] = next_blocks[-1] + "\n\n" + _PROGRESS_UPDATE_NOTE
+                next_blocks[-1] = (
+                    next_blocks[-1] + "\n\n" + _progress_update_note(project)
+                )
             blocks.extend(next_blocks)
         elif progress_placements and not has_outgoing:
-            blocks.extend(_progress_terminal_section())
+            blocks.extend(_progress_terminal_section(project))
 
     return _join_blocks(blocks)

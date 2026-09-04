@@ -358,24 +358,33 @@ def _blackboard_section(project, component=None) -> list[str]:
         reads, writes = _component_access_union(component, project)
     union = reads | writes
 
-    # 스키마 경로는 타깃 중립 토큰으로 넘긴다(WP-RT) — CLI의 기본값
-    # `schemas/schemas.json`은 현재 작업 폴더 기준이라, 플러그인 디렉토리와 작업
-    # 폴더가 분리되는 MARKETPLACE 빌드에서는 첫 명령이 그대로 실패한다.
-    # ${ROOT}는 컴파일 시 MARKETPLACE→${CLAUDE_PLUGIN_ROOT} /
-    # LOCAL→${CLAUDE_PROJECT_DIR}로 확장되고, schemas/schemas.json은 양쪽 타깃
-    # 모두 그 루트 밑에 산출되므로 토큰 하나로 둘 다 맞는다.
+    # 플러그인 이름이 곧 네임스페이스다 (WP-NS) — 한 작업 폴더에 여러 ddls
+    # 플러그인이 깔려도 스키마와 상태가 서로를 덮지 않게 이름으로 가른다.
+    # 스키마 경로는 타깃 중립 토큰으로 넘긴다(WP-RT). ${ROOT}는 컴파일 시
+    # MARKETPLACE→${CLAUDE_PLUGIN_ROOT} / LOCAL→${CLAUDE_PROJECT_DIR}로 확장되고,
+    # schemas/<플러그인>.json은 양쪽 타깃 모두 그 루트 밑에 산출되므로 토큰
+    # 하나로 둘 다 맞는다.
+    plugin = getattr(project, "name", "") or "plugin"
+    state_dir = f"state/{plugin}"
+    schemas_ref = ROOT_TOKEN + f"/schemas/{plugin}.json"
+    intro = (
+        "State shared across contexts in this workflow lives as JSON files in the\n"
+        f"`{state_dir}/` directory of the working folder. Each file follows the\n"
+        f"schema defined in the plugin's `schemas/{plugin}.json`."
+    )
     cli_lines = (
-        "Run `command -v daedalus-bb` to check whether the CLI is available (this assumes\n"
-        "a POSIX shell; if you cannot tell, assume it is missing and edit the files\n"
-        "directly per the rules below). If it is available, do not edit the state files\n"
-        "by hand — read and write them through the CLI, which validates against the\n"
-        "schema before writing:\n"
-        "- `daedalus-bb --schemas " + ROOT_TOKEN + "/schemas/schemas.json read <Class>`\n"
-        "- `daedalus-bb --schemas " + ROOT_TOKEN + "/schemas/schemas.json write <Class> --set <field>=<value>`\n"
+        "Run `command -v daedalus-bb` to check whether the CLI is available (this\n"
+        "assumes a POSIX shell; if you cannot tell, assume it is missing and edit\n"
+        "the files directly per the rules below). If it is available, do not edit\n"
+        "the state files by hand — read and write them through the CLI, which\n"
+        "validates against the schema before writing:\n"
+        f"- `daedalus-bb --schemas {schemas_ref} read <Class>`\n"
+        f"- `daedalus-bb --schemas {schemas_ref} write <Class> --set <field>=<value>`\n"
         "  (use `--append` / `--remove` for collection fields)\n"
-        "- `daedalus-bb --schemas " + ROOT_TOKEN + "/schemas/schemas.json validate`\n"
-        "Always pass `--schemas` as shown: the default is relative to the current working\n"
-        "directory, so it will not find the schema when the plugin lives elsewhere.\n"
+        f"- `daedalus-bb --schemas {schemas_ref} validate`\n"
+        "`--schemas` is required, and it also decides where state goes: the CLI\n"
+        "derives the state directory from the schema filename, so it writes under\n"
+        f"`{state_dir}/`.\n"
         "`daedalus-bb` ships with Daedalus — do not install any package to obtain it."
     )
 
@@ -392,7 +401,7 @@ def _blackboard_section(project, component=None) -> list[str]:
         lines: list[str] = []
         for cls in relevant_classes:
             desc = f" — {cls.description}" if cls.description else ""
-            lines.append(f"- `{cls.name}` → `state/{cls.name}.json`{desc}")
+            lines.append(f"- `{cls.name}` → `{state_dir}/{cls.name}.json`{desc}")
 
         subject = "agent" if isinstance(component, AgentDefinition) else "skill"
         intro_lines: list[str] = []
@@ -409,11 +418,7 @@ def _blackboard_section(project, component=None) -> list[str]:
         # "덧붙이는" 정보이지 총론을 대체하지 않는다 (리뷰 지적 1).
         return [
             "## Shared State (Blackboard)",
-            (
-                "State shared across contexts in this workflow lives as JSON files in the\n"
-                "`state/` directory of the working folder. Each file follows the schema\n"
-                "defined in the plugin's `schemas/schemas.json`."
-            ),
+            intro,
             "\n".join(intro_lines),
             "\n".join(lines),
             cli_lines,
@@ -423,15 +428,11 @@ def _blackboard_section(project, component=None) -> list[str]:
     lines = []
     for cls in classes:
         desc = f" — {cls.description}" if cls.description else ""
-        lines.append(f"- `{cls.name}` → `state/{cls.name}.json`{desc}")
+        lines.append(f"- `{cls.name}` → `{state_dir}/{cls.name}.json`{desc}")
 
     return [
         "## Shared State (Blackboard)",
-        (
-            "State shared across contexts in this workflow lives as JSON files in the\n"
-            "`state/` directory of the working folder. Each file follows the schema\n"
-            "defined in the plugin's `schemas/schemas.json`."
-        ),
+        intro,
         "\n".join(lines),
         cli_lines,
         rule_lines,

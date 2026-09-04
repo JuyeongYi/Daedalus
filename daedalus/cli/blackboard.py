@@ -29,8 +29,9 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-DEFAULT_STATE_DIR = "state"
-DEFAULT_SCHEMAS = "schemas/schemas.json"
+#: 상태 파일 트리의 루트. 실제 블랙보드 상태는 `state/<플러그인>/`로 갈라지고
+#: (WP-NS), 진행 파일만 이 루트에 하나로 남는다(D13).
+DEFAULT_STATE_ROOT = "state"
 
 #: 스키마 밖 규약 파일(WP-RS 진행 상태) — 전 클래스 순회의 대상이 아니다.
 PROGRESS_FILENAME = "__progress__.json"
@@ -693,15 +694,20 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--state-dir",
-        default=DEFAULT_STATE_DIR,
+        default=None,
         metavar="DIR",
-        help=f"상태 파일 폴더 (기본: {DEFAULT_STATE_DIR})",
+        help=(
+            f"상태 파일 폴더 "
+            f"(기본: {DEFAULT_STATE_ROOT}/<--schemas 파일 이름>)"
+        ),
     )
+    # 필수다. 기본값을 두면 빠뜨렸을 때 "그 파일이 없다"고만 답해 **무엇이 빠졌는지**
+    # 말해 주지 않는다 (WP-NS/D10).
     parser.add_argument(
         "--schemas",
-        default=DEFAULT_SCHEMAS,
+        required=True,
         metavar="PATH",
-        help=f"블랙보드 스키마 파일 (기본: {DEFAULT_SCHEMAS})",
+        help="블랙보드 스키마 파일 (필수) — 예: schemas/<플러그인>.json",
     )
     sub = parser.add_subparsers(dest="command", metavar="<command>", required=True)
 
@@ -729,12 +735,65 @@ def build_parser() -> argparse.ArgumentParser:
     validate_p.add_argument("classes", nargs="*", metavar="Class")
 
     sub.add_parser("list", help="스키마의 클래스·필드 목록")
+
+    progress_p = sub.add_parser("progress", help="진행 상태 파일 읽기·갱신")
+    progress_sub = progress_p.add_subparsers(
+        dest="progress_command", metavar="<subcommand>", required=True
+    )
+    progress_sub.add_parser("read", help="이 플러그인의 진행 항목 출력")
+    progress_set = progress_sub.add_parser("set", help="이 플러그인의 진행 항목 갱신")
+    progress_set.add_argument("--current", metavar="SKILL", default=None)
+    progress_set.add_argument(
+        "--completed", action="append", default=[], metavar="SKILL"
+    )
+    progress_set.add_argument("--note", metavar="TEXT", default=None)
+    progress_set.add_argument("--prev", metavar="SKILL", default=None)
     return parser
+
+
+def _plugin_name(schemas_path: Path) -> str:
+    """스키마 파일 이름이 곧 플러그인 이름이다 (WP-NS 명명 규약 `schemas/<이름>.json`)."""
+    return schemas_path.stem
+
+
+def _resolve_state_dir(args: argparse.Namespace, schemas_path: Path) -> Path:
+    """`--state-dir` 유도 — 명시하지 않으면 `state/<스키마 stem>`.
+
+    인자 **하나**가 스키마와 상태 위치를 모두 결정하게 만드는 장치다(D10). 따로
+    받으면 `--state-dir` 누락이 **조용히** 네임스페이스 밖에 쓰는 사고가 된다 —
+    검증까지 통과하므로 아무도 눈치채지 못한다(`--schemas` 누락은 파일이 없어
+    시끄럽게 실패한다).
+
+    스키마가 절대경로여도(마켓플레이스 빌드의 `${CLAUDE_PLUGIN_ROOT}/…`) **stem만**
+    쓰므로 상태는 항상 작업 폴더 상대로 남는다 — 상태까지 플러그인 디렉토리로
+    따라가면 작업 폴더마다 달라야 할 데이터가 섞인다.
+    """
+    if args.state_dir:
+        return Path(args.state_dir)
+    return Path(DEFAULT_STATE_ROOT) / _plugin_name(schemas_path)
 
 
 def _dispatch(args: argparse.Namespace) -> int:
     schemas_path = Path(args.schemas)
-    state_dir = Path(args.state_dir)
+    state_dir = _resolve_state_dir(args, schemas_path)
+
+    if args.command == "progress":
+        # 지역 임포트 — progress 모듈이 이 모듈의 원자적 쓰기·잠금 헬퍼를 쓰므로
+        # 최상단에서 부르면 순환 임포트가 된다.
+        from daedalus.cli import progress as progress_mod
+
+        plugin = _plugin_name(schemas_path)
+        if args.progress_command == "read":
+            return progress_mod.cmd_read(state_dir, plugin)
+        return progress_mod.cmd_set(
+            state_dir,
+            plugin,
+            current=args.current,
+            completed=list(args.completed),
+            note=args.note,
+            prev=args.prev,
+        )
+
     schemas = load_schemas(schemas_path)
 
     if args.command == "list":
