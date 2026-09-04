@@ -1,0 +1,285 @@
+# daedalus/view/editors/workspace_editor.py
+"""작업 폴더 문서 편집 탭 2종 — `.claude/CLAUDE.md`와 `.claude/rules/` (WP-WD).
+
+진입점: MainWindow 상주 탭(인덱스 3·4, 닫기 불가). 둘을 한 탭에 목록으로 묶지
+않고 **각각 최상위 탭**으로 둔 것은 사용자 확정이다 — CLAUDE.md는 하나뿐이고
+규칙은 여럿이라 성격이 다르다.
+
+본문 편집기는 스킬 본문과 같은 `SectionContentPanel`을 그대로 쓴다. `WorkspaceDoc`이
+`id`와 `body`를 갖고 있으므로 본문 undo 스택(`BodyDocumentRegistry`, WP-BU)도
+자동으로 붙는다 — 문서를 옮겨다녀도 되돌리기 이력이 유지된다.
+
+구조 편집(규칙 추가·삭제·이름 변경)은 모델에 직접 기록하고 notify한다 — 블랙보드
+패널·훅 패널과 같은 정책이다(undo 커맨드화 범위 밖).
+"""
+from __future__ import annotations
+
+from typing import Callable
+
+from PySide6.QtWidgets import (
+    QHBoxLayout,
+    QInputDialog,
+    QLabel,
+    QLineEdit,
+    QListWidget,
+    QMessageBox,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
+)
+
+from daedalus.model.plugin.enums import BuildTarget
+from daedalus.model.plugin.workspace_doc import WorkspaceDoc
+from daedalus.model.project import PluginProject
+from daedalus.view.editors import body_documents
+from daedalus.view.editors.body_editor import SectionContentPanel
+
+
+def _is_local(project: PluginProject | None) -> bool:
+    if project is None:
+        return False
+    return getattr(project, "build_target", None) is BuildTarget.LOCAL
+
+
+class _WorkspaceDocPanelBase(QWidget):
+    """두 탭의 공통 뼈대 — 안내 라벨 + 본문 편집기.
+
+    마켓플레이스 빌드에서는 배출되지 않으므로 안내를 띄운다. 편집 자체는 막지
+    않는다 — 빌드 타깃은 프로젝트 속성에서 언제든 바뀌고, 그때 쓰던 내용이 사라져
+    있으면 곤란하다.
+    """
+
+    def __init__(self, on_notify_fn: Callable[..., None] | None = None,
+                 parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._project: PluginProject | None = None
+        self._notify = on_notify_fn
+
+        self._layout = QVBoxLayout(self)
+        self._layout.setContentsMargins(0, 0, 0, 0)
+        self._layout.setSpacing(0)
+
+        self._notice = QLabel("")
+        self._notice.setWordWrap(True)
+        self._notice.setContentsMargins(10, 6, 10, 6)
+        self._notice.setVisible(False)
+        self._layout.addWidget(self._notice)
+
+        self._content = SectionContentPanel()
+        self._content.content_changed.connect(self._on_content_changed)
+
+    # --- 공통 ---
+
+    def notify(self, scope: str = "structure") -> None:
+        if self._notify is not None:
+            self._notify(scope)
+
+    def _on_content_changed(self) -> None:
+        self.notify("content")
+
+    def _refresh_notice(self) -> None:
+        show = self._project is not None and not _is_local(self._project)
+        self._notice.setVisible(show)
+        if show:
+            self._notice.setText(
+                "⚠ 빌드 타깃이 <b>마켓플레이스</b>라 이 문서는 배출되지 않습니다 — "
+                "플러그인은 설치 대상 작업 폴더의 <code>.claude/</code>에 쓸 수 "
+                "없습니다. 파일 → 프로젝트 속성…에서 로컬 플러그인으로 바꾸세요."
+            )
+
+    def content_panel(self) -> SectionContentPanel:
+        """테스트·호출자가 본문 편집기에 직접 닿는 접근자."""
+        return self._content
+
+
+class ClaudeMdPanel(_WorkspaceDocPanelBase):
+    """`.claude/CLAUDE.md`의 이 플러그인 구역 편집 (WP-WD/D9).
+
+    파일 전체가 아니라 **구역**을 편집한다는 점을 화면에서 말해 준다 — 그렇지
+    않으면 "내 CLAUDE.md가 통째로 대체되나?"라는 오해를 부른다.
+    """
+
+    def __init__(self, on_notify_fn=None, parent: QWidget | None = None) -> None:
+        super().__init__(on_notify_fn, parent)
+
+        header = QWidget()
+        row = QHBoxLayout(header)
+        row.setContentsMargins(10, 6, 10, 6)
+        row.addWidget(QLabel("구역 제목 (H1):"))
+        self._title = QLineEdit()
+        self._title.setPlaceholderText("(비우면 프로젝트 이름)")
+        self._title.textChanged.connect(self._on_title_changed)
+        row.addWidget(self._title, 1)
+        self._layout.addWidget(header)
+
+        hint = QLabel(
+            "작업 폴더의 <code>.claude/CLAUDE.md</code> 안에 이 플러그인 전용 구역"
+            "(<code>&lt;!-- daedalus:… open/close --&gt;</code>)으로 들어갑니다. "
+            "구역 밖의 기존 내용은 건드리지 않습니다."
+        )
+        hint.setWordWrap(True)
+        hint.setContentsMargins(10, 0, 10, 6)
+        self._layout.addWidget(hint)
+        self._layout.addWidget(self._content, 1)
+
+    def set_project(self, project: PluginProject | None) -> None:
+        self._project = project
+        self._refresh_notice()
+        if project is None:
+            self._title.blockSignals(True)
+            self._title.clear()
+            self._title.blockSignals(False)
+            self._content.setEnabled(False)
+            return
+        self._content.setEnabled(True)
+        # 문서가 없으면 지금 만든다. 본문이 비어 있으면 컴파일이 아무것도 내보내지
+        # 않으므로(검증도 조용하다) 미리 만들어 두는 편이 UX가 단순하다 — 사용자는
+        # "만들기" 버튼을 누를 필요 없이 바로 타이핑한다.
+        if project.claude_md is None:
+            project.claude_md = WorkspaceDoc(name=project.name)
+        self._title.blockSignals(True)
+        self._title.setText(project.claude_md.name)
+        self._title.blockSignals(False)
+        self._content.show_body(project.claude_md)
+
+    def _on_title_changed(self, text: str) -> None:
+        if self._project is None or self._project.claude_md is None:
+            return
+        self._project.claude_md.name = text.strip() or self._project.name
+        self.notify("content")
+
+
+class RulesPanel(_WorkspaceDocPanelBase):
+    """`.claude/rules/<이름>.md` 편집 — 파일이 여럿이라 선택 목록을 둔다."""
+
+    def __init__(self, on_notify_fn=None, parent: QWidget | None = None) -> None:
+        super().__init__(on_notify_fn, parent)
+
+        split = QWidget()
+        row = QHBoxLayout(split)
+        row.setContentsMargins(0, 0, 0, 0)
+
+        left = QWidget()
+        left_lay = QVBoxLayout(left)
+        left_lay.setContentsMargins(10, 6, 6, 6)
+        left_lay.addWidget(QLabel("규칙 파일"))
+        self._list = QListWidget()
+        self._list.currentRowChanged.connect(self._on_row_changed)
+        self._list.itemDoubleClicked.connect(lambda _item: self._rename_current())
+        left_lay.addWidget(self._list, 1)
+
+        buttons = QHBoxLayout()
+        self._btn_add = QPushButton("＋ 규칙")
+        self._btn_add.clicked.connect(self._add_rule)
+        self._btn_del = QPushButton("삭제")
+        self._btn_del.clicked.connect(self._delete_current)
+        buttons.addWidget(self._btn_add)
+        buttons.addWidget(self._btn_del)
+        left_lay.addLayout(buttons)
+        left.setMaximumWidth(220)
+        row.addWidget(left)
+
+        right = QWidget()
+        right_lay = QVBoxLayout(right)
+        right_lay.setContentsMargins(0, 0, 0, 0)
+        hint = QLabel(
+            "파일 하나가 규칙 하나입니다. 특정 경로에서만 읽히게 하려면 본문 맨 위에 "
+            "<code>---</code> 프론트매터로 <code>paths:</code>를 직접 적으세요."
+        )
+        hint.setWordWrap(True)
+        hint.setContentsMargins(6, 6, 10, 6)
+        right_lay.addWidget(hint)
+        right_lay.addWidget(self._content, 1)
+        row.addWidget(right, 1)
+
+        self._layout.addWidget(split, 1)
+
+    # --- 프로젝트 배선 ---
+
+    def set_project(self, project: PluginProject | None) -> None:
+        self._project = project
+        self._refresh_notice()
+        self._rebuild()
+
+    def _rules(self) -> list[WorkspaceDoc]:
+        return list(self._project.rules) if self._project is not None else []
+
+    def _rebuild(self, select: int = 0) -> None:
+        self._list.blockSignals(True)
+        self._list.clear()
+        for doc in self._rules():
+            self._list.addItem(doc.name)
+        self._list.blockSignals(False)
+        rules = self._rules()
+        enabled = self._project is not None
+        self._btn_add.setEnabled(enabled)
+        self._btn_del.setEnabled(enabled and bool(rules))
+        if rules:
+            self._list.setCurrentRow(min(max(select, 0), len(rules) - 1))
+        else:
+            self._content.setEnabled(False)
+
+    def _on_row_changed(self, row: int) -> None:
+        rules = self._rules()
+        if 0 <= row < len(rules):
+            self._content.setEnabled(True)
+            self._content.show_body(rules[row])
+        else:
+            self._content.setEnabled(False)
+
+    # --- 구조 편집 ---
+
+    def _ask_name(self, title: str, initial: str = "") -> str | None:
+        name, ok = QInputDialog.getText(
+            self, title, "파일 이름 (.md 제외, 소문자·숫자·하이픈):", text=initial
+        )
+        if not ok:
+            return None
+        name = name.strip()
+        if not name:
+            return None
+        if any(doc.name == name for doc in self._rules() if doc.name != initial):
+            QMessageBox.warning(
+                self, "이름 중복",
+                f"'{name}' 규칙이 이미 있습니다 — 이름이 곧 파일명이라 서로 덮어씁니다.",
+            )
+            return None
+        return name
+
+    def _add_rule(self) -> None:
+        if self._project is None:
+            return
+        name = self._ask_name("규칙 추가")
+        if name is None:
+            return
+        self._project.rules.append(WorkspaceDoc(name=name))
+        self._rebuild(select=len(self._project.rules) - 1)
+        self.notify("structure")
+
+    def _rename_current(self) -> None:
+        row = self._list.currentRow()
+        rules = self._rules()
+        if not (0 <= row < len(rules)):
+            return
+        name = self._ask_name("규칙 이름 변경", rules[row].name)
+        if name is None:
+            return
+        rules[row].name = name
+        self._rebuild(select=row)
+        self.notify("structure")
+
+    def _delete_current(self) -> None:
+        row = self._list.currentRow()
+        rules = self._rules()
+        if self._project is None or not (0 <= row < len(rules)):
+            return
+        doc = rules[row]
+        answer = QMessageBox.question(
+            self, "규칙 삭제", f"'{doc.name}' 규칙을 삭제할까요?"
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        self._project.rules.remove(doc)
+        body_documents.registry().discard(doc)
+        self._rebuild(select=row)
+        self.notify("structure")

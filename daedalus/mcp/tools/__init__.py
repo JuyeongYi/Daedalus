@@ -57,6 +57,7 @@ from .canvas import CanvasTools
 from .hooks import HookTools
 from .ports import PortTools
 from .props import PropsTools
+from .workspace import WorkspaceTools
 from .query import QueryTools
 from .session import SessionTools
 
@@ -70,5 +71,6 @@ class DaedalusTools(
     HookTools,
     BodyTools,
     PropsTools,
+    WorkspaceTools,
 ):
     """MainWindow 하나에 붙는 도구 모음."""

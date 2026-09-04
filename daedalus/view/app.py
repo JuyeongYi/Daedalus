@@ -66,8 +66,13 @@ from daedalus.view.viewmodel.project_vm import ProjectViewModel
 _FSM_TAB_INDEX = 0  # 프로젝트 FSM 캔버스는 항상 탭 0
 _BLACKBOARD_TAB_INDEX = 1  # 블랙보드 편집 탭은 항상 탭 1 (WP-BB — 닫기 불가 고정 탭)
 _HOOK_TAB_INDEX = 2  # 훅 라이브러리 탭은 항상 탭 2 (WP-HK — 닫기 불가 고정 탭)
+_CLAUDE_MD_TAB_INDEX = 3  # .claude/CLAUDE.md 구역 탭 (WP-WD — 닫기 불가 고정 탭)
+_RULES_TAB_INDEX = 4  # .claude/rules/ 탭 (WP-WD — 닫기 불가 고정 탭)
 # 고정 탭 = 컴포넌트 에디터가 아닌 상주 탭. 새 에디터는 이 뒤에 붙는다.
-_FIXED_TAB_INDEXES = (_FSM_TAB_INDEX, _BLACKBOARD_TAB_INDEX, _HOOK_TAB_INDEX)
+_FIXED_TAB_INDEXES = (
+    _FSM_TAB_INDEX, _BLACKBOARD_TAB_INDEX, _HOOK_TAB_INDEX,
+    _CLAUDE_MD_TAB_INDEX, _RULES_TAB_INDEX,
+)
 _LAST_FIXED_TAB_INDEX = max(_FIXED_TAB_INDEXES)
 
 
@@ -137,6 +142,15 @@ class MainWindow(QMainWindow):
         from daedalus.view.editors.hook_panel import HookLibraryPanel
         self._hook_panel = HookLibraryPanel(on_notify_fn=self._project_vm.notify)
         self._tabs.addTab(self._hook_panel, "🪝 훅")
+
+        # 작업 폴더 문서 — 항상 탭 3·4, 닫을 수 없음 (WP-WD). CLAUDE.md와 규칙을
+        # 한 탭에 목록으로 묶지 않고 각각 최상위로 둔 것은 사용자 확정이다 —
+        # CLAUDE.md는 하나뿐이고 규칙은 여럿이라 성격이 다르다.
+        from daedalus.view.editors.workspace_editor import ClaudeMdPanel, RulesPanel
+        self._claude_md_panel = ClaudeMdPanel(on_notify_fn=self._project_vm.notify)
+        self._tabs.addTab(self._claude_md_panel, "📌 CLAUDE.md")
+        self._rules_panel = RulesPanel(on_notify_fn=self._project_vm.notify)
+        self._tabs.addTab(self._rules_panel, "📐 규칙")
 
         # 고정 탭의 닫기 버튼 숨김
         tab_bar = self._tabs.tabBar()
@@ -364,6 +378,8 @@ class MainWindow(QMainWindow):
         self._registry_panel.set_project(project)
         self._blackboard_panel.set_project(project)
         self._hook_panel.set_project(project)
+        self._claude_md_panel.set_project(project)
+        self._rules_panel.set_project(project)
         if self._fsm_scene is not None:
             self._fsm_scene.set_project(project)
         # HookPresetPicker가 이 프로젝트의 hook_library 이름을 동적으로 표시하도록 연결.

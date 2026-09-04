@@ -62,8 +62,10 @@ daedalus/
 │   │   ├── hook_store.py  # 전역 훅 저장소(A1) — ~/.daedalus/hooks/*.json 로더. global_hooks_dir/load_global_hooks/
 │   │   │                  #   resolve_hooks(전역 ← 프로젝트 병합의 단일 진실)/hook_to_json. **파일시스템을 아는 유일한 훅 모듈**
 │   │   ├── variables.py    # 본문 경로 변수(WP-RT) — ${ROOT} 타깃 중립 토큰, 타깃별 확장 매핑, 구버전 마이그레이션
-│   │   └── field_matrix.py # FieldRule(emit 포함), SKILL_FIELD_MATRIX, AGENT_FIELD_MATRIX (스킬/에이전트 유형별 프론트매터 필드 규칙)
-│   ├── project.py           # PluginProject (최상위 컨테이너, name+description+version — plugin.json 매니페스트 소스), ReferencePlacement, tool_shelf, hook_library, blackboard(최상위), graph(워크플로 백킹 머신)+graph_layout+edge_layout(WP-ER 엣지 웨이포인트, 키: Transition.id), emit_progress_hook(WP-RS SessionStart 진행 상태 훅 토글, 기본 True), build_target(WP-TG 빌드 타깃 — MARKETPLACE/LOCAL, 기본 MARKETPLACE), mcp_server_defs(WP-MW — 이름→.mcp.json 서버 객체, LOCAL 설치 배선 소스)
+│   │   ├── field_matrix.py # FieldRule(emit 포함), SKILL_FIELD_MATRIX, AGENT_FIELD_MATRIX (스킬/에이전트 유형별 프론트매터 필드 규칙)
+│   │   └── workspace_doc.py# WorkspaceDoc(name, body, id) — .claude/CLAUDE.md 구역과 .claude/rules/<name>.md의 편집 단위(WP-WD).
+│   │                       #   값 동등성이고 id는 비교 제외 — 본문 undo 스택이 이름이 아니라 안정 식별자로 문서를 잡는다.
+│   ├── project.py           # PluginProject (최상위 컨테이너, name+description+version — plugin.json 매니페스트 소스), ReferencePlacement, tool_shelf, hook_library, blackboard(최상위), graph(워크플로 백킹 머신)+graph_layout+edge_layout(WP-ER 엣지 웨이포인트, 키: Transition.id), emit_progress_hook(WP-RS SessionStart 진행 상태 훅 토글, 기본 True), build_target(WP-TG 빌드 타깃 — MARKETPLACE/LOCAL, 기본 MARKETPLACE), claude_md/rules(WP-WD 작업 폴더 문서 — LOCAL 전용 배출), mcp_server_defs(WP-MW — 이름→.mcp.json 서버 객체, LOCAL 설치 배선 소스)
 │   │                       # + rename_component(project, component, new_name) — 이름 변경 + 문자열 참조 3종 일괄 갱신 (Qt 무관)
 │   │                       # + remove_component(project, component) → list[str] — 모델 정리 (graph placement, skill_ref None화 등).
 │   │                       #   undo 가능한 삭제는 view/commands의 RemoveComponentCmd가 이것을 감싼다(A2) — 이 함수 자체는 계속 순수 모델
@@ -104,6 +106,10 @@ daedalus/
 │   │                       # files_dir(WP-FR, 선택): 실존 디렉토리면 <out>/files/ 정렬 순회 복사(_copy_files_tree, 심볼릭 링크 미추종) +
 │   │                       #   dangling_file_ref 스캔(_scan_dangling_file_refs). 생략 시 기존 산출 완전 불변(하위 호환).
 │   │                       # LOCAL 빌드는 컴파일이 곧 설치(WP-MW) — .claude/ 반입 + _wire_local_install(컴파일 정책 15번 참조).
+│   ├── workspace.py        # merge_claude_md(existing, plugin, title, body) → (새 내용|None, 경고|None) (WP-WD) — .claude/CLAUDE.md의
+│                           #   `<!-- daedalus:<플러그인> open/close -->` 구역만 갈아끼운다. 구역 밖 불가침·플러그인 여럿 공존·재빌드
+│                           #   멱등. 손상된 표식(close 없음/open 중복/순서 뒤바뀜)은 **건드리지 않고** 경고만 낸다 — 구역의 끝을
+│                           #   추측하면 그 뒤의 사용자 내용을 통째로 날린다. 순수 stdlib.
 │   └── wiring.py           # wire_workspace(target, server_entries, hooks_map) → WireResult (WP-MW) — 작업 폴더의 .mcp.json
 │                           #   mcpServers + .claude/settings.local.json enabledMcpjsonServers/hooks 병합. 추가/갱신만·멱등·
 │                           #   깨진 JSON 불가침. LOCAL 컴파일과 앱 "Claude Code 실행" 메뉴가 공유하는 단일 진실. 순수 stdlib.
@@ -124,7 +130,10 @@ daedalus/
 │   │   ├── blackboard.py   #   블랙보드(create_blackboard_class/set_state_access)
 │   │   ├── hooks.py        #   훅 라이브러리(create/update/delete_hook/set_component_hooks/list_hook_events/hook_frontmatter_preview)
 │   │   ├── body.py         #   본문(set_component_body/get_body_outline/get_body_section/set_body_section — WP-BU/WP-BO 경로)
-│   │   └── props.py        #   생성·속성(create_skill/create_agent/rename_component/description/when_to_use/field/project_properties/set_mcp_server_def)
+│   │   ├── props.py        #   생성·속성(create_skill/create_agent/rename_component/description/when_to_use/field/project_properties/set_mcp_server_def)
+│   │   └── workspace.py    #   작업 폴더 문서(WP-WD) — list_workspace_docs/get_workspace_doc/set_claude_md/create_rule/
+│   │                       #     set_rule_body/rename_rule/delete_rule. 본문은 BodyTools와 같은 QTextDocument 경로(WP-BU),
+│   │                       #     구조 편집은 GUI 패널과 같은 모델 직접 기록.
 │   └── service.py          # DaedalusMCPService — MCPServer 구성(_server_factory가 mcp 1.x/2.x 흡수) + uvicorn 데몬 스레드 수명주기
 ├── cli/              # 블랙보드 CLI (WP-RF-2 신설 → WP-BB1 구현) — C+A 설계: uv tool install로 앱과 함께 설치되고,
 │   │                 #   컴파일 산출의 블랙보드 지시가 런타임에 이 CLI를 호출해 work 폴더의 state/를 읽고 쓴다.
@@ -159,8 +168,9 @@ daedalus/
     │                       # 컴포넌트 이름 변경: _FrontmatterPanel.renamed → _on_component_renamed (중복 거부 + rename_component 호출 + 탭 타이틀 동기화)
     │                       # 컴포넌트 삭제(A2): 레지스트리 우클릭 → _on_delete_component(확인 다이얼로그) → delete_component(공용 실체 —
     │                       #   MCP도 이것을 부른다. 본문 문서 캐시 정리 + 탭 닫기 + RemoveComponentCmd 실행. **_load_project_graph를 부르지 않는다**)
-    │                       # 탭 구조(WP-BB/WP-HK): 인덱스 0=프로젝트 FSM 캔버스, 1=블랙보드 편집(BlackboardPanel), 2=훅 라이브러리(HookLibraryPanel)
-    │                       #   — 상주·닫기 불가 고정 3개. _close_tab이 세 인덱스 모두 거부, load_project의 탭 정리 루프는 인덱스 3부터 닫는다.
+    │                       # 탭 구조(WP-BB/WP-HK/WP-WD): 0=프로젝트 FSM 캔버스, 1=블랙보드(BlackboardPanel), 2=훅 라이브러리(HookLibraryPanel),
+    │                       #   3=CLAUDE.md 구역(ClaudeMdPanel), 4=규칙(RulesPanel) — 상주·닫기 불가 고정 5개. _close_tab이 다섯 인덱스를
+    │                       #   모두 거부하고, load_project의 탭 정리 루프는 _LAST_FIXED_TAB_INDEX 다음부터 닫는다.
     │                       #   set_project가 blackboard_panel.set_project(project) + tag_input.set_blackboard_candidate_provider(...)를 배선.
     │                       # 파일 독(WP-FR): _setup_docks가 FilePanel을 "플러그인 파일 (공용)" 독으로 배치하고
     │                       #   markdown_editor.set_files_root_provider(lambda: self._file_panel.files_root())를 등록.
@@ -249,7 +259,10 @@ daedalus/
     │                       #   attr — SetAttrCmd/AppendToListCmd/RemoveFromListCmd(WP-CE 범용 폼 편집. 편집마다 클래스를 만들지 않고
     │                       #     "속성 하나 바꾸기"+"리스트 넣고 빼기" 둘로 환원한다. SetAttrCmd는 최초 execute에서만 old를 잡는다 —
     │                       #     redo가 old를 덮으면 undo가 깨진다. 값은 복사하지 않으므로 호출자가 새 객체를 넘겨야 한다))
-    ├── editors/            # 속성 편집기 (skill, agent, hook, body, body_documents, component, variable_loader, catalogue_loader, field_widgets, project_properties, blackboard_editor)
+    ├── editors/            # 속성 편집기 (skill, agent, hook, body, body_documents, component, variable_loader, catalogue_loader, field_widgets, project_properties, blackboard_editor, workspace_editor)
+    │                       # workspace_editor(WP-WD): ClaudeMdPanel(탭 3 — 구역 제목 H1 + 본문) / RulesPanel(탭 4 — 좌 파일 목록
+    │                       #   (＋/삭제/더블클릭 이름변경) | 우 본문). 둘 다 SectionContentPanel을 재사용하므로 WorkspaceDoc.id 덕에
+    │                       #   본문 undo 스택(WP-BU)이 그대로 붙는다. 구조 편집은 모델 직접 기록 + notify(블랙보드 패널과 같은 정책).
     │                       # catalogue_loader: 도구/MCP 카탈로그 로더(WP-TM) — ~/.daedalus/catalogue/*.json(글로벌) + <프로젝트>/.daedalus/catalogue/*.json(프로젝트, 이름 충돌 시 우선)
     │                       #   병합. 파일 1개=항목 1개(CatalogueEntry: name=파일명 stem, description, tools="tool" 키, mcp="mcp" 키). expanded_mcp()가 mcp 항목을
     │                       #   mcp__<entry.name>__<도구>로 확장(이미 mcp__ 접두면 그대로). candidate_strings(entries, project)가 CC_BUILTIN_TOOLS(정렬)+카탈로그 tool/expanded_mcp+
@@ -416,6 +429,68 @@ daedalus/
   프로젝트 그래프 포함)/`orphan_blackboard_field`(어떤 상태도 참조하지 않는 필드 경고 — 클래스
   전체 참조는 그 필드 전부 커버로 간주, 프로젝트 전체에 접근 선언이 하나도 없으면 스킵) 2종.
   둘 다 프로젝트 수준 경고 규칙(아래 Validator 규칙 표 참조).
+
+### 작업 폴더 문서 — `.claude/CLAUDE.md` · `.claude/rules/` (WP-WD)
+
+LOCAL 플러그인이 설치 대상 작업 폴더에 남기는 **항상 컨텍스트에 있는 지침**이다.
+스킬은 필요할 때 로드되지만 CLAUDE.md와 `paths:` 없는 rules는 매 세션 로드된다
+(공식 문서 확인 2026-09-04). **편집만 제공한다**(사용자 확정) — 생성 로직도 자동
+합성도 없고, 사람이 쓴 마크다운이 그대로 나간다.
+
+- **모델:** `WorkspaceDoc(name, body, id)`. `PluginProject.claude_md`는 단일 필드라
+  "최대 하나"가 구조로 보장되고, `rules`는 리스트다(파일 하나가 문서 하나).
+  `name`의 뜻이 둘 사이에서 다르다 — 규칙에서는 **파일명**, CLAUDE.md에서는 구역
+  안 맨 앞의 **H1 제목**이다. `paths:` 프론트매터는 필드로 두지 않는다(본문 맨 위에
+  직접 쓴다 — "편집만"이라는 범위가 넓어지지 않게).
+- **UI:** 상주 탭 **2개**(3=CLAUDE.md, 4=규칙). 하나로 묶지 않은 것은 사용자 확정 —
+  CLAUDE.md는 하나뿐이고 규칙은 여럿이라 성격이 다르다. 규칙 탭은 선택 목록을 갖는다.
+- **rules는 파일이 곧 문서라 공존이 공짜다.** 반면 `.claude/CLAUDE.md`는 고정
+  경로라 **구역 병합**이 필요하다(아래).
+- **MARKETPLACE에서는 배출되지 않는다** — 플러그인은 설치 대상 작업 폴더의
+  `.claude/`에 쓸 수 없다. 내용이 있는데 타깃이 마켓플레이스면
+  `workspace_doc_in_marketplace_build` 경고 + 패널 안내.
+
+#### CLAUDE.md 구역 병합 (D9)
+
+```markdown
+<!-- daedalus:my-plugin open -->
+# my-plugin
+
+...본문...
+<!-- daedalus:my-plugin close -->
+```
+
+- 1줄 HTML 주석 2개로 구역을 만든다. **CC가 컨텍스트 주입 전에 블록 HTML 주석을
+  제거하므로 표식의 토큰 비용은 0이다**(공식 문서).
+- 구역이 있으면 **제자리 교체**(위치 보존), 없으면 파일 끝에 덧붙임, 파일 자체가
+  없으면 만든다. **새로 만들 때도 표식을 반드시 남긴다** — 안 남기면 다음 빌드가
+  그 파일을 남의 것으로 보고 구역을 또 덧붙인다.
+- 본문이 비면 구역을 제거한다(플러그인 이름이 키라 멱등).
+- 본문이 이미 `# `로 시작하면 H1을 덧붙이지 않는다(제목 중복 방지).
+- **손상된 표식은 절대 건드리지 않는다** — open만 있고 close 없음 / open 2개 이상 /
+  close가 open보다 앞이면 `unmergeable_claude_md` 경고만 내고 물러난다. 구역의 끝을
+  추측하면 그 뒤의 사용자 내용을 통째로 날린다.
+- 구현은 `compiler/workspace.py`의 순수 함수 `merge_claude_md`이고, 파일 읽기·쓰기는
+  `project_compiler._merge_claude_md_region`이 한다. **산출 계획(`_plan_outputs`)에
+  넣지 않는 이유**: 이 파일은 쓰기 전에 읽어야 하고 결과가 기존 내용에 달려 있어
+  "경로 하나 = 산출 하나"라는 계획의 전제와 맞지 않는다(`.mcp.json` 병합이
+  `_wire_local_install`에 따로 있는 것과 같은 이유).
+
+#### 검증
+
+| 규칙 | 등급 | 설명 |
+|------|------|------|
+| `duplicate_rule_name` | 에러 | 이름이 곧 파일명이라 서로 덮어쓴다 |
+| `invalid_rule_name` | 경고 | 컴포넌트와 같은 이름 규약. 컴파일 게이트가 에러로 승격 |
+| `workspace_doc_in_marketplace_build` | 경고 | 내용이 있을 때만(빈 문서는 잃을 것이 없다) |
+| `unmergeable_claude_md` | 경고 | 손상된 표식 — 컴파일러 emit |
+
+#### MCP
+
+`list_workspace_docs` / `get_workspace_doc` / `set_claude_md` / `create_rule` /
+`set_rule_body` / `rename_rule` / `delete_rule`. 본문은 `BodyTools`와 같은
+QTextDocument 경로(WP-BU)라 에디터에 즉시 반영되고 Ctrl+Z로 되돌릴 수 있다.
+`delete_rule`은 **이미 산출된 파일을 지우지 않는다**(컴파일은 쓰기만 한다).
 
 ### 블랙보드 CLI `daedalus-bb` (WP-BB1)
 
@@ -1229,7 +1304,7 @@ dataclass(값 동등성, unhashable) 유지 — 컬렉션 멤버십에는 list/`
 - `<out>/skills/<skill-name>/SKILL.md` — 스킬 4종 전부 (Declarative/Reference도 SKILL.md)
 - `<out>/agents/<agent-name>.md` — 에이전트
 
-**`build_target == LOCAL`(WP-TG/WP-MW)일 때 — 컴파일이 곧 설치:** out_dir는 스테이징이 아니라 대상 **작업 폴더**다. `<out>/.claude/skills/`·`<out>/.claude/agents/`(CC가 실제로 읽는 위치), `<out>/files/`·`<out>/schemas/`·`<out>/hooks/scripts/`(본문의 `${CLAUDE_PROJECT_DIR}/…` 참조 대상), `<out>/.mcp.json`·`<out>/.claude/settings.local.json`(생성/병합). `plugin.json`·`hooks/hooks.json`·설치 스크립트는 만들지 않는다. 상세는 컴파일 정책 15번 항목 참조.
+**`build_target == LOCAL`(WP-TG/WP-MW)일 때 — 컴파일이 곧 설치:** out_dir는 스테이징이 아니라 대상 **작업 폴더**다. `<out>/.claude/skills/`·`<out>/.claude/agents/`(CC가 실제로 읽는 위치), `<out>/files/`·`<out>/schemas/`·`<out>/hooks/scripts/`(본문의 `${CLAUDE_PROJECT_DIR}/…` 참조 대상), `<out>/.mcp.json`·`<out>/.claude/settings.local.json`(생성/병합), `<out>/.claude/rules/<이름>.md`와 `<out>/.claude/CLAUDE.md`의 플러그인 구역(WP-WD). `plugin.json`·`hooks/hooks.json`·설치 스크립트는 만들지 않는다. 상세는 컴파일 정책 15번 항목 참조.
 
 **컴파일 정책 (확정):**
 1. **프론트매터**: 해당 kind 매트릭스에서 `emit==FRONTMATTER`인 필드만. 키는 `frontmatter_key`(kebab-case).

@@ -69,6 +69,14 @@ TOOL_NAMES = (
     "unplace_reference",
     "set_component_body",
     "set_body_section",
+    # 작업 폴더 문서 — .claude/CLAUDE.md 구역 + .claude/rules/ (WP-WD, LOCAL 전용)
+    "list_workspace_docs",
+    "get_workspace_doc",
+    "set_claude_md",
+    "create_rule",
+    "set_rule_body",
+    "rename_rule",
+    "delete_rule",
     "undo",
     "redo",
 )
