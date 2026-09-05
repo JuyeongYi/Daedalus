@@ -105,8 +105,15 @@ daedalus/
 │       ├── severity.py     #   ValidationError(rule/message/source/subject/path + is_warning) + WARNING_RULES(경고 등급 단일 진실)
 │       ├── machine_rules.py#   머신 수준 규칙 18종(_MachineRules 믹스인 — validate/_validate_machine 재귀 + _STATE_ACTION_FIELDS)
 │       │                   #   + SKIPPABLE_RULES(skip_rules 허용 이름)
-│       └── project_rules.py#   프로젝트 수준 규칙 18종(_ProjectRules 믹스인 — validate_project) + CC_BUILTIN_TOOLS
-│                           #   + _strip_markdown_code(본문 검사 시 코드 스팬 제외)
+│       └── project_rules/   #   프로젝트 수준 규칙(_ProjectRules 믹스인 — validate_project 오케스트레이터).
+│                            #   A6에서 1,090줄 단일 모듈을 그룹별 믹스인 패키지로 분해(이동만·동작 불변).
+│                            #   __init__.py = 재-export 파사드 + 믹스인 8종 합성(CC_BUILTIN_TOOLS·
+│                            #   _strip_markdown_code·_ProjectRules 기존 임포트 무수정 동작).
+│                            #   text.py(코드 스팬 제외) / scan.py(공용 순회 — graph_has_placements·
+│                            #   project_machines·scan_state_access·scan_transitions **모듈 함수**가 실체,
+│                            #   믹스인이 staticmethod로 재노출. 그룹끼리 _ProjectRules 경유로 부르면
+│                            #   파사드와 순환) / naming / tools / hooks / blackboard / body_variables /
+│                            #   build_target / workflow / workspace
 ├── compiler/         # 순수 모델 → 플러그인 파일 (Qt 무관)
 │   ├── emit/               # model → SKILL.md/agent .md/hooks.json 텍스트 (결정적, LF). 구 emit.py를 WP-RF-3a로 패키지 분해(이동만·동작 불변)
 │   │   ├── __init__.py     #   재-export 파사드 — 분해 전 emit.py의 모든 속성(public + 테스트가 쓰는 _헬퍼) 그대로 제공,
@@ -1123,7 +1130,10 @@ ComponentConfig(ABC)          # model, effort, hooks 공통 필드
 
 **모듈 배치(WP-RF-3d):** `model/validation/`은 패키지다 — `severity.py`(ValidationError·WARNING_RULES) /
 `machine_rules.py`(`_MachineRules` 믹스인 — 머신 수준 규칙 + `validate`/`_validate_machine` + SKIPPABLE_RULES) /
-`project_rules.py`(`_ProjectRules` 믹스인 — `validate_project` + CC_BUILTIN_TOOLS + `_strip_markdown_code`).
+`project_rules/`(**A6에서 다시 패키지로 분해** — `_ProjectRules`는 그룹 믹스인 8종(naming/tools/hooks/
+blackboard/body_variables/build_target/workflow/workspace)을 합성한 오케스트레이터이고, 공용 순회
+헬퍼는 `scan.py`의 **모듈 함수**가 실체다(그룹끼리 `_ProjectRules.<헬퍼>`로 부르면 파사드와 순환).
+파사드가 CC_BUILTIN_TOOLS·`_strip_markdown_code`·`_ProjectRules`를 그대로 재-export한다).
 `Validator`는 `__init__.py`가 두 믹스인을 상속해 합성한 클래스이며, `__init__`이 재-export 파사드라
 `from daedalus.model.validation import …`와 `Validator._check_*` 이름이 분해 전과 동일하게 동작한다.
 새 규칙은 해당 그룹 모듈에 `_check_*` staticmethod로 추가하고 오케스트레이터(`_validate_machine` /
@@ -1200,7 +1210,7 @@ ComponentConfig(ABC)          # model, effort, hooks 공통 필드
 | `workspace_doc_in_marketplace_build` | MARKETPLACE 빌드인데 작업 폴더 문서에 내용이 있으면 경고 — 같은 표 |
 | `mid_chain_user_invocable` | 프로젝트 그래프에 배치된 ProceduralSkill 중 **incoming 전이가 1개 이상**인데 `config.user_invocable`의 **실효값**이 true면 경고 (A3 + A8 tri-state — `None`(미지정)은 CC 기본 true이므로 경고 대상이고 메시지에 병기, **명시 `False`만 통과**) — user-invocable은 진입점으로 기능할 노드만 true여야 한다(중간 노드로 사용자가 맥락 없이 진입하는 사고 방지. false여도 모델 인보크는 되므로 체인은 안 끊긴다). incoming 0개(진입점 후보)·미배치 스킬(독립 스킬)은 대상 아님. **EntryPoint 출발 전이는 incoming으로 세지 않는다** — 그것이 곧 "여기서 시작한다"는 선언이다(WP-EP로 캔버스에 그리지 않을 뿐 구버전 파일의 시작 전이는 모델에 남아 있다) |
 
-도구 모델(`tool.py`): `Tool(PluginComponent, ABC)` 단일 진실 + `BuiltinTool`/`MCPTool`/`UserDefinedTool`. shelf = 프로젝트(`PluginProject.tool_shelf`) 소유, FSM은 `Tool.name` 문자열로 참조(fsm/는 plugin 무관 — 객체 참조 금지, Validator가 실존 검증). `CC_BUILTIN_TOOLS`는 `validation/project_rules.py` 모듈 frozenset이다(파사드 재-export로 `daedalus.model.validation`에서도 임포트 가능 — Read/Write/Edit/Bash/Glob/Grep/WebFetch/WebSearch/Agent/Task/TodoWrite/NotebookEdit/SlashCommand/PowerShell).
+도구 모델(`tool.py`): `Tool(PluginComponent, ABC)` 단일 진실 + `BuiltinTool`/`MCPTool`/`UserDefinedTool`. shelf = 프로젝트(`PluginProject.tool_shelf`) 소유, FSM은 `Tool.name` 문자열로 참조(fsm/는 plugin 무관 — 객체 참조 금지, Validator가 실존 검증). `CC_BUILTIN_TOOLS`는 `validation/project_rules/tools.py` 모듈 frozenset이다(파사드 재-export로 `daedalus.model.validation`에서도 임포트 가능 — Read/Write/Edit/Bash/Glob/Grep/WebFetch/WebSearch/Agent/Task/TodoWrite/NotebookEdit/SlashCommand/PowerShell).
 
 블랙보드 접근 선언 검증(`dangling_blackboard_ref`/`orphan_blackboard_field`, WP-BB): 상태
 reads/writes 순회는 `Validator._scan_state_access(sm, visit)` 공용 헬퍼(재귀 골격은

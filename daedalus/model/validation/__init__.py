@@ -14,7 +14,8 @@ WP-RF-3d: 구 단일 모듈 ``model/validation.py``를 패키지로 분해했다
 구획:
   severity.py      — ValidationError(+ is_warning) / WARNING_RULES
   machine_rules.py — 머신 수준 규칙(_MachineRules 믹스인) + SKIPPABLE_RULES
-  project_rules.py — 프로젝트 수준 규칙(_ProjectRules 믹스인) + CC_BUILTIN_TOOLS
+  project_rules/   — 프로젝트 수준 규칙(_ProjectRules 믹스인 — 규칙 그룹별 하위
+                     모듈로 다시 분해, A6) + CC_BUILTIN_TOOLS
                      + 코드 스팬 제거 헬퍼(_strip_markdown_code)
 
 ``Validator``는 두 믹스인을 합성한 클래스다 — ``Validator._check_*`` 이름은
