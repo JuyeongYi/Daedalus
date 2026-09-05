@@ -71,6 +71,7 @@ daedalus/
 │   │   ├── hook_store.py  # 전역 훅 저장소(A1) — ~/.daedalus/hooks/*.json 로더. global_hooks_dir/load_global_hooks/
 │   │   │                  #   resolve_hooks(전역 ← 프로젝트 병합의 단일 진실)/hook_to_json. **파일시스템을 아는 유일한 훅 모듈**
 │   │   ├── variables.py    # 본문 경로 변수(WP-RT) — ${ROOT} 타깃 중립 토큰, 타깃별 확장 매핑, 구버전 마이그레이션
+│   │   │                   #   + SKILL_ONLY_VARIABLES(A6 — 스킬 본문에서만 치환되는 토큰 3종. skill_only_variable_in_body의 단일 진실)
 │   │   ├── field_matrix.py # FieldRule(emit 포함), SKILL_FIELD_MATRIX, AGENT_FIELD_MATRIX (스킬/에이전트 유형별 프론트매터 필드 규칙)
 │   │   └── workspace_doc.py# WorkspaceDoc(name, body, paths, id) — .claude/CLAUDE.md 구역과 .claude/rules/<name>.md의 편집 단위(WP-WD).
 │   │                       #   값 동등성이고 id는 비교 제외 — 본문 undo 스택이 이름이 아니라 안정 식별자로 문서를 잡는다.
@@ -1180,7 +1181,7 @@ blackboard/body_variables/build_target/workflow/workspace)을 합성한 오케�
 
 **프로젝트 그래프 검증:** `validate_project`는 `project.graph`도 머신 규칙으로 검증하며 root path는 `("project",)`다. 단 그래프에 placement(EntryPoint 외 노드)가 0개면 검증을 스킵(`_graph_has_placements`) — 빈 캔버스 경고 폭주 방지. `transfer_on_not_empty` 같은 컴포넌트 수준 규칙은 머신 검증에 없으므로 무관. **`unreachable_state`는 `skip_rules={"unreachable_state"}`로 스킵된다(WP-EP)** — CC 플러그인 의미론상 프로젝트 그래프의 모든 배치는 user_invocable 스킬 등으로 독립 시작 가능해 "EntryPoint에서 도달 불가"가 성립하지 않는다. skip_rules는 재귀에 전파되지 않으므로 에이전트 sub_machine 내부의 `unreachable_state`는 기존대로 검사된다.
 
-#### 프로젝트 수준 (23종)
+#### 프로젝트 수준 (25종)
 
 `Validator.validate_project(project)` — 전체 FSM 검증 후 추가:
 
@@ -1196,6 +1197,7 @@ blackboard/body_variables/build_target/workflow/workspace)을 합성한 오케�
 | `empty_hook_command` | HookDef.command 빈 값 경고 |
 | `hook_matcher_without_tool_event` | matcher가 있는데 event가 Pre/PostToolUse가 아니면 경고 (matcher는 도구 이벤트 전용) |
 | `dangling_hook_ref` | config.hooks 키가 hook_library에 없으면 경고 (스킬·에이전트 전부 검사) |
+| `orphan_hook` | hook_library의 훅을 어떤 컴포넌트도 참조하지 않으면 경고 (A6) — 훅은 `config.hooks`에 올라야 산출에 실린다(만들고 부착을 잊은 실사고). **프로젝트 훅만** 대상이고 `known_hook_names`(전역 훅) 주입에 영향받지 않는다 — 전역 훅은 다른 프로젝트가 쓰라고 둔 것이다 |
 | `hook_matcher_matches_nothing` | MCP matcher가 서버 이름까지만이면 어떤 도구와도 맞지 않으므로 경고 (정규식이 아니라 정확한 문자열 비교 — `server__.*`를 쓰라고 안내, WP-HS) |
 | `dangling_blackboard_ref` | State.reads/writes의 `"Class"`/`"Class.field"` 문자열 참조가 프로젝트 최상위 블랙보드 class_definitions에 없으면 경고 (재귀 — sub_machine/Region + 프로젝트 그래프 포함, 빈 문자열은 스킵) |
 | `orphan_blackboard_field` | 블랙보드 필드 중 어떤 상태의 reads/writes에도 등장하지 않으면 경고 (클래스 전체 참조는 그 필드 전부 커버로 간주, 프로젝트 전체에 접근 선언이 하나도 없으면 스킵 — 경고 폭주 방지) |
@@ -1204,6 +1206,7 @@ blackboard/body_variables/build_target/workflow/workspace)을 합성한 오케�
 | `unsupported_agent_field_in_marketplace_build` | MARKETPLACE 빌드인데 에이전트가 `hooks` 또는 기본값 아닌 `permissionMode`를 쓰면 경고 (CC가 보안상 무시 — MCP는 위 규칙이 전담, WP-LA) |
 | `plugin_root_in_local_build` | `project.build_target == LOCAL`인데 스킬/에이전트 본문에 files/ 참조 이외 용도의 `${CLAUDE_PLUGIN_ROOT}`가 남아 있으면 경고 (files/ 참조는 컴파일이 자동 치환하므로 제외, WP-TG) |
 | `skill_dir_token_in_agent` | 에이전트 본문에 `${CLAUDE_SKILL_DIR}`가 있으면 경고 — 이 변수는 스킬 전용이라 에이전트 .md에서 치환되지 않는다 (코드 표기 제외, 빌드 타깃 무관, WP-SF) |
+| `skill_only_variable_in_body` | 스킬 전용 변수(`$ARGUMENTS`(=`$ARGUMENTS[N]` 접두)·`${CLAUDE_SESSION_ID}`·`${CLAUDE_SKILL_DIR}`)가 **에이전트 본문 또는 작업 폴더 문서**(`.claude/CLAUDE.md` 구역·`rules/`)에 있으면 경고 (A6) — 치환되지 않고 리터럴로 산출에 나간다. 변수 팝업 컨텍스트 필터(`variable_loader.variables_for`)의 검증기 짝이고, 토큰 단일 진실은 `model/plugin/variables.SKILL_ONLY_VARIABLES`. **에이전트의 `${CLAUDE_SKILL_DIR}`만 제외**한다 — `skill_dir_token_in_agent`가 전담 메시지로 이미 짚으므로 중복 경고 금지(작업 폴더 문서는 그 규칙의 대상이 아니라 세 토큰 모두 검사). `$N` 단축형은 셸 위치 인수와 구분할 수 없어 제외. 코드 표기 제외, 빌드 타깃 무관 |
 | `transfer_skill_reused` | 한 TransferSkill이 **2개 이상 전이**에 붙으면 **에러** (A11). TransferSkill은 전이 위에 놓인 **1:1 중간 상태**이므로 전이 하나에만 속한다 — 하나의 상태가 두 자리에 동시에 있을 수 없다는 점에서 `no_duplicate_skill_ref`와 **같은 논리**다(특별 규칙이 아니다). 메시지가 그 논리와 대안(공통 지침은 Declarative 스킬로 빼고 각 전이 스킬이 참조)을 함께 담는다. 순회 범위는 프로젝트 그래프 + 각 스킬/에이전트 FSM(`_scan_transitions` 재귀 — sub_machine/Region 포함). 메시지에 붙은 위치를 전부 나열한다(어디를 고쳐야 하는지 알아야 한다) |
 | `duplicate_rule_name` | 작업 폴더 규칙 문서의 동명 에러 — 상세는 "작업 폴더 문서 (WP-WD) #### 검증" 표 |
 | `invalid_rule_name` | 규칙 문서 이름 규약 경고 (컴파일 게이트가 에러로 승격) — 같은 표 |

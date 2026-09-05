@@ -116,6 +116,7 @@ class _ProjectRules(
         errors.extend(
             _HookRules._check_dangling_hook_refs(project, known_hook_names)
         )
+        errors.extend(_HookRules._check_orphan_hooks(project))
         # 블랙보드(blackboard) 규칙 — WP-BB
         errors.extend(_BlackboardRules._check_dangling_blackboard_refs(project))
         errors.extend(_BlackboardRules._check_orphan_blackboard_fields(project))
@@ -125,6 +126,7 @@ class _ProjectRules(
         errors.extend(_BuildTargetRules._check_unsupported_agent_fields(project))
         errors.extend(_BodyVariableRules._check_plugin_root_in_local_build(project))
         errors.extend(_BodyVariableRules._check_skill_dir_token_in_agent(project))
+        errors.extend(_BodyVariableRules._check_skill_only_variables(project))
         # 진입점 의미론 규칙 — A3
         errors.extend(_WorkflowRules._check_mid_chain_user_invocable(project))
         # 전이 스킬 재사용 금지 — A11

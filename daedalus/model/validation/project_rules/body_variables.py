@@ -100,3 +100,74 @@ class _BodyVariableRules:
                     path=(f"agent:{agent.name}",),
                 ))
         return errors
+
+    @staticmethod
+    def _check_skill_only_variables(project) -> list[ValidationError]:
+        """skill_only_variable_in_body — 스킬 전용 변수가 에이전트 본문이나 작업
+        폴더 문서(.claude/CLAUDE.md 구역·.claude/rules/)에 있으면 경고 (A6).
+
+        `$ARGUMENTS`(`$ARGUMENTS[N]` 포함)·`${CLAUDE_SESSION_ID}`·
+        `${CLAUDE_SKILL_DIR}`는 CC가 **스킬 본문에서만** 치환한다(공식 skills
+        문서의 치환 표). 다른 표면에 쓰면 리터럴 문자열 그대로 산출에 나가
+        런타임에야 드러난다 — 변수 삽입 팝업의 컨텍스트 필터
+        (`view/editors/variable_loader.variables_for`)의 검증기 짝이다.
+
+        **`${CLAUDE_SKILL_DIR}`는 에이전트에서만 제외한다** —
+        `skill_dir_token_in_agent`(WP-SF)가 이미 그 토큰을 에이전트 본문에서
+        짚고, 대안(스킬에 동봉해 skills 프론트매터로 전달)까지 안내하는 전용
+        메시지를 갖고 있다. 같은 사실을 두 규칙이 말하면 어느 쪽을 고쳐야
+        하는지 흐려지므로, 기존 규칙을 확장하는 대신 이 규칙이 그 조합만
+        비운다. 작업 폴더 문서는 기존 규칙의 대상이 아니므로 세 토큰을 모두
+        검사한다.
+
+        코드로 표시된 부분(백틱·펜스)은 검사하지 않는다 — 위 두 규칙과 같은
+        이유(규격을 설명하는 문서의 언급까지 짚으면 고칠 수 없는 경고가 남는다).
+        빌드 타깃 무관 — 어느 타깃에서도 치환되지 않는다.
+        """
+        from daedalus.model.plugin.variables import SKILL_ONLY_VARIABLES
+
+        errors: list[ValidationError] = []
+
+        def _scan(
+            label: str,
+            subject: object,
+            body: str,
+            tokens: tuple[str, ...],
+            path: tuple[str, ...],
+        ) -> None:
+            remaining = _strip_markdown_code(body or "")
+            for var in tokens:
+                if var in remaining:
+                    errors.append(ValidationError(
+                        rule="skill_only_variable_in_body",
+                        message=(
+                            f"{label}의 본문에 '{var}'가 있습니다 — 이 변수는 "
+                            f"스킬 본문에서만 치환되므로 여기서는 문자열 그대로 "
+                            f"남습니다. 값이 필요하면 스킬에서 받아 넘기세요."
+                        ),
+                        source=label,
+                        subject=subject,
+                        path=path,
+                    ))
+
+        agent_tokens = tuple(
+            v for v in SKILL_ONLY_VARIABLES if v != "${CLAUDE_SKILL_DIR}"
+        )
+        for agent in getattr(project, "agents", []):
+            _scan(
+                f"에이전트 '{agent.name}'", agent, getattr(agent, "body", ""),
+                agent_tokens, (f"agent:{agent.name}",),
+            )
+
+        claude_md = getattr(project, "claude_md", None)
+        if claude_md is not None:
+            _scan(
+                "작업 폴더 문서 'CLAUDE.md'", claude_md,
+                getattr(claude_md, "body", ""), SKILL_ONLY_VARIABLES, (),
+            )
+        for doc in getattr(project, "rules", None) or []:
+            _scan(
+                f"규칙 문서 '{doc.name}'", doc, getattr(doc, "body", ""),
+                SKILL_ONLY_VARIABLES, (),
+            )
+        return errors

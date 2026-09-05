@@ -62,6 +62,8 @@ WARNING_RULES: frozenset[str] = frozenset({
     "empty_hook_command",
     "hook_matcher_without_tool_event",
     "hook_matcher_matches_nothing",
+    # A6 — 훅을 만들고 부착을 잊으면 아무 일도 일어나지 않는다(프로젝트 훅만).
+    "orphan_hook",
     # 블랙보드(blackboard) 경고 — WP-BB
     "dangling_blackboard_ref",
     "orphan_blackboard_field",
@@ -96,6 +98,10 @@ WARNING_RULES: frozenset[str] = frozenset({
     "dangling_skill_file_ref",
     "unknown_skill_files_dir",
     "skill_dir_token_in_agent",
+    # A6 — 스킬 전용 변수($ARGUMENTS/${CLAUDE_SESSION_ID}/${CLAUDE_SKILL_DIR})가
+    # 에이전트·작업 폴더 문서 본문에 있으면 치환되지 않고 리터럴로 나간다.
+    # (에이전트의 ${CLAUDE_SKILL_DIR}는 skill_dir_token_in_agent 전담 — 중복 방지)
+    "skill_only_variable_in_body",
     # A3 — user-invocable은 진입점으로 기능할 노드만 true여야 한다
     "mid_chain_user_invocable",
 })

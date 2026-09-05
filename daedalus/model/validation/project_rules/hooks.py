@@ -122,6 +122,39 @@ class _HookRules:
         return errors
 
     @staticmethod
+    def _check_orphan_hooks(project) -> list[ValidationError]:
+        """orphan_hook — 프로젝트 훅 라이브러리의 훅을 어떤 컴포넌트도 참조하지
+        않으면 경고 (A6).
+
+        훅은 **만들어 두는 것만으로는 아무 일도 하지 않는다** — 스킬·에이전트의
+        `config.hooks`가 이름으로 참조해야 컴파일 산출(hooks.json / LOCAL
+        settings·에이전트 프론트매터)에 실린다. 훅을 정의하고 부착을 잊어 아무
+        일도 일어나지 않은 실사고의 재발 방지가 이 규칙이다.
+
+        **전역 훅(`~/.daedalus/hooks/`, A1)은 대상이 아니다** — 다른 프로젝트가
+        쓰라고 둔 물건이라 이 프로젝트에서 안 쓰이는 것이 정상이고, 애초에
+        검증기는 파일시스템을 읽지 않아 여기 보이지도 않는다. 그래서
+        `dangling_hook_ref`와 달리 `known_hook_names` 주입을 받지 않고
+        `project.hook_library`만 본다.
+        """
+        referenced = {name for _label, name, _subject in _HookRules._collect_hook_refs(project)}
+        errors: list[ValidationError] = []
+        for hook in getattr(project, "hook_library", []):
+            if hook.name in referenced:
+                continue
+            errors.append(ValidationError(
+                rule="orphan_hook",
+                message=(
+                    f"훅 '{hook.name}'을 참조하는 스킬·에이전트가 없습니다 — "
+                    f"훅은 컴포넌트의 hooks 목록에 올라야 산출에 실립니다. "
+                    f"쓸 곳에 부착하거나 라이브러리에서 지우세요."
+                ),
+                source=hook.name,
+                subject=hook,
+            ))
+        return errors
+
+    @staticmethod
     def _check_dangling_hook_refs(
         project, known_hook_names: frozenset[str] | None = None
     ) -> list[ValidationError]:

@@ -41,6 +41,22 @@ PLUGIN_ONLY_VARIABLES: tuple[str, ...] = (
     "${CLAUDE_PLUGIN_DATA}",
 )
 
+# CC가 **스킬 본문에서만 치환하는** 변수 (공식 skills 문서의 치환 표). 에이전트
+# .md와 작업 폴더 문서(.claude/CLAUDE.md 구역·.claude/rules/)에 쓰면 치환되지 않고
+# 리터럴 문자열로 산출에 나간다 — `skill_only_variable_in_body` 경고의 단일 진실이며,
+# 변수 삽입 팝업의 컨텍스트 필터(view/editors/variable_loader의 `_SKILL_ONLY`)와
+# 같은 매트릭스를 모델 쪽에서 표현한 것이다.
+#
+# - `$ARGUMENTS`는 `$ARGUMENTS[N]`(인덱스 접근)의 접두이기도 하므로 부분 문자열
+#   검사 하나가 둘 다 잡는다.
+# - `$N`(=`$ARGUMENTS[N]` 단축형)은 **의도적으로 제외한다** — `$1`/`$2`는 셸 위치
+#   인수 표기와 구분할 수 없어, 본문이 인용한 셸 스니펫마다 고칠 수 없는 경고가 뜬다.
+SKILL_ONLY_VARIABLES: tuple[str, ...] = (
+    "$ARGUMENTS",
+    "${CLAUDE_SESSION_ID}",
+    "${CLAUDE_SKILL_DIR}",
+)
+
 # 구버전 본문(WP-RT 이전)의 files/ 참조 — 로드 시 ${ROOT}/files/로 변환한다.
 _LEGACY_FILES_PREFIX = "${CLAUDE_PLUGIN_ROOT}/files/"
 

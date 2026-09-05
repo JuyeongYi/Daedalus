@@ -66,6 +66,8 @@ _WARN_RULES = frozenset({
     "unknown_skill_files_dir",  # WP-SF
     "skill_dir_token_in_agent",  # WP-SF
     "mid_chain_user_invocable",  # A3
+    "orphan_hook",  # A6 — 프로젝트 훅만(전역은 다른 프로젝트가 쓴다)
+    "skill_only_variable_in_body",  # A6
 })
 
 # validation 패키지 밖(컴파일러 등)에서 emit되지만 WARNING_RULES에는 등록된 규칙 —
