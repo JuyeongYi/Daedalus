@@ -125,7 +125,7 @@ def test_create_rule_shows_in_panel_list(tools):
     api, win, _project = tools
     api.create_rule("testing")
     panel = win._rules_panel
-    assert [panel._list.item(i).text() for i in range(panel._list.count())] == [
+    assert [panel._list.item(i).text(0) for i in range(panel._list.count())] == [
         "testing"
     ]
 

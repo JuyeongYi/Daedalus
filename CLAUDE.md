@@ -272,8 +272,11 @@ daedalus/
     │                       #   _OptionalRow는 **행의 3번째 칸**이고 체크박스·라벨 셀을 소유해 place_in()으로 0·1열에 놓는다 —
     │                       #   값 위젯의 부모는 여전히 _OptionalRow다(호출부·테스트가 widget.parent()로 행을 찾는다). 잠금(WP-EL)은
     │                       #   set_locked()가 세 칸을 함께 끈다(체크박스가 살아 있으면 "켤 수는 있는데 아무 일도 안 일어나는" 상태).
-    │                       # workspace_editor(WP-WD): ClaudeMdPanel(탭 3 — 구역 제목 H1 + 본문) / RulesPanel(탭 4 — 좌 파일 목록
-    │                       #   + 우 "적용 경로" TagInput(A13 paths — ClaudeMdPanel에는 없다)
+    │                       # workspace_editor(WP-WD): ClaudeMdPanel(탭 3 — 구역 제목 H1 + 본문) / RulesPanel(탭 4 — 좌 규칙 목록
+    │                       #   _RuleTree(QTreeWidget — 최상위 행=규칙, 자식 행=적용 경로 흐림 표시, 빈 경로는 이탤릭 "(항상 로드)".
+    │                       #   QListWidget 시절 행 API(count/currentRow/setCurrentRow/item) 호환 유지 — 패널·테스트가 "규칙=행
+    │                       #   인덱스"로 계속 말한다. 경로 자식 클릭은 부모 규칙 선택으로 재매핑, paths 편집은 update_row_paths
+    │                       #   제자리 갱신) + 우 "적용 경로" TagInput(A13 paths — ClaudeMdPanel에는 없다)
     │                       #   (＋/삭제/더블클릭 이름변경) | 우 본문). 둘 다 SectionContentPanel을 재사용하므로 WorkspaceDoc.id 덕에
     │                       #   본문 undo 스택(WP-BU)이 그대로 붙는다. 구조 편집은 모델 직접 기록 + notify(블랙보드 패널과 같은 정책).
     │                       #   변수 삽입 배선의 단일 진실은 body_editor의 make_variable_popup/toggle_variable_popup —

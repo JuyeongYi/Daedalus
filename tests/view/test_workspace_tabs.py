@@ -119,7 +119,7 @@ def test_rules_list_shows_every_rule(qapp, project):
     project.rules = [WorkspaceDoc(name="testing"), WorkspaceDoc(name="api-design")]
     panel = RulesPanel()
     panel.set_project(project)
-    assert [panel._list.item(i).text() for i in range(panel._list.count())] == [
+    assert [panel._list.item(i).text(0) for i in range(panel._list.count())] == [
         "testing", "api-design"
     ]
 
@@ -183,7 +183,7 @@ def test_rename_rule(qapp, project, monkeypatch):
     panel._list.setCurrentRow(0)
     panel._rename_current()
     assert project.rules[0].name == "qa"
-    assert panel._list.item(0).text() == "qa"
+    assert panel._list.item(0).text(0) == "qa"
 
 
 def test_delete_rule_drops_document_cache(qapp, project, monkeypatch):
@@ -370,3 +370,62 @@ def test_variable_selection_inserts_into_claude_md_body(qapp, project):
     panel.set_project(project)
     panel._var_popup.variable_selected.emit("$ARGUMENTS")
     assert project.claude_md.body == "$ARGUMENTS"
+
+
+# ─────────── 규칙 목록 트리 — 적용 경로 표시 (사용자 요청) ───────────
+# 파일 이름만 보이던 목록을 트리로 바꿔, 규칙(최상위 행) 밑에 적용 경로가
+# 자식 행으로 보인다. 빈 경로는 이탤릭 "(항상 로드)".
+
+
+def _path_children(panel, row):
+    item = panel._list.item(row)
+    return [item.child(i).text(0) for i in range(item.childCount())]
+
+
+def test_rule_tree_shows_paths_as_children(qapp, project):
+    project.rules = [
+        WorkspaceDoc(name="ts", paths=["src/**/*.ts", "lib/**"]),
+        WorkspaceDoc(name="always"),
+    ]
+    panel = RulesPanel()
+    panel.set_project(project)
+    assert _path_children(panel, 0) == ["src/**/*.ts", "lib/**"]
+    assert _path_children(panel, 1) == ["(항상 로드)"]
+
+
+def test_rule_tree_children_follow_paths_edit(qapp, project):
+    """적용 경로 TagInput 편집이 목록 트리에 즉시 반영된다."""
+    project.rules = [WorkspaceDoc(name="ts")]
+    panel = RulesPanel()
+    panel.set_project(project)
+    panel._list.setCurrentRow(0)
+    panel._paths.add_tag("src/**")
+    assert project.rules[0].paths == ["src/**"]
+    assert _path_children(panel, 0) == ["src/**"]
+    panel._paths.remove_tag("src/**")
+    assert _path_children(panel, 0) == ["(항상 로드)"]
+
+
+def test_rule_tree_path_child_click_selects_parent_rule(qapp, project):
+    """경로 자식을 클릭해도 선택은 그 규칙(부모)이다 — 편집 대상이 모호해지지 않는다."""
+    project.rules = [
+        WorkspaceDoc(name="a", paths=["x/**"]),
+        WorkspaceDoc(name="b", paths=["y/**"]),
+    ]
+    panel = RulesPanel()
+    panel.set_project(project)
+    child = panel._list.item(1).child(0)
+    panel._list.setCurrentItem(child)
+    assert panel._list.currentRow() == 1
+    assert panel.content_panel()._component is project.rules[1]
+
+
+def test_rule_tree_row_api_matches_listwidget_semantics(qapp, project):
+    """행 단위 API 호환 — 패널·기존 테스트가 '규칙 = 행 인덱스'로 계속 말한다."""
+    project.rules = [WorkspaceDoc(name="a"), WorkspaceDoc(name="b")]
+    panel = RulesPanel()
+    panel.set_project(project)
+    assert panel._list.count() == 2
+    panel._list.setCurrentRow(1)
+    assert panel._list.currentRow() == 1
+    assert panel._list.item(1).text(0) == "b"

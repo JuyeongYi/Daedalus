@@ -16,15 +16,18 @@ from __future__ import annotations
 
 from typing import Callable
 
+from PySide6.QtCore import Signal
+from PySide6.QtGui import QBrush, QColor
 from PySide6.QtWidgets import (
     QFormLayout,
     QHBoxLayout,
     QInputDialog,
     QLabel,
     QLineEdit,
-    QListWidget,
     QMessageBox,
     QPushButton,
+    QTreeWidget,
+    QTreeWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -164,6 +167,105 @@ class ClaudeMdPanel(_WorkspaceDocPanelBase):
         self.notify("content")
 
 
+class _RuleTree(QTreeWidget):
+    """규칙 목록 트리 — 최상위 행이 규칙, 자식 행이 적용 경로(읽기 전용 표시).
+
+    파일 이름만 보이던 QListWidget을 대체한다(사용자 요청 — "적용 경로도 같이
+    보고 싶다"). 표가 아니라 트리인 이유: 목록 폭이 220px라 경로 열은 glob이
+    잘려나가고, 자식 행이면 좁은 폭에서도 줄 단위로 읽힌다.
+
+    QListWidget 시절의 행 단위 API(``count``/``currentRow``/``setCurrentRow``/
+    ``item``)를 유지한다 — 패널과 테스트가 "규칙 = 행 인덱스"로 계속 말한다.
+    경로 자식을 클릭하면 그 규칙(부모)을 선택한 것으로 재매핑한다.
+    """
+
+    current_row_changed = Signal(int)
+    row_double_clicked = Signal(int)
+
+    _PATH_DIM = QColor(128, 128, 128)
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setHeaderHidden(True)
+        self.currentItemChanged.connect(self._on_current_item_changed)
+        self.itemDoubleClicked.connect(self._on_double_clicked)
+
+    # --- 목록 구성 ---
+
+    def set_rules(self, docs: list[WorkspaceDoc]) -> None:
+        self.blockSignals(True)
+        self.clear()
+        for doc in docs:
+            item = QTreeWidgetItem([doc.name])
+            self._fill_paths(item, doc.paths)
+            self.addTopLevelItem(item)
+            item.setExpanded(True)
+        self.blockSignals(False)
+
+    def update_row_paths(self, row: int, paths: list[str]) -> None:
+        """현재 편집 중인 규칙의 경로 자식을 제자리 갱신 (전체 재구성 없이)."""
+        item = self.topLevelItem(row)
+        if item is None:
+            return
+        self.blockSignals(True)
+        self._fill_paths(item, paths)
+        item.setExpanded(True)
+        self.blockSignals(False)
+
+    def _fill_paths(self, item: QTreeWidgetItem, paths: list[str]) -> None:
+        item.takeChildren()
+        if paths:
+            for p in paths:
+                item.addChild(self._path_child(p, italic=False))
+        else:
+            item.addChild(self._path_child("(항상 로드)", italic=True))
+
+    def _path_child(self, text: str, italic: bool) -> QTreeWidgetItem:
+        child = QTreeWidgetItem([text])
+        child.setForeground(0, QBrush(self._PATH_DIM))
+        font = child.font(0)
+        font.setItalic(italic)
+        child.setFont(0, font)
+        return child
+
+    # --- QListWidget 호환 행 API ---
+
+    def count(self) -> int:
+        return self.topLevelItemCount()
+
+    def item(self, row: int) -> QTreeWidgetItem | None:
+        return self.topLevelItem(row)
+
+    def currentRow(self) -> int:
+        item = self.currentItem()
+        if item is None:
+            return -1
+        if item.parent() is not None:
+            item = item.parent()
+        return self.indexOfTopLevelItem(item)
+
+    def setCurrentRow(self, row: int) -> None:
+        if 0 <= row < self.topLevelItemCount():
+            self.setCurrentItem(self.topLevelItem(row))
+
+    # --- 시그널 매핑 ---
+
+    def _on_current_item_changed(self, current, _previous) -> None:
+        if current is None:
+            self.current_row_changed.emit(-1)
+            return
+        parent = current.parent()
+        if parent is not None:
+            # 경로 자식 클릭 = 그 규칙 선택 — 재진입해 부모 경로로 다시 온다.
+            self.setCurrentItem(parent)
+            return
+        self.current_row_changed.emit(self.indexOfTopLevelItem(current))
+
+    def _on_double_clicked(self, item: QTreeWidgetItem, _col: int) -> None:
+        if item.parent() is None:
+            self.row_double_clicked.emit(self.indexOfTopLevelItem(item))
+
+
 class RulesPanel(_WorkspaceDocPanelBase):
     """`.claude/rules/<이름>.md` 편집 — 파일이 여럿이라 선택 목록을 둔다."""
 
@@ -178,9 +280,9 @@ class RulesPanel(_WorkspaceDocPanelBase):
         left_lay = QVBoxLayout(left)
         left_lay.setContentsMargins(10, 6, 6, 6)
         left_lay.addWidget(QLabel("규칙 파일"))
-        self._list = QListWidget()
-        self._list.currentRowChanged.connect(self._on_row_changed)
-        self._list.itemDoubleClicked.connect(lambda _item: self._rename_current())
+        self._list = _RuleTree()
+        self._list.current_row_changed.connect(self._on_row_changed)
+        self._list.row_double_clicked.connect(lambda _row: self._rename_current())
         left_lay.addWidget(self._list, 1)
 
         buttons = QHBoxLayout()
@@ -238,11 +340,7 @@ class RulesPanel(_WorkspaceDocPanelBase):
         return list(self._project.rules) if self._project is not None else []
 
     def _rebuild(self, select: int = 0) -> None:
-        self._list.blockSignals(True)
-        self._list.clear()
-        for doc in self._rules():
-            self._list.addItem(doc.name)
-        self._list.blockSignals(False)
+        self._list.set_rules(self._rules())
         rules = self._rules()
         enabled = self._project is not None
         self._btn_add.setEnabled(enabled)
@@ -279,6 +377,9 @@ class RulesPanel(_WorkspaceDocPanelBase):
         if doc is None:
             return
         doc.paths = self._paths.get_tags()
+        # 목록 트리의 경로 자식도 즉시 따라간다 — 편집과 표시가 어긋나면
+        # "저장 안 됐나?"라는 오해를 부른다.
+        self._list.update_row_paths(self._list.currentRow(), doc.paths)
         self.notify("content")
 
     # --- 구조 편집 ---
