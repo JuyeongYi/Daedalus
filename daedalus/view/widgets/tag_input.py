@@ -7,7 +7,6 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QCompleter,
     QHBoxLayout,
-    QLabel,
     QLineEdit,
     QPushButton,
     QVBoxLayout,
@@ -15,18 +14,52 @@ from PySide6.QtWidgets import (
 )
 
 
+def _make_completer(candidates: list[str], parent: QWidget) -> QCompleter:
+    """TagInput 계열이 공유하는 자동완성 구성 (부분 일치, 대소문자 무시).
+
+    UnfilteredPopupCompletion — 빈 입력에서도 전체 목록이 뜬다
+    (사용자 요청: "아무것도 안 입력하면 아무것도 안 뜬다").
+    타이핑하면 MatchContains로 좁혀진다.
+    """
+    completer = QCompleter(candidates, parent)
+    completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+    completer.setFilterMode(Qt.MatchFlag.MatchContains)
+    completer.setCompletionMode(QCompleter.CompletionMode.UnfilteredPopupCompletion)
+    completer.setMaxVisibleItems(15)
+    return completer
+
+
 class _TagChip(QWidget):
-    """개별 태그 칩 — 이름 + x 버튼."""
+    """개별 태그 칩 — 제자리 편집 가능한 QLineEdit + x 버튼.
+
+    QLabel이었을 때는 오타 하나 고치려면 지우고 다시 타이핑해야 했다
+    (사용자 보고 — 긴 도구 패턴·glob에서 특히 아프다). 편집 확정은
+    ``edit_committed(old, new)``로 알리기만 하고 유효성 판단(빈 값·중복)은
+    TagInput이 한다 — 칩은 자기 형제 태그를 모른다.
+    """
 
     remove_requested = Signal(str)
+    edit_committed = Signal(str, str)  # (old, new) — new가 old와 다를 때만
 
-    def __init__(self, name: str, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        name: str,
+        candidates: list[str] | None = None,
+        parent: QWidget | None = None,
+    ) -> None:
         super().__init__(parent)
         self._name = name
         lay = QHBoxLayout(self)
         lay.setContentsMargins(4, 2, 4, 2)
         lay.setSpacing(2)
-        lay.addWidget(QLabel(name))
+        self._edit = QLineEdit(name)
+        if candidates:
+            self._edit.setCompleter(_make_completer(candidates, self))
+        # editingFinished는 Enter와 포커스 아웃 양쪽에서 온다(연달아 두 번 올 수
+        # 있다). 커밋 후 _name을 갱신하고 되돌림 시 텍스트를 _name으로 복원하므로,
+        # 두 번째 발화는 "텍스트 == _name"이라 자연히 no-op이 된다.
+        self._edit.editingFinished.connect(self._on_editing_finished)
+        lay.addWidget(self._edit)
         btn = QPushButton("x")
         btn.setFixedSize(16, 16)
         btn.clicked.connect(lambda: self.remove_requested.emit(self._name))
@@ -35,6 +68,21 @@ class _TagChip(QWidget):
     @property
     def name(self) -> str:
         return self._name
+
+    def _on_editing_finished(self) -> None:
+        new = self._edit.text().strip()
+        if new == self._name:
+            return
+        self.edit_committed.emit(self._name, new)
+
+    def accept_edit(self, new: str) -> None:
+        """TagInput이 편집을 승인했다 — 이후 x 버튼·재편집이 새 이름 기준."""
+        self._name = new
+        self._edit.setText(new)
+
+    def revert_edit(self) -> None:
+        """빈 값·중복 편집을 되돌린다 (삭제는 x 버튼의 몫)."""
+        self._edit.setText(self._name)
 
 
 class TagInput(QWidget):
@@ -66,21 +114,14 @@ class TagInput(QWidget):
     def set_candidates(self, candidates: list[str]) -> None:
         """자동완성 후보 목록을 부착한다 (부분 일치, 대소문자 무시).
 
-        카탈로그/프로젝트 변화에 맞춰 재호출되면 이전 QCompleter를 교체한다.
+        카탈로그/프로젝트 변화에 맞춰 재호출되면 이전 QCompleter를 교체하고,
+        기존 칩들도 재구성해 같은 후보를 물린다 (칩 편집도 자동완성을 받는다).
         """
         self._candidates = list(candidates)
-        completer = QCompleter(self._candidates, self)
-        completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
-        completer.setFilterMode(Qt.MatchFlag.MatchContains)
-        # UnfilteredPopupCompletion — 빈 입력에서도 전체 목록이 뜬다
-        # (사용자 요청: "아무것도 안 입력하면 아무것도 안 뜬다").
-        # 타이핑하면 MatchContains로 좁혀진다.
-        completer.setCompletionMode(
-            QCompleter.CompletionMode.UnfilteredPopupCompletion
-        )
-        completer.setMaxVisibleItems(15)
+        completer = _make_completer(self._candidates, self)
         self._input.setCompleter(completer)
         self._completer = completer
+        self._rebuild()
 
     def get_candidates(self) -> list[str]:
         return list(self._candidates)
@@ -112,16 +153,43 @@ class TagInput(QWidget):
             self.add_tag(text)
             self._input.clear()
 
+    def _on_chip_edited(self, chip: _TagChip, old: str, new: str) -> None:
+        """칩 제자리 편집의 유효성 판정 — 빈 값·중복은 되돌린다.
+
+        빈 값을 삭제로 해석하지 않는 이유: 삭제는 x 버튼이라는 명시 경로가
+        따로 있고, 포커스 아웃으로도 커밋되는 편집에서 지우다 만 값이
+        조용히 태그를 없애면 사고다.
+        """
+        if not new or new in self._tags:
+            chip.revert_edit()
+            return
+        try:
+            idx = self._tags.index(old)
+        except ValueError:
+            chip.revert_edit()
+            return
+        self._tags[idx] = new
+        chip.accept_edit(new)
+        self.tags_changed.emit()
+
     def _rebuild(self) -> None:
         while self._chips_layout.count() > 1:
             child = self._chips_layout.takeAt(0)
             if child is not None:
                 w = child.widget()
                 if w is not None:
+                    # hide 후 부모 분리 — deleteLater만 하면 이벤트 루프가 돌기
+                    # 전까지 자식으로 남아 findChildren류 순회가 죽은 칩을 잡는다.
+                    # hide를 먼저 해야 최상위 창 깜빡임이 없다(hook_panel 관례).
+                    w.hide()
+                    w.setParent(None)
                     w.deleteLater()
         for tag in self._tags:
-            chip = _TagChip(tag)
+            chip = _TagChip(tag, candidates=self._candidates)
             chip.remove_requested.connect(self.remove_tag)
+            chip.edit_committed.connect(
+                lambda old, new, c=chip: self._on_chip_edited(c, old, new)
+            )
             self._chips_layout.insertWidget(self._chips_layout.count() - 1, chip)
 
 

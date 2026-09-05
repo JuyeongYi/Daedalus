@@ -130,3 +130,103 @@ def test_hook_names_feed_the_hooks_taginput_candidates(qapp):
         assert widget.get_candidates() == ["lint", "fmt"]
     finally:
         set_hook_name_provider(None)
+
+
+# 칩 제자리 편집 — QLabel → QLineEdit 전환 (사용자 요청: "이미 추가된 거
+# 수정하기 어렵다"). 편집 커밋은 editingFinished(Enter/포커스 아웃)이고,
+# 유효성 판정(빈 값·중복 → 되돌림)은 TagInput이 한다.
+
+
+def _chips(w):
+    from daedalus.view.widgets.tag_input import _TagChip
+    return [c for c in w._chips_widget.findChildren(_TagChip)]
+
+
+def _chip_named(w, name):
+    return next(c for c in _chips(w) if c.name == name)
+
+
+def test_chip_edit_commits_in_place(qapp):
+    from daedalus.view.widgets.tag_input import TagInput
+    w = TagInput()
+    w.set_tags(["Read", "Grep", "Bash"])
+    called = []
+    w.tags_changed.connect(lambda: called.append(1))
+
+    chip = _chip_named(w, "Grep")
+    chip._edit.setText("Glob")
+    chip._edit.editingFinished.emit()
+
+    assert w.get_tags() == ["Read", "Glob", "Bash"]  # 순서 보존
+    assert chip.name == "Glob"
+    assert len(called) == 1
+
+
+def test_chip_edit_empty_reverts(qapp):
+    """빈 값은 삭제가 아니라 되돌림 — 삭제는 x 버튼의 몫."""
+    from daedalus.view.widgets.tag_input import TagInput
+    w = TagInput()
+    w.set_tags(["Read"])
+    chip = _chip_named(w, "Read")
+    chip._edit.setText("   ")
+    chip._edit.editingFinished.emit()
+    assert w.get_tags() == ["Read"]
+    assert chip._edit.text() == "Read"
+
+
+def test_chip_edit_duplicate_reverts(qapp):
+    from daedalus.view.widgets.tag_input import TagInput
+    w = TagInput()
+    w.set_tags(["Read", "Grep"])
+    chip = _chip_named(w, "Grep")
+    chip._edit.setText("Read")
+    chip._edit.editingFinished.emit()
+    assert w.get_tags() == ["Read", "Grep"]
+    assert chip._edit.text() == "Grep"
+
+
+def test_chip_edit_unchanged_is_noop(qapp):
+    """editingFinished가 Enter+포커스 아웃으로 연달아 와도 신호가 중복되지 않는다."""
+    from daedalus.view.widgets.tag_input import TagInput
+    w = TagInput()
+    w.set_tags(["Read"])
+    called = []
+    w.tags_changed.connect(lambda: called.append(1))
+    chip = _chip_named(w, "Read")
+    chip._edit.editingFinished.emit()
+    assert called == []
+
+
+def test_chip_edit_then_remove_uses_new_name(qapp):
+    """편집 후 x 버튼이 옛 이름을 지우려다 실패하면 안 된다."""
+    from daedalus.view.widgets.tag_input import TagInput
+    w = TagInput()
+    w.set_tags(["Read", "Grep"])
+    chip = _chip_named(w, "Grep")
+    chip._edit.setText("Glob")
+    chip._edit.editingFinished.emit()
+    chip.remove_requested.emit(chip.name)
+    assert w.get_tags() == ["Read"]
+
+
+def test_chip_gets_completer_from_candidates(qapp):
+    """칩 편집도 상단 입력과 같은 자동완성 후보를 받는다."""
+    from daedalus.view.widgets.tag_input import TagInput
+    w = TagInput()
+    w.set_candidates(["Read", "Bash(git *)"])
+    w.set_tags(["Read"])
+    chip = _chip_named(w, "Read")
+    completer = chip._edit.completer()
+    assert completer is not None
+    completer.setCompletionPrefix("bash")
+    assert completer.completionCount() == 1
+
+
+def test_set_candidates_refreshes_existing_chips(qapp):
+    """태그가 먼저 있고 후보가 나중에 와도 칩이 자동완성을 받는다."""
+    from daedalus.view.widgets.tag_input import TagInput
+    w = TagInput()
+    w.set_tags(["Read"])
+    w.set_candidates(["Read", "Write"])
+    chip = _chip_named(w, "Read")
+    assert chip._edit.completer() is not None

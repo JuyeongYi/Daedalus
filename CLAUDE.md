@@ -324,7 +324,8 @@ daedalus/
                             #   TocPanel(QTreeWidget — ATX 헤딩을 레벨별로 계층화, 코드 펜스 내부는 MarkdownHighlighter._STATE_CODE_FENCE
                             #   블록 상태로 판별해 제외. textChanged마다 300ms 디바운스(QTimer) 후 재파싱, 구조 불변 시 트리 재구성 생략.
                             #   클릭 시 setTextCursor+centerCursor로 점프. refresh()로 디바운스 우회 즉시 재파싱 — 문서 전환용)
-                            #   TagInput(WP-TM): set_candidates(list[str])로 QCompleter(부분 일치·대소문자 무시) 부착. 모듈 수준
+                            #   TagInput(WP-TM): set_candidates(list[str])로 QCompleter(부분 일치·대소문자 무시) 부착. 칩은 QLineEdit라
+                            #   **제자리 편집 가능**(editingFinished 커밋, 빈 값·중복은 되돌림 — 삭제는 x 버튼만. 칩 편집에도 같은 completer). 모듈 수준
                             #   provider 3쌍(tool/blackboard/hook_name)이 동적 후보를 주입한다 — 전부 같은 패턴이고 **후보는 위젯
                             #   생성 시점 스냅샷**이다(라이브러리가 바뀌어도 열려 있는 위젯은 갱신되지 않는다. 이름은 자유 입력이라
                             #   목록에 없어도 넣을 수 있고, 탭을 다시 열면 새 후보가 붙는다).
