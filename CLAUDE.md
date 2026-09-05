@@ -86,6 +86,10 @@ daedalus/
 │   ├── outline.py           # 본문 아웃라인(WP-BO) — body 마크다운의 파생 인덱스. parse_outline(fence-aware 헤딩 파서)/
 │   │                       #   find_section(제목·"## 제목" 레벨 지정·"부모 > 자식" 경로, 0개·복수 매칭 ValueError)/
 │   │                       #   section_text/char_span/replacement_text/replace_section(비교체 구간 바이트 보존). Qt 무관 순수 stdlib.
+│   ├── templates.py         # 시작 템플릿 카탈로그(A7) — 아키타입 3종의 id/제목/요약(TEMPLATES) +
+│   │                       #   list_templates/find_template/load_template(TemplateError). 실제 시드는
+│   │                       #   `daedalus/templates/<id>.json`(serialize 산출 format 2)이고 로드는 기존
+│   │                       #   deserialize_project를 그대로 탄다 — 전용 파서 없음. Qt 무관 순수 stdlib.
 │   ├── serialize/           # 모델↔JSON dict 직렬화 (안정 ID 기반, format 2). 구 serialize.py(1,437줄)를 WP-SZ로
 │   │   │                   #   패키지 분해(이동만·동작 불변). 의존 방향 ser ← migrate ← deser_fsm ← deser_plugin ← deser 단방향(순환 없음)
 │   │   ├── __init__.py     #   재-export 파사드 — 분해 전 모듈의 모든 속성(public + 테스트가 쓰는 _ser_tool/_deser_tool
@@ -166,6 +170,9 @@ daedalus/
 │   │                       #     set_rule_body/set_rule_paths(A13)/rename_rule/delete_rule. 본문은 BodyTools와 같은
 │   │                       #     QTextDocument 경로(WP-BU), 구조 편집은 GUI 패널과 같은 모델 직접 기록.
 │   └── service.py          # DaedalusMCPService — MCPServer 구성(_server_factory가 mcp 1.x/2.x 흡수) + uvicorn 데몬 스레드 수명주기
+├── templates/        # 시작 템플릿 시드 파일(A7) — `<id>.json` 3개. **손으로 쓴 JSON이 아니라
+│                     #   serialize_project의 산출(format 2)**이고 model/templates.py가 읽는다.
+│                     #   패키지 데이터라 pyproject의 [tool.setuptools.package-data]에 등재돼 있다.
 ├── cli/              # 블랙보드 CLI (WP-RF-2 신설 → WP-BB1 구현) — C+A 설계: uv tool install로 앱과 함께 설치되고,
 │   │                 #   컴파일 산출의 블랙보드 지시가 런타임에 이 CLI를 호출해 work 폴더의 state/를 읽고 쓴다.
 │   │                 #   core 경계 소속 — Qt·view·MCP SDK·uvicorn 금지 + **daedalus.model도 금지**(순수 stdlib).
@@ -221,6 +228,8 @@ daedalus/
     │                       # 프로젝트 생성/속성: new_project(빈 프로젝트 + 빌드 타깃 프롬프트)/prompt_build_target/edit_project_properties
     │                       #   → ProjectPropertiesDialog(name/description/version + emit_progress_hook 체크박스, 이름 규약 미강제).
     │                       #   project_has_content("새 프로젝트" 확인과 MCP open_project의 저장 강제가 공유하는 단일 판정).
+    │                       #   new_project_from_template(A7): File→"템플릿에서 새 프로젝트…" — 별도 메뉴 항목이라 Ctrl+N 흐름은
+    │                       #   불변이다(템플릿이 자기 빌드 타깃을 선언하므로 타깃을 묻지 않는다). 로드 후 _mark_dirty().
     ├── compile_actions.py  # CompileActions(window) — Ctrl+B 컴파일 (WP-RF-3e에서 추출).
     │                       #   compile_project_dialog: 출력 폴더 선택(LOCAL이면 "설치 대상 작업 폴더" — WP-MW) + _current_path 기준
     │                       #   files_dir/skill_files_dir를 compile_project에 전달(미저장이면 None). 에러면 window._show_validation_dock().
@@ -1334,6 +1343,39 @@ CC의 구조는 **3단**이다: 이벤트 → 그룹(matcher + 핸들러 목록)
 - **테스트 격리:** 루트 `tests/conftest.py`의 autouse 픽스처가 `global_hooks_dir`를
   tmp 경로로 바꾼다 — 실제 홈을 읽으면 개발자가 거기 둔 훅에 따라 결과가 달라져
   그 사람의 머신에서만 통과하거나 실패하는 테스트가 된다.
+
+### 시작 템플릿 (A7)
+
+빈 캔버스에서 시작하면 단순한 플러그인 하나에도 노드·포트·진행 상태 규칙을 전부
+손으로 놓아야 한다("배보다 배꼽"). 아키타입 3종을 시드로 두고 그 위에서 시작한다.
+
+| id | 아키타입 | 담고 있는 것 |
+|----|----------|--------------|
+| `implementation-review` | 구현 → 리뷰 파이프라인 | 에이전트 2(implementer/reviewer) + 블랙보드 2클래스 + 리뷰 반려 루프 |
+| `research-pipeline` | 리서치 파이프라인 | 병렬 조사 에이전트 1 + 블랙보드 3클래스 + 합성·전달 스킬 |
+| `single-skill-reference` | 단일 스킬 + 참조 문서 | 사용자 호출 스킬 1 + ReferenceSkill(참조 노드 연결) + DeclarativeSkill |
+
+- **파일은 `serialize_project`의 산출(format 2)이고 로드는 `deserialize_project`를
+  그대로 탄다.** 전용 파서를 두면 정본 직렬화기와 어긋나는 순간(필드 추가·
+  마이그레이션) 템플릿만 조용히 낡는다 — 같은 경로를 타므로 마이그레이션도 공짜다.
+  파일 생성은 모델로 프로젝트를 조립해 직렬화한 결과를 커밋한 것이다.
+- **표시 문구(제목·요약)는 파일이 아니라 `model/templates.py`에 있다.** 파일에
+  사이드카 키를 섞으면 로드 경로가 특수해진다. id = 파일 stem이 이름의 단일 진실
+  (전역 훅 저장소 A1과 같은 규약).
+- **본문·설명·포트 description은 영어**다(A12) — 컴파일 산출로 **그대로** 나가는
+  사용자 값의 출발점이기 때문이다. 이름·설명은 사용자가 갈아끼울 플레이스홀더이고,
+  프로젝트 이름은 Ctrl+N과 같은 `new-plugin`이다.
+- **노출은 File 메뉴의 별도 항목**("템플릿에서 새 프로젝트…", Ctrl+N 바로 아래).
+  새 프로젝트 다이얼로그에 얹지 않은 이유: 빈 프로젝트의 빌드 타깃은 생성 시점에
+  물어야 하지만(WP-TG) **템플릿은 자기 타깃을 이미 선언**하고 있어, 한 흐름에 넣으면
+  "고른 템플릿의 타깃"과 "고른 타깃"이 충돌하고 취소 의미도 두 겹이 된다. **기존
+  Ctrl+N 흐름은 한 줄도 바뀌지 않았다**(`test_ctrl_n_flow_unchanged`가 고정).
+- 로드 후 **미저장 변경으로 표시**한다(`_mark_dirty`) — 빈 프로젝트와 달리 잃을
+  내용이 있고 저장 경로는 아직 없다.
+- **템플릿은 열자마자 F7 에러 0이어야 한다.** `tests/model/test_templates.py`가
+  에러 0 + **경고 개수 스냅샷**(현재 전부 0) + 컴파일 게이트 통과 + 본문 한글 부재 +
+  아키타입 형상(루프·포트·참조 배치)을 고정한다. 카탈로그 id 집합과 디스크 파일
+  stem 집합이 어긋나도 빨강이다("메뉴에 있는데 안 열린다"의 사전 차단).
 
 ### 프로젝트 패키지 — 폴더가 곧 프로젝트 (WP-PK)
 

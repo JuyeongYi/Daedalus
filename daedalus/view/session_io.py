@@ -231,6 +231,59 @@ class SessionIO:
         self.sync_files_root()
         w._status_label.setText("새 프로젝트")
 
+    def new_project_from_template(self) -> None:
+        """"템플릿에서 새 프로젝트…" — 아키타입 시드로 시작한다 (A7).
+
+        **Ctrl+N 흐름과 별도 메뉴 항목으로 둔다.** 빈 프로젝트의 빌드 타깃은
+        생성 시점에 물어야 알 수 있지만(WP-TG), 템플릿은 자기 타깃을 이미
+        선언하고 있다 — 같은 다이얼로그에 얹으면 "고른 템플릿의 타깃"과
+        "고른 타깃"이 충돌하고, 취소 의미(타깃 취소 = 생성 취소)도 두 겹이
+        된다. 기존 Ctrl+N은 손대지 않는다.
+
+        로드 후 **미저장 변경으로 표시**한다 — 빈 프로젝트와 달리 여기엔
+        잃을 내용이 있고, 저장 경로는 아직 없다(A7 확인 다이얼로그가 받는다).
+        """
+        from daedalus.model import templates
+
+        w = self._w
+        if w._project is not None and w.project_has_content():
+            reply = QMessageBox.question(
+                w,
+                "템플릿에서 새 프로젝트",
+                "저장하지 않은 변경이 사라질 수 있습니다.\n계속하시겠습니까?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                return
+
+        catalogue = templates.list_templates()
+        labels = [f"{t.title} — {t.summary}" for t in catalogue]
+        choice, ok = QInputDialog.getItem(
+            w, "템플릿에서 새 프로젝트", "시작 템플릿을 선택하세요:", labels, 0, False,
+        )
+        if not ok:
+            return
+        template = catalogue[labels.index(choice)]
+
+        deser_warnings: list[str] = []
+        try:
+            project = templates.load_template(
+                template.id, collect_warnings=deser_warnings
+            )
+        except templates.TemplateError as exc:
+            w._status_label.setText(f"템플릿 열기 실패: {exc}")
+            return
+
+        w.load_project(project)
+        w._current_path = None
+        w._mark_dirty()
+        self.update_title()
+        self.sync_files_root()
+        w._status_label.setText(
+            f"새 프로젝트 — {template.title} 템플릿 (아직 저장되지 않음)"
+        )
+
     def prompt_build_target(self) -> BuildTarget | None:
         """새 프로젝트 생성 시 빌드 타깃을 고르게 한다. 취소 시 None(WP-TG)."""
         from daedalus.view.editors.project_properties import BUILD_TARGET_LABELS

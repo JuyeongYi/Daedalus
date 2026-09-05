@@ -27,5 +27,10 @@ dev = ["pytest>=8.0"]
 [tool.setuptools.packages.find]
 include = ["daedalus*"]
 
+# 시작 템플릿(A7)은 .py가 아니라 데이터 파일이라 명시하지 않으면 휠에서 빠진다 —
+# 그러면 설치본에서만 "템플릿에서 새 프로젝트"가 조용히 실패한다.
+[tool.setuptools.package-data]
+daedalus = ["templates/*.json"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]

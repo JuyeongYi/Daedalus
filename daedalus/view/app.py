@@ -238,6 +238,11 @@ class MainWindow(QMainWindow):
             new_action.triggered.connect(self._new_project)
             file_menu.addAction(new_action)
 
+            template_action = QAction("템플릿에서 새 프로젝트…", self)
+            template_action.setToolTip("아키타입 시드로 시작한다 (빌드 타깃은 템플릿이 정한다)")
+            template_action.triggered.connect(self._new_project_from_template)
+            file_menu.addAction(template_action)
+
             file_menu.addSeparator()
 
             open_action = QAction("폴더 열기", self)
@@ -557,6 +562,9 @@ class MainWindow(QMainWindow):
 
     def _new_project(self) -> None:
         self._session_io.new_project()
+
+    def _new_project_from_template(self) -> None:
+        self._session_io.new_project_from_template()
 
     def _prompt_build_target(self) -> BuildTarget | None:
         return self._session_io.prompt_build_target()

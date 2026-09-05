@@ -1,0 +1,803 @@
+{
+  "format": 2,
+  "name": "new-plugin",
+  "description": "Placeholder: an implement-then-review pipeline with two subagents.",
+  "version": "0.1.0",
+  "skills": [
+    {
+      "kind": "procedural_skill",
+      "id": "def4311b9fcd471bb8b668784e2e826c",
+      "name": "plan-task",
+      "description": "Placeholder: turn a request into a written task spec before any code is touched.",
+      "when_to_use": "",
+      "body": "Write the task spec before anything is implemented. A spec that nobody\ncan check is not a spec.\n\n1. Restate the request in one sentence. If you cannot, ask the user instead of guessing.\n2. List the acceptance criteria as observable checks (a command that passes, a\n   file that exists, a behaviour that changed). Vague criteria produce vague reviews.\n3. List what is explicitly out of scope. This is what stops the implementer from\n   wandering.\n4. Record the spec in the `TaskSpec` blackboard class, then hand off.\n\nDo not start implementing here. This step only produces the spec.",
+      "config": {
+        "kind": "procedural",
+        "model": "inherit",
+        "effort": null,
+        "hooks": null,
+        "argument_hint": null,
+        "allowed_tools": [],
+        "paths": null,
+        "disable_model_invocation": false,
+        "user_invocable": true,
+        "context": "inline",
+        "agent": null,
+        "shell": "bash"
+      },
+      "fsm": {
+        "id": "570c0a3abd324b8d92859a8bbe66ad67",
+        "name": "plan-task_fsm",
+        "states": [
+          {
+            "kind": "simple",
+            "id": "4d5550c7d204453b9c4f81c8f0e78aee",
+            "name": "start",
+            "on_entry_start": [],
+            "on_entry": [],
+            "on_entry_end": [],
+            "on_exit_start": [],
+            "on_exit": [],
+            "on_exit_end": [],
+            "on_active": [],
+            "custom_events": {},
+            "inputs": [],
+            "outputs": [],
+            "reads": [],
+            "writes": [],
+            "skill_ref": null
+          }
+        ],
+        "transitions": [],
+        "initial_state": "4d5550c7d204453b9c4f81c8f0e78aee",
+        "final_states": [],
+        "blackboard": {
+          "class_definitions": [],
+          "variables": {}
+        }
+      },
+      "transfer_on": [
+        {
+          "name": "planned",
+          "color": "#4488ff",
+          "description": "The task spec is written to the blackboard and ready to implement."
+        }
+      ],
+      "call_agents": []
+    },
+    {
+      "kind": "procedural_skill",
+      "id": "b95c44cd77194c469b021432bb55ff5d",
+      "name": "run-implementation",
+      "description": "Placeholder: delegate the task spec to the implementer subagent.",
+      "when_to_use": "",
+      "body": "Delegate the work in `TaskSpec` to the implementer subagent.\n\n- Read `TaskSpec` first. If it is missing or has no acceptance criteria, go back\n  and write it — delegating an unwritten spec wastes a whole round.\n- If `ReviewFindings` exists, this is a follow-up round: pass the blocking items\n  along and tell the implementer to address those first.\n- Delegate once. Do not implement the change yourself in this context; that is\n  what the subagent is for.",
+      "config": {
+        "kind": "procedural",
+        "model": "inherit",
+        "effort": null,
+        "hooks": null,
+        "argument_hint": null,
+        "allowed_tools": [],
+        "paths": null,
+        "disable_model_invocation": null,
+        "user_invocable": false,
+        "context": "inline",
+        "agent": null,
+        "shell": "bash"
+      },
+      "fsm": {
+        "id": "a867b5fcb2e1442f9f3579a747cd05c9",
+        "name": "run-implementation_fsm",
+        "states": [
+          {
+            "kind": "simple",
+            "id": "215e419d46c3401ba0c04474a3716061",
+            "name": "start",
+            "on_entry_start": [],
+            "on_entry": [],
+            "on_entry_end": [],
+            "on_exit_start": [],
+            "on_exit": [],
+            "on_exit_end": [],
+            "on_active": [],
+            "custom_events": {},
+            "inputs": [],
+            "outputs": [],
+            "reads": [],
+            "writes": [],
+            "skill_ref": null
+          }
+        ],
+        "transitions": [],
+        "initial_state": "215e419d46c3401ba0c04474a3716061",
+        "final_states": [],
+        "blackboard": {
+          "class_definitions": [],
+          "variables": {}
+        }
+      },
+      "transfer_on": [
+        {
+          "name": "delegated",
+          "color": "#4488ff",
+          "description": "Delegation is done; the workflow continues from the subagent's own outcome."
+        }
+      ],
+      "call_agents": [
+        {
+          "name": "implement",
+          "color": "#4488ff",
+          "description": "Hand the task spec (and any blocking review findings) to the implementer."
+        }
+      ]
+    },
+    {
+      "kind": "procedural_skill",
+      "id": "c69629e0cead4ae88e05f8980bfbd763",
+      "name": "run-review",
+      "description": "Placeholder: delegate the finished change to the reviewer subagent.",
+      "when_to_use": "",
+      "body": "Delegate the finished change to the reviewer subagent.\n\n- The reviewer works from `TaskSpec`, so do not restate it. Point at what changed.\n- Do not review the change yourself here — a second opinion in the same context\n  is the same opinion.",
+      "config": {
+        "kind": "procedural",
+        "model": "inherit",
+        "effort": null,
+        "hooks": null,
+        "argument_hint": null,
+        "allowed_tools": [],
+        "paths": null,
+        "disable_model_invocation": null,
+        "user_invocable": false,
+        "context": "inline",
+        "agent": null,
+        "shell": "bash"
+      },
+      "fsm": {
+        "id": "eefc4c6a70f249a1a520e4b278ab1934",
+        "name": "run-review_fsm",
+        "states": [
+          {
+            "kind": "simple",
+            "id": "a7c202a61c684590a0d7264daae3c2af",
+            "name": "start",
+            "on_entry_start": [],
+            "on_entry": [],
+            "on_entry_end": [],
+            "on_exit_start": [],
+            "on_exit": [],
+            "on_exit_end": [],
+            "on_active": [],
+            "custom_events": {},
+            "inputs": [],
+            "outputs": [],
+            "reads": [],
+            "writes": [],
+            "skill_ref": null
+          }
+        ],
+        "transitions": [],
+        "initial_state": "a7c202a61c684590a0d7264daae3c2af",
+        "final_states": [],
+        "blackboard": {
+          "class_definitions": [],
+          "variables": {}
+        }
+      },
+      "transfer_on": [
+        {
+          "name": "delegated",
+          "color": "#4488ff",
+          "description": "Delegation is done; the workflow continues from the subagent's own outcome."
+        }
+      ],
+      "call_agents": [
+        {
+          "name": "review",
+          "color": "#4488ff",
+          "description": "Hand the finished change to the reviewer, together with the task spec."
+        }
+      ]
+    },
+    {
+      "kind": "procedural_skill",
+      "id": "1d400cf8c464414081bb9c75d1707e5d",
+      "name": "report-outcome",
+      "description": "Placeholder: close the loop with a short report for the user.",
+      "when_to_use": "",
+      "body": "Close the loop.\n\n- Say what was built, in the user's terms, and which acceptance criteria were met.\n- If the run ended blocked or with findings still open, say that first — the\n  headline is the outcome, not the effort.\n- Point at the files that changed. Do not paste the whole diff.",
+      "config": {
+        "kind": "procedural",
+        "model": "inherit",
+        "effort": null,
+        "hooks": null,
+        "argument_hint": null,
+        "allowed_tools": [],
+        "paths": null,
+        "disable_model_invocation": null,
+        "user_invocable": false,
+        "context": "inline",
+        "agent": null,
+        "shell": "bash"
+      },
+      "fsm": {
+        "id": "4fecf6d219e54e7b8a8b4df2200dc3fc",
+        "name": "report-outcome_fsm",
+        "states": [
+          {
+            "kind": "simple",
+            "id": "92559133cd4446ccac6514a126c9a196",
+            "name": "start",
+            "on_entry_start": [],
+            "on_entry": [],
+            "on_entry_end": [],
+            "on_exit_start": [],
+            "on_exit": [],
+            "on_exit_end": [],
+            "on_active": [],
+            "custom_events": {},
+            "inputs": [],
+            "outputs": [],
+            "reads": [],
+            "writes": [],
+            "skill_ref": null
+          }
+        ],
+        "transitions": [],
+        "initial_state": "92559133cd4446ccac6514a126c9a196",
+        "final_states": [],
+        "blackboard": {
+          "class_definitions": [],
+          "variables": {}
+        }
+      },
+      "transfer_on": [
+        {
+          "name": "done",
+          "color": "#4488ff",
+          "description": "The run is finished."
+        }
+      ],
+      "call_agents": []
+    }
+  ],
+  "agents": [
+    {
+      "kind": "agent",
+      "id": "b29a28b33ffd4809848561832c2e0f66",
+      "name": "implementer",
+      "description": "Placeholder: makes the change described by the task spec.",
+      "fsm": {
+        "id": "b2f6ce492d5e47ce9fe3b8dc50ed6b25",
+        "name": "implementer_fsm",
+        "states": [
+          {
+            "kind": "entry_point",
+            "id": "127bfa076c064f5da93b4edb6f3fadfe",
+            "name": "entry",
+            "on_entry_start": [],
+            "on_entry": [],
+            "on_entry_end": [],
+            "on_exit_start": [],
+            "on_exit": [],
+            "on_exit_end": [],
+            "on_active": [],
+            "custom_events": {},
+            "inputs": [],
+            "outputs": [],
+            "reads": [],
+            "writes": []
+          }
+        ],
+        "transitions": [],
+        "initial_state": "127bfa076c064f5da93b4edb6f3fadfe",
+        "final_states": [],
+        "blackboard": {
+          "class_definitions": [],
+          "variables": {}
+        }
+      },
+      "config": {
+        "kind": "agent",
+        "model": "inherit",
+        "effort": null,
+        "hooks": null,
+        "tools": null,
+        "disallowed_tools": null,
+        "permission_mode": "default",
+        "max_turns": null,
+        "skills": [],
+        "mcp_servers": null,
+        "memory": null,
+        "background": false,
+        "isolation": "none",
+        "color": null
+      },
+      "execution_policy": {
+        "mode": "fixed",
+        "count": 1,
+        "join": "all",
+        "join_count": null
+      },
+      "body": "You implement exactly what `TaskSpec` describes — no more.\n\n1. Read `TaskSpec`. If `ReviewFindings` exists, read it too and treat its\n   blocking items as part of the spec.\n2. Make the change. Keep it as small as the acceptance criteria allow.\n3. Run whatever check the acceptance criteria name. If there is none you can run,\n   say so plainly rather than claiming success.\n4. Report what you changed, file by file, and which criteria you verified.\n\nIf the spec cannot be satisfied as written — it contradicts the codebase, or a\nprerequisite is missing — stop and exit through `blocked` with the reason. A\nhalf-finished change reported as done is worse than an honest block.",
+      "reference_placements": [],
+      "graph_layout": {},
+      "edge_layout": {},
+      "transfer_on": [
+        {
+          "name": "implemented",
+          "color": "#4488ff",
+          "description": "The change is in place and the checks were run."
+        },
+        {
+          "name": "blocked",
+          "color": "#dd7744",
+          "description": "The spec cannot be satisfied as written."
+        }
+      ]
+    },
+    {
+      "kind": "agent",
+      "id": "abf0cfd9d4794b788d35c373652bfd02",
+      "name": "reviewer",
+      "description": "Placeholder: judges the change against the acceptance criteria.",
+      "fsm": {
+        "id": "a53fc58bde4b4527ad81e5a59fdffa08",
+        "name": "reviewer_fsm",
+        "states": [
+          {
+            "kind": "entry_point",
+            "id": "04a8f7ff881448a1ba722d6dac009873",
+            "name": "entry",
+            "on_entry_start": [],
+            "on_entry": [],
+            "on_entry_end": [],
+            "on_exit_start": [],
+            "on_exit": [],
+            "on_exit_end": [],
+            "on_active": [],
+            "custom_events": {},
+            "inputs": [],
+            "outputs": [],
+            "reads": [],
+            "writes": []
+          }
+        ],
+        "transitions": [],
+        "initial_state": "04a8f7ff881448a1ba722d6dac009873",
+        "final_states": [],
+        "blackboard": {
+          "class_definitions": [],
+          "variables": {}
+        }
+      },
+      "config": {
+        "kind": "agent",
+        "model": "inherit",
+        "effort": null,
+        "hooks": null,
+        "tools": null,
+        "disallowed_tools": null,
+        "permission_mode": "default",
+        "max_turns": null,
+        "skills": [],
+        "mcp_servers": null,
+        "memory": null,
+        "background": false,
+        "isolation": "none",
+        "color": null
+      },
+      "execution_policy": {
+        "mode": "fixed",
+        "count": 1,
+        "join": "all",
+        "join_count": null
+      },
+      "body": "You review the change against `TaskSpec` and nothing else.\n\n1. Read `TaskSpec`. The acceptance criteria are the standard; your taste is not.\n2. Inspect the change. Separate what is *wrong* (blocking) from what you would\n   *prefer* (suggestion). Only blocking items may hold up approval.\n3. Write `ReviewFindings`: `verdict`, the blocking items, the suggestions, and\n   the round number (increment it if findings already exist).\n4. Exit through `approved` only when there are no blocking items left.\n\nDo not fix the code yourself. Reviewing and implementing in one pass loses the\nindependent check that this step exists for.",
+      "reference_placements": [],
+      "graph_layout": {},
+      "edge_layout": {},
+      "transfer_on": [
+        {
+          "name": "approved",
+          "color": "#44aa66",
+          "description": "No blocking findings — the change meets the spec."
+        },
+        {
+          "name": "changes-requested",
+          "color": "#dd7744",
+          "description": "Blocking findings were recorded; another implementation round is needed."
+        }
+      ]
+    }
+  ],
+  "reference_placements": [],
+  "tool_shelf": [],
+  "hook_library": [],
+  "blackboard": {
+    "class_definitions": [
+      {
+        "name": "TaskSpec",
+        "description": "What is being built, and what counts as done.",
+        "fields": [
+          {
+            "name": "title",
+            "field_type": "string",
+            "collection": "none",
+            "default": null,
+            "required": true
+          },
+          {
+            "name": "goal",
+            "field_type": "string",
+            "collection": "none",
+            "default": null,
+            "required": true
+          },
+          {
+            "name": "acceptance_criteria",
+            "field_type": "string",
+            "collection": "list",
+            "default": null,
+            "required": true
+          },
+          {
+            "name": "out_of_scope",
+            "field_type": "string",
+            "collection": "list",
+            "default": null,
+            "required": false
+          }
+        ]
+      },
+      {
+        "name": "ReviewFindings",
+        "description": "What the reviewer concluded about the current attempt.",
+        "fields": [
+          {
+            "name": "verdict",
+            "field_type": "string",
+            "collection": "none",
+            "default": "changes-requested",
+            "required": true
+          },
+          {
+            "name": "blocking",
+            "field_type": "string",
+            "collection": "list",
+            "default": null,
+            "required": false
+          },
+          {
+            "name": "suggestions",
+            "field_type": "string",
+            "collection": "list",
+            "default": null,
+            "required": false
+          },
+          {
+            "name": "round",
+            "field_type": "int",
+            "collection": "none",
+            "default": 1,
+            "required": true
+          }
+        ]
+      }
+    ],
+    "variables": {}
+  },
+  "graph": {
+    "id": "4a63c7bf595f43bf9c3efe85b665106a",
+    "name": "project_graph",
+    "states": [
+      {
+        "kind": "entry_point",
+        "id": "d4449f6013fa4578b3b94665c77caeba",
+        "name": "start",
+        "on_entry_start": [],
+        "on_entry": [],
+        "on_entry_end": [],
+        "on_exit_start": [],
+        "on_exit": [],
+        "on_exit_end": [],
+        "on_active": [],
+        "custom_events": {},
+        "inputs": [],
+        "outputs": [],
+        "reads": [],
+        "writes": []
+      },
+      {
+        "kind": "simple",
+        "id": "09af1e14a1a34eb9b6e912643f48b7e7",
+        "name": "plan-task",
+        "on_entry_start": [],
+        "on_entry": [],
+        "on_entry_end": [],
+        "on_exit_start": [],
+        "on_exit": [],
+        "on_exit_end": [],
+        "on_active": [],
+        "custom_events": {},
+        "inputs": [],
+        "outputs": [],
+        "reads": [],
+        "writes": [
+          "TaskSpec"
+        ],
+        "skill_ref": "def4311b9fcd471bb8b668784e2e826c"
+      },
+      {
+        "kind": "simple",
+        "id": "bc46be2ffdf0448ab5cf9210a1a3d283",
+        "name": "run-implementation",
+        "on_entry_start": [],
+        "on_entry": [],
+        "on_entry_end": [],
+        "on_exit_start": [],
+        "on_exit": [],
+        "on_exit_end": [],
+        "on_active": [],
+        "custom_events": {},
+        "inputs": [],
+        "outputs": [],
+        "reads": [
+          "TaskSpec",
+          "ReviewFindings"
+        ],
+        "writes": [],
+        "skill_ref": "b95c44cd77194c469b021432bb55ff5d"
+      },
+      {
+        "kind": "simple",
+        "id": "b5c6cad077f0492a92ea0c238be3dadf",
+        "name": "implementer",
+        "on_entry_start": [],
+        "on_entry": [],
+        "on_entry_end": [],
+        "on_exit_start": [],
+        "on_exit": [],
+        "on_exit_end": [],
+        "on_active": [],
+        "custom_events": {},
+        "inputs": [],
+        "outputs": [],
+        "reads": [
+          "TaskSpec",
+          "ReviewFindings"
+        ],
+        "writes": [],
+        "skill_ref": "b29a28b33ffd4809848561832c2e0f66"
+      },
+      {
+        "kind": "simple",
+        "id": "1106465c200349658021a4e7885d3624",
+        "name": "run-review",
+        "on_entry_start": [],
+        "on_entry": [],
+        "on_entry_end": [],
+        "on_exit_start": [],
+        "on_exit": [],
+        "on_exit_end": [],
+        "on_active": [],
+        "custom_events": {},
+        "inputs": [],
+        "outputs": [],
+        "reads": [
+          "TaskSpec"
+        ],
+        "writes": [],
+        "skill_ref": "c69629e0cead4ae88e05f8980bfbd763"
+      },
+      {
+        "kind": "simple",
+        "id": "4c4fbde66521476698ca2e9edb994a98",
+        "name": "reviewer",
+        "on_entry_start": [],
+        "on_entry": [],
+        "on_entry_end": [],
+        "on_exit_start": [],
+        "on_exit": [],
+        "on_exit_end": [],
+        "on_active": [],
+        "custom_events": {},
+        "inputs": [],
+        "outputs": [],
+        "reads": [
+          "TaskSpec"
+        ],
+        "writes": [
+          "ReviewFindings"
+        ],
+        "skill_ref": "abf0cfd9d4794b788d35c373652bfd02"
+      },
+      {
+        "kind": "simple",
+        "id": "89a0370d52714a0eb2fd7adab8c8b74c",
+        "name": "report-outcome",
+        "on_entry_start": [],
+        "on_entry": [],
+        "on_entry_end": [],
+        "on_exit_start": [],
+        "on_exit": [],
+        "on_exit_end": [],
+        "on_active": [],
+        "custom_events": {},
+        "inputs": [],
+        "outputs": [],
+        "reads": [
+          "ReviewFindings"
+        ],
+        "writes": [],
+        "skill_ref": "1d400cf8c464414081bb9c75d1707e5d"
+      }
+    ],
+    "transitions": [
+      {
+        "id": "756c61f5a2a24e9887a84827cf9b728f",
+        "source": "09af1e14a1a34eb9b6e912643f48b7e7",
+        "target": "bc46be2ffdf0448ab5cf9210a1a3d283",
+        "type": "external",
+        "trigger": {
+          "kind": "completion",
+          "name": "planned"
+        },
+        "guard": null,
+        "on_guard_check": [],
+        "on_traverse_start": [],
+        "on_traverse": [],
+        "on_traverse_end": [],
+        "custom_events": {},
+        "data_map": {},
+        "skill_ref": null
+      },
+      {
+        "id": "57af12ba320d4c1f9c9bcf0b48596f34",
+        "source": "bc46be2ffdf0448ab5cf9210a1a3d283",
+        "target": "b5c6cad077f0492a92ea0c238be3dadf",
+        "type": "external",
+        "trigger": {
+          "kind": "completion",
+          "name": "implement"
+        },
+        "guard": null,
+        "on_guard_check": [],
+        "on_traverse_start": [],
+        "on_traverse": [],
+        "on_traverse_end": [],
+        "custom_events": {},
+        "data_map": {},
+        "skill_ref": null
+      },
+      {
+        "id": "b5ddb989230d475e896991e445f880be",
+        "source": "b5c6cad077f0492a92ea0c238be3dadf",
+        "target": "1106465c200349658021a4e7885d3624",
+        "type": "external",
+        "trigger": {
+          "kind": "completion",
+          "name": "implemented"
+        },
+        "guard": null,
+        "on_guard_check": [],
+        "on_traverse_start": [],
+        "on_traverse": [],
+        "on_traverse_end": [],
+        "custom_events": {},
+        "data_map": {},
+        "skill_ref": null
+      },
+      {
+        "id": "3f881f1f28114d6094bfd71bcf9af904",
+        "source": "b5c6cad077f0492a92ea0c238be3dadf",
+        "target": "89a0370d52714a0eb2fd7adab8c8b74c",
+        "type": "external",
+        "trigger": {
+          "kind": "completion",
+          "name": "blocked"
+        },
+        "guard": null,
+        "on_guard_check": [],
+        "on_traverse_start": [],
+        "on_traverse": [],
+        "on_traverse_end": [],
+        "custom_events": {},
+        "data_map": {},
+        "skill_ref": null
+      },
+      {
+        "id": "c6dcb59f95c240c68385c826d5eb5fad",
+        "source": "1106465c200349658021a4e7885d3624",
+        "target": "4c4fbde66521476698ca2e9edb994a98",
+        "type": "external",
+        "trigger": {
+          "kind": "completion",
+          "name": "review"
+        },
+        "guard": null,
+        "on_guard_check": [],
+        "on_traverse_start": [],
+        "on_traverse": [],
+        "on_traverse_end": [],
+        "custom_events": {},
+        "data_map": {},
+        "skill_ref": null
+      },
+      {
+        "id": "437f250b0270415585dba331547d6f96",
+        "source": "4c4fbde66521476698ca2e9edb994a98",
+        "target": "89a0370d52714a0eb2fd7adab8c8b74c",
+        "type": "external",
+        "trigger": {
+          "kind": "completion",
+          "name": "approved"
+        },
+        "guard": null,
+        "on_guard_check": [],
+        "on_traverse_start": [],
+        "on_traverse": [],
+        "on_traverse_end": [],
+        "custom_events": {},
+        "data_map": {},
+        "skill_ref": null
+      },
+      {
+        "id": "270f549b60e5411d98c3e2276b7e3094",
+        "source": "4c4fbde66521476698ca2e9edb994a98",
+        "target": "bc46be2ffdf0448ab5cf9210a1a3d283",
+        "type": "external",
+        "trigger": {
+          "kind": "completion",
+          "name": "changes-requested"
+        },
+        "guard": null,
+        "on_guard_check": [],
+        "on_traverse_start": [],
+        "on_traverse": [],
+        "on_traverse_end": [],
+        "custom_events": {},
+        "data_map": {},
+        "skill_ref": null
+      }
+    ],
+    "initial_state": "d4449f6013fa4578b3b94665c77caeba",
+    "final_states": [],
+    "blackboard": {
+      "class_definitions": [],
+      "variables": {}
+    }
+  },
+  "graph_layout": {
+    "09af1e14a1a34eb9b6e912643f48b7e7": [
+      -420,
+      -140
+    ],
+    "bc46be2ffdf0448ab5cf9210a1a3d283": [
+      -120,
+      -140
+    ],
+    "b5c6cad077f0492a92ea0c238be3dadf": [
+      180,
+      -140
+    ],
+    "1106465c200349658021a4e7885d3624": [
+      480,
+      -140
+    ],
+    "4c4fbde66521476698ca2e9edb994a98": [
+      780,
+      -140
+    ],
+    "89a0370d52714a0eb2fd7adab8c8b74c": [
+      480,
+      160
+    ]
+  },
+  "edge_layout": {},
+  "emit_progress_hook": true,
+  "build_target": "marketplace",
+  "mcp_server_defs": {},
+  "claude_md": null,
+  "rules": []
+}

@@ -1,0 +1,183 @@
+{
+  "format": 2,
+  "name": "new-plugin",
+  "description": "Placeholder: one user-invocable skill with a reference document beside it.",
+  "version": "0.1.0",
+  "skills": [
+    {
+      "kind": "procedural_skill",
+      "id": "ea0a8c0126c2469da34c6c234fc470ac",
+      "name": "run-checklist",
+      "description": "Placeholder: the one thing this plugin does, start to finish.",
+      "when_to_use": "",
+      "body": "State what this skill does in one line, then walk the steps.\n\n1. Check the preconditions. If one is missing, say which and stop — a run that\n   starts half-ready fails late and expensively.\n2. Do the work in order. Keep each step small enough that its result is visible.\n3. Verify. Name the check you ran and what it printed; \"looks fine\" is not a\n   verification.\n4. Report what changed and what you did not touch.\n\nConsult the reference document for the details that do not belong in this\nprocedure — formats, field meanings, and the rules that rarely change.",
+      "config": {
+        "kind": "procedural",
+        "model": "inherit",
+        "effort": null,
+        "hooks": null,
+        "argument_hint": "[target]",
+        "allowed_tools": [],
+        "paths": null,
+        "disable_model_invocation": false,
+        "user_invocable": true,
+        "context": "inline",
+        "agent": null,
+        "shell": "bash"
+      },
+      "fsm": {
+        "id": "06d04a389b6e415dbba9ebb034839c89",
+        "name": "run-checklist_fsm",
+        "states": [
+          {
+            "kind": "simple",
+            "id": "3116955f49de4cb3951b09a228ac26e9",
+            "name": "start",
+            "on_entry_start": [],
+            "on_entry": [],
+            "on_entry_end": [],
+            "on_exit_start": [],
+            "on_exit": [],
+            "on_exit_end": [],
+            "on_active": [],
+            "custom_events": {},
+            "inputs": [],
+            "outputs": [],
+            "reads": [],
+            "writes": [],
+            "skill_ref": null
+          }
+        ],
+        "transitions": [],
+        "initial_state": "3116955f49de4cb3951b09a228ac26e9",
+        "final_states": [],
+        "blackboard": {
+          "class_definitions": [],
+          "variables": {}
+        }
+      },
+      "transfer_on": [
+        {
+          "name": "done",
+          "color": "#4488ff",
+          "description": "The workflow finished."
+        }
+      ],
+      "call_agents": []
+    },
+    {
+      "kind": "reference_skill",
+      "id": "96f381281eb6480f89bfc3ea27465d30",
+      "name": "reference-notes",
+      "description": "Placeholder: the stable details this workflow refers to.",
+      "when_to_use": "",
+      "body": "Keep the slow-moving detail here, out of the procedure.\n\n## Terms\n\nDefine the words the procedure uses so it does not have to explain them inline.\n\n## Formats\n\nRecord the exact shapes — file layouts, field names, allowed values. This is what\nthe reader comes back for.\n\n## Rules of thumb\n\nThe judgement calls that repeat: what to prefer, what to avoid, and why. Say the\nreason; a rule without one gets ignored the first time it is inconvenient.",
+      "config": {
+        "kind": "reference",
+        "model": "inherit",
+        "effort": null,
+        "hooks": null,
+        "argument_hint": null,
+        "allowed_tools": [],
+        "paths": null,
+        "user_invocable": false
+      }
+    },
+    {
+      "kind": "declarative_skill",
+      "id": "c6fcac4bf987438792cb913e3d24147f",
+      "name": "background-notes",
+      "description": "Placeholder: background the model should have before running this workflow.",
+      "when_to_use": "",
+      "body": "Background knowledge for this plugin — loaded when it is relevant,\nnot as part of any procedure.\n\nDescribe the domain, the constraints that are not obvious from the code, and the\nmistakes that have already been made once. This is the context that makes the\nprocedure's short steps make sense.",
+      "config": {
+        "kind": "declarative",
+        "model": "inherit",
+        "effort": null,
+        "hooks": null,
+        "argument_hint": null,
+        "allowed_tools": [],
+        "paths": null,
+        "disable_model_invocation": null,
+        "user_invocable": null
+      }
+    }
+  ],
+  "agents": [],
+  "reference_placements": [
+    {
+      "skill_name": "reference-notes",
+      "x": -80.0,
+      "y": 180.0,
+      "connected_states": [
+        "run-checklist"
+      ]
+    }
+  ],
+  "tool_shelf": [],
+  "hook_library": [],
+  "blackboard": {
+    "class_definitions": [],
+    "variables": {}
+  },
+  "graph": {
+    "id": "859ab190048c49bcac3cfe0df351b4c3",
+    "name": "project_graph",
+    "states": [
+      {
+        "kind": "entry_point",
+        "id": "8dfa04f75580480993fe10c11fb615c1",
+        "name": "start",
+        "on_entry_start": [],
+        "on_entry": [],
+        "on_entry_end": [],
+        "on_exit_start": [],
+        "on_exit": [],
+        "on_exit_end": [],
+        "on_active": [],
+        "custom_events": {},
+        "inputs": [],
+        "outputs": [],
+        "reads": [],
+        "writes": []
+      },
+      {
+        "kind": "simple",
+        "id": "1a753079eb2d4a7199886b50ca7957f9",
+        "name": "run-checklist",
+        "on_entry_start": [],
+        "on_entry": [],
+        "on_entry_end": [],
+        "on_exit_start": [],
+        "on_exit": [],
+        "on_exit_end": [],
+        "on_active": [],
+        "custom_events": {},
+        "inputs": [],
+        "outputs": [],
+        "reads": [],
+        "writes": [],
+        "skill_ref": "ea0a8c0126c2469da34c6c234fc470ac"
+      }
+    ],
+    "transitions": [],
+    "initial_state": "8dfa04f75580480993fe10c11fb615c1",
+    "final_states": [],
+    "blackboard": {
+      "class_definitions": [],
+      "variables": {}
+    }
+  },
+  "graph_layout": {
+    "1a753079eb2d4a7199886b50ca7957f9": [
+      -80,
+      -60
+    ]
+  },
+  "edge_layout": {},
+  "emit_progress_hook": true,
+  "build_target": "marketplace",
+  "mcp_server_defs": {},
+  "claude_md": null,
+  "rules": []
+}

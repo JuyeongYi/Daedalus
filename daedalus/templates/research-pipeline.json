@@ -1,0 +1,684 @@
+{
+  "format": 2,
+  "name": "new-plugin",
+  "description": "Placeholder: parallel investigation followed by a single synthesis pass.",
+  "version": "0.1.0",
+  "skills": [
+    {
+      "kind": "procedural_skill",
+      "id": "607b8321bd0e45b89f6a7fd83a09a1b3",
+      "name": "plan-research",
+      "description": "Placeholder: split a research topic into independently answerable questions.",
+      "when_to_use": "",
+      "body": "Split the topic into questions that can be answered *independently* —\nthat is what makes the next step parallel.\n\n1. State the topic in one sentence and write it to `ResearchPlan.topic`.\n2. Break it into questions that do not depend on each other's answers. If two\n   questions must be answered in order, they are one question.\n3. Write `done_when`: the condition under which the research is finished. Without\n   it the loop never closes.\n4. Record the questions in `ResearchPlan.questions`, then hand off.\n\nDo not answer any of the questions here.",
+      "config": {
+        "kind": "procedural",
+        "model": "inherit",
+        "effort": null,
+        "hooks": null,
+        "argument_hint": null,
+        "allowed_tools": [],
+        "paths": null,
+        "disable_model_invocation": false,
+        "user_invocable": true,
+        "context": "inline",
+        "agent": null,
+        "shell": "bash"
+      },
+      "fsm": {
+        "id": "e6332a373a884187acf893c2d2028c35",
+        "name": "plan-research_fsm",
+        "states": [
+          {
+            "kind": "simple",
+            "id": "d2e52c1ede184c7cbabf0993f453d322",
+            "name": "start",
+            "on_entry_start": [],
+            "on_entry": [],
+            "on_entry_end": [],
+            "on_exit_start": [],
+            "on_exit": [],
+            "on_exit_end": [],
+            "on_active": [],
+            "custom_events": {},
+            "inputs": [],
+            "outputs": [],
+            "reads": [],
+            "writes": [],
+            "skill_ref": null
+          }
+        ],
+        "transitions": [],
+        "initial_state": "d2e52c1ede184c7cbabf0993f453d322",
+        "final_states": [],
+        "blackboard": {
+          "class_definitions": [],
+          "variables": {}
+        }
+      },
+      "transfer_on": [
+        {
+          "name": "planned",
+          "color": "#4488ff",
+          "description": "The topic is split into independent questions."
+        }
+      ],
+      "call_agents": []
+    },
+    {
+      "kind": "procedural_skill",
+      "id": "927b0fdde76f40ababe45c4287ccdac6",
+      "name": "dispatch-investigators",
+      "description": "Placeholder: run one investigator subagent per open question, in parallel.",
+      "when_to_use": "",
+      "body": "Run the investigators.\n\n- Read `ResearchPlan.questions`. Launch **one investigator per question**, in a\n  single batch, so they run in parallel. Launching them one at a time turns a\n  parallel plan back into a serial one.\n- Give each investigator exactly one question. An investigator with three\n  questions returns one shallow answer.\n- Wait for all of them before moving on.",
+      "config": {
+        "kind": "procedural",
+        "model": "inherit",
+        "effort": null,
+        "hooks": null,
+        "argument_hint": null,
+        "allowed_tools": [],
+        "paths": null,
+        "disable_model_invocation": null,
+        "user_invocable": false,
+        "context": "inline",
+        "agent": null,
+        "shell": "bash"
+      },
+      "fsm": {
+        "id": "0174dda303f44794ae5d730a685cd20e",
+        "name": "dispatch-investigators_fsm",
+        "states": [
+          {
+            "kind": "simple",
+            "id": "cc80705dd7794e9dab49d70261d0aaac",
+            "name": "start",
+            "on_entry_start": [],
+            "on_entry": [],
+            "on_entry_end": [],
+            "on_exit_start": [],
+            "on_exit": [],
+            "on_exit_end": [],
+            "on_active": [],
+            "custom_events": {},
+            "inputs": [],
+            "outputs": [],
+            "reads": [],
+            "writes": [],
+            "skill_ref": null
+          }
+        ],
+        "transitions": [],
+        "initial_state": "cc80705dd7794e9dab49d70261d0aaac",
+        "final_states": [],
+        "blackboard": {
+          "class_definitions": [],
+          "variables": {}
+        }
+      },
+      "transfer_on": [
+        {
+          "name": "delegated",
+          "color": "#4488ff",
+          "description": "Every investigator has returned; the workflow continues from their outcomes."
+        }
+      ],
+      "call_agents": [
+        {
+          "name": "investigate",
+          "color": "#4488ff",
+          "description": "One investigator per open question — launch them in a single parallel batch."
+        }
+      ]
+    },
+    {
+      "kind": "procedural_skill",
+      "id": "87477004f4284810b234bec782e86bd9",
+      "name": "synthesize-findings",
+      "description": "Placeholder: merge the parallel findings into one answer.",
+      "when_to_use": "",
+      "body": "Merge the findings into one answer.\n\n- Read `ResearchPlan` and `Findings` together. Answer the topic, not the\n  questions one by one — a list of answers is not a synthesis.\n- Where investigators disagree, say so and say which reading the evidence\n  favours. Do not average them into a bland sentence.\n- Carry `Findings.unanswered` into `ResearchReport.open_questions`. Gaps are part\n  of the result.\n- Set `confidence` from the evidence you actually have, not from how much text\n  was produced.",
+      "config": {
+        "kind": "procedural",
+        "model": "inherit",
+        "effort": null,
+        "hooks": null,
+        "argument_hint": null,
+        "allowed_tools": [],
+        "paths": null,
+        "disable_model_invocation": null,
+        "user_invocable": false,
+        "context": "inline",
+        "agent": null,
+        "shell": "bash"
+      },
+      "fsm": {
+        "id": "0b1421d7f5ee4bb5a28b8177cb22f8ce",
+        "name": "synthesize-findings_fsm",
+        "states": [
+          {
+            "kind": "simple",
+            "id": "6a6c612ec6124d1095bb8d4244890eeb",
+            "name": "start",
+            "on_entry_start": [],
+            "on_entry": [],
+            "on_entry_end": [],
+            "on_exit_start": [],
+            "on_exit": [],
+            "on_exit_end": [],
+            "on_active": [],
+            "custom_events": {},
+            "inputs": [],
+            "outputs": [],
+            "reads": [],
+            "writes": [],
+            "skill_ref": null
+          }
+        ],
+        "transitions": [],
+        "initial_state": "6a6c612ec6124d1095bb8d4244890eeb",
+        "final_states": [],
+        "blackboard": {
+          "class_definitions": [],
+          "variables": {}
+        }
+      },
+      "transfer_on": [
+        {
+          "name": "synthesized",
+          "color": "#4488ff",
+          "description": "The findings are merged into a single report."
+        }
+      ],
+      "call_agents": []
+    },
+    {
+      "kind": "procedural_skill",
+      "id": "6faabd1003ae4ce194899bbc837ff8f6",
+      "name": "deliver-report",
+      "description": "Placeholder: hand the finished report to the user.",
+      "when_to_use": "",
+      "body": "Hand the report to the user.\n\n- Lead with the answer, then the confidence, then the open questions.\n- Cite the sources recorded in `Findings.sources` for the claims that carry the\n  answer.\n- Keep it to what was asked. The research was broad so the report does not have\n  to be.",
+      "config": {
+        "kind": "procedural",
+        "model": "inherit",
+        "effort": null,
+        "hooks": null,
+        "argument_hint": null,
+        "allowed_tools": [],
+        "paths": null,
+        "disable_model_invocation": null,
+        "user_invocable": false,
+        "context": "inline",
+        "agent": null,
+        "shell": "bash"
+      },
+      "fsm": {
+        "id": "31ae167e24e547309eeecade0521419d",
+        "name": "deliver-report_fsm",
+        "states": [
+          {
+            "kind": "simple",
+            "id": "44384c44979645d2bbd7e8fb5c370e58",
+            "name": "start",
+            "on_entry_start": [],
+            "on_entry": [],
+            "on_entry_end": [],
+            "on_exit_start": [],
+            "on_exit": [],
+            "on_exit_end": [],
+            "on_active": [],
+            "custom_events": {},
+            "inputs": [],
+            "outputs": [],
+            "reads": [],
+            "writes": [],
+            "skill_ref": null
+          }
+        ],
+        "transitions": [],
+        "initial_state": "44384c44979645d2bbd7e8fb5c370e58",
+        "final_states": [],
+        "blackboard": {
+          "class_definitions": [],
+          "variables": {}
+        }
+      },
+      "transfer_on": [
+        {
+          "name": "done",
+          "color": "#4488ff",
+          "description": "The report was delivered."
+        }
+      ],
+      "call_agents": []
+    }
+  ],
+  "agents": [
+    {
+      "kind": "agent",
+      "id": "f08973c971534f8893fd7e1da57b0755",
+      "name": "investigator",
+      "description": "Placeholder: answers exactly one research question and records what it found.",
+      "fsm": {
+        "id": "39d3d6f363f545a48036d06cc84eaf1a",
+        "name": "investigator_fsm",
+        "states": [
+          {
+            "kind": "entry_point",
+            "id": "884a61fd007042bbb7c8e54fa1e2c019",
+            "name": "entry",
+            "on_entry_start": [],
+            "on_entry": [],
+            "on_entry_end": [],
+            "on_exit_start": [],
+            "on_exit": [],
+            "on_exit_end": [],
+            "on_active": [],
+            "custom_events": {},
+            "inputs": [],
+            "outputs": [],
+            "reads": [],
+            "writes": []
+          }
+        ],
+        "transitions": [],
+        "initial_state": "884a61fd007042bbb7c8e54fa1e2c019",
+        "final_states": [],
+        "blackboard": {
+          "class_definitions": [],
+          "variables": {}
+        }
+      },
+      "config": {
+        "kind": "agent",
+        "model": "inherit",
+        "effort": null,
+        "hooks": null,
+        "tools": null,
+        "disallowed_tools": null,
+        "permission_mode": "default",
+        "max_turns": null,
+        "skills": [],
+        "mcp_servers": null,
+        "memory": null,
+        "background": false,
+        "isolation": "none",
+        "color": null
+      },
+      "execution_policy": {
+        "mode": "dynamic",
+        "count": 1,
+        "join": "all",
+        "join_count": null
+      },
+      "body": "You answer **one** question from `ResearchPlan` and record what you found.\n\n1. Read the question you were given. Do not widen it.\n2. Gather evidence. Prefer primary sources; note the source for every claim you\n   record.\n3. Append to `Findings`: add the question to `answered`, one entry to `notes`,\n   and each source to `sources`. Append — never overwrite what another\n   investigator wrote.\n4. Report the answer in two or three sentences.\n\nIf the evidence is not there, add the question to `Findings.unanswered` with what\nyou did look at, and exit through `no-results`. An invented answer costs more\nthan a gap.",
+      "reference_placements": [],
+      "graph_layout": {},
+      "edge_layout": {},
+      "transfer_on": [
+        {
+          "name": "findings-recorded",
+          "color": "#4488ff",
+          "description": "The question was answered and the evidence recorded."
+        },
+        {
+          "name": "no-results",
+          "color": "#dd7744",
+          "description": "No usable evidence was found; the question stays open."
+        }
+      ]
+    }
+  ],
+  "reference_placements": [],
+  "tool_shelf": [],
+  "hook_library": [],
+  "blackboard": {
+    "class_definitions": [
+      {
+        "name": "ResearchPlan",
+        "description": "The topic and the open questions it was split into.",
+        "fields": [
+          {
+            "name": "topic",
+            "field_type": "string",
+            "collection": "none",
+            "default": null,
+            "required": true
+          },
+          {
+            "name": "questions",
+            "field_type": "string",
+            "collection": "list",
+            "default": null,
+            "required": true
+          },
+          {
+            "name": "done_when",
+            "field_type": "string",
+            "collection": "none",
+            "default": null,
+            "required": true
+          }
+        ]
+      },
+      {
+        "name": "Findings",
+        "description": "One entry per investigated question, appended by the investigators.",
+        "fields": [
+          {
+            "name": "answered",
+            "field_type": "string",
+            "collection": "set",
+            "default": null,
+            "required": true
+          },
+          {
+            "name": "notes",
+            "field_type": "string",
+            "collection": "list",
+            "default": null,
+            "required": true
+          },
+          {
+            "name": "sources",
+            "field_type": "string",
+            "collection": "set",
+            "default": null,
+            "required": false
+          },
+          {
+            "name": "unanswered",
+            "field_type": "string",
+            "collection": "set",
+            "default": null,
+            "required": false
+          }
+        ]
+      },
+      {
+        "name": "ResearchReport",
+        "description": "The synthesised answer handed back to the user.",
+        "fields": [
+          {
+            "name": "summary",
+            "field_type": "string",
+            "collection": "none",
+            "default": null,
+            "required": true
+          },
+          {
+            "name": "confidence",
+            "field_type": "string",
+            "collection": "none",
+            "default": "medium",
+            "required": true
+          },
+          {
+            "name": "open_questions",
+            "field_type": "string",
+            "collection": "list",
+            "default": null,
+            "required": false
+          }
+        ]
+      }
+    ],
+    "variables": {}
+  },
+  "graph": {
+    "id": "2bdadb38c7b74f6ab7754000591ee4bf",
+    "name": "project_graph",
+    "states": [
+      {
+        "kind": "entry_point",
+        "id": "aca1a8ffe6db45aabeeec37c57293a66",
+        "name": "start",
+        "on_entry_start": [],
+        "on_entry": [],
+        "on_entry_end": [],
+        "on_exit_start": [],
+        "on_exit": [],
+        "on_exit_end": [],
+        "on_active": [],
+        "custom_events": {},
+        "inputs": [],
+        "outputs": [],
+        "reads": [],
+        "writes": []
+      },
+      {
+        "kind": "simple",
+        "id": "c7634fe4e30f473a8202a7f045933f9f",
+        "name": "plan-research",
+        "on_entry_start": [],
+        "on_entry": [],
+        "on_entry_end": [],
+        "on_exit_start": [],
+        "on_exit": [],
+        "on_exit_end": [],
+        "on_active": [],
+        "custom_events": {},
+        "inputs": [],
+        "outputs": [],
+        "reads": [],
+        "writes": [
+          "ResearchPlan"
+        ],
+        "skill_ref": "607b8321bd0e45b89f6a7fd83a09a1b3"
+      },
+      {
+        "kind": "simple",
+        "id": "f8ae4e4d89f4488797bcd2074744c35a",
+        "name": "dispatch-investigators",
+        "on_entry_start": [],
+        "on_entry": [],
+        "on_entry_end": [],
+        "on_exit_start": [],
+        "on_exit": [],
+        "on_exit_end": [],
+        "on_active": [],
+        "custom_events": {},
+        "inputs": [],
+        "outputs": [],
+        "reads": [
+          "ResearchPlan"
+        ],
+        "writes": [],
+        "skill_ref": "927b0fdde76f40ababe45c4287ccdac6"
+      },
+      {
+        "kind": "simple",
+        "id": "1fd558c387db4d19b97ef9c661119018",
+        "name": "investigator",
+        "on_entry_start": [],
+        "on_entry": [],
+        "on_entry_end": [],
+        "on_exit_start": [],
+        "on_exit": [],
+        "on_exit_end": [],
+        "on_active": [],
+        "custom_events": {},
+        "inputs": [],
+        "outputs": [],
+        "reads": [
+          "ResearchPlan"
+        ],
+        "writes": [
+          "Findings"
+        ],
+        "skill_ref": "f08973c971534f8893fd7e1da57b0755"
+      },
+      {
+        "kind": "simple",
+        "id": "63ede06676a645de8ef5292e05a5209b",
+        "name": "synthesize-findings",
+        "on_entry_start": [],
+        "on_entry": [],
+        "on_entry_end": [],
+        "on_exit_start": [],
+        "on_exit": [],
+        "on_exit_end": [],
+        "on_active": [],
+        "custom_events": {},
+        "inputs": [],
+        "outputs": [],
+        "reads": [
+          "ResearchPlan",
+          "Findings"
+        ],
+        "writes": [
+          "ResearchReport"
+        ],
+        "skill_ref": "87477004f4284810b234bec782e86bd9"
+      },
+      {
+        "kind": "simple",
+        "id": "2b12349ff8fa4c838ab61c30f6ff4cfe",
+        "name": "deliver-report",
+        "on_entry_start": [],
+        "on_entry": [],
+        "on_entry_end": [],
+        "on_exit_start": [],
+        "on_exit": [],
+        "on_exit_end": [],
+        "on_active": [],
+        "custom_events": {},
+        "inputs": [],
+        "outputs": [],
+        "reads": [
+          "ResearchReport"
+        ],
+        "writes": [],
+        "skill_ref": "6faabd1003ae4ce194899bbc837ff8f6"
+      }
+    ],
+    "transitions": [
+      {
+        "id": "e3ada2a5b7404c16a867b6dffa927375",
+        "source": "c7634fe4e30f473a8202a7f045933f9f",
+        "target": "f8ae4e4d89f4488797bcd2074744c35a",
+        "type": "external",
+        "trigger": {
+          "kind": "completion",
+          "name": "planned"
+        },
+        "guard": null,
+        "on_guard_check": [],
+        "on_traverse_start": [],
+        "on_traverse": [],
+        "on_traverse_end": [],
+        "custom_events": {},
+        "data_map": {},
+        "skill_ref": null
+      },
+      {
+        "id": "ccf062d1d61842e286b995e1fb2d9ded",
+        "source": "f8ae4e4d89f4488797bcd2074744c35a",
+        "target": "1fd558c387db4d19b97ef9c661119018",
+        "type": "external",
+        "trigger": {
+          "kind": "completion",
+          "name": "investigate"
+        },
+        "guard": null,
+        "on_guard_check": [],
+        "on_traverse_start": [],
+        "on_traverse": [],
+        "on_traverse_end": [],
+        "custom_events": {},
+        "data_map": {},
+        "skill_ref": null
+      },
+      {
+        "id": "6ef45a5ec5424d20aae362641e687226",
+        "source": "1fd558c387db4d19b97ef9c661119018",
+        "target": "63ede06676a645de8ef5292e05a5209b",
+        "type": "external",
+        "trigger": {
+          "kind": "completion",
+          "name": "findings-recorded"
+        },
+        "guard": null,
+        "on_guard_check": [],
+        "on_traverse_start": [],
+        "on_traverse": [],
+        "on_traverse_end": [],
+        "custom_events": {},
+        "data_map": {},
+        "skill_ref": null
+      },
+      {
+        "id": "c29d21a3b401414895825056f5237bd6",
+        "source": "1fd558c387db4d19b97ef9c661119018",
+        "target": "63ede06676a645de8ef5292e05a5209b",
+        "type": "external",
+        "trigger": {
+          "kind": "completion",
+          "name": "no-results"
+        },
+        "guard": null,
+        "on_guard_check": [],
+        "on_traverse_start": [],
+        "on_traverse": [],
+        "on_traverse_end": [],
+        "custom_events": {},
+        "data_map": {},
+        "skill_ref": null
+      },
+      {
+        "id": "7283cc27aca5419081f28d1a578fee7c",
+        "source": "63ede06676a645de8ef5292e05a5209b",
+        "target": "2b12349ff8fa4c838ab61c30f6ff4cfe",
+        "type": "external",
+        "trigger": {
+          "kind": "completion",
+          "name": "synthesized"
+        },
+        "guard": null,
+        "on_guard_check": [],
+        "on_traverse_start": [],
+        "on_traverse": [],
+        "on_traverse_end": [],
+        "custom_events": {},
+        "data_map": {},
+        "skill_ref": null
+      }
+    ],
+    "initial_state": "aca1a8ffe6db45aabeeec37c57293a66",
+    "final_states": [],
+    "blackboard": {
+      "class_definitions": [],
+      "variables": {}
+    }
+  },
+  "graph_layout": {
+    "c7634fe4e30f473a8202a7f045933f9f": [
+      -420,
+      -120
+    ],
+    "f8ae4e4d89f4488797bcd2074744c35a": [
+      -120,
+      -120
+    ],
+    "1fd558c387db4d19b97ef9c661119018": [
+      180,
+      -120
+    ],
+    "63ede06676a645de8ef5292e05a5209b": [
+      480,
+      -120
+    ],
+    "2b12349ff8fa4c838ab61c30f6ff4cfe": [
+      780,
+      -120
+    ]
+  },
+  "edge_layout": {},
+  "emit_progress_hook": true,
+  "build_target": "marketplace",
+  "mcp_server_defs": {},
+  "claude_md": null,
+  "rules": []
+}
