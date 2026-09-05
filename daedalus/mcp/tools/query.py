@@ -234,13 +234,20 @@ class QueryTools(_BaseTools):
         }
 
     def compile_preview(self, name: str) -> dict[str, Any]:
-        """컴포넌트가 어떤 SKILL.md / 에이전트 .md로 컴파일되는지 — 파일은 쓰지 않는다."""
+        """컴포넌트가 어떤 SKILL.md / 에이전트 .md로 컴파일되는지 — 파일은 쓰지 않는다.
+
+        토큰 추정(A5-lite)을 함께 준다: `tokens`/`chars`와, 파일당 임계를 넘으면
+        `token_notice` 한 줄. 검증 경고가 아니라 **정보성 계기판**이다 —
+        컴파일을 막지 않고 산출 텍스트도 바꾸지 않는다.
+        """
         from daedalus.compiler.emit import compile_agent, compile_skill
+        from daedalus.compiler.token_report import TokenReport
         from daedalus.model.plugin.agent import AgentDefinition
 
         comp = self._find_component(name)
         project = self._project
-        if isinstance(comp, AgentDefinition):
+        is_agent = isinstance(comp, AgentDefinition)
+        if is_agent:
             # 전역 훅(A1)까지 해소해 넘긴다 — LOCAL 빌드의 에이전트
             # 프론트매터 hooks가 실제 컴파일과 같은 내용이어야 미리보기다.
             text = compile_agent(
@@ -248,7 +255,17 @@ class QueryTools(_BaseTools):
             )
         else:
             text = compile_skill(comp, project=project)
-        return {"name": comp.name, "kind": self._component_kind(comp), "text": text}
+        report = TokenReport()
+        entry = report.add(comp.name, "agent" if is_agent else "skill", text)
+        return {
+            "name": comp.name,
+            "kind": self._component_kind(comp),
+            "text": text,
+            "chars": entry.chars,
+            "tokens": entry.tokens,
+            "token_threshold": report.threshold,
+            "token_notice": report.notice(),
+        }
 
     # ------------------------------------------------------------------
     # undo 스택 (활성 탭 기준 — 사람이 Ctrl+Z/Ctrl+Y를 누른 것과 같다)

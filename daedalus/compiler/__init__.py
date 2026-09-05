@@ -9,6 +9,7 @@ SKILL.md / agent .md 텍스트로 변환하고 파일로 쓴다.
     compile_skill(skill, *, project=None) -> str               # SKILL.md 텍스트
     compile_agent(agent, project=None) -> str                  # agent .md 텍스트
     compile_hooks_json(project) -> str | None                  # hooks/hooks.json 텍스트
+    estimate_tokens(text) -> int                               # 토큰 추정 휴리스틱 (A5-lite)
 """
 from __future__ import annotations
 
@@ -17,6 +18,12 @@ from daedalus.compiler.project_compiler import (
     CompileResult,
     compile_project,
 )
+from daedalus.compiler.token_report import (
+    DEFAULT_FILE_TOKEN_THRESHOLD,
+    TokenEstimate,
+    TokenReport,
+    estimate_tokens,
+)
 
 __all__ = [
     "CompileResult",
@@ -24,4 +31,8 @@ __all__ = [
     "compile_skill",
     "compile_agent",
     "compile_hooks_json",
+    "TokenReport",
+    "TokenEstimate",
+    "estimate_tokens",
+    "DEFAULT_FILE_TOKEN_THRESHOLD",
 ]

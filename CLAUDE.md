@@ -138,9 +138,12 @@ daedalus/
 │                           #   앞에 붙이고 비면 본문만(필드 도입 전과 바이트 동일). 원소는 항상 따옴표(_quoted_flow_list — glob의
 │                           #   중간 `[`/`,`는 YAML flow 지시자라 무따옴표면 스칼라가 끊긴다). has_manual_frontmatter(body)는
 │                           #   본문 수기 프론트매터 충돌 판정(rule_body_frontmatter 경고) — 판정만 하고 본문은 손대지 않는다.
-│   └── wiring.py           # wire_workspace(target, server_entries, hooks_map) → WireResult (WP-MW) — 작업 폴더의 .mcp.json
-│                           #   mcpServers + .claude/settings.local.json enabledMcpjsonServers/hooks 병합. 추가/갱신만·멱등·
-│                           #   깨진 JSON 불가침. LOCAL 컴파일과 앱 "Claude Code 실행" 메뉴가 공유하는 단일 진실. 순수 stdlib.
+│   ├── wiring.py           # wire_workspace(target, server_entries, hooks_map) → WireResult (WP-MW) — 작업 폴더의 .mcp.json
+│   │                       #   mcpServers + .claude/settings.local.json enabledMcpjsonServers/hooks 병합. 추가/갱신만·멱등·
+│   │                       #   깨진 JSON 불가침. LOCAL 컴파일과 앱 "Claude Code 실행" 메뉴가 공유하는 단일 진실. 순수 stdlib.
+│   └── token_report.py     # 토큰 비용 리포트(A5-lite) — estimate_tokens(문자수 휴리스틱)/TokenEstimate/TokenReport/
+│                           #   DEFAULT_FILE_TOKEN_THRESHOLD/CONTEXT_KINDS. **표시 전용**이다: 산출 텍스트 불변,
+│                           #   임계 초과는 검증 규칙이 아니라 정보성 1줄(notice()). 순수 stdlib(외부 토크나이저 금지).
 ├── mcp/              # 앱 내장 MCP 서버 (WP-MCP) — CC와 협업하는 창구
 │   ├── endpoint.py         # 접속 정보(~/.daedalus/mcp-endpoint.json) + 포트 탐색 + .mcp.json 스니펫 (Qt 무관 순수)
 │   ├── invoker.py          # MainThreadInvoker — uvicorn 워커 스레드 → Qt 메인 스레드 마샬링(시그널+Event, 타임아웃)
@@ -222,6 +225,8 @@ daedalus/
     │                       #   compile_project_dialog: 출력 폴더 선택(LOCAL이면 "설치 대상 작업 폴더" — WP-MW) + _current_path 기준
     │                       #   files_dir/skill_files_dir를 compile_project에 전달(미저장이면 None). 에러면 window._show_validation_dock().
     │                       #   known_server_defs: 앱이 스스로 아는 daedalus 서버 정의(서버 미기동이면 기본 포트) — extra_server_defs로 주입.
+    │                       #   show_token_notice(result)(A5-lite): 상태바에 합계(`≈N토큰`)를 **항상** 붙이고, 파일당 임계를 넘은
+    │                       #     산출이 있을 때만 QMessageBox 안내(검증 패널을 쓰지 않는다 — 고칠 의무가 있는 경고와 섞이면 안 된다).
     ├── launch_actions.py   # LaunchActions(window) — MCP 서버 수명주기 + Claude Code 실행 (WP-RF-3e에서 추출).
     │                       #   start_mcp_service(port)(__main__.main만 호출 — 테스트가 MainWindow를 수십 개 만들어 자동 기동은 포트 충돌)/
     │                       #   stop_mcp_service(MainWindow.closeEvent가 호출)/show_mcp_info(McpInfoDialog — 정보 전부 즉시 표시.
@@ -1564,6 +1569,26 @@ dataclass(값 동등성, unhashable) 유지 — 컬렉션 멤버십에는 list/`
     - `permissionMode`는 매트릭스가 이미 프론트매터로 내보내므로 별도 처리하지 않는다. 대신 마켓플레이스에서
       무시된다는 사실은 `unsupported_agent_field_in_marketplace_build` 경고가 알린다(MCP는
       `mcp_agent_in_marketplace_build`가 이미 짚으므로 이 규칙은 hooks·permissionMode만 본다 — 경고 중복 방지).
+
+17. **토큰 비용 리포트 (A5-lite)**: `CompileResult.token_report: TokenReport`가 **실제로 쓴 산출 텍스트**의
+    파일별 추정치(`path`/`kind`/`chars`/`tokens`)와 합계를 담는다. 측정 시점은 `${ROOT}` 확장 **후**다 —
+    컨텍스트에 실리는 것이 그 텍스트다. 목적은 "자동 단락은 반복 실리는 사용료"(A12 논리)의 계기판이자
+    점진 공개(A5) 착수 근거 수치 확보다.
+    - **표시 전용이다.** 산출 파일 텍스트는 리포트의 유무와 무관하게 바이트 단위로 불변이고, 임계 초과는
+      **검증 규칙이 아니다** — `WARNING_RULES`에 등록하지 않고 `ValidationError`도 만들지 않으며
+      `warnings`/`errors`를 늘리지 않는다(컴파일을 막지도 않는다). 표면은 `TokenReport.notice()` 한 줄.
+    - **추정은 휴리스틱**(순수 stdlib, 외부 토크나이저 의존 금지): ASCII 4자 ≈ 1토큰, 비ASCII 1.5자 ≈
+      1토큰. 두 구간으로 나눈 이유는 산출의 자동 단락이 영어여도 사용자 값(body/description)은 한국어일
+      수 있고, 한 구간으로 뭉치면 그 부분을 3배 가까이 과소평가하기 때문이다. 자릿수 감각용(±20% 수준).
+    - **임계 `DEFAULT_FILE_TOKEN_THRESHOLD = 5000`은 파일당**이고 `CONTEXT_KINDS`(skill/agent/
+      workspace_rule/claude_md)에만 적용한다 — `schemas.json`/`hooks.json`/`plugin.json`은 CC가 설정으로
+      읽을 뿐 대화 컨텍스트에 실리지 않으므로 합계에는 넣되 임계로 재지 않는다. 5000의 근거: SKILL.md는
+      스킬이 걸릴 때마다 통째로 실리고, Anthropic 스킬 저작 지침의 "500줄 안쪽" 권고 ≈ 20,000자 ≈
+      5,000토큰이다(새 규범이 아니라 기존 권고의 토큰 환산).
+    - `.claude/CLAUDE.md`는 **이 플러그인의 구역 본문만** 계상한다(파일 전체는 남이 쓴 내용까지 포함해
+      이 컴파일이 만든 비용이 아니다). 복사만 하는 `files/`·`skill-files/`는 대상 아님.
+    - 표시: 컴파일 상태바에 합계 + 임계 초과 시 안내창(`CompileActions.show_token_notice`), MCP
+      `compile_preview`가 `chars`/`tokens`/`token_threshold`/`token_notice`.
 
 출력은 결정적(같은 모델 → 같은 텍스트), LF 줄바꿈, UTF-8(BOM 없음). 텍스트 생성(`compile_skill`/`compile_agent`)은 파일시스템과 분리되어 문자열 단위 테스트 가능.
 

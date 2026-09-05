@@ -9,7 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from PySide6.QtWidgets import QFileDialog
+from PySide6.QtWidgets import QFileDialog, QMessageBox
 
 from daedalus.model import package
 from daedalus.model.plugin.enums import BuildTarget
@@ -75,14 +75,44 @@ class CompileActions:
         warn = len(result.warnings)
         warn_str = f" / 경고 {warn}건" if warn else ""
         copied_str = f" / files {len(result.copied_files)}개 복사" if result.copied_files else ""
+        # 토큰 비용 계기판(A5-lite) — 산출을 바꾸지 않는 표시 전용 정보다.
+        token_str = f" / {result.token_report.summary()}"
         w._status_label.setText(
-            f"컴파일 완료: {len(result.written)}파일 생성{copied_str}{warn_str} → {out_dir}"
+            f"컴파일 완료: {len(result.written)}파일 생성"
+            f"{copied_str}{token_str}{warn_str} → {out_dir}"
         )
+        self.show_token_notice(result)
         if warn:
             # F7 검증 흐름과 동일하게 dock도 표시 — 경고를 상태바 문구로만
             # 인지하게 두지 않는다.
             w._validation_panel.set_errors(result.warnings)
             w._show_validation_dock()
+
+    def show_token_notice(self, result) -> None:
+        """임계를 넘은 산출물이 있으면 정보성 안내를 띄운다 (A5-lite).
+
+        검증 패널을 쓰지 않는 이유: 이것은 **검증 규칙이 아니다**. 패널에 섞으면
+        고칠 의무가 있는 경고와 구분되지 않고, `WARNING_RULES` 등급 체계에도
+        들어가지 않는다. 임계 이하이면 아무것도 띄우지 않는다 — 매 컴파일마다
+        창이 뜨면 계기판이 아니라 방해다.
+        """
+        notice = result.token_report.notice()
+        if not notice:
+            return
+        lines = [
+            f"{e.path} — ≈{e.tokens:,}토큰 ({e.chars:,}자)"
+            for e in result.token_report.over_threshold()
+        ]
+        box = QMessageBox(self._w)
+        box.setIcon(QMessageBox.Icon.Information)
+        box.setWindowTitle("토큰 비용")
+        box.setText(notice)
+        box.setDetailedText(
+            "\n".join(lines)
+            + f"\n\n합계 {result.token_report.total_tokens:,}토큰 "
+            f"({result.token_report.total_chars:,}자, 추정)"
+        )
+        box.exec()
 
     def known_server_defs(self) -> dict[str, dict]:
         """앱이 스스로 아는 MCP 서버 정의 — 지금은 자기 자신(daedalus)뿐.

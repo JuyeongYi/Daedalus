@@ -52,6 +52,7 @@ from daedalus.compiler.emit import (
     hook_library,
     referenced_mcp_servers,
 )
+from daedalus.compiler.token_report import TokenReport
 from daedalus.compiler.workspace import (
     has_manual_frontmatter,
     merge_claude_md,
@@ -112,12 +113,17 @@ class CompileResult:
     skipped: (이유, 컴포넌트 이름) 목록 — 거부 시 쓰지 못한 항목 등.
     copied_files: files_dir 트리 복사로 실제 복사된 파일 경로 목록 (WP-FR).
         files_dir 미지정이거나 실존하지 않으면 빈 리스트.
+    token_report: 산출 텍스트의 토큰 추정 리포트 (A5-lite). 게이트에 막혀
+        아무것도 쓰지 않았으면 비어 있다. **표시 전용**이다 — 산출 파일
+        텍스트는 이 리포트의 유무와 무관하게 불변이고, 임계 초과 고지는
+        검증 규칙이 아니라 정보성 문구다(`token_report.notice()`).
     """
     written: list[Path] = field(default_factory=list)
     errors: list[ValidationError] = field(default_factory=list)
     warnings: list[ValidationError] = field(default_factory=list)
     skipped: list[tuple[str, str]] = field(default_factory=list)
     copied_files: list[Path] = field(default_factory=list)
+    token_report: TokenReport = field(default_factory=TokenReport)
 
     @property
     def ok(self) -> bool:
@@ -692,6 +698,9 @@ def compile_project(
         path = out_dir / item.rel_path
         _write_text(path, text)
         result.written.append(path)
+        # 토큰 리포트(A5-lite) — **확장 후 최종 텍스트**를 잰다. 실제로 컨텍스트에
+        # 실리는 것이 그것이고, ${ROOT} 확장으로 길이가 달라진다.
+        result.token_report.add(str(item.rel_path), item.kind, text)
 
     if files_dir is not None:
         files_dir_path = Path(files_dir)
@@ -760,6 +769,13 @@ def _merge_claude_md_region(project, out_dir: Path, result: CompileResult) -> No
         return
     _write_text(path, text)
     result.written.append(path)
+    # 토큰 리포트에는 **이 플러그인의 구역 본문만** 싣는다(A5-lite) — 파일 전체는
+    # 다른 플러그인·사용자가 쓴 내용까지 포함해서, 이 컴파일이 만든 비용이 아니다.
+    # 다만 CLAUDE.md는 매 세션 통째로 실리므로 구역 본문의 비용은 실재한다.
+    if doc is not None and doc.has_content():
+        result.token_report.add(
+            ".claude/CLAUDE.md (plugin section)", "claude_md", doc.body or "",
+        )
 
 
 # ─────────────────────── LOCAL 설치 배선 — JSON 병합 (WP-MW) ───────────────────────
