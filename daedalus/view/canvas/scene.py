@@ -522,12 +522,6 @@ class FsmScene(QGraphicsScene):
     def add_reference_link(self, ref_vm, state_vm) -> None:
         context_menus.add_reference_link_on(self, ref_vm, state_vm)
 
-    def _focus_state(self, state: object) -> None:
-        context_menus.focus_state(self, state)
-
-    def _open_ports(self, component: object) -> None:
-        context_menus.open_ports(self, component)
-
     def _show_preview(self, component: object) -> None:
         context_menus.show_preview(self, component)
 
@@ -774,13 +768,6 @@ class FsmScene(QGraphicsScene):
             sync_fn=self._sync_refs_to_model,
         )
         self._project_vm.execute(cmd)
-
-    def handle_ref_node_moved(
-        self, ref_node: ReferenceNodeItem, old_pos: QPointF, new_pos: QPointF
-    ) -> None:
-        """참조 노드 드래그 release — WP-DM: handle_items_moved에 위임(시그니처
-        유지, 기존 호출부·테스트 호환)."""
-        self.handle_items_moved(ref_node, old_pos, new_pos)
 
     def _sync_refs_to_model(self) -> None:
         """뷰 모델 → 모델 동기화. 위치 + 연결 정보를 모델에 반영 (sync 모듈 위임)."""

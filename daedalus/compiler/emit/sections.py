@@ -269,7 +269,7 @@ def _mcp_servers_from_tools(tools) -> list[str]:
 
 
 def _mcp_requirement_section_skill(skill: Skill) -> list[str]:
-    """스킬 config.allowed_tools의 mcp__ 접두에서 서버 이름을 추출해 "## 요구 환경"
+    """스킬 config.allowed_tools의 mcp__ 접두에서 서버 이름을 추출해 "## Requirements"
     단락을 만든다. 서버가 없으면 빈 목록(단락 생략).
     """
     config = getattr(skill, "config", None)
@@ -330,7 +330,7 @@ def _component_access_union(component, project) -> tuple[set[str], set[str]]:
 
 
 def _blackboard_section(project, component=None) -> list[str]:
-    """프로젝트 최상위 블랙보드 class_definitions → '## 공유 상태 (블랙보드)' 블록.
+    """프로젝트 최상위 블랙보드 class_definitions → '## Shared State (Blackboard)' 블록.
 
     정의가 없으면 빈 리스트 (단락 생략).
 

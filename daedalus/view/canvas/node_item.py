@@ -315,15 +315,6 @@ class StateNodeItem(DraggableItemMixin, QGraphicsItem):
         n = max(1, self._ref_count)
         return self.mapToScene(QPointF(self._ref_port_x(index, n), self._height()))
 
-    def is_bottom_port(self, local_pos: QPointF) -> bool:
-        """local_pos가 하단 참조 포트 근처인지 판정."""
-        if self._is_entry_point() or self._is_exit_point():
-            return False
-        h = self._height()
-        if abs(local_pos.y() - h) > _PORT_R * 2:
-            return False
-        return 0 <= local_pos.x() <= _W
-
     def _get_output_port_event(self, local_pos: QPointF) -> tuple[str, bool] | None:
         """클릭 위치에 해당하는 (event_name, is_agent_call) 반환."""
         if self._is_exit_point():

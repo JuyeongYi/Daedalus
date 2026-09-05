@@ -138,7 +138,6 @@ class _HandlerForm(QWidget):
 
     def _build_type_fields(self, lay: QFormLayout) -> None:
         h = self._handler
-        self._fields: dict[str, QWidget] = {}
 
         if isinstance(h, CommandHook):
             # 커맨드는 아무리 짧아도 파일로 나간다(WP-HS) — 여기 쓴 내용이

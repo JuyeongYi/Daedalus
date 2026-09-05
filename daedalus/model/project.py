@@ -83,9 +83,10 @@ class PluginProject:
     build_target: BuildTarget = BuildTarget.MARKETPLACE
     # WP-MW — MCP 서버 정의: 이름 → CC `.mcp.json` 서버 객체(JSON dict 그대로,
     # 예: {"type": "http", "url": "http://127.0.0.1:8787/mcp"}). 컴포넌트들은
-    # 서버를 **이름**으로만 참조하는 원칙 그대로이고, 정의는 설치 배선(로컬 빌드의
-    # mcp/mcp-servers.json 산출 → install 스크립트가 대상 프로젝트 .mcp.json에 병합)
-    # 에만 쓰인다. 구버전 파일(키 부재)은 빈 dict.
+    # 서버를 **이름**으로만 참조하는 원칙 그대로이고, 정의는 설치 배선에만 쓰인다 —
+    # LOCAL 빌드는 컴파일이 곧 설치라(WP-MW) 컴파일이 대상 작업 폴더의 .mcp.json과
+    # .claude/settings.local.json에 직접 병합한다(별도 설치 스크립트 없음).
+    # 구버전 파일(키 부재)은 빈 dict.
     mcp_server_defs: dict[str, dict] = field(default_factory=dict)
 
     def __post_init__(self) -> None:

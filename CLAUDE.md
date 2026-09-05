@@ -275,7 +275,8 @@ daedalus/
     │                       #   메뉴를 조립해 {QAction: 콜러블} 디스패치 표를 돌려줄 뿐이고 편집 로직은 전부 view/actions/에 있다.
     │                       # 엣지 리루트(WP-ER): TransitionEdgeItem.update_path가 TransitionViewModel.waypoints(경유점)를 경유하는
     │                       #   구간별 베지어 곡선을 그린다. 선택 시 자식 WaypointHandleItem(작은 원)을 표시 — 더블클릭/컨텍스트 메뉴로
-    │                       #   추가(nearest_segment_index), 드래그 이동, 우클릭/Delete로 제거. FsmScene/AgentFsmScene 공용.
+    │                       #   추가(nearest_segment_index), 드래그 이동, 우클릭/Delete로 제거. 프로젝트 캔버스(FsmScene) 전용 —
+    │                       #   에이전트 내부 FSM 캔버스(AgentFsmScene)는 WP-AF로 함께 퇴역했다.
     │                       # 노드 우클릭 메뉴(A8/A9): '진입점 설정' 서브메뉴(_add_entry_preset_menu — 스킬 placement에만) +
     │                       #   컴파일 미리보기·모델/effort 서브메뉴·관련 경고 보기(_add_component_actions_menu — placement 전반).
     │                       #   전부 view/actions/를 부르는 **호출부**다(로직 없음). 메뉴는 항목이 많아 exec 반환값 elif 사슬이
@@ -295,7 +296,9 @@ daedalus/
     │                       #   attr — SetAttrCmd/AppendToListCmd/RemoveFromListCmd(WP-CE 범용 폼 편집. 편집마다 클래스를 만들지 않고
     │                       #     "속성 하나 바꾸기"+"리스트 넣고 빼기" 둘로 환원한다. SetAttrCmd는 최초 execute에서만 old를 잡는다 —
     │                       #     redo가 old를 덮으면 undo가 깨진다. 값은 복사하지 않으므로 호출자가 새 객체를 넘겨야 한다))
-    ├── editors/            # 속성 편집기 (skill, agent, hook, body, body_documents, component, variable_loader, catalogue_loader, field_widgets, project_properties, blackboard_editor, workspace_editor)
+    ├── editors/            # 속성 편집기 (skill + 그 분해 패널 3종(frontmatter_panel/transfer_on_panel/reference_link_panel),
+    │                       #   agent, hook, body, body_documents, component, variable_loader, catalogue_loader, field_widgets,
+    │                       #   project_properties, blackboard_editor, workspace_editor)
     │                       # skill_editor(WP-RF): 구 단일 모듈(1,172줄 — 프론트매터 폼·출력 포트 카드·참조 링크 세 책임)을 형제
     │                       #   모듈 3개로 분해(이동만·동작 불변). skill_editor.py에는 SkillEditor만 남고 **재-export 파사드**로
     │                       #   `from …skill_editor import _FrontmatterPanel` 등 기존 언더스코어 임포트 경로가 전부 무수정 동작한다
@@ -347,7 +350,7 @@ daedalus/
     │                       #   목록(＋/삭제/더블클릭 이름변경), 우: description(QLineEdit) + 필드 테이블(name/FieldType/CollectionType/required/default,
     │                       #   ＋필드/필드 삭제). 편집은 project.blackboard.class_definitions를 직접 갱신 + notify(structure 채널 — undo 커맨드화 범위
     │                       #   밖, hook_panel 폼 정책과 동일). blackboard_candidate_strings(project)가 "클래스"+"클래스.필드" 후보 문자열을 만든다.
-    ├── panels/             # TreePanel, PropertyPanel, RegistryPanel, HistoryPanel, ValidationPanel (F7 검증 결과), FilePanel(WP-FR)
+    ├── panels/             # PropertyPanel, RegistryPanel, HistoryPanel, ValidationPanel (F7 검증 결과), FilePanel(WP-FR), ScriptListenerPanel
     │                       # RegistryPanel: component_delete_requested 시그널 + _RegistrySection 우클릭 "삭제" 컨텍스트 메뉴.
     │                       #   종류별 섹션은 QTabWidget 탭(WP-SF 배치 개편 — 이모지 라벨+툴팁)
     │                       # FilePanel(WP-FR/WP-SF): _FileTreeBase(트리+안내+생성+새로고침+"탐색기" 버튼) 기반 전역 files/ 독("플러그인 파일 (공용)",
@@ -356,7 +359,7 @@ daedalus/
     │                       #   set_project_dir_provider/get_project_dir 모듈 provider로 프로젝트 폴더 조회(에디터마다 생겨 직접 배선 불가)
     │                       # PropertyPanel.show_state(WP-BB): reads/writes TagInput 2개 — get_blackboard_candidates()로 자동완성 후보(호출 시점
     │                       #   스냅샷, get_tool_candidates와 동일 정책), tags_changed → state.reads/writes 직접 기록(커맨드화 범위 밖) + notify. 프로젝트
-    │                       #   캔버스 placement와 에이전트 FSM 상태(agent_editor 그래프 탭에 임베드된 PropertyPanel) 양쪽에서 동일하게 편집 가능.
+    │                       #   캔버스 placement에서 편집한다(에이전트 그래프 탭은 WP-AF로 퇴역).
     ├── viewmodel/          # ProjectViewModel(notify structure/content 채널), StateViewModel (모델↔뷰 중간 계층)
     └── widgets/            # ComboWidgets, TagInput, markdown/(마크다운 에디터 패키지 — WP-RF-3c로 구 단일 모듈 markdown_editor.py를 분해.
                             #   markdown_editor.py 모듈 경로는 **재-export 파사드**로 유지되어 기존 임포트가 무수정 동작한다. 구획:
@@ -754,9 +757,9 @@ daedalus-bb --schemas <경로> [--state-dir DIR] <command>
 
 - **역할:** 프로젝트 캔버스(탭 0)의 노드/전이를 담는 정식 `StateMachine`. 각 캔버스 노드는 "정식 FSM 상태"이며 백킹 머신에 들어가 **직렬화·컴파일·검증의 단일 진실**이 된다 (캔버스 VM은 그 투영). 이전에는 fsm=None 경로로 도메인 모델에 들어가지 않아 저장/컴파일에서 누락됐다.
 - **기본값:** `default_factory=_make_project_graph` — `EntryPoint(name="start")`를 `initial_state`로 갖는 빈 머신(states 포함). `StateMachine.initial_state`는 required 유지(Optional 완화 없음), 직렬화 포맷도 불변.
-- **EntryPoint 격하 (WP-EP):** CC 플러그인에는 단일 진입점이 없다 — user_invocable 스킬은 전부 `/skill`로 독립 시작 가능하고 모델 자동 인보크도 있어, FSM 관념의 "시작점"이 성립하지 않는다. 따라서 **프로젝트 캔버스(탭 0)는 EntryPoint와 그에 닿는 전이를 그리지 않는다** — `app._load_project_graph`가 `graph.states`에서 EntryPoint 인스턴스를 스킵하고(VM 미생성), EntryPoint에 닿는 전이도 VM이 없어 자연히 렌더되지 않는다(구버전 파일의 시작 전이도 경고 없이 조용히 숨는다). 모델은 불변 — `project.graph.initial_state`는 여전히 EntryPoint이고 구버전 파일의 시작 전이도 저장 왕복 시 보존된다. `FsmScene`의 EntryPoint 삭제-방어 코드(`_delete_state`/컨텍스트 메뉴/keyPress)는 `AgentFsmScene`과 공용이라 그대로 두지만, 프로젝트 캔버스에서는 VM이 없어 자연히 죽은 경로가 된다. **에이전트 FSM의 EntryPoint/ExitPoint(agent_editor, AgentFsmScene)는 이 격하와 무관** — 에이전트는 별도 컨텍스트의 실재하는 단일 진입점이다.
-- **placement:** 배치된 스킬/에이전트는 `SimpleState(skill_ref=...)`로 그래프에 들어간다 (에이전트도 SimpleState로, CompositeState 승격 없음). `FsmScene.set_project`가 `_target_fsm = project.graph`로 배선해 Create/Delete/Transition 커맨드가 그래프에 동기화된다 (undo/redo 일관). `AgentFsmScene`은 `_target_fsm`을 에이전트 FSM으로 별도 설정.
-- **graph_layout:** `dict[str, list[float]]` — 키는 **state.id** (AgentDefinition.graph_layout과 동일 규약, 이름 변경 안전). 저장 직전 `app._save_graph_layout`이 VM 좌표를 기록, 로드 시 `app._load_project_graph`가 graph+graph_layout으로 캔버스 VM을 재구성(`agent_editor._load_agent_fsm` 미러링). EntryPoint는 캔버스 VM이 없으므로 `graph_layout`에도 그 키가 기록되지 않는다(WP-EP).
+- **EntryPoint 격하 (WP-EP):** CC 플러그인에는 단일 진입점이 없다 — user_invocable 스킬은 전부 `/skill`로 독립 시작 가능하고 모델 자동 인보크도 있어, FSM 관념의 "시작점"이 성립하지 않는다. 따라서 **프로젝트 캔버스(탭 0)는 EntryPoint와 그에 닿는 전이를 그리지 않는다** — `app._load_project_graph`가 `graph.states`에서 EntryPoint 인스턴스를 스킵하고(VM 미생성), EntryPoint에 닿는 전이도 VM이 없어 자연히 렌더되지 않는다(구버전 파일의 시작 전이도 경고 없이 조용히 숨는다). 모델은 불변 — `project.graph.initial_state`는 여전히 EntryPoint이고 구버전 파일의 시작 전이도 저장 왕복 시 보존된다. `FsmScene`의 EntryPoint 삭제-방어 코드(`_delete_state`/컨텍스트 메뉴/keyPress)는 그대로 두지만, 프로젝트 캔버스에서는 VM이 없어 자연히 죽은 경로가 된다(에이전트 내부 FSM 캔버스는 WP-AF로 퇴역했으므로 이제 그 코드를 공유하는 씬도 없다).
+- **placement:** 배치된 스킬/에이전트는 `SimpleState(skill_ref=...)`로 그래프에 들어간다 (에이전트도 SimpleState로, CompositeState 승격 없음). `FsmScene.set_project`가 `_target_fsm = project.graph`로 배선해 Create/Delete/Transition 커맨드가 그래프에 동기화된다 (undo/redo 일관). `_target_fsm`이 배선되는 씬은 이제 이 하나뿐이다 — 에이전트 내부 FSM 캔버스는 WP-AF로 퇴역했다.
+- **graph_layout:** `dict[str, list[float]]` — 키는 **state.id** (AgentDefinition.graph_layout과 동일 규약, 이름 변경 안전). 저장 직전 `app._save_graph_layout`이 VM 좌표를 기록, 로드 시 `app._load_project_graph`가 graph+graph_layout으로 캔버스 VM을 재구성(실체는 둘 다 `view/graph_io.GraphIO`). EntryPoint는 캔버스 VM이 없으므로 `graph_layout`에도 그 키가 기록되지 않는다(WP-EP).
 - **블랙보드 배선:** `project.graph.blackboard.parent = project.blackboard` — `PluginProject.__post_init__`(생성 경로)과 `deserialize_project`(역직렬화 생성 경로) 양쪽에서 보장.
 
 ### BuildTarget = 빌드 타깃 (마켓플레이스 / 로컬 플러그인) (WP-TG)
@@ -772,10 +775,10 @@ daedalus-bb --schemas <경로> [--state-dir DIR] <command>
 
 - **역할:** 루프 전이 등 노드를 가로질러 그려지는 엣지를 사용자가 손으로 정리할 수 있도록 경유점(waypoint)을 추가·드래그·제거하는 기능. 자동 라우팅(장애물 회피 등)은 비목표 — v1은 수동 경유점만.
 - **저장 모델:** `PluginProject.edge_layout`/`AgentDefinition.edge_layout: dict[str, list[list[float]]]` — 키는 **Transition.id**(graph_layout의 state.id 규약과 동일), 값은 `[x, y]` 목록(소스→타깃 순서). 웨이포인트는 뷰 관심사이므로 fsm 모델(Transition)에는 넣지 않는다. `remove_component`가 배치 삭제 시 연결 전이와 함께 `edge_layout`의 해당 키도 정리한다(graph_layout 정리와 동일 위치).
-- **뷰 모델:** `TransitionViewModel.waypoints: list[tuple[float, float]]`(기본 빈 리스트, 뷰 전용). 저장 직전 `app._save_graph_layout`/`agent_editor._save_graph_layout`이 `transition_vms`를 순회해 `project.edge_layout`/`agent.edge_layout`에 기록하고, 로드 시 `app._load_project_graph`/`agent_editor._load_agent_fsm`이 `edge_layout.get(trans.id, [])`로 `TransitionViewModel(waypoints=...)`를 복원한다(graph_layout과 완전히 동일한 저장/복원 시점 미러링).
+- **뷰 모델:** `TransitionViewModel.waypoints: list[tuple[float, float]]`(기본 빈 리스트, 뷰 전용). 저장 직전 `app._save_graph_layout`이 `transition_vms`를 순회해 `project.edge_layout`에 기록하고, 로드 시 `app._load_project_graph`가 `edge_layout.get(trans.id, [])`로 `TransitionViewModel(waypoints=...)`를 복원한다(graph_layout과 완전히 동일한 저장/복원 시점 미러링. `AgentDefinition.edge_layout` 필드는 모델에 남아 왕복하지만 에이전트 내부 FSM 캔버스가 퇴역해 지금은 쓰는 곳이 없다).
 - **렌더 (`edge_item.py`):** `TransitionEdgeItem.update_path`가 `_route_points()`(소스 포트 → waypoints → 타깃 포트)를 구해 각 구간을 기존과 동일한 베지어 곡선(`_add_curve_segment`)으로 잇는다. 각 구간의 끝점이 정확히 경유점이므로 경로가 그 점을 통과함이 보장된다. 경유점이 없으면 구간이 하나뿐이라 기존 렌더와 완전히 동일(하위 호환 — 회귀 판정은 `test_edge_paint.py`/`test_input_ports.py`/`test_scene_rebuild.py` 무수정 통과). 화살촉은 기존 로직 그대로 `_ARROW_SPACING` 간격으로 **경로 전체에 반복 배치**되고(마지막 구간 전용이 아님 — master와 동일), 라벨도 기존 위치 로직 그대로다.
 - **상호작용:** 엣지 더블클릭 또는 컨텍스트 메뉴 "경유점 추가" → `edge.nearest_segment_index(scene_pos)`(구간별 곡선을 샘플링해 최근접 구간 판정) 위치에 삽입. 자식 `WaypointHandleItem`(작은 원, 선택 엣지 색 `#88aaff`)은 **항상 표시**하고 엣지 비선택 시 흐리게만 그린다(`_sync_handles`, opacity `_HANDLE_IDLE_OPACITY`) — `setVisible(False)`로 숨기면 Qt가 마우스 그랩·선택 가능성까지 잃어 드래그가 죽고, 이를 우회하려 `mousePressEvent`에서 super를 건너뛰면 Qt가 드래그 기준 좌표를 기록하지 못해 다음 이동이 화면 왼쪽 위로 튄다(사용자 보고 2건이 같은 뿌리) — 엣지는 절대 이동하지 않으므로(pos()가 항상 원점) 자식 로컬 좌표가 곧 씬 좌표다. 핸들은 Qt 기본 `ItemIsMovable`로 드래그되고 `itemChange(ItemPositionHasChanged)`가 실시간 미리보기(`edge.update_waypoint_preview`, undo 없음)를 반영하며, release 시 `scene.handle_items_moved`(WP-DM 이전에는 `handle_waypoint_moved`)가 undo 가능한 커맨드를 커밋한다(노드 드래그 관례와 동일 결). **핸들의 좌클릭 press/release는 `super()`를 반드시 호출한다** — Qt가 거기서 드래그 기준 좌표를 기록하므로 우회하면 다음 이동이 스테일 오프셋으로 계산돼 아이템이 화면 왼쪽 위로 튄다(사용자 보고). 단일 클릭 선택 규칙이 엣지 선택을 해제해도, 핸들을 항상 표시하는 위 정책 덕에 마우스 그랩이 유지되므로 수동 선택 조작은 필요 없다(초기 구현은 super를 건너뛰고 선택을 직접 조작했으나, 그게 바로 좌상단 튐의 원인이었다 — `c3d7f39`에서 폐기). 핸들 우클릭 "경유점 제거" 또는 핸들 선택 후 Delete(씬 Delete 처리는 선택에 핸들이 있으면 **경유점만 제거하고 엣지/노드 삭제 분기를 건너뛴다** — 한 키에 전이까지 지워지는 것 방지), 엣지 컨텍스트 메뉴 "경유점 모두 제거"(직선 복원)도 제공.
-- **undo:** `AddWaypointCmd`/`MoveWaypointCmd`/`RemoveWaypointCmd`/`ClearWaypointsCmd`(`view/commands/transition_commands.py`) — `MoveStateCmd`와 동일한 관례로 `TransitionViewModel.waypoints`를 직접 변경(모델 sync_fn 불필요, 저장 시점에만 project.edge_layout으로 평탄화). `FsmScene`(프로젝트 캔버스)과 `AgentFsmScene`(에이전트 캔버스) 양쪽에서 동일하게 동작 — 오버라이드 불필요.
+- **undo:** `AddWaypointCmd`/`MoveWaypointCmd`/`RemoveWaypointCmd`/`ClearWaypointsCmd`(`view/commands/transition_commands.py`) — `MoveStateCmd`와 동일한 관례로 `TransitionViewModel.waypoints`를 직접 변경(모델 sync_fn 불필요, 저장 시점에만 project.edge_layout으로 평탄화). 프로젝트 캔버스(`FsmScene`) 전용 — 에이전트 내부 FSM 캔버스는 WP-AF로 퇴역했다.
 
 ### 캔버스 드래그 이동 (WP-DM)
 
@@ -795,8 +798,9 @@ daedalus-bb --schemas <경로> [--state-dir DIR] <command>
   `FsmScene.handle_items_moved(grabbed, old, new)` 단일 진입점 — 선택된 모든 draggable을 모아
   하나의 `MacroCommand`로 묶는다. **씬에 아이템 타입 분기를 두지 않는다** — 커맨드 생성
   지식은 각 아이템의 `make_move_command()`에 있고 씬은 수집·묶기만 한다. 기존
-  `handle_node_moved`/`handle_ref_node_moved`/`handle_waypoint_moved`는 시그니처를 유지한
-  위임 래퍼로 존치(호출부·테스트 호환). `AgentFsmScene`은 오버라이드 없이 그대로 상속.
+  `handle_node_moved`/`handle_waypoint_moved`는 시그니처를 유지한 위임 래퍼로 존치
+  (호출부·테스트 호환). `handle_ref_node_moved`는 호출자가 0이 되어 삭제됐다 —
+  참조 노드도 다른 draggable과 같이 `end_drag()` → `handle_items_moved`를 탄다.
 - **press 시점 스냅샷(`snapshot_drag_positions`)이 필요한 이유:** `WaypointHandleItem`은
   `itemChange`에서 pos() 변경마다 `transition_vm.waypoints`를 실시간 미리보기 갱신한다
   (`update_waypoint_preview`). Qt의 그룹 드래그는 passenger에게도 `itemChange`를 실시간으로
@@ -1166,7 +1170,7 @@ ComponentConfig(ABC)          # model, effort, hooks 공통 필드
 
 **프로젝트 그래프 검증:** `validate_project`는 `project.graph`도 머신 규칙으로 검증하며 root path는 `("project",)`다. 단 그래프에 placement(EntryPoint 외 노드)가 0개면 검증을 스킵(`_graph_has_placements`) — 빈 캔버스 경고 폭주 방지. `transfer_on_not_empty` 같은 컴포넌트 수준 규칙은 머신 검증에 없으므로 무관. **`unreachable_state`는 `skip_rules={"unreachable_state"}`로 스킵된다(WP-EP)** — CC 플러그인 의미론상 프로젝트 그래프의 모든 배치는 user_invocable 스킬 등으로 독립 시작 가능해 "EntryPoint에서 도달 불가"가 성립하지 않는다. skip_rules는 재귀에 전파되지 않으므로 에이전트 sub_machine 내부의 `unreachable_state`는 기존대로 검사된다.
 
-#### 프로젝트 수준 (20종)
+#### 프로젝트 수준 (23종)
 
 `Validator.validate_project(project)` — 전체 FSM 검증 후 추가:
 
@@ -1191,6 +1195,9 @@ ComponentConfig(ABC)          # model, effort, hooks 공통 필드
 | `plugin_root_in_local_build` | `project.build_target == LOCAL`인데 스킬/에이전트 본문에 files/ 참조 이외 용도의 `${CLAUDE_PLUGIN_ROOT}`가 남아 있으면 경고 (files/ 참조는 컴파일이 자동 치환하므로 제외, WP-TG) |
 | `skill_dir_token_in_agent` | 에이전트 본문에 `${CLAUDE_SKILL_DIR}`가 있으면 경고 — 이 변수는 스킬 전용이라 에이전트 .md에서 치환되지 않는다 (코드 표기 제외, 빌드 타깃 무관, WP-SF) |
 | `transfer_skill_reused` | 한 TransferSkill이 **2개 이상 전이**에 붙으면 **에러** (A11). TransferSkill은 전이 위에 놓인 **1:1 중간 상태**이므로 전이 하나에만 속한다 — 하나의 상태가 두 자리에 동시에 있을 수 없다는 점에서 `no_duplicate_skill_ref`와 **같은 논리**다(특별 규칙이 아니다). 메시지가 그 논리와 대안(공통 지침은 Declarative 스킬로 빼고 각 전이 스킬이 참조)을 함께 담는다. 순회 범위는 프로젝트 그래프 + 각 스킬/에이전트 FSM(`_scan_transitions` 재귀 — sub_machine/Region 포함). 메시지에 붙은 위치를 전부 나열한다(어디를 고쳐야 하는지 알아야 한다) |
+| `duplicate_rule_name` | 작업 폴더 규칙 문서의 동명 에러 — 상세는 "작업 폴더 문서 (WP-WD) #### 검증" 표 |
+| `invalid_rule_name` | 규칙 문서 이름 규약 경고 (컴파일 게이트가 에러로 승격) — 같은 표 |
+| `workspace_doc_in_marketplace_build` | MARKETPLACE 빌드인데 작업 폴더 문서에 내용이 있으면 경고 — 같은 표 |
 | `mid_chain_user_invocable` | 프로젝트 그래프에 배치된 ProceduralSkill 중 **incoming 전이가 1개 이상**인데 `config.user_invocable`의 **실효값**이 true면 경고 (A3 + A8 tri-state — `None`(미지정)은 CC 기본 true이므로 경고 대상이고 메시지에 병기, **명시 `False`만 통과**) — user-invocable은 진입점으로 기능할 노드만 true여야 한다(중간 노드로 사용자가 맥락 없이 진입하는 사고 방지. false여도 모델 인보크는 되므로 체인은 안 끊긴다). incoming 0개(진입점 후보)·미배치 스킬(독립 스킬)은 대상 아님. **EntryPoint 출발 전이는 incoming으로 세지 않는다** — 그것이 곧 "여기서 시작한다"는 선언이다(WP-EP로 캔버스에 그리지 않을 뿐 구버전 파일의 시작 전이는 모델에 남아 있다) |
 
 도구 모델(`tool.py`): `Tool(PluginComponent, ABC)` 단일 진실 + `BuiltinTool`/`MCPTool`/`UserDefinedTool`. shelf = 프로젝트(`PluginProject.tool_shelf`) 소유, FSM은 `Tool.name` 문자열로 참조(fsm/는 plugin 무관 — 객체 참조 금지, Validator가 실존 검증). `CC_BUILTIN_TOOLS`는 `validation/project_rules.py` 모듈 frozenset이다(파사드 재-export로 `daedalus.model.validation`에서도 임포트 가능 — Read/Write/Edit/Bash/Glob/Grep/WebFetch/WebSearch/Agent/Task/TodoWrite/NotebookEdit/SlashCommand/PowerShell).
@@ -1445,9 +1452,14 @@ dataclass(값 동등성, unhashable) 유지 — 컬렉션 멤버십에는 list/`
    추출한 서버 이름(WP-TM, 11번 항목과 동일 규칙)도 `mcp_servers` 선언과 합쳐(중복 제거·이름순) 같은 "MCP 서버 연결" 줄에 담는다 — 별도 단락을 추가하지 않는다.
    **LOCAL 빌드는 이 둘을 프론트매터로 실제 배출한다(WP-LA, 16번 항목)** — 그때는 "요구 환경" 단락을 내지 않는다(같은 사실을 두 번 말하는 데다 "설정 파일을 생성하지 않음" 문구가 거짓이 된다).
 8. **컴파일 게이트**: `Validator.validate_project`의 에러(`is_warning=False`) 1건이라도 있으면 거부(파일 미생성, errors 반환). 경고는 통과(warnings 동봉).
-   게이트 강화 2종(파일 쓰기 전 산출 계획 단계): ① 산출 이름이 되는 컴포넌트(스킬·에이전트) **및 프로젝트 이름**의 이름이
+   게이트 강화 3종(파일 쓰기 전 산출 계획 단계): ① 산출 이름이 되는 컴포넌트(스킬·에이전트) **및 프로젝트 이름**의 이름이
    `^[a-z0-9][a-z0-9-]*$` 불일치면 `compile_invalid_component_name` **에러로 승격** 거부 (F7 검증기에서는 경고 등급 유지 — 편집 중에는 경고가 맞다). 프로젝트 이름은 plugin.json의 `name`(플러그인 식별자)이 되므로 동일 규약을 적용한다.
    ② 전체 산출 경로 집합에 중복이 있으면 `compile_output_path_conflict` 에러로 거부 + 충돌 경로/원인 컴포넌트 보고 (조용한 덮어쓰기 방지).
+   ③ **서로 다른 훅이 같은 스크립트 파일명으로 슬러그되면** `duplicate_hook_script` 에러로 거부 + 충돌 파일명·훅 이름 나열
+   (`_hook_script_name_conflicts`). 훅 이름은 자유 문자열이지만 파일명은 `_slug`를 거쳐 '`run tests`'와 '`run-tests`'가
+   `run-tests.sh` 하나로 겹친다 — `compile_hook_scripts`가 먼저 선언된 훅만 남기고 뒤의 것을 조용히 버리므로 훅 하나가
+   말없이 사라진 산출물이 나간다. 경로 충돌 게이트(②)로는 못 잡는다: 드롭이 계획보다 먼저 일어나 계획에는 경로가 하나만
+   올라오기 때문이다. 그래서 계획 수립 전에 라이브러리 쪽에서 판정한다(같은 훅 안의 중복은 `script_files`가 번호로 유일화하므로 대상 아님).
 9. **plugin.json 매니페스트**: `compile_plugin_manifest(project)`가 `project.name`/`description`/`version`으로 `.claude-plugin/plugin.json`을 무조건 생성한다. 키 순서 `name`→`description`(빈 문자열이면 키 생략)→`version`.
 10. **블랙보드 사용 지침 단락**: 프로젝트 최상위 블랙보드에 `class_definitions`가 1개 이상이면, `ProceduralSkill`의 tool_shelf 단락 뒤·"다음 단계" 단락 앞, 그리고 에이전트 `.md` 본문 마지막에 `_blackboard_section(project, component)`이 "## 공유 상태 (블랙보드)" 단락(`state/<플러그인>/<ClassName>.json` 파일 목록 + 읽기-수정-쓰기 규칙)을 배출한다. 정의가 0개면 단락 생략.
     **접근 선언 기반 구체화(WP-BB):** component(스킬/에이전트)가 주어지고 그 자체 FSM(재귀) + 프로젝트 그래프

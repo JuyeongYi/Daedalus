@@ -77,8 +77,10 @@ def compile_hook_scripts(
     합성 훅도 같은 규칙으로 파일이 된다.
 
     반환 순서는 결정적이다(라이브러리 선언 순서 → 훅 내 핸들러 순서).
-    같은 파일명이 둘 나오면 나중 것이 앞의 것을 덮으므로 **먼저 선언된 훅이
-    이긴다** — 이름 충돌은 `duplicate_hook_script`가 컴파일 게이트에서 잡는다.
+    같은 파일명이 둘 나오면 **먼저 선언된 훅이 이기고** 나머지는 버려진다 —
+    다만 서로 다른 훅 사이의 이름 충돌은 그 전에 컴파일 게이트
+    (`project_compiler._hook_script_name_conflicts` → `duplicate_hook_script`)가
+    거부하므로, 여기 드롭은 게이트를 통과한 뒤에는 도달하지 않는다.
     """
     library = hook_library(project, resolved_hooks)
     referenced = set(_collect_referenced_hook_names(project))

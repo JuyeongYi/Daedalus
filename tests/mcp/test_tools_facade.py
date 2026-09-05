@@ -21,8 +21,9 @@ _PRE_SPLIT_MODULE_ATTRS = [
 ]
 
 # 분해 직전 DaedalusTools의 멤버 스냅샷 (vars 기준, dunder 제외) — 75종.
+# 이후 **실제로 삭제된** 멤버는 여기서도 뺀다: _all_hook_owners는 _BaseTools의
+# _components와 본문이 같은 사본이라 2026-09-06에 제거됐다(호출부는 _components로).
 _PRE_SPLIT_CLASS_MEMBERS = [
-    "_all_hook_owners",
     "_body_text",
     "_build_hook_handler",
     "_coerce_field_value",

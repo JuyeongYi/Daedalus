@@ -172,14 +172,12 @@ from daedalus.compiler.emit.hooks import (
     _should_emit_progress_hook,
     compile_hook_scripts,
     compile_hooks_json,
+    hook_library,
 )
 from daedalus.compiler.emit.manifest import (
-    _LOCAL_FILE_REF_FROM,
-    _LOCAL_FILE_REF_TO,
     _class_to_json_schema,
     _field_to_json_schema,
     compile_plugin_manifest,
     compile_schemas_json,
     expand_root_token,
-    substitute_local_file_refs,
 )

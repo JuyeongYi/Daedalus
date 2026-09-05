@@ -312,7 +312,7 @@ class HookTools(_BaseTools):
         hook = self._find_hook(name)
         referenced = [
             getattr(comp, "name", "?")
-            for comp in self._all_hook_owners()
+            for comp in self._components()
             if name in (getattr(getattr(comp, "config", None), "hooks", {}) or {})
         ]
         self._vm.execute(
@@ -325,11 +325,6 @@ class HookTools(_BaseTools):
         )
         self._refresh_hook_ui()
         return {"deleted": name, "still_referenced_by": referenced}
-
-    def _all_hook_owners(self) -> list[Any]:
-        """훅을 참조할 수 있는 컴포넌트 전부 — 스킬 + 에이전트."""
-        project = self._project
-        return [*project.skills, *project.agents]
 
     def set_component_hooks(
         self, name: str, hooks: list[str]

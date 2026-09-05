@@ -11,9 +11,13 @@
 """
 from __future__ import annotations
 
-from typing import Any
-
 from PySide6.QtWidgets import QMenu
+
+# 런타임 임포트다 — 시그니처의 `StateViewModel` 주석을 실제 이름으로 해소해야
+# `get_type_hints()`가 NameError로 죽지 않는다(TYPE_CHECKING 블록은 모듈
+# globals에 이름을 남기지 않으므로 해소되지 않는다). state_vm은 순수 모델만
+# 수입하므로 순환이 생기지 않는다.
+from daedalus.view.viewmodel.state_vm import StateViewModel
 
 #: 링크 하이라이트 지속 시간(ms). 선택 상태를 그대로 쓰므로 되돌릴 필요가 없다.
 HIGHLIGHT_MS = 2000

@@ -33,7 +33,7 @@ class _CallersPanel(QWidget):
 
     def __init__(self, agent: AgentDefinition, project, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        from PySide6.QtWidgets import QLabel, QListWidget, QListWidgetItem
+        from PySide6.QtWidgets import QLabel, QListWidget
 
         self._agent = agent
         self._project = project
@@ -74,7 +74,7 @@ class _CallersPanel(QWidget):
 
 
 class AgentEditor(QWidget):
-    """AgentDefinition 편집기 — ComponentEditor + 출력/입력 포트 패널."""
+    """AgentDefinition 편집기 — ComponentEditor + 출력 포트 패널·호출자 목록."""
 
     agent_changed = Signal()
 

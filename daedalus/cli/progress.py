@@ -26,6 +26,7 @@ from typing import Any
 
 from daedalus.cli.blackboard import (
     _WRITE_MAX_ATTEMPTS,
+    EXIT_INVALID,
     EXIT_NO_FILE,
     EXIT_OK,
     EXIT_USAGE,
@@ -168,5 +169,7 @@ def cmd_set(
     raise CliError(
         f"쓰지 않았다 — {path.as_posix()}를 {_WRITE_MAX_ATTEMPTS}번 시도하는 동안 "
         f"매번 다른 프로세스가 먼저 갱신했다.",
-        EXIT_USAGE,
+        # 블랙보드 write의 재시도 소진(`_cmd_write`)과 **같은 상황·같은 계약**이다:
+        # 사용법이 틀린 것이 아니라 "쓰기가 반영되지 않았다"이므로 exit 1이다.
+        EXIT_INVALID,
     )

@@ -42,9 +42,6 @@ class DraggableItemMixin:
         if sc is not None and hasattr(sc, "snapshot_drag_positions"):
             sc.snapshot_drag_positions()
 
-    def drag_origin(self) -> QPointF | None:
-        return self._drag_origin
-
     def end_drag(self) -> None:
         """release — 시작 좌표가 있고 실제로 움직였으면 scene.handle_items_moved 위임.
 

@@ -92,11 +92,6 @@ def compile_plugin_manifest(project) -> str:
 
 # ─────────────────────────── 로컬 빌드 (WP-TG) ───────────────────────────
 
-# LOCAL 빌드에서 files/ 참조만 치환한다 — files/ 외 용도의 ${CLAUDE_PLUGIN_ROOT}는
-# 그대로 두고 검증 규칙(plugin_root_in_local_build)이 경고한다.
-_LOCAL_FILE_REF_FROM = "${CLAUDE_PLUGIN_ROOT}/files/"
-_LOCAL_FILE_REF_TO = "${CLAUDE_PROJECT_DIR}/files/"
-
 
 def expand_root_token(text: str, project=None) -> str:
     """산출 텍스트의 ``${ROOT}``를 빌드 타깃에 맞는 CC 변수로 확장한다 (WP-RT).
@@ -108,13 +103,3 @@ def expand_root_token(text: str, project=None) -> str:
     from daedalus.model.plugin.variables import expand_root
 
     return expand_root(text, _build_target(project))
-
-
-def substitute_local_file_refs(text: str) -> str:
-    """LOCAL 빌드 산출 텍스트에서 ``${CLAUDE_PLUGIN_ROOT}/files/`` →
-    ``${CLAUDE_PROJECT_DIR}/files/``로 치환한다.
-
-    본문 저장 정본은 마켓플레이스 형태 하나이며(WP-FR 재작업 없음), 이 치환은
-    LOCAL 빌드 산출 시점에만 적용된다 — MARKETPLACE 산출 문자열은 불변.
-    """
-    return text.replace(_LOCAL_FILE_REF_FROM, _LOCAL_FILE_REF_TO)

@@ -105,7 +105,7 @@ def _invoke_phrase(ref, name: str) -> str:
 
 
 def _next_steps_section(component, project) -> list[str]:
-    """project.graph에서 component placement의 outgoing 전이를 모아 "## 다음 단계"
+    """project.graph에서 component placement의 outgoing 전이를 모아 "## Next Steps"
     단락 블록을 생성한다 (버그 2). outgoing이 없으면 빈 목록(단락 생략).
 
     component는 전역 스킬 객체. 그래프에서 skill_ref가 identity로 일치하는
@@ -291,7 +291,7 @@ def _entry_item_line(t, project) -> str:
 
 
 def _entry_context_section(component, project) -> list[str]:
-    """"## 진입 맥락" 단락 — 작업 재개 프리앰블 뒤·본문 앞.
+    """"## Entry Context" 단락 — 작업 재개 프리앰블 뒤·본문 앞.
 
     **그래프에서만 유도한다(WP-IP).** 도착 노드는 입력 포트를 선언하지
     않는다 — (출처, 트리거)가 이미 경로를 특정하고, 무엇을 넘기는지는 출처가

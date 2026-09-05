@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from daedalus.model.fsm.state import SimpleState, State
+from daedalus.model.fsm.state import State
 from daedalus.model.fsm.transition import Transition
 
 

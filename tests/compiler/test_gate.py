@@ -157,6 +157,56 @@ def test_clean_project_still_passes_after_gate_hardening(tmp_path):
 # ─────────────────────── 리뷰 마이너 후속 ───────────────────────
 
 
+def _colliding_hook_skill(name: str = "alpha"):
+    """스크립트 파일명이 서로 겹치는 훅 2개를 참조하는 스킬을 만든다.
+
+    'run tests'와 'run-tests'는 훅 이름이 다르지만 `_slug`를 거치면 파일명이
+    `run-tests.sh` 하나로 겹친다 — duplicate_hook_script 게이트의 유발 조건.
+    """
+    from daedalus.model.plugin.hook import CommandHook, HookDef
+
+    hooks = [
+        HookDef(name="run tests", description="d", handlers=[CommandHook(script="a")]),
+        HookDef(name="run-tests", description="d", handlers=[CommandHook(script="b")]),
+    ]
+    skill = make_procedural(name=name)
+    skill.config.hooks = {h.name: {} for h in hooks}
+    return skill, hooks
+
+
+def test_duplicate_hook_script_rejected(tmp_path):
+    """훅 이름이 같은 파일명으로 슬러그되면 컴파일을 거부한다 (조용한 드롭 방지)."""
+    skill, hooks = _colliding_hook_skill()
+    project = PluginProject(name="p", skills=[skill], hook_library=hooks)
+
+    result = compile_project(project, tmp_path)
+    assert not result.ok
+    dupes = [e for e in result.errors if e.rule == "duplicate_hook_script"]
+    assert len(dupes) == 1, [e.rule for e in result.errors]
+    message = dupes[0].message
+    assert "run tests" in message and "run-tests" in message
+    assert "run-tests.sh" in message
+    assert result.written == []
+
+
+def test_distinct_hook_script_names_compile(tmp_path):
+    """파일명이 겹치지 않으면 통과한다 — 게이트가 정상 훅을 막지 않는다."""
+    from daedalus.model.plugin.hook import CommandHook, HookDef
+
+    hooks = [
+        HookDef(name="run-tests", description="d", handlers=[CommandHook(script="a")]),
+        HookDef(name="run-lint", description="d", handlers=[CommandHook(script="b")]),
+    ]
+    skill = make_procedural(name="alpha")
+    skill.config.hooks = {h.name: {} for h in hooks}
+    project = PluginProject(name="p", skills=[skill], hook_library=hooks)
+
+    result = compile_project(project, tmp_path)
+    assert result.ok, [e.message for e in result.errors]
+    assert (tmp_path / "hooks" / "scripts" / "run-tests.sh").exists()
+    assert (tmp_path / "hooks" / "scripts" / "run-lint.sh").exists()
+
+
 def test_gate_rules_registered_in_compiler_error_rules(tmp_path):
     """게이트가 발급하는 rule은 전부 COMPILER_ERROR_RULES에 등록되어 있고,
     WARNING_RULES와 겹치지 않아야 한다 (등급 의도의 단일 진실)."""
@@ -166,19 +216,24 @@ def test_gate_rules_registered_in_compiler_error_rules(tmp_path):
 
     assert not (COMPILER_ERROR_RULES & WARNING_RULES)
 
-    # 두 게이트 에러를 동시에 유발하는 프로젝트로 발급 rule ⊆ 등록 집합 고정
-    # (경로 충돌은 skill-files의 SKILL.md 덮어쓰기로 유발)
+    # 게이트 에러 전종을 동시에 유발하는 프로젝트로 발급 rule = 등록 집합 고정.
+    # (경로 충돌은 skill-files의 SKILL.md 덮어쓰기로, 훅 스크립트 충돌은 같은
+    #  파일명으로 슬러그되는 훅 2개로 유발한다.)
     agent1 = make_agent("a1")
+    alpha, hooks = _colliding_hook_skill("alpha")
     project = PluginProject(
         name="p",
-        skills=[make_procedural(name="Bad Name"), make_procedural(name="alpha")],
+        skills=[make_procedural(name="Bad Name"), alpha],
         agents=[agent1],
+        hook_library=hooks,
     )
     root = tmp_path / "skill-files"
     (root / "alpha").mkdir(parents=True)
     (root / "alpha" / "SKILL.md").write_bytes(b"boom")
     result = compile_project(project, tmp_path / "out", skill_files_dir=root)
-    emitted = {e.rule for e in result.errors if e.rule.startswith("compile_")}
+    # 이 픽스처는 Validator 에러를 만들지 않는다(이름 규약은 검증기에서 경고
+    # 등급) — 따라서 result.errors는 전부 게이트가 발급한 것이다.
+    emitted = {e.rule for e in result.errors}
     assert emitted == COMPILER_ERROR_RULES, (
         f"발급 {emitted} vs 등록 {COMPILER_ERROR_RULES}"
     )

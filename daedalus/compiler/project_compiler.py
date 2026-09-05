@@ -27,6 +27,7 @@ compile_project는 파일 쓰기 전에 전체 산출 경로 집합을 계산하
     이름이 `^[a-z0-9][a-z0-9-]*$` 불일치 → 컴파일 에러로 승격해 거부.
     (F7 검증기에서는 경고 등급 유지 — 편집 중에는 경고가 맞다. 게이트만 엄격.)
   - 산출 경로 충돌 → 거부 + 충돌 경로/원인 컴포넌트 보고.
+  - 서로 다른 훅이 같은 스크립트 파일명으로 슬러그되면 → 거부(duplicate_hook_script).
 경고는 통과(결과에 동봉).
 """
 from __future__ import annotations
@@ -39,6 +40,8 @@ from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 
 from daedalus.compiler.emit import (
+    _collect_referenced_hook_names,
+    _is_local_build,
     compile_agent,
     compile_hook_scripts,
     compile_hooks_json,
@@ -46,6 +49,7 @@ from daedalus.compiler.emit import (
     compile_schemas_json,
     compile_skill,
     expand_root_token,
+    hook_library,
     referenced_mcp_servers,
 )
 from daedalus.compiler.workspace import (
@@ -53,7 +57,6 @@ from daedalus.compiler.workspace import (
     merge_claude_md,
     render_rule,
 )
-from daedalus.model.plugin.enums import BuildTarget
 from daedalus.model.plugin.hook import HOOK_SCRIPT_DIR
 from daedalus.model.plugin.skill import Skill
 from daedalus.model.validation import ValidationError, Validator
@@ -84,6 +87,7 @@ _FILE_REF_BARE_RE = re.compile(r"\$\{ROOT\}/files/([^\s)\]`\"'<>,;]+)")
 COMPILER_ERROR_RULES: frozenset[str] = frozenset({
     "compile_invalid_component_name",
     "compile_output_path_conflict",
+    "duplicate_hook_script",
 })
 
 # 스킬별 동봉 파일 소스 디렉토리명 (WP-SF) — <프로젝트 폴더>/skill-files/<스킬 산출
@@ -136,14 +140,55 @@ class _PlannedOutput:
     src_path: Path | None = None     # skill_file일 때 복사 원본 (WP-SF)
 
 
-def _is_local_build(project) -> bool:
-    """project.build_target이 LOCAL이면 True (구버전 파일/속성 부재 → MARKETPLACE, WP-TG)."""
-    return getattr(project, "build_target", BuildTarget.MARKETPLACE) is BuildTarget.LOCAL
-
-
 def _hook_script_bodies(project, resolved_hooks=None) -> dict[str, str]:
     """훅 스크립트 파일명 → 내용 (WP-HS). 계획과 쓰기가 같은 원본을 본다."""
     return dict(compile_hook_scripts(project, resolved_hooks))
+
+
+def _hook_script_name_conflicts(project, resolved_hooks=None) -> list[ValidationError]:
+    """서로 다른 훅이 같은 스크립트 파일명으로 슬러그되면 에러 (duplicate_hook_script).
+
+    훅 이름은 사용자가 자유롭게 쓰지만 파일명은 ``_slug``를 거친다 — '`run tests`'와
+    '`run-tests`'는 이름이 다른데 파일명이 `run-tests.sh` 하나로 겹친다.
+    ``compile_hook_scripts``는 먼저 선언된 훅을 남기고 뒤의 것을 조용히 버리므로,
+    게이트가 없으면 **훅 하나가 아무 말 없이 사라진 산출물**이 나간다.
+
+    산출 경로 충돌(``compile_output_path_conflict``)이 잡지 못하는 이유가 그것이다 —
+    드롭이 계획 이전에 일어나 계획에는 경로가 하나만 올라온다. 그래서 계획을 세우기
+    전에 라이브러리 쪽에서 판정한다.
+
+    같은 훅 안의 파일명 중복은 대상이 아니다(``script_files``가 번호로 유일화한다).
+    """
+    library = hook_library(project, resolved_hooks)
+    referenced = set(_collect_referenced_hook_names(project))
+
+    owners: dict[str, str] = {}          # 파일명 → 먼저 점유한 훅 이름
+    conflicts: dict[str, list[str]] = {}  # 파일명 → 충돌한 훅 이름들(선언 순서)
+    for hook in library:
+        if hook.name not in referenced:
+            continue
+        for filename, _body in hook.script_files():
+            first = owners.get(filename)
+            if first is None:
+                owners[filename] = hook.name
+            elif first != hook.name:
+                conflicts.setdefault(filename, [first]).append(hook.name)
+
+    return [
+        ValidationError(
+            rule="duplicate_hook_script",
+            message=(
+                f"훅 스크립트 파일명 '{filename}'이 충돌합니다: "
+                f"{', '.join(repr(n) for n in names)}. 훅 이름이 파일명으로 바뀔 때 "
+                f"같은 이름이 되어, 그대로 진행하면 먼저 선언된 훅의 스크립트만 "
+                f"남고 나머지는 조용히 사라집니다 — 훅 이름을 조정하거나 핸들러에 "
+                f"script_name을 지정하세요."
+            ),
+            source=filename,
+            subject=project,
+        )
+        for filename, names in conflicts.items()
+    ]
 
 
 def _plan_outputs(
@@ -151,9 +196,11 @@ def _plan_outputs(
 ) -> tuple[list[_PlannedOutput], list[ValidationError], list[ValidationError]]:
     """파일 쓰기 전에 전체 산출 경로 집합을 계산하고 게이트 에러를 수집한다.
 
-    에러 2종:
+    에러 3종:
       compile_invalid_component_name — 산출 이름 규약 불일치 (게이트에서 에러 승격)
       compile_output_path_conflict   — 동일 산출 경로 중복 (조용한 덮어쓰기 방지)
+      duplicate_hook_script          — 서로 다른 훅이 같은 스크립트 파일명으로
+                                       슬러그됨 (조용한 드롭 방지, WP-HS)
 
     skill_files_dir(WP-SF, 선택): 스킬별 동봉 파일 트리. 하위 폴더 이름이 스킬
     산출 디렉토리명과 일치하면 그 파일들이 SKILL.md 옆으로 가는 복사 계획으로
@@ -290,6 +337,7 @@ def _plan_outputs(
                 kind="hooks_json",
                 component=project,
             ))
+        errors.extend(_hook_script_name_conflicts(project, resolved_hooks))
         # 훅 스크립트 — 커맨드는 아무리 짧아도 파일로 나가고 hooks.json에는
         # 루트 기반 경로만 남는다 (WP-HS).
         for filename, _body in compile_hook_scripts(project, resolved_hooks):

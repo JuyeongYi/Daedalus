@@ -26,8 +26,9 @@ FILES_PREFIX = f"{ROOT_TOKEN}/files/"
 
 # 타깃별 확장 결과.
 #   MARKETPLACE — 플러그인 설치 디렉토리. files/는 플러그인 안에 복사된다.
-#   LOCAL       — 프로젝트 루트. install 스크립트가 files/를 거기 복사하고,
-#                 ${CLAUDE_PROJECT_DIR}은 플러그인 여부와 무관하게 치환된다(v2.1.196+).
+#   LOCAL       — 프로젝트 루트. 컴파일이 곧 설치라(WP-MW) files/를 대상 작업
+#                 폴더에 바로 복사하고, ${CLAUDE_PROJECT_DIR}은 플러그인 여부와
+#                 무관하게 치환된다(v2.1.196+).
 ROOT_EXPANSION: dict[BuildTarget, str] = {
     BuildTarget.MARKETPLACE: "${CLAUDE_PLUGIN_ROOT}",
     BuildTarget.LOCAL: "${CLAUDE_PROJECT_DIR}",

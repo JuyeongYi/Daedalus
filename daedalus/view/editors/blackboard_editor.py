@@ -3,7 +3,7 @@
 
 진입점: MainWindow 상주 탭(인덱스 1, 항상 존재 — 닫기 불가).
 편집 결과는 모델(project.blackboard.class_definitions)에 직접 기록 + notify
-(undo 커맨드화 범위 외 — hook_editor.HookLibraryDialog 폼 정책과 동일).
+(undo 커맨드화 범위 외 — hook_panel.HookLibraryPanel 폼 정책과 동일).
 편집 중 위젯 파괴 금지 — 리스트/테이블 재구성은 구조 변경(클래스·필드 추가/삭제)
 시에만 일어나고, 텍스트 키스트로크는 in-place 반영이다.
 """

@@ -257,7 +257,7 @@ def _settings_note_agent(agent: AgentDefinition, project=None) -> list[str]:
 
     WP-TM Part C: config.tools의 mcp__ 접두에서 추출한 서버 이름도 명시적
     mcp_servers 선언과 합쳐(중복 제거, 이름순) 같은 단락에 담는다 — 별도
-    "## 요구 환경" 단락을 또 만들지 않는다.
+    "## Requirements" 단락을 또 만들지 않는다.
 
     WP-LA: LOCAL 빌드에서는 이 둘이 프론트매터로 **실제 배출**되므로(설정을
     직접 들고 가므로) 이 언급 단락을 내지 않는다 — 같은 사실을 두 번 말하는
@@ -287,7 +287,7 @@ def _settings_note_agent(agent: AgentDefinition, project=None) -> list[str]:
 
 
 def _call_contract_section(agent: AgentDefinition, project) -> list[str]:
-    """"## 호출 계약" — 그래프에서 유도한다 (WP-CT, 수동 계약 카드 퇴역).
+    """"## Invocation Contract" — 그래프에서 유도한다 (WP-CT, 수동 계약 카드 퇴역).
 
     호출 정보를 양쪽에 적게 하던 중복(호출자의 call_agents 포트 + 에이전트의
     수동 계약 카드)을 해소했다 — **호출자가 무엇을 넘기는지는 호출자가 자기
@@ -414,7 +414,7 @@ def _describe_agent_fsm(agent: AgentDefinition) -> list[str]:
     서술한다. entry/exit 표지뿐인 FSM(신규 기본형)은 서술할 내용이 없으므로
     생략한다 — "1. entry (시작) 2. done (출구)" 같은 무의미한 목록을 막는다.
 
-    출구("## 출구") 단락은 여기가 아니라 `_agent_outputs_section`(transfer_on
+    출구("## Exits") 단락은 여기가 아니라 `_agent_outputs_section`(transfer_on
     기반)이 담당한다.
 
     방어 가드: states 비어 있음 / initial_state=None인 불완전 FSM은 생략
@@ -471,7 +471,7 @@ def _describe_agent_fsm(agent: AgentDefinition) -> list[str]:
 
 
 def _agent_outputs_section(agent: AgentDefinition) -> list[str]:
-    """"## 출구" — 출력 포트(transfer_on) 기반 (WP-AF).
+    """"## Exits" — 출력 포트(transfer_on) 기반 (WP-AF).
 
     호출자 그래프가 이 이름들로 분기하므로, 에이전트는 종료 시 자신이 어느
     출구로 끝났는지 명시해야 한다. description이 있으면 판정 기준으로 병기.
