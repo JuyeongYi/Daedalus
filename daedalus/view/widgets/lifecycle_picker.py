@@ -429,6 +429,14 @@ class HookLifecycleDialog(QDialog):
         buttons.rejected.connect(self.reject)
         lay.addWidget(buttons)
 
+    def showEvent(self, event) -> None:  # noqa: N802 (Qt override)
+        # 모달인데 메인 창 뒤(또는 다른 모니터)에 열리면 사용자에게는 "버튼을
+        # 눌렀더니 앱이 멈춤"으로 보인다(사용자 보고 — 다이얼로그가 안 보이는
+        # 채로 앱은 모달 대기). 표시 시점에 전면·활성화를 강제한다.
+        super().showEvent(event)
+        self.raise_()
+        self.activateWindow()
+
     @property
     def selected(self) -> HookEvent | None:
         return self._selected

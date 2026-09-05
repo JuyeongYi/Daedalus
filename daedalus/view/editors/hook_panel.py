@@ -683,7 +683,10 @@ class HookLibraryPanel(QWidget):
         hook = self._current_hook()
         if hook is None or self._current_is_global():
             return
-        dialog = HookLifecycleDialog(hook.event, parent=self)
+        # parent는 패널이 아니라 **최상위 창** — 깊이 중첩된 위젯을 부모로 주면
+        # 일부 플랫폼에서 다이얼로그가 메인 창 뒤에 열려 "버튼을 눌렀더니
+        # 멈춤"으로 보인다(모달 대기 + 다이얼로그 비가시, 사용자 보고).
+        dialog = HookLifecycleDialog(hook.event, parent=self.window())
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
         chosen = dialog.selected
