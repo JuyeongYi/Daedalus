@@ -154,9 +154,11 @@ class ValidationActions:
             )
 
     def focus_in_agent_tab(self, agent_name: str, subject: object) -> None:
-        """에이전트 탭이 열려 있으면 해당 노드를 포커스, 없으면 상태바 안내.
+        """에이전트 탭이 열려 있으면 그 탭으로 전환, 없으면 상태바 안내.
 
-        subject가 캔버스에 없으면(삭제된 노드 등) 상태바에 안내를 표시하고 no-op.
+        WP-AF로 에이전트 내부 FSM이 퇴역해 AgentEditor에는 캔버스가 없다 —
+        노드 단위 포커스는 프로젝트 캔버스(focus_in_project_canvas) 몫이고
+        여기서는 탭 전환까지만 한다.
         """
         from daedalus.view.editors.agent_editor import AgentEditor
 
@@ -167,24 +169,6 @@ class ValidationActions:
                 ag = getattr(widget, "_agent", None)
                 if ag is not None and ag.name == agent_name:
                     w._tabs.setCurrentIndex(i)
-                    # AgentEditor 내부 씬에서 노드 탐색
-                    scene = getattr(widget, "_graph_scene", None)
-                    if scene is not None:
-                        for svm, node_item in scene._node_items.items():
-                            if svm.model is subject:
-                                scene.clearSelection()
-                                node_item.setSelected(True)
-                                view = getattr(widget, "_canvas_view", None)
-                                if view is not None and hasattr(view, "centerOn"):
-                                    view.centerOn(node_item)
-                                return
-                    # 탭은 열려있지만 subject를 찾지 못함 — 삭제된 노드일 수 있음
-                    name = getattr(subject, "name", None)
-                    if name:
-                        w._status_label.setText(
-                            f"'{name}' 노드가 에이전트 '{agent_name}' 캔버스에 없습니다 "
-                            f"(이미 삭제되었을 수 있습니다)."
-                        )
                     return
         # 탭이 열려 있지 않음
         w._status_label.setText(

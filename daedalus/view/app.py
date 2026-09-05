@@ -772,19 +772,11 @@ class MainWindow(QMainWindow):
 
     def _on_project_vm_changed(self) -> None:
         self._registry_panel.set_placed_ids(self._get_placed_ids())
-        self._sync_agent_editors()
         self._sync_tab_titles()
         # 상주 패널은 자기 편집만 알므로, 바깥(MCP 등)에서 온 변경을 여기서
         # 반영한다 — 패널 자신이 발화한 notify는 각 패널이 알아서 건너뛴다.
         self._hook_panel.refresh_external()
         self._blackboard_panel.refresh_external()
-
-    def _sync_agent_editors(self) -> None:
-        """열린 AgentEditor 탭 동기화 훅 (WP-CT 이후 빈 자리).
-
-        계약 패널 동기화가 유일한 일이었는데 패널이 퇴역해 지금은 할 일이 없다.
-        에이전트 편집기에 외부 변경 반영이 다시 필요해지면 여기가 자리다.
-        """
 
     def _sync_tab_titles(self) -> None:
         """열린 탭의 타이틀을 현재 컴포넌트 이름과 동기화한다.

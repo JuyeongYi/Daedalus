@@ -89,8 +89,8 @@ def test_delete_placement_syncs_to_project_graph(qapp):
 
 def test_entry_point_delete_guard_in_scene(qapp):
     """FsmScene._delete_state의 EntryPoint 방어 — 프로젝트 캔버스에는 이제
-    EntryPoint VM이 없지만(WP-EP), 같은 방어를 공유하는 AgentFsmScene(에이전트
-    캔버스의 진짜 EntryPoint)을 위해 공용 경로의 방어를 잠근다."""
+    EntryPoint VM이 없지만(WP-EP), 구버전 파일·외부 경로로 VM이 생기면
+    project.graph.initial_state가 통째로 사라지므로 방어를 잠근다."""
     project = PluginProject(name="p")
     vm = ProjectViewModel()
     scene = FsmScene(vm)

@@ -87,7 +87,7 @@ class FsmScene(QGraphicsScene):
         self._ref_node_items: dict[ReferenceViewModel, ReferenceNodeItem] = {}
         self._ref_edge_items: dict[ReferenceLinkViewModel, ReferenceEdgeItem] = {}
         self._state_counter = 0
-        self._target_fsm: StateMachine | None = None  # AgentFsmScene만 설정 — 모델 동기화 대상
+        self._target_fsm: StateMachine | None = None  # set_project()가 project.graph로 배선
         self._drag_positions: dict[DraggableItemMixin, QPointF] = {}  # WP-DM 드래그 시작 스냅샷
         self.setBackgroundBrush(_BG_COLOR)
         self.setSceneRect(_INITIAL_SCENE_RECT)
@@ -539,9 +539,9 @@ class FsmScene(QGraphicsScene):
     ) -> None:
         """전이 엣지 컨텍스트 메뉴 — On Transfer 스킬 설정/해제/생성 + 삭제 + 경유점.
 
-        FsmScene와 AgentFsmScene 양쪽에서 공유하는 템플릿. 스킬 목록/생성
-        정책 차이는 _get_transfer_skills / _create_and_assign_transfer_skill
-        오버라이드로 흡수한다.
+        스킬 목록/생성 정책은 _get_transfer_skills /
+        _create_and_assign_transfer_skill로 갈라 두어, 씬을 파생시키는 경우에도
+        메뉴 조립 자체는 이 한 곳만 남는다.
         """
         tvm = item.transition_vm
         transition = tvm.model
@@ -637,8 +637,8 @@ class FsmScene(QGraphicsScene):
     def set_project(self, project: PluginProject) -> None:
         self._project = project
         # 프로젝트 캔버스의 노드/전이를 정식 FSM(project.graph)에 동기화하도록 배선
-        # (버그 3: 각 노드가 정식 상태여야 한다). AgentFsmScene은 _target_fsm을
-        # 에이전트 FSM으로 별도 설정하므로 이 메서드를 거치지 않는다.
+        # (버그 3: 각 노드가 정식 상태여야 한다). _target_fsm이 배선되는 유일한
+        # 지점이라, 이 메서드를 거치지 않은 씬은 VM에만 그리고 모델을 건드리지 않는다.
         self._target_fsm = project.graph
 
     def _get_transfer_skills(self) -> list:
@@ -821,8 +821,7 @@ class FsmScene(QGraphicsScene):
 
     def _state_node_at(self, scene_pos: QPointF) -> StateNodeItem | None:
         """scene_pos 위치의 StateNodeItem 반환."""
-        view_transform = self.views()[0].transform() if self.views() else None
-        for item in self.items(scene_pos) if view_transform is None else self.items(scene_pos):
+        for item in self.items(scene_pos):
             if isinstance(item, StateNodeItem):
                 return item
         return None
@@ -875,208 +874,3 @@ class FsmScene(QGraphicsScene):
             self._connect_event = None
             return
         super().mousePressEvent(event)
-
-
-class AgentFsmScene(FsmScene):
-    """에이전트 서브그래프 전용 씬.
-
-    - EntryPoint: 삭제 불가, 컨텍스트 메뉴 비활성
-    - ExitPoint: 이름변경/색상변경/삭제(마지막 1개 제외) 가능
-    - 빈 공간: 빈 상태 추가 / ExitPoint 추가
-    """
-
-    def __init__(
-        self,
-        project_vm: ProjectViewModel,
-        agent_fsm: StateMachine,
-        skill_lookup: Callable[[str], object] | None = None,
-        agent_ref_placements: list | None = None,
-    ) -> None:
-        super().__init__(project_vm, skill_lookup=skill_lookup)
-        self._agent_fsm = agent_fsm
-        self._target_fsm = agent_fsm
-        self._agent_ref_placements: list = agent_ref_placements if agent_ref_placements is not None else []
-
-    def _create_node_item(self, vm: StateViewModel) -> StateNodeItem:
-        return StateNodeItem(vm, show_call_agents=False)
-
-    def _get_ref_placements(self) -> list:
-        return self._agent_ref_placements
-
-    def contextMenuEvent(self, event: QGraphicsSceneContextMenuEvent | None) -> None:
-        if event is None:
-            return
-        pos = event.scenePos()
-        item = self.itemAt(pos, self.views()[0].transform()) if self.views() else None
-        menu = QMenu()
-
-        if isinstance(item, StateNodeItem):
-            from daedalus.model.fsm.pseudo import EntryPoint as _EP, ExitPoint as _XP
-            model = item.state_vm.model
-
-            if isinstance(model, _EP):
-                act = menu.addAction("삭제 불가 (EntryPoint)")
-                if act is not None:
-                    act.setEnabled(False)
-                menu.exec(event.screenPos())
-
-            elif isinstance(model, _XP):
-                rename_act = menu.addAction(f"'{model.name}' 이름 변경")
-                color_act = menu.addAction("색상 변경")
-                exit_count = sum(
-                    1 for s in self._agent_fsm.states
-                    if isinstance(s, _XP)
-                )
-                del_act = menu.addAction(f"'{model.name}' 삭제")
-                if del_act is not None and exit_count <= 1:
-                    del_act.setEnabled(False)
-                chosen = menu.exec(event.screenPos())
-                if chosen is None:
-                    return
-                if chosen == rename_act:
-                    self._rename_exit_point(model)
-                elif chosen == color_act:
-                    self._change_exit_point_color(model)
-                elif chosen == del_act and exit_count > 1:
-                    self._delete_exit_point(item.state_vm, model)
-
-            else:
-                delete_act = menu.addAction(f"'{model.name}' 삭제")
-                if menu.exec(event.screenPos()) == delete_act:
-                    self._delete_state(item.state_vm)
-
-        elif isinstance(item, ReferenceNodeItem):
-            ref_name = getattr(item.ref_vm.model, "name", "?")
-            del_ref_act = menu.addAction(f"참조 '{ref_name}' 삭제")
-            if menu.exec(event.screenPos()) == del_ref_act:
-                self.delete_reference_node(item.ref_vm)
-
-        elif isinstance(item, ReferenceEdgeItem):
-            del_link_act = menu.addAction("참조 연결 삭제")
-            if menu.exec(event.screenPos()) == del_link_act:
-                self.delete_reference_link(item.link_vm)
-
-        elif isinstance(item, TransitionEdgeItem):
-            self._handle_transition_edge_menu(menu, item, pos, event.screenPos())
-
-        elif isinstance(item, WaypointHandleItem):
-            self._handle_waypoint_handle_menu(menu, item, event.screenPos())
-
-        else:
-            add_exit_act = menu.addAction("ExitPoint 추가")
-            if menu.exec(event.screenPos()) == add_exit_act:
-                self._create_exit_point(pos)
-
-    def _create_exit_point(self, pos: QPointF) -> None:
-        from daedalus.model.fsm.pseudo import ExitPoint as _XP
-        from daedalus.view.commands.exit_point_commands import AddExitPointCmd
-        # 중복 이름 방지
-        existing = {s.name for s in self._agent_fsm.states}
-        name = "exit"
-        counter = 1
-        while name in existing:
-            name = f"exit_{counter}"
-            counter += 1
-        ep = _XP(name=name)
-        vm = StateViewModel(model=ep, x=pos.x(), y=pos.y())
-        self._project_vm.execute(MacroCommand(
-            children=[
-                AddExitPointCmd(self._agent_fsm, ep),
-                CreateStateCmd(self._project_vm, vm),
-            ],
-            description=f"ExitPoint '{name}' 추가",
-        ))
-
-    def _rename_exit_point(self, model) -> None:
-        from daedalus.view.commands.exit_point_commands import RenameExitPointCmd
-        view = self.views()[0] if self.views() else None
-        new_name, ok = QInputDialog.getText(
-            view, "ExitPoint 이름 변경", "이름:", text=model.name
-        )
-        if not (ok and new_name.strip() and new_name.strip() != model.name):
-            return
-        new_name = new_name.strip()
-        existing = {s.name for s in self._agent_fsm.states if s is not model}
-        if new_name in existing:
-            QMessageBox.warning(view, "이름 중복", f"'{new_name}' 이름이 이미 존재합니다.")
-            return
-        self._project_vm.execute(RenameExitPointCmd(model, model.name, new_name))
-
-    def _change_exit_point_color(self, model) -> None:
-        from daedalus.view.commands.exit_point_commands import ChangeExitPointColorCmd
-        from daedalus.view.editors.skill_editor import _ColorPickerPopup
-        from PySide6.QtGui import QCursor
-
-        view = self.views()[0] if self.views() else None
-        popup = _ColorPickerPopup(parent=view)
-
-        def _on_color(new_color: str) -> None:
-            if new_color != model.color:
-                self._project_vm.execute(
-                    ChangeExitPointColorCmd(model, model.color, new_color)
-                )
-            popup.deleteLater()
-
-        popup.color_selected.connect(_on_color)
-        popup.move(QCursor.pos())
-        popup.show()
-
-    def _delete_exit_point(self, state_vm: StateViewModel, model) -> None:
-        from daedalus.view.commands.exit_point_commands import DeleteExitPointCmd
-        transitions = self._project_vm.get_transitions_for(state_vm)
-        children: list[Command] = [
-            DeleteTransitionCmd(self._project_vm, t, fsm=self._target_fsm) for t in transitions
-        ]
-        children.append(DeleteExitPointCmd(self._agent_fsm, model))
-        children.append(DeleteStateCmd(self._project_vm, state_vm))
-        self._project_vm.execute(MacroCommand(
-            children=children,
-            description=f"ExitPoint '{model.name}' 삭제",
-        ))
-
-    def _delete_state(self, state_vm: StateViewModel) -> None:
-        """EntryPoint는 삭제 불가 — 모든 코드 경로에서 방어."""
-        from daedalus.model.fsm.pseudo import EntryPoint as _EP
-        if isinstance(state_vm.model, _EP):
-            return
-        super()._delete_state(state_vm)
-
-    def keyPressEvent(self, event: QKeyEvent | None) -> None:
-        if event is None:
-            return
-        if event.key() == Qt.Key.Key_Delete:
-            from daedalus.model.fsm.pseudo import EntryPoint as _EP, ExitPoint as _XP
-            selected = list(self.selectedItems())
-            # 경유점 핸들 우선 처리 — 프로젝트 캔버스와 동일 (리뷰 결함 2)
-            handles = [i for i in selected if isinstance(i, WaypointHandleItem)]
-            if handles:
-                for h in sorted(handles, key=lambda i: i.index, reverse=True):
-                    self.remove_waypoint(h.edge, h.index)
-                return
-            # 1패스: 노드 삭제 (연결 전이는 MacroCommand로 함께 삭제됨)
-            for item in selected:
-                if isinstance(item, StateNodeItem):
-                    model = item.state_vm.model
-                    if isinstance(model, _EP):
-                        continue  # EntryPoint 삭제 불가
-                    if isinstance(model, _XP):
-                        # 매 반복마다 재계산 — 다중 선택 시 마지막 ExitPoint 보호
-                        exit_count = sum(
-                            1 for s in self._agent_fsm.states if isinstance(s, _XP)
-                        )
-                        if exit_count <= 1:
-                            continue  # 마지막 ExitPoint 삭제 불가
-                        self._delete_exit_point(item.state_vm, model)
-                    else:
-                        self._delete_state(item.state_vm)
-            # 2패스: 엣지 — 노드 삭제로 이미 제거된 전이는 중복 커맨드 금지
-            for item in selected:
-                if isinstance(item, TransitionEdgeItem):
-                    if item.transition_vm in self._project_vm.transition_vms:
-                        self._delete_transition(item.transition_vm)
-                elif isinstance(item, ReferenceNodeItem):
-                    self.delete_reference_node(item.ref_vm)
-                elif isinstance(item, ReferenceEdgeItem):
-                    self.delete_reference_link(item.link_vm)
-            return
-        super().keyPressEvent(event)

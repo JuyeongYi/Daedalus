@@ -1,46 +1,40 @@
-"""AgentFsmScene이 agent.fsm 모델을 동기화하는지 검증."""
+"""FsmScene이 _target_fsm(project.graph) 모델을 동기화하는지 검증.
+
+WP-AF로 에이전트 내부 FSM(AgentFsmScene)이 퇴역해, _target_fsm이 배선되는
+씬은 프로젝트 캔버스 하나뿐이다 — 동기화 메커니즘 자체는 그대로이므로
+같은 시나리오를 project.graph 기준으로 검증한다.
+"""
 from PySide6.QtCore import QPointF
 
 from daedalus.model.fsm.event import CompletionEvent
-from daedalus.model.fsm.machine import StateMachine
-from daedalus.model.fsm.pseudo import EntryPoint, ExitPoint
 from daedalus.model.fsm.state import SimpleState
 from daedalus.model.fsm.transition import Transition
-from daedalus.view.canvas.scene import AgentFsmScene, FsmScene
+from daedalus.model.project import PluginProject
+from daedalus.view.canvas.scene import FsmScene
 from daedalus.view.viewmodel.project_vm import ProjectViewModel
 from daedalus.view.viewmodel.state_vm import StateViewModel, TransitionViewModel
 
 
-def _make_agent_fsm() -> StateMachine:
-    entry = EntryPoint(name="entry")
-    done = ExitPoint(name="done")
-    return StateMachine(
-        name="agent_fsm",
-        states=[entry, done],
-        initial_state=entry,
-        final_states=[done],
-    )
-
-
-def _make_scene():
+def _make_scene(skill_lookup=None):
     vm = ProjectViewModel()
-    fsm = _make_agent_fsm()
-    scene = AgentFsmScene(vm, agent_fsm=fsm)
-    return vm, fsm, scene
+    project = PluginProject(name="p")
+    scene = FsmScene(vm, skill_lookup=skill_lookup)
+    scene.set_project(project)
+    return vm, project.graph, scene
 
 
-def test_create_state_syncs_to_agent_fsm(qapp):
+def test_create_state_syncs_to_target_fsm(qapp):
     vm, fsm, scene = _make_scene()
     scene._create_state(QPointF(50, 60))
 
     created = [s for s in fsm.states if s.name == "State_1"]
-    assert len(created) == 1, "캔버스에서 만든 상태가 agent.fsm.states에 있어야 한다"
+    assert len(created) == 1, "캔버스에서 만든 상태가 project.graph.states에 있어야 한다"
 
     vm.command_stack.undo()
     assert not any(s.name == "State_1" for s in fsm.states)
 
 
-def test_delete_state_syncs_to_agent_fsm(qapp):
+def test_delete_state_syncs_to_target_fsm(qapp):
     vm, fsm, scene = _make_scene()
     state = SimpleState(name="victim")
     fsm.states.append(state)
@@ -54,9 +48,11 @@ def test_delete_state_syncs_to_agent_fsm(qapp):
     assert state in fsm.states
 
 
-def test_delete_transition_syncs_to_agent_fsm(qapp):
+def test_delete_transition_syncs_to_target_fsm(qapp):
     vm, fsm, scene = _make_scene()
-    a, b = fsm.states[0], fsm.states[1]
+    a = SimpleState(name="a")
+    b = SimpleState(name="b")
+    fsm.states.extend([a, b])
     model = Transition(source=a, target=b, trigger=CompletionEvent(name="done"))
     fsm.transitions.append(model)
     avm = StateViewModel(model=a, x=0, y=0)
@@ -72,52 +68,13 @@ def test_delete_transition_syncs_to_agent_fsm(qapp):
     assert model in fsm.transitions
 
 
-def test_delete_exit_point_does_not_double_remove(qapp):
-    """ExitPoint 삭제는 DeleteExitPointCmd가 fsm을 처리 — 이중 제거/이중 복원 금지."""
-    vm, fsm, scene = _make_scene()
-    extra = ExitPoint(name="alt_exit")
-    fsm.states.append(extra)
-    fsm.final_states.append(extra)
-    svm = StateViewModel(model=extra, x=0, y=0)
-    vm.state_vms.append(svm)
-
-    scene._delete_exit_point(svm, extra)
-    assert extra not in fsm.states
-    assert extra not in fsm.final_states
-
-    vm.command_stack.undo()
-    assert sum(1 for s in fsm.states if s is extra) == 1, "undo 후 정확히 1개여야 한다"
-    assert sum(1 for s in fsm.final_states if s is extra) == 1
-
-
-def test_project_scene_does_not_touch_fsm(qapp):
-    """프로젝트 캔버스(FsmScene)는 _target_fsm=None — 기존 동작 유지."""
+def test_scene_without_project_does_not_touch_fsm(qapp):
+    """set_project를 거치지 않은 씬은 _target_fsm=None — VM에만 반영된다."""
     vm = ProjectViewModel()
     scene = FsmScene(vm)
+    assert scene._target_fsm is None
     scene._create_state(QPointF(0, 0))
     assert len(vm.state_vms) == 1  # VM에만 추가, 크래시 없음
-
-
-def test_drop_skill_syncs_to_agent_fsm(qapp):
-    """실사용 경로(drop_skill)로 만든 노드도 agent.fsm에 동기화된다."""
-    from daedalus.model.plugin.skill import ProceduralSkill
-
-    vm = ProjectViewModel()
-    fsm = _make_agent_fsm()
-    s = SimpleState(name="start")
-    skill = ProceduralSkill(
-        fsm=StateMachine(name="p_fsm", states=[s], initial_state=s),
-        name="proc", description="",
-    )
-    scene = AgentFsmScene(
-        vm, agent_fsm=fsm,
-        skill_lookup=lambda n: skill if n == "proc" else None,
-    )
-    scene.drop_skill("proc", QPointF(10, 20))
-    assert any(getattr(st, "skill_ref", None) is skill for st in fsm.states)
-
-    vm.command_stack.undo()
-    assert not any(getattr(st, "skill_ref", None) is skill for st in fsm.states)
 
 
 # --- 봉합 3: 노드+엣지 동시 삭제 중복 커맨드 방지 ---

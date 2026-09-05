@@ -7,23 +7,22 @@ from __future__ import annotations
 from PySide6.QtCore import QPointF
 
 from daedalus.model.fsm.event import CompletionEvent
-from daedalus.model.fsm.machine import StateMachine
-from daedalus.model.fsm.pseudo import EntryPoint, ExitPoint
 from daedalus.model.fsm.state import SimpleState
 from daedalus.model.fsm.transition import Transition
+from daedalus.model.project import PluginProject
 from daedalus.view.canvas.canvas_view import FsmCanvasView
-from daedalus.view.canvas.scene import AgentFsmScene, FsmScene
+from daedalus.view.canvas.scene import FsmScene
 from daedalus.view.viewmodel.project_vm import ProjectViewModel
 from daedalus.view.viewmodel.state_vm import StateViewModel, TransitionViewModel
 
 
-def _make_agent_fsm() -> StateMachine:
-    entry = EntryPoint(name="entry")
-    done = ExitPoint(name="done")
-    return StateMachine(
-        name="agent_fsm", states=[entry, done],
-        initial_state=entry, final_states=[done],
-    )
+def _make_wired_scene():
+    """_target_fsm이 project.graph로 배선된 씬 — 모델 동기화 경로 검증용."""
+    vm = ProjectViewModel()
+    project = PluginProject(name="p")
+    scene = FsmScene(vm)
+    scene.set_project(project)
+    return vm, project.graph, scene
 
 
 # ---------------------------------------------------------------------------
@@ -139,9 +138,7 @@ def test_edges_to_same_target_converge(qapp):
 # ---------------------------------------------------------------------------
 
 def test_transition_drag_creates_transition(qapp):
-    vm = ProjectViewModel()
-    fsm = _make_agent_fsm()
-    scene = AgentFsmScene(vm, agent_fsm=fsm)
+    vm, fsm, scene = _make_wired_scene()
     view = FsmCanvasView(scene)  # self.views() 비어있지 않게
 
     a = SimpleState(name="a")
@@ -171,9 +168,7 @@ def test_transition_drag_creates_transition(qapp):
 
 def test_transition_drag_to_self_is_rejected(qapp):
     """같은 노드의 입력 포트에 드롭하면 전이를 만들지 않는다."""
-    vm = ProjectViewModel()
-    fsm = _make_agent_fsm()
-    scene = AgentFsmScene(vm, agent_fsm=fsm)
+    vm, fsm, scene = _make_wired_scene()
     view = FsmCanvasView(scene)
 
     a = SimpleState(name="a")
@@ -194,9 +189,7 @@ def test_transition_drag_to_self_is_rejected(qapp):
 
 def test_transition_drag_empty_drop_cancels(qapp):
     """빈 공간에 드롭하면 전이 없이 드래그만 종료된다."""
-    vm = ProjectViewModel()
-    fsm = _make_agent_fsm()
-    scene = AgentFsmScene(vm, agent_fsm=fsm)
+    vm, fsm, scene = _make_wired_scene()
     view = FsmCanvasView(scene)
 
     a = SimpleState(name="a")
