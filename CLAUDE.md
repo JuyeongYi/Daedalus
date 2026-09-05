@@ -271,6 +271,19 @@ daedalus/
     │                       #     "속성 하나 바꾸기"+"리스트 넣고 빼기" 둘로 환원한다. SetAttrCmd는 최초 execute에서만 old를 잡는다 —
     │                       #     redo가 old를 덮으면 undo가 깨진다. 값은 복사하지 않으므로 호출자가 새 객체를 넘겨야 한다))
     ├── editors/            # 속성 편집기 (skill, agent, hook, body, body_documents, component, variable_loader, catalogue_loader, field_widgets, project_properties, blackboard_editor, workspace_editor)
+    │                       # skill_editor(WP-RF): 구 단일 모듈(1,172줄 — 프론트매터 폼·출력 포트 카드·참조 링크 세 책임)을 형제
+    │                       #   모듈 3개로 분해(이동만·동작 불변). skill_editor.py에는 SkillEditor만 남고 **재-export 파사드**로
+    │                       #   `from …skill_editor import _FrontmatterPanel` 등 기존 언더스코어 임포트 경로가 전부 무수정 동작한다
+    │                       #   (component_editor·agent_editor + 테스트 10여 파일이 그 경로를 쓴다. test_skill_editor_facade.py가 고정). 구획:
+    │                       #     frontmatter_panel.py   — _FIELD_ATTR_MAP/_FIELD_ENUM_MAP/_LIST_FIELDS/_TOOL_CANDIDATE_FIELDS + 그리드 열
+    │                       #                              상수 + _OptionalRow + _FrontmatterPanel. **위젯 어댑터 표 `_WIDGET_ADAPTERS`**가
+    │                       #                              단일 진실 — (위젯 타입, 읽기, 쓰기, 변경 시그널 이름) 한 줄이 값 로드(_apply_value)·
+    │                       #                              값 읽기(_read_widget_value)·시그널 연결(_connect_widget_signal) 세 경로를 함께
+    │                       #                              채운다(분해 전에는 같은 isinstance 사슬이 세 벌이라, 한 곳을 빠뜨리면 "값은
+    │                       #                              채워지는데 편집이 저장되지 않는" 반쪽 고장이 조용히 생겼다). **표의 줄 순서가 곧
+    │                       #                              우선순위**다 — isinstance는 서브클래스에도 참이라 순서를 바꾸면 동작이 바뀐다.
+    │                       #     transfer_on_panel.py   — _COLOR_PRESETS + _ColorPickerPopup + _EventCard + _TransferOnPanel
+    │                       #     reference_link_panel.py— _ReferenceLinkPanel
     │                       # **필드 행 정렬 규칙**: 라벨|필드 행은 열 폭을 공유하는 레이아웃에 넣는다 — skill_editor._FrontmatterPanel은
     │                       #   QGridLayout(0=체크박스·1=라벨(우측 정렬)·2=값 위젯, 스팬 행은 헤더/그룹 구분 라벨/버튼 행), 나머지는
     │                       #   QFormLayout(hook_panel·property_panel·project_properties·workspace_editor). ad-hoc HBox로 행을
