@@ -34,6 +34,25 @@ def _isolate_global_hooks(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _isolate_user_templates(tmp_path, monkeypatch):
+    """사용자 템플릿 폴더(~/.daedalus/templates/)를 홈에서 떼어낸다.
+
+    실제 홈을 읽으면 개발자가 등록해 둔 템플릿이 카탈로그 개수·내용 단언을
+    그 사람의 머신에서만 깨뜨린다(전역 훅 격리와 같은 이유). 기본값은 빈
+    폴더(존재하지 않음)이고, 사용자 템플릿을 다루는 테스트가 여기에 파일을 깐다.
+    """
+    from daedalus.model import templates
+
+    monkeypatch.setattr(
+        templates, "user_templates_dir",
+        lambda home_dir=None: (
+            (home_dir if home_dir is not None else tmp_path / "home")
+            / ".daedalus" / "templates"
+        ),
+    )
+
+
+@pytest.fixture(autouse=True)
 def _auto_discard_unsaved_changes(monkeypatch):
     """`window.close()`의 미저장 변경 확인(A7)이 테스트를 모달로 멈추지 않게 한다.
 

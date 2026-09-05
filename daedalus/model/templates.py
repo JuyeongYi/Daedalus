@@ -16,10 +16,16 @@
 템플릿 **본문은 영어**다 — 컴파일 산출로 그대로 나가는 사용자 값의 출발점이기
 때문이다(A12). 이름·설명은 사용자가 갈아끼울 플레이스홀더다.
 
-**갱신 절차:** 템플릿을 앱에서 열어(File→"템플릿에서 새 프로젝트…") 고친 뒤 임시
+**갱신 절차:** 템플릿을 앱에서 열어(Ctrl+N 통합 다이얼로그) 고친 뒤 임시
 폴더에 저장하고, 그 폴더의 `.daedalus.json`을 여기 `<id>.json`으로 덮어쓴다. 손으로
 JSON을 고치지 않는다 — 파일은 직렬화기의 산출이라는 성질이 이 설계의 전부다.
 갱신 후 `tests/model/test_templates.py`가 F7 에러 0과 경고 스냅샷을 다시 받아준다.
+
+**사용자 템플릿:** `~/.daedalus/templates/<id>.json`(프로젝트 저장 파일을 그대로
+복사)이 카탈로그에 병합된다 — 동명 id는 사용자가 이긴다. 내장과 달리 영어
+본문·플레이스홀더 게이트의 대상이 아니다(자기 프로젝트를 시드로 삼는 것이라
+내용은 소유자의 것). 갱신 = 파일 재복사. **files/ 는 딸려 가지 않는다** —
+템플릿은 JSON 하나이고 files/ 동반은 후속 설계 항목이다.
 """
 from __future__ import annotations
 
@@ -47,14 +53,19 @@ class ProjectTemplate:
     `id`가 곧 파일 이름(stem)이다 — 진실이 둘이면(파일 안에 이름을 또 적으면)
     파일을 복사해 이름을 바꿨을 때 어느 쪽이 이겼는지 알 수 없다(전역 훅
     저장소 A1과 같은 규약).
+
+    `file`이 None이면 내장(패키지 동봉), 아니면 사용자 템플릿의 실제 경로다.
     """
 
     id: str
     title: str
     summary: str
+    file: Path | None = None
 
     @property
     def path(self) -> Path:
+        if self.file is not None:
+            return self.file
         return TEMPLATE_DIR / f"{self.id}{TEMPLATE_SUFFIX}"
 
 
@@ -78,17 +89,69 @@ TEMPLATES: tuple[ProjectTemplate, ...] = (
 )
 
 
+def user_templates_dir(home_dir: Path | None = None) -> Path:
+    """사용자 템플릿 폴더 — `~/.daedalus/templates/` (전역 훅 저장소와 같은 규약).
+
+    테스트는 이 함수를 몽키패치해 실제 홈을 읽지 않는다(hook_store와 동일 —
+    실제 홈을 읽으면 개발자가 거기 둔 템플릿에 따라 결과가 달라진다).
+    """
+    home = home_dir if home_dir is not None else Path.home()
+    return home / ".daedalus" / "templates"
+
+
+def _load_user_templates() -> list[ProjectTemplate]:
+    """사용자 템플릿을 카탈로그 항목으로 읽는다 — 파일 1개 = 템플릿 1개.
+
+    id = 파일 stem(내장과 같은 규약). 표시 문구는 내장과 달리 코드에 없으므로
+    **파일 안의 프로젝트 name/description을 그대로 쓴다** — 사용자 템플릿은
+    "내 프로젝트를 시드로 삼는 것"이라 그 이름이 곧 제목이다. 깨진 파일은
+    stderr 경고 후 스킵한다(카탈로그·전역 훅 관례 — 파일 하나 때문에 새
+    프로젝트 다이얼로그가 안 뜨면 안 된다).
+    """
+    import sys
+
+    directory = user_templates_dir()
+    if not directory.is_dir():
+        return []
+    out: list[ProjectTemplate] = []
+    for file in sorted(directory.glob(f"*{TEMPLATE_SUFFIX}")):
+        try:
+            with open(file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except (OSError, json.JSONDecodeError) as exc:
+            print(f"[daedalus] 사용자 템플릿 스킵 {file.name}: {exc}", file=sys.stderr)
+            continue
+        if not isinstance(data, dict):
+            print(f"[daedalus] 사용자 템플릿 스킵 {file.name}: 프로젝트 JSON이 아님",
+                  file=sys.stderr)
+            continue
+        out.append(ProjectTemplate(
+            id=file.stem,
+            title=str(data.get("name") or file.stem),
+            summary=str(data.get("description") or "사용자 템플릿"),
+            file=file,
+        ))
+    return out
+
+
 def list_templates() -> tuple[ProjectTemplate, ...]:
-    """카탈로그를 표시 순서대로 돌려준다."""
-    return TEMPLATES
+    """내장 + 사용자 템플릿을 표시 순서대로 — 동명 id는 **사용자가 이긴다**.
+
+    (전역 ← 프로젝트 병합에서 프로젝트가 이기는 것과 같은 방향 — 더 구체적인
+    쪽 우선.) 사용자 템플릿은 내장 뒤에 붙는다.
+    """
+    users = _load_user_templates()
+    shadowed = {t.id for t in users}
+    return tuple(t for t in TEMPLATES if t.id not in shadowed) + tuple(users)
 
 
 def find_template(template_id: str) -> ProjectTemplate:
     """id로 카탈로그 항목을 찾는다. 없으면 `TemplateError`."""
-    for template in TEMPLATES:
+    catalogue = list_templates()
+    for template in catalogue:
         if template.id == template_id:
             return template
-    known = ", ".join(t.id for t in TEMPLATES)
+    known = ", ".join(t.id for t in catalogue)
     raise TemplateError(f"알 수 없는 템플릿 id: {template_id} (가용: {known})")
 
 

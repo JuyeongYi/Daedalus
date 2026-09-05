@@ -87,7 +87,11 @@ daedalus/
 │   │                       #   find_section(제목·"## 제목" 레벨 지정·"부모 > 자식" 경로, 0개·복수 매칭 ValueError)/
 │   │                       #   section_text/char_span/replacement_text/replace_section(비교체 구간 바이트 보존). Qt 무관 순수 stdlib.
 │   ├── templates.py         # 시작 템플릿 카탈로그(A7) — 아키타입 3종의 id/제목/요약(TEMPLATES) +
-│   │                       #   list_templates/find_template/load_template(TemplateError). 실제 시드는
+│   │                       #   list_templates/find_template/load_template(TemplateError).
+│   │                       #   **사용자 템플릿**: `~/.daedalus/templates/<id>.json`(저장 파일 그대로 복사)이
+│   │                       #   카탈로그에 병합 — 동명 id는 사용자 우선, 제목=name·요약=description, 깨진 파일은
+│   │                       #   stderr 스킵(전역 훅 규약). 영어·플레이스홀더 게이트 비대상. files/ 미동반(후속).
+│   │                       #   테스트 격리는 conftest _isolate_user_templates. 실제 시드는
 │   │                       #   `daedalus/templates/<id>.json`(serialize 산출 format 2)이고 로드는 기존
 │   │                       #   deserialize_project를 그대로 탄다 — 전용 파서 없음. Qt 무관 순수 stdlib.
 │   ├── serialize/           # 모델↔JSON dict 직렬화 (안정 ID 기반, format 2). 구 serialize.py(1,437줄)를 WP-SZ로
