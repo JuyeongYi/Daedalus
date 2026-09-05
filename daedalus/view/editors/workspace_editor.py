@@ -32,7 +32,11 @@ from daedalus.model.plugin.enums import BuildTarget
 from daedalus.model.plugin.workspace_doc import WorkspaceDoc
 from daedalus.model.project import PluginProject
 from daedalus.view.editors import body_documents
-from daedalus.view.editors.body_editor import SectionContentPanel
+from daedalus.view.editors.body_editor import (
+    SectionContentPanel,
+    make_variable_popup,
+    toggle_variable_popup,
+)
 
 
 def _is_local(project: PluginProject | None) -> bool:
@@ -67,8 +71,15 @@ class _WorkspaceDocPanelBase(QWidget):
 
         self._content = SectionContentPanel()
         self._content.content_changed.connect(self._on_content_changed)
+        # 변수 삽입 — ComponentEditor와 **같은 배선**이다. 이 연결이 빠져 있던
+        # 동안 변수 버튼은 시그널만 쏘고 청취자가 없어 아무 일도 하지 않았다.
+        self._var_popup = make_variable_popup(self._content)
+        self._content.variable_insert_requested.connect(self._on_variable_insert)
 
     # --- 공통 ---
+
+    def _on_variable_insert(self) -> None:
+        toggle_variable_popup(self._content, self._var_popup)
 
     def notify(self, scope: str = "structure") -> None:
         if self._notify is not None:

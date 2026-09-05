@@ -17,7 +17,11 @@ from daedalus.model.plugin.skill import (
     ReferenceSkill,
     TransferSkill,
 )
-from daedalus.view.editors.body_editor import SectionContentPanel, VariablePopup
+from daedalus.view.editors.body_editor import (
+    SectionContentPanel,
+    make_variable_popup,
+    toggle_variable_popup,
+)
 from daedalus.view.editors.skill_editor import _FrontmatterPanel
 from daedalus.view.editors.variable_loader import load_variables
 
@@ -102,23 +106,12 @@ class ComponentEditor(QWidget):
 
         root_lay.addWidget(root_splitter)
 
-        # Variable popup
-        self._var_popup = VariablePopup(variables, parent=self._content_panel)
-        self._var_popup.variable_selected.connect(self._content_panel.insert_variable)
-        self._var_popup.hide()
+        # Variable popup — 생성·위치 계산은 body_editor의 공용 헬퍼가 맡는다
+        # (작업 폴더 문서 탭이 같은 함수를 부른다).
+        self._var_popup = make_variable_popup(self._content_panel, variables)
 
     def _on_variable_insert(self) -> None:
-        if self._var_popup.isVisible():
-            self._var_popup.hide()
-            return
-        from PySide6.QtCore import QPoint
-        btn = self._content_panel._btn_variable
-        # VariablePopup은 Qt.Popup 플래그의 최상위 창 — move()는 전역 좌표를 받는다.
-        # (패널 상대 좌표를 넘기면 화면 좌상단 근처에 떠 버린다.)
-        pos = btn.mapToGlobal(QPoint(0, btn.height()))
-        self._var_popup.move(pos)
-        self._var_popup.show()
-        self._var_popup.raise_()
+        toggle_variable_popup(self._content_panel, self._var_popup)
 
     def _on_content_changed(self) -> None:
         # 본문 키스트로크 — content 채널로 보내 무거운 structure 리스너(캔버스

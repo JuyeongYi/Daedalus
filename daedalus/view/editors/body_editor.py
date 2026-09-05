@@ -6,7 +6,7 @@ WP-SB: 수동 섹션 트리 편집(SectionTree/BreadcrumbNav)은 마크다운 �
 """
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QPoint, Qt, Signal
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -187,3 +187,45 @@ class VariablePopup(QFrame):
     def _emit(self, name: str) -> None:
         self.variable_selected.emit(name)
         self.hide()
+
+
+# ---------------------------------------------------------------------------
+# 변수 삽입 배선 — 팝업 생성과 위치 계산의 단일 진실
+#
+# `SectionContentPanel`을 쓰는 표면이 둘이다(컴포넌트 편집기, 작업 폴더 문서 탭).
+# 배선이 한쪽에만 있으면 같은 버튼이 표면마다 다르게 동작한다 — 실제로 그랬다:
+# workspace_editor는 시그널을 연결하지 않아 변수 버튼이 무동작이었다.
+# ---------------------------------------------------------------------------
+
+
+def make_variable_popup(
+    panel: SectionContentPanel,
+    variables: list | None = None,  # list[VariableEntry]
+) -> VariablePopup:
+    """패널에 붙는 변수 팝업을 만들고 삽입 경로를 연결한다.
+
+    variables를 생략하면 `load_variables()`로 기본+글로벌 변수를 읽는다.
+    """
+    if variables is None:
+        from daedalus.view.editors.variable_loader import load_variables
+
+        variables = load_variables()
+    popup = VariablePopup(variables, parent=panel)
+    popup.variable_selected.connect(panel.insert_variable)
+    popup.hide()
+    return popup
+
+
+def toggle_variable_popup(panel: SectionContentPanel, popup: VariablePopup) -> None:
+    """변수 팝업을 버튼 바로 아래에 띄운다(이미 떠 있으면 닫는다).
+
+    VariablePopup은 Qt.Popup 플래그의 최상위 창이라 move()가 **전역 좌표**를
+    받는다 — 패널 상대 좌표를 넘기면 화면 좌상단 근처에 떠 버린다.
+    """
+    if popup.isVisible():
+        popup.hide()
+        return
+    btn = panel._btn_variable
+    popup.move(btn.mapToGlobal(QPoint(0, btn.height())))
+    popup.show()
+    popup.raise_()

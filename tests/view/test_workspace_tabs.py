@@ -271,3 +271,51 @@ def test_notify_is_called_on_structure_edit(qapp, project, monkeypatch):
 def test_module_exposes_panels():
     assert hasattr(workspace_editor, "ClaudeMdPanel")
     assert hasattr(workspace_editor, "RulesPanel")
+
+
+# ─────────────────────────── 변수 삽입 ───────────────────────────
+#
+# 회귀: SectionContentPanel의 variable_insert_requested를 아무도 연결하지 않아
+# 변수 버튼이 무동작이었다(ComponentEditor에만 배선이 있었다).
+
+
+@pytest.mark.parametrize("panel_cls", [ClaudeMdPanel, RulesPanel])
+def test_variable_button_opens_popup_at_button_pos(qapp, project, panel_cls):
+    from PySide6.QtCore import QPoint
+
+    # 규칙 탭은 선택된 문서가 없으면 본문이 비활성이라 버튼이 눌리지 않는다
+    project.rules = [WorkspaceDoc(name="testing")]
+    panel = panel_cls()
+    panel.set_project(project)
+    panel.show()
+    try:
+        panel.content_panel()._btn_variable.click()
+        btn = panel.content_panel()._btn_variable
+        assert panel._var_popup.isVisible()
+        assert panel._var_popup.pos() == btn.mapToGlobal(QPoint(0, btn.height()))
+        # 다시 누르면 닫힌다
+        panel.content_panel()._btn_variable.click()
+        assert not panel._var_popup.isVisible()
+    finally:
+        panel._var_popup.hide()
+        panel.close()
+
+
+def test_variable_selection_inserts_into_rule_body(qapp, project):
+    project.rules = [WorkspaceDoc(name="testing", body="use ")]
+    panel = RulesPanel()
+    panel.set_project(project)
+    panel._list.setCurrentRow(0)
+    editor = panel.content_panel()._w_content
+    cursor = editor.textCursor()
+    cursor.movePosition(cursor.MoveOperation.End)
+    editor.setTextCursor(cursor)
+    panel._var_popup.variable_selected.emit("${CLAUDE_SKILL_DIR}")
+    assert project.rules[0].body == "use ${CLAUDE_SKILL_DIR}"
+
+
+def test_variable_selection_inserts_into_claude_md_body(qapp, project):
+    panel = ClaudeMdPanel()
+    panel.set_project(project)
+    panel._var_popup.variable_selected.emit("$ARGUMENTS")
+    assert project.claude_md.body == "$ARGUMENTS"
