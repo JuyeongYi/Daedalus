@@ -64,6 +64,7 @@ class _RegistrySection(QWidget):
     add_requested = Signal()
     item_double_clicked = Signal(object)
     delete_requested = Signal(object)  # component
+    preview_requested = Signal(object)  # component — 컴파일 미리보기 (A9-1)
 
     def __init__(
         self,
@@ -147,6 +148,12 @@ class _RegistrySection(QWidget):
         if comp is None:
             return
         menu = QMenu(self)
+        # 트랜스퍼 스킬은 캔버스 노드가 아니라 엣지에 붙어 placement 우클릭
+        # 메뉴가 닿지 않는다(사용자 보고) — 레지스트리가 전 컴포넌트 공통의
+        # 미리보기 진입점이다.
+        preview_action = menu.addAction("컴파일 미리보기…")
+        if preview_action is not None:
+            preview_action.triggered.connect(lambda: self.preview_requested.emit(comp))
         delete_action = menu.addAction("삭제")
         if delete_action is not None:
             delete_action.triggered.connect(lambda: self.delete_requested.emit(comp))
@@ -159,6 +166,7 @@ class RegistryPanel(QWidget):
     component_double_clicked = Signal(object)
     new_component_requested = Signal(str)  # kind: "procedural"|"declarative"|"transfer"|"agent"
     component_delete_requested = Signal(object)  # component
+    component_preview_requested = Signal(object)  # component — 컴파일 미리보기
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -192,6 +200,7 @@ class RegistryPanel(QWidget):
             section.add_requested.connect(lambda k=kind: self.new_component_requested.emit(k))
             section.item_double_clicked.connect(self.component_double_clicked)
             section.delete_requested.connect(self.component_delete_requested)
+            section.preview_requested.connect(self.component_preview_requested)
             idx = self._tabs.addTab(section, tab_labels[kind])
             self._tabs.setTabToolTip(idx, section.label_text)
         layout.addWidget(self._tabs)

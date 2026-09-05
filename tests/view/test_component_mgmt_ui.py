@@ -237,3 +237,43 @@ class TestDeleteHandler:
         assert window._tabs.count() == _FIXED_TAB_COUNT  # 고정 탭만
         window.close()
 
+
+
+class TestRegistryPreviewSignal:
+    """레지스트리 우클릭 컴파일 미리보기 — 트랜스퍼 스킬은 캔버스 노드가 없어
+    placement 메뉴가 닿지 않으므로(사용자 보고) 레지스트리가 공통 진입점이다."""
+
+    def test_preview_signal_emitted(self, qapp):
+        panel = RegistryPanel()
+        proj = PluginProject(name="p")
+        skill = _make_proc("my-skill")
+        proj.skills.append(skill)
+        panel.set_project(proj)
+
+        received: list[object] = []
+        panel.component_preview_requested.connect(lambda c: received.append(c))
+        panel._sections["procedural"].preview_requested.emit(skill)
+
+        assert received == [skill]
+
+    def test_window_handler_opens_preview_dialog(self, qapp, monkeypatch):
+        """window 배선 — 시그널이 show_preview_dialog(공용 실체)로 흐른다."""
+        from daedalus.view.actions import preview as preview_mod
+        from daedalus.view.app import MainWindow
+
+        win = MainWindow()
+        proj = PluginProject(name="p")
+        skill = _make_proc("my-skill")
+        proj.skills.append(skill)
+        win.load_project(proj)
+
+        calls: list[tuple] = []
+        monkeypatch.setattr(
+            preview_mod, "show_preview_dialog",
+            lambda parent, component, project=None, resolved_hooks=None:
+                calls.append((component, project)),
+        )
+        win._registry_panel.component_preview_requested.emit(skill)
+
+        assert calls == [(skill, proj)]
+        win.close()

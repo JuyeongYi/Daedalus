@@ -69,3 +69,47 @@ def test_transition_menu_cancel_does_nothing(qapp, monkeypatch):
     scene._handle_transition_edge_menu(menu, edge_item, None, None)
 
     assert tvm in vm.transition_vms
+
+
+def test_transition_menu_preview_for_attached_transfer(qapp, monkeypatch):
+    """transfer가 붙은 전이의 메뉴에 컴파일 미리보기가 있고 그 스킬로 디스패치된다.
+
+    트랜스퍼 스킬은 캔버스 노드가 아니라 엣지에 붙어 placement 우클릭 메뉴가
+    닿지 않는다(사용자 보고) — 엣지 메뉴가 캔버스 쪽 진입점이다.
+    """
+    from daedalus.view.canvas import context_menus
+    from tests.compiler.builders import make_transfer
+
+    vm, fsm, scene = _make_scene()
+    tvm = _setup_edge(scene, vm, fsm)
+    transfer = make_transfer(name="scope-freeze")
+    tvm.model.skill_ref = transfer
+    edge_item = scene._edge_items[tvm]
+
+    previewed = []
+    monkeypatch.setattr(
+        context_menus, "show_preview", lambda s, c: previewed.append(c)
+    )
+
+    menu = QMenu()
+    def fake_exec(_pos):
+        for act in menu.actions():
+            if act.text().startswith("컴파일 미리보기"):
+                return act
+        return None
+    monkeypatch.setattr(menu, "exec", fake_exec)
+
+    scene._handle_transition_edge_menu(menu, edge_item, None, None)
+    assert previewed == [transfer]
+
+
+def test_transition_menu_no_preview_without_transfer(qapp, monkeypatch):
+    """transfer가 없는 전이의 메뉴에는 미리보기 항목이 없다."""
+    vm, fsm, scene = _make_scene()
+    tvm = _setup_edge(scene, vm, fsm)
+    edge_item = scene._edge_items[tvm]
+
+    menu = QMenu()
+    monkeypatch.setattr(menu, "exec", lambda _pos: None)
+    scene._handle_transition_edge_menu(menu, edge_item, None, None)
+    assert not any(a.text().startswith("컴파일 미리보기") for a in menu.actions())

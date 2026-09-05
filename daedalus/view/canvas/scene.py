@@ -531,7 +531,7 @@ class FsmScene(QGraphicsScene):
     def _handle_transition_edge_menu(
         self, menu: QMenu, item: TransitionEdgeItem, scene_pos: QPointF, screen_pos
     ) -> None:
-        """전이 엣지 컨텍스트 메뉴 — On Transfer 스킬 설정/해제/생성 + 삭제 + 경유점.
+        """전이 엣지 컨텍스트 메뉴 — On Transfer 스킬 설정/해제/생성/미리보기 + 삭제 + 경유점.
 
         스킬 목록/생성 정책은 _get_transfer_skills /
         _create_and_assign_transfer_skill로 갈라 두어, 씬을 파생시키는 경우에도
@@ -556,9 +556,15 @@ class FsmScene(QGraphicsScene):
         )
 
         unset_act = None
+        preview_act = None
         if transition.skill_ref is not None:
             unset_act = menu.addAction(
                 f"On Transfer 스킬 해제 ({transition.skill_ref.name})"
+            )
+            # 트랜스퍼 스킬은 노드가 아니라 엣지에 붙어 placement 우클릭
+            # 메뉴가 닿지 않는다(사용자 보고) — 여기가 캔버스 쪽 진입점이다.
+            preview_act = menu.addAction(
+                f"컴파일 미리보기 ({transition.skill_ref.name})…"
             )
 
         # 트리거 지정 (A9-8) — 실체는 view/actions/transitions.py.
@@ -578,6 +584,8 @@ class FsmScene(QGraphicsScene):
             self._create_and_assign_transfer_skill(tvm)
         elif chosen == unset_act:
             self._project_vm.execute(SetTransitionSkillRefCmd(tvm, None))
+        elif chosen == preview_act:
+            context_menus.show_preview(self, transition.skill_ref)
         elif chosen == add_wp_act:
             self.handle_edge_double_clicked(item, scene_pos)
         elif chosen == clear_wp_act:

@@ -374,6 +374,7 @@ class MainWindow(QMainWindow):
         self._registry_panel.component_double_clicked.connect(self._open_component)
         self._registry_panel.new_component_requested.connect(self._on_new_component)
         self._registry_panel.component_delete_requested.connect(self._on_delete_component)
+        self._registry_panel.component_preview_requested.connect(self._on_preview_component)
         self._fsm_scene.node_double_clicked.connect(self._open_component)
         self._active_stack.add_listener(self._update_undo_redo)
 
@@ -672,6 +673,19 @@ class MainWindow(QMainWindow):
 
     def show_component_findings(self, component: object) -> int:
         return self._validation_actions.show_component_findings(component)
+
+    def _on_preview_component(self, component: object) -> None:
+        """레지스트리 우클릭 → 컴파일 미리보기 — 캔버스 메뉴와 같은 실체(A9-1).
+
+        트랜스퍼 스킬은 캔버스 노드가 아니라 엣지에 붙어 placement 메뉴가
+        닿지 않으므로(사용자 보고) 레지스트리가 전 컴포넌트 공통 진입점이다.
+        """
+        from daedalus.view.actions.preview import show_preview_dialog
+
+        show_preview_dialog(
+            self, component, project=self._project,
+            resolved_hooks=self.resolved_hooks(),
+        )
 
     def _focus_in_project_canvas(self, subject: object) -> None:
         self._validation_actions.focus_in_project_canvas(subject)

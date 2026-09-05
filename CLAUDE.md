@@ -373,7 +373,10 @@ daedalus/
     │                       #   ＋필드/필드 삭제). 편집은 project.blackboard.class_definitions를 직접 갱신 + notify(structure 채널 — undo 커맨드화 범위
     │                       #   밖, hook_panel 폼 정책과 동일). blackboard_candidate_strings(project)가 "클래스"+"클래스.필드" 후보 문자열을 만든다.
     ├── panels/             # PropertyPanel, RegistryPanel, HistoryPanel, ValidationPanel (F7 검증 결과), FilePanel(WP-FR), ScriptListenerPanel
-    │                       # RegistryPanel: component_delete_requested 시그널 + _RegistrySection 우클릭 "삭제" 컨텍스트 메뉴.
+    │                       # RegistryPanel: component_delete_requested/component_preview_requested 시그널 + _RegistrySection 우클릭
+    │                       #   "컴파일 미리보기…"/"삭제" 컨텍스트 메뉴. 미리보기는 캔버스 메뉴와 같은 실체(actions/preview) —
+    │                       #   트랜스퍼 스킬은 엣지에 붙어 placement 메뉴가 닿지 않으므로 레지스트리가 전 컴포넌트 공통 진입점
+    │                       #   (전이 엣지 메뉴에도 transfer 부착 시 같은 항목).
     │                       #   종류별 섹션은 QTabWidget 탭(WP-SF 배치 개편 — 이모지 라벨+툴팁)
     │                       # FilePanel(WP-FR/WP-SF): _FileTreeBase(트리+안내+생성+새로고침+"탐색기" 버튼) 기반 전역 files/ 독("플러그인 파일 (공용)",
     │                       #   레지스트리 아래 세로 스택). set_project_dir(path|None) — 저장/열기/새 프로젝트 시 app이 호출. files_root()/skill_files_root()가
