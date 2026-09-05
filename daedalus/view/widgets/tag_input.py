@@ -162,3 +162,24 @@ def get_blackboard_candidates() -> list[str]:
     if _BLACKBOARD_CANDIDATE_PROVIDER is not None:
         return list(_BLACKBOARD_CANDIDATE_PROVIDER())
     return []
+
+
+# HOOKS TagInput의 훅 이름 후보 제공자 — app.py가 프로젝트 로드 시 등록한다
+# (전역 훅 포함, A1). 위 둘과 완전히 같은 패턴이고 소비처도 같다(skill_editor의
+# `_wire_tool_candidates`). 원래 preset_picker.py에 있었는데, 그 모듈이 소유하던
+# 체크리스트 위젯이 TagInput으로 대체되면서 남은 것이 이 제공자뿐이라 후보를
+# 쓰는 위젯 옆으로 옮겼다.
+_HOOK_NAME_PROVIDER: Callable[[], list[str]] | None = None
+
+
+def set_hook_name_provider(provider: Callable[[], list[str]] | None) -> None:
+    """HOOKS TagInput이 표시할 훅 이름 목록 제공자를 등록한다."""
+    global _HOOK_NAME_PROVIDER
+    _HOOK_NAME_PROVIDER = provider
+
+
+def get_hook_names() -> list[str]:
+    """등록된 제공자에서 현재 훅 이름 목록을 가져온다 (없으면 빈 목록)."""
+    if _HOOK_NAME_PROVIDER is not None:
+        return list(_HOOK_NAME_PROVIDER())
+    return []

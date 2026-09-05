@@ -483,7 +483,7 @@ class _FrontmatterPanel(QScrollArea):
         elif fld in (SkillField.HOOKS, AgentField.HOOKS) and isinstance(widget, TagInput):
             # hook_library 이름을 자동완성 후보로 — provider 함수를 호출해야
             # 모듈 변수 캡처 문제(임포트 시점 None)를 피한다.
-            from daedalus.view.widgets.preset_picker import get_hook_names
+            from daedalus.view.widgets.tag_input import get_hook_names
             names = get_hook_names()
             if names:
                 widget.set_candidates(names)
@@ -554,7 +554,7 @@ class _FrontmatterPanel(QScrollArea):
             except ValueError:
                 return  # 알 수 없는 값은 무시
 
-        # hooks: dict[str, Any] 필드 — PresetPicker의 이름 목록을 dict로 변환,
+        # hooks: dict[str, Any] 필드 — TagInput의 이름 목록을 dict로 변환,
         # 이미 존재하는 키의 본문은 보존
         if fld in (SkillField.HOOKS, AgentField.HOOKS) and isinstance(value, list):
             existing = getattr(config, attr, None)

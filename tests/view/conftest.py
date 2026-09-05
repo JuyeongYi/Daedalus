@@ -16,12 +16,12 @@ def _reset_hook_name_provider():
     — 전역이 프로젝트 객체를 붙잡아 두는 것도 막는다.
     """
     yield
-    from daedalus.view.widgets.preset_picker import set_hook_name_provider
-    set_hook_name_provider(None)
     from daedalus.view.widgets.tag_input import (
         set_blackboard_candidate_provider,
+        set_hook_name_provider,
         set_tool_candidate_provider,
     )
+    set_hook_name_provider(None)
     set_tool_candidate_provider(None)
     set_blackboard_candidate_provider(None)
     from daedalus.view.widgets.markdown_editor import set_files_root_provider

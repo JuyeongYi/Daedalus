@@ -382,11 +382,11 @@ class MainWindow(QMainWindow):
         self._rules_panel.set_project(project)
         if self._fsm_scene is not None:
             self._fsm_scene.set_project(project)
-        # HookPresetPicker가 이 프로젝트의 hook_library 이름을 동적으로 표시하도록 연결.
+        # HOOKS TagInput이 이 프로젝트의 hook_library 이름을 후보로 표시하도록 연결.
         # 전역 훅(A1)도 이름으로 참조할 수 있으므로 후보에 함께 낸다 — 목록에
         # 안 보이면 있는 줄 모르고, set_component_hooks가 거절하지 않는 이름이
-        # 피커에서만 빠져 있으면 둘이 다른 말을 하는 셈이 된다.
-        from daedalus.view.widgets.preset_picker import set_hook_name_provider
+        # 후보에서만 빠져 있으면 둘이 다른 말을 하는 셈이 된다.
+        from daedalus.view.widgets.tag_input import set_hook_name_provider
         set_hook_name_provider(lambda: list(self.resolved_hooks()))
         # ALLOWED_TOOLS/TOOLS/DISALLOWED_TOOLS TagInput이 카탈로그+빌트인+
         # Agent(이름) 후보를 동적으로 표시하도록 연결 (WP-TM).
@@ -1153,9 +1153,3 @@ class MainWindow(QMainWindow):
         self._active_stack.redo()
         self._active_notify()
 
-    def _on_hook_library_changed(self) -> None:
-        """훅 라이브러리 변경 시 — 열린 편집기의 HookPresetPicker 목록 갱신."""
-        from daedalus.view.widgets.preset_picker import HookPresetPicker
-
-        for picker in self.findChildren(HookPresetPicker):
-            picker.refresh()

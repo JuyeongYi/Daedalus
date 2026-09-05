@@ -25,7 +25,6 @@ from daedalus.view.widgets.combo_widgets import (
     PermissionModeComboBox,
     ShellComboBox,
 )
-from daedalus.view.widgets.preset_picker import HookPresetPicker
 from daedalus.view.widgets.tag_input import TagInput
 
 # SkillField → 위젯 클래스. SKILL_FIELD_MATRIX의 전 필드를 커버해야 한다.

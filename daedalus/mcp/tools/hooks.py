@@ -99,7 +99,13 @@ class HookTools(_BaseTools):
         return cls(**kwargs)
 
     def _refresh_hook_ui(self) -> None:
-        """훅 이름 후보(HookPresetPicker)를 쓰는 위젯들이 새 목록을 보게 한다."""
+        """훅 라이브러리 패널을 모델과 다시 맞춘다.
+
+        notify가 `MainWindow._on_project_vm_changed` → `HookLibraryPanel.
+        refresh_external()`을 태운다. **열려 있는 편집기의 HOOKS TagInput 후보는
+        갱신되지 않는다** — 후보는 위젯 생성 시점 스냅샷이라는 것이 도구/블랙보드
+        후보와 공유하는 정책이고, 이름은 자유 입력이라 목록에 없어도 넣을 수 있다.
+        """
         self._vm.notify()
 
     def create_hook(

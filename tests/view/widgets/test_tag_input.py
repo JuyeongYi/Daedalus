@@ -93,3 +93,40 @@ def test_tool_candidate_provider_registered(qapp):
         assert get_tool_candidates() == ["Read", "Agent(worker)"]
     finally:
         set_tool_candidate_provider(None)
+
+
+# 훅 이름 후보 — 구 preset_picker.py에서 옮겨 온 제공자(항목 4).
+# 체크리스트 위젯(HookPresetPicker)이 TagInput으로 대체되면서 그 모듈에 남은 것이
+# 이 제공자뿐이라, 후보를 실제로 쓰는 위젯 옆으로 옮겼다.
+
+
+def test_hook_name_provider_default_empty(qapp):
+    from daedalus.view.widgets.tag_input import get_hook_names, set_hook_name_provider
+    set_hook_name_provider(None)
+    assert get_hook_names() == []
+
+
+def test_hook_name_provider_registered(qapp):
+    from daedalus.view.widgets.tag_input import get_hook_names, set_hook_name_provider
+    set_hook_name_provider(lambda: ["lint", "fmt"])
+    try:
+        assert get_hook_names() == ["lint", "fmt"]
+    finally:
+        set_hook_name_provider(None)
+
+
+def test_hook_names_feed_the_hooks_taginput_candidates(qapp):
+    """제공자가 사는 유일한 이유 — HOOKS 필드의 자동완성 후보다."""
+    from daedalus.model.plugin.enums import SkillField
+    from daedalus.view.editors.skill_editor import _FrontmatterPanel
+    from daedalus.view.widgets.tag_input import set_hook_name_provider
+
+    from tests.compiler.builders import make_procedural
+
+    set_hook_name_provider(lambda: ["lint", "fmt"])
+    try:
+        panel = _FrontmatterPanel(make_procedural())
+        widget = panel._field_widgets[SkillField.HOOKS]
+        assert widget.get_candidates() == ["lint", "fmt"]
+    finally:
+        set_hook_name_provider(None)

@@ -305,7 +305,7 @@ daedalus/
     │                       #   스냅샷, get_tool_candidates와 동일 정책), tags_changed → state.reads/writes 직접 기록(커맨드화 범위 밖) + notify. 프로젝트
     │                       #   캔버스 placement와 에이전트 FSM 상태(agent_editor 그래프 탭에 임베드된 PropertyPanel) 양쪽에서 동일하게 편집 가능.
     ├── viewmodel/          # ProjectViewModel(notify structure/content 채널), StateViewModel (모델↔뷰 중간 계층)
-    └── widgets/            # ComboWidgets, TagInput, PresetPicker, markdown/(마크다운 에디터 패키지 — WP-RF-3c로 구 단일 모듈 markdown_editor.py를 분해.
+    └── widgets/            # ComboWidgets, TagInput, markdown/(마크다운 에디터 패키지 — WP-RF-3c로 구 단일 모듈 markdown_editor.py를 분해.
                             #   markdown_editor.py 모듈 경로는 **재-export 파사드**로 유지되어 기존 임포트가 무수정 동작한다. 구획:
                             #     syntax.py      — MARKDOWN_PALETTE·폰트 상수·정규식 전부(_FENCE_*_RE/_HEADING_*_RE/_TASK_RE/… )·_make_format·_detect_line_marker.
                             #                      **모듈 간 공유 상수의 단일 진실**(복제 금지) — model/outline.py의 펜스 정규식이 이 파일을 미러한다.
@@ -325,11 +325,18 @@ daedalus/
                             #   블록 상태로 판별해 제외. textChanged마다 300ms 디바운스(QTimer) 후 재파싱, 구조 불변 시 트리 재구성 생략.
                             #   클릭 시 setTextCursor+centerCursor로 점프. refresh()로 디바운스 우회 즉시 재파싱 — 문서 전환용)
                             #   TagInput(WP-TM): set_candidates(list[str])로 QCompleter(부분 일치·대소문자 무시) 부착. 모듈 수준
-                            #   set_tool_candidate_provider/get_tool_candidates(HookPresetPicker의 set_hook_name_provider 패턴)로 동적 후보 주입 —
+                            #   provider 3쌍(tool/blackboard/hook_name)이 동적 후보를 주입한다 — 전부 같은 패턴이고 **후보는 위젯
+                            #   생성 시점 스냅샷**이다(라이브러리가 바뀌어도 열려 있는 위젯은 갱신되지 않는다. 이름은 자유 입력이라
+                            #   목록에 없어도 넣을 수 있고, 탭을 다시 열면 새 후보가 붙는다).
+                            #   set_tool_candidate_provider/get_tool_candidates —
                             #   app.py의 set_project가 프로젝트 로드 시 catalogue_loader.candidate_strings(...)를 등록. skill_editor._FrontmatterPanel이
                             #   ALLOWED_TOOLS/TOOLS/DISALLOWED_TOOLS 필드 생성 시 후보를 부착(_wire_tool_candidates) — PATHS/SKILLS/MCP_SERVERS는 제외
                             #   set_blackboard_candidate_provider/get_blackboard_candidates(WP-BB, 동일 provider 패턴)는 State.reads/writes TagInput
                             #   (PropertyPanel)의 "클래스"/"클래스.필드" 후보 — app.py의 set_project가 blackboard_candidate_strings(project)를 등록.
+                            #   set_hook_name_provider/get_hook_names는 HOOKS TagInput의 훅 이름 후보 — app.py의 set_project가
+                            #   resolved_hooks()(전역 훅 포함, A1)를 등록. 원래 widgets/preset_picker.py에 있었는데 그 모듈의
+                            #   체크리스트 위젯(HookPresetPicker/McpPresetPicker/PresetPicker)이 TagInput으로 대체되어 전부 죽은
+                            #   코드가 됐고, 남은 provider를 후보를 쓰는 위젯 옆으로 옮기며 모듈을 삭제했다.
                             #   파일 드롭 치환(WP-FR): markdown/providers.py의 set_files_root_provider/get_files_root(동일 provider 패턴) — MarkdownEditor.
                             #   dragEnterEvent/dragMoveEvent/dropEvent가 mime의 file URL 중 현재 files/ 루트 하위인 것만 _file_ref_token으로
                             #   변환해 드롭 지점에 삽입(복수 파일=줄바꿈 구분). files 밖·비파일 mime은 super()로 흘려 기존 QPlainTextEdit
@@ -1173,7 +1180,7 @@ CC의 구조는 **3단**이다: 이벤트 → 그룹(matcher + 핸들러 목록)
   - 다이얼로그는 **재사용 위젯**이다: 훅 패널 버튼은 열고 결과를 콤보에 반영하는
     호출부일 뿐이고(모델 쓰기는 기존 `currentIndexChanged` → `_save_head` 경로),
     이벤트를 고르는 다른 표면이 생기면 같은 것을 쓴다.
-- **UI**: `editors/hook_panel.HookLibraryPanel` — **상주 탭(인덱스 2)**. 모달 다이얼로그(`hook_editor.HookLibraryDialog`)는 3단 구조를 담을 수 없어 제거됐다(도구 메뉴 항목도 함께 — 탭이 늘 보이므로 지름길이 중복이다). 좌: 훅 목록(핸들러 없으면 ⚠). 우: 이벤트 콤보(matcher 미지원/미문서화를 문구에 표시) + matcher(받지 않는 이벤트면 잠금 + 이유 표시) + 핸들러 목록·폼(`_HandlerForm` — 타입이 바뀌면 통째로 다시 만든다). **"서브에이전트 프론트매터로 복사" / "hooks.json으로 복사"** 버튼이 이 프로젝트 밖의 파일에 붙여넣을 텍스트를 클립보드에 넣는다. `widgets/preset_picker`의 `set_hook_name_provider`로 HookPresetPicker가 훅 이름을 동적 표시한다(A1 이후 **전역 훅 이름도 포함** — `app.set_project`가 `self.resolved_hooks()`를 등록). 전역 훅 표시는 아래 "전역 훅 2단 스코프 (A1)" 참조.
+- **UI**: `editors/hook_panel.HookLibraryPanel` — **상주 탭(인덱스 2)**. 모달 다이얼로그(`hook_editor.HookLibraryDialog`)는 3단 구조를 담을 수 없어 제거됐다(도구 메뉴 항목도 함께 — 탭이 늘 보이므로 지름길이 중복이다). 좌: 훅 목록(핸들러 없으면 ⚠). 우: 이벤트 콤보(matcher 미지원/미문서화를 문구에 표시) + matcher(받지 않는 이벤트면 잠금 + 이유 표시) + 핸들러 목록·폼(`_HandlerForm` — 타입이 바뀌면 통째로 다시 만든다). **"서브에이전트 프론트매터로 복사" / "hooks.json으로 복사"** 버튼이 이 프로젝트 밖의 파일에 붙여넣을 텍스트를 클립보드에 넣는다. `widgets/tag_input`의 `set_hook_name_provider`로 컴포넌트의 HOOKS TagInput이 훅 이름을 후보로 표시한다(A1 이후 **전역 훅 이름도 포함** — `app.set_project`가 `self.resolved_hooks()`를 등록). 전역 훅 표시는 아래 "전역 훅 2단 스코프 (A1)" 참조.
 - **MCP**: `create_hook`/`update_hook`은 `handlers=[{...}]`로 CC 스키마 그대로 받는다(`command=` 인자는 커맨드 훅 하나를 만드는 지름길). 그 타입에 없는 속성은 **거부**한다 — 조용히 무시되면 왜 안 먹는지 알 수 없다. `list_hook_events`가 이벤트 31종과 matcher 지원 여부를, `hook_frontmatter_preview`가 서브에이전트 프론트매터 YAML을 돌려준다.
 
 ### 전역 훅 2단 스코프 (A1)
