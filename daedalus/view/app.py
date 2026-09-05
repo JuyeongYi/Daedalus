@@ -2,7 +2,8 @@
 """Daedalus 메인 윈도우 골격 (WP-RF-3e).
 
 윈도우가 직접 갖는 것은 **탭·독·메뉴 배선과 컴포넌트 편집 진입**뿐이다.
-세션 입출력·컴파일·실행·검증은 각각 협력 객체(Mixin 아님)가 맡는다:
+세션 입출력·컴파일·실행·검증·그래프 왕복·컴포넌트 수명주기는 각각
+협력 객체(Mixin 아님)가 맡는다:
 
 | 협력 객체 | 모듈 | 담당 |
 |---|---|---|
@@ -10,6 +11,8 @@
 | `CompileActions` | `view/compile_actions.py` | Ctrl+B 컴파일 + 서버 정의 주입 |
 | `LaunchActions` | `view/launch_actions.py` | MCP 서버 수명주기 · Claude Code 실행 |
 | `ValidationActions` | `view/validation_actions.py` | F7 검증 · 결과 항목 노드 포커스 |
+| `GraphIO` | `view/graph_io.py` | 프로젝트 그래프 ↔ 캔버스 VM · 레이아웃 저장 |
+| `ComponentActions` | `view/component_actions.py` | 컴포넌트 생성 · 이름 변경 · 삭제 |
 
 **협력 객체가 실체이고 `MainWindow`에는 같은 이름의 한 줄 위임 메서드만
 남는다** — 테스트와 MCP 도구가 `window._save_to_path(...)`처럼 윈도우의
@@ -26,7 +29,7 @@ from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (
     QDockWidget,
     QFileDialog,  # noqa: F401 — 테스트가 이 모듈 경로로 다이얼로그를 몽키패치한다
-    QInputDialog,
+    QInputDialog,  # noqa: F401 — 테스트가 이 모듈 경로로 다이얼로그를 몽키패치한다
     QLabel,
     QMainWindow,
     QMenu,
@@ -35,7 +38,6 @@ from PySide6.QtWidgets import (
     QTabWidget,
 )
 
-from daedalus.model.fsm.section import EventDef
 from daedalus.model.plugin.agent import AgentDefinition
 from daedalus.model.plugin.skill import (
     DeclarativeSkill,
@@ -51,7 +53,9 @@ from daedalus.view.canvas.edge_item import TransitionEdgeItem
 from daedalus.view.canvas.node_item import StateNodeItem
 from daedalus.view.canvas.scene import FsmScene
 from daedalus.view.compile_actions import CompileActions
+from daedalus.view.component_actions import ComponentActions
 from daedalus.view.editors.skill_editor import SkillEditor
+from daedalus.view.graph_io import GraphIO
 from daedalus.view.launch_actions import LaunchActions
 from daedalus.view.panels.file_panel import FilePanel
 from daedalus.view.panels.history_panel import HistoryPanel
@@ -108,6 +112,8 @@ class MainWindow(QMainWindow):
         self._compile_actions = CompileActions(self)
         self._launch_actions = LaunchActions(self)
         self._validation_actions = ValidationActions(self)
+        self._graph_io = GraphIO(self)
+        self._component_actions = ComponentActions(self)
 
         self._setup_central()
         self._setup_docks()
@@ -415,101 +421,16 @@ class MainWindow(QMainWindow):
         )
         # 프로젝트 그래프(워크플로 백킹 머신) → 캔버스 VM 재구성 (버그 1: 저장된
         # 노드 연결 복원). placement 노드 + 전이를 graph_layout 좌표로 배치한다
-        # (WP-EP: EntryPoint는 그리지 않음). _load_agent_fsm 미러링.
-        self._load_project_graph()
+        # (WP-EP: EntryPoint는 그리지 않음).
+        self._graph_io.load_project_graph()
+
+    # --- 그래프 로드/레이아웃 저장 (GraphIO 위임) ---
 
     def _load_project_graph(self) -> None:
-        """project.graph + graph_layout으로부터 캔버스 VM(state_vms/transition_vms)을
-        재구성한다. 기존 VM은 비우고 새로 채운다 (중복 방지). notify로 캔버스 갱신.
-
-        WP-EP: CC 플러그인에는 단일 진입점이 없다(user_invocable 스킬은 전부
-        독립 시작 가능) — 합성 EntryPoint("start")는 모델(graph.initial_state)에는
-        여전히 존재하지만 프로젝트 캔버스에는 **그리지 않는다**. EntryPoint에
-        닿는 전이(구버전 파일의 시작 전이 포함)도 VM이 없으므로 자연히 스킵된다
-        (경고 없음). 에이전트 캔버스(_load_agent_fsm)는 이 WP의 영향을 받지 않는다.
-        """
-        from daedalus.model.fsm.pseudo import EntryPoint
-        from daedalus.view.viewmodel.state_vm import StateViewModel, TransitionViewModel
-
-        if self._project is None:
-            return
-        graph = self._project.graph
-
-        # 기존 캔버스 VM 비우기 (set_project 재호출 시 중복 누적 방지)
-        self._project_vm.state_vms.clear()
-        self._project_vm.transition_vms.clear()
-
-        placements = [s for s in graph.states if not isinstance(s, EntryPoint)]
-
-        saved = self._project.graph_layout  # 키: state.id (안정 식별자)
-        x = 0.0
-        vm_map: dict[str, StateViewModel] = {}
-        for state in placements:
-            if state.id in saved:
-                sx, sy = saved[state.id]
-                vm = StateViewModel(model=state, x=sx, y=sy)
-            else:
-                vm = StateViewModel(model=state, x=x, y=100.0)
-            self._project_vm.state_vms.append(vm)
-            vm_map[state.id] = vm
-            x += 220.0
-
-        saved_edges = self._project.edge_layout  # 키: Transition.id (WP-ER)
-        for trans in graph.transitions:
-            # source/target이 EntryPoint면 vm_map에 없어 자연히 스킵된다.
-            src_vm = vm_map.get(trans.source.id)
-            tgt_vm = vm_map.get(trans.target.id)
-            if src_vm and tgt_vm:
-                waypoints = [(x, y) for x, y in saved_edges.get(trans.id, [])]
-                tvm = TransitionViewModel(
-                    model=trans, source_vm=src_vm, target_vm=tgt_vm,
-                    waypoints=waypoints,
-                )
-                self._project_vm.transition_vms.append(tvm)
-
-        # 참조 노드 복원 — 선재 결함 수정: 참조 배치는 저장(라이브 sync)만 되고
-        # 로드 복원 경로가 없어 캔버스에서 사라졌고, 이후 참조 편집 시
-        # sync_refs_to_model이 (빈 VM 기준으로) 로드분을 통째로 소실시켰다.
-        from daedalus.view.viewmodel.state_vm import (
-            ReferenceLinkViewModel,
-            ReferenceViewModel,
-        )
-        self._project_vm.reference_vms.clear()
-        self._project_vm.reference_links.clear()
-        skills_by_name = {s.name: s for s in self._project.skills}
-        vms_by_name = {svm.model.name: svm for svm in self._project_vm.state_vms}
-        for rp in getattr(self._project, "reference_placements", None) or []:
-            ref_skill = skills_by_name.get(rp.skill_name)
-            if ref_skill is None:
-                continue  # dangling_string_reference가 F7에서 짚는다
-            rvm = ReferenceViewModel(model=ref_skill, x=rp.x, y=rp.y)
-            self._project_vm.reference_vms.append(rvm)
-            for state_name in rp.connected_states:
-                svm = vms_by_name.get(state_name)
-                if svm is not None:
-                    self._project_vm.reference_links.append(
-                        ReferenceLinkViewModel(state_vm=svm, reference_vm=rvm)
-                    )
-        self._project_vm.notify()
+        self._graph_io.load_project_graph()
 
     def _save_graph_layout(self) -> None:
-        """캔버스 노드 위치를 project.graph_layout에 기록. 키는 state.id.
-
-        WP-ER: 엣지 경유점(waypoint)도 함께 project.edge_layout에 기록한다.
-        키는 Transition.id.
-        """
-        if self._project is None:
-            return
-        layout: dict[str, list[float]] = {}
-        for svm in self._project_vm.state_vms:
-            layout[svm.model.id] = [svm.x, svm.y]
-        self._project.graph_layout = layout
-
-        edge_layout: dict[str, list[list[float]]] = {}
-        for tvm in self._project_vm.transition_vms:
-            if tvm.waypoints:
-                edge_layout[tvm.model.id] = [list(pt) for pt in tvm.waypoints]
-        self._project.edge_layout = edge_layout
+        self._graph_io.save_graph_layout()
 
     def load_project(self, project: PluginProject) -> None:
         """기존 세션을 정리하고 새 프로젝트를 로드한다.
@@ -819,124 +740,16 @@ class MainWindow(QMainWindow):
     # --- 컴포넌트 이름 변경 ---
 
     def _on_component_renamed(self, component: object, old_name: str, new_name: str) -> None:
-        """_FrontmatterPanel.renamed 시그널 핸들러.
-
-        1. 중복 이름 검사 — 다른 컴포넌트와 동명이면 거부(component.name을 old로 원복).
-        2. rename_component로 문자열 참조 일괄 갱신.
-        3. notify(structure) — 레지스트리/탭 타이틀 갱신 트리거.
-        """
-        if self._project is None:
-            return
-
-        # 중복 이름 방지
-        existing = (
-            {s.name for s in self._project.skills if s is not component}
-            | {a.name for a in self._project.agents if a is not component}
-        )
-        if new_name in existing:
-            QMessageBox.warning(
-                self, "이름 중복",
-                f"'{new_name}' 이름이 이미 존재합니다.\n이름이 원래대로 되돌아갑니다.",
-            )
-            # component.name이 이미 new_name으로 바뀌었으므로 old_name으로 원복
-            component.name = old_name  # type: ignore[union-attr]
-            return
-
-        # component.name은 _save_name에서 renamed 발화 전에 아직 old_name임.
-        # RenameComponentCmd가 old_name → new_name 변경 + 참조 갱신을 수행하고,
-        # undo 시 같은 함수를 옛 이름으로 불러 대칭으로 되돌린다 (WP-CE).
-        from daedalus.view.commands.component_commands import RenameComponentCmd
-
-        self._project_vm.execute(
-            RenameComponentCmd(self._project, component, old_name, new_name)
-        )
+        self._component_actions.on_component_renamed(component, old_name, new_name)
 
     # --- 컴포넌트 삭제 ---
 
     def _on_delete_component(self, component: object) -> None:
-        """레지스트리 우클릭 '삭제' → 확인 후 삭제 커맨드 실행."""
-        if self._project is None:
-            return
-
-        comp_name = getattr(component, "name", str(component))
-
-        # 참조 요약 수집 (간략 — validate 없이 빠른 사전 검사)
-        ref_lines: list[str] = []
-        if self._project is not None:
-            from daedalus.model.fsm.state import SimpleState
-
-            def _scan_fsm_refs(sm_obj) -> int:
-                count = 0
-                if sm_obj is None:
-                    return 0
-                for state in sm_obj.states:
-                    if isinstance(state, SimpleState) and state.skill_ref is component:
-                        count += 1
-                return count
-
-            for sk in self._project.skills:
-                n = _scan_fsm_refs(getattr(sk, "fsm", None))
-                if n:
-                    ref_lines.append(f"  스킬 '{sk.name}'의 FSM: {n}개 배치")
-            for ag in self._project.agents:
-                n = _scan_fsm_refs(getattr(ag, "fsm", None))
-                if n:
-                    ref_lines.append(f"  에이전트 '{ag.name}'의 FSM: {n}개 배치")
-
-        msg = f"'{comp_name}'을(를) 삭제하시겠습니까?"
-        if ref_lines:
-            msg += "\n\n다음 위치에서 참조 중입니다 (삭제 시 None으로 정리됩니다):\n"
-            msg += "\n".join(ref_lines[:10])
-            if len(ref_lines) > 10:
-                msg += f"\n  ... 외 {len(ref_lines) - 10}건"
-
-        reply = QMessageBox.question(
-            self,
-            "컴포넌트 삭제",
-            msg,
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No,
-        )
-        if reply != QMessageBox.StandardButton.Yes:
-            return
-
-        self.delete_component(component)
-        self._status_label.setText(f"'{comp_name}' 삭제됨 (Ctrl+Z로 되돌릴 수 있습니다)")
+        self._component_actions.on_delete_component(component)
 
     def delete_component(self, component: object) -> None:
-        """컴포넌트 삭제 — 확인 다이얼로그 없이 커맨드로 실행한다 (A2).
-
-        GUI 레지스트리 삭제와 MCP `delete_component`가 공유하는 실체다. 조작
-        경로에 따라 Ctrl+Z가 듣고 안 듣고가 갈리면 협업 도구로 실격이다.
-
-        **`_load_project_graph()`를 부르지 않는다** — 커맨드가 캔버스 VM을 직접
-        떼어냈고, 여기서 모델로부터 VM을 다시 만들면 undo가 되돌려 놓을 VM 객체와
-        캔버스에 있는 VM 객체가 서로 다른 물건이 되어(전이 VM이 사라진 노드 VM을
-        가리킨다) 되돌린 그래프가 깨진다.
-        """
-        from daedalus.view.commands.component_commands import RemoveComponentCmd
-
-        if self._project is None:
-            return
-
-        comp_id = getattr(component, "id", None)
-
-        # 본문 문서 캐시 정리 — 삭제된 컴포넌트의 undo 이력을 들고 있을 이유가
-        # 없다 (WP-BU). 되돌리면 본문 자체는 모델에 살아 돌아오고, 탭을 다시 열
-        # 때 문서가 새로 만들어진다(본문 편집 이력만 잃는다).
-        from daedalus.view.editors import body_documents
-        body_documents.registry().discard(component)
-
-        # 열린 탭 닫기
-        if comp_id is not None and comp_id in self._open_tabs:
-            self._close_tab(self._open_tabs[comp_id])
-
-        # 레지스트리는 별도로 갱신하지 않는다 — execute의 notify가
-        # _on_project_vm_changed → set_placed_ids → _rebuild를 태우고, 그 rebuild가
-        # 프로젝트 목록을 처음부터 다시 읽으므로 undo 복원도 같은 경로로 반영된다.
-        self._project_vm.execute(
-            RemoveComponentCmd(self._project, self._project_vm, component)
-        )
+        """컴포넌트 삭제 (A2) — MCP `delete_component`가 직접 부르는 표면."""
+        self._component_actions.delete_component(component)
 
     # --- 탭 관리 ---
 
@@ -993,83 +806,28 @@ class MainWindow(QMainWindow):
             panel.setFocus()
             panel.raise_()
 
+    # --- 컴포넌트 생성 (ComponentActions 위임) ---
+    #
+    # 캔버스 컨텍스트 메뉴(context_menus)와 actions/creation, MCP 도구가 아래
+    # 이름들을 창에서 직접 부른다 — 실체는 협력 객체에 있고 여기에는 위임만 남는다.
+
+    #: 종류 → 다이얼로그 제목 (단일 진실은 ComponentActions).
+    _COMPONENT_TITLES = ComponentActions._COMPONENT_TITLES
+
     def _ask_unique_name(self, dialog_title: str) -> str | None:
-        """이름 입력 다이얼로그 + 중복 검증. 취소 시 None."""
-        if self._project is None:
-            return None
-        existing = (
-            {s.name for s in self._project.skills}
-            | {a.name for a in self._project.agents}
-        )
-        while True:
-            name, ok = QInputDialog.getText(self, dialog_title, "이름:")
-            if not ok or not name.strip():
-                return None
-            name = name.strip()
-            if name in existing:
-                QMessageBox.warning(self, "이름 중복", f"'{name}' 이름이 이미 존재합니다.")
-                continue
-            return name
+        return self._component_actions.ask_unique_name(dialog_title)
 
     def _make_fsm(self, name: str) -> object:
-        from daedalus.model.fsm.machine import StateMachine
-        from daedalus.model.fsm.state import SimpleState as _SS
-        s = _SS(name="start")
-        return StateMachine(name=f"{name}_fsm", states=[s], initial_state=s)
+        return self._component_actions.make_fsm(name)
 
     def _make_agent_fsm(self, name: str) -> object:
-        """에이전트 백킹 FSM — WP-AF 이후 형식상의 최소 기계.
-
-        내부 FSM은 퇴역했다(절차는 본문, 결과 분기는 transfer_on). fsm 필드는
-        WorkflowComponent 계약상 남아 있으므로 EntryPoint 하나짜리 빈 기계를
-        준다 — 서술할 것이 없어 컴파일 산출에도 나타나지 않는다.
-        """
-        from daedalus.model.fsm.machine import StateMachine
-        from daedalus.model.fsm.pseudo import EntryPoint
-        entry = EntryPoint(name="entry")
-        return StateMachine(
-            name=f"{name}_fsm",
-            states=[entry],
-            initial_state=entry,
-        )
+        return self._component_actions.make_agent_fsm(name)
 
     def _register_component(self, component: object) -> None:
-        """컴포넌트를 프로젝트에 등록한다 (WP-CE — 커맨드 경유라 Ctrl+Z로 되돌아간다).
-
-        리스트 추가와 블랙보드 스코핑 배선은 CreateComponentCmd가 전담한다.
-        """
-        if self._project is None:
-            return
-        from daedalus.view.commands.component_commands import CreateComponentCmd
-
-        self._project_vm.execute(CreateComponentCmd(self._project, component))
-        self._registry_panel.set_project(self._project)
-
-    _COMPONENT_TITLES = {
-        "procedural": "새 Procedural Skill",
-        "declarative": "새 Declarative Skill",
-        "transfer": "새 Transfer Skill",
-        "reference": "새 Reference Skill",
-        "agent": "새 Agent",
-    }
+        self._component_actions.register_component(component)
 
     def _on_new_component(self, kind: str) -> None:
-        if kind not in self._COMPONENT_TITLES:
-            return  # 알 수 없는 종류 — 프로그램적 발화 방어
-        name = self._ask_unique_name(self._COMPONENT_TITLES.get(kind, "새 컴포넌트"))
-        if name is None:
-            return
-        factories = {
-            "procedural": lambda: ProceduralSkill(fsm=self._make_fsm(name), name=name, description=""),
-            "declarative": lambda: DeclarativeSkill(name=name, description=""),
-            "transfer": lambda: TransferSkill(fsm=self._make_fsm(name), name=name, description=""),
-            "reference": lambda: ReferenceSkill(name=name, description=""),
-            "agent": lambda: AgentDefinition(
-                fsm=self._make_agent_fsm(name), name=name, description="",
-                transfer_on=[EventDef(name="done")],  # 기본 출력 포트 (WP-AF)
-            ),  # type: ignore[arg-type]
-        }
-        self._register_component(factories[kind]())
+        self._component_actions.on_new_component(kind)
 
     def _close_tab(self, index: int) -> None:
         if index in _FIXED_TAB_INDEXES:

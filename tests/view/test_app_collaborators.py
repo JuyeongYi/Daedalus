@@ -16,6 +16,8 @@ import pytest
 from daedalus.model.project import PluginProject
 from daedalus.view.app import MainWindow
 from daedalus.view.compile_actions import CompileActions
+from daedalus.view.component_actions import ComponentActions
+from daedalus.view.graph_io import GraphIO
 from daedalus.view.launch_actions import LaunchActions
 from daedalus.view.session_io import SessionIO, recent_label
 from daedalus.view.validation_actions import ValidationActions
@@ -38,6 +40,8 @@ def window(qapp):
         ("_compile_actions", CompileActions),
         ("_launch_actions", LaunchActions),
         ("_validation_actions", ValidationActions),
+        ("_graph_io", GraphIO),
+        ("_component_actions", ComponentActions),
     ],
 )
 def test_collaborators_are_bound_to_window(window, attr, cls):
@@ -72,6 +76,12 @@ _DELEGATED = [
     "_run_validation", "_show_validation_dock", "_find_validation_dock",
     "_on_validation_item_activated", "_focus_in_project_canvas",
     "_focus_in_agent_tab",
+    # 그래프 왕복 — load_project·저장 경로·테스트가 창에서 직접 부른다
+    "_load_project_graph", "_save_graph_layout",
+    # 컴포넌트 수명주기 — context_menus / actions.creation / MCP가 직접 부른다
+    "_ask_unique_name", "_make_fsm", "_make_agent_fsm", "_register_component",
+    "_on_new_component", "_on_component_renamed", "_on_delete_component",
+    "delete_component",
 ]
 
 
@@ -97,8 +107,46 @@ def test_current_path_lives_on_window_only(window, tmp_path):
 
 
 def test_collaborators_hold_only_the_window_reference(window):
-    for attr in ("_compile_actions", "_launch_actions", "_validation_actions"):
+    for attr in (
+        "_compile_actions", "_launch_actions", "_validation_actions",
+        "_graph_io", "_component_actions",
+    ):
         assert vars(getattr(window, attr)) == {"_w": window}
+
+
+def test_component_titles_are_not_duplicated(window):
+    """다이얼로그 제목 표는 ComponentActions가 단일 진실 — 창은 그것을 가리킨다."""
+    assert MainWindow._COMPONENT_TITLES is ComponentActions._COMPONENT_TITLES
+
+
+def test_component_factory_is_shared_with_canvas_creation(window, monkeypatch):
+    """레지스트리 생성도 캔버스 "여기에 만들기"와 **같은 팩토리**를 쓴다.
+
+    두 경로가 각자 dict를 들고 있으면 한쪽만 고쳤을 때 어디서 만들었느냐에
+    따라 다른 물건이 된다.
+    """
+    from daedalus.view import component_actions as ca_module
+
+    seen: list[tuple[str, str]] = []
+    real = ca_module.__dict__.get("make_component")  # 지역 임포트라 모듈에는 없다
+    assert real is None
+
+    from daedalus.view.actions import creation
+
+    orig = creation.make_component
+
+    def _spy(win, kind, name):
+        seen.append((kind, name))
+        return orig(win, kind, name)
+
+    monkeypatch.setattr(creation, "make_component", _spy)
+    monkeypatch.setattr(
+        ComponentActions, "ask_unique_name", lambda self, title: "brand-new"
+    )
+    window._on_new_component("procedural")
+
+    assert seen == [("procedural", "brand-new")]
+    assert any(s.name == "brand-new" for s in window._project.skills)
 
 
 def test_mcp_service_handle_is_read_from_window(window):

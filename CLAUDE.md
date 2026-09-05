@@ -160,9 +160,10 @@ daedalus/
     ├── recent.py           # 최근 프로젝트 목록(WP-RP) — ~/.daedalus/recent.json 읽기/쓰기 (Qt 무관 순수 stdlib).
     │                       #   load/save/push/remove/clear + MAX_RECENT. 기록 실패는 삼킨다(endpoint.py와 같은 정책).
     │                       #   실존 검사는 하지 않는다 — 메뉴를 열 때마다 stat을 때리면 네트워크 드라이브에서 UI가 멈춘다.
-    ├── app.py              # 메인 윈도우 **골격** (WP-RF-3e 분해 후 ~960줄) — 탭·독·메뉴 배선 + 컴포넌트 편집 진입 + 그래프 로드/저장.
-    │                       #   나머지는 협력 객체 4종에 위임(Mixin 아님 — 상속으로 섞으면 이름 충돌과 self의 정체가 흐려진다):
-    │                       #   session_io.py / compile_actions.py / launch_actions.py / validation_actions.py (아래 각 항목).
+    ├── app.py              # 메인 윈도우 **골격** (WP-RF-3e 분해 후 ~910줄) — 탭·독·메뉴 배선 + 컴포넌트 편집 진입.
+    │                       #   나머지는 협력 객체 6종에 위임(Mixin 아님 — 상속으로 섞으면 이름 충돌과 self의 정체가 흐려진다):
+    │                       #   session_io.py / compile_actions.py / launch_actions.py / validation_actions.py /
+    │                       #   graph_io.py / component_actions.py (아래 각 항목).
     │                       #   **협력 객체가 실체이고 MainWindow에는 같은 이름의 한 줄 위임 메서드만 남는다** — 테스트와 MCP 도구가
     │                       #   window._save_to_path(...)처럼 윈도우의 내부 메서드를 직접 부르기 때문이다(tests/view/test_app_collaborators.py가 고정).
     │                       #   **위임은 한 방향이다** — 협력 객체끼리·자기 자신의 후속 단계는 self.update_title()처럼 협력 객체 쪽을
@@ -176,9 +177,7 @@ daedalus/
     │                       #   `daedalus.view.app.QFileDialog...` 경로로 몽키패치 — 클래스 속성 패치라 협력 객체에도 그대로 걸린다).
     │                       # 메뉴: Ctrl+N "새 프로젝트"(기본 이름 "new-plugin", 빌드 타깃 선택 다이얼로그 — WP-TG, 취소 시 생성 취소),
     │                       #   F7 "프로젝트 검증", Ctrl+B "컴파일", 파일→"프로젝트 속성...", 도구→"MCP 서버 정보..."/"Claude Code 실행".
-    │                       # 컴포넌트 이름 변경: _FrontmatterPanel.renamed → _on_component_renamed (중복 거부 + rename_component 호출 + 탭 타이틀 동기화)
-    │                       # 컴포넌트 삭제(A2): 레지스트리 우클릭 → _on_delete_component(확인 다이얼로그) → delete_component(공용 실체 —
-    │                       #   MCP도 이것을 부른다. 본문 문서 캐시 정리 + 탭 닫기 + RemoveComponentCmd 실행. **_load_project_graph를 부르지 않는다**)
+    │                       # 컴포넌트 생성·이름 변경·삭제는 component_actions.py로 이관(아래 항목) — 창에는 한 줄 위임만.
     │                       # 탭 구조(WP-BB/WP-HK/WP-WD): 0=프로젝트 FSM 캔버스, 1=블랙보드(BlackboardPanel), 2=훅 라이브러리(HookLibraryPanel),
     │                       #   3=CLAUDE.md 구역(ClaudeMdPanel), 4=규칙(RulesPanel) — 상주·닫기 불가 고정 5개. _close_tab이 다섯 인덱스를
     │                       #   모두 거부하고, load_project의 탭 정리 루프는 _LAST_FIXED_TAB_INDEX 다음부터 닫는다.
@@ -217,6 +216,23 @@ daedalus/
     │                       #   run_validation(Validator.validate_project → ValidationPanel + dock 표시)/show_validation_dock(컴파일 경로와 공용)/
     │                       #   find_validation_dock/on_validation_item_activated → focus_in_project_canvas | focus_in_agent_tab.
     │                       #   탭 인덱스 상수(_FSM_TAB_INDEX)는 app.py 소유라 **메서드 안에서 지역 임포트**한다(최상단이면 순환 임포트).
+    ├── graph_io.py         # GraphIO(window) — 프로젝트 그래프 ↔ 캔버스 VM 왕복 (app.py로부터 추출).
+    │                       #   load_project_graph(project.graph + graph_layout/edge_layout → state_vms/transition_vms/
+    │                       #     reference_vms/reference_links 재구성 + notify. WP-EP: EntryPoint와 그에 닿는 전이는 VM을 만들지 않는다)/
+    │                       #   save_graph_layout(VM 좌표 → project.graph_layout[state.id] + waypoints → project.edge_layout[Transition.id]).
+    │                       #   창에는 _load_project_graph/_save_graph_layout 한 줄 위임이 남는다(set_project·SessionIO 저장 경로·테스트가 직접 부른다).
+    ├── component_actions.py  # ComponentActions(window) — 컴포넌트 생성·이름 변경·삭제 (app.py로부터 추출).
+    │                       #   ask_unique_name(이름 입력+중복 검증)/make_fsm/make_agent_fsm(백킹 FSM 팩토리)/register_component
+    │                       #     (CreateComponentCmd)/on_new_component/on_component_renamed(중복 거부 + RenameComponentCmd)/
+    │                       #   on_delete_component(확인 다이얼로그) → delete_component(공용 실체 — MCP도 이것을 부른다.
+    │                       #     본문 문서 캐시 정리 + 탭 닫기 + RemoveComponentCmd 실행. **_load_project_graph를 부르지 않는다**).
+    │                       #   **컴포넌트 팩토리는 actions/creation.make_component 하나뿐이다** — 레지스트리 경로와 캔버스
+    │                       #     "여기에 만들기" 경로가 같은 5키 dict를 문자 그대로 중복 보유하던 것을 해소했다(한쪽만 고치면
+    │                       #     어디서 만들었느냐에 따라 다른 물건이 된다). FSM 생성은 creation이 다시 window._make_fsm/
+    │                       #     _make_agent_fsm을 부르므로 팩토리의 단일 진실이 유지된다.
+    │                       #   창에는 _ask_unique_name/_make_fsm/_make_agent_fsm/_register_component/_on_new_component/
+    │                       #     _on_component_renamed/_on_delete_component/delete_component 한 줄 위임 + _COMPONENT_TITLES 별칭이 남는다
+    │                       #     (context_menus.py·actions/creation.py·MCP props.py가 창에서 직접 부른다).
     ├── actions/            # **UI 무관 편집 액션** (A8/A9) — 기능의 실체. 캔버스 우클릭 메뉴와 에디터 위젯은 둘 다 여기를
     │                       #   부르는 **호출부**일 뿐이다(한쪽에 로직을 넣고 다른 쪽이 흉내 내면 같은 조작의 결과가 표면마다 달라진다 —
     │                       #   wire_workspace 공유와 같은 결). 입력은 모델/뷰모델, 편집은 CommandStack 경유. 테스트는 액션 함수 단위로 쓰고
