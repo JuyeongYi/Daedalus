@@ -201,12 +201,16 @@ class SessionIO:
         )
 
     def new_project(self) -> None:
-        """Ctrl+N — 새 빈 프로젝트를 생성한다.
+        """Ctrl+N — 새 프로젝트 통합 다이얼로그 (출발점 + 빌드 타깃, 사용자 확정).
 
-        현재 프로젝트가 비어 있지 않으면(스킬/에이전트/graph placement 중
-        하나라도 존재) 저장 여부를 확인하는 다이얼로그를 표시한다. 빌드 타깃
-        선택(WP-TG)을 취소하면 새 프로젝트 생성 자체를 취소한다.
+        한 다이얼로그에서 출발점(빈 프로젝트|템플릿)과 빌드 타깃을 **같이**
+        고른다. 템플릿에 저장된 타깃은 여기서 고른 타깃이 항상 이긴다 —
+        템플릿 내용은 타깃 중립이고 타깃은 사용자 소유다. 다이얼로그 취소는
+        생성 취소(기존 WP-TG 규약 그대로). 현재 프로젝트가 비어 있지
+        않으면 먼저 저장 여부를 확인한다.
         """
+        from daedalus.model import templates
+
         w = self._w
         if w._project is not None:
             if w.project_has_content():
@@ -220,84 +224,52 @@ class SessionIO:
                 if reply != QMessageBox.StandardButton.Yes:
                     return
 
-        target = self.prompt_build_target()
-        if target is None:
+        choice = self.exec_new_project_dialog()
+        if choice is None:
             return  # 취소 — 프로젝트 생성 취소
+        template_id, target = choice
 
-        new_proj = PluginProject(name="new-plugin", build_target=target)
-        w.load_project(new_proj)
-        w._current_path = None
-        self.update_title()
-        self.sync_files_root()
-        w._status_label.setText("새 프로젝트")
-
-    def new_project_from_template(self) -> None:
-        """"템플릿에서 새 프로젝트…" — 아키타입 시드로 시작한다 (A7).
-
-        **Ctrl+N 흐름과 별도 메뉴 항목으로 둔다.** 빈 프로젝트의 빌드 타깃은
-        생성 시점에 물어야 알 수 있지만(WP-TG), 템플릿은 자기 타깃을 이미
-        선언하고 있다 — 같은 다이얼로그에 얹으면 "고른 템플릿의 타깃"과
-        "고른 타깃"이 충돌하고, 취소 의미(타깃 취소 = 생성 취소)도 두 겹이
-        된다. 기존 Ctrl+N은 손대지 않는다.
-
-        로드 후 **미저장 변경으로 표시**한다 — 빈 프로젝트와 달리 여기엔
-        잃을 내용이 있고, 저장 경로는 아직 없다(A7 확인 다이얼로그가 받는다).
-        """
-        from daedalus.model import templates
-
-        w = self._w
-        if w._project is not None and w.project_has_content():
-            reply = QMessageBox.question(
-                w,
-                "템플릿에서 새 프로젝트",
-                "저장하지 않은 변경이 사라질 수 있습니다.\n계속하시겠습니까?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.No,
-            )
-            if reply != QMessageBox.StandardButton.Yes:
-                return
-
-        catalogue = templates.list_templates()
-        labels = [f"{t.title} — {t.summary}" for t in catalogue]
-        choice, ok = QInputDialog.getItem(
-            w, "템플릿에서 새 프로젝트", "시작 템플릿을 선택하세요:", labels, 0, False,
-        )
-        if not ok:
+        if template_id is None:
+            new_proj = PluginProject(name="new-plugin", build_target=target)
+            w.load_project(new_proj)
+            w._current_path = None
+            self.update_title()
+            self.sync_files_root()
+            w._status_label.setText("새 프로젝트")
             return
-        template = catalogue[labels.index(choice)]
 
-        deser_warnings: list[str] = []
         try:
-            project = templates.load_template(
-                template.id, collect_warnings=deser_warnings
-            )
+            project = templates.load_template(template_id)
         except templates.TemplateError as exc:
             w._status_label.setText(f"템플릿 열기 실패: {exc}")
             return
+        # 생성 시 고른 타깃이 템플릿에 저장된 타깃을 이긴다(위 docstring).
+        project.build_target = target
 
         w.load_project(project)
         w._current_path = None
+        # 빈 프로젝트와 달리 잃을 내용이 있고 저장 경로는 아직 없다 —
+        # 미저장 변경으로 표시해 닫기 확인(미저장 변경 확인 기능)이 받는다.
         w._mark_dirty()
         self.update_title()
         self.sync_files_root()
         w._status_label.setText(
-            f"새 프로젝트 — {template.title} 템플릿 (아직 저장되지 않음)"
+            f"새 프로젝트 — {template_id} 템플릿 (아직 저장되지 않음)"
         )
 
-    def prompt_build_target(self) -> BuildTarget | None:
-        """새 프로젝트 생성 시 빌드 타깃을 고르게 한다. 취소 시 None(WP-TG)."""
-        from daedalus.view.editors.project_properties import BUILD_TARGET_LABELS
+    def exec_new_project_dialog(self) -> tuple[str | None, BuildTarget] | None:
+        """통합 다이얼로그를 띄우고 (템플릿 id|None, 타깃)을 돌려준다. 취소면 None.
 
-        items = [label for _target, label in BUILD_TARGET_LABELS]
-        choice, ok = QInputDialog.getItem(
-            self._w, "빌드 타깃", "새 프로젝트의 빌드 타깃을 선택하세요:", items, 0, False,
-        )
-        if not ok:
+        테스트 봉합선 — 헤드리스에서 모달을 띄우지 않으려면 이 메서드를
+        몽키패치한다(구 QInputDialog.getItem 스텁의 후임).
+        """
+        from daedalus.view.editors.new_project_dialog import NewProjectDialog
+        from PySide6.QtWidgets import QDialog
+
+        dlg = NewProjectDialog(self._w)
+        if dlg.exec() != QDialog.DialogCode.Accepted:
             return None
-        for target, label in BUILD_TARGET_LABELS:
-            if label == choice:
-                return target
-        return BuildTarget.MARKETPLACE
+        return dlg.template_id(), dlg.build_target()
 
     def edit_project_properties(self) -> None:
         """"프로젝트 속성…" — name/description/version 편집.

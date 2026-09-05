@@ -63,7 +63,7 @@ _DELEGATED = [
     # 세션 입출력
     "_sync_files_root", "_update_title", "_save_to_path", "_carry_files_dir",
     "_save_project", "_save_project_as", "project_has_content", "_new_project",
-    "_prompt_build_target", "_edit_project_properties", "_open_project_dialog",
+    "_edit_project_properties", "_open_project_dialog",
     "_open_file_dialog", "_export_package_dialog", "_import_package_dialog",
     "_remember_recent", "_rebuild_recent_menu", "_recent_label", "_open_recent",
     "_clear_recent", "open_path",

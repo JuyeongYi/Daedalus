@@ -16,18 +16,24 @@ from daedalus.view.editors.project_properties import (
 
 
 def _stub_build_target_dialog(monkeypatch, choice: str = "마켓플레이스 플러그인") -> None:
-    """QInputDialog.getItem을 지정 선택지로 스텁 (다이얼로그 테스트는 몽키패치로)."""
+    """새 프로젝트 통합 다이얼로그를 "빈 프로젝트 + 지정 타깃"으로 스텁.
+
+    모달을 헤드리스에서 띄우지 않는 봉합선은 SessionIO.exec_new_project_dialog다
+    (구 QInputDialog.getItem 스텁의 후임 — 통합 다이얼로그 도입으로 교체)."""
+    from daedalus.model.plugin.enums import BuildTarget
+    from daedalus.view.editors.project_properties import BUILD_TARGET_LABELS
+    from daedalus.view.session_io import SessionIO
+    target = next(t for t, label in BUILD_TARGET_LABELS if label == choice)
     monkeypatch.setattr(
-        app_module.QInputDialog, "getItem",
-        staticmethod(lambda *a, **k: (choice, True)),
+        SessionIO, "exec_new_project_dialog", lambda self: (None, target)
     )
 
 
 def _stub_build_target_cancel(monkeypatch) -> None:
-    """QInputDialog.getItem 취소 스텁 — ok=False."""
+    """새 프로젝트 다이얼로그 취소 스텁 — None(생성 취소)."""
+    from daedalus.view.session_io import SessionIO
     monkeypatch.setattr(
-        app_module.QInputDialog, "getItem",
-        staticmethod(lambda *a, **k: ("", False)),
+        SessionIO, "exec_new_project_dialog", lambda self: None
     )
 
 

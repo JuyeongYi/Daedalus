@@ -225,11 +225,13 @@ daedalus/
     │                       #   성공 경로에서 호출)가 recent.push + rebuild_recent_menu. 항목 클릭 → open_recent(사라진 파일은 그 자리에서
     │                       #   목록에서 제거), "목록 지우기" → clear_recent. 라벨은 **모듈 수준 순수 함수** recent_label(&1 파일명 — 상위폴더,
     │                       #   & escape; MainWindow._recent_label이 staticmethod로 재노출 — 테스트가 클래스에서 직접 호출한다), 툴팁=전체 경로.
-    │                       # 프로젝트 생성/속성: new_project(빈 프로젝트 + 빌드 타깃 프롬프트)/prompt_build_target/edit_project_properties
+    │                       # 프로젝트 생성/속성: new_project(Ctrl+N — **통합 다이얼로그** NewProjectDialog: 출발점(빈|템플릿 3종) +
+    │                       #   빌드 타깃을 같이 선택, 취소=생성 취소. 사용자 확정으로 A7의 별도 메뉴 항목을 흡수. **생성 시 고른
+    │                       #   타깃이 템플릿 저장 타깃을 이긴다**. 테스트 봉합선은 SessionIO.exec_new_project_dialog 몽키패치 —
+    │                       #   구 QInputDialog.getItem 스텁의 후임)/edit_project_properties
     │                       #   → ProjectPropertiesDialog(name/description/version + emit_progress_hook 체크박스, 이름 규약 미강제).
     │                       #   project_has_content("새 프로젝트" 확인과 MCP open_project의 저장 강제가 공유하는 단일 판정).
-    │                       #   new_project_from_template(A7): File→"템플릿에서 새 프로젝트…" — 별도 메뉴 항목이라 Ctrl+N 흐름은
-    │                       #   불변이다(템플릿이 자기 빌드 타깃을 선언하므로 타깃을 묻지 않는다). 로드 후 _mark_dirty().
+    │                       #   템플릿 로드 후 _mark_dirty()(잃을 내용이 있고 저장 경로가 없다), 실패는 상태바 보고 + 현 프로젝트 보존.
     ├── compile_actions.py  # CompileActions(window) — Ctrl+B 컴파일 (WP-RF-3e에서 추출).
     │                       #   compile_project_dialog: 출력 폴더 선택(LOCAL이면 "설치 대상 작업 폴더" — WP-MW) + _current_path 기준
     │                       #   files_dir/skill_files_dir를 compile_project에 전달(미저장이면 None). 에러면 window._show_validation_dock().
@@ -792,7 +794,7 @@ daedalus-bb --schemas <경로> [--state-dir DIR] <command>
 - **배경:** MCP를 쓰는 에이전트는 CC 정책상 마켓플레이스 플러그인으로 배포할 수 없다(`mcpServers` 등 프론트매터 미지원) — 사람들이 파일 복사로 우회하는 문제를 프로젝트 수준 빌드 타깃으로 해결한다(로컬 에이전트 타입안은 폐기, 이 설계가 상위 개념).
 - **모델:** `model/plugin/enums.py`의 `BuildTarget(Enum)`: `MARKETPLACE`(기본) / `LOCAL`. `PluginProject.build_target: BuildTarget = BuildTarget.MARKETPLACE`.
 - **직렬화:** `.value` 왕복. 구버전 파일(키 부재)·미지 값은 `MARKETPLACE`로 조용히 폴백(경고 없음) — 하위 호환 게이트.
-- **생성 흐름:** `app._new_project`(Ctrl+N)가 이름 결정 전에 `QInputDialog.getItem`으로 "마켓플레이스 플러그인"/"로컬 플러그인"을 고르게 한다(`_prompt_build_target`). 취소하면 새 프로젝트 생성 자체가 취소된다(기존 프로젝트 유지). 표시 문구·enum 매핑은 `view/editors/project_properties.py`의 `BUILD_TARGET_LABELS`가 단일 진실(app.py가 재사용). `ProjectPropertiesDialog`에도 콤보로 노출해 생성 후 변경 가능.
+- **생성 흐름:** `app._new_project`(Ctrl+N)가 통합 다이얼로그(`NewProjectDialog` — 출발점(빈|템플릿) + 빌드 타깃, A7 섹션 참조)로 타깃을 고르게 한다. 취소하면 새 프로젝트 생성 자체가 취소된다(기존 프로젝트 유지). 표시 문구·enum 매핑은 `view/editors/project_properties.py`의 `BUILD_TARGET_LABELS`가 단일 진실. `ProjectPropertiesDialog`에도 콤보로 노출해 생성 후 변경 가능.
 - **컴파일:** MARKETPLACE는 `plugin.json`을 생성한다(산출 구조는 LOCAL과 다르되 `state/`·`schemas/` 네임스페이스 규약은 공유 — WP-NS/D12). LOCAL은 **컴파일이 곧 설치**(WP-MW) — out_dir가 대상 작업 폴더이고 산출이 `.claude/` 밑으로 바로 나간다. 상세는 컴파일 정책 15번 항목 참조.
 - **검증:** `mcp_agent_in_marketplace_build`/`plugin_root_in_local_build` — Validator 프로젝트 수준 규칙 표 참조.
 
@@ -1368,11 +1370,14 @@ CC의 구조는 **3단**이다: 이벤트 → 그룹(matcher + 핸들러 목록)
 - **본문·설명·포트 description은 영어**다(A12) — 컴파일 산출로 **그대로** 나가는
   사용자 값의 출발점이기 때문이다. 이름·설명은 사용자가 갈아끼울 플레이스홀더이고,
   프로젝트 이름은 Ctrl+N과 같은 `new-plugin`이다.
-- **노출은 File 메뉴의 별도 항목**("템플릿에서 새 프로젝트…", Ctrl+N 바로 아래).
-  새 프로젝트 다이얼로그에 얹지 않은 이유: 빈 프로젝트의 빌드 타깃은 생성 시점에
-  물어야 하지만(WP-TG) **템플릿은 자기 타깃을 이미 선언**하고 있어, 한 흐름에 넣으면
-  "고른 템플릿의 타깃"과 "고른 타깃"이 충돌하고 취소 의미도 두 겹이 된다. **기존
-  Ctrl+N 흐름은 한 줄도 바뀌지 않았다**(`test_ctrl_n_flow_unchanged`가 고정).
+- **노출은 Ctrl+N 통합 다이얼로그다**(`view/editors/new_project_dialog.NewProjectDialog`
+  — 출발점 목록(0행=빈 프로젝트, 이후 템플릿) + 빌드 타깃 콤보, 사용자 확정).
+  초기 A7은 "타깃 충돌·취소 이중화"를 이유로 별도 메뉴 항목이었으나, 충돌은 규칙
+  하나로 풀었다: **생성 시 고른 타깃이 템플릿에 저장된 타깃을 항상 이긴다**(템플릿
+  내용은 타깃 중립, 타깃은 사용자 소유). 취소는 한 겹 — 취소 = 생성 취소(WP-TG
+  규약 그대로). 헤드리스 테스트 봉합선은 `SessionIO.exec_new_project_dialog`
+  몽키패치(구 QInputDialog.getItem 스텁의 후임 — `_new_project`를 부르는 테스트는
+  반드시 이것을 스텁해야 모달이 뜨지 않는다).
 - 로드 후 **미저장 변경으로 표시**한다(`_mark_dirty`) — 빈 프로젝트와 달리 잃을
   내용이 있고 저장 경로는 아직 없다.
 - **템플릿은 열자마자 F7 에러 0이어야 한다.** `tests/model/test_templates.py`가

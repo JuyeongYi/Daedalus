@@ -16,11 +16,16 @@ _FIXED_TAB_COUNT = len(_FIXED_TAB_INDEXES)
 
 
 def _stub_build_target_dialog(monkeypatch, choice: str = "마켓플레이스 플러그인") -> None:
-    """QInputDialog.getItem을 지정 선택지로 스텁 — WP-TG 빌드 타깃 다이얼로그가
-    _new_project() 호출마다 뜨는 것을 막는다 (다이얼로그 테스트는 몽키패치로)."""
+    """새 프로젝트 통합 다이얼로그를 "빈 프로젝트 + 지정 타깃"으로 스텁.
+
+    모달을 헤드리스에서 띄우지 않는 봉합선은 SessionIO.exec_new_project_dialog다
+    (구 QInputDialog.getItem 스텁의 후임 — 통합 다이얼로그 도입으로 교체)."""
+    from daedalus.model.plugin.enums import BuildTarget
+    from daedalus.view.editors.project_properties import BUILD_TARGET_LABELS
+    from daedalus.view.session_io import SessionIO
+    target = next(t for t, label in BUILD_TARGET_LABELS if label == choice)
     monkeypatch.setattr(
-        app_module.QInputDialog, "getItem",
-        staticmethod(lambda *a, **k: (choice, True)),
+        SessionIO, "exec_new_project_dialog", lambda self: (None, target)
     )
 
 

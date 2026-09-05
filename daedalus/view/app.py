@@ -45,7 +45,6 @@ from daedalus.model.plugin.skill import (
     ReferenceSkill,
     TransferSkill,
 )
-from daedalus.model.plugin.enums import BuildTarget
 from daedalus.model.project import PluginProject
 from daedalus.model.validation import ValidationError
 from daedalus.view.canvas.canvas_view import FsmCanvasView
@@ -233,15 +232,13 @@ class MainWindow(QMainWindow):
 
         file_menu = menubar.addMenu("File")
         if file_menu is not None:
+            # Ctrl+N 하나가 통합 다이얼로그(출발점 빈|템플릿 + 빌드 타깃)를
+            # 연다 — 별도 "템플릿에서 새 프로젝트" 항목은 통합으로 흡수됐다
+            # (사용자 확정).
             new_action = QAction("새 프로젝트", self)
             new_action.setShortcut(QKeySequence.StandardKey.New)  # Ctrl+N
             new_action.triggered.connect(self._new_project)
             file_menu.addAction(new_action)
-
-            template_action = QAction("템플릿에서 새 프로젝트…", self)
-            template_action.setToolTip("아키타입 시드로 시작한다 (빌드 타깃은 템플릿이 정한다)")
-            template_action.triggered.connect(self._new_project_from_template)
-            file_menu.addAction(template_action)
 
             file_menu.addSeparator()
 
@@ -563,12 +560,6 @@ class MainWindow(QMainWindow):
 
     def _new_project(self) -> None:
         self._session_io.new_project()
-
-    def _new_project_from_template(self) -> None:
-        self._session_io.new_project_from_template()
-
-    def _prompt_build_target(self) -> BuildTarget | None:
-        return self._session_io.prompt_build_target()
 
     def _edit_project_properties(self) -> None:
         self._session_io.edit_project_properties()
