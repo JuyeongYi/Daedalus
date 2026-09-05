@@ -47,7 +47,16 @@ daedalus/
 │   │   ├── section.py      # Section(자유 콘텐츠 계층 — 이제 v1 sections 트리 마이그레이션 입력으로만 쓰임),
 │   │   │                   #   EventDef(transfer_on 출력 이벤트/에이전트 출력 포트 정의 — name/color/description),
 │   │   │                   #   render_markdown(v1 sections→body 마이그레이션 헬퍼 — serialize._migrate_v1이 사용)
-│   │   └── machine.py      # StateMachine
+│   │   ├── machine.py      # StateMachine
+│   │   └── walk.py         # 머신 재귀 순회 단일 진실(WP-RF) — iter_machines/iter_states/iter_transitions.
+│   │                       #   CompositeState.sub_machine + ParallelState.regions[*].sub_machine 재귀 골격이
+│   │                       #   6곳에 복제돼 있던 것을 모았다. 방문 순서가 곧 검증 경고·산출 항목 순서라
+│   │                       #   docstring이 순서를 계약으로 명시하고 tests/model/fsm/test_walk.py가 고정한다:
+│   │                       #   iter_machines=자기 자신 먼저+선언 순서 재귀, iter_states=깊이 우선 **전위**
+│   │                       #   (상태 yield 직후 그 하위 머신 — iter_machines의 states를 이어붙인 것과 다르다),
+│   │                       #   iter_transitions=iter_machines 순서의 머신 단위 묶음.
+│   │                       #   **machine_rules._validate_machine은 의도적 예외** — path 누적(agent:/region:)이
+│   │                       #   재귀 골격과 얽혀 있어 순회만 떼면 경로 라벨 불변을 보장할 수 없다(주석으로 명시).
 │   ├── plugin/       # Claude 플러그인 메타데이터
 │   │   ├── enums.py        # ModelType, EffortLevel, SkillContext, PermissionMode, AgentField, FieldEmit, BuildTarget(WP-TG) 등
 │   │   ├── policy.py       # ExecutionPolicy (병렬 서브에이전트). JoinStrategy는 fsm/join.py에서 직수입 (re-export 없음 — RF-1b)
@@ -1187,8 +1196,8 @@ ComponentConfig(ABC)          # model, effort, hooks 공통 필드
 도구 모델(`tool.py`): `Tool(PluginComponent, ABC)` 단일 진실 + `BuiltinTool`/`MCPTool`/`UserDefinedTool`. shelf = 프로젝트(`PluginProject.tool_shelf`) 소유, FSM은 `Tool.name` 문자열로 참조(fsm/는 plugin 무관 — 객체 참조 금지, Validator가 실존 검증). `CC_BUILTIN_TOOLS`는 `validation/project_rules.py` 모듈 frozenset이다(파사드 재-export로 `daedalus.model.validation`에서도 임포트 가능 — Read/Write/Edit/Bash/Glob/Grep/WebFetch/WebSearch/Agent/Task/TodoWrite/NotebookEdit/SlashCommand/PowerShell).
 
 블랙보드 접근 선언 검증(`dangling_blackboard_ref`/`orphan_blackboard_field`, WP-BB): 상태
-reads/writes 순회는 `Validator._scan_state_access(sm, visit)` 공용 헬퍼(CompositeState.sub_machine/
-ParallelState.region 재귀)를 쓰며, project.skills(fsm)/project.agents(fsm)/project.graph
+reads/writes 순회는 `Validator._scan_state_access(sm, visit)` 공용 헬퍼(재귀 골격은
+`model/fsm/walk.iter_states`)를 쓰며, project.skills(fsm)/project.agents(fsm)/project.graph
 세 축을 모두 검사한다.
 
 ### 훅 (HookDef / hook_library)

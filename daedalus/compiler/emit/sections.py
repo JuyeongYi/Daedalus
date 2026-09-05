@@ -25,6 +25,7 @@ from daedalus.model.fsm.strategy import (
     MCPEvaluation,
     ToolEvaluation,
 )
+from daedalus.model.fsm.walk import iter_states
 from daedalus.model.plugin.agent import AgentDefinition
 from daedalus.model.plugin.skill import ProceduralSkill, Skill
 from daedalus.model.plugin.variables import ROOT_TOKEN
@@ -308,18 +309,9 @@ def _collect_state_access(sm: StateMachine) -> tuple[set[str], set[str]]:
     """머신(재귀 — sub_machine/Region 포함)의 모든 상태 reads/writes 합집합."""
     reads: set[str] = set()
     writes: set[str] = set()
-    for state in sm.states:
+    for state in iter_states(sm):
         reads.update(getattr(state, "reads", None) or [])
         writes.update(getattr(state, "writes", None) or [])
-        if isinstance(state, CompositeState):
-            r, w = _collect_state_access(state.sub_machine)
-            reads.update(r)
-            writes.update(w)
-        elif isinstance(state, ParallelState):
-            for region in state.regions:
-                r, w = _collect_state_access(region.sub_machine)
-                reads.update(r)
-                writes.update(w)
     return reads, writes
 
 

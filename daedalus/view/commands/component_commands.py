@@ -155,25 +155,22 @@ class _DetachComponentCmd(Command):
         """skill_ref가 이 컴포넌트를 가리키는 SimpleState/Transition 전부.
 
         ``remove_component``의 4단계와 **같은 범위**(project.skills/agents의 FSM,
-        CompositeState/Region 재귀)를 훑는다. 프로젝트 그래프는 여기 없다 —
-        그쪽 placement는 캔버스 커맨드가 통째로 떼어내며 skill_ref를 유지한다.
+        CompositeState/Region 재귀 — 골격은 ``model/fsm/walk.py`` 단일 진실)를
+        훑는다. 프로젝트 그래프는 여기 없다 — 그쪽 placement는 캔버스 커맨드가
+        통째로 떼어내며 skill_ref를 유지한다.
         """
-        from daedalus.model.fsm.state import CompositeState, ParallelState, SimpleState
+        from daedalus.model.fsm.state import SimpleState
+        from daedalus.model.fsm.walk import iter_states, iter_transitions
 
         found: list[object] = []
 
         def _scan(sm) -> None:
             if sm is None:
                 return
-            for state in sm.states:
+            for state in iter_states(sm):
                 if isinstance(state, SimpleState) and state.skill_ref is self._component:
                     found.append(state)
-                if isinstance(state, CompositeState):
-                    _scan(state.sub_machine)
-                elif isinstance(state, ParallelState):
-                    for region in state.regions:
-                        _scan(region.sub_machine)
-            for trans in sm.transitions:
+            for trans in iter_transitions(sm):
                 if trans.skill_ref is self._component:
                     found.append(trans)
 

@@ -11,7 +11,6 @@ import re
 
 from daedalus.model.fsm.machine import StateMachine
 from daedalus.model.fsm.pseudo import EntryPoint
-from daedalus.model.fsm.state import CompositeState, ParallelState
 from daedalus.model.fsm.strategy import (
     CompositeEvaluation,
     CompositeExecution,
@@ -20,6 +19,7 @@ from daedalus.model.fsm.strategy import (
     ToolEvaluation,
     ToolExecution,
 )
+from daedalus.model.fsm.walk import iter_states, iter_transitions
 from daedalus.model.plugin.enums import BuildTarget, PermissionMode
 from daedalus.model.validation.machine_rules import _MachineRules
 from daedalus.model.validation.severity import ValidationError
@@ -274,19 +274,13 @@ class _ProjectRules:
             for a in (lst or []):
                 names.extend(_ProjectRules._collect_exec_tools(a.execution))
 
-        for state in sm.states:
+        for state in iter_states(sm):
             for fname in _MachineRules._STATE_ACTION_FIELDS:
                 _actions(getattr(state, fname, None))
             for lst in getattr(state, "custom_events", {}).values():
                 _actions(lst)
-            # 재귀
-            if isinstance(state, CompositeState):
-                names.extend(_ProjectRules._collect_machine_tool_refs(state.sub_machine))
-            elif isinstance(state, ParallelState):
-                for region in state.regions:
-                    names.extend(_ProjectRules._collect_machine_tool_refs(region.sub_machine))
 
-        for t in sm.transitions:
+        for t in iter_transitions(sm):
             if t.guard is not None:
                 names.extend(_ProjectRules._collect_eval_tools(t.guard.evaluation))
             for fname in _MachineRules._TRANSITION_ACTION_FIELDS:
@@ -679,14 +673,10 @@ class _ProjectRules:
         """머신(재귀 — sub_machine/Region 포함)의 모든 상태에 visit(state)를 적용한다.
 
         dangling_blackboard_ref/orphan_blackboard_field가 공유하는 순회 로직.
+        재귀 골격 자체는 ``model/fsm/walk.iter_states``가 단일 진실이다.
         """
-        for state in sm.states:
+        for state in iter_states(sm):
             visit(state)
-            if isinstance(state, CompositeState):
-                _ProjectRules._scan_state_access(state.sub_machine, visit)
-            elif isinstance(state, ParallelState):
-                for region in state.regions:
-                    _ProjectRules._scan_state_access(region.sub_machine, visit)
 
     @staticmethod
     def _check_dangling_blackboard_refs(project) -> list[ValidationError]:
@@ -963,16 +953,11 @@ class _ProjectRules:
         """머신(재귀 — sub_machine/Region 포함)의 모든 전이에 visit(transition)를 적용.
 
         `_scan_state_access`의 전이판이다 — 같은 재귀 범위를 두 번 적으면
-        한쪽만 고쳐졌을 때 규칙마다 보는 그래프가 달라진다.
+        한쪽만 고쳐졌을 때 규칙마다 보는 그래프가 달라진다. 그래서 재귀 골격은
+        ``model/fsm/walk.iter_transitions``가 단일 진실이다.
         """
-        for trans in getattr(sm, "transitions", None) or []:
+        for trans in iter_transitions(sm):
             visit(trans)
-        for state in sm.states:
-            if isinstance(state, CompositeState):
-                _ProjectRules._scan_transitions(state.sub_machine, visit)
-            elif isinstance(state, ParallelState):
-                for region in state.regions:
-                    _ProjectRules._scan_transitions(region.sub_machine, visit)
 
     @staticmethod
     def _check_transfer_skill_reused(project) -> list[ValidationError]:

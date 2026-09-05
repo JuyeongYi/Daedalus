@@ -10,3 +10,4 @@ from daedalus.model.fsm.transition import *
 from daedalus.model.fsm.blackboard import *
 from daedalus.model.fsm.section import *
 from daedalus.model.fsm.machine import *
+from daedalus.model.fsm.walk import *

@@ -79,7 +79,9 @@ class _MachineRules:
         errors.extend(_MachineRules._check_transition_type_consistency(sm.transitions, path))
         errors.extend(_MachineRules._check_choice_completeness(sm, path))
         errors.extend(_MachineRules._check_parallel_join_count(sm.states, path))
-        # 재귀
+        # 재귀 — 여기만 ``model/fsm/walk.iter_machines``로 환원하지 않는다.
+        # path 누적(agent:/region: 접두)과 머신별 규칙 적용이 재귀 골격과 얽혀
+        # 있어 순회만 떼어내면 동작(경로 라벨) 불변을 보장할 수 없다.
         for state in sm.states:
             if isinstance(state, CompositeState):
                 child_path = path + (f"agent:{state.name}",)

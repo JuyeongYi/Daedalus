@@ -176,7 +176,8 @@ def remove_component(
       (skill_name은 스킬 이름 참조 — component가 스킬일 때만, 동명-다른타입 오삭제 방지)
     - 다른 스킬/에이전트 FSM의 skill_ref(SimpleState/Transition.skill_ref)가 삭제 대상이면 None으로
     """
-    from daedalus.model.fsm.state import CompositeState, ParallelState, SimpleState
+    from daedalus.model.fsm.state import SimpleState
+    from daedalus.model.fsm.walk import iter_states, iter_transitions
 
     log: list[str] = []
     comp_name: str = getattr(component, "name", str(component))
@@ -243,17 +244,13 @@ def remove_component(
 
     # --- 4) 다른 FSM의 skill_ref → None 으로 ---
     def _nullify_skill_refs_in_machine(sm: StateMachine) -> int:
+        # 재귀 골격(sub_machine/Region)은 model/fsm/walk.py가 단일 진실.
         count = 0
-        for state in sm.states:
+        for state in iter_states(sm):
             if isinstance(state, SimpleState) and state.skill_ref is component:
                 state.skill_ref = None
                 count += 1
-            if isinstance(state, CompositeState):
-                count += _nullify_skill_refs_in_machine(state.sub_machine)
-            elif isinstance(state, ParallelState):
-                for region in state.regions:
-                    count += _nullify_skill_refs_in_machine(region.sub_machine)
-        for trans in sm.transitions:
+        for trans in iter_transitions(sm):
             if trans.skill_ref is component:
                 trans.skill_ref = None
                 count += 1
