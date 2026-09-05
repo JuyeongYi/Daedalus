@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
     QComboBox,
     QFrame,
     QGraphicsOpacityEffect,
+    QGridLayout,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -113,8 +114,24 @@ _COLOR_PRESETS = [
 ]
 
 
+# 프론트매터 그리드의 열 — 모든 행이 이 세 열을 공유한다.
+_COL_CHECK, _COL_LABEL, _COL_WIDGET = 0, 1, 2
+_COL_COUNT = 3
+
+_DIM_OPACITY = 0.4
+
+
 class _OptionalRow(QWidget):
-    """체크박스 ON/OFF로 선택적 프론트매터 필드를 표시/비활성화."""
+    """체크박스 ON/OFF로 선택적 프론트매터 필드를 표시/비활성화.
+
+    **이 위젯 자체는 행의 세 번째 칸(값 위젯을 담는 칸)이다.** 체크박스와
+    라벨은 같은 부모 그리드의 0·1열에 따로 놓인다(`place_in`) — 행마다 독립
+    레이아웃을 쓰면 열 폭이 공유되지 않아 라벨 길이만큼 값 위젯의 시작
+    x좌표가 어긋나 계단처럼 보였다(사용자 보고: hooks / mcp_servers 행).
+
+    값 위젯의 부모는 여전히 이 객체다 — 호출부와 테스트가 `widget.parent()`로
+    행을 찾아 올라가 토글·잠금을 확인한다.
+    """
 
     toggled = Signal(bool)
 
@@ -128,26 +145,51 @@ class _OptionalRow(QWidget):
         super().__init__(parent)
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 1, 0, 1)
-        layout.setSpacing(3)
-
-        self._cb = QCheckBox()
-        self._cb.setChecked(initially_enabled)
-        layout.addWidget(self._cb)
-
-        lbl = QLabel(label)
-        layout.addWidget(lbl)
+        layout.setSpacing(0)
 
         self._widget = widget
         layout.addWidget(widget, 1)
 
+        # 0·1열 셀 — 부모가 place_in으로 그리드에 가져간다. 여기서 만드는 이유는
+        # 토글·잠금이 세 칸을 함께 다뤄야 하기 때문이다(소유는 이 객체가 한다).
+        self._cb = QCheckBox()
+        self._cb.setChecked(initially_enabled)
+        self._label = QLabel(label)
+        self._label.setAlignment(
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+        )
+
+        # QGraphicsEffect는 위젯 하나에만 붙으므로 흐릴 칸마다 하나씩 둔다.
+        # 체크박스는 흐리지 않는다 — 다시 켜려면 눌러야 하는 컨트롤이다.
         self._opacity = QGraphicsOpacityEffect(self)
         self.setGraphicsEffect(self._opacity)
+        self._label_opacity = QGraphicsOpacityEffect(self._label)
+        self._label.setGraphicsEffect(self._label_opacity)
+
         self._cb.toggled.connect(self._update_state)
         self._update_state(initially_enabled)
 
+    def place_in(self, grid, row: int) -> None:
+        """세 칸을 그리드 한 행에 배치한다 — 열 폭은 모든 행이 공유한다."""
+        grid.addWidget(self._cb, row, _COL_CHECK)
+        grid.addWidget(self._label, row, _COL_LABEL)
+        grid.addWidget(self, row, _COL_WIDGET)
+
+    def set_locked(self, reason: str) -> None:
+        """행 전체를 잠근다 (WP-EL).
+
+        체크박스까지 꺼야 한다 — 값 위젯만 잠그면 "켤 수는 있는데 아무 일도
+        안 일어나는" 상태가 된다.
+        """
+        for cell in (self, self._cb, self._label):
+            cell.setEnabled(False)
+            cell.setToolTip(reason)
+
     def _update_state(self, checked: bool) -> None:
         self._widget.setEnabled(checked)
-        self._opacity.setOpacity(1.0 if checked else 0.4)
+        opacity = 1.0 if checked else _DIM_OPACITY
+        self._opacity.setOpacity(opacity)
+        self._label_opacity.setOpacity(opacity)
         self.toggled.emit(checked)
 
     def is_checked(self) -> bool:
@@ -191,33 +233,38 @@ class _FrontmatterPanel(QScrollArea):
         self.setWidgetResizable(True)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
+        # 모든 필드 행이 **하나의 그리드**를 공유한다 — 행마다 독립 레이아웃을
+        # 쓰면 라벨 길이가 그대로 값 위젯의 시작 x좌표 차이가 되어 행들이
+        # 계단처럼 어긋난다(사용자 보고). 열: 0=체크박스 / 1=라벨 / 2=값 위젯.
         inner = QWidget()
-        lay = QVBoxLayout(inner)
-        lay.setContentsMargins(8, 8, 8, 8)
-        lay.setSpacing(3)
+        grid = QGridLayout(inner)
+        grid.setContentsMargins(8, 8, 8, 8)
+        grid.setHorizontalSpacing(6)
+        grid.setVerticalSpacing(3)
+        grid.setColumnStretch(_COL_WIDGET, 1)
+        self._grid = grid
+        self._grid_row = 0
 
-        lay.addWidget(QLabel("Frontmatter"))
+        self._add_span_row(QLabel("Frontmatter"))
 
         # name (필수, 항상 표시)
-        lay.addWidget(QLabel("name *"))
         self._w_name = QLineEdit(component.name)
         self._w_name.editingFinished.connect(self._save_name)
-        lay.addWidget(self._w_name)
+        self._add_field_row("name *", self._w_name)
 
         # description (필수, 항상 표시)
-        lay.addWidget(QLabel("description *"))
         self._w_desc = QTextEdit()
         self._w_desc.setPlainText(component.description)
         self._w_desc.setFixedHeight(44)
         self._w_desc.textChanged.connect(self._save_desc)
-        lay.addWidget(self._w_desc)
+        self._add_field_row("description *", self._w_desc)
 
         # 진입점 프리셋 (A8) — 캔버스 노드 우클릭과 **같은 함수**를 부른다.
         self._entry_preset_combo: QComboBox | None = None
-        self._build_entry_preset_row(lay, component)
+        self._build_entry_preset_row(component)
 
         # 미리보기 / 관련 경고 (A9-1, A9-3) — 역시 캔버스 메뉴와 같은 함수.
-        self._build_component_action_row(lay)
+        self._build_component_action_row()
 
         # SKILL_FIELD_MATRIX / AGENT_FIELD_MATRIX 기반 필드 생성
         # 위젯 클래스는 view 측 FIELD_WIDGETS / AGENT_FIELD_WIDGETS에서 조회한다(model→view 의존 역전).
@@ -271,7 +318,7 @@ class _FrontmatterPanel(QScrollArea):
                     and rule.emit is not current_group
                 ):
                     title = "Invocation" if rule.emit is FieldEmit.INVOCATION else "Settings"
-                    lay.addWidget(QLabel(f"— {title} —"))
+                    self._add_span_row(QLabel(f"— {title} —"))
                     current_group = rule.emit
 
                 widget = widget_map[fld]()
@@ -282,15 +329,8 @@ class _FrontmatterPanel(QScrollArea):
                 self._connect_widget_signal(fld, widget)
 
                 if rule.visibility == FieldVisibility.REQUIRED:
-                    from PySide6.QtWidgets import QComboBox as _QCB
-                    if isinstance(widget, _QCB):
-                        row = QHBoxLayout()
-                        row.addWidget(QLabel(fld.value))
-                        row.addWidget(widget, 1)
-                        lay.addLayout(row)
-                    else:
-                        lay.addWidget(QLabel(fld.value))
-                        lay.addWidget(widget)
+                    # 체크박스 열은 비운다 — 라벨·위젯 열은 OPTIONAL 행과 공유한다.
+                    self._add_field_row(fld.value, widget)
                 elif rule.visibility == FieldVisibility.OPTIONAL:
                     current = self._get_current(config, component, fld)
                     enabled = self._is_field_set(config, component, fld, current)
@@ -299,7 +339,7 @@ class _FrontmatterPanel(QScrollArea):
                     opt_row.toggled.connect(
                         lambda checked, f=fld: self._on_optional_toggled(f, checked)
                     )
-                    lay.addWidget(opt_row)
+                    self._add_optional_row(opt_row)
                     # 잠금은 행 전체에 걸어야 한다 — 위젯만 잠그면 체크박스가
                     # 살아 있어 "켤 수는 있는데 아무 일도 안 일어나는" 상태가 된다
                     container = opt_row
@@ -309,8 +349,37 @@ class _FrontmatterPanel(QScrollArea):
         finally:
             self._loading = False
 
-        lay.addStretch()
+        grid.setRowStretch(self._grid_row, 1)
         self.setWidget(inner)
+
+    # ------------------------------------------------------------------
+    # 그리드 배치 — 행 종류가 달라도 같은 열을 쓴다
+    # ------------------------------------------------------------------
+
+    def _add_span_row(self, widget: QWidget) -> None:
+        """헤더·그룹 구분 라벨처럼 열 구분이 없는 항목 — 행 전체를 스팬한다."""
+        self._grid.addWidget(widget, self._grid_row, 0, 1, _COL_COUNT)
+        self._grid_row += 1
+
+    def _add_span_layout(self, layout) -> None:
+        """버튼 행 등 레이아웃 형태의 스팬 항목."""
+        self._grid.addLayout(layout, self._grid_row, 0, 1, _COL_COUNT)
+        self._grid_row += 1
+
+    def _add_field_row(self, label: str, widget: QWidget) -> None:
+        """라벨|위젯 한 행 — 체크박스 열은 빈 칸으로 남는다."""
+        lbl = QLabel(label)
+        lbl.setAlignment(
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+        )
+        self._grid.addWidget(lbl, self._grid_row, _COL_LABEL)
+        self._grid.addWidget(widget, self._grid_row, _COL_WIDGET)
+        self._grid_row += 1
+
+    def _add_optional_row(self, row: _OptionalRow) -> None:
+        """체크박스|라벨|위젯 한 행 — 세 칸을 같은 열에 놓는다."""
+        row.place_in(self._grid, self._grid_row)
+        self._grid_row += 1
 
     def _apply_build_target_lock(self, fld, widget: QWidget) -> None:
         """빌드 타깃이 지원하지 않는 에이전트 필드를 잠근다 (WP-EL).
@@ -324,12 +393,17 @@ class _FrontmatterPanel(QScrollArea):
 
         if agent_field_supported(fld, self._build_target):
             return
-        widget.setEnabled(False)
-        widget.setToolTip(
+        reason = (
             f"마켓플레이스 플러그인에서는 '{fld.frontmatter_key}'가 무시됩니다"
             f" (CC 보안 정책). 프로젝트 속성에서 빌드 타깃을 '프로젝트 설치'로"
             f" 바꾸면 사용할 수 있습니다."
         )
+        if isinstance(widget, _OptionalRow):
+            # 세 칸이 그리드에 흩어져 있으므로 행이 스스로 전부 잠근다.
+            widget.set_locked(reason)
+            return
+        widget.setEnabled(False)
+        widget.setToolTip(reason)
 
     # ------------------------------------------------------------------
     # 내부 헬퍼
@@ -490,7 +564,7 @@ class _FrontmatterPanel(QScrollArea):
         setattr(config, attr, value)
         self.changed.emit()
 
-    def _build_component_action_row(self, lay) -> None:
+    def _build_component_action_row(self) -> None:
         """"미리보기" / "관련 경고" 버튼 행 (A9-1, A9-3).
 
         캔버스 우클릭 메뉴와 **같은 함수**를 부른다 — 여기서 산출을 따로
@@ -507,7 +581,7 @@ class _FrontmatterPanel(QScrollArea):
         warn.clicked.connect(self._show_findings)
         row.addWidget(warn)
         row.addStretch()
-        lay.addLayout(row)
+        self._add_span_layout(row)
         self._preview_btn = preview
         self._findings_btn = warn
 
@@ -530,7 +604,7 @@ class _FrontmatterPanel(QScrollArea):
         if hasattr(window, "show_component_findings"):
             window.show_component_findings(self._component)
 
-    def _build_entry_preset_row(self, lay, component) -> None:
+    def _build_entry_preset_row(self, component) -> None:
         """진입 의미론 프리셋 콤보 (A8).
 
         `user_invocable`/`disable_model_invocation` 개별 체크 행은 그대로 남는다 —
@@ -549,8 +623,6 @@ class _FrontmatterPanel(QScrollArea):
         if self._project_vm is None or not supports_entry_presets(component):
             return
 
-        row = QHBoxLayout()
-        row.addWidget(QLabel("진입 설정"))
         combo = QComboBox()
         combo.addItem("(직접 지정)", None)
         for spec in ENTRY_PRESETS:
@@ -560,8 +632,7 @@ class _FrontmatterPanel(QScrollArea):
             )
         combo.setCurrentIndex(self._entry_preset_index(component))
         combo.currentIndexChanged.connect(self._on_entry_preset_chosen)
-        row.addWidget(combo, 1)
-        lay.addLayout(row)
+        self._add_field_row("진입 설정", combo)
         self._entry_preset_combo = combo
 
     def _entry_preset_index(self, component) -> int:

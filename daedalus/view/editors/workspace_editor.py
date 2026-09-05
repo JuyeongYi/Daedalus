@@ -17,6 +17,7 @@ from __future__ import annotations
 from typing import Callable
 
 from PySide6.QtWidgets import (
+    QFormLayout,
     QHBoxLayout,
     QInputDialog,
     QLabel,
@@ -114,14 +115,16 @@ class ClaudeMdPanel(_WorkspaceDocPanelBase):
     def __init__(self, on_notify_fn=None, parent: QWidget | None = None) -> None:
         super().__init__(on_notify_fn, parent)
 
+        # 라벨|필드 행은 QFormLayout으로 — 행이 하나뿐이어도 나중에 늘 때
+        # 라벨 폭이 자동으로 공유된다(ad-hoc HBox 나열이 계단을 만든다).
         header = QWidget()
-        row = QHBoxLayout(header)
-        row.setContentsMargins(10, 6, 10, 6)
-        row.addWidget(QLabel("구역 제목 (H1):"))
+        form = QFormLayout(header)
+        form.setContentsMargins(10, 6, 10, 6)
+        form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
         self._title = QLineEdit()
         self._title.setPlaceholderText("(비우면 프로젝트 이름)")
         self._title.textChanged.connect(self._on_title_changed)
-        row.addWidget(self._title, 1)
+        form.addRow("구역 제목 (H1)", self._title)
         self._layout.addWidget(header)
 
         hint = QLabel(
@@ -203,19 +206,20 @@ class RulesPanel(_WorkspaceDocPanelBase):
 
         # paths 프론트매터(A13) — raw text가 아니라 필드로 편집하고 빌드 때
         # `---\npaths: [...]\n---`로 기입한다.
+        # ClaudeMdPanel의 제목 행과 같은 정렬 규칙 — QFormLayout이 라벨 열을 잡는다.
         paths_row = QWidget()
-        paths_lay = QHBoxLayout(paths_row)
-        paths_lay.setContentsMargins(6, 0, 10, 6)
-        paths_label = QLabel("적용 경로 (비우면 항상 로드):")
-        paths_label.setToolTip(
+        paths_form = QFormLayout(paths_row)
+        paths_form.setContentsMargins(6, 0, 10, 6)
+        paths_form.setFieldGrowthPolicy(
+            QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow
+        )
+        self._paths = TagInput()
+        self._paths.setToolTip(
             "glob 패턴 — 예: src/**/*.ts, lib/**, **/test_*.py\n"
             "하나라도 지정하면 그 경로를 다룰 때만 이 규칙이 로드됩니다."
         )
-        paths_lay.addWidget(paths_label)
-        self._paths = TagInput()
-        self._paths.setToolTip(paths_label.toolTip())
         self._paths.tags_changed.connect(self._on_paths_changed)
-        paths_lay.addWidget(self._paths, 1)
+        paths_form.addRow("적용 경로 (비우면 항상 로드)", self._paths)
         right_lay.addWidget(paths_row)
 
         right_lay.addWidget(self._content, 1)

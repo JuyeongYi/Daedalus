@@ -265,6 +265,13 @@ daedalus/
     │                       #     "속성 하나 바꾸기"+"리스트 넣고 빼기" 둘로 환원한다. SetAttrCmd는 최초 execute에서만 old를 잡는다 —
     │                       #     redo가 old를 덮으면 undo가 깨진다. 값은 복사하지 않으므로 호출자가 새 객체를 넘겨야 한다))
     ├── editors/            # 속성 편집기 (skill, agent, hook, body, body_documents, component, variable_loader, catalogue_loader, field_widgets, project_properties, blackboard_editor, workspace_editor)
+    │                       # **필드 행 정렬 규칙**: 라벨|필드 행은 열 폭을 공유하는 레이아웃에 넣는다 — skill_editor._FrontmatterPanel은
+    │                       #   QGridLayout(0=체크박스·1=라벨(우측 정렬)·2=값 위젯, 스팬 행은 헤더/그룹 구분 라벨/버튼 행), 나머지는
+    │                       #   QFormLayout(hook_panel·property_panel·project_properties·workspace_editor). ad-hoc HBox로 행을
+    │                       #   나열하면 열 폭이 공유되지 않아 라벨 길이만큼 값 위젯 시작 x가 어긋난다(실측: 에이전트 패널 x 8종 → 1종).
+    │                       #   _OptionalRow는 **행의 3번째 칸**이고 체크박스·라벨 셀을 소유해 place_in()으로 0·1열에 놓는다 —
+    │                       #   값 위젯의 부모는 여전히 _OptionalRow다(호출부·테스트가 widget.parent()로 행을 찾는다). 잠금(WP-EL)은
+    │                       #   set_locked()가 세 칸을 함께 끈다(체크박스가 살아 있으면 "켤 수는 있는데 아무 일도 안 일어나는" 상태).
     │                       # workspace_editor(WP-WD): ClaudeMdPanel(탭 3 — 구역 제목 H1 + 본문) / RulesPanel(탭 4 — 좌 파일 목록
     │                       #   + 우 "적용 경로" TagInput(A13 paths — ClaudeMdPanel에는 없다)
     │                       #   (＋/삭제/더블클릭 이름변경) | 우 본문). 둘 다 SectionContentPanel을 재사용하므로 WorkspaceDoc.id 덕에
