@@ -1,0 +1,6 @@
+# 벤더링된 규격 스냅샷은 상류 바이트 그대로여야 한다 (A4).
+# core.autocrlf가 켜진 Windows 체크아웃에서 CRLF로 바뀌면 README에 적어 둔
+# sha256이 무의미해지고, 상류와의 diff에 줄바꿈 변경이 섞인다.
+# `text eol=lf`이므로 줄바꿈만 고정되고 diff는 그대로 텍스트로 보인다
+# (`-text`로 하면 갱신 커밋이 "Binary files differ"가 되어 리뷰가 불가능하다).
+claude-code-settings.json text eol=lf

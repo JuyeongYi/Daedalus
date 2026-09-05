@@ -1209,7 +1209,7 @@ reads/writes 순회는 `Validator._scan_state_access(sm, visit)` 공용 헬퍼(�
 
 ### 훅 (HookDef / hook_library)
 
-**규격 정본은 SchemaStore의 `claude-code-settings.json`이다**(2026-08 확인) — 공식 문서에는 훅의 전체 형식이 나오지 않는다. `$defs.hookMatcher` / `$defs.hookCommand` / `properties.hooks`를 보라.
+**규격 정본은 SchemaStore의 `claude-code-settings.json`이다**(2026-09-06 스냅샷) — 공식 문서에는 훅의 전체 형식이 나오지 않는다. `$defs.hookMatcher` / `$defs.hookCommand` / `properties.hooks`를 보라. 그 스키마는 저장소에 **벤더링**되어 있고 대조 테스트가 드리프트를 잡는다 (아래 "스펙 드리프트 감시" 참조).
 
 CC의 구조는 **3단**이다: 이벤트 → 그룹(matcher + 핸들러 목록) → 핸들러. `HookDef` 하나가 **그룹 하나**에 대응하고 `handlers: list[HookHandler]`가 그 안의 핸들러다(WP-HK 이전에는 훅 하나가 커맨드 하나였다).
 
@@ -1243,6 +1243,38 @@ CC의 구조는 **3단**이다: 이벤트 → 그룹(matcher + 핸들러 목록)
     이벤트를 고르는 다른 표면이 생기면 같은 것을 쓴다.
 - **UI**: `editors/hook_panel.HookLibraryPanel` — **상주 탭(인덱스 2)**. 모달 다이얼로그(`hook_editor.HookLibraryDialog`)는 3단 구조를 담을 수 없어 제거됐다(도구 메뉴 항목도 함께 — 탭이 늘 보이므로 지름길이 중복이다). 좌: 훅 목록(핸들러 없으면 ⚠). 우: 이벤트 콤보(matcher 미지원/미문서화를 문구에 표시) + matcher(받지 않는 이벤트면 잠금 + 이유 표시) + 핸들러 목록·폼(`_HandlerForm` — 타입이 바뀌면 통째로 다시 만든다). **"서브에이전트 프론트매터로 복사" / "hooks.json으로 복사"** 버튼이 이 프로젝트 밖의 파일에 붙여넣을 텍스트를 클립보드에 넣는다. `widgets/tag_input`의 `set_hook_name_provider`로 컴포넌트의 HOOKS TagInput이 훅 이름을 후보로 표시한다(A1 이후 **전역 훅 이름도 포함** — `app.set_project`가 `self.resolved_hooks()`를 등록). 전역 훅 표시는 아래 "전역 훅 2단 스코프 (A1)" 참조.
 - **MCP**: `create_hook`/`update_hook`은 `handlers=[{...}]`로 CC 스키마 그대로 받는다(`command=` 인자는 커맨드 훅 하나를 만드는 지름길). 그 타입에 없는 속성은 **거부**한다 — 조용히 무시되면 왜 안 먹는지 알 수 없다. `list_hook_events`가 이벤트 31종과 matcher 지원 여부를, `hook_frontmatter_preview`가 서브에이전트 프론트매터 YAML을 돌려준다.
+
+### 스펙 드리프트 감시 — 벤더링된 CC 규격 스냅샷 (A4)
+
+`HookEvent` 31종·`NO_MATCHER_EVENTS`·`UNDOCUMENTED_EVENTS`·핸들러 `to_json` 키는
+전부 외부 규격을 **손으로 옮겨 적은 것**이다. 상류가 바뀌어도 아무 신호가 나지 않는
+것이 이 프로젝트의 최대 유지 부채였다 — **틀린 emit은 도구가 없는 것보다 나쁘다.
+조용히 실패하기 때문이다**(설정한 사람은 훅이 걸린 줄 알지만, CC는 그 키를 무시하거나
+`additionalProperties: false`에 걸려 항목을 통째로 거부한다).
+
+- **스냅샷:** `tests/fixtures/specs/claude-code-settings.json` — SchemaStore
+  <https://json.schemastore.org/claude-code-settings.json>를 **가공 없이 원본 바이트
+  그대로** 받아 둔 것(2026-09-06, 230,217 B). 출처·날짜·해시·갱신 절차는 같은 폴더의
+  `README.md`가 보유한다.
+- **대조 테스트:** `tests/model/plugin/test_spec_drift.py` — ① `HookEvent` = 스냅샷
+  `properties.hooks` 키(집합 **+ 선언 순서** — `compile_hooks_json`이 이벤트 키를 그
+  순서로 배출한다) ② `NO_MATCHER_EVENTS` = description이 "does not support matchers"/
+  "Matchers are ignored"/"no matchers"라 명시한 집합 ③ 핸들러 `to_json` 키 ⊆ 해당
+  `$defs.hookCommand` 변종의 속성 집합(+ 필수 키 포함) ④ `UNDOCUMENTED_EVENTS`
+  = description이 "UNDOCUMENTED"로 시작하는 집합.
+  ③은 **모든 선택 필드를 채운 핸들러**로 검사한다 — 빈 값 키는 `to_json`이 생략하므로,
+  안 채우면 `{"type": …}` 하나만 보고 통과한다.
+- **테스트는 네트워크에 나가지 않는다.** 읽는 것은 벤더링된 스냅샷뿐이라 오프라인
+  그린이 유지되고, 상류가 바뀌었다고 CI가 저절로 빨개지지도 않는다. **빨개지는 시점은
+  사람이 스냅샷을 갱신했을 때**이고 그게 요점이다 — 갱신이 곧 리뷰 지점이 된다.
+- **갱신:** `python scripts/refresh_cc_schema.py`(상류를 받아 **구조 diff만** 출력, 파일
+  불변) → `--write`(원본 바이트로 덮어쓰기) → 대조 테스트 실행. 스크립트는 재직렬화하지
+  않는다(우리 키 순서·들여쓰기로 다시 쓰면 상류와의 `git diff`가 무의미해진다).
+  스크립트의 `NO_MATCHER_PHRASES`는 테스트의 같은 목록과 일치해야 한다 — 스크립트가
+  보여 주는 diff와 테스트 실패가 같은 판정에서 나와야 한다.
+- 실패가 나오면 그것이 진짜 드리프트다. **테스트를 느슨하게 고치지 말고**
+  `hook.py`(필요하면 `view/widgets/lifecycle_picker.py`의 `_LAYOUT`, 컴파일러의 훅
+  배출)를 새 규격에 맞춘다.
 
 ### 전역 훅 2단 스코프 (A1)
 
