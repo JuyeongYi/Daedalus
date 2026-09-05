@@ -43,8 +43,10 @@ def test_list_warns_via_emitted_flag_in_marketplace(tools):
 
 def test_list_shows_rules_with_lengths(tools):
     api, _win, project = tools
-    project.rules = [WorkspaceDoc(name="testing", body="12345")]
-    assert api.list_workspace_docs()["rules"] == [{"name": "testing", "length": 5}]
+    project.rules = [WorkspaceDoc(name="testing", body="12345", paths=["src/**"])]
+    assert api.list_workspace_docs()["rules"] == [
+        {"name": "testing", "length": 5, "paths": ["src/**"]}
+    ]
 
 
 def test_get_rule_returns_body(tools):
@@ -133,6 +135,49 @@ def test_set_rule_body(tools):
     api.create_rule("testing")
     api.set_rule_body("testing", "validate input")
     assert project.rules[0].body == "validate input"
+
+
+def test_set_rule_paths(tools):
+    api, _win, project = tools
+    api.create_rule("testing")
+    result = api.set_rule_paths("testing", ["src/**/*.ts", "lib/**"])
+    assert project.rules[0].paths == ["src/**/*.ts", "lib/**"]
+    assert result["old_paths"] == []
+
+
+def test_set_rule_paths_drops_blank_entries(tools):
+    api, _win, project = tools
+    api.create_rule("testing")
+    api.set_rule_paths("testing", ["  ", " src/** "])
+    assert project.rules[0].paths == ["src/**"]
+
+
+def test_set_rule_paths_empty_list_clears(tools):
+    """비우면 프론트매터가 나가지 않아 규칙이 항상 로드된다."""
+    api, _win, project = tools
+    api.create_rule("testing")
+    api.set_rule_paths("testing", ["src/**"])
+    api.set_rule_paths("testing", [])
+    assert project.rules[0].paths == []
+
+
+def test_set_rule_paths_rejects_unknown_rule(tools):
+    api, _win, _project = tools
+    with pytest.raises(ValueError):
+        api.set_rule_paths("typo", ["src/**"])
+
+
+def test_set_rule_paths_shows_in_panel(tools):
+    api, win, _project = tools
+    api.create_rule("testing")
+    api.set_rule_paths("testing", ["src/**"])
+    assert win._rules_panel._paths.get_tags() == ["src/**"]
+
+
+def test_get_rule_returns_paths(tools):
+    api, _win, project = tools
+    project.rules = [WorkspaceDoc(name="testing", paths=["src/**"])]
+    assert api.get_workspace_doc("testing")["paths"] == ["src/**"]
 
 
 def test_rename_rule(tools):

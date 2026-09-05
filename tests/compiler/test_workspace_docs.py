@@ -191,6 +191,70 @@ def test_marketplace_build_emits_nothing(tmp_path):
     assert not (tmp_path / ".claude").exists()
 
 
+# ─────────────────────── paths 프론트매터 (A13) ───────────────────────
+
+
+def test_paths_are_emitted_as_frontmatter(tmp_path):
+    project = _project(
+        rules=[WorkspaceDoc(name="testing", body="run pytest",
+                            paths=["src/**/*.ts", "lib/**"])]
+    )
+    result = compile_project(project, tmp_path)
+    assert not result.errors, [e.message for e in result.errors]
+    assert (tmp_path / ".claude" / "rules" / "testing.md").read_text(
+        encoding="utf-8"
+    ) == '---\npaths: ["src/**/*.ts", "lib/**"]\n---\nrun pytest\n'
+
+
+def test_empty_paths_emit_no_frontmatter(tmp_path):
+    """하위 호환 게이트 — paths가 비면 산출이 필드 도입 전과 바이트 단위로 같다."""
+    project = _project(rules=[WorkspaceDoc(name="testing", body="run pytest")])
+    compile_project(project, tmp_path)
+    assert (tmp_path / ".claude" / "rules" / "testing.md").read_text(
+        encoding="utf-8"
+    ) == "run pytest\n"
+
+
+def test_blank_paths_entries_are_dropped(tmp_path):
+    """공백뿐인 원소만 남으면 프론트매터를 내지 않는다 — 빈 glob은 의미가 없다."""
+    project = _project(rules=[WorkspaceDoc(name="testing", body="x", paths=["  "])])
+    compile_project(project, tmp_path)
+    assert (tmp_path / ".claude" / "rules" / "testing.md").read_text(
+        encoding="utf-8"
+    ) == "x\n"
+
+
+def test_paths_are_quoted_so_glob_indicators_survive(tmp_path):
+    """glob은 `[`·`,` 같은 YAML flow 지시자를 문자열 중간에 갖는다 — 따옴표가 필수다."""
+    project = _project(
+        rules=[WorkspaceDoc(name="testing", body="x", paths=["src/[Tt]est*.ts"])]
+    )
+    compile_project(project, tmp_path)
+    text = (tmp_path / ".claude" / "rules" / "testing.md").read_text(encoding="utf-8")
+    assert text.startswith('---\npaths: ["src/[Tt]est*.ts"]\n---\n')
+
+
+def test_manual_frontmatter_with_paths_warns_and_keeps_body(tmp_path):
+    """조용한 변형 금지 — 경고만 내고 본문은 손대지 않는다."""
+    body = "---\npaths: [\"old/**\"]\n---\nrun pytest"
+    project = _project(
+        rules=[WorkspaceDoc(name="testing", body=body, paths=["src/**"])]
+    )
+    result = compile_project(project, tmp_path)
+    assert any(e.rule == "rule_body_frontmatter" for e in result.warnings)
+    text = (tmp_path / ".claude" / "rules" / "testing.md").read_text(encoding="utf-8")
+    assert 'paths: ["old/**"]' in text  # 본문 원문 그대로 남는다
+
+
+def test_manual_frontmatter_without_paths_field_is_not_flagged(tmp_path):
+    """필드를 안 쓰고 본문에 직접 적는 기존 방식은 충돌이 아니다 — 경고하지 않는다."""
+    project = _project(
+        rules=[WorkspaceDoc(name="testing", body='---\npaths: ["src/**"]\n---\nrun')]
+    )
+    result = compile_project(project, tmp_path)
+    assert not any(e.rule == "rule_body_frontmatter" for e in result.warnings)
+
+
 def test_invalid_rule_name_blocks_compile(tmp_path):
     """이름이 파일명이 되므로 컴파일 게이트에서는 에러로 승격된다."""
     project = _project(rules=[WorkspaceDoc(name="Testing Rules", body="x")])

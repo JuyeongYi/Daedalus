@@ -14,9 +14,10 @@
 `name`의 뜻이 둘 사이에서 다르다는 점만 주의한다 — 규칙에서는 **파일명**이고,
 CLAUDE.md에서는 구역 안 맨 앞에 놓이는 **H1 제목**이다(D9).
 
-`paths:` 프론트매터를 필드로 두지 않는 이유: body가 그대로 나가므로 필요한 사람은
-본문 맨 위에 직접 쓰면 된다. 모델에 필드를 하나 더 만들면 "편집만"이라는 범위가
-슬금슬금 넓어진다.
+`paths:` 프론트매터는 **정식 필드다**(A13, 사용자 확정 — 초기 WP-WD 설계의 "본문
+맨 위에 직접 쓴다"를 뒤집었다). raw text로 두면 편집자가 YAML 문법을 손으로
+맞춰야 하고 오타가 컴파일까지 조용히 흘러간다. 규칙(rules)에만 의미가 있다 —
+`.claude/CLAUDE.md` 구역에는 paths 개념 자체가 없으므로 그 패널은 노출하지 않는다.
 """
 from __future__ import annotations
 
@@ -36,6 +37,10 @@ class WorkspaceDoc:
 
     name: str
     body: str = ""
+    #: `paths:` 프론트매터 — 이 규칙이 적용될 glob 목록 (A13). 비어 있으면
+    #: 프론트매터 자체를 배출하지 않으므로 규칙이 **항상** 로드된다. 규칙
+    #: 전용이고 `claude_md`에서는 쓰이지 않는다.
+    paths: list[str] = field(default_factory=list)
     id: str = field(default_factory=lambda: uuid4().hex, compare=False, kw_only=True)
 
     def has_content(self) -> bool:

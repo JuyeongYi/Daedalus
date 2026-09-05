@@ -75,7 +75,11 @@ class WorkspaceTools(_BaseTools):
                 else {"title": claude_md.name, "length": len(claude_md.body or "")}
             ),
             "rules": [
-                {"name": doc.name, "length": len(doc.body or "")}
+                {
+                    "name": doc.name,
+                    "length": len(doc.body or ""),
+                    "paths": list(doc.paths),
+                }
                 for doc in project.rules
             ],
         }
@@ -91,7 +95,10 @@ class WorkspaceTools(_BaseTools):
                 "title": doc.name, "body": doc.body,
             }
         doc = self._find_rule(name)
-        return {"kind": "rule", "exists": True, "name": doc.name, "body": doc.body}
+        return {
+            "kind": "rule", "exists": True, "name": doc.name,
+            "body": doc.body, "paths": list(doc.paths),
+        }
 
     # ------------------------------------------------------------------
     # CLAUDE.md 구역
@@ -148,6 +155,23 @@ class WorkspaceTools(_BaseTools):
         old_len = self._write_body(doc, body)
         self._refresh_panels("content")
         return {"name": doc.name, "old_length": old_len, "new_length": len(body)}
+
+    def set_rule_paths(self, name: str, paths: list[str]) -> dict[str, Any]:
+        """규칙의 `paths:` 프론트매터를 교체한다 (A13).
+
+        이 규칙이 적용될 glob 목록이다(예: `["src/**/*.ts", "lib/**"]`). 빈
+        목록을 주면 프론트매터 자체가 배출되지 않아 **매 세션 항상 로드**된다 —
+        `paths:`가 있는 규칙만 해당 경로를 다룰 때 로드된다.
+
+        본문 맨 위에 `---` 프론트매터를 직접 쓰지 마세요 — 그러면 `---` 블록이
+        두 번 나가고 컴파일이 `rule_body_frontmatter` 경고를 냅니다.
+        """
+        doc = self._find_rule(name)
+        cleaned = [str(p).strip() for p in (paths or []) if str(p).strip()]
+        old = list(doc.paths)
+        doc.paths = cleaned
+        self._refresh_panels("content")
+        return {"name": doc.name, "old_paths": old, "paths": cleaned}
 
     def rename_rule(self, name: str, new_name: str) -> dict[str, Any]:
         """규칙 파일 이름을 바꾼다 — 산출 파일명이 함께 바뀐다."""

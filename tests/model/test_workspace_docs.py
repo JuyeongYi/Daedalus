@@ -80,6 +80,42 @@ def test_legacy_file_without_keys_loads_empty():
     assert restored.rules == []
 
 
+# ─────────────────────────── paths 필드 (A13) ───────────────────────────
+
+
+def test_paths_defaults_to_empty_list():
+    """비어 있으면 프론트매터가 나가지 않아 규칙이 항상 로드된다."""
+    assert WorkspaceDoc(name="testing").paths == []
+
+
+def test_paths_participate_in_equality():
+    assert WorkspaceDoc(name="a", paths=["src/**"]) != WorkspaceDoc(name="a")
+
+
+def test_paths_are_not_shared_between_docs():
+    """default_factory 확인 — 한 문서의 편집이 다른 문서로 새면 안 된다."""
+    first, second = WorkspaceDoc(name="a"), WorkspaceDoc(name="b")
+    first.paths.append("src/**")
+    assert second.paths == []
+
+
+def test_roundtrip_preserves_paths():
+    project = _project(
+        rules=[WorkspaceDoc(name="testing", body="x", paths=["src/**", "lib/**"])]
+    )
+    restored = deserialize_project(serialize_project(project))
+    assert restored.rules[0].paths == ["src/**", "lib/**"]
+
+
+def test_legacy_file_without_paths_key_loads_empty():
+    """paths 필드 도입 전 파일 — 키 부재는 경고 없이 빈 리스트다."""
+    data = serialize_project(_project(rules=[WorkspaceDoc(name="testing", body="x")]))
+    for doc in data["rules"]:
+        doc.pop("paths", None)
+    restored = deserialize_project(data)
+    assert restored.rules[0].paths == []
+
+
 # ─────────────────────────── 검증 ───────────────────────────
 
 

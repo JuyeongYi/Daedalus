@@ -87,6 +87,9 @@ WARNING_RULES: frozenset[str] = frozenset({
     # WP-WD — .claude/CLAUDE.md 구역 병합 실패(손상된 표식). 파일을 건드리지 않고
     # 경고만 낸다 — 구역의 끝을 추측하면 사용자 내용을 지운다. emit은 컴파일러 소관.
     "unmergeable_claude_md",
+    # A13 — 규칙의 paths 필드와 본문 수기 프론트매터가 겹쳐 `---` 블록이 둘 나간다.
+    # 본문은 건드리지 않고 경고만 낸다(자동 병합 금지). emit은 컴파일러 소관.
+    "rule_body_frontmatter",
     # WP-SF — 스킬별 동봉 파일(skill-files/) 경고. dangling/unknown 2종은
     # compiler/project_compiler.py 소관(파일시스템 검사), 에이전트 토큰 검사는
     # 본문 문자열만 보므로 검증기 소관.

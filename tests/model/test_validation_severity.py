@@ -55,6 +55,7 @@ _WARN_RULES = frozenset({
     "invalid_rule_name",
     "workspace_doc_in_marketplace_build",
     "unmergeable_claude_md",
+    "rule_body_frontmatter",  # A13 — 아래 _EXTERNALLY_EMITTED_RULES 참조
     "mcp_agent_in_marketplace_build",  # WP-TG
     "plugin_root_in_local_build",  # WP-TG
     "unsupported_agent_field_in_marketplace_build",  # WP-LA
@@ -76,6 +77,7 @@ _EXTERNALLY_EMITTED_RULES = frozenset({
     "missing_mcp_server_def",  # daedalus/compiler/project_compiler.py 소관 (WP-MW)
     "unmergeable_settings_json",  # daedalus/compiler/project_compiler.py 소관 (WP-MW)
     "unmergeable_claude_md",  # daedalus/compiler/project_compiler.py 소관 (WP-WD)
+    "rule_body_frontmatter",  # daedalus/compiler/project_compiler.py 소관 (A13)
     "dangling_skill_file_ref",  # daedalus/compiler/project_compiler.py 소관 (WP-SF)
     "unknown_skill_files_dir",  # daedalus/compiler/project_compiler.py 소관 (WP-SF)
 })

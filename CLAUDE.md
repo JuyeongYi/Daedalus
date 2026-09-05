@@ -63,8 +63,9 @@ daedalus/
 │   │   │                  #   resolve_hooks(전역 ← 프로젝트 병합의 단일 진실)/hook_to_json. **파일시스템을 아는 유일한 훅 모듈**
 │   │   ├── variables.py    # 본문 경로 변수(WP-RT) — ${ROOT} 타깃 중립 토큰, 타깃별 확장 매핑, 구버전 마이그레이션
 │   │   ├── field_matrix.py # FieldRule(emit 포함), SKILL_FIELD_MATRIX, AGENT_FIELD_MATRIX (스킬/에이전트 유형별 프론트매터 필드 규칙)
-│   │   └── workspace_doc.py# WorkspaceDoc(name, body, id) — .claude/CLAUDE.md 구역과 .claude/rules/<name>.md의 편집 단위(WP-WD).
+│   │   └── workspace_doc.py# WorkspaceDoc(name, body, paths, id) — .claude/CLAUDE.md 구역과 .claude/rules/<name>.md의 편집 단위(WP-WD).
 │   │                       #   값 동등성이고 id는 비교 제외 — 본문 undo 스택이 이름이 아니라 안정 식별자로 문서를 잡는다.
+│   │                       #   paths(A13)는 규칙 전용 `paths:` 프론트매터 glob 목록 — 비면 프론트매터를 내지 않는다(항상 로드).
 │   ├── project.py           # PluginProject (최상위 컨테이너, name+description+version — plugin.json 매니페스트 소스), ReferencePlacement, tool_shelf, hook_library, blackboard(최상위), graph(워크플로 백킹 머신)+graph_layout+edge_layout(WP-ER 엣지 웨이포인트, 키: Transition.id), emit_progress_hook(WP-RS SessionStart 진행 상태 훅 토글, 기본 True), build_target(WP-TG 빌드 타깃 — MARKETPLACE/LOCAL, 기본 MARKETPLACE), claude_md/rules(WP-WD 작업 폴더 문서 — LOCAL 전용 배출), mcp_server_defs(WP-MW — 이름→.mcp.json 서버 객체, LOCAL 설치 배선 소스)
 │   │                       # + rename_component(project, component, new_name) — 이름 변경 + 문자열 참조 3종 일괄 갱신 (Qt 무관)
 │   │                       # + remove_component(project, component) → list[str] — 모델 정리 (graph placement, skill_ref None화 등).
@@ -110,6 +111,10 @@ daedalus/
 │                           #   `<!-- daedalus:<플러그인> open/close -->` 구역만 갈아끼운다. 구역 밖 불가침·플러그인 여럿 공존·재빌드
 │                           #   멱등. 손상된 표식(close 없음/open 중복/순서 뒤바뀜)은 **건드리지 않고** 경고만 낸다 — 구역의 끝을
 │                           #   추측하면 그 뒤의 사용자 내용을 통째로 날린다. 순수 stdlib.
+│                           # + render_rule(doc) — .claude/rules/<이름>.md 최종 텍스트(A13). paths가 있으면 `---\npaths: [...]\n---`를
+│                           #   앞에 붙이고 비면 본문만(필드 도입 전과 바이트 동일). 원소는 항상 따옴표(_quoted_flow_list — glob의
+│                           #   중간 `[`/`,`는 YAML flow 지시자라 무따옴표면 스칼라가 끊긴다). has_manual_frontmatter(body)는
+│                           #   본문 수기 프론트매터 충돌 판정(rule_body_frontmatter 경고) — 판정만 하고 본문은 손대지 않는다.
 │   └── wiring.py           # wire_workspace(target, server_entries, hooks_map) → WireResult (WP-MW) — 작업 폴더의 .mcp.json
 │                           #   mcpServers + .claude/settings.local.json enabledMcpjsonServers/hooks 병합. 추가/갱신만·멱등·
 │                           #   깨진 JSON 불가침. LOCAL 컴파일과 앱 "Claude Code 실행" 메뉴가 공유하는 단일 진실. 순수 stdlib.
@@ -132,8 +137,8 @@ daedalus/
 │   │   ├── body.py         #   본문(set_component_body/get_body_outline/get_body_section/set_body_section — WP-BU/WP-BO 경로)
 │   │   ├── props.py        #   생성·속성(create_skill/create_agent/rename_component/description/when_to_use/field/project_properties/set_mcp_server_def)
 │   │   └── workspace.py    #   작업 폴더 문서(WP-WD) — list_workspace_docs/get_workspace_doc/set_claude_md/create_rule/
-│   │                       #     set_rule_body/rename_rule/delete_rule. 본문은 BodyTools와 같은 QTextDocument 경로(WP-BU),
-│   │                       #     구조 편집은 GUI 패널과 같은 모델 직접 기록.
+│   │                       #     set_rule_body/set_rule_paths(A13)/rename_rule/delete_rule. 본문은 BodyTools와 같은
+│   │                       #     QTextDocument 경로(WP-BU), 구조 편집은 GUI 패널과 같은 모델 직접 기록.
 │   └── service.py          # DaedalusMCPService — MCPServer 구성(_server_factory가 mcp 1.x/2.x 흡수) + uvicorn 데몬 스레드 수명주기
 ├── cli/              # 블랙보드 CLI (WP-RF-2 신설 → WP-BB1 구현) — C+A 설계: uv tool install로 앱과 함께 설치되고,
 │   │                 #   컴파일 산출의 블랙보드 지시가 런타임에 이 CLI를 호출해 work 폴더의 state/를 읽고 쓴다.
@@ -261,6 +266,7 @@ daedalus/
     │                       #     redo가 old를 덮으면 undo가 깨진다. 값은 복사하지 않으므로 호출자가 새 객체를 넘겨야 한다))
     ├── editors/            # 속성 편집기 (skill, agent, hook, body, body_documents, component, variable_loader, catalogue_loader, field_widgets, project_properties, blackboard_editor, workspace_editor)
     │                       # workspace_editor(WP-WD): ClaudeMdPanel(탭 3 — 구역 제목 H1 + 본문) / RulesPanel(탭 4 — 좌 파일 목록
+    │                       #   + 우 "적용 경로" TagInput(A13 paths — ClaudeMdPanel에는 없다)
     │                       #   (＋/삭제/더블클릭 이름변경) | 우 본문). 둘 다 SectionContentPanel을 재사용하므로 WorkspaceDoc.id 덕에
     │                       #   본문 undo 스택(WP-BU)이 그대로 붙는다. 구조 편집은 모델 직접 기록 + notify(블랙보드 패널과 같은 정책).
     │                       #   변수 삽입 배선의 단일 진실은 body_editor의 make_variable_popup/toggle_variable_popup —
@@ -440,11 +446,10 @@ LOCAL 플러그인이 설치 대상 작업 폴더에 남기는 **항상 컨텍�
 (공식 문서 확인 2026-09-04). **편집만 제공한다**(사용자 확정) — 생성 로직도 자동
 합성도 없고, 사람이 쓴 마크다운이 그대로 나간다.
 
-- **모델:** `WorkspaceDoc(name, body, id)`. `PluginProject.claude_md`는 단일 필드라
-  "최대 하나"가 구조로 보장되고, `rules`는 리스트다(파일 하나가 문서 하나).
+- **모델:** `WorkspaceDoc(name, body, paths, id)`. `PluginProject.claude_md`는 단일
+  필드라 "최대 하나"가 구조로 보장되고, `rules`는 리스트다(파일 하나가 문서 하나).
   `name`의 뜻이 둘 사이에서 다르다 — 규칙에서는 **파일명**, CLAUDE.md에서는 구역
-  안 맨 앞의 **H1 제목**이다. `paths:` 프론트매터는 필드로 두지 않는다(본문 맨 위에
-  직접 쓴다 — "편집만"이라는 범위가 넓어지지 않게).
+  안 맨 앞의 **H1 제목**이다.
 - **UI:** 상주 탭 **2개**(3=CLAUDE.md, 4=규칙). 하나로 묶지 않은 것은 사용자 확정 —
   CLAUDE.md는 하나뿐이고 규칙은 여럿이라 성격이 다르다. 규칙 탭은 선택 목록을 갖는다.
 - **rules는 파일이 곧 문서라 공존이 공짜다.** 반면 `.claude/CLAUDE.md`는 고정
@@ -452,6 +457,41 @@ LOCAL 플러그인이 설치 대상 작업 폴더에 남기는 **항상 컨텍�
 - **MARKETPLACE에서는 배출되지 않는다** — 플러그인은 설치 대상 작업 폴더의
   `.claude/`에 쓸 수 없다. 내용이 있는데 타깃이 마켓플레이스면
   `workspace_doc_in_marketplace_build` 경고 + 패널 안내.
+
+#### 규칙의 `paths:` 프론트매터 (A13)
+
+**초기 WP-WD 설계를 뒤집은 결정이다**(사용자 확정). 원래는 "필드로 두지 않는다 —
+본문 맨 위에 직접 쓴다"였는데, raw text로 두면 편집자가 YAML 문법을 손으로 맞춰야
+하고 오타가 컴파일까지 조용히 흘러간다. 이제 `WorkspaceDoc.paths: list[str]`가
+정식 필드이고 빌드가 프론트매터를 기입한다.
+
+- **규칙 전용이다** — `.claude/CLAUDE.md` 구역에는 paths 개념 자체가 없으므로
+  `ClaudeMdPanel`은 이 필드를 노출하지 않는다(모델은 문서 표현 하나를 공유하고
+  claude_md에서는 항상 빈 리스트다).
+- **비어 있으면 프론트매터를 아예 내지 않는다** — 그때 규칙은 매 세션 로드되고,
+  산출은 필드 도입 전과 **바이트 단위로 같다**(하위 호환 게이트). 값이 있으면:
+
+  ```markdown
+  ---
+  paths: ["src/**/*.ts", "lib/**"]
+  ---
+  <본문>
+  ```
+
+- **원소는 항상 큰따옴표로 감싼다**(`workspace._quoted_flow_list`). `emit._yaml_list`를
+  재사용하지 않는 이유는 그쪽이 **선두** 특수문자만 보기 때문이다 — glob은
+  `,`·`[`·`]`·`{`·`}`를 문자열 중간에 흔히 갖고(`src/[Tt]est*.ts`), 그 문자들은 YAML
+  flow 문맥에서 어디에 있든 지시자라 따옴표가 없으면 스칼라가 거기서 끊긴다.
+- **본문이 자기 프론트매터를 갖고 있는데 paths 필드도 차 있으면** `---` 블록이 둘
+  나가 뒤의 것이 본문으로 읽힌다. `rule_body_frontmatter` 경고를 내되 **본문은
+  건드리지 않는다** — 합치려면 사용자의 키를 해석해야 하고, 조용한 변형은 "내가 쓴
+  게 사라졌다"로 돌아온다. 필드가 비어 있으면(본문에 직접 적는 기존 방식) 충돌이
+  아니므로 경고하지 않는다.
+- 산출 텍스트 조립은 `compiler/workspace.render_rule(doc)`, 충돌 판정은 같은 모듈의
+  `has_manual_frontmatter(body)`다(둘 다 순수 stdlib).
+- 편집 UI는 규칙 탭 본문 위의 `TagInput`("적용 경로 (비우면 항상 로드)") — 선택 시
+  `set_tags`로 로드하고(시그널을 쏘지 않으므로 로드가 모델을 되쓰지 않는다), 편집은
+  모델 직접 기록 + `notify("content")`(규칙 탭의 기존 구조 편집 정책과 동일).
 
 #### CLAUDE.md 구역 병합 (D9)
 
@@ -487,13 +527,16 @@ LOCAL 플러그인이 설치 대상 작업 폴더에 남기는 **항상 컨텍�
 | `invalid_rule_name` | 경고 | 컴포넌트와 같은 이름 규약. 컴파일 게이트가 에러로 승격 |
 | `workspace_doc_in_marketplace_build` | 경고 | 내용이 있을 때만(빈 문서는 잃을 것이 없다) |
 | `unmergeable_claude_md` | 경고 | 손상된 표식 — 컴파일러 emit |
+| `rule_body_frontmatter` | 경고 | paths 필드 + 본문 수기 프론트매터 충돌(A13) — 컴파일러 emit |
 
 #### MCP
 
 `list_workspace_docs` / `get_workspace_doc` / `set_claude_md` / `create_rule` /
-`set_rule_body` / `rename_rule` / `delete_rule`. 본문은 `BodyTools`와 같은
-QTextDocument 경로(WP-BU)라 에디터에 즉시 반영되고 Ctrl+Z로 되돌릴 수 있다.
-`delete_rule`은 **이미 산출된 파일을 지우지 않는다**(컴파일은 쓰기만 한다).
+`set_rule_body` / `set_rule_paths` / `rename_rule` / `delete_rule`. 본문은
+`BodyTools`와 같은 QTextDocument 경로(WP-BU)라 에디터에 즉시 반영되고 Ctrl+Z로
+되돌릴 수 있다. `set_rule_paths`는 빈 목록으로 지우고(항상 로드), 조회 2종은
+`paths`를 함께 돌려준다. `delete_rule`은 **이미 산출된 파일을 지우지 않는다**
+(컴파일은 쓰기만 한다).
 
 ### 블랙보드 CLI `daedalus-bb` (WP-BB1)
 

@@ -243,6 +243,57 @@ def test_body_undo_survives_switching_rules(qapp, project):
     assert project.rules[0].body == "A"
 
 
+# ─────────────────────────── paths 필드 (A13) ───────────────────────────
+
+
+def test_paths_load_with_the_selected_rule(qapp, project):
+    project.rules = [
+        WorkspaceDoc(name="testing", paths=["src/**"]),
+        WorkspaceDoc(name="api-design", paths=["api/**", "lib/**"]),
+    ]
+    panel = RulesPanel()
+    panel.set_project(project)
+    assert panel._paths.get_tags() == ["src/**"]
+    panel._list.setCurrentRow(1)
+    assert panel._paths.get_tags() == ["api/**", "lib/**"]
+
+
+def test_editing_paths_writes_through_to_the_model(qapp, project):
+    project.rules = [WorkspaceDoc(name="testing")]
+    panel = RulesPanel()
+    panel.set_project(project)
+    panel._paths.add_tag("src/**/*.ts")
+    assert project.rules[0].paths == ["src/**/*.ts"]
+    panel._paths.remove_tag("src/**/*.ts")
+    assert project.rules[0].paths == []
+
+
+def test_switching_rules_does_not_leak_paths(qapp, project):
+    """로드는 set_tags라 시그널을 쏘지 않는다 — 앞 문서의 목록이 뒤로 새면 안 된다."""
+    project.rules = [
+        WorkspaceDoc(name="testing", paths=["src/**"]),
+        WorkspaceDoc(name="api-design"),
+    ]
+    panel = RulesPanel()
+    panel.set_project(project)
+    panel._list.setCurrentRow(1)
+    assert project.rules[0].paths == ["src/**"]
+    assert project.rules[1].paths == []
+
+
+def test_paths_disabled_without_a_rule(qapp, project):
+    panel = RulesPanel()
+    panel.set_project(project)
+    assert not panel._paths.isEnabled()
+
+
+def test_claude_md_panel_has_no_paths_field(qapp, project):
+    """`.claude/CLAUDE.md` 구역에는 paths 개념이 없다 — 노출하지 않는다."""
+    panel = ClaudeMdPanel()
+    panel.set_project(project)
+    assert not hasattr(panel, "_paths")
+
+
 # ─────────────────────────── 프로젝트 전환 ───────────────────────────
 
 

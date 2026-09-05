@@ -37,6 +37,7 @@ from daedalus.view.editors.body_editor import (
     make_variable_popup,
     toggle_variable_popup,
 )
+from daedalus.view.widgets.tag_input import TagInput
 
 
 def _is_local(project: PluginProject | None) -> bool:
@@ -194,12 +195,29 @@ class RulesPanel(_WorkspaceDocPanelBase):
         right_lay = QVBoxLayout(right)
         right_lay.setContentsMargins(0, 0, 0, 0)
         hint = QLabel(
-            "파일 하나가 규칙 하나입니다. 특정 경로에서만 읽히게 하려면 본문 맨 위에 "
-            "<code>---</code> 프론트매터로 <code>paths:</code>를 직접 적으세요."
+            "파일 하나가 규칙 하나입니다. 적용 경로를 비우면 매 세션 항상 로드됩니다."
         )
         hint.setWordWrap(True)
         hint.setContentsMargins(6, 6, 10, 6)
         right_lay.addWidget(hint)
+
+        # paths 프론트매터(A13) — raw text가 아니라 필드로 편집하고 빌드 때
+        # `---\npaths: [...]\n---`로 기입한다.
+        paths_row = QWidget()
+        paths_lay = QHBoxLayout(paths_row)
+        paths_lay.setContentsMargins(6, 0, 10, 6)
+        paths_label = QLabel("적용 경로 (비우면 항상 로드):")
+        paths_label.setToolTip(
+            "glob 패턴 — 예: src/**/*.ts, lib/**, **/test_*.py\n"
+            "하나라도 지정하면 그 경로를 다룰 때만 이 규칙이 로드됩니다."
+        )
+        paths_lay.addWidget(paths_label)
+        self._paths = TagInput()
+        self._paths.setToolTip(paths_label.toolTip())
+        self._paths.tags_changed.connect(self._on_paths_changed)
+        paths_lay.addWidget(self._paths, 1)
+        right_lay.addWidget(paths_row)
+
         right_lay.addWidget(self._content, 1)
         row.addWidget(right, 1)
 
@@ -229,14 +247,35 @@ class RulesPanel(_WorkspaceDocPanelBase):
             self._list.setCurrentRow(min(max(select, 0), len(rules) - 1))
         else:
             self._content.setEnabled(False)
+            self._paths.setEnabled(False)
+            self._paths.set_tags([])
 
     def _on_row_changed(self, row: int) -> None:
         rules = self._rules()
         if 0 <= row < len(rules):
             self._content.setEnabled(True)
+            self._paths.setEnabled(True)
+            # set_tags는 시그널을 쏘지 않는다(add/remove만 쏜다) — 로드가
+            # _on_paths_changed를 깨워 빈 목록을 모델에 되쓰는 일은 없다.
+            self._paths.set_tags(list(rules[row].paths))
             self._content.show_body(rules[row])
         else:
             self._content.setEnabled(False)
+            self._paths.setEnabled(False)
+            self._paths.set_tags([])
+
+    def _current_rule(self) -> WorkspaceDoc | None:
+        rules = self._rules()
+        row = self._list.currentRow()
+        return rules[row] if 0 <= row < len(rules) else None
+
+    def _on_paths_changed(self) -> None:
+        """paths 편집 → 모델 직접 기록 + notify (구조 편집과 같은 정책)."""
+        doc = self._current_rule()
+        if doc is None:
+            return
+        doc.paths = self._paths.get_tags()
+        self.notify("content")
 
     # --- 구조 편집 ---
 

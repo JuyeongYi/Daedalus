@@ -75,6 +75,7 @@ TOOL_NAMES = (
     "set_claude_md",
     "create_rule",
     "set_rule_body",
+    "set_rule_paths",
     "rename_rule",
     "delete_rule",
     "undo",

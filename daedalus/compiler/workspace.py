@@ -48,6 +48,45 @@ def region_body(title: str, body: str) -> str:
     return f"# {title}\n\n{text}" if text else f"# {title}"
 
 
+def has_manual_frontmatter(body: str) -> bool:
+    """본문이 자기 프론트매터로 시작하는가 — `paths:` 필드와 충돌 판정용(A13).
+
+    앞쪽 빈 줄은 무시한다(편집 중 흔한 형태). 판정만 하고 본문은 건드리지 않는다.
+    """
+    return body.lstrip("\n").startswith("---")
+
+
+def render_rule(doc) -> str:
+    """`.claude/rules/<name>.md` 한 편의 최종 텍스트 (A13).
+
+    `paths`가 비어 있으면 프론트매터를 배출하지 않는다 — 그때 규칙은 항상
+    로드되고, 산출은 필드 도입 전과 **바이트 단위로 같다**(하위 호환).
+
+    본문은 그대로 나간다. 본문이 자기 프론트매터를 이미 갖고 있어도 병합하거나
+    지우지 않는다 — 조용한 변형 대신 컴파일 경고(`rule_body_frontmatter`)로
+    사람에게 알린다.
+    """
+    body = (doc.body or "").strip("\n")
+    paths = [str(p).strip() for p in (doc.paths or []) if str(p).strip()]
+    if not paths:
+        return body + "\n"
+    return f"---\npaths: {_quoted_flow_list(paths)}\n---\n{body}\n"
+
+
+def _quoted_flow_list(values: list[str]) -> str:
+    """flow-style 리스트 — 원소를 **항상** 큰따옴표로 감싼다.
+
+    `emit._yaml_list`를 재사용하지 않는 이유: 그쪽은 선두 특수문자만 보고 따옴표를
+    붙이는데, glob은 `,`·`[`·`]`·`{`·`}`를 **문자열 중간에** 흔히 갖는다
+    (`src/[Tt]est*.ts`). 이 문자들은 YAML flow 문맥에서 어디에 있든 지시자라
+    따옴표가 없으면 스칼라가 거기서 끊긴다.
+    """
+    items = ", ".join(
+        '"' + v.replace("\\", "\\\\").replace('"', '\\"') + '"' for v in values
+    )
+    return f"[{items}]"
+
+
 def merge_claude_md(
     existing: str | None, plugin: str, *, title: str, body: str
 ) -> tuple[str | None, str | None]:

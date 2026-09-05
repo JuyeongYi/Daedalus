@@ -48,6 +48,11 @@ from daedalus.compiler.emit import (
     expand_root_token,
     referenced_mcp_servers,
 )
+from daedalus.compiler.workspace import (
+    has_manual_frontmatter,
+    merge_claude_md,
+    render_rule,
+)
 from daedalus.model.plugin.enums import BuildTarget
 from daedalus.model.plugin.hook import HOOK_SCRIPT_DIR
 from daedalus.model.plugin.skill import Skill
@@ -310,6 +315,21 @@ def _plan_outputs(
             if not doc.has_content():
                 continue  # 배출할 내용이 없으면 빈 파일을 만들지 않는다
             check_name(doc.name, f"규칙 문서 '{doc.name}'", doc)
+            # paths 필드와 본문 수기 프론트매터가 겹치면 `---` 블록이 둘 나간다.
+            # 본문은 건드리지 않는다 — 합치려면 사용자의 키를 해석해야 하고,
+            # 조용한 변형은 "내가 쓴 게 사라졌다"로 돌아온다(A13).
+            if doc.paths and has_manual_frontmatter(doc.body or ""):
+                warnings.append(ValidationError(
+                    rule="rule_body_frontmatter",
+                    message=(
+                        f"규칙 '{doc.name}'의 본문이 '---'로 시작하는데 paths 필드도 "
+                        f"설정돼 있습니다 — 프론트매터가 두 번 배출되어 뒤의 것이 "
+                        f"본문으로 읽힙니다. 본문의 프론트매터를 지우고 그 내용을 "
+                        f"paths 필드로 옮기세요."
+                    ),
+                    source=f"rules/{doc.name}.md",
+                    subject=doc,
+                ))
             plan.append(_PlannedOutput(
                 rel_path=cc_prefix / "rules" / f"{doc.name}.md",
                 label=f"rules/{doc.name}.md (workspace rule)",
@@ -606,9 +626,9 @@ def compile_project(
         elif item.kind == "hook_script":
             text = _hook_script_bodies(project, resolved_hooks).get(item.script_name, "")
         elif item.kind == "workspace_rule":
-            # 본문 그대로 — 편집만 제공한다(WP-WD/D7). 프론트매터가 필요하면
-            # 사용자가 본문 맨 위에 직접 쓴다.
-            text = item.component.body.strip("\n") + "\n"
+            # 본문 그대로 + paths 프론트매터(A13). paths가 비면 프론트매터가
+            # 아예 나가지 않아 필드 도입 전과 산출이 바이트 단위로 같다.
+            text = render_rule(item.component)
         elif item.kind == "schemas_json":
             text = compile_schemas_json(project) or ""
         elif item.kind == "plugin_manifest":
@@ -659,8 +679,6 @@ def _merge_claude_md_region(project, out_dir: Path, result: CompileResult) -> No
     맞지 않는다. `.mcp.json`·`settings.local.json` 병합이 `_wire_local_install`에
     따로 있는 것과 같은 이유다.
     """
-    from daedalus.compiler.workspace import merge_claude_md
-
     doc = getattr(project, "claude_md", None)
     path = out_dir / ".claude" / "CLAUDE.md"
     existing: str | None = None

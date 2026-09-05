@@ -112,7 +112,12 @@ def _ser_workspace_doc(doc):
     """WorkspaceDoc → dict. None이면 None(키는 남긴다 — 부재와 빈 문서를 구분한다)."""
     if doc is None:
         return None
-    return {"id": doc.id, "name": doc.name, "body": doc.body}
+    # paths(A13)는 규칙 전용이지만 문서 표현은 하나로 유지한다 — claude_md에서는
+    # 항상 빈 리스트다.
+    return {
+        "id": doc.id, "name": doc.name, "body": doc.body,
+        "paths": list(doc.paths),
+    }
 
 
 # ── hook library ──

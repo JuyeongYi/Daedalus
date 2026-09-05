@@ -740,10 +740,10 @@ def _deser_hook_handler(d: dict):
 
 
 def _deser_workspace_doc(d) -> WorkspaceDoc | None:
-    """작업 폴더 문서 (WP-WD). 비-dict는 None — 구버전 파일 대비."""
+    """작업 폴더 문서 (WP-WD). 비-dict는 None. paths(A13) 키 부재는 빈 리스트(하위 호환)."""
     if not isinstance(d, dict):
         return None
-    return WorkspaceDoc(d.get("name", ""), d.get("body", ""), id=d.get("id") or _new_id())
+    return WorkspaceDoc(d.get("name", ""), d.get("body", ""), list(d.get("paths") or []), id=d.get("id") or _new_id())
 
 
 def _deser_workspace_docs(raw) -> list[WorkspaceDoc]:
