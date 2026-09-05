@@ -405,6 +405,14 @@ class MainWindow(QMainWindow):
         from daedalus.view.widgets.tag_input import set_blackboard_candidate_provider
 
         set_blackboard_candidate_provider(lambda p=project: blackboard_candidate_strings(p))
+        # 변수 팝업의 빌드 타깃 제공자 — 팝업을 열 때마다 조회하므로 프로젝트
+        # 속성에서 타깃을 바꾸면 즉시 반영된다(로컬 빌드는 ${CLAUDE_PLUGIN_ROOT}
+        # 사용 불가 — 사용자 확정 매트릭스).
+        from daedalus.view.editors.variable_loader import set_build_target_provider
+
+        set_build_target_provider(
+            lambda: getattr(self._project, "build_target", None)
+        )
         # 프로젝트 그래프(워크플로 백킹 머신) → 캔버스 VM 재구성 (버그 1: 저장된
         # 노드 연결 복원). placement 노드 + 전이를 graph_layout 좌표로 배치한다
         # (WP-EP: EntryPoint는 그리지 않음). _load_agent_fsm 미러링.

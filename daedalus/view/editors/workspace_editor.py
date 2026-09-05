@@ -41,6 +41,7 @@ from daedalus.view.editors.body_editor import (
     make_variable_popup,
     toggle_variable_popup,
 )
+from daedalus.view.editors.variable_loader import variables_for
 from daedalus.view.widgets.tag_input import TagInput
 
 
@@ -78,7 +79,15 @@ class _WorkspaceDocPanelBase(QWidget):
         self._content.content_changed.connect(self._on_content_changed)
         # 변수 삽입 — ComponentEditor와 **같은 배선**이다. 이 연결이 빠져 있던
         # 동안 변수 버튼은 시그널만 쏘고 청취자가 없어 아무 일도 하지 않았다.
-        self._var_popup = make_variable_popup(self._content)
+        # 컨텍스트는 "workspace" — 작업 폴더 문서는 루트 변수만 인식한다
+        # (사용자 확정 매트릭스). self._project는 호출 시점에 읽는다(팝업 생성이
+        # set_project보다 먼저다).
+        self._var_popup = make_variable_popup(
+            self._content,
+            variables_fn=lambda: variables_for(
+                "workspace", getattr(self._project, "build_target", None)
+            ),
+        )
         self._content.variable_insert_requested.connect(self._on_variable_insert)
 
     # --- 공통 ---

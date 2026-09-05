@@ -23,7 +23,7 @@ from daedalus.view.editors.body_editor import (
     toggle_variable_popup,
 )
 from daedalus.view.editors.skill_editor import _FrontmatterPanel
-from daedalus.view.editors.variable_loader import load_variables
+from daedalus.view.editors.variable_loader import get_build_target, variables_for
 
 _ComponentType = ProceduralSkill | DeclarativeSkill | TransferSkill | ReferenceSkill | AgentDefinition
 
@@ -52,7 +52,9 @@ class ComponentEditor(QWidget):
         self._component = component
         self._on_notify_fn = on_notify_fn
 
-        variables = load_variables()
+        # 변수 팝업 컨텍스트 — 스킬은 풀 지원, 에이전트 .md는 루트 변수만
+        # 인식한다(사용자 확정 매트릭스, variable_loader.variables_for).
+        var_context = "agent" if isinstance(component, AgentDefinition) else "skill"
 
         root_lay = QHBoxLayout(self)
         root_lay.setContentsMargins(0, 0, 0, 0)
@@ -107,8 +109,12 @@ class ComponentEditor(QWidget):
         root_lay.addWidget(root_splitter)
 
         # Variable popup — 생성·위치 계산은 body_editor의 공용 헬퍼가 맡는다
-        # (작업 폴더 문서 탭이 같은 함수를 부른다).
-        self._var_popup = make_variable_popup(self._content_panel, variables)
+        # (작업 폴더 문서 탭이 같은 함수를 부른다). variables_fn이라 열 때마다
+        # 컨텍스트·빌드 타깃 필터를 다시 적용한다.
+        self._var_popup = make_variable_popup(
+            self._content_panel,
+            variables_fn=lambda: variables_for(var_context, get_build_target()),
+        )
 
     def _on_variable_insert(self) -> None:
         toggle_variable_popup(self._content_panel, self._var_popup)

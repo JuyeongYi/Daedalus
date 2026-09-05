@@ -65,3 +65,79 @@ def test_variable_popup_has_entries(qapp):
     entries = load_variables()
     popup = VariablePopup(entries)
     assert isinstance(popup, QFrame)
+
+
+# ─────── 변수 팝업 컨텍스트 필터 — 열 때마다 갱신 (사용자 확정 매트릭스) ───────
+
+
+def _popup_row_texts(popup):
+    from PySide6.QtWidgets import QPushButton
+    return [
+        b.text() for b in popup.findChildren(QPushButton)
+        if b.text() not in ("✕",)
+    ]
+
+
+def test_popup_refreshes_from_variables_fn_on_toggle(qapp):
+    """variables_fn이 있으면 열 때마다 목록을 다시 만든다 — 빌드 타깃이
+    세션 중 바뀌어도 다음 열기부터 반영된다."""
+    from daedalus.view.editors.body_editor import (
+        SectionContentPanel,
+        make_variable_popup,
+        toggle_variable_popup,
+    )
+    from daedalus.view.editors.variable_loader import VariableEntry
+
+    lists = [
+        [VariableEntry("$A", "first", "builtin")],
+        [VariableEntry("$B", "second", "builtin")],
+    ]
+    panel = SectionContentPanel()
+    popup = make_variable_popup(panel, variables_fn=lambda: lists.pop(0))
+    toggle_variable_popup(panel, popup)
+    assert any("$A" in t for t in _popup_row_texts(popup))
+    popup.hide()
+    toggle_variable_popup(panel, popup)
+    texts = _popup_row_texts(popup)
+    assert any("$B" in t for t in texts)
+    assert not any("$A" in t for t in texts)
+
+
+def test_agent_editor_popup_excludes_skill_only_variables(qapp):
+    """에이전트 본문 팝업에는 스킬 전용 변수($ARGUMENTS 등)가 없다."""
+    from daedalus.model.plugin.agent import AgentDefinition
+    from daedalus.model.fsm.machine import StateMachine
+    from daedalus.model.fsm.pseudo import EntryPoint
+    from daedalus.view.editors.body_editor import toggle_variable_popup
+    from daedalus.view.editors.component_editor import ComponentEditor
+
+    entry = EntryPoint(name="start")
+    agent = AgentDefinition(
+        name="w", description="d",
+        fsm=StateMachine(name="m", states=[entry], initial_state=entry),
+    )
+    editor = ComponentEditor(agent)
+    toggle_variable_popup(editor._content_panel, editor._var_popup)
+    texts = _popup_row_texts(editor._var_popup)
+    assert not any("$ARGUMENTS" in t for t in texts)
+    assert not any("CLAUDE_SKILL_DIR" in t for t in texts)
+    assert any("CLAUDE_PROJECT_DIR" in t for t in texts)
+    editor._var_popup.hide()
+
+
+def test_workspace_panel_popup_respects_local_build(qapp):
+    """로컬 프로젝트의 규칙 편집 팝업에는 ${CLAUDE_PLUGIN_ROOT}가 없다."""
+    from daedalus.model.plugin.enums import BuildTarget
+    from daedalus.model.project import PluginProject
+    from daedalus.view.editors.body_editor import toggle_variable_popup
+    from daedalus.view.editors.workspace_editor import RulesPanel
+
+    project = PluginProject(name="p", build_target=BuildTarget.LOCAL)
+    panel = RulesPanel()
+    panel.set_project(project)
+    toggle_variable_popup(panel._content, panel._var_popup)
+    texts = _popup_row_texts(panel._var_popup)
+    assert not any("CLAUDE_PLUGIN_ROOT" in t for t in texts)
+    assert any("CLAUDE_PROJECT_DIR" in t for t in texts)
+    assert not any("$ARGUMENTS" in t for t in texts)
+    panel._var_popup.hide()

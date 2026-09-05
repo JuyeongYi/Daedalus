@@ -6,6 +6,8 @@ WP-SB: 수동 섹션 트리 편집(SectionTree/BreadcrumbNav)은 마크다운 �
 """
 from __future__ import annotations
 
+from typing import Callable
+
 from PySide6.QtCore import QPoint, Qt, Signal
 from PySide6.QtWidgets import (
     QFrame,
@@ -147,6 +149,9 @@ class VariablePopup(QFrame):
         self.setFrameShape(QFrame.Shape.StyledPanel)
         self.setWindowFlags(Qt.WindowType.Popup)
         self.setFixedWidth(300)
+        # 열 때마다 목록을 다시 만드는 제공자 — make_variable_popup이 채우고
+        # toggle_variable_popup이 호출한다(없으면 생성 시점 목록 고정).
+        self._variables_fn: Callable[[], list] | None = None
 
         lay = QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
@@ -165,24 +170,47 @@ class VariablePopup(QFrame):
         hdr_widget.setLayout(hdr_row)
         lay.addWidget(hdr_widget)
 
-        _SOURCE_LABELS = {
-            "builtin": ("기본 제공", "#4477aa"),
-            "global":  ("글로벌 (~/.daedalus/variables.yaml)", "#4a7a4a"),
-            "project": ("프로젝트 (.daedalus/variables.yaml)", "#7a7a4a"),
-        }
+        # 행 영역 — set_entries가 통째로 다시 채운다 (컨텍스트·빌드 타깃에 따라
+        # 유효한 변수가 달라 팝업을 열 때마다 갱신된다).
+        rows_widget = QWidget()
+        self._rows_lay = QVBoxLayout(rows_widget)
+        self._rows_lay.setContentsMargins(0, 0, 0, 0)
+        self._rows_lay.setSpacing(0)
+        lay.addWidget(rows_widget)
+
+        self.set_entries(entries)
+
+    _SOURCE_LABELS = {
+        "builtin": ("기본 제공", "#4477aa"),
+        "global":  ("글로벌 (~/.daedalus/variables.yaml)", "#4a7a4a"),
+        "project": ("프로젝트 (.daedalus/variables.yaml)", "#7a7a4a"),
+    }
+
+    def set_entries(self, entries: list) -> None:
+        """행 목록을 교체한다 — 헤더는 그대로, 그룹 라벨·버튼만 다시 만든다."""
+        while self._rows_lay.count():
+            child = self._rows_lay.takeAt(0)
+            if child is not None:
+                w = child.widget()
+                if w is not None:
+                    # deleteLater만으로는 이벤트 루프 전까지 자식으로 남아
+                    # findChildren류 순회가 죽은 행을 잡는다(TagInput 관례).
+                    w.hide()
+                    w.setParent(None)
+                    w.deleteLater()
         current_source: str | None = None
         for entry in entries:
             if entry.source != current_source:
                 current_source = entry.source
-                label_text, label_color = _SOURCE_LABELS.get(
+                label_text, _label_color = self._SOURCE_LABELS.get(
                     entry.source, (entry.source, "#446"),
                 )
-                grp = QLabel(label_text)
-                lay.addWidget(grp)
+                self._rows_lay.addWidget(QLabel(label_text))
             row = QPushButton()
             row.setText(f"{entry.name}   {entry.description}")
             row.clicked.connect(lambda _c, n=entry.name: self._emit(n))
-            lay.addWidget(row)
+            self._rows_lay.addWidget(row)
+        self.adjustSize()
 
     def _emit(self, name: str) -> None:
         self.variable_selected.emit(name)
@@ -201,16 +229,28 @@ class VariablePopup(QFrame):
 def make_variable_popup(
     panel: SectionContentPanel,
     variables: list | None = None,  # list[VariableEntry]
+    variables_fn: Callable[[], list] | None = None,
 ) -> VariablePopup:
     """패널에 붙는 변수 팝업을 만들고 삽입 경로를 연결한다.
 
-    variables를 생략하면 `load_variables()`로 기본+글로벌 변수를 읽는다.
+    variables_fn을 주면 **팝업을 열 때마다** 그것으로 목록을 다시 만든다 —
+    유효한 변수가 편집 컨텍스트(스킬/에이전트/작업 폴더 문서)와 빌드 타깃에
+    따라 다르고(사용자 확정 매트릭스, `variable_loader.variables_for`), 빌드
+    타깃은 세션 중에 바뀔 수 있어 생성 시점 고정으로는 스테일해진다.
+    둘 다 생략하면 `load_variables()`로 기본+글로벌 변수를 읽는다(무필터).
     """
     if variables is None:
-        from daedalus.view.editors.variable_loader import load_variables
+        if variables_fn is not None:
+            # 행은 첫 열기에서 채운다 — 생성 시점에 fn을 부르면 그 결과가
+            # 곧 스테일이고(빌드 타깃은 나중에 정해질 수 있다) 어차피
+            # toggle이 열 때마다 다시 만든다.
+            variables = []
+        else:
+            from daedalus.view.editors.variable_loader import load_variables
 
-        variables = load_variables()
+            variables = load_variables()
     popup = VariablePopup(variables, parent=panel)
+    popup._variables_fn = variables_fn
     popup.variable_selected.connect(panel.insert_variable)
     popup.hide()
     return popup
@@ -225,6 +265,9 @@ def toggle_variable_popup(panel: SectionContentPanel, popup: VariablePopup) -> N
     if popup.isVisible():
         popup.hide()
         return
+    fn = getattr(popup, "_variables_fn", None)
+    if fn is not None:
+        popup.set_entries(fn())
     btn = panel._btn_variable
     popup.move(btn.mapToGlobal(QPoint(0, btn.height())))
     popup.show()

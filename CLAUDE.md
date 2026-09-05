@@ -282,6 +282,12 @@ daedalus/
     │                       #   변수 삽입 배선의 단일 진실은 body_editor의 make_variable_popup/toggle_variable_popup —
     │                       #   ComponentEditor와 이 패널이 **같은 함수**를 부른다(한쪽에만 있으면 같은 버튼이 표면마다 다르게
     │                       #   동작한다. 실제로 workspace_editor가 variable_insert_requested를 연결하지 않아 무동작이었다).
+    │                       #   **변수 팝업은 컨텍스트별 필터**(사용자 확정 매트릭스, variable_loader.variables_for): 스킬=풀 지원 /
+    │                       #   에이전트·작업 폴더 문서=루트 변수 2종(${CLAUDE_PLUGIN_ROOT}·${CLAUDE_PROJECT_DIR})만 / LOCAL 빌드는
+    │                       #   ${CLAUDE_PLUGIN_ROOT} 사용 불가(로컬 설치엔 플러그인 디렉토리가 없다). variables_fn을 받은 팝업은
+    │                       #   **열 때마다** 목록을 다시 만든다 — 빌드 타깃은 set_build_target_provider(app.set_project 등록,
+    │                       #   SkillFilesPanel의 provider 패턴)로 호출 시점 조회라 프로젝트 속성 변경이 다음 열기부터 반영된다.
+    │                       #   사용자 정의(global/project yaml) 변수는 전 컨텍스트 노출 — 자기 토큰의 범위는 자기가 안다.
     │                       # catalogue_loader: 도구/MCP 카탈로그 로더(WP-TM) — ~/.daedalus/catalogue/*.json(글로벌) + <프로젝트>/.daedalus/catalogue/*.json(프로젝트, 이름 충돌 시 우선)
     │                       #   병합. 파일 1개=항목 1개(CatalogueEntry: name=파일명 stem, description, tools="tool" 키, mcp="mcp" 키). expanded_mcp()가 mcp 항목을
     │                       #   mcp__<entry.name>__<도구>로 확장(이미 mcp__ 접두면 그대로). candidate_strings(entries, project)가 CC_BUILTIN_TOOLS(정렬)+카탈로그 tool/expanded_mcp+
