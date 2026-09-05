@@ -374,11 +374,19 @@ class HookDef(PluginComponent):
 
         command 핸들러가 여럿이면 파일명이 겹치지 않도록 뒤에 번호를 붙인다.
         `script_name`을 직접 준 핸들러는 그 이름을 그대로 쓴다.
+
+        `script_name`의 계약은 "확장자 제외"지만, 그 계약을 모르는 호출자
+        (MCP·GUI 폼)가 `foo.sh`를 넘기는 실수가 실제로 났다 — 그대로 붙이면
+        `foo.sh.sh`가 조용히 산출된다. 셸에 **맞는** 확장자가 이미 붙어
+        있으면 벗겨서 멱등하게 만든다(다른 확장자는 의도로 보고 보존 —
+        bash 훅의 `x.ps1`은 `x.ps1.sh`가 맞는 산출이다).
         """
         out: list[tuple[str, str]] = []
         commands = [h for h in self.handlers if isinstance(h, CommandHook)]
         for index, handler in enumerate(commands, start=1):
             base = handler.script_name.strip() or _slug(self.name) or "hook"
+            if base.endswith(handler.extension):
+                base = base[: -len(handler.extension)] or _slug(self.name) or "hook"
             if not handler.script_name.strip() and len(commands) > 1:
                 base = f"{base}-{index}"
             out.append((f"{base}{handler.extension}", handler.script))

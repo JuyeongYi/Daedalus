@@ -131,7 +131,9 @@ class HookTools(_BaseTools):
         **command 훅의 `command`는 스크립트 본문이다**(WP-HS). 아무리 짧아도
         `hooks/scripts/<이름>.sh` 파일로 나가고, hooks.json에는 루트 기반 경로만
         남는다 — 인라인 셸 문자열은 쓰지 않는다. 파일명은 `scriptName`으로 정하고
-        비우면 훅 이름에서 만든다.
+        비우면 훅 이름에서 만든다. **확장자는 쓰지 마라** — shell에 맞는
+        확장자(.sh/.ps1)를 배출이 붙인다(맞는 확장자를 붙여 넘겨도 이중으로
+        붙지 않게 정규화하지만, 계약은 확장자 제외다).
 
         command 인자(핸들러 밖)는 편의용 지름길이다 — handlers 대신 주면 command
         핸들러 하나를 만든다.
