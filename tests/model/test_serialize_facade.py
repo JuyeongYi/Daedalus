@@ -179,7 +179,11 @@ def test_facade_reexports_are_submodule_objects():
 
 
 def test_dependency_direction_is_acyclic():
-    """의존 방향 ser ← migrate ← deser 고정 — 역방향 임포트는 순환을 만든다."""
+    """의존 방향 ser ← migrate ← deser_fsm ← deser_plugin ← deser 고정.
+
+    역방향 임포트는 순환을 만든다. deser.py는 오케스트레이터라 형제 넷을 전부
+    수입하고(재-export 포함), FSM 계층은 아무 형제도 수입하지 않는다.
+    """
     import ast
     from pathlib import Path
 
@@ -196,7 +200,11 @@ def test_dependency_direction_is_acyclic():
 
     assert imported_siblings("ser.py") == set()
     assert imported_siblings("migrate.py") == {"ser"}
-    assert imported_siblings("deser.py") == {"ser", "migrate"}
+    assert imported_siblings("deser_fsm.py") == set()
+    assert imported_siblings("deser_plugin.py") == {"deser_fsm"}
+    assert imported_siblings("deser.py") == {
+        "ser", "migrate", "deser_fsm", "deser_plugin",
+    }
 
 
 def test_split_modules_are_within_soft_budget():

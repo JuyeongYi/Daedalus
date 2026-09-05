@@ -34,11 +34,17 @@ WP-SZ: 구 단일 모듈 ``model/serialize.py``(1,437줄)를 패키지로 분해
 같은 기존 임포트가 전부 무수정으로 동작한다.
 
 구획:
-  ser.py     — 정방향(serialize_project + _ser_* 전부) + ``FORMAT_VERSION``
-  migrate.py — format 1 → 2 단방향 마이그레이션(_migrate_v1 + 승계·승격·스크럽)
-  deser.py   — 역방향(2-pass deserialize_project + _deser_* + _Registry)
+  ser.py          — 정방향(serialize_project + _ser_* 전부) + ``FORMAT_VERSION``
+  migrate.py      — format 1 → 2 단방향 마이그레이션(_migrate_v1 + 승계·승격·스크럽)
+  deser_fsm.py    — 역방향 FSM 계층(_Registry + 변수/전략/액션/가드/이벤트/
+                    블랙보드/상태/전이/머신)
+  deser_plugin.py — 역방향 플러그인 계층(본문/포트/config/정책/스킬/에이전트/
+                    참조 배치/훅/작업 폴더 문서/도구)
+  deser.py        — 역방향 오케스트레이터(2-pass deserialize_project). 두 형제의
+                    이름을 전부 재수입하므로 ``serialize.deser`` 경로도 불변이다.
 
-의존 방향은 ``ser ← migrate ← deser`` 단방향이다 (순환 없음).
+의존 방향은 ``ser ← migrate ← deser_fsm ← deser_plugin ← deser`` 단방향이다
+(순환 없음).
 """
 from __future__ import annotations
 
