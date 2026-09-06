@@ -22,6 +22,8 @@ TOOL_NAMES = (
     # 읽기 — 사람이 지금 무엇을 보고 있는지까지 포함한다
     "get_project",
     "get_selection",
+    "focus_node",
+    "select_nodes",
     "get_component",
     "get_body_outline",
     "get_body_section",
@@ -59,6 +61,8 @@ TOOL_NAMES = (
     "place_component",
     "create_state",
     "move_state",
+    "move_reference",
+    "set_transition_waypoints",
     "rename_state",
     "delete_state",
     "connect_states",

@@ -358,6 +358,86 @@ class CanvasTools(_BaseTools):
             "y": float(y),
         }
 
+    def move_reference(
+        self, name: str, x: float, y: float, index: int = 0
+    ) -> dict[str, Any]:
+        """참조 노드를 옮긴다 (G13) — `move_state`의 짝.
+
+        같은 참조 스킬이 여러 번 배치돼 있으면 index로 고른다(`place_reference`가
+        돌려주는 index, `get_project`의 references에도 있다). 캔버스 드래그와 같은
+        `MoveRefCmd`라 모델 `reference_placements` 좌표까지 sync되고 undo된다.
+        """
+        from daedalus.view.commands.reference_commands import MoveRefCmd
+
+        rvm = self._find_ref_vm(name, index)
+        old_x, old_y = rvm.x, rvm.y
+        self._vm.execute(
+            MoveRefCmd(
+                rvm,
+                old_x=old_x, old_y=old_y,
+                new_x=float(x), new_y=float(y),
+                sync_fn=self._scene._sync_refs_to_model,
+            )
+        )
+        return {
+            "moved": name,
+            "index": index,
+            "from": [old_x, old_y],
+            "to": [float(x), float(y)],
+        }
+
+    def set_transition_waypoints(
+        self, source: str, target: str, points: list[list[float]] | None = None
+    ) -> dict[str, Any]:
+        """전이의 경유점(WP-ER)을 **통째로 교체**한다 (G10) — 소스→타깃 순서.
+
+        points: `[[x, y], ...]`. 생략하거나 빈 목록이면 전부 지운다(직선 복원 —
+        캔버스 엣지 메뉴의 "경유점 모두 제거"와 같다).
+
+        캔버스는 추가·드래그·제거를 하나씩 하지만 MCP로 좌표를 하나씩 넣는 것은
+        의미가 없으므로 여기서는 **교체 1종만** 낸다 — 기존
+        `ClearWaypointsCmd`+`AddWaypointCmd`를 `MacroCommand`로 묶어 1 undo 단위다
+        (새 커맨드를 만들면 캔버스 조작과 되돌림 단위가 어긋난다).
+        읽기는 `get_project`의 전이 요약 `waypoint_count`다.
+        """
+        from daedalus.view.commands.base import MacroCommand
+        from daedalus.view.commands.transition_commands import (
+            AddWaypointCmd,
+            ClearWaypointsCmd,
+        )
+
+        vm, _ = self._scope()
+        tvm = self._find_transition_vm(source, target, vm)
+        coords: list[tuple[float, float]] = []
+        for i, point in enumerate(points or []):
+            if not isinstance(point, (list, tuple)) or len(point) != 2:
+                raise ValueError(
+                    f"points[{i}]는 [x, y] 두 값이어야 합니다 (받은 값: {point!r})."
+                )
+            coords.append((float(point[0]), float(point[1])))
+
+        before = len(tvm.waypoints)
+        cmds: list[Any] = []
+        if tvm.waypoints:
+            cmds.append(ClearWaypointsCmd(tvm))
+        cmds.extend(
+            AddWaypointCmd(tvm, i, cx, cy) for i, (cx, cy) in enumerate(coords)
+        )
+        if cmds:
+            vm.execute(
+                cmds[0]
+                if len(cmds) == 1
+                else MacroCommand(
+                    children=cmds,
+                    description=f"전이 '{source}→{target}' 경유점 {len(coords)}개 설정",
+                )
+            )
+        return {
+            "transition": [source, target],
+            "waypoints": [list(p) for p in tvm.waypoints],
+            "removed": before,
+        }
+
     def link_reference(self, node: str, reference: str, index: int = 0) -> dict[str, Any]:
         """캔버스 노드를 참조 노드에 잇는다(그 노드가 이 문서를 참조한다는 선언).
 

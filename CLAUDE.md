@@ -181,8 +181,10 @@ daedalus/
 │   │   │                   #     + _visible_global_hooks — 가려지지 않은 전역 훅(A1, G7). 같은 이유로 여기 산다
 │   │   │                   #     + _scene — 프로젝트 캔버스 씬. CanvasTools(참조 노드)와 PropsTools(생성+배치 G14)가
 │   │   │                   #       함께 쓴다)
-│   │   ├── query.py        #   조회(get_project/get_selection/get_component/validate_project/compile_preview/compile_check/
-│   │   │                   #     list_tool_candidates) + undo 스택(undo/redo/get_history).
+│   │   ├── query.py        #   조회(get_project/get_selection/focus_node/select_nodes/get_component/validate_project/
+│   │   │                   #     compile_preview/compile_check/list_tool_candidates) + undo 스택(undo/redo/get_history).
+│   │   │                   #     focus_node/select_nodes(G16)는 get_selection의 **쓰기 짝**이고 undo 비대상 —
+│   │   │                   #     실체는 ValidationActions.focus_in_project_canvas / FsmScene.select_state_vms.
 │   │   │                   #     get_project의 hook_library는 **개요만**(전문은 get_hook), 전이 요약은 guard 서술(컴파일러
 │   │   │                   #     _describe_guard 재사용)과 waypoint_count를 포함한다. get_project(sections=)로 구획만
 │   │   │                   #     받을 수 있다(Q4 — meta/components/canvas/blackboard/hooks, 생략 시 전체 하위호환).
@@ -193,7 +195,9 @@ daedalus/
 │   │   │                   #     list_recent_projects/list_project_templates — G11·G12).
 │   │   │                   #     _save_before_switch가 "먼저 저장" 게이트의 단일 실체(open_project·new_project 공용)
 │   │   ├── canvas.py       #   캔버스 구조(place/create_state/move/rename/delete/connect/disconnect/set_transition/참조 노드).
-│   │   │                   #     set_transition(create_transfer=) — TransferSkill 생성+할당 1 undo(G15, 씬과 같은 커맨드 조립)
+│   │   │                   #     set_transition(create_transfer=) — TransferSkill 생성+할당 1 undo(G15, 씬과 같은 커맨드 조립).
+│   │   │                   #     move_reference(G13 — move_state의 짝, MoveRefCmd)/
+│   │   │                   #     set_transition_waypoints(G10 — 경유점 전체 교체 1종, Clear+Add를 MacroCommand로)
 │   │   ├── ports.py        #   포트(set_transfer_on/add_agent_call/remove_agent_call)
 │   │   ├── blackboard.py   #   블랙보드(create/update/delete_blackboard_class + set_blackboard_fields/set_state_access)
 │   │   ├── hooks.py        #   훅 라이브러리(create/update/delete_hook/set_component_hooks/get_hook/list_hook_events/hook_frontmatter_preview/
@@ -1163,6 +1167,19 @@ daedalus-bb --schemas <경로> [--state-dir DIR] <command>
   캔버스 엣지 메뉴의 "새 Transfer Skill 생성..."과 **같은 두 커맨드**
   (`AddSkillToProjectCmd` → `SetTransitionSkillRefCmd`)를 조립한다 — 씬 메서드는 이름을 모달로
   묻는 부분과 한 몸이라 그대로 부를 수 없다. `transfer`(기존 스킬 지정)와 동시에 줄 수 없다.
+- **레이아웃(G13/G10):** `move_reference(name, x, y, index=0)`가 `move_state`의 짝이고
+  캔버스 드래그와 같은 `MoveRefCmd`를 쓴다(모델 `reference_placements` 좌표까지 sync).
+  `set_transition_waypoints(source, target, points)`는 엣지 경유점(WP-ER)의 **교체 1종**이다 —
+  캔버스는 하나씩 추가·드래그하지만 좌표를 한 점씩 넣는 도구는 의미가 없다. 기존
+  `ClearWaypointsCmd`+`AddWaypointCmd`를 `MacroCommand`로 묶어 1 undo 단위이고(새 커맨드를
+  만들면 캔버스 조작과 되돌림 단위가 어긋난다), 읽기는 전이 요약의 `waypoint_count`다.
+- **선택은 편집이 아니다 (G16).** `focus_node(name)`(단독 선택 + 탭 전환 + 센터링 —
+  `ValidationActions.focus_in_project_canvas` 재사용)과 `select_nodes(names)`
+  (`FsmScene.select_state_vms` — 씬이 아이템을 쥐므로 선택 조작의 실체도 씬에 둔다)는
+  `get_selection`의 쓰기 짝이며 **커맨드 스택을 거치지 않는다**. 거치면 Ctrl+Z가 "무엇을
+  보고 있었는가"를 되감는 빈 단계로 채워진다. `select_nodes`는 없는 이름이 하나라도 있으면
+  **아무것도 선택하지 않고 거부**한다 — 일부만 선택해 놓고 성공을 보고하면 나머지도 선택된
+  줄 안다.
 - **컴포넌트 삭제(A2):** `delete_component(name)` — `RemoveComponentCmd`를 거쳐 **undo 가능**하고
   GUI 레지스트리 삭제(`MainWindow.delete_component`)와 **같은 커맨드**를 쓴다(조작 경로에 따라
   Ctrl+Z가 듣고 안 듣고가 갈리면 협업 도구로 실격). 상세는 아래 "컴포넌트 삭제 커맨드 (A2)" 참조.

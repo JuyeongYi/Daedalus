@@ -219,6 +219,35 @@ class QueryTools(_BaseTools):
             "empty": not (nodes or edges or refs),
         }
 
+    def focus_node(self, name: str) -> dict[str, Any]:
+        """캔버스에서 그 노드를 선택하고 화면 가운데로 가져온다 (G16).
+
+        `get_selection`의 **쓰기 짝**이다 — CC가 "이 노드 얘기입니다"를 사용자
+        화면에서 가리키는 통로다(검증 결과 항목을 더블클릭했을 때와 같은
+        `ValidationActions.focus_in_project_canvas`를 부른다: 프로젝트 FSM 탭으로
+        전환 + 단독 선택 + 센터링).
+
+        **선택은 편집이 아니므로 undo 대상이 아니다** — 커맨드 스택에 쌓이면
+        Ctrl+Z가 "무엇을 보고 있었는가"를 되감는 빈 단계로 채워진다.
+        """
+        svm = self._find_state_vm(name)
+        self._window._validation_actions.focus_in_project_canvas(svm.model)
+        return {"focused": name, "component": getattr(
+            getattr(svm.model, "skill_ref", None), "name", None
+        )}
+
+    def select_nodes(self, names: list[str]) -> dict[str, Any]:
+        """캔버스 노드 여러 개를 한꺼번에 선택한다 (G16) — 빈 목록이면 선택 해제.
+
+        `focus_node`와 달리 화면을 이동시키지 않는다(어디로 가야 할지 정할 수
+        없다). 없는 이름은 후보를 나열하며 거부한다 — 일부만 선택해 놓고 성공을
+        보고하면 사용자는 나머지도 선택된 줄 안다. 선택은 편집이 아니므로 undo
+        대상이 아니다.
+        """
+        vms = [self._find_state_vm(n) for n in names]
+        count = self._scene.select_state_vms(vms)
+        return {"selected": [v.model.name for v in vms], "count": count}
+
     def get_component(self, name: str) -> dict[str, Any]:
         """스킬/에이전트 하나의 상세 — 본문, 설정, 자체 FSM 요약."""
         comp = self._find_component(name)

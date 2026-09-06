@@ -602,6 +602,22 @@ class FsmScene(QGraphicsScene):
 
         return set_trigger(self._project_vm, transition_vm, name)
 
+    def select_state_vms(self, state_vms) -> int:
+        """주어진 상태 VM들만 선택 상태로 만든다 — 선택한 개수를 돌려준다 (G16).
+
+        **선택은 편집이 아니다** — 커맨드 스택을 거치지 않는다(러버밴드 선택이
+        undo 이력에 쌓이지 않는 것과 같다). 씬이 아이템을 쥐고 있으므로 선택
+        조작의 실체도 씬에 둔다 — MCP `select_nodes`가 이것을 부른다.
+        """
+        wanted = list(state_vms)
+        self.clearSelection()
+        selected = 0
+        for vm, item in self._node_items.items():
+            if any(vm is target for target in wanted):
+                item.setSelected(True)
+                selected += 1
+        return selected
+
     def _handle_waypoint_handle_menu(
         self, menu: QMenu, item: WaypointHandleItem, screen_pos
     ) -> None:
