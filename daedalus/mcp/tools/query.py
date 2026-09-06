@@ -91,51 +91,87 @@ class QueryTools(_BaseTools):
     # 읽기 도구
     # ------------------------------------------------------------------
 
-    def get_project(self) -> dict[str, Any]:
-        """지금 열려 있는 프로젝트의 전체 개요 — 컴포넌트 목록, 캔버스 배치, 블랙보드.
+    #: get_project 구획 이름 → 그 구획이 담는 키 (Q4). 순서가 기본(sections 생략)
+    #: 응답의 병합 순서이기도 하다 — 기존 dict와 키 집합이 완전히 같아야 하위 호환이다.
+    _PROJECT_SECTION_NAMES = ("meta", "components", "canvas", "blackboard", "hooks")
 
-        `hook_library`는 **개요만** 준다(이름·이벤트·matcher·핸들러 개수) —
-        핸들러 스키마와 스크립트 본문까지 보려면 `get_hook(name)`을 쓰라.
-        """
+    def _project_sections(self) -> dict[str, dict[str, Any]]:
         project = self._project
         blackboard = getattr(project, "blackboard", None)
         classes = list(getattr(blackboard, "class_definitions", []) or [])
         return {
-            "name": project.name,
-            "description": project.description,
-            "version": project.version,
-            "build_target": getattr(getattr(project, "build_target", None), "value", None),
-            "saved_path": getattr(self._window, "_current_path", None),
-            "skills": [
-                {
-                    "name": s.name,
-                    "kind": self._component_kind(s),
-                    "description": s.description,
-                }
-                for s in project.skills
-            ],
-            "agents": [
-                {"name": a.name, "description": a.description} for a in project.agents
-            ],
-            "placements": self._placement_summary(),
-            "transitions": self._transition_summary(),
-            "blackboard_classes": [
-                {
-                    "name": c.name,
-                    "description": getattr(c, "description", ""),
-                    "fields": [f.name for f in getattr(c, "fields", [])],
-                }
-                for c in classes
-            ],
-            "references": self._reference_summary(),
-            "hook_library": [
-                self._hook_summary(h) for h in getattr(project, "hook_library", []) or []
-            ],
-            "emit_progress_hook": getattr(project, "emit_progress_hook", None),
-            "mcp_server_defs": dict(getattr(project, "mcp_server_defs", None) or {}),
-            "can_undo": self._window._active_stack.can_undo,
-            "can_redo": self._window._active_stack.can_redo,
+            "meta": {
+                "name": project.name,
+                "description": project.description,
+                "version": project.version,
+                "build_target": getattr(getattr(project, "build_target", None), "value", None),
+                "saved_path": getattr(self._window, "_current_path", None),
+                "emit_progress_hook": getattr(project, "emit_progress_hook", None),
+                "mcp_server_defs": dict(getattr(project, "mcp_server_defs", None) or {}),
+                "can_undo": self._window._active_stack.can_undo,
+                "can_redo": self._window._active_stack.can_redo,
+            },
+            "components": {
+                "skills": [
+                    {
+                        "name": s.name,
+                        "kind": self._component_kind(s),
+                        "description": s.description,
+                    }
+                    for s in project.skills
+                ],
+                "agents": [
+                    {"name": a.name, "description": a.description} for a in project.agents
+                ],
+            },
+            "canvas": {
+                "placements": self._placement_summary(),
+                "transitions": self._transition_summary(),
+                "references": self._reference_summary(),
+            },
+            "blackboard": {
+                "blackboard_classes": [
+                    {
+                        "name": c.name,
+                        "description": getattr(c, "description", ""),
+                        "fields": [f.name for f in getattr(c, "fields", [])],
+                    }
+                    for c in classes
+                ],
+            },
+            "hooks": {
+                "hook_library": [
+                    self._hook_summary(h) for h in getattr(project, "hook_library", []) or []
+                ],
+                # 가려지지 않은 전역 훅(A1, G7) — 개요만(스크립트 본문은 get_hook).
+                "global_hooks": [self._hook_summary(h) for h in self._visible_global_hooks()],
+            },
         }
+
+    def get_project(self, sections: list[str] | None = None) -> dict[str, Any]:
+        """지금 열려 있는 프로젝트의 전체 개요 — 컴포넌트 목록, 캔버스 배치, 블랙보드.
+
+        `hook_library`는 **개요만** 준다(이름·이벤트·matcher·핸들러 개수) —
+        핸들러 스키마와 스크립트 본문까지 보려면 `get_hook(name)`을 쓰라.
+        `global_hooks`도 같은 개요 — 프로젝트 훅에 가려지지 않은 전역 훅만
+        나온다(A1, G7). 프로젝트로 가져와 고치려면 `copy_global_hook`.
+
+        sections(Q4): 구획만 골라 받는다 — `meta`/`components`/`canvas`/
+        `blackboard`/`hooks` 중 목록. **생략하면 전체**(기존 응답과 완전히
+        같은 키 집합 — 하위 호환. 축약 기본값 전환은 아직 결정 전이다).
+        """
+        groups = self._project_sections()
+        names = sections if sections is not None else list(self._PROJECT_SECTION_NAMES)
+        unknown = [s for s in names if s not in groups]
+        if unknown:
+            raise ValueError(
+                f"알 수 없는 구획: {', '.join(unknown)}. "
+                f"사용 가능: {', '.join(self._PROJECT_SECTION_NAMES)}"
+            )
+        result: dict[str, Any] = {}
+        for name in names:
+            result.update(groups[name])
+        return result
 
     def get_selection(self) -> dict[str, Any]:
         """사용자가 지금 캔버스에서 선택한 것 — "이거 고쳐줘"의 '이거'를 알아내는 통로."""
@@ -210,10 +246,20 @@ class QueryTools(_BaseTools):
             ],
         }
         if config is not None:
+            # 비기본값만 싣는다(Q3) — 선언 기본값과 같은 필드(대개 None 미지정)는
+            # list_component_fields가 이미 전체 상세(선택지·emit 위치 포함)를
+            # 주므로 여기서 vars() 전체를 다시 덤프하는 것은 중복 소음이다.
+            defaults = type(config)()
+
+            def _cfg_val(v: Any) -> Any:
+                return getattr(v, "value", v)
+
             info["config"] = {
-                key: (getattr(value, "value", value))
+                key: _cfg_val(value)
                 for key, value in vars(config).items()
-                if not key.startswith("_") and key != "id"
+                if not key.startswith("_")
+                and key != "id"
+                and _cfg_val(value) != _cfg_val(getattr(defaults, key, None))
             }
         if fsm is not None:
             info["fsm"] = {
@@ -247,6 +293,22 @@ class QueryTools(_BaseTools):
                 for e in errors
             ],
         }
+
+    def list_tool_candidates(self) -> dict[str, Any]:
+        """allowed-tools 계열 자동완성 후보 전체(G9) — CC 빌트인 + 카탈로그 + `Agent(이름)`.
+
+        ALLOWED_TOOLS/TOOLS/DISALLOWED_TOOLS TagInput이 보여주는 목록과 **같은
+        산출**이다(`catalogue_loader.candidate_strings` 재사용) — 카탈로그에
+        무엇이 있는지 몰라 이름을 짐작으로 적는 것을 막는다. 읽기 전용, 카탈로그
+        로드는 GUI와 같은 경로(저장 경로 기준 프로젝트 폴더 + 전역 `~/.daedalus/
+        catalogue/`)를 쓴다.
+        """
+        from daedalus.view.editors.catalogue_loader import candidate_strings, load_catalogue
+
+        current_path = getattr(self._window, "_current_path", None)
+        project_dir = Path(current_path).parent if current_path else None
+        entries = load_catalogue(project_dir=project_dir)
+        return {"candidates": candidate_strings(entries, self._project)}
 
     def compile_preview(self, name: str) -> dict[str, Any]:
         """컴포넌트가 어떤 SKILL.md / 에이전트 .md로 컴파일되는지 — 파일은 쓰지 않는다.

@@ -31,8 +31,10 @@ TOOL_NAMES = (
     "compile_check",
     "get_hook",
     "list_hook_events",
+    "list_hook_presets",
     "hook_frontmatter_preview",
     "list_component_fields",
+    "list_tool_candidates",
     "list_recent_projects",
     # 세션 — 저장은 undo 대상이 아니다(파일 쓰기)
     "save_project",
@@ -70,6 +72,7 @@ TOOL_NAMES = (
     "update_hook",
     "delete_hook",
     "set_component_hooks",
+    "copy_global_hook",
     "place_reference",
     "link_reference",
     "unlink_reference",

@@ -126,6 +126,7 @@ class HookTools(_BaseTools):
         matcher: str = "",
         description: str = "",
         command: str = "",
+        preset: str = "",
     ) -> dict[str, Any]:
         """프로젝트 훅 라이브러리에 훅을 추가한다.
 
@@ -153,50 +154,134 @@ class HookTools(_BaseTools):
         `mcp__<서버>__<도구>` 형태를 쓰고, 서버 전체는 `mcp__<서버>__.*`처럼
         `.*`를 붙여야 한다 — 서버 이름까지만 쓰면 아무것도 맞지 않는다.
 
+        preset: 내장 훅 프리셋 이름(list_hook_presets 참조, G8) — 주면 그
+        프리셋을 그대로 사본으로 만들어 `name`만 새로 붙인다(GUI 훅 패널의
+        "프리셋에서 추가"와 같은 실체). **event/handlers/matcher/description/
+        command와는 함께 줄 수 없다** — 프리셋을 그대로 쓰거나 처음부터
+        직접 만들거나 둘 중 하나다(반쯤 섞으면 어느 값이 이겼는지 알 수 없다).
+
         훅은 라이브러리에 정의만 해 두는 것이고, 실제로 배출되려면
         set_component_hooks로 스킬/에이전트가 이름으로 참조해야 한다.
         """
-        from daedalus.model.plugin.hook import MATCHER_EVENTS, HookDef, HookEvent
         from daedalus.view.commands.attr_commands import AppendToListCmd
 
         library = self._project.hook_library
         if any(h.name == name for h in library):
             raise ValueError(f"'{name}' 훅이 이미 있습니다.")
-        try:
-            hook_event = HookEvent(event)
-        except ValueError:
-            allowed = ", ".join(e.value for e in HookEvent)
-            raise ValueError(f"알 수 없는 훅 이벤트 '{event}'. 사용 가능: {allowed}") from None
 
-        specs = list(handlers or [])
-        if command:
-            specs.append({"type": "command", "command": command})
-        built = [self._build_hook_handler(s) for s in specs]
+        if preset:
+            if handlers or command or matcher or description or event != "PreToolUse":
+                raise ValueError(
+                    "preset은 event/handlers/matcher/description/command와 함께 줄 수 "
+                    "없습니다 — 프리셋을 그대로 쓰려면 preset만, 직접 만들려면 preset "
+                    "없이 나머지 인자를 쓰라."
+                )
+            from daedalus.model.plugin.hook_presets import BUILTIN_HOOK_PRESETS, preset_copy
 
-        hook = HookDef(
-            name=name,
-            description=description,
-            event=hook_event,
-            matcher=matcher,
-            handlers=built,
-        )
+            found = next((p for p in BUILTIN_HOOK_PRESETS if p.name == preset), None)
+            if found is None:
+                names = ", ".join(p.name for p in BUILTIN_HOOK_PRESETS)
+                raise ValueError(f"알 수 없는 훅 프리셋 '{preset}'. 사용 가능: {names}")
+            hook = preset_copy(found)
+            hook.name = name
+        else:
+            from daedalus.model.plugin.hook import HookDef, HookEvent
+
+            try:
+                hook_event = HookEvent(event)
+            except ValueError:
+                allowed = ", ".join(e.value for e in HookEvent)
+                raise ValueError(f"알 수 없는 훅 이벤트 '{event}'. 사용 가능: {allowed}") from None
+
+            specs = list(handlers or [])
+            if command:
+                specs.append({"type": "command", "command": command})
+            built = [self._build_hook_handler(s) for s in specs]
+
+            hook = HookDef(
+                name=name,
+                description=description,
+                event=hook_event,
+                matcher=matcher,
+                handlers=built,
+            )
+
         self._vm.execute(
             AppendToListCmd(
                 library,
                 hook,
                 label=f"훅 '{name}' 추가",
-                script=f'create_hook("{name}", event="{hook_event.value}")',
+                script=f'create_hook("{name}", event="{hook.event.value}")',
             )
         )
         self._refresh_hook_ui()
         result = self._hook_detail(hook)
-        if matcher and hook_event not in MATCHER_EVENTS:
+        from daedalus.model.plugin.hook import MATCHER_EVENTS
+
+        if hook.matcher and hook.event not in MATCHER_EVENTS:
             result["note"] = (
-                f"{hook_event.value}는 matcher를 받지 않습니다 — 무시되고 검증 경고가 뜹니다."
+                f"{hook.event.value}는 matcher를 받지 않습니다 — 무시되고 검증 경고가 뜹니다."
             )
-        if not built:
+        if not hook.handlers:
             result["note"] = "핸들러가 없어 아무 일도 하지 않습니다 — handlers를 지정하라."
         return result
+
+    def list_hook_presets(self) -> dict[str, Any]:
+        """내장 훅 프리셋 목록(G8) — `create_hook(preset=...)`가 그대로 받는 이름.
+
+        커맨드/프롬프트/에이전트 등 타입별 출발점을 처음부터 손으로 만들지
+        않아도 되게 하는 카탈로그다(GUI 훅 패널 "프리셋에서 추가"와 같은 목록).
+        """
+        from daedalus.model.plugin.hook_presets import BUILTIN_HOOK_PRESETS
+
+        return {
+            "presets": [
+                {
+                    "name": p.name,
+                    "description": p.description,
+                    "event": p.event.value,
+                    "matcher": p.matcher,
+                    "handler_types": [h.kind for h in p.handlers],
+                }
+                for p in BUILTIN_HOOK_PRESETS
+            ]
+        }
+
+    def copy_global_hook(self, name: str) -> dict[str, Any]:
+        """전역 훅(A1)을 이 프로젝트 라이브러리로 복사한다(G7).
+
+        GUI 훅 패널 "프로젝트로 복사"와 같은 실체 — `preset_copy`로 핸들러까지
+        깊은 복사하고 **이름을 그대로 유지**한다(병합 규칙이 요구: 동명 프로젝트
+        훅이 전역을 덮으므로, 이름을 바꾸면 참조가 계속 전역을 가리켜 고친
+        사본이 아무 데도 쓰이지 않는다).
+
+        이미 프로젝트 라이브러리에 같은 이름이 있으면 거부한다 — 그쪽이 이미
+        이겨서 쓰이고 있으니 복사할 이유가 없다.
+        """
+        from daedalus.model.plugin.hook_presets import preset_copy
+        from daedalus.model.plugin.hook_store import load_global_hooks
+        from daedalus.view.commands.attr_commands import AppendToListCmd
+
+        if any(h.name == name for h in self._project.hook_library):
+            raise ValueError(f"'{name}' 훅은 이미 프로젝트 라이브러리에 있습니다.")
+        globals_ = load_global_hooks()
+        hook = next((h for h in globals_ if h.name == name), None)
+        if hook is None:
+            known = ", ".join(h.name for h in globals_) or "(없음)"
+            raise ValueError(f"'{name}' 전역 훅이 없습니다. 현재 전역 훅: {known}")
+
+        copy = preset_copy(hook)
+        copy.name = name
+        self._vm.execute(
+            AppendToListCmd(
+                self._project.hook_library,
+                copy,
+                label=f"전역 훅 '{name}' 프로젝트로 복사",
+                script=f'copy_global_hook("{name}")',
+            )
+        )
+        self._refresh_hook_ui()
+        return self._hook_detail(copy)
 
     def update_hook(
         self,

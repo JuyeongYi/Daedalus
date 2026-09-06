@@ -566,3 +566,169 @@ def test_set_agent_calls_rejects_non_procedural_skill(tools):
 def test_set_agent_calls_accepts_bare_strings(tools):
     result = tools.set_agent_calls("init", ["a", "b"])
     assert result["call_agents"] == ["a", "b"]
+
+
+# --- 전역 훅 조회 + 프로젝트로 복사 (G7) ---
+
+
+def _write_global_hook(tmp_path, monkeypatch, filename="shared", *, script="echo hi"):
+    import json
+
+    from daedalus.model.plugin import hook_store
+    from daedalus.model.plugin.hook import CommandHook, HookDef, HookEvent
+
+    directory = tmp_path / "globalhooks"
+    directory.mkdir(exist_ok=True)
+    monkeypatch.setattr(hook_store, "global_hooks_dir", lambda home_dir=None: directory)
+    (directory / f"{filename}.json").write_text(
+        json.dumps(hook_store.hook_to_json(HookDef(
+            name=filename, description="공유 훅", event=HookEvent.PRE_TOOL_USE,
+            handlers=[CommandHook(script=script)],
+        ))),
+        encoding="utf-8",
+    )
+    return directory
+
+
+def test_get_project_lists_global_hooks(tools, tmp_path, monkeypatch):
+    _write_global_hook(tmp_path, monkeypatch, "shared")
+    info = tools.get_project()
+    assert [h["name"] for h in info["global_hooks"]] == ["shared"]
+    # 개요만 — 스크립트 본문/핸들러는 안 실린다(get_hook 전용, Q1과 같은 정책).
+    assert "scripts" not in info["global_hooks"][0]
+
+
+def test_get_project_hides_global_hook_shadowed_by_project(tools, tmp_path, monkeypatch):
+    _write_global_hook(tmp_path, monkeypatch, "shared")
+    tools.create_hook("shared", command="local override")
+    info = tools.get_project()
+    assert info["global_hooks"] == []
+    assert [h["name"] for h in info["hook_library"]] == ["shared"]
+
+
+def test_copy_global_hook_adds_and_undoes(tools, window, tmp_path, monkeypatch):
+    _write_global_hook(tmp_path, monkeypatch, "shared", script="echo copied")
+    result = tools.copy_global_hook("shared")
+    assert result["name"] == "shared"
+    library = window._project.hook_library
+    assert [h.name for h in library] == ["shared"]
+    assert library[0].handlers[0].script == "echo copied"
+
+    tools.undo()
+    assert window._project.hook_library == []
+
+
+def test_copy_global_hook_unknown_name(tools, tmp_path, monkeypatch):
+    _write_global_hook(tmp_path, monkeypatch, "shared")
+    with pytest.raises(ValueError, match="shared"):
+        tools.copy_global_hook("nope")
+
+
+def test_copy_global_hook_rejects_when_already_in_project(tools, tmp_path, monkeypatch):
+    _write_global_hook(tmp_path, monkeypatch, "shared")
+    tools.create_hook("shared", command="local")
+    with pytest.raises(ValueError, match="이미"):
+        tools.copy_global_hook("shared")
+
+
+# --- 훅 프리셋 생성 (G8) ---
+
+
+def test_list_hook_presets_lists_builtin(tools):
+    out = tools.list_hook_presets()
+    names = [p["name"] for p in out["presets"]]
+    assert "format-on-edit" in names
+    entry = next(p for p in out["presets"] if p["name"] == "format-on-edit")
+    assert entry["event"] == "PostToolUse"
+    assert entry["handler_types"] == ["command"]
+
+
+def test_create_hook_from_preset_copies_content(tools, window):
+    result = tools.create_hook("my-formatter", preset="format-on-edit")
+    assert result["event"] == "PostToolUse"
+    hook = window._project.hook_library[0]
+    assert hook.name == "my-formatter"
+    assert hook.matcher == "Edit|Write"
+    assert hook.handlers[0].kind == "command"
+
+    tools.undo()
+    assert window._project.hook_library == []
+
+
+def test_create_hook_preset_rejects_unknown_name(tools):
+    with pytest.raises(ValueError, match="알 수 없는 훅 프리셋"):
+        tools.create_hook("h", preset="does-not-exist")
+
+
+def test_create_hook_preset_rejects_mixing_with_handlers(tools):
+    with pytest.raises(ValueError, match="preset"):
+        tools.create_hook(
+            "h", preset="format-on-edit",
+            handlers=[{"type": "command", "command": "x"}],
+        )
+
+
+def test_create_hook_preset_rejects_mixing_with_matcher(tools):
+    with pytest.raises(ValueError, match="preset"):
+        tools.create_hook("h", preset="format-on-edit", matcher="Bash")
+
+
+# --- 카탈로그 후보 조회 (G9) ---
+
+
+def test_list_tool_candidates_includes_builtins_and_agents(tools):
+    tools.create_agent("worker")
+    out = tools.list_tool_candidates()
+    assert "Read" in out["candidates"]  # CC_BUILTIN_TOOLS
+    assert "Agent(worker)" in out["candidates"]
+
+
+# --- config 비기본값만 (Q3) ---
+
+
+def test_get_component_config_only_shows_non_default_values(tools):
+    info = tools.get_component("init")
+    # 아무것도 바꾸지 않았으면 전부 선언 기본값이라 비어 있어야 한다.
+    assert info["config"] == {}
+
+
+def test_get_component_config_shows_only_changed_fields(tools):
+    tools.set_entry_preset("init", "entry")
+    info = tools.get_component("init")
+    assert info["config"] == {
+        "user_invocable": True,
+        "disable_model_invocation": False,
+    }
+
+
+# --- get_project 구획 선택 (Q4) ---
+
+
+def test_get_project_sections_default_is_full(tools):
+    """생략하면 기존 응답과 완전히 같은 키 집합이어야 한다(하위 호환)."""
+    full = tools.get_project()
+    assert set(full) == {
+        "name", "description", "version", "build_target", "saved_path",
+        "emit_progress_hook", "mcp_server_defs", "can_undo", "can_redo",
+        "skills", "agents", "placements", "transitions", "references",
+        "blackboard_classes", "hook_library", "global_hooks",
+    }
+
+
+def test_get_project_sections_filters_to_requested_groups(tools):
+    result = tools.get_project(sections=["components"])
+    assert set(result) == {"skills", "agents"}
+
+
+def test_get_project_sections_combines_multiple_groups(tools):
+    result = tools.get_project(sections=["meta", "hooks"])
+    assert set(result) == {
+        "name", "description", "version", "build_target", "saved_path",
+        "emit_progress_hook", "mcp_server_defs", "can_undo", "can_redo",
+        "hook_library", "global_hooks",
+    }
+
+
+def test_get_project_sections_rejects_unknown_name(tools):
+    with pytest.raises(ValueError, match="nope"):
+        tools.get_project(sections=["nope"])

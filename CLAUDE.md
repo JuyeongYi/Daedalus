@@ -177,17 +177,22 @@ daedalus/
 │   │   │                   #   docstring 분해 전과 동일(SDK 입력 스키마 원료 — service._wrap의 functools.wraps 경로),
 │   │   │                   #   기존 `from daedalus.mcp.tools import DaedalusTools` 무수정 동작(test_tools_facade.py가 고정)
 │   │   ├── _base.py        #   _BaseTools — 공통 헬퍼(_project/_vm/_find_component/_find_state_vm/_scope/_reject_duplicate_name
-│   │   │                   #     + _hook_summary — 훅 **개요**. QueryTools와 HookTools가 함께 쓰므로 소유가 여기다)
-│   │   ├── query.py        #   조회(get_project/get_selection/get_component/validate_project/compile_preview/compile_check)
-│   │   │                   #     + undo 스택(undo/redo/get_history).
+│   │   │                   #     + _hook_summary — 훅 **개요**. QueryTools와 HookTools가 함께 쓰므로 소유가 여기다
+│   │   │                   #     + _visible_global_hooks — 가려지지 않은 전역 훅(A1, G7). 같은 이유로 여기 산다)
+│   │   ├── query.py        #   조회(get_project/get_selection/get_component/validate_project/compile_preview/compile_check/
+│   │   │                   #     list_tool_candidates) + undo 스택(undo/redo/get_history).
 │   │   │                   #     get_project의 hook_library는 **개요만**(전문은 get_hook), 전이 요약은 guard 서술(컴파일러
-│   │   │                   #     _describe_guard 재사용)과 waypoint_count를 포함한다.
-│   │   │                   #     compile_check(G3)는 파일을 쓰지 않는 컴파일 예행 — 컴파일러 emit 경고 7종을 미리 본다
+│   │   │                   #     _describe_guard 재사용)과 waypoint_count를 포함한다. get_project(sections=)로 구획만
+│   │   │                   #     받을 수 있다(Q4 — meta/components/canvas/blackboard/hooks, 생략 시 전체 하위호환).
+│   │   │                   #     get_component의 config는 비기본값만(Q3 — type(config)()와 비교).
+│   │   │                   #     compile_check(G3)는 파일을 쓰지 않는 컴파일 예행 — 컴파일러 emit 경고 7종을 미리 본다.
+│   │   │                   #     list_tool_candidates(G9)는 catalogue_loader.candidate_strings 재사용 — TagInput과 같은 산출
 │   │   ├── session.py      #   세션(save_project/open_project/export_package/list_recent_projects)
 │   │   ├── canvas.py       #   캔버스 구조(place/create_state/move/rename/delete/connect/disconnect/set_transition/참조 노드)
 │   │   ├── ports.py        #   포트(set_transfer_on/add_agent_call/remove_agent_call)
 │   │   ├── blackboard.py   #   블랙보드(create/update/delete_blackboard_class + set_blackboard_fields/set_state_access)
-│   │   ├── hooks.py        #   훅 라이브러리(create/update/delete_hook/set_component_hooks/get_hook/list_hook_events/hook_frontmatter_preview).
+│   │   ├── hooks.py        #   훅 라이브러리(create/update/delete_hook/set_component_hooks/get_hook/list_hook_events/hook_frontmatter_preview/
+│   │   │                   #     list_hook_presets/copy_global_hook — G7·G8).
 │   │   │                   #     _hook_detail(전문 = 개요 + 핸들러 CC 스키마 + 스크립트 본문)은 get_hook과 편집 결과에서만
 │   │   ├── body.py         #   본문(set_component_body/get_body_outline/get_body_section/set_body_section — WP-BU/WP-BO 경로)
 │   │   ├── props.py        #   생성·속성(create_skill/create_agent/rename_component/description/when_to_use/field/project_properties/set_mcp_server_def)
@@ -977,6 +982,18 @@ daedalus-bb --schemas <경로> [--state-dir DIR] <command>
 - **쓸 수 있으면 읽을 수도 있어야 한다 (Q2).** `set_transition(guard=)`으로 가드를 쓸 수는 있는데
   어떤 도구로도 읽을 수 없던 갭을 `get_project`의 전이 요약에 `guard`(컴파일러 `_describe_guard`
   재사용 — 화면·산출·조회가 같은 문구를 말한다)와 `waypoint_count`로 메웠다.
+- **`get_component`의 config는 비기본값만 싣는다 (Q3).** 예전에는 `vars(config)`를 통째로
+  덤프해 미지정 필드(대개 `None`)까지 매번 실었다 — 무엇이 실제로 손댄 값인지 알려면
+  선언 기본값과 일일이 대조해야 했다. 이제 `type(config)()`로 만든 기본 인스턴스와 필드별로
+  비교해 **다른 값만** 낸다(선언 기본값과 같으면 생략 — 컴파일러 "OPTIONAL 값이 선언 기본값과
+  같으면 생략" 규칙과 같은 논리). 전체 상세(선택지·emit 위치 포함)가 필요하면
+  `list_component_fields`를 쓰라 — 그쪽은 여전히 전 필드를 낸다.
+- **`get_project`는 구획을 골라 받을 수 있다 (Q4).** `sections=["components", "canvas"]`처럼
+  주면 그 구획만 돌아온다 — 구획은 `meta`(이름/설명/버전/빌드타깃/저장경로/진행훅토글/MCP서버
+  정의/undo상태)/`components`(skills/agents)/`canvas`(placements/transitions/references)/
+  `blackboard`(blackboard_classes)/`hooks`(hook_library + global_hooks). **`sections` 생략 시
+  전체**가 기존과 완전히 같은 키 집합으로 돌아온다 — 축약 기본값으로의 전환은 아직 사용자
+  결정 전이라 하지 않았다(하위 호환 게이트). 알 수 없는 구획 이름은 거부.
 - **컴파일 dry-run `compile_check(out_dir=None)` (G3).** `validate_project`는 모델 검증만 본다 —
   컴파일러가 emit하는 경고 7종(`dangling_file_ref`/`unknown_skill_files_dir`/
   `dangling_skill_file_ref`/`missing_mcp_server_def`/`unmergeable_settings_json`/
@@ -1069,6 +1086,17 @@ daedalus-bb --schemas <경로> [--state-dir DIR] <command>
   `set_component_hooks`는 라이브러리에 없는 이름을 **거부**한다(오타가 컴파일까지 조용히 흘러가
   경고로만 드러나는 것을 막는다). `config.hooks`의 선언 기본값은 `{}`가 아니라 `None`이라,
   undo는 빈 dict가 아니라 None으로 되돌아간다.
+  - **전역 훅 조회 + 프로젝트로 복사 (G7).** `get_project`의 `hooks` 구획에 `global_hooks`
+    (이 프로젝트에서 가려지지 않은 전역 훅 개요, `_visible_global_hooks` — `HookLibraryPanel.
+    _global_hooks`와 같은 판정)가 실린다. `copy_global_hook(name)`이 GUI "프로젝트로 복사"와
+    같은 실체 — `preset_copy` 깊은 복사 + **이름 유지**(병합 규칙이 요구: 동명 프로젝트 훅이
+    전역을 덮으므로 이름을 바꾸면 참조가 전역을 계속 가리킨다) + `AppendToListCmd`로 undo.
+    이미 프로젝트에 같은 이름이 있으면 거부(복사할 이유가 없다 — 이미 그쪽이 이긴다).
+  - **훅 프리셋에서 생성 (G8).** `list_hook_presets()`가 `BUILTIN_HOOK_PRESETS` 요약(이름·설명·
+    이벤트·matcher·핸들러 타입)을 낸다. `create_hook(name, preset="...")`은 GUI 훅 패널
+    "프리셋에서 추가"와 같은 실체(`preset_copy`) — `event`/`handlers`/`matcher`/`description`/
+    `command`와는 **함께 줄 수 없다**(프리셋을 그대로 쓰거나 처음부터 직접 만들거나 반쯤 섞으면
+    어느 값이 이겼는지 알 수 없다).
 - **참조 노드 배치(WP-CE 4차):** `place_reference`/`link_reference`/`unlink_reference`/
   `unplace_reference`. 참조 노드는 상태가 아니라 **여러 상태가 공유하는 문서**라 같은 스킬을
   여러 번 놓을 수 있어(그래서 `place_component`와 별도 도구다) 이름 + `index`로 지목한다.
@@ -1092,6 +1120,11 @@ daedalus-bb --schemas <경로> [--state-dir DIR] <command>
   `f.type`이 문자열이라 그대로 쓸 수 없다) + `_coerce_field_value`가 맡고, 잘못된 enum 값은
   선택지를 나열하며 **거부**한다(조용히 문자열이 들어가면 컴파일 산출이 이상해질 때까지 안 드러난다).
   `hooks`는 `set_component_hooks`로 안내하며 거절한다.
+- **카탈로그 후보 조회 (G9):** `list_tool_candidates()` — 읽기 전용. ALLOWED_TOOLS/TOOLS/
+  DISALLOWED_TOOLS TagInput이 보여주는 자동완성 목록과 **같은 산출**을 낸다
+  (`catalogue_loader.candidate_strings` + `load_catalogue`를 GUI(`app._tool_candidates`)와
+  같은 경로 — 저장 경로 기준 프로젝트 폴더 + 전역 `~/.daedalus/catalogue/`로 재사용). 카탈로그에
+  무엇이 있는지 몰라 `allowed_tools`에 이름을 짐작으로 적는 것을 막는다.
 - **세션(저장/열기):** `save_project`/`open_project`/`export_package`/`list_recent_projects`.
   경로는 **폴더**를 받는다(WP-PK — 구버전 파일도 열린다). **저장이 여는 절차
   안에 있다** — 편집 중인 내용은 메모리에만 있어 여는 순간 사라지므로, 잃을 것이 있으면

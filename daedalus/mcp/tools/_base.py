@@ -90,6 +90,21 @@ class _BaseTools:
             "handler_count": len(getattr(hook, "handlers", []) or []),
         }
 
+    def _visible_global_hooks(self) -> list[Any]:
+        """이 프로젝트에서 이름이 가려지지 않은 전역 훅 (A1, G7).
+
+        `HookLibraryPanel._global_hooks`와 같은 판정 — 동명 프로젝트 훅이 있으면
+        그쪽이 이긴다(병합 규칙, `hook_store.resolve_hooks`와 동일 우선순위)이므로
+        가려진 전역은 뺀다. 둘 다 보이면 어느 쪽이 실제로 쓰이는지 알 수 없다.
+
+        소유가 `_BaseTools`인 이유: `QueryTools.get_project`와 `HookTools`가
+        함께 쓴다(`_hook_summary`와 같은 사정).
+        """
+        from daedalus.model.plugin.hook_store import load_global_hooks
+
+        shadowed = {h.name for h in getattr(self._project, "hook_library", None) or []}
+        return [h for h in load_global_hooks() if h.name not in shadowed]
+
     @staticmethod
     def _component_kind(comp: Any) -> str:
         return str(getattr(comp, "kind", type(comp).__name__))
