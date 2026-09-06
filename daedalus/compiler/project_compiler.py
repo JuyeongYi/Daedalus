@@ -531,6 +531,22 @@ def _is_link_like(path: Path) -> bool:
     return bool(isjunction and isjunction(path))
 
 
+#: 본문이 토큰의 **형식을 설명할 때** 쓰는 자리표시자 — 실제 파일 이름이 아니다.
+#: 스킬 저작 지침은 "`${ROOT}/files/...` 토큰을 쓴다"처럼 쓰기 마련이라, 이것을
+#: 참조로 세면 문서를 쓸 때마다 없는 파일 경고가 난다(실사고 2026-09-07:
+#: graph-author·graph-tools 본문이 매 컴파일 오탐을 냈다).
+#: 코드 표기(백틱) 전체를 스캔에서 빼지 않는 이유는 그 반대가 더 나쁘기
+#: 때문이다 — 진짜 파일 참조도 보통 인라인 코드로 쓰므로 대부분을 놓친다.
+#: `<이름>` 꼴은 여기서 다루지 않는다 — 맨 형태 정규식이 `<`를 경로 문자에서
+#: 제외해 애초에 매치되지 않는다(그 분기를 두면 도달 불가한 죽은 코드가 된다).
+_PLACEHOLDER_REF_RE = re.compile(r"^[.…]*$")
+
+
+def _is_placeholder_ref(rel: str) -> bool:
+    """참조가 아니라 자리표시자인가 — 빈 값이거나 점·말줄임표뿐."""
+    return bool(_PLACEHOLDER_REF_RE.match(rel))
+
+
 def _scan_dangling_file_refs(project, files_dir: Path) -> list[ValidationError]:
     """스킬/에이전트 body에서 파일 참조 토큰을 스캔해 files_dir에
     실존하지 않는 참조를 `dangling_file_ref` 경고로 반환한다.
@@ -553,6 +569,8 @@ def _scan_dangling_file_refs(project, files_dir: Path) -> list[ValidationError]:
 
     def scan(label: str, subject: object, body: str) -> None:
         for rel in _iter_refs(body):
+            if _is_placeholder_ref(rel):
+                continue  # 토큰 형식 설명 — 참조가 아니다
             candidate = files_dir.joinpath(*rel.split("/"))
             if candidate.exists():
                 continue
@@ -597,6 +615,8 @@ def _scan_dangling_skill_file_refs(
     def scan(label: str, subject: object, body: str, dir_name: str) -> None:
         skill_root = skill_files_dir / dir_name
         for rel in _iter_refs(body):
+            if _is_placeholder_ref(rel):
+                continue  # 토큰 형식 설명 — 참조가 아니다
             candidate = skill_root.joinpath(*rel.split("/"))
             if candidate.exists():
                 continue

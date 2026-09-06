@@ -112,6 +112,41 @@ def test_dangling_file_ref_warning_when_referenced_file_absent(tmp_path):
     assert dangling[0].is_warning  # WARNING_RULES에 등록됨(view 표시 일관성)
 
 
+def test_placeholder_refs_are_not_scanned(tmp_path):
+    """토큰 **형식을 설명하는** 자리표시자는 참조가 아니다.
+
+    스킬 저작 지침은 "`${ROOT}/files/...` 토큰을 쓴다"처럼 쓰기 마련이라,
+    이것을 참조로 세면 문서를 쓸 때마다 없는 파일 경고가 난다(실사고
+    2026-09-07 — 라이브 프로젝트가 매 컴파일 오탐 2건을 냈다).
+    """
+    src = tmp_path / "src_files"
+    src.mkdir()
+    body = (
+        "파일 참조는 `${ROOT}/files/...` 토큰을 쓴다.\n"
+        "축약해 `${ROOT}/files/…`로 적기도 한다.\n"
+    )
+    skill = make_procedural(name="ref-skill", body=body)
+    project = PluginProject(name="p", skills=[skill])
+
+    result = compile_project(project, tmp_path / "out", files_dir=src)
+    assert result.ok
+    assert [w for w in result.warnings if w.rule == "dangling_file_ref"] == []
+
+
+def test_placeholder_guard_does_not_hide_real_refs(tmp_path):
+    """자리표시자 제외가 진짜 참조까지 삼키면 안 된다 — 인라인 코드 안의
+    실제 경로는 그대로 검사한다(코드 표기 전체를 빼지 않는 이유)."""
+    src = tmp_path / "src_files"
+    src.mkdir()
+    body = "체크리스트는 `${ROOT}/files/ghost.md`를 따른다."
+    skill = make_procedural(name="ref-skill", body=body)
+    project = PluginProject(name="p", skills=[skill])
+
+    result = compile_project(project, tmp_path / "out", files_dir=src)
+    dangling = [w for w in result.warnings if w.rule == "dangling_file_ref"]
+    assert [w.source for w in dangling] == ["ghost.md"]
+
+
 def test_no_dangling_warning_when_referenced_file_exists(tmp_path):
     src = tmp_path / "src_files"
     (src / "A").mkdir(parents=True)
