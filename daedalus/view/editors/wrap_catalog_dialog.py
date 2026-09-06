@@ -91,10 +91,14 @@ class WrapCatalogDialog(QDialog):
 
         btn_row.addStretch()
 
-        create_btn = QPushButton("랩핑 스킬 생성")
+        # 주 동작은 플러그인 체크(사용 선언)다 — 이 버튼은 선택한 스킬을
+        # **워크플로 단계로** 놓고 싶을 때만 쓰는 보조 동작이라, 라벨이 그
+        # 조건을 그대로 말한다("랩핑 스킬 생성"만 있으면 이 창의 기본 흐름이
+        # 개별 생성인 것처럼 읽힌다 — 사용자 지적).
+        create_btn = QPushButton("워크플로 단계로 감싸기 (WrappedSkill)")
         create_btn.setToolTip(
             "선택한 스킬을 워크플로 단계로 감싸는 WrappedSkill을 만든다 "
-            "(더블클릭도 동일). 사용 선언만으로 충분하면 만들 필요 없다 — "
+            "(더블클릭도 동일). 사용 선언(체크)만으로 충분하면 만들 필요 없다 — "
             "플러그인이 활성화되면 스킬은 CC가 그대로 로드한다."
         )
         create_btn.clicked.connect(self.create_wrapped_from_selection)
@@ -265,7 +269,7 @@ class WrapCatalogDialog(QDialog):
         """선택한 스킬 행 → WrappedSkill 생성 (생성+선언 1 undo)."""
         item = self._tree.currentItem()
         if item is None or item.data(0, _ROLE_KIND) != "skill":
-            self._status.setText("랩핑할 스킬 행을 먼저 선택하세요.")
+            self._status.setText("워크플로 단계로 감쌀 스킬 행을 먼저 선택하세요.")
             return None
         return self.create_wrapped(item.data(0, _ROLE_SOURCE))
 
