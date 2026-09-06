@@ -188,7 +188,10 @@ daedalus/
 │   │   │                   #     get_project의 hook_library는 **개요만**(전문은 get_hook), 전이 요약은 guard 서술(컴파일러
 │   │   │                   #     _describe_guard 재사용)과 waypoint_count를 포함한다. get_project(sections=)로 구획만
 │   │   │                   #     받을 수 있다(Q4 — meta/components/canvas/blackboard/hooks, 생략 시 전체 하위호환).
+│   │   │                   #     meta의 workspace_docs는 작업 폴더 문서 존재 신호(Q6 — {claude_md, rules} 개수).
 │   │   │                   #     get_component의 config는 비기본값만(Q3 — type(config)()와 비교).
+│   │   │                   #     validate_project(severity=, component=)로 걸러 받는다(Q5 —
+│   │   │                   #     component 판정은 actions/warnings.findings_for 재사용, total_* 개수 병기).
 │   │   │                   #     compile_check(G3)는 파일을 쓰지 않는 컴파일 예행 — 컴파일러 emit 경고 7종을 미리 본다.
 │   │   │                   #     list_tool_candidates(G9)는 catalogue_loader.candidate_strings 재사용 — TagInput과 같은 산출
 │   │   ├── session.py      #   세션(save_project/open_project/new_project/import_package/export_package/
@@ -1005,8 +1008,20 @@ daedalus-bb --schemas <경로> [--state-dir DIR] <command>
   주면 그 구획만 돌아온다 — 구획은 `meta`(이름/설명/버전/빌드타깃/저장경로/진행훅토글/MCP서버
   정의/undo상태)/`components`(skills/agents)/`canvas`(placements/transitions/references)/
   `blackboard`(blackboard_classes)/`hooks`(hook_library + global_hooks). **`sections` 생략 시
-  전체**가 기존과 완전히 같은 키 집합으로 돌아온다 — 축약 기본값으로의 전환은 아직 사용자
-  결정 전이라 하지 않았다(하위 호환 게이트). 알 수 없는 구획 이름은 거부.
+  전체**가 돌아온다 — 축약 기본값으로의 전환은 아직 사용자 결정 전이라 하지 않았다.
+  알 수 없는 구획 이름은 거부.
+- **작업 폴더 문서는 존재 신호를 낸다 (Q6).** `meta`의 `workspace_docs`
+  (`{claude_md: bool, rules: N}`) — 내용이 아니라 **있다는 사실**만이다(개요 ↔ 전문 분리와
+  같은 논리로 내용은 `list_workspace_docs`/`get_workspace_doc`). 신호가 없으면 그 표면이
+  있다는 것 자체를 몰라 `.claude/CLAUDE.md` 구역과 규칙이 조용히 잊힌다. `claude_md`는
+  **내용이 있는가**로 본다 — 빈 문서는 컴파일이 구역을 제거하므로 있으나 마나다.
+- **검증 결과도 걸러 받는다 (Q5).** `validate_project(severity="error"|"warning",
+  component="이름")`. 컴포넌트 판정은 캔버스 우클릭 "관련 경고 보기"와 **같은 실체**
+  (`view/actions/warnings.findings_for`)라 subject·path 루트·**그래프 placement 노드** 세
+  경로를 모두 본다(placement를 빼면 `mid_chain_user_invocable`처럼 subject가 노드인 규칙을
+  통째로 놓친다). 개수는 **필터 전후를 둘 다** 낸다 — `error_count`/`warning_count`는 걸러진
+  목록 기준이고 `total_*`가 프로젝트 전체다(필터를 걸어 0을 보고 "컴파일이 통과한다"로
+  읽으면 안 된다).
 - **컴파일 dry-run `compile_check(out_dir=None)` (G3).** `validate_project`는 모델 검증만 본다 —
   컴파일러가 emit하는 경고 7종(`dangling_file_ref`/`unknown_skill_files_dir`/
   `dangling_skill_file_ref`/`missing_mcp_server_def`/`unmergeable_settings_json`/

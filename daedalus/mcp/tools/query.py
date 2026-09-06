@@ -95,6 +95,19 @@ class QueryTools(_BaseTools):
     #: 응답의 병합 순서이기도 하다 — 기존 dict와 키 집합이 완전히 같아야 하위 호환이다.
     _PROJECT_SECTION_NAMES = ("meta", "components", "canvas", "blackboard", "hooks")
 
+    def _workspace_doc_signal(self) -> dict[str, Any]:
+        """작업 폴더 문서(WP-WD)의 개수 신호 (Q6) — `claude_md` 유무 + `rules` 개수.
+
+        `claude_md`는 **내용이 있는가**로 본다 — 빈 문서는 컴파일이 구역을
+        제거하므로(멱등) 있으나 마나다.
+        """
+        project = self._project
+        claude_md = getattr(project, "claude_md", None)
+        return {
+            "claude_md": bool(claude_md is not None and (claude_md.body or "").strip()),
+            "rules": len(getattr(project, "rules", None) or []),
+        }
+
     def _project_sections(self) -> dict[str, dict[str, Any]]:
         project = self._project
         blackboard = getattr(project, "blackboard", None)
@@ -108,6 +121,11 @@ class QueryTools(_BaseTools):
                 "saved_path": getattr(self._window, "_current_path", None),
                 "emit_progress_hook": getattr(project, "emit_progress_hook", None),
                 "mcp_server_defs": dict(getattr(project, "mcp_server_defs", None) or {}),
+                # 작업 폴더 문서(WP-WD)의 **존재 신호**만 (Q6) — 내용은
+                # list_workspace_docs/get_workspace_doc이 준다. 신호가 없으면
+                # 그 표면이 있다는 것 자체를 몰라 CLAUDE.md 구역과 규칙이
+                # 조용히 잊힌다(개요 ↔ 전문 분리와 같은 논리).
+                "workspace_docs": self._workspace_doc_signal(),
                 "can_undo": self._window._active_stack.can_undo,
                 "can_redo": self._window._active_stack.can_redo,
             },
@@ -156,9 +174,13 @@ class QueryTools(_BaseTools):
         `global_hooks`도 같은 개요 — 프로젝트 훅에 가려지지 않은 전역 훅만
         나온다(A1, G7). 프로젝트로 가져와 고치려면 `copy_global_hook`.
 
+        `meta`의 `workspace_docs`(Q6)는 작업 폴더 문서(WP-WD)의 **존재 신호**만
+        준다(`{claude_md: bool, rules: N}`) — 내용은 `list_workspace_docs`/
+        `get_workspace_doc`이다.
+
         sections(Q4): 구획만 골라 받는다 — `meta`/`components`/`canvas`/
-        `blackboard`/`hooks` 중 목록. **생략하면 전체**(기존 응답과 완전히
-        같은 키 집합 — 하위 호환. 축약 기본값 전환은 아직 결정 전이다).
+        `blackboard`/`hooks` 중 목록. **생략하면 전체**(축약 기본값 전환은 아직
+        결정 전이다).
         """
         groups = self._project_sections()
         names = sections if sections is not None else list(self._PROJECT_SECTION_NAMES)
@@ -300,8 +322,21 @@ class QueryTools(_BaseTools):
             }
         return info
 
-    def validate_project(self) -> dict[str, Any]:
-        """F7 검증과 같은 결과 — 컴파일을 막는 에러와 경고를 구분해 돌려준다."""
+    def validate_project(
+        self, severity: str = "", component: str = ""
+    ) -> dict[str, Any]:
+        """F7 검증과 같은 결과 — 컴파일을 막는 에러와 경고를 구분해 돌려준다.
+
+        severity(Q5): "error" 또는 "warning"만 남긴다. 생략하면 전부.
+        component(Q5): 그 스킬/에이전트에 관한 것만 남긴다 — 캔버스 노드 우클릭
+        "관련 경고 보기"와 **같은 판정**(`view/actions/warnings.findings_for`)이라
+        subject·path 루트·**그래프 placement 노드** 세 경로를 모두 본다(placement를
+        빼면 `mid_chain_user_invocable`처럼 subject가 노드인 규칙을 통째로 놓친다).
+
+        **개수는 필터 전후를 둘 다 낸다** — `error_count`/`warning_count`는
+        걸러진 목록 기준이고 `total_*`가 프로젝트 전체다. 필터를 걸어 0을 보고
+        "컴파일이 통과한다"로 읽으면 안 된다.
+        """
         from daedalus.model.validation import Validator
 
         # 전역 훅(A1)을 포함한 이름 집합을 주입 — 검증기는 파일시스템 무접근.
@@ -309,9 +344,28 @@ class QueryTools(_BaseTools):
             self._project,
             known_hook_names=frozenset(self._window.resolved_hooks()),
         )
+        total_errors = sum(1 for e in errors if not e.is_warning)
+        total_warnings = sum(1 for e in errors if e.is_warning)
+
+        if component:
+            from daedalus.view.actions.warnings import findings_for
+
+            comp = self._find_component(component)
+            errors = findings_for(errors, comp, self._project)
+        if severity:
+            if severity not in ("error", "warning"):
+                raise ValueError(
+                    f"알 수 없는 severity '{severity}'. 사용 가능: error, warning"
+                )
+            want_warning = severity == "warning"
+            errors = [e for e in errors if e.is_warning is want_warning]
+
         return {
             "error_count": sum(1 for e in errors if not e.is_warning),
             "warning_count": sum(1 for e in errors if e.is_warning),
+            "total_error_count": total_errors,
+            "total_warning_count": total_warnings,
+            "filtered": bool(severity or component),
             "issues": [
                 {
                     "rule": e.rule,

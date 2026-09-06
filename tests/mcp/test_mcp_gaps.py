@@ -705,11 +705,16 @@ def test_get_component_config_shows_only_changed_fields(tools):
 
 
 def test_get_project_sections_default_is_full(tools):
-    """생략하면 기존 응답과 완전히 같은 키 집합이어야 한다(하위 호환)."""
+    """생략하면 전체 구획이 합쳐진 키 집합이어야 한다(구획 선택은 축약 기본값이 아니다).
+
+    `workspace_docs`는 Q6에서 meta에 더해진 존재 신호다 — 구획 분류가 바뀐 것이
+    아니라 meta가 신호 하나를 더 싣는다.
+    """
     full = tools.get_project()
     assert set(full) == {
         "name", "description", "version", "build_target", "saved_path",
-        "emit_progress_hook", "mcp_server_defs", "can_undo", "can_redo",
+        "emit_progress_hook", "mcp_server_defs", "workspace_docs",
+        "can_undo", "can_redo",
         "skills", "agents", "placements", "transitions", "references",
         "blackboard_classes", "hook_library", "global_hooks",
     }
@@ -724,7 +729,8 @@ def test_get_project_sections_combines_multiple_groups(tools):
     result = tools.get_project(sections=["meta", "hooks"])
     assert set(result) == {
         "name", "description", "version", "build_target", "saved_path",
-        "emit_progress_hook", "mcp_server_defs", "can_undo", "can_redo",
+        "emit_progress_hook", "mcp_server_defs", "workspace_docs",
+        "can_undo", "can_redo",
         "hook_library", "global_hooks",
     }
 
