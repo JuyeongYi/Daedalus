@@ -76,6 +76,48 @@ def test_remove_root():
     assert remove_plugin_root("C:/one") is False
 
 
+# ─────────────────────────── 체크 관리 (제외 목록) ───────────────────────────
+
+
+def test_excluded_roundtrip():
+    save_plugin_roots([PluginRoot(path="C:/x", marketplace="m", excluded=["noisy"])])
+    assert load_plugin_roots()[0].excluded == ["noisy"]
+
+
+def test_legacy_file_without_excluded_key_loads_empty():
+    path = wrap_catalog.plugin_roots_file()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps([{"path": "C:/x", "marketplace": "m"}]),
+                    encoding="utf-8")
+    assert load_plugin_roots()[0].excluded == []
+
+
+def test_set_plugin_excluded_toggles_and_persists():
+    add_plugin_root("C:/x", "m")
+    root = wrap_catalog.set_plugin_excluded("C:/x", "noisy", True)
+    assert root.excluded == ["noisy"]
+    assert load_plugin_roots()[0].excluded == ["noisy"]
+    # 멱등 — 이미 제외된 것을 다시 제외해도 중복 등재 없음
+    assert wrap_catalog.set_plugin_excluded("C:/x", "noisy", True).excluded == ["noisy"]
+    assert wrap_catalog.set_plugin_excluded("C:/x", "noisy", False).excluded == []
+
+
+def test_set_plugin_excluded_unknown_root_rejected():
+    import pytest
+
+    with pytest.raises(ValueError, match="등록되지 않은"):
+        wrap_catalog.set_plugin_excluded("C:/never", "p", True)
+
+
+def test_reregister_preserves_excluded():
+    """재등록(marketplace 갱신)이 체크 관리 상태를 날리면 안 된다."""
+    add_plugin_root("C:/x", "m")
+    wrap_catalog.set_plugin_excluded("C:/x", "noisy", True)
+    roots = add_plugin_root("C:/x", "renamed")
+    assert roots[0].marketplace == "renamed"
+    assert roots[0].excluded == ["noisy"]
+
+
 # ─────────────────────────── 발견 ───────────────────────────
 
 

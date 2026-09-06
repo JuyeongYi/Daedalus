@@ -90,6 +90,26 @@ def test_already_wrapped_marker(tools, plugin_root):
     assert by_name == {"review": True, "lint": False}
 
 
+def test_set_plugin_excluded_filters_listing(tools, plugin_root):
+    """체크 해제된 플러그인은 스킬 목록 없이 excluded 표시만 — GUI 체크박스와
+    같은 실체(wrap_catalog.set_plugin_excluded)."""
+    tools.add_plugin_root(str(plugin_root), "mkt")
+    out = tools.set_plugin_excluded(str(plugin_root), "alpha", True)
+    assert out["excluded_now"] == ["alpha"]
+    assert tools.list_plugin_roots()["roots"][0]["excluded"] == ["alpha"]
+    plugins = tools.list_wrappable_skills()["roots"][0]["plugins"]
+    assert plugins == [{"name": "alpha", "excluded": True}]
+    # 복귀하면 스킬이 다시 나온다
+    tools.set_plugin_excluded(str(plugin_root), "alpha", False)
+    plugins = tools.list_wrappable_skills()["roots"][0]["plugins"]
+    assert [s["name"] for s in plugins[0]["skills"]] == ["lint", "review"]
+
+
+def test_set_plugin_excluded_unknown_root_rejected(tools):
+    with pytest.raises(ValueError, match="등록되지 않은"):
+        tools.set_plugin_excluded("C:/never", "p", True)
+
+
 def test_create_skill_with_source(tools, window):
     out = tools.create_skill("wrap-it", kind="wrapped", source="other@mkt:code-review")
     assert out["source"] == "other@mkt:code-review"

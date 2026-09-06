@@ -541,9 +541,18 @@ daedalus/
   "랩핑 스킬 카탈로그..."(`view/editors/wrap_catalog_dialog.WrapCatalogDialog`
   — 루트→플러그인→스킬 트리, ✔=이미 랩핑됨, 루트 등록/제거, 생성은
   make_component + **등록 전 source 대입** + CreateComponentCmd라 1 undo,
-  이름 충돌은 `-2` 접미 유일화). **MCP 짝**(패리티): `list_wrappable_skills`/
-  `list_plugin_roots`/`add_plugin_root`/`remove_plugin_root`(mcp/tools/wrap.py
-  — 루트 등록은 홈 설정 파일이라 undo 비대상) + `create_skill(kind="wrapped",
+  이름 충돌은 `-2` 접미 유일화). **하위 플러그인 체크 관리**(사용자 확정 UX):
+  트리의 플러그인 행 체크박스로 랩핑 후보 포함/제외 — 저장 극성은 루트의
+  `excluded` 목록(새 발견 플러그인은 기본 포함·구버전 파일 하위 호환·재등록
+  시 보존), 실체는 `wrap_catalog.set_plugin_excluded` 하나(GUI·MCP 공유).
+  제외된 플러그인은 트리에서 스킬을 펼치지 않고 MCP 목록에서 `excluded:
+  true`로만 나온다. **체크 토글의 트리 재구성은 singleShot(0)으로 미룬다** —
+  itemChanged를 쏜 아이템을 같은 호출에서 clear()로 파괴하면 간헐 access
+  violation(실측 플레이키 크래시). 수신 컨텍스트(self)를 줘 닫힌 다이얼로그에
+  발화하지 않는다(WP-WS 0ms 디바운스 수명 함정과 같은 결). **MCP 짝**(패리티):
+  `list_wrappable_skills`/`list_plugin_roots`/`add_plugin_root`/
+  `remove_plugin_root`/`set_plugin_excluded`(mcp/tools/wrap.py — 루트 등록·체크
+  관리는 홈 설정 파일이라 undo 비대상) + `create_skill(kind="wrapped",
   source=)`(다른 kind에 source를 주면 거절).
 - **배선 보증(테스트 고정)**: MARKETPLACE는 compile_project 산출 plugin.json에
   dependencies 실림 / LOCAL은 선택한 settings 파일(settings.json |

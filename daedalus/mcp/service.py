@@ -44,6 +44,7 @@ TOOL_NAMES = (
     "list_plugin_roots",
     "add_plugin_root",
     "remove_plugin_root",
+    "set_plugin_excluded",
     # 세션 — 저장은 undo 대상이 아니다(파일 쓰기)
     "save_project",
     "open_project",

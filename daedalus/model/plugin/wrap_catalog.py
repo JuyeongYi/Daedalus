@@ -43,10 +43,19 @@ _SKIP_DIRS = frozenset({".git", "node_modules", "__pycache__", ".venv", "venv"})
 
 @dataclass
 class PluginRoot:
-    """등록된 탐색 루트."""
+    """등록된 탐색 루트.
+
+    ``excluded``는 랩핑 후보에서 **제외**할 하위 플러그인 이름 목록이다 —
+    체크 관리의 저장 극성은 제외 목록이다(사용자 확정 UX: 마켓플레이스를
+    등록하면 하위 플러그인을 체크로 관리). 새로 발견된 플러그인은 목록에
+    없으므로 기본 포함(체크됨)이고, 구버전 파일(키 부재)도 전부 포함이라
+    하위 호환이다. 사라진 플러그인의 제외 항목은 지우지 않는다 — 루트가
+    일시적으로 비어 보일 때(네트워크 드라이브 등) 상태가 증발하면 안 된다.
+    """
 
     path: str
     marketplace: str = ""
+    excluded: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -93,9 +102,12 @@ def load_plugin_roots() -> list[PluginRoot]:
     for entry in data if isinstance(data, list) else []:
         if not isinstance(entry, dict) or not str(entry.get("path", "")).strip():
             continue
+        raw_excluded = entry.get("excluded", [])
         roots.append(PluginRoot(
             path=str(entry["path"]),
             marketplace=str(entry.get("marketplace", "") or ""),
+            excluded=[str(name) for name in raw_excluded
+                      if isinstance(raw_excluded, list) and str(name).strip()],
         ))
     return roots
 
@@ -103,7 +115,10 @@ def load_plugin_roots() -> list[PluginRoot]:
 def save_plugin_roots(roots: list[PluginRoot]) -> None:
     path = plugin_roots_file()
     path.parent.mkdir(parents=True, exist_ok=True)
-    data = [{"path": r.path, "marketplace": r.marketplace} for r in roots]
+    data = [
+        {"path": r.path, "marketplace": r.marketplace, "excluded": r.excluded}
+        for r in roots
+    ]
     path.write_text(
         json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )
@@ -115,7 +130,8 @@ def _norm(p: str) -> str:
 
 
 def add_plugin_root(path: str, marketplace: str = "") -> list[PluginRoot]:
-    """루트를 등록한다(경로 기준 중복이면 marketplace만 갱신). 갱신된 목록 반환."""
+    """루트를 등록한다(경로 기준 중복이면 marketplace만 갱신 — **excluded는
+    보존**한다. 재등록으로 체크 관리 상태가 날아가면 안 된다). 갱신된 목록 반환."""
     roots = load_plugin_roots()
     for r in roots:
         if _norm(r.path) == _norm(path):
@@ -125,6 +141,28 @@ def add_plugin_root(path: str, marketplace: str = "") -> list[PluginRoot]:
         roots.append(PluginRoot(path=str(path), marketplace=marketplace))
     save_plugin_roots(roots)
     return roots
+
+
+def set_plugin_excluded(
+    root_path: str, plugin_name: str, excluded: bool
+) -> PluginRoot:
+    """루트 하나의 플러그인을 랩핑 후보에서 제외/포함한다 (체크 관리의 실체).
+
+    GUI 카탈로그 창의 플러그인 체크박스와 MCP ``set_plugin_excluded``가 둘 다
+    이 함수를 부른다 — 같은 조작이 표면마다 다른 결과를 내면 안 된다.
+    미등록 루트는 ValueError(체크할 대상 자체가 없다).
+    """
+    roots = load_plugin_roots()
+    for r in roots:
+        if _norm(r.path) == _norm(root_path):
+            if excluded and plugin_name not in r.excluded:
+                r.excluded.append(plugin_name)
+            elif not excluded and plugin_name in r.excluded:
+                r.excluded = [n for n in r.excluded if n != plugin_name]
+            save_plugin_roots(roots)
+            return r
+    known = ", ".join(r.path for r in roots) or "(없음)"
+    raise ValueError(f"등록되지 않은 루트입니다: {root_path}. 현재 등록: {known}")
 
 
 def remove_plugin_root(path: str) -> bool:

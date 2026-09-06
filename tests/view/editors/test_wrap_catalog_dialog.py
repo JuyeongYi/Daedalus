@@ -115,6 +115,36 @@ def test_create_from_selection_requires_skill_row(window, plugin_root):
     assert window._project.skills[0].config.source == "alpha@mkt:review"
 
 
+def test_plugin_checkbox_toggles_exclusion(window, plugin_root, qapp):
+    """플러그인 체크 해제 → 제외 목록 저장 + 스킬 후보 숨김 (사용자 확정 UX).
+
+    저장은 즉시이고 트리 재구성은 singleShot(0)으로 미뤄진다(시그널을 쏜
+    아이템을 같은 호출에서 파괴하면 안 된다) — processEvents로 소진한다.
+    """
+    from PySide6.QtCore import Qt
+
+    from daedalus.model.plugin import wrap_catalog
+
+    wrap_catalog.add_plugin_root(str(plugin_root), "mkt")
+    dlg = _make_dialog(window)
+    plugin_item = dlg._tree.topLevelItem(0).child(0)
+    assert plugin_item.checkState(0) == Qt.CheckState.Checked
+    assert plugin_item.childCount() == 1
+
+    plugin_item.setCheckState(0, Qt.CheckState.Unchecked)  # itemChanged → 저장
+    assert wrap_catalog.load_plugin_roots()[0].excluded == ["alpha"]  # 저장은 즉시
+    qapp.processEvents()  # 미뤄진 refresh 소진
+    plugin_item = dlg._tree.topLevelItem(0).child(0)  # refresh로 새 아이템
+    assert plugin_item.checkState(0) == Qt.CheckState.Unchecked
+    assert plugin_item.childCount() == 0  # 제외되면 스킬을 펼치지 않는다
+    assert "제외" in dlg._status.text()
+
+    plugin_item.setCheckState(0, Qt.CheckState.Checked)  # 복귀
+    assert wrap_catalog.load_plugin_roots()[0].excluded == []
+    qapp.processEvents()
+    assert dlg._tree.topLevelItem(0).child(0).childCount() == 1
+
+
 def test_remove_selected_root(window, plugin_root):
     from daedalus.model.plugin import wrap_catalog
 

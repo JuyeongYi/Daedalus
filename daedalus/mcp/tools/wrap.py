@@ -29,6 +29,9 @@ class WrapTools(_BaseTools):
         `already_wrapped`는 이 프로젝트의 랩핑 스킬이 이미 그 source를 감싸고
         있다는 뜻이다(같은 source의 랩퍼 복수는 정상 — 재사용은 랩퍼 복수로).
         루트가 없으면 `add_plugin_root`로 먼저 등록한다.
+
+        체크 해제(`set_plugin_excluded`)된 플러그인은 스킬 목록 없이
+        `excluded: true`로만 나온다 — GUI 카탈로그 창의 체크박스와 같은 상태다.
         """
         from daedalus.model.plugin import wrap_catalog
         from daedalus.view.editors.wrap_catalog_dialog import project_wrapped_sources
@@ -36,26 +39,29 @@ class WrapTools(_BaseTools):
         wrapped = project_wrapped_sources(self._project)
         roots_out: list[dict[str, Any]] = []
         for root, plugins in wrap_catalog.scan_catalog():
+            plugins_out: list[dict[str, Any]] = []
+            for p in plugins:
+                if p.name in root.excluded:
+                    plugins_out.append({"name": p.name, "excluded": True})
+                    continue
+                plugins_out.append({
+                    "name": p.name,
+                    "description": p.description,
+                    "marketplace": p.marketplace or None,
+                    "skills": [
+                        {
+                            "name": s.name,
+                            "description": s.description,
+                            "source": s.source,
+                            "already_wrapped": s.source in wrapped,
+                        }
+                        for s in p.skills
+                    ],
+                })
             roots_out.append({
                 "path": root.path,
                 "marketplace": root.marketplace or None,
-                "plugins": [
-                    {
-                        "name": p.name,
-                        "description": p.description,
-                        "marketplace": p.marketplace or None,
-                        "skills": [
-                            {
-                                "name": s.name,
-                                "description": s.description,
-                                "source": s.source,
-                                "already_wrapped": s.source in wrapped,
-                            }
-                            for s in p.skills
-                        ],
-                    }
-                    for p in plugins
-                ],
+                "plugins": plugins_out,
             })
         out: dict[str, Any] = {"roots": roots_out}
         if not roots_out:
@@ -67,13 +73,38 @@ class WrapTools(_BaseTools):
 
     def list_plugin_roots(self) -> dict[str, Any]:
         """랩핑 카탈로그가 훑는 등록된 플러그인 루트 목록
-        (~/.daedalus/plugin_roots.json)."""
+        (~/.daedalus/plugin_roots.json). `excluded`는 체크 해제로 랩핑 후보에서
+        빠진 하위 플러그인 이름들이다."""
         from daedalus.model.plugin import wrap_catalog
 
         return {"roots": [
-            {"path": r.path, "marketplace": r.marketplace or None}
+            {
+                "path": r.path,
+                "marketplace": r.marketplace or None,
+                "excluded": list(r.excluded),
+            }
             for r in wrap_catalog.load_plugin_roots()
         ]}
+
+    def set_plugin_excluded(
+        self, root_path: str, plugin: str, excluded: bool
+    ) -> dict[str, Any]:
+        """루트 하위 플러그인을 랩핑 후보에서 제외/복귀시킨다 — GUI 카탈로그
+        창의 플러그인 체크박스와 같은 실체(`wrap_catalog.set_plugin_excluded`).
+
+        excluded=true면 `list_wrappable_skills`에서 그 플러그인의 스킬이
+        빠진다(이미 만든 랩핑 스킬은 건드리지 않는다 — 후보 목록만의 문제다).
+        루트 등록과 마찬가지로 홈 설정 파일이라 undo 대상이 아니다.
+        """
+        from daedalus.model.plugin import wrap_catalog
+
+        root = wrap_catalog.set_plugin_excluded(root_path, plugin, excluded)
+        return {
+            "root": root.path,
+            "plugin": plugin,
+            "excluded": excluded,
+            "excluded_now": list(root.excluded),
+        }
 
     def add_plugin_root(self, path: str, marketplace: str = "") -> dict[str, Any]:
         """플러그인 루트를 등록한다 — 랩핑 카탈로그의 탐색 대상.

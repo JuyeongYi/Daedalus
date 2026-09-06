@@ -13,7 +13,7 @@ config.source 대입 + `window._register_component`(CreateComponentCmd)다 —
 """
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QDialog,
@@ -31,7 +31,8 @@ import daedalus.model.plugin.wrap_catalog as wrap_catalog
 
 _ROLE_KIND = Qt.ItemDataRole.UserRole + 1      # "root" | "plugin" | "skill"
 _ROLE_SOURCE = Qt.ItemDataRole.UserRole + 2    # skill 행: source 문자열
-_ROLE_ROOT_PATH = Qt.ItemDataRole.UserRole + 3  # root 행: 등록 경로
+_ROLE_ROOT_PATH = Qt.ItemDataRole.UserRole + 3  # root/plugin 행: 등록 경로
+_ROLE_PLUGIN_NAME = Qt.ItemDataRole.UserRole + 4  # plugin 행: 플러그인 이름
 
 _COLOR_WRAPPED = QColor("#448844")
 
@@ -74,6 +75,10 @@ class WrapCatalogDialog(QDialog):
         self._tree.setHeaderLabels(["플러그인 / 스킬", "설명"])
         self._tree.setColumnWidth(0, 260)
         self._tree.itemDoubleClicked.connect(lambda *_: self.create_wrapped_from_selection())
+        # 플러그인 행 체크박스 = 랩핑 후보 포함/제외 (사용자 확정 UX — 마켓을
+        # 등록하면 하위 플러그인은 체크로 관리한다). refresh가 blockSignals로
+        # 트리를 다시 그리므로 이 시그널은 사람 토글에서만 온다.
+        self._tree.itemChanged.connect(self._on_item_changed)
         lay.addWidget(self._tree)
 
         self._status = QLabel("")
@@ -114,6 +119,26 @@ class WrapCatalogDialog(QDialog):
     # ─────────────────────────── 트리 ───────────────────────────
 
     def refresh(self) -> None:
+        # 재구성 중의 setCheckState가 itemChanged를 쏘면 저장 루프가 돈다 —
+        # 사람 토글만 시그널이 되도록 트리를 조용히 다시 그린다.
+        self._tree.blockSignals(True)
+        try:
+            total, excluded_count = self._rebuild_tree()
+        finally:
+            self._tree.blockSignals(False)
+        if total is None:
+            return
+        suffix = f" (체크 해제로 제외된 플러그인 {excluded_count}개)" if excluded_count else ""
+        self._status.setText(f"랩핑 가능한 스킬 {total}개. ✔ = 이미 랩핑됨.{suffix}")
+        if total == 0 and not excluded_count:
+            self._status.setText(
+                "등록된 루트에서 스킬을 찾지 못했습니다 — 루트 아래에 "
+                ".claude-plugin/plugin.json과 skills/<이름>/SKILL.md 구조가 "
+                "있는지 확인하세요."
+            )
+
+    def _rebuild_tree(self) -> tuple[int | None, int]:
+        """트리 재구성. (포함된 스킬 수 | None=루트 없음, 제외 플러그인 수)."""
         self._tree.clear()
         wrapped = project_wrapped_sources(getattr(self._window, "_project", None))
         catalog = wrap_catalog.scan_catalog()
@@ -122,8 +147,9 @@ class WrapCatalogDialog(QDialog):
                 "등록된 플러그인 루트가 없습니다 — [루트 추가...]로 플러그인이 "
                 "들어 있는 폴더를 등록하세요."
             )
-            return
+            return None, 0
         total = 0
+        excluded_count = 0
         for root, plugins in catalog:
             label = root.marketplace or root.path
             root_item = QTreeWidgetItem([f"📁 {label}", "" if plugins else "(플러그인 없음)"])
@@ -132,10 +158,26 @@ class WrapCatalogDialog(QDialog):
             root_item.setData(0, _ROLE_ROOT_PATH, root.path)
             self._tree.addTopLevelItem(root_item)
             for plugin in plugins:
+                included = plugin.name not in root.excluded
                 plugin_item = QTreeWidgetItem([f"🧩 {plugin.name}", plugin.description])
                 plugin_item.setToolTip(0, plugin.path)
                 plugin_item.setData(0, _ROLE_KIND, "plugin")
+                plugin_item.setData(0, _ROLE_ROOT_PATH, root.path)
+                plugin_item.setData(0, _ROLE_PLUGIN_NAME, plugin.name)
+                plugin_item.setFlags(
+                    plugin_item.flags() | Qt.ItemFlag.ItemIsUserCheckable
+                )
+                plugin_item.setCheckState(
+                    0,
+                    Qt.CheckState.Checked if included else Qt.CheckState.Unchecked,
+                )
                 root_item.addChild(plugin_item)
+                if not included:
+                    # 제외된 플러그인은 스킬을 펼치지 않는다 — 후보가 아니라는
+                    # 상태가 화면 밀도로 그대로 보인다(체크 관리의 목적).
+                    excluded_count += 1
+                    plugin_item.setText(1, "(랩핑 후보에서 제외됨)")
+                    continue
                 for skill in plugin.skills:
                     total += 1
                     already = skill.source in wrapped
@@ -152,13 +194,24 @@ class WrapCatalogDialog(QDialog):
                     plugin_item.addChild(skill_item)
                 plugin_item.setExpanded(True)
             root_item.setExpanded(True)
-        self._status.setText(f"랩핑 가능한 스킬 {total}개. ✔ = 이미 랩핑됨.")
-        if total == 0:
-            self._status.setText(
-                "등록된 루트에서 스킬을 찾지 못했습니다 — 루트 아래에 "
-                ".claude-plugin/plugin.json과 skills/<이름>/SKILL.md 구조가 "
-                "있는지 확인하세요."
-            )
+        return total, excluded_count
+
+    def _on_item_changed(self, item: QTreeWidgetItem, column: int) -> None:
+        """플러그인 체크 토글 → 제외 목록 저장 (실체는 wrap_catalog —
+        MCP `set_plugin_excluded`와 같은 함수)."""
+        if column != 0 or item.data(0, _ROLE_KIND) != "plugin":
+            return
+        wrap_catalog.set_plugin_excluded(
+            item.data(0, _ROLE_ROOT_PATH),
+            item.data(0, _ROLE_PLUGIN_NAME),
+            item.checkState(0) != Qt.CheckState.Checked,
+        )
+        # itemChanged를 쏜 아이템을 같은 호출 안에서 clear()로 파괴하면 Qt가
+        # 시그널 반환 경로에서 그 아이템을 다시 만져 간헐적 access violation이
+        # 난다(실측 — 플레이키 크래시). 저장은 즉시, 트리 재구성은 이벤트
+        # 루프로 미룬다. 수신 컨텍스트(self)를 주면 다이얼로그가 먼저 닫혀도
+        # 죽은 위젯에 발화하지 않는다(WP-WS 0ms 디바운스 수명 함정과 같은 결).
+        QTimer.singleShot(0, self, self.refresh)
 
     # ─────────────────────────── 루트 등록 ───────────────────────────
 
