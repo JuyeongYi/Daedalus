@@ -255,8 +255,8 @@ daedalus/
     │                       #   set_project가 blackboard_panel.set_project(project) + tag_input.set_blackboard_candidate_provider(...)를 배선.
     │                       # 파일 독(WP-FR): _setup_docks가 FilePanel을 "플러그인 파일 (공용)" 독으로 배치하고
     │                       #   markdown_editor.set_files_root_provider(lambda: self._file_panel.files_root())를 등록.
-    │                       # 미저장 변경(A7): _dirty 플래그 + _mark_dirty/mark_clean/confirm_discard_changes.
-    │                       #   상세는 "미저장 변경 확인 (A7)" 개념 섹션 참조.
+    │                       # 미저장 변경: _dirty 플래그 + _mark_dirty/mark_clean/confirm_discard_changes.
+    │                       #   상세는 "미저장 변경 확인" 개념 섹션 참조.
     ├── session_io.py       # SessionIO(window) — 저장/열기/최근 목록/패키지(.ddpj) (WP-RF-3e에서 app.py로부터 추출).
     │                       # 프로젝트 패키지(WP-PK): 열기/저장이 **폴더** 단위. open_project_dialog(폴더 선택)/open_file_dialog(구버전 파일 직접)/
     │                       #   save_project_as(폴더 선택 — 형식이 새 형식으로 바뀌는 유일한 지점)/export_package_dialog/import_package_dialog.
@@ -706,7 +706,7 @@ daedalus-bb --schemas <경로> [--state-dir DIR] <command>
   progress set [--current S] [--completed S]... [--note T] [--prev S]
 ```
 
-- **exit code:** 0 성공 / 1 **쓰기가 반영되지 않음**(검증 실패, 또는 A6의 쓰기 충돌
+- **exit code:** 0 성공 / 1 **쓰기가 반영되지 않음**(검증 실패, 또는 낙관적 잠금의 쓰기 충돌
   재시도 소진) / 2 사용법·스키마·IO 오류 / 3 대상 상태 파일 없음
   (`read`, 그리고 클래스를 **명시한** `validate`). 전역 옵션은 **하위 명령 앞**에 온다
   (argparse 서브파서 구조).
@@ -730,7 +730,7 @@ daedalus-bb --schemas <경로> [--state-dir DIR] <command>
 - **write는 검증 게이트 뒤에 있고 쓰기는 원자적이다.** 읽기-수정-쓰기 후 검증에 실패하면
   exit 1 + 파일 완전 불변, 통과하면 임시 파일 + `os.replace`로 교체한다(반쯤 쓰인 상태 파일
   없음). 파일이 없으면 초기 객체에서 시작한다.
-- **write는 남의 쓰기를 덮지 않는다 — 낙관적 잠금 + 재시도 (A6).** 병렬 서브에이전트가
+- **write는 남의 쓰기를 덮지 않는다 — 낙관적 잠금 + 재시도.** 병렬 서브에이전트가
   같은 클래스를 갱신하면 읽기-수정-쓰기 사이에 남이 쓴 내용을 통째로 덮어써 **한쪽
   갱신이 조용히 사라졌다**(lost update). 이제 읽은 시점의 **원문**을 기억하고
   `write_state_checked`가 `os.replace` 직전에 디스크와 비교해, 달라졌으면 쓰지 않고
@@ -953,7 +953,7 @@ daedalus-bb --schemas <경로> [--state-dir DIR] <command>
   돌아오고 탭을 다시 열 때 문서가 새로 만들어진다 — 잃는 것은 본문 편집 이력뿐이다.
   닫힌 편집 탭도 undo로 다시 열리지는 않는다.
 
-### 미저장 변경 확인 (A7)
+### 미저장 변경 확인
 
 편집 결과는 저장 전까지 **메모리에만** 있다. MCP로 편집하고 GUI를 그냥 닫아
 통째로 잃은 사고가 세 번 났다 — `closeEvent`가 확인 없이 닫았기 때문이다.
@@ -988,7 +988,7 @@ daedalus-bb --schemas <경로> [--state-dir DIR] <command>
 - **패리티 원칙 (사용자 확정, 2026-09-07 — 상시 적용):** GUI에서 가능한 모든 편집·조회는 MCP로도
   가능해야 한다. **새 GUI 기능을 넣을 때 대응 MCP 도구(또는 기존 도구의 파라미터)를 같은 WP에서
   함께 만든다** — 나중에 채우는 갭이 아니라 기능의 완성 조건이다. 기존 갭 목록은
-  A3 실측 보고(G1~G16 편집 갭 + Q1~Q6 조회 낭비)가 정본이고 배치로 소거 중.
+  MCP 갭 실측 보고(G1~G16 편집 갭 + Q1~Q6 조회 낭비)가 정본이고 패리티 배치로 전량 소거 완료(2026-09-07).
 - **조회는 개요 ↔ 전문으로 나눈다 (Q1).** 목록을 주는 도구는 각 항목을 축약본으로 싣고, 전문은
   그 하나를 지목하는 도구가 준다 — `get_body_outline` ↔ `get_body_section`이 그 원형이고,
   `get_project`의 `hook_library`(개요: 이름·이벤트·matcher·핸들러 개수·설명) ↔ `get_hook(name)`

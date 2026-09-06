@@ -738,3 +738,22 @@ def test_get_project_sections_combines_multiple_groups(tools):
 def test_get_project_sections_rejects_unknown_name(tools):
     with pytest.raises(ValueError, match="nope"):
         tools.get_project(sections=["nope"])
+
+
+def test_create_hook_preset_rejects_explicit_default_event(tools):
+    """preset과 event="PreToolUse"(기본값과 같은 명시 지정)를 함께 주면 거부.
+
+    구현이 "PreToolUse"를 기본값 겸 센티넬로 쓰면 이 조합이 배타 검사를
+    통과하고 명시한 event가 조용히 무시된다(최종 리뷰 실측 결함) — 검사가
+    막으려던 "어느 값이 이겼는지 모르는" 바로 그 상황이다.
+    """
+    import pytest
+
+    with pytest.raises(ValueError, match="preset"):
+        tools.create_hook("h-conflict", preset="format-on-edit", event="PreToolUse")
+
+
+def test_create_hook_without_event_still_defaults_to_pretooluse(tools):
+    """event 생략(미지정) 기본값은 종전대로 PreToolUse — 하위 호환."""
+    result = tools.create_hook("h-default", command="echo hi")
+    assert result["event"] == "PreToolUse"

@@ -271,7 +271,12 @@ class QueryTools(_BaseTools):
         return {"selected": [v.model.name for v in vms], "count": count}
 
     def get_component(self, name: str) -> dict[str, Any]:
-        """스킬/에이전트 하나의 상세 — 본문, 설정, 자체 FSM 요약."""
+        """스킬/에이전트 하나의 상세 — 본문, 설정, 자체 FSM 요약.
+
+        `config`에는 **비기본값 필드만** 실린다 — 미지정(None)·선언 기본값과
+        같은 값은 생략된다(빈 dict = 전부 기본값). 전체 필드 목록·현재값·
+        선택지는 `list_component_fields`로 조회하라.
+        """
         comp = self._find_component(name)
         config = getattr(comp, "config", None)
         body = str(getattr(comp, "body", "") or "")

@@ -121,7 +121,7 @@ class HookTools(_BaseTools):
     def create_hook(
         self,
         name: str,
-        event: str = "PreToolUse",
+        event: str = "",
         handlers: list[dict[str, Any]] | None = None,
         matcher: str = "",
         description: str = "",
@@ -149,7 +149,8 @@ class HookTools(_BaseTools):
         command 인자(핸들러 밖)는 편의용 지름길이다 — handlers 대신 주면 command
         핸들러 하나를 만든다.
 
-        event는 CC 훅 이벤트 31종 중 하나(list_hook_events 참조).
+        event는 CC 훅 이벤트 31종 중 하나(list_hook_events 참조) — 생략 시
+        PreToolUse.
         matcher는 이벤트가 받을 때만 의미가 있다. MCP 도구를 매칭하려면
         `mcp__<서버>__<도구>` 형태를 쓰고, 서버 전체는 `mcp__<서버>__.*`처럼
         `.*`를 붙여야 한다 — 서버 이름까지만 쓰면 아무것도 맞지 않는다.
@@ -170,7 +171,12 @@ class HookTools(_BaseTools):
             raise ValueError(f"'{name}' 훅이 이미 있습니다.")
 
         if preset:
-            if handlers or command or matcher or description or event != "PreToolUse":
+            # event 기본값이 ""(미지정)인 이유: "PreToolUse"를 기본값 겸
+            # 센티넬로 쓰면 호출자가 **명시적으로** event="PreToolUse"를 준
+            # 경우를 구분하지 못해, 배타 검사를 통과한 그 값이 조용히
+            # 무시된다(최종 리뷰 실측 결함 ①). 미지정은 아래 else 경로에서
+            # PreToolUse로 해석된다 — 기존 호출 호환.
+            if handlers or command or matcher or description or event:
                 raise ValueError(
                     "preset은 event/handlers/matcher/description/command와 함께 줄 수 "
                     "없습니다 — 프리셋을 그대로 쓰려면 preset만, 직접 만들려면 preset "
@@ -188,7 +194,7 @@ class HookTools(_BaseTools):
             from daedalus.model.plugin.hook import HookDef, HookEvent
 
             try:
-                hook_event = HookEvent(event)
+                hook_event = HookEvent(event or "PreToolUse")
             except ValueError:
                 allowed = ", ".join(e.value for e in HookEvent)
                 raise ValueError(f"알 수 없는 훅 이벤트 '{event}'. 사용 가능: {allowed}") from None
