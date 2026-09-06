@@ -178,7 +178,9 @@ daedalus/
 │   │   │                   #   기존 `from daedalus.mcp.tools import DaedalusTools` 무수정 동작(test_tools_facade.py가 고정)
 │   │   ├── _base.py        #   _BaseTools — 공통 헬퍼(_project/_vm/_find_component/_find_state_vm/_scope/_reject_duplicate_name
 │   │   │                   #     + _hook_summary — 훅 **개요**. QueryTools와 HookTools가 함께 쓰므로 소유가 여기다
-│   │   │                   #     + _visible_global_hooks — 가려지지 않은 전역 훅(A1, G7). 같은 이유로 여기 산다)
+│   │   │                   #     + _visible_global_hooks — 가려지지 않은 전역 훅(A1, G7). 같은 이유로 여기 산다
+│   │   │                   #     + _scene — 프로젝트 캔버스 씬. CanvasTools(참조 노드)와 PropsTools(생성+배치 G14)가
+│   │   │                   #       함께 쓴다)
 │   │   ├── query.py        #   조회(get_project/get_selection/get_component/validate_project/compile_preview/compile_check/
 │   │   │                   #     list_tool_candidates) + undo 스택(undo/redo/get_history).
 │   │   │                   #     get_project의 hook_library는 **개요만**(전문은 get_hook), 전이 요약은 guard 서술(컴파일러
@@ -187,15 +189,20 @@ daedalus/
 │   │   │                   #     get_component의 config는 비기본값만(Q3 — type(config)()와 비교).
 │   │   │                   #     compile_check(G3)는 파일을 쓰지 않는 컴파일 예행 — 컴파일러 emit 경고 7종을 미리 본다.
 │   │   │                   #     list_tool_candidates(G9)는 catalogue_loader.candidate_strings 재사용 — TagInput과 같은 산출
-│   │   ├── session.py      #   세션(save_project/open_project/export_package/list_recent_projects)
-│   │   ├── canvas.py       #   캔버스 구조(place/create_state/move/rename/delete/connect/disconnect/set_transition/참조 노드)
+│   │   ├── session.py      #   세션(save_project/open_project/new_project/import_package/export_package/
+│   │   │                   #     list_recent_projects/list_project_templates — G11·G12).
+│   │   │                   #     _save_before_switch가 "먼저 저장" 게이트의 단일 실체(open_project·new_project 공용)
+│   │   ├── canvas.py       #   캔버스 구조(place/create_state/move/rename/delete/connect/disconnect/set_transition/참조 노드).
+│   │   │                   #     set_transition(create_transfer=) — TransferSkill 생성+할당 1 undo(G15, 씬과 같은 커맨드 조립)
 │   │   ├── ports.py        #   포트(set_transfer_on/add_agent_call/remove_agent_call)
 │   │   ├── blackboard.py   #   블랙보드(create/update/delete_blackboard_class + set_blackboard_fields/set_state_access)
 │   │   ├── hooks.py        #   훅 라이브러리(create/update/delete_hook/set_component_hooks/get_hook/list_hook_events/hook_frontmatter_preview/
 │   │   │                   #     list_hook_presets/copy_global_hook — G7·G8).
 │   │   │                   #     _hook_detail(전문 = 개요 + 핸들러 CC 스키마 + 스크립트 본문)은 get_hook과 편집 결과에서만
 │   │   ├── body.py         #   본문(set_component_body/get_body_outline/get_body_section/set_body_section — WP-BU/WP-BO 경로)
-│   │   ├── props.py        #   생성·속성(create_skill/create_agent/rename_component/description/when_to_use/field/project_properties/set_mcp_server_def)
+│   │   ├── props.py        #   생성·속성(create_skill/create_agent/rename_component/description/when_to_use/field/project_properties/set_mcp_server_def).
+│   │   │                   #     팩토리는 actions/creation.make_component 직호출(S1 — 자체 dict 2벌 폐기),
+│   │   │                   #     create_skill/create_agent의 x·y는 create_and_place로 생성+배치 1 undo(G14)
 │   │   └── workspace.py    #   작업 폴더 문서(WP-WD) — list_workspace_docs/get_workspace_doc/set_claude_md/create_rule/
 │   │                       #     set_rule_body/set_rule_paths(A13)/rename_rule/delete_rule. 본문은 BodyTools와 같은
 │   │                       #     QTextDocument 경로(WP-BU), 구조 편집은 GUI 패널과 같은 모델 직접 기록.
@@ -312,6 +319,8 @@ daedalus/
     │   ├── creation.py     #   캔버스에서 생성+배치(A9-9) — CREATABLE_KINDS/NO_PLACE_KINDS(레지스트리 no_place와 같은 규칙)/
     │   │                   #     make_component(창의 _make_fsm 재사용 — 레지스트리와 같은 물건이어야 한다)/create_and_place.
     │   │                   #     생성(CreateComponentCmd)+배치(CreateStateCmd 또는 CreateRefCmd)를 MacroCommand로 묶어 1 undo 단위.
+    │   │                   #     **MCP props.py도 이 둘을 직접 부른다**(S1/G14) — 자체 팩토리 dict를 들고 있던 것을
+    │   │                   #     환원해 "어디서 만들었느냐에 따라 다른 물건"을 없앴다. description 인자는 그 합류의 산물.
     │   ├── transitions.py  #   전이 트리거 지정(A9-8) — trigger_choices(출발 노드의 transfer_on + call_agents)/current_trigger/
     │   │                   #     set_trigger. **CompletionEvent를 새로 만들어** 넣는다(제자리 수정이면 SetAttrCmd의 old/new가 같은
     │   │                   #     객체가 되어 undo가 죽는다). 지금까지 트리거 변경 GUI가 없어 전이를 지우고 다시 긋는 수밖에 없었다.
@@ -1125,7 +1134,8 @@ daedalus-bb --schemas <경로> [--state-dir DIR] <command>
   (`catalogue_loader.candidate_strings` + `load_catalogue`를 GUI(`app._tool_candidates`)와
   같은 경로 — 저장 경로 기준 프로젝트 폴더 + 전역 `~/.daedalus/catalogue/`로 재사용). 카탈로그에
   무엇이 있는지 몰라 `allowed_tools`에 이름을 짐작으로 적는 것을 막는다.
-- **세션(저장/열기):** `save_project`/`open_project`/`export_package`/`list_recent_projects`.
+- **세션(저장/열기/새 프로젝트/패키지):** `save_project`/`open_project`/`new_project`(G11)/
+  `import_package`(G12)/`export_package`/`list_recent_projects`/`list_project_templates`(G11).
   경로는 **폴더**를 받는다(WP-PK — 구버전 파일도 열린다). **저장이 여는 절차
   안에 있다** — 편집 중인 내용은 메모리에만 있어 여는 순간 사라지므로, 잃을 것이 있으면
   (`MainWindow.project_has_content()` — "새 프로젝트" 확인 다이얼로그와 같은 판정) 먼저 저장하고
@@ -1133,6 +1143,26 @@ daedalus-bb --schemas <경로> [--state-dir DIR] <command>
   하고, 버리려면 `save_current=False`를 명시해야 한다. 이를 위해 `MainWindow._save_to_path`/
   `open_path`가 `bool`을 돌려준다(GUI 경로는 상태바 문구로 결과를 말하므로 무시한다 — 반환값은
   성공을 전제로 다음 단계를 진행하는 호출자를 위한 것이다). 저장은 파일 쓰기라 undo 대상이 아니다.
+  **그 게이트의 실체는 `SessionTools._save_before_switch` 하나**이고 `open_project`와
+  `new_project`가 공유한다 — 게이트가 둘로 갈리면 한쪽 경로로만 변경이 사라진다.
+  - `new_project(template_id=None, build_target=...)`는 Ctrl+N 통합 다이얼로그와 **동형**이다:
+    빈 프로젝트 또는 템플릿에서 시작하고, **여기서 고른 타깃이 템플릿에 저장된 타깃을 이긴다**
+    (템플릿 내용은 타깃 중립, 타깃은 사용자 소유). 폴더형 템플릿의 동봉 파일 예약
+    (`_pending_template_assets`)까지 GUI와 같으므로 첫 `save_project`에 `files/`가 딸려 온다.
+    알 수 없는 템플릿 id는 **저장 전에** 거절한다(헛저장 방지 — 열 수 없는 경로 거절과 같은 순서).
+  - `import_package(archive, dest)`는 `package.unpack`(zip slip 방어 내장)으로 푼 뒤
+    **`open_project`를 그대로 태운다** — 저장 게이트가 같다. 게이트에 막히면 풀린 폴더는 남는다.
+- **생성+배치는 1 undo다 (G14/S1).** `create_skill`/`create_agent`에 `x`·`y`를 **함께** 주면
+  `view/actions/creation.create_and_place`를 타 생성과 배치가 한 `MacroCommand`로 묶인다(캔버스
+  "여기에 만들기"와 같은 경로). 좌표를 생략하면 만들기만 한다. 같은 배치에서 props의 자체 팩토리
+  dict 2벌을 `creation.make_component` 호출로 환원했다 — 기본 출력 포트 `done`이 양쪽에
+  하드코딩돼 있어 한쪽만 고치면 어디서 만들었느냐에 따라 다른 에이전트가 됐다.
+  `declarative`/`transfer`는 캔버스 노드가 아니므로 좌표를 주면 **거절**한다(조용히 무시하면
+  "설정했는데 아무 일도 일어나지 않는" 상태가 된다).
+- **transfer 스킬 생성+할당도 1 undo다 (G15).** `set_transition(create_transfer="이름")`이
+  캔버스 엣지 메뉴의 "새 Transfer Skill 생성..."과 **같은 두 커맨드**
+  (`AddSkillToProjectCmd` → `SetTransitionSkillRefCmd`)를 조립한다 — 씬 메서드는 이름을 모달로
+  묻는 부분과 한 몸이라 그대로 부를 수 없다. `transfer`(기존 스킬 지정)와 동시에 줄 수 없다.
 - **컴포넌트 삭제(A2):** `delete_component(name)` — `RemoveComponentCmd`를 거쳐 **undo 가능**하고
   GUI 레지스트리 삭제(`MainWindow.delete_component`)와 **같은 커맨드**를 쓴다(조작 경로에 따라
   Ctrl+Z가 듣고 안 듣고가 갈리면 협업 도구로 실격). 상세는 아래 "컴포넌트 삭제 커맨드 (A2)" 참조.

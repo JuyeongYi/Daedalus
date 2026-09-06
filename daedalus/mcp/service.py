@@ -36,9 +36,12 @@ TOOL_NAMES = (
     "list_component_fields",
     "list_tool_candidates",
     "list_recent_projects",
+    "list_project_templates",
     # 세션 — 저장은 undo 대상이 아니다(파일 쓰기)
     "save_project",
     "open_project",
+    "new_project",
+    "import_package",
     "export_package",
     # 편집 — 전부 undo 가능
     "create_skill",

@@ -24,11 +24,15 @@ CREATABLE_KINDS: tuple[tuple[str, str], ...] = (
 )
 
 
-def make_component(window, kind: str, name: str):
+def make_component(window, kind: str, name: str, description: str = ""):
     """모델 객체만 만든다(프로젝트에 넣지 않는다).
 
     FSM 생성은 창의 `_make_fsm`/`_make_agent_fsm`을 쓴다 — 레지스트리 생성
     경로가 쓰는 것과 같은 팩토리여야 만들어진 물건이 같다.
+
+    `description`은 MCP `create_skill`/`create_agent`가 생성과 동시에 설명을
+    받기 때문에 있다(S1 — 그쪽이 자체 팩토리 dict를 들고 있던 것을 여기로
+    환원했다). GUI 경로는 이름만 주고 설명은 편집기에서 채운다.
     """
     from daedalus.model.fsm.section import EventDef
     from daedalus.model.plugin.agent import AgentDefinition
@@ -41,15 +45,15 @@ def make_component(window, kind: str, name: str):
 
     factories = {
         "procedural": lambda: ProceduralSkill(
-            fsm=window._make_fsm(name), name=name, description=""
+            fsm=window._make_fsm(name), name=name, description=description
         ),
-        "declarative": lambda: DeclarativeSkill(name=name, description=""),
+        "declarative": lambda: DeclarativeSkill(name=name, description=description),
         "transfer": lambda: TransferSkill(
-            fsm=window._make_fsm(name), name=name, description=""
+            fsm=window._make_fsm(name), name=name, description=description
         ),
-        "reference": lambda: ReferenceSkill(name=name, description=""),
+        "reference": lambda: ReferenceSkill(name=name, description=description),
         "agent": lambda: AgentDefinition(
-            fsm=window._make_agent_fsm(name), name=name, description="",
+            fsm=window._make_agent_fsm(name), name=name, description=description,
             transfer_on=[EventDef(name="done")],
         ),
     }
@@ -57,7 +61,9 @@ def make_component(window, kind: str, name: str):
     return factory() if factory is not None else None
 
 
-def create_and_place(scene, window, kind: str, name: str, x: float, y: float) -> object | None:
+def create_and_place(
+    scene, window, kind: str, name: str, x: float, y: float, description: str = ""
+) -> object | None:
     """컴포넌트를 만들고 (배치 대상이면) 그 좌표에 놓는다 — 1 undo 단위.
 
     참조 스킬은 상태 노드가 아니라 **참조 노드**로 놓인다(캔버스 드롭과 같은
@@ -75,7 +81,7 @@ def create_and_place(scene, window, kind: str, name: str, x: float, y: float) ->
     project = window._project
     if project is None:
         return None
-    component = make_component(window, kind, name)
+    component = make_component(window, kind, name, description)
     if component is None:
         return None
 

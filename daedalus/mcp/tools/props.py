@@ -19,8 +19,63 @@ from ._base import _BaseTools
 class PropsTools(_BaseTools):
     """컴포넌트 생성 + 속성/프론트매터 편집 + 프로젝트 속성."""
 
+    #: create_skill이 받는 종류 (에이전트는 create_agent가 따로 맡는다).
+    _SKILL_KINDS = ("procedural", "declarative", "transfer", "reference")
+
+    def _create_component(
+        self,
+        kind: str,
+        name: str,
+        description: str,
+        x: float | None,
+        y: float | None,
+    ) -> bool:
+        """컴포넌트를 만들고(좌표가 있으면) 캔버스에 놓는다. 배치 여부를 돌려준다.
+
+        **팩토리는 `view/actions/creation`이 단일 진실이다 (S1).** 예전에는 이
+        모듈이 같은 5키 dict를 따로 들고 있어, 캔버스 "여기에 만들기"로 만든
+        에이전트와 MCP로 만든 에이전트가 서로 다른 물건이 될 수 있었다(기본 포트
+        `done`이 양쪽에 하드코딩돼 있었다). 좌표를 주면 생성+배치가
+        `create_and_place`의 `MacroCommand`로 묶여 **1 undo 단위**가 된다(G14) —
+        캔버스 메뉴와 완전히 같은 경로다.
+        """
+        from daedalus.view.actions.creation import (
+            NO_PLACE_KINDS,
+            create_and_place,
+            make_component,
+        )
+
+        win = self._window
+        if x is None and y is None:
+            component = make_component(win, kind, name, description)
+            if component is None:  # pragma: no cover - 위에서 종류를 이미 검증한다
+                raise ValueError(f"알 수 없는 종류 '{kind}'.")
+            win._register_component(component)
+            return False
+        if x is None or y is None:
+            raise ValueError(
+                "x와 y는 함께 주어야 합니다 — 한쪽만으로는 배치 좌표가 정해지지 않습니다."
+            )
+        if kind in NO_PLACE_KINDS:
+            raise ValueError(
+                f"'{kind}' 종류는 캔버스에 노드로 배치되지 않습니다 "
+                "(declarative는 배경 지식, transfer는 전이 위의 단계입니다) — "
+                "x/y 없이 만드세요."
+            )
+        component = create_and_place(
+            self._scene, win, kind, name, float(x), float(y), description
+        )
+        if component is None:
+            raise RuntimeError(f"'{name}'을(를) 만들지 못했습니다.")
+        return True
+
     def create_skill(
-        self, name: str, kind: str = "procedural", description: str = ""
+        self,
+        name: str,
+        kind: str = "procedural",
+        description: str = "",
+        x: float | None = None,
+        y: float | None = None,
     ) -> dict[str, Any]:
         """스킬을 만든다.
 
@@ -29,50 +84,38 @@ class PropsTools(_BaseTools):
         에이전트에게 줄 지식도 전역 스킬로 만든다 — 전역 declarative와 에이전트
         노드에 링크된 reference는 컴파일 시 에이전트 skills 프론트매터에 자동
         합류된다(로컬 스킬은 퇴역, WP-RF-1c).
+
+        x/y(G14): **함께** 주면 만들자마자 그 좌표에 배치한다 — 생성과 배치가
+        1 undo 단위로 묶인다(캔버스 "여기에 만들기"와 같은 경로). reference는
+        상태 노드가 아니라 참조 노드로 놓인다. declarative/transfer는 캔버스
+        노드가 아니므로 좌표를 주면 거절한다. 생략하면 만들기만 하고, 나중에
+        `place_component`/`place_reference`로 놓는다.
         """
-        from daedalus.model.plugin.skill import (
-            DeclarativeSkill,
-            ProceduralSkill,
-            ReferenceSkill,
-            TransferSkill,
-        )
-
-        self._reject_duplicate_name(name)
-        win = self._window
-        factories = {
-            "procedural": lambda: ProceduralSkill(
-                fsm=win._make_fsm(name), name=name, description=description
-            ),
-            "declarative": lambda: DeclarativeSkill(name=name, description=description),
-            "transfer": lambda: TransferSkill(
-                fsm=win._make_fsm(name), name=name, description=description
-            ),
-            "reference": lambda: ReferenceSkill(name=name, description=description),
-        }
-        if kind not in factories:
+        if kind not in self._SKILL_KINDS:
             raise ValueError(
-                f"알 수 없는 스킬 종류 '{kind}'. 사용 가능: {', '.join(factories)}"
+                f"알 수 없는 스킬 종류 '{kind}'. 사용 가능: {', '.join(self._SKILL_KINDS)}"
             )
-        win._register_component(factories[kind]())
-        return {"created": name, "kind": kind}
+        self._reject_duplicate_name(name)
+        placed = self._create_component(kind, name, description, x, y)
+        return {"created": name, "kind": kind, "placed": placed}
 
-    def create_agent(self, name: str, description: str = "") -> dict[str, Any]:
+    def create_agent(
+        self,
+        name: str,
+        description: str = "",
+        x: float | None = None,
+        y: float | None = None,
+    ) -> dict[str, Any]:
         """에이전트를 만든다 — 별도 컨텍스트의 작업자.
 
         절차는 본문(set_component_body)에, 결과 분기는 출력 포트
         (set_transfer_on)에 서술한다. 기본 출력 포트 'done' 하나로 시작한다.
-        """
-        from daedalus.model.fsm.section import EventDef
-        from daedalus.model.plugin.agent import AgentDefinition
 
+        x/y(G14): 함께 주면 만들자마자 그 좌표에 배치한다(1 undo 단위).
+        """
         self._reject_duplicate_name(name)
-        win = self._window
-        agent = AgentDefinition(
-            fsm=win._make_agent_fsm(name), name=name, description=description,
-            transfer_on=[EventDef(name="done")],
-        )
-        win._register_component(agent)
-        return {"created": name, "kind": "agent"}
+        placed = self._create_component("agent", name, description, x, y)
+        return {"created": name, "kind": "agent", "placed": placed}
 
     def rename_component(self, name: str, new_name: str) -> dict[str, Any]:
         """컴포넌트 이름을 바꾼다 — 문자열 참조도 함께 갱신된다."""

@@ -61,6 +61,20 @@ class _BaseTools:
             raise ValueError(f"캔버스에 '{name}' 노드가 없습니다. 현재 노드: {known or '(없음)'}")
         return found
 
+    @property
+    def _scene(self) -> Any:
+        """프로젝트 캔버스 씬 — 씬이 쥔 실체(드롭·참조 링크·생성+배치)의 진입점.
+
+        소유가 `_BaseTools`인 이유: `CanvasTools`(참조 노드)와 `PropsTools`
+        (`create_skill`/`create_agent`의 생성+배치 — G14)가 함께 쓰므로, 어느
+        한쪽 믹스인에 두면 합성 순서에 의존하는 호출이 된다(`_hook_summary`와
+        같은 사정).
+        """
+        scene = getattr(self._window, "_fsm_scene", None)
+        if scene is None:
+            raise RuntimeError("프로젝트 캔버스가 준비되지 않았습니다.")
+        return scene
+
     # --- 편집 범위 ---
 
     def _scope(self) -> tuple[Any, Any]:

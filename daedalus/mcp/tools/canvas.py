@@ -194,12 +194,19 @@ class CanvasTools(_BaseTools):
         trigger: str | None = None,
         guard: str | None = None,
         transfer: str | None = None,
+        create_transfer: str | None = None,
     ) -> dict[str, Any]:
         """이미 있는 전이에 트리거·가드·transfer 스킬을 설정한다.
 
         None을 넘긴 항목은 건드리지 않는다. 빈 문자열("")을 넘기면 그 항목을 지운다.
         transfer는 전이 도중 실행할 TransferSkill의 이름이다 — 라이브러리에 없는
         이름은 후보를 나열하며 거부한다(오타가 조용히 None이 되는 것 방지).
+
+        create_transfer(G15): 그 이름의 **TransferSkill을 새로 만들어** 이 전이에
+        붙인다 — 캔버스 엣지 메뉴의 "새 Transfer Skill 생성..."과 같은 커맨드
+        조립이라 생성과 할당이 **1 undo 단위**다(따로 만들어 붙이면 Ctrl+Z가 두
+        번 필요하고 중간에 고아 스킬이 남는 상태를 거친다). 이미 있는 이름은
+        거부한다. `transfer`와 함께 줄 수 없다(같은 자리를 두 번 정한다).
         """
         from daedalus.view.commands.attr_commands import SetAttrCmd
         from daedalus.view.commands.base import MacroCommand
@@ -208,6 +215,13 @@ class CanvasTools(_BaseTools):
         tvm = self._find_transition_vm(source, target, vm)
         trans = tvm.model
         cmds: list[Any] = []
+        if create_transfer is not None:
+            if transfer is not None:
+                raise ValueError(
+                    "transfer와 create_transfer는 함께 줄 수 없습니다 — "
+                    "기존 스킬을 붙이거나(transfer) 새로 만들거나(create_transfer) 하나만."
+                )
+            cmds.extend(self._create_transfer_commands(create_transfer, tvm))
         if trigger is not None:
             cmds.append(
                 SetAttrCmd(
@@ -249,8 +263,35 @@ class CanvasTools(_BaseTools):
             "transition": [source, target],
             "trigger": trigger,
             "guard": guard,
-            "transfer": transfer,
+            "transfer": create_transfer if create_transfer is not None else transfer,
+            "created_transfer": create_transfer,
         }
+
+    def _create_transfer_commands(self, name: str, tvm: Any) -> list[Any]:
+        """TransferSkill 생성 + 이 전이에 할당 (G15) — 씬과 같은 커맨드 조립.
+
+        `FsmScene._create_and_assign_transfer_skill`은 이름을 모달로 묻는 부분과
+        커맨드 조립이 한 몸이라 그대로 부를 수 없다 — 대신 **같은 두 커맨드**
+        (`AddSkillToProjectCmd` → `SetTransitionSkillRefCmd`)를 쓴다. FSM 팩토리도
+        레지스트리·캔버스 생성 경로와 같은 `window._make_fsm`이다.
+        """
+        from daedalus.model.plugin.skill import TransferSkill
+        from daedalus.view.commands.transition_commands import (
+            AddSkillToProjectCmd,
+            SetTransitionSkillRefCmd,
+        )
+
+        if not name.strip():
+            raise ValueError("create_transfer 이름이 비어 있습니다.")
+        name = name.strip()
+        self._reject_duplicate_name(name)
+        skill = TransferSkill(
+            fsm=self._window._make_fsm(name), name=name, description=""
+        )
+        return [
+            AddSkillToProjectCmd(self._project, skill),
+            SetTransitionSkillRefCmd(tvm, skill),
+        ]
 
     def _find_transfer_skill(self, name: str) -> Any:
         """이름으로 전역 TransferSkill을 찾는다 — 없으면 후보 나열 거부."""
@@ -269,13 +310,9 @@ class CanvasTools(_BaseTools):
         )
 
     # --- 참조 노드 (ReferenceSkill 배치) ---
-
-    @property
-    def _scene(self) -> Any:
-        scene = getattr(self._window, "_fsm_scene", None)
-        if scene is None:
-            raise RuntimeError("프로젝트 캔버스가 준비되지 않았습니다.")
-        return scene
+    #
+    # `_scene`은 `_base.py`가 소유한다 — PropsTools의 생성+배치(G14)도 같은 씬을
+    # 쓰므로 한쪽 믹스인에 두면 합성 순서에 기대는 호출이 된다.
 
     def _find_ref_vm(self, name: str, index: int = 0) -> Any:
         matches = [
