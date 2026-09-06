@@ -605,6 +605,10 @@ class MainWindow(QMainWindow):
     def _known_server_defs(self) -> dict[str, dict]:
         return self._compile_actions.known_server_defs()
 
+    def compile_inputs(self) -> dict:
+        """컴파일 환경 주입 인자 — Ctrl+B와 MCP `compile_check`가 공유한다 (G3)."""
+        return self._compile_actions.compile_inputs()
+
     # --- MCP 서버 / Claude Code 실행 위임 (실체는 view/launch_actions.LaunchActions) ---
 
     def start_mcp_service(self, port: int | None = None) -> None:

@@ -12,6 +12,7 @@ MainThreadInvoker로 마샬링한다). 편집 도구는 반드시
 """
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from ._base import _MAX_BODY_PREVIEW, _BaseTools
@@ -279,6 +280,78 @@ class QueryTools(_BaseTools):
             "tokens": entry.tokens,
             "token_threshold": report.threshold,
             "token_notice": report.notice(),
+        }
+
+    def compile_check(self, out_dir: str | None = None) -> dict[str, Any]:
+        """컴파일을 **파일을 쓰지 않고** 예행한다 — 게이트 판정 + 경고 전부 + 토큰 요약.
+
+        `validate_project`가 못 보여주는 컴파일러 경고를 여기서 본다:
+        `dangling_file_ref`, `unknown_skill_files_dir`, `dangling_skill_file_ref`,
+        `missing_mcp_server_def`, `unmergeable_settings_json`,
+        `unmergeable_claude_md`, `rule_body_frontmatter`. 이 경고들은 실제
+        컴파일(GUI Ctrl+B)에서만 나오던 것이라, MCP로만 저작하면 영영 보이지
+        않았다.
+
+        out_dir: 컴파일 대상 폴더(LOCAL 빌드면 설치 대상 작업 폴더). **생략
+        가능** — 생략하면 계획 경로가 상대 경로가 되고, 대상 폴더를 읽어야
+        판정하는 경고 2종(`unmergeable_settings_json`/`unmergeable_claude_md`)만
+        건너뛴다. 나머지 판정은 그대로다.
+
+        디스크는 절대 바뀌지 않는다(쓰기·복사·JSON 병합 전부 생략) — 따라서
+        undo 대상도 아니다. 동봉 파일 루트·전역 훅·서버 정의 주입은 Ctrl+B
+        컴파일과 **같은 경로**를 쓰므로 결과가 실제 컴파일과 일치한다.
+        """
+        from daedalus.compiler import compile_project
+
+        project = self._project
+        result = compile_project(
+            project, out_dir, dry_run=True, **self._window.compile_inputs(),
+        )
+
+        base = Path(out_dir) if out_dir else None
+
+        def rel(path: Any) -> str:
+            p = Path(path)
+            if base is not None:
+                try:
+                    return p.relative_to(base).as_posix()
+                except ValueError:
+                    return p.as_posix()
+            return p.as_posix()
+
+        report = result.token_report
+        return {
+            "ok": result.ok,
+            "out_dir": out_dir,
+            "build_target": getattr(
+                getattr(project, "build_target", None), "value", None
+            ),
+            "error_count": len(result.errors),
+            "warning_count": len(result.warnings),
+            "issues": [
+                {
+                    "rule": e.rule,
+                    "severity": "warning" if e.is_warning else "error",
+                    "message": e.message,
+                    "source": getattr(e, "source", None),
+                    "path": list(getattr(e, "path", ()) or ()),
+                }
+                for e in (*result.errors, *result.warnings)
+            ],
+            # 게이트에 막히면 written이 비고 skipped에 막힌 산출이 들어간다.
+            "planned_files": [rel(p) for p in result.written],
+            "planned_copies": [rel(p) for p in result.copied_files],
+            "skipped": [{"reason": r, "label": label} for r, label in result.skipped],
+            "tokens": {
+                "total_tokens": report.total_tokens,
+                "total_chars": report.total_chars,
+                "threshold": report.threshold,
+                "over_threshold": [
+                    {"path": e.path, "kind": e.kind, "tokens": e.tokens, "chars": e.chars}
+                    for e in report.over_threshold()
+                ],
+                "notice": report.notice(),
+            },
         }
 
     # ------------------------------------------------------------------

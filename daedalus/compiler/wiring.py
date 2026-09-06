@@ -48,6 +48,7 @@ def wire_workspace(
     target_dir: Path | str,
     server_entries: dict[str, dict] | None = None,
     hooks_map: dict | None = None,
+    dry_run: bool = False,
 ) -> WireResult:
     """대상 작업 폴더의 CC 설정 파일을 생성/수정한다.
 
@@ -56,6 +57,10 @@ def wire_workspace(
         `enabledMcpjsonServers`에 이름을 올린다.
     hooks_map: CC settings `hooks` 스키마 dict(이벤트 → 그룹 목록).
         `settings.local.json`의 `hooks`에 병합한다(동일 그룹은 중복 삽입 안 함).
+    dry_run(G3): **파일을 하나도 쓰지 않는다.** 기존 파일을 읽고 병합을
+        메모리에서 계산하는 것까지는 그대로라 `written`(쓰였을 파일)과
+        `unmergeable`(깨진 JSON) 판정이 실제 배선과 같다 — 컴파일 dry-run이
+        `unmergeable_settings_json` 경고를 미리 보여주기 위한 경로다.
     """
     target = Path(target_dir)
     result = WireResult()
@@ -73,7 +78,8 @@ def wire_workspace(
                 result.unmergeable.append(mcp_path)
             elif any(servers.get(k) != v for k, v in entries.items()):
                 servers.update(entries)
-                _dump_json(mcp_path, mcp_obj)
+                if not dry_run:
+                    _dump_json(mcp_path, mcp_obj)
                 result.written.append(mcp_path)
 
     # 2. .claude/settings.local.json — enabledMcpjsonServers + hooks 병합
@@ -114,6 +120,7 @@ def wire_workspace(
                     changed = True
 
     if changed or not settings_path.exists():
-        _dump_json(settings_path, settings_obj)
+        if not dry_run:
+            _dump_json(settings_path, settings_obj)
         result.written.append(settings_path)
     return result

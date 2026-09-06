@@ -48,21 +48,7 @@ class CompileActions:
 
         from daedalus.compiler import compile_project
 
-        from daedalus.compiler.project_compiler import SKILL_FILES_DIRNAME
-
-        project_dir = Path(w._current_path).parent if w._current_path else None
-        files_dir = project_dir / "files" if project_dir else None
-        skill_files_dir = project_dir / SKILL_FILES_DIRNAME if project_dir else None
-        result = compile_project(
-            w._project, out_dir, files_dir=files_dir,
-            # 앱이 이미 아는 서버 정의(자기 자신의 daedalus 서버)를 주입한다 —
-            # 아는 것을 사용자에게 등록시키지 않는다(WP-MW).
-            extra_server_defs=self.known_server_defs(),
-            skill_files_dir=skill_files_dir,
-            # 전역 훅(~/.daedalus/hooks/)까지 해소해서 넘긴다 — 컴파일러는
-            # 파일시스템을 읽지 않으므로 여기가 주입 지점이다 (A1).
-            resolved_hooks=w.resolved_hooks(),
-        )
+        result = compile_project(w._project, out_dir, **self.compile_inputs())
         if not result.ok:
             # 에러 — 검증 패널에 동봉(경고 포함) 표시
             w._validation_panel.set_errors(result.errors + result.warnings)
@@ -87,6 +73,34 @@ class CompileActions:
             # 인지하게 두지 않는다.
             w._validation_panel.set_errors(result.warnings)
             w._show_validation_dock()
+
+    def compile_inputs(self) -> dict:
+        """`compile_project`에 넘길 **환경 주입 인자**의 단일 진실 (G3).
+
+        out_dir만 호출부가 정하고 나머지(동봉 파일 루트 2종, 앱이 아는 서버
+        정의, 해소된 훅)는 전부 여기서 만든다 — Ctrl+B 컴파일과 MCP
+        `compile_check`(dry-run)가 같은 것을 주입해야 **같은 경고**가 나온다.
+        한쪽만 고치면 "검사에서는 통과했는데 컴파일하면 경고가 뜬다"가 된다.
+
+        미저장 프로젝트(`_current_path`가 None)는 files_dir/skill_files_dir가
+        None이라 그 스캔이 생략된다(기존 None 규약 그대로).
+        """
+        from daedalus.compiler.project_compiler import SKILL_FILES_DIRNAME
+
+        w = self._w
+        project_dir = Path(w._current_path).parent if w._current_path else None
+        return {
+            "files_dir": (project_dir / "files") if project_dir else None,
+            "skill_files_dir": (
+                (project_dir / SKILL_FILES_DIRNAME) if project_dir else None
+            ),
+            # 앱이 이미 아는 서버 정의(자기 자신의 daedalus 서버)를 주입한다 —
+            # 아는 것을 사용자에게 등록시키지 않는다(WP-MW).
+            "extra_server_defs": self.known_server_defs(),
+            # 전역 훅(~/.daedalus/hooks/)까지 해소해서 넘긴다 — 컴파일러는
+            # 파일시스템을 읽지 않으므로 여기가 주입 지점이다 (A1).
+            "resolved_hooks": w.resolved_hooks(),
+        }
 
     def show_token_notice(self, result) -> None:
         """임계를 넘은 산출물이 있으면 정보성 안내를 띄운다 (A5-lite).

@@ -33,7 +33,7 @@ MainThreadInvoker로 마샬링한다). 여기서 스레드 안전성을 다시 �
 # 구획:
 #   _base.py      — 공통 헬퍼 (_project/_vm/_find_component/_find_state_vm/_scope)
 #   query.py      — 조회 (get_project/get_selection/get_component/validate_project/
-#                   compile_preview) + undo 스택 (undo/redo/get_history)
+#                   compile_preview/compile_check) + undo 스택 (undo/redo/get_history)
 #   session.py    — 세션 (save_project/open_project/export_package/list_recent_projects)
 #   canvas.py     — 캔버스 구조 (place/create_state/move/rename/delete/connect/
 #                   disconnect/set_transition/참조 노드)

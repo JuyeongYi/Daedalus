@@ -68,7 +68,7 @@ _DELEGATED = [
     "_remember_recent", "_rebuild_recent_menu", "_recent_label", "_open_recent",
     "_clear_recent", "open_path",
     # 컴파일
-    "_compile_project_dialog", "_known_server_defs",
+    "_compile_project_dialog", "_known_server_defs", "compile_inputs",
     # MCP / 실행
     "start_mcp_service", "_show_mcp_info", "_launch_claude_code",
     "_ensure_daedalus_mcp_json",

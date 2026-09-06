@@ -29,6 +29,13 @@ compile_project는 파일 쓰기 전에 전체 산출 경로 집합을 계산하
   - 산출 경로 충돌 → 거부 + 충돌 경로/원인 컴포넌트 보고.
   - 서로 다른 훅이 같은 스크립트 파일명으로 슬러그되면 → 거부(duplicate_hook_script).
 경고는 통과(결과에 동봉).
+
+dry-run(G3): ``compile_project(..., dry_run=True)``는 **파일을 하나도 쓰지
+않는다** — 텍스트 생성·계획·스캔·LOCAL 병합 판정을 전부 돌리고 쓰기/복사/병합만
+생략한다. 컴파일러가 emit하는 경고(dangling_file_ref, unknown_skill_files_dir,
+dangling_skill_file_ref, missing_mcp_server_def, unmergeable_settings_json,
+unmergeable_claude_md, rule_body_frontmatter)는 Validator에 나오지 않아 실제
+컴파일 전에는 보이지 않았다 — MCP `compile_check`가 이 경로로 그것을 보여준다.
 """
 from __future__ import annotations
 
@@ -107,12 +114,15 @@ _SKILL_FILE_REF_BARE_RE = re.compile(r"\$\{CLAUDE_SKILL_DIR\}/([^\s)\]`\"'<>,;]+
 class CompileResult:
     """컴파일 결과.
 
-    written: 실제로 쓴 파일 경로 목록.
+    written: 실제로 쓴 파일 경로 목록. **dry_run이면 "쓰였을" 경로**다
+        (파일은 하나도 만들어지지 않는다).
     errors: 컴파일을 거부시킨 에러(검증 에러 + 컴파일 게이트 에러). 비어 있으면 성공.
     warnings: 통과한 경고(결과에 동봉).
     skipped: (이유, 컴포넌트 이름) 목록 — 거부 시 쓰지 못한 항목 등.
-    copied_files: files_dir 트리 복사로 실제 복사된 파일 경로 목록 (WP-FR).
-        files_dir 미지정이거나 실존하지 않으면 빈 리스트.
+    copied_files: 트리 복사로 실제 복사된 파일 경로 목록 — 공용 files/(WP-FR)와
+        스킬별 skill-files/(WP-SF)를 **함께** 담는다. 소스 디렉토리가
+        미지정이거나 실존하지 않으면 빈 리스트. dry_run이면 복사됐을 경로.
+    dry_run: 이 결과가 검사 전용 실행(G3)이면 True — 디스크는 불변이다.
     token_report: 산출 텍스트의 토큰 추정 리포트 (A5-lite). 게이트에 막혀
         아무것도 쓰지 않았으면 비어 있다. **표시 전용**이다 — 산출 파일
         텍스트는 이 리포트의 유무와 무관하게 불변이고, 임계 초과 고지는
@@ -124,6 +134,7 @@ class CompileResult:
     skipped: list[tuple[str, str]] = field(default_factory=list)
     copied_files: list[Path] = field(default_factory=list)
     token_report: TokenReport = field(default_factory=TokenReport)
+    dry_run: bool = False
 
     @property
     def ok(self) -> bool:
@@ -455,6 +466,7 @@ def _iter_tree_files(root: Path) -> list[Path]:
 
 def _copy_files_tree(
     src_dir: Path, dst_dir: Path, clear_first: bool = True,
+    dry_run: bool = False,
 ) -> list[Path]:
     """src_dir 트리를 dst_dir로 정렬 순회 복사한다 (결정적 로그).
 
@@ -462,14 +474,19 @@ def _copy_files_tree(
     않는다. 기존 dst_dir는 복사 전 삭제한다(스테일 잔존 방지 — out 디렉토리
     전체가 아니라 files/ 하위만 지운다).
 
+    dry_run(G3)이면 **순회만 하고 아무것도 만들거나 지우지 않는다** — 반환
+    목록은 동일하다(같은 순회 코드가 계획과 실행을 함께 만든다. 열거를 따로
+    구현하면 두 목록이 언젠가 어긋난다).
+
     반환: 실제로 복사된 파일의 dst_dir 기준 경로 목록 (정렬 순서, 디렉토리
     자체는 포함하지 않음).
     """
     # clear_first=False(LOCAL — out_dir가 사용자의 작업 폴더)는 기존 dst_dir를
     # 지우지 않고 덮어쓰기 복사만 한다. 사용자 파일 삭제 위험 > 스테일 잔존.
-    if clear_first and dst_dir.exists():
-        shutil.rmtree(dst_dir)
-    dst_dir.mkdir(parents=True, exist_ok=True)
+    if not dry_run:
+        if clear_first and dst_dir.exists():
+            shutil.rmtree(dst_dir)
+        dst_dir.mkdir(parents=True, exist_ok=True)
 
     copied: list[Path] = []
     for root, dirnames, filenames in os.walk(src_dir, followlinks=False):
@@ -483,15 +500,17 @@ def _copy_files_tree(
         dirnames[:] = sorted(
             d for d in dirnames if not _is_link_like(root_path / d)
         )
-        for dirname in dirnames:
-            (dst_dir / rel_root / dirname).mkdir(parents=True, exist_ok=True)
+        if not dry_run:
+            for dirname in dirnames:
+                (dst_dir / rel_root / dirname).mkdir(parents=True, exist_ok=True)
         for filename in sorted(filenames):
             src_file = root_path / filename
             if _is_link_like(src_file):
                 continue
             dst_file = dst_dir / rel_root / filename
-            dst_file.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(src_file, dst_file)
+            if not dry_run:
+                dst_file.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(src_file, dst_file)
             copied.append(dst_file)
     return copied
 
@@ -603,15 +622,31 @@ def _write_text(path: Path, text: str) -> None:
 
 
 def compile_project(
-    project, out_dir: Path | str, files_dir: Path | str | None = None,
+    project, out_dir: Path | str | None = None,
+    files_dir: Path | str | None = None,
     extra_server_defs: dict[str, dict] | None = None,
     skill_files_dir: Path | str | None = None,
     resolved_hooks: dict | None = None,
+    dry_run: bool = False,
 ) -> CompileResult:
     """프로젝트를 out_dir에 컴파일한다.
 
     게이트: 검증 에러 + 게이트 강화 에러(이름 규약·경로 충돌)가 1건이라도 있으면
     파일을 쓰지 않고 거부한다. 경고만 있으면 통과시키고 warnings에 동봉한다.
+
+    dry_run(G3, 선택): **파일을 하나도 쓰지 않는다** — 산출 텍스트 생성·계획
+    수립·경로 스캔·LOCAL 병합 판정은 전부 그대로 돌리고 쓰기·복사·병합만
+    생략한다. 그래서 컴파일러가 emit하는 경고(`dangling_file_ref`/
+    `unknown_skill_files_dir`/`dangling_skill_file_ref`/`missing_mcp_server_def`/
+    `unmergeable_settings_json`/`unmergeable_claude_md`/`rule_body_frontmatter`)를
+    실제 컴파일과 같은 판정으로 미리 볼 수 있다 — 이 경고들은
+    `Validator.validate_project`에 나오지 않아 컴파일 전에는 보이지 않았다.
+    `written`/`copied_files`는 "쓰였을/복사됐을" 경로 목록이 된다.
+
+    **out_dir는 dry_run일 때만 생략할 수 있다.** 생략하면 계획 경로가 상대
+    경로가 되고, 대상 폴더를 읽어야 판정하는 경고(`unmergeable_settings_json`/
+    `unmergeable_claude_md`)는 판정 자체를 건너뛴다 — files_dir/skill_files_dir
+    미지정 시 그 스캔을 생략하는 것과 같은 None 규약이다.
 
     files_dir(WP-FR, 선택): 실존 디렉토리면 <out_dir>/files/로 트리 복사하고
     (게이트 통과 시에만), 스킬/에이전트 body의 파일 참조 토큰을 스캔해 실존하지
@@ -637,7 +672,15 @@ def compile_project(
     이 값이 주어지면 `dangling_hook_ref` 판정도 그 이름 집합을 기준으로 한다.
     생략 시 `project.hook_library`만 본다 — 기존 산출 완전 불변(하위 호환).
     """
-    out_dir = Path(out_dir)
+    if out_dir is None:
+        if not dry_run:
+            raise ValueError(
+                "out_dir가 필요합니다 — 생략은 dry_run=True(검사 전용)에서만 "
+                "가능합니다."
+            )
+        out_root: Path | None = None
+    else:
+        out_root = Path(out_dir)
     skill_files_path = Path(skill_files_dir) if skill_files_dir is not None else None
     known_hook_names = (
         frozenset(resolved_hooks) if resolved_hooks is not None else None
@@ -655,19 +698,24 @@ def compile_project(
     errors = errors + gate_errors
     warnings = warnings + plan_warnings
 
-    result = CompileResult(errors=errors, warnings=warnings)
+    result = CompileResult(errors=errors, warnings=warnings, dry_run=dry_run)
     if errors:
         # 거부 — 무엇이 막혔는지 skipped에 기록 (산출 계획 전체)
         for item in plan:
             result.skipped.append(("compile_gate_error", item.label))
         return result
 
+    def _out(rel) -> Path:
+        """계획 상대 경로 → 실제 경로. out_dir 생략(dry_run)이면 상대 경로 그대로."""
+        return (out_root / rel) if out_root is not None else Path(rel)
+
     for item in plan:
         if item.kind == "skill_file" and item.src_path is not None:
             # 스킬별 동봉 파일 (WP-SF) — 텍스트 산출이 아니라 복사다.
-            dst = out_dir / item.rel_path
-            dst.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(item.src_path, dst)
+            dst = _out(item.rel_path)
+            if not dry_run:
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(item.src_path, dst)
             result.copied_files.append(dst)
             continue
         if item.kind == "skill":
@@ -695,8 +743,9 @@ def compile_project(
         if item.kind in ("skill", "agent"):
             text = expand_root_token(text, project)
 
-        path = out_dir / item.rel_path
-        _write_text(path, text)
+        path = _out(item.rel_path)
+        if not dry_run:
+            _write_text(path, text)
         result.written.append(path)
         # 토큰 리포트(A5-lite) — **확장 후 최종 텍스트**를 잰다. 실제로 컨텍스트에
         # 실리는 것이 그것이고, ${ROOT} 확장으로 길이가 달라진다.
@@ -708,10 +757,14 @@ def compile_project(
             # LOCAL의 out_dir는 사용자의 작업 폴더다 — 기존 <out>/files/를 지우면
             # 사용자 파일을 지울 수 있으므로 덮어쓰기 복사만 한다(스테일 잔존은
             # 감수). MARKETPLACE 스테이징 디렉토리는 종전대로 삭제 후 복사.
-            result.copied_files = _copy_files_tree(
-                files_dir_path, out_dir / "files",
+            # 스킬별 동봉 파일(WP-SF) 복사분을 덮어쓰지 않고 이어 붙인다 —
+            # 대입이면 files/와 skill-files/를 함께 준 컴파일에서 앞의 목록이
+            # 통째로 사라져 "복사 N개"가 거짓말이 된다.
+            result.copied_files.extend(_copy_files_tree(
+                files_dir_path, _out("files"),
                 clear_first=not _is_local_build(project),
-            )
+                dry_run=dry_run,
+            ))
         result.warnings.extend(_scan_dangling_file_refs(project, files_dir_path))
 
     if skill_files_path is not None:
@@ -721,22 +774,34 @@ def compile_project(
 
     if _is_local_build(project):
         _wire_local_install(
-            project, out_dir, result, extra_server_defs, resolved_hooks,
+            project, out_root, result, extra_server_defs, resolved_hooks,
+            dry_run=dry_run,
         )
-        _merge_claude_md_region(project, out_dir, result)
+        _merge_claude_md_region(project, out_root, result, dry_run=dry_run)
 
     return result
 
 
-def _merge_claude_md_region(project, out_dir: Path, result: CompileResult) -> None:
+def _merge_claude_md_region(
+    project, out_dir: Path | None, result: CompileResult, dry_run: bool = False,
+) -> None:
     """`.claude/CLAUDE.md`의 이 플러그인 구역을 갱신한다 (WP-WD/D9).
 
     산출 계획(`_plan_outputs`)에 넣지 않는 이유: 이 파일은 **쓰기 전에 읽어야**
     하고 결과가 기존 내용에 달려 있어, "경로 하나 = 산출 하나"라는 계획의 전제와
     맞지 않는다. `.mcp.json`·`settings.local.json` 병합이 `_wire_local_install`에
     따로 있는 것과 같은 이유다.
+
+    out_dir가 None이면(dry_run에서 대상 폴더를 지정하지 않은 경우) 기존 파일을
+    읽을 수 없어 병합 판정 자체가 불가능하다 — 비용만 계상하고 물러난다.
     """
     doc = getattr(project, "claude_md", None)
+    if out_dir is None:
+        if doc is not None and doc.has_content():
+            result.token_report.add(
+                ".claude/CLAUDE.md (plugin section)", "claude_md", doc.body or "",
+            )
+        return
     path = out_dir / ".claude" / "CLAUDE.md"
     existing: str | None = None
     if path.is_file():
@@ -767,7 +832,8 @@ def _merge_claude_md_region(project, out_dir: Path, result: CompileResult) -> No
         return
     if text is None:
         return
-    _write_text(path, text)
+    if not dry_run:
+        _write_text(path, text)
     result.written.append(path)
     # 토큰 리포트에는 **이 플러그인의 구역 본문만** 싣는다(A5-lite) — 파일 전체는
     # 다른 플러그인·사용자가 쓴 내용까지 포함해서, 이 컴파일이 만든 비용이 아니다.
@@ -782,9 +848,10 @@ def _merge_claude_md_region(project, out_dir: Path, result: CompileResult) -> No
 
 
 def _wire_local_install(
-    project, out_dir: Path, result: CompileResult,
+    project, out_dir: Path | None, result: CompileResult,
     extra_server_defs: dict[str, dict] | None = None,
     resolved_hooks: dict | None = None,
+    dry_run: bool = False,
 ) -> None:
     """LOCAL 빌드의 설치 배선 — 대상 작업 폴더의 설정 파일을 생성/수정한다.
 
@@ -795,6 +862,10 @@ def _wire_local_install(
 
     정의 조회는 프로젝트(`mcp_server_defs`)가 우선이고, 없으면 호출 환경이
     준 `extra_server_defs`(예: Daedalus 앱 자신의 daedalus 서버)로 채운다.
+
+    `missing_mcp_server_def` 판정은 **대상 폴더와 무관**하므로 out_dir가
+    None이어도(dry_run) 그대로 낸다 — 폴더를 읽어야 하는 것은 병합
+    (`unmergeable_settings_json`)뿐이고 그쪽만 건너뛴다.
     """
     from daedalus.compiler.wiring import wire_workspace
 
@@ -816,10 +887,13 @@ def _wire_local_install(
                 subject=project,
             ))
 
+    if out_dir is None:
+        return  # 대상 폴더를 모르면 병합 판정 자체가 불가능하다
+
     hooks_text = compile_hooks_json(project, resolved_hooks)
     hooks_map = json.loads(hooks_text).get("hooks", {}) if hooks_text else None
 
-    wired = wire_workspace(out_dir, entries, hooks_map)
+    wired = wire_workspace(out_dir, entries, hooks_map, dry_run=dry_run)
     result.written.extend(wired.written)
     for path in wired.unmergeable:
         result.warnings.append(ValidationError(

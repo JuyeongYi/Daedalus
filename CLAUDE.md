@@ -143,10 +143,12 @@ daedalus/
 │   │   ├── agent.py        #   에이전트 .md 조립 — 프론트매터(skills 합류·LOCAL hooks/mcpServers)·호출 계약·출구 + compile_agent
 │   │   ├── hooks.py        #   compile_hooks_json/compile_hook_scripts (진행 상태 합성 훅 포함)
 │   │   └── manifest.py     #   compile_plugin_manifest/compile_schemas_json + 경로 변수 확장(expand_root_token)
-│   ├── project_compiler.py # compile_project(project, out_dir, files_dir=None, resolved_hooks=None) → CompileResult (검증 게이트 + 파일 쓰기)
+│   ├── project_compiler.py # compile_project(project, out_dir=None, files_dir=None, resolved_hooks=None, dry_run=False) → CompileResult
+│   │                       #   (검증 게이트 + 파일 쓰기)
 │   │                       # files_dir(WP-FR, 선택): 실존 디렉토리면 <out>/files/ 정렬 순회 복사(_copy_files_tree, 심볼릭 링크 미추종) +
 │   │                       #   dangling_file_ref 스캔(_scan_dangling_file_refs). 생략 시 기존 산출 완전 불변(하위 호환).
 │   │                       # LOCAL 빌드는 컴파일이 곧 설치(WP-MW) — .claude/ 반입 + _wire_local_install(컴파일 정책 15번 참조).
+│   │                       # dry_run(G3): 파일을 하나도 쓰지 않는 예행 — 컴파일 정책 18번 참조.
 │   ├── workspace.py        # merge_claude_md(existing, plugin, title, body) → (새 내용|None, 경고|None) (WP-WD) — .claude/CLAUDE.md의
 │                           #   `<!-- daedalus:<플러그인> open/close -->` 구역만 갈아끼운다. 구역 밖 불가침·플러그인 여럿 공존·재빌드
 │                           #   멱등. 손상된 표식(close 없음/open 중복/순서 뒤바뀜)은 **건드리지 않고** 경고만 낸다 — 구역의 끝을
@@ -155,9 +157,10 @@ daedalus/
 │                           #   앞에 붙이고 비면 본문만(필드 도입 전과 바이트 동일). 원소는 항상 따옴표(_quoted_flow_list — glob의
 │                           #   중간 `[`/`,`는 YAML flow 지시자라 무따옴표면 스칼라가 끊긴다). has_manual_frontmatter(body)는
 │                           #   본문 수기 프론트매터 충돌 판정(rule_body_frontmatter 경고) — 판정만 하고 본문은 손대지 않는다.
-│   ├── wiring.py           # wire_workspace(target, server_entries, hooks_map) → WireResult (WP-MW) — 작업 폴더의 .mcp.json
-│   │                       #   mcpServers + .claude/settings.local.json enabledMcpjsonServers/hooks 병합. 추가/갱신만·멱등·
+│   ├── wiring.py           # wire_workspace(target, server_entries, hooks_map, dry_run=False) → WireResult (WP-MW) — 작업 폴더의
+│   │                       #   .mcp.json mcpServers + .claude/settings.local.json enabledMcpjsonServers/hooks 병합. 추가/갱신만·멱등·
 │   │                       #   깨진 JSON 불가침. LOCAL 컴파일과 앱 "Claude Code 실행" 메뉴가 공유하는 단일 진실. 순수 stdlib.
+│   │                       #   dry_run(G3): 읽고 병합을 메모리에서 계산하되 **쓰지 않는다** — written/unmergeable 판정은 동일.
 │   └── token_report.py     # 토큰 비용 리포트(A5-lite) — estimate_tokens(문자수 휴리스틱)/TokenEstimate/TokenReport/
 │                           #   DEFAULT_FILE_TOKEN_THRESHOLD/CONTEXT_KINDS. **표시 전용**이다: 산출 텍스트 불변,
 │                           #   임계 초과는 검증 규칙이 아니라 정보성 1줄(notice()). 순수 stdlib(외부 토크나이저 금지).
@@ -175,9 +178,11 @@ daedalus/
 │   │   │                   #   기존 `from daedalus.mcp.tools import DaedalusTools` 무수정 동작(test_tools_facade.py가 고정)
 │   │   ├── _base.py        #   _BaseTools — 공통 헬퍼(_project/_vm/_find_component/_find_state_vm/_scope/_reject_duplicate_name
 │   │   │                   #     + _hook_summary — 훅 **개요**. QueryTools와 HookTools가 함께 쓰므로 소유가 여기다)
-│   │   ├── query.py        #   조회(get_project/get_selection/get_component/validate_project/compile_preview) + undo 스택(undo/redo/get_history).
+│   │   ├── query.py        #   조회(get_project/get_selection/get_component/validate_project/compile_preview/compile_check)
+│   │   │                   #     + undo 스택(undo/redo/get_history).
 │   │   │                   #     get_project의 hook_library는 **개요만**(전문은 get_hook), 전이 요약은 guard 서술(컴파일러
-│   │   │                   #     _describe_guard 재사용)과 waypoint_count를 포함한다
+│   │   │                   #     _describe_guard 재사용)과 waypoint_count를 포함한다.
+│   │   │                   #     compile_check(G3)는 파일을 쓰지 않는 컴파일 예행 — 컴파일러 emit 경고 7종을 미리 본다
 │   │   ├── session.py      #   세션(save_project/open_project/export_package/list_recent_projects)
 │   │   ├── canvas.py       #   캔버스 구조(place/create_state/move/rename/delete/connect/disconnect/set_transition/참조 노드)
 │   │   ├── ports.py        #   포트(set_transfer_on/add_agent_call/remove_agent_call)
@@ -253,8 +258,11 @@ daedalus/
     │                       #   project_has_content("새 프로젝트" 확인과 MCP open_project의 저장 강제가 공유하는 단일 판정).
     │                       #   템플릿 로드 후 _mark_dirty()(잃을 내용이 있고 저장 경로가 없다), 실패는 상태바 보고 + 현 프로젝트 보존.
     ├── compile_actions.py  # CompileActions(window) — Ctrl+B 컴파일 (WP-RF-3e에서 추출).
-    │                       #   compile_project_dialog: 출력 폴더 선택(LOCAL이면 "설치 대상 작업 폴더" — WP-MW) + _current_path 기준
-    │                       #   files_dir/skill_files_dir를 compile_project에 전달(미저장이면 None). 에러면 window._show_validation_dock().
+    │                       #   compile_project_dialog: 출력 폴더 선택(LOCAL이면 "설치 대상 작업 폴더" — WP-MW) 후 compile_project 실행.
+    │                       #     에러면 window._show_validation_dock().
+    │                       #   compile_inputs()(G3): compile_project에 넘길 **환경 주입 인자의 단일 진실** — _current_path 기준
+    │                       #     files_dir/skill_files_dir(미저장이면 None) + extra_server_defs + resolved_hooks. Ctrl+B와 MCP
+    │                       #     compile_check(dry-run)가 **같은 것**을 주입해야 같은 경고가 나온다(window.compile_inputs 한 줄 위임).
     │                       #   known_server_defs: 앱이 스스로 아는 daedalus 서버 정의(서버 미기동이면 기본 포트) — extra_server_defs로 주입.
     │                       #   show_token_notice(result)(A5-lite): 상태바에 합계(`≈N토큰`)를 **항상** 붙이고, 파일당 임계를 넘은
     │                       #     산출이 있을 때만 QMessageBox 안내(검증 패널을 쓰지 않는다 — 고칠 의무가 있는 경고와 섞이면 안 된다).
@@ -969,6 +977,14 @@ daedalus-bb --schemas <경로> [--state-dir DIR] <command>
 - **쓸 수 있으면 읽을 수도 있어야 한다 (Q2).** `set_transition(guard=)`으로 가드를 쓸 수는 있는데
   어떤 도구로도 읽을 수 없던 갭을 `get_project`의 전이 요약에 `guard`(컴파일러 `_describe_guard`
   재사용 — 화면·산출·조회가 같은 문구를 말한다)와 `waypoint_count`로 메웠다.
+- **컴파일 dry-run `compile_check(out_dir=None)` (G3).** `validate_project`는 모델 검증만 본다 —
+  컴파일러가 emit하는 경고 7종(`dangling_file_ref`/`unknown_skill_files_dir`/
+  `dangling_skill_file_ref`/`missing_mcp_server_def`/`unmergeable_settings_json`/
+  `unmergeable_claude_md`/`rule_body_frontmatter`)은 실제 컴파일(GUI Ctrl+B)에서만 나와,
+  MCP-우선 저작에서는 영영 보이지 않았다. 이 도구가 `compile_project(..., dry_run=True)`로
+  **파일을 하나도 쓰지 않고** 게이트 판정 + 경고 전체 + 토큰 요약을 돌려준다(컴파일 정책 18번).
+  주입은 Ctrl+B와 같은 `MainWindow.compile_inputs()`를 쓰므로 결과가 실제 컴파일과 일치한다.
+  파일 쓰기가 없으니 **undo 대상이 아니다**(`save_project` 관례).
 - **전송이 HTTP인 이유:** stdio는 **클라이언트가 서버 프로세스를 실행하는** 모델이라 이미 떠 있는
   GUI에 나중에 붙을 수 없다. Streamable HTTP면 앱이 먼저 켜져 서버를 열어두고 CC가 원할 때
   접속하는 순서가 그대로 성립한다. 바인딩은 항상 `127.0.0.1` — 로컬 전용이므로 TLS를 얹지 않는다.
@@ -1570,8 +1586,9 @@ dataclass(값 동등성, unhashable) 유지 — 컬렉션 멤버십에는 list/`
 
 ## 컴파일러 (compiler/)
 
-`compile_project(project, out_dir, files_dir=None, resolved_hooks=None) → CompileResult`. 순수 stdlib(Qt 무관, import 순수성 테스트로 고정).
+`compile_project(project, out_dir=None, files_dir=None, resolved_hooks=None, dry_run=False) → CompileResult`. 순수 stdlib(Qt 무관, import 순수성 테스트로 고정).
 `resolved_hooks`(A1)는 호출자가 주입하는 이름→HookDef 사전 — 컴파일러는 파일시스템에서 훅을 읽지 않는다("전역 훅 2단 스코프" 섹션 참조).
+`dry_run`(G3)은 파일을 하나도 쓰지 않는 예행 — 컴파일 정책 18번 참조(`out_dir`는 이때만 생략 가능).
 
 **출력 구조 (CC 플러그인 규약, `project.build_target == MARKETPLACE` — 기본):**
 - `<out>/.claude-plugin/plugin.json` — 플러그인 매니페스트 (MARKETPLACE에서 항상 생성 — 이게 없으면 산출 디렉토리를 CC 플러그인으로 설치할 수 없다)
@@ -1691,7 +1708,34 @@ dataclass(값 동등성, unhashable) 유지 — 컬렉션 멤버십에는 list/`
     - `.claude/CLAUDE.md`는 **이 플러그인의 구역 본문만** 계상한다(파일 전체는 남이 쓴 내용까지 포함해
       이 컴파일이 만든 비용이 아니다). 복사만 하는 `files/`·`skill-files/`는 대상 아님.
     - 표시: 컴파일 상태바에 합계 + 임계 초과 시 안내창(`CompileActions.show_token_notice`), MCP
-      `compile_preview`가 `chars`/`tokens`/`token_threshold`/`token_notice`.
+      `compile_preview`가 `chars`/`tokens`/`token_threshold`/`token_notice`, MCP `compile_check`가
+      리포트 요약(`tokens.total_tokens`/`over_threshold`/`notice`).
+
+18. **컴파일 dry-run (G3)**: `compile_project(..., dry_run=True)`는 **파일을 하나도 쓰지 않는다** —
+    산출 텍스트 생성·계획 수립(`_plan_outputs`)·게이트 판정·참조 스캔·LOCAL 병합 판정은 전부
+    그대로 돌리고 **쓰기·복사·JSON 병합만** 생략한다. `CompileResult.dry_run=True`이고
+    `written`/`copied_files`는 "쓰였을/복사됐을" 경로다.
+    - **왜 필요한가:** 컴파일러가 emit하는 경고 7종(`dangling_file_ref` /
+      `unknown_skill_files_dir` / `dangling_skill_file_ref` / `missing_mcp_server_def` /
+      `unmergeable_settings_json` / `unmergeable_claude_md` / `rule_body_frontmatter`)은
+      `Validator.validate_project`에 나오지 않아 **실제 컴파일에서만** 드러났다 — MCP로만
+      저작하면 GUI Ctrl+B를 누르기 전까지 영영 보이지 않는다(MCP 패리티 원칙 위반).
+    - **LOCAL 병합류는 읽되 절대 쓰지 않는다.** `wire_workspace(..., dry_run=True)`와
+      `_merge_claude_md_region(..., dry_run=True)`는 기존 파일을 읽어 병합을 메모리에서
+      계산하므로 `unmergeable_*` 판정이 실제 배선과 같고, 대상 작업 폴더는 불변이다
+      (`tests/compiler/test_dry_run.py`가 스냅샷으로 고정).
+    - **`out_dir`는 dry-run일 때만 생략할 수 있다**(실제 컴파일에서 생략하면 `ValueError`).
+      생략 시 계획 경로가 상대 경로가 되고, 대상 폴더를 읽어야 판정하는 경고 2종
+      (`unmergeable_settings_json`/`unmergeable_claude_md`)만 건너뛴다 — files_dir/
+      skill_files_dir 미지정 시 그 스캔을 생략하는 것과 같은 None 규약이다.
+      `missing_mcp_server_def`는 폴더와 무관하므로 그대로 나온다.
+    - **주입은 Ctrl+B와 공유한다** — `CompileActions.compile_inputs()`(files_dir/
+      skill_files_dir/extra_server_defs/resolved_hooks의 단일 진실, `MainWindow.compile_inputs`
+      한 줄 위임)를 컴파일 다이얼로그와 MCP `compile_check`가 함께 쓴다. 한쪽만 고치면
+      "검사는 통과했는데 컴파일하면 경고가 뜬다"가 된다.
+    - `_copy_files_tree`는 dry-run에서도 **같은 순회 코드**로 목록을 만든다(열거를 따로
+      구현하면 계획과 실행이 언젠가 어긋난다). 같은 작업에서 `CompileResult.copied_files`가
+      files/ 복사분에 **대입**되어 skill-files/ 복사분을 지우던 버그도 고쳤다(이제 이어 붙인다).
 
 출력은 결정적(같은 모델 → 같은 텍스트), LF 줄바꿈, UTF-8(BOM 없음). 텍스트 생성(`compile_skill`/`compile_agent`)은 파일시스템과 분리되어 문자열 단위 테스트 가능.
 
