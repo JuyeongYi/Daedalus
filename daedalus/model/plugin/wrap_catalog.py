@@ -83,6 +83,10 @@ class CataloguedPlugin:
     #: 반면 **사용 선언(external_plugins)은 지금 할 수 있다** — plugin_id만
     #: 있으면 빌드가 dependencies/enabledPlugins를 내고, 설치는 CC가 한다.
     installed: bool = True
+    #: 미설치 플러그인의 marketplace.json 선언 `source` (설치된 것은 None).
+    #: 스킬 이름만이라도 원격에서 받아오려면 이것이 재료다 — GitHub 저장소면
+    #: `remote_skills`가 API로 `skills/` 디렉토리 목록을 훑는다.
+    source_spec: object | None = None
     #: 이 플러그인이 동봉 `.mcp.json`(또는 plugin.json `mcpServers`)으로
     #: 제공하는 MCP 서버 이름들 (이름순). 플러그인이 활성화되면 CC가 함께
     #: 로드하므로 — 에이전트 `mcp_servers` 필드 후보가 되고, LOCAL 컴파일의
@@ -215,23 +219,28 @@ def _marketplace_name(folder_dir: Path) -> str:
     return str(mkt.get("name", "") or "") if mkt else ""
 
 
-def _declared_plugins(manifest: dict | None) -> list[tuple[str, str]]:
-    """마켓플레이스가 **선언**한 플러그인 — [(이름, 설명)] (선언 순서).
+def _declared_plugins(manifest: dict | None) -> list[tuple[str, str, object | None]]:
+    """마켓플레이스가 **선언**한 플러그인 — [(이름, 설명, source)] (선언 순서).
 
     실물이 로컬에 없어도 여기에는 있다 — 마켓은 목록을 선언하고 실물은 설치할
     때 받아오기 때문이다. 항목의 `source`는 마켓 저장소 안 상대 경로일 수도,
-    외부 git 저장소 참조일 수도 있는데 **여기서는 구분하지 않는다**: 우리가
-    쓰는 것은 이름과 설명뿐이고, 받아오는 일은 CC 몫이다.
+    외부 git 저장소 참조일 수도 있다 — **설치를 위해 해석하지는 않는다**(그건
+    CC 몫이다). 다만 스킬 이름만이라도 원격에서 받아오려면 재료가 되므로
+    그대로 실어 보낸다.
     """
     if not manifest:
         return []
-    out: list[tuple[str, str]] = []
+    out: list[tuple[str, str, object | None]] = []
     for item in manifest.get("plugins") or []:
         if not isinstance(item, dict):
             continue
         name = str(item.get("name", "") or "").strip()
         if name:
-            out.append((name, str(item.get("description", "") or "")))
+            out.append((
+                name,
+                str(item.get("description", "") or ""),
+                item.get("source"),
+            ))
     return out
 
 
@@ -320,7 +329,7 @@ def discover_plugins(folder: MarketplaceFolder) -> list[CataloguedPlugin]:
 
     # 마켓이 **선언**했지만 로컬에 실물이 없는 플러그인 — 이름·설명만 싣는다
     # (스킬은 파일이 없어 알 수 없다). 사용 선언은 이것만으로 충분하다.
-    for name, description in _declared_plugins(manifest):
+    for name, description, source_spec in _declared_plugins(manifest):
         if name in seen:
             continue
         seen.add(name)
@@ -331,6 +340,7 @@ def discover_plugins(folder: MarketplaceFolder) -> list[CataloguedPlugin]:
             description=description,
             skills=[],
             installed=False,
+            source_spec=source_spec,
         ))
 
     plugins.sort(key=lambda p: p.name)

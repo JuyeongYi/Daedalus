@@ -192,3 +192,82 @@ def test_source_with_half_coordinates_rejected(tools, window):
     with pytest.raises(ValueError, match="함께"):
         tools.create_skill("s", kind="wrapped", source="other@mkt:x", x=10)
     assert window._project.skills == []
+
+
+# --- 미설치 플러그인 (마켓이 선언만 한 것) ---
+
+
+def _declare_marketplace(root, name, declared):
+    import json as _json
+    meta = root / ".claude-plugin"
+    meta.mkdir(parents=True, exist_ok=True)
+    (meta / "marketplace.json").write_text(
+        _json.dumps({"name": name, "plugins": declared}), encoding="utf-8"
+    )
+
+
+def test_uninstalled_hidden_by_default_but_counted(tools, marketplace):
+    _declare_marketplace(marketplace, "mkt", [
+        {"name": "alpha"},
+        {"name": "remote-only", "description": "아직 안 받음"},
+    ])
+    tools.add_marketplace_folder(str(marketplace), "mkt")
+
+    out = tools.list_wrappable_skills()
+    names = [p["name"] for p in out["marketplace_folders"][0]["plugins"]]
+    assert names == ["alpha"]  # 설치된 것만
+    assert out["uninstalled_count"] == 1
+    assert "include_uninstalled" in out["uninstalled_note"]
+
+    full = tools.list_wrappable_skills(include_uninstalled=True)
+    plugins = {p["name"]: p for p in full["marketplace_folders"][0]["plugins"]}
+    assert set(plugins) == {"alpha", "remote-only"}
+    # 실물을 받기 전에는 스킬을 알 수 없다
+    assert plugins["remote-only"]["installed"] is False
+    assert plugins["remote-only"]["skills"] == []
+
+
+def test_uninstalled_plugin_can_be_declared(tools, window, marketplace):
+    """미설치도 **사용 선언은 된다** — 빌드가 의존성을 배선하고 설치는 CC가 한다."""
+    _declare_marketplace(marketplace, "mkt", [{"name": "remote-only"}])
+    tools.add_marketplace_folder(str(marketplace), "mkt")
+
+    tools.set_external_plugins(["remote-only@mkt"])
+    assert window._project.external_plugins == ["remote-only@mkt"]
+    full = tools.list_wrappable_skills(include_uninstalled=True)
+    plugins = {p["name"]: p for p in full["marketplace_folders"][0]["plugins"]}
+    assert plugins["remote-only"]["used"] is True
+
+
+def test_fetch_plugin_skills_uses_remote_for_uninstalled(tools, marketplace, monkeypatch):
+    """지목했을 때만 원격 조회 — 테스트는 네트워크에 나가지 않는다."""
+    from daedalus.model.plugin import remote_skills
+
+    _declare_marketplace(marketplace, "mkt", [{
+        "name": "remote-only",
+        "source": {"source": "git-subdir", "url": "https://github.com/o/r.git",
+                   "path": "plugins/x", "sha": "abc"},
+    }])
+    tools.add_marketplace_folder(str(marketplace), "mkt")
+    monkeypatch.setattr(remote_skills, "fetch_skill_names", lambda ref: ["review"])
+    monkeypatch.setattr(
+        remote_skills, "cache_dir", lambda home_dir=None: marketplace / "_cache",
+    )
+
+    out = tools.fetch_plugin_skills("remote-only@mkt")
+    assert out["skills"] == ["review"]
+    # 받은 이름은 그대로 랩핑 source가 된다
+    assert out["sources"] == ["remote-only@mkt:review"]
+
+
+def test_fetch_plugin_skills_reads_local_when_installed(tools, marketplace):
+    tools.add_marketplace_folder(str(marketplace), "mkt")
+    out = tools.fetch_plugin_skills("alpha@mkt")
+    assert out["installed"] is True
+    assert out["skills"] == ["lint", "review"]
+
+
+def test_fetch_plugin_skills_unknown_id_rejected(tools, marketplace):
+    tools.add_marketplace_folder(str(marketplace), "mkt")
+    with pytest.raises(ValueError, match="카탈로그에"):
+        tools.fetch_plugin_skills("nope@mkt")

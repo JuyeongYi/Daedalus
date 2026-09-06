@@ -35,6 +35,9 @@ _ROLE_KIND = Qt.ItemDataRole.UserRole + 1      # "marketplace" | "plugin" | "ski
 _ROLE_SOURCE = Qt.ItemDataRole.UserRole + 2    # skill 행: source 문자열
 _ROLE_FOLDER_PATH = Qt.ItemDataRole.UserRole + 3  # marketplace 행: 등록 경로
 _ROLE_PLUGIN_ID = Qt.ItemDataRole.UserRole + 4    # plugin 행: 설치 식별자
+#: 미설치 plugin 행: marketplace.json 선언 source(원격 조회 재료). 설치된
+#: 플러그인은 None — 스킬이 이미 로컬에 있어 조회할 이유가 없다.
+_ROLE_SOURCE_SPEC = Qt.ItemDataRole.UserRole + 5
 
 _COLOR_WRAPPED = QColor("#448844")
 _COLOR_MUTED = QColor("#888888")
@@ -57,6 +60,9 @@ class WrapCatalogDialog(QDialog):
     def __init__(self, window, parent=None) -> None:
         super().__init__(parent or window)
         self._window = window
+        # 원격에서 받아온 스킬 이름(plugin_id → [이름]) — 창이 열려 있는 동안의
+        # 표시용이다. 영속 캐시는 remote_skills가 홈에 따로 둔다.
+        self._remote_skills: dict[str, list[str]] = {}
         self.setWindowTitle("외부 플러그인 카탈로그")
         self.resize(560, 480)
 
@@ -90,6 +96,17 @@ class WrapCatalogDialog(QDialog):
         refresh_btn = QPushButton("새로고침")
         refresh_btn.clicked.connect(self.refresh)
         btn_row.addWidget(refresh_btn)
+
+        # 미설치 플러그인의 스킬 이름만 원격에서 받아온다(WP-WR) — **버튼을
+        # 누를 때만 인터넷 요청이 나간다**. 목록을 여는 것만으로는 절대 나가지
+        # 않는다(수백 개를 일괄 조회하면 API 한도에 걸린다).
+        self._fetch_btn = QPushButton("스킬 목록 받아오기")
+        self._fetch_btn.setToolTip(
+            "선택한 **미설치** 플러그인의 스킬 이름을 GitHub에서 조회한다"
+            "(클론 없이 디렉토리 목록 한 번). 설명은 설치 후에 보인다."
+        )
+        self._fetch_btn.clicked.connect(self.fetch_selected_skills)
+        btn_row.addWidget(self._fetch_btn)
 
         btn_row.addStretch()
 
@@ -166,14 +183,28 @@ class WrapCatalogDialog(QDialog):
                 if used:
                     used_count += 1
                 parent_item = group if (not plugin.installed and group is not None) else folder_item
-                plugin_item = QTreeWidgetItem([f"🧩 {plugin.name}", plugin.description])
+                # 아이콘으로 실물 유무를 가른다(사용자 요청) — 🧩 받음 / ❌ 아직
+                # 안 받음. 미설치도 체크(사용 선언)는 되므로 색만으로는 약하다.
+                icon = "🧩" if plugin.installed else "❌"
+                plugin_item = QTreeWidgetItem(
+                    [f"{icon} {plugin.name}", plugin.description]
+                )
                 if not plugin.installed:
                     plugin_item.setForeground(0, _COLOR_MUTED)
-                plugin_item.setToolTip(
-                    0, f"{plugin.plugin_id}\n{plugin.path}"
-                )
+                    plugin_item.setToolTip(
+                        0,
+                        f"{plugin.plugin_id}\n아직 받지 않음 — 사용 선언은 지금 "
+                        f"가능하고(빌드가 의존성을 배선), 스킬 목록과 랩핑은 "
+                        f"설치 후에 됩니다.",
+                    )
+                else:
+                    plugin_item.setToolTip(0, f"{plugin.plugin_id}\n{plugin.path}")
                 plugin_item.setData(0, _ROLE_KIND, "plugin")
                 plugin_item.setData(0, _ROLE_PLUGIN_ID, plugin.plugin_id)
+                plugin_item.setData(
+                    0, _ROLE_SOURCE_SPEC,
+                    None if plugin.installed else plugin.source_spec,
+                )
                 plugin_item.setFlags(
                     plugin_item.flags() | Qt.ItemFlag.ItemIsUserCheckable
                 )
@@ -181,6 +212,21 @@ class WrapCatalogDialog(QDialog):
                     0, Qt.CheckState.Checked if used else Qt.CheckState.Unchecked
                 )
                 parent_item.addChild(plugin_item)
+                if not plugin.installed:
+                    for name in self._remote_skills.get(plugin.plugin_id, []):
+                        source = f"{plugin.plugin_id}:{name}"
+                        total += 1
+                        already = source in wrapped
+                        remote_item = QTreeWidgetItem(
+                            [f"{name} ✔" if already else name, "(설명은 설치 후)"],
+                        )
+                        remote_item.setToolTip(0, source)
+                        remote_item.setData(0, _ROLE_KIND, "skill")
+                        remote_item.setData(0, _ROLE_SOURCE, source)
+                        if already:
+                            remote_item.setForeground(0, _COLOR_WRAPPED)
+                        plugin_item.addChild(remote_item)
+                    plugin_item.setExpanded(bool(self._remote_skills.get(plugin.plugin_id)))
                 for skill in plugin.skills:
                     total += 1
                     already = skill.source in wrapped
@@ -238,6 +284,46 @@ class WrapCatalogDialog(QDialog):
             script=f'set_external_plugins({new_list!r})',
         ))
         return True
+
+    def fetch_selected_skills(self) -> list[str] | None:
+        """선택한 미설치 플러그인의 스킬 이름을 원격에서 받아 트리에 채운다.
+
+        **이 메서드가 이 창에서 인터넷 요청이 나가는 유일한 지점이다.**
+        받아온 이름은 캐시되고(커밋 SHA 키), 다음 새로고침부터는 요청 없이
+        그대로 보인다.
+        """
+        from daedalus.model.plugin import remote_skills
+
+        item = self._tree.currentItem()
+        if item is None or item.data(0, _ROLE_KIND) != "plugin":
+            self._status.setText("스킬을 받아올 플러그인 행을 먼저 선택하세요.")
+            return None
+        plugin_id = item.data(0, _ROLE_PLUGIN_ID)
+        spec = item.data(0, _ROLE_SOURCE_SPEC)
+        if spec is None:
+            self._status.setText(
+                f"'{plugin_id}'는 이미 설치돼 있어 스킬이 목록에 보입니다."
+            )
+            return None
+        self._status.setText(f"'{plugin_id}' 스킬 목록을 받아오는 중…")
+        try:
+            names = remote_skills.skill_names(plugin_id, spec)
+        except remote_skills.RemoteSkillsError as exc:
+            self._status.setText(f"받아오지 못했습니다 — {exc}")
+            return None
+        if names is None:
+            self._status.setText(
+                f"'{plugin_id}'는 GitHub 저장소가 아니어서 원격 조회를 "
+                "지원하지 않습니다 — 설치 후 확인하세요."
+            )
+            return None
+        self._remote_skills[plugin_id] = names
+        self.refresh()
+        self._status.setText(
+            f"'{plugin_id}' 스킬 {len(names)}개를 받아왔습니다 — 이름만입니다"
+            "(설명은 설치 후). 캔버스로 끌어 워크플로 단계로 감쌀 수 있습니다."
+        )
+        return names
 
     # ─────────────────────────── 마켓플레이스 폴더 등록 ───────────────────────────
 

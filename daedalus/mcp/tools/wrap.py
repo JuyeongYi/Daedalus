@@ -121,6 +121,77 @@ class WrapTools(_BaseTools):
             )
         return out
 
+    def fetch_plugin_skills(
+        self, plugin_id: str, refresh: bool = False
+    ) -> dict[str, Any]:
+        """**미설치** 플러그인의 스킬 이름을 원격에서 받아온다 (WP-WR).
+
+        마켓은 플러그인을 선언만 하고 실물은 설치할 때 받아오므로, 받기 전에는
+        스킬 목록을 알 수 없다 — 그러면 랩핑(WrappedSkill)을 만들 수 없다.
+        이 도구는 저장소를 클론하지 않고 **GitHub API로 `skills/` 디렉토리
+        목록 한 번**만 조회한다(디렉토리 이름이 곧 스킬 이름). 설명은 받지
+        않는다 — 스킬마다 파일을 또 받아야 하고 랩핑에 필요한 것은 이름이다.
+
+        **여기서만 인터넷 요청이 나간다**(사용자 확정) — 카탈로그 조회·새로고침은
+        절대 나가지 않는다. 결과는 커밋 SHA까지 포함한 키로
+        `~/.daedalus/cache/remote-skills/`에 캐시되므로 같은 버전을 다시 물으면
+        요청이 없다(`refresh=true`로 강제 재조회).
+
+        GitHub이 아닌 source(일반 git URL 등)는 API 형식이 제각각이라
+        `skills: null`로 돌려준다 — 억지로 추측하는 것보다 모른다고 말하는
+        편이 낫다. 이미 설치된 플러그인은 `list_wrappable_skills`가 로컬에서
+        읽으므로 여기 올 필요가 없다.
+
+        받은 이름으로 `create_skill(kind="wrapped", source="<plugin_id>:<스킬>")`
+        를 만들 수 있다.
+        """
+        from daedalus.model.plugin import remote_skills, wrap_catalog
+
+        target = None
+        for _folder, plugins in wrap_catalog.scan_catalog():
+            for p in plugins:
+                if p.plugin_id == plugin_id:
+                    target = p
+                    break
+            if target is not None:
+                break
+        if target is None:
+            raise ValueError(
+                f"카탈로그에 '{plugin_id}'가 없습니다 — list_wrappable_skills"
+                "(include_uninstalled=true)로 id를 확인하세요."
+            )
+        if target.installed:
+            return {
+                "plugin_id": plugin_id,
+                "installed": True,
+                "skills": [s.name for s in target.skills],
+                "note": "이미 설치돼 있어 로컬에서 읽었습니다(요청 없음).",
+            }
+
+        names = remote_skills.skill_names(
+            plugin_id, target.source_spec, refresh=refresh,
+        )
+        if names is None:
+            return {
+                "plugin_id": plugin_id,
+                "installed": False,
+                "skills": None,
+                "note": (
+                    "GitHub 저장소가 아니어서 원격 조회를 지원하지 않습니다 — "
+                    "설치 후 list_wrappable_skills로 확인하세요."
+                ),
+            }
+        return {
+            "plugin_id": plugin_id,
+            "installed": False,
+            "skills": names,
+            "sources": [f"{plugin_id}:{n}" for n in names],
+            "note": (
+                "이름만 받아왔습니다(설명은 설치 후) — create_skill"
+                '(kind="wrapped", source=…)에 그대로 쓸 수 있습니다.'
+            ),
+        }
+
     def list_marketplace_folders(self) -> dict[str, Any]:
         """등록된 외부 마켓플레이스 폴더 목록
         (~/.daedalus/external_marketplaces.json)."""
