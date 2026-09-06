@@ -1,4 +1,7 @@
-"""A6 검증 규칙 2종 — orphan_hook / skill_only_variable_in_body."""
+"""A6 검증 규칙 — skill_only_variable_in_body.
+
+(orphan_hook은 2026-09-07 퇴역 — 플러그인 훅은 전역이라 부착 없이도 배출된다.)
+"""
 from __future__ import annotations
 
 from daedalus.model.plugin.hook import CommandHook, HookDef, HookEvent
@@ -18,63 +21,6 @@ def _hook(name: str = "fmt") -> HookDef:
         name=name, description="", event=HookEvent.POST_TOOL_USE,
         handlers=[CommandHook(script="fmt")],
     )
-
-
-# --- orphan_hook -----------------------------------------------------------
-
-
-def test_unreferenced_project_hook_is_flagged():
-    project = PluginProject(name="p", hook_library=[_hook()])
-    assert _rules(project, "orphan_hook") == ["orphan_hook"]
-
-
-def test_hook_referenced_by_skill_is_not_flagged():
-    skill = make_procedural()
-    skill.config.hooks = {"fmt": {}}
-    project = PluginProject(name="p", skills=[skill], hook_library=[_hook()])
-    assert _rules(project, "orphan_hook") == []
-
-
-def test_hook_referenced_by_agent_is_not_flagged():
-    agent = make_agent()
-    agent.config.hooks = {"fmt": {}}
-    project = PluginProject(name="p", agents=[agent], hook_library=[_hook()])
-    assert _rules(project, "orphan_hook") == []
-
-
-def test_orphan_hook_is_warning_and_names_the_hook():
-    project = PluginProject(name="p", hook_library=[_hook("stale")])
-    err = next(
-        e for e in Validator.validate_project(project) if e.rule == "orphan_hook"
-    )
-    assert err.is_warning
-    assert err.source == "stale"
-    assert "stale" in err.message
-
-
-def test_only_unreferenced_hooks_are_flagged():
-    skill = make_procedural()
-    skill.config.hooks = {"fmt": {}}
-    project = PluginProject(
-        name="p", skills=[skill], hook_library=[_hook("fmt"), _hook("stale")],
-    )
-    errs = [
-        e for e in Validator.validate_project(project) if e.rule == "orphan_hook"
-    ]
-    assert [e.source for e in errs] == ["stale"]
-
-
-def test_global_hook_names_do_not_silence_orphan_hook():
-    """전역 훅 주입(known_hook_names)은 이 규칙의 판정을 바꾸지 않는다.
-
-    전역 훅은 **다른 프로젝트가 쓰라고** 둔 물건이라 대상이 아니고, 반대로
-    프로젝트 훅이 참조되지 않는 사실이 전역 이름 주입으로 가려져서도 안 된다.
-    """
-    project = PluginProject(name="p", hook_library=[_hook()])
-    errs = Validator.validate_project(
-        project, known_hook_names=frozenset({"fmt", "global-only"}),
-    )
-    assert [e.rule for e in errs if e.rule == "orphan_hook"] == ["orphan_hook"]
 
 
 # --- skill_only_variable_in_body -------------------------------------------

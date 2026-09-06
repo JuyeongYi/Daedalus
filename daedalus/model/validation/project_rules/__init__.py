@@ -119,7 +119,6 @@ class _ProjectRules(
         errors.extend(
             _HookRules._check_dangling_hook_refs(project, known_hook_names)
         )
-        errors.extend(_HookRules._check_orphan_hooks(project))
         # 블랙보드(blackboard) 규칙 — WP-BB
         errors.extend(_BlackboardRules._check_dangling_blackboard_refs(project))
         errors.extend(_BlackboardRules._check_orphan_blackboard_fields(project))

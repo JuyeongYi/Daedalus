@@ -68,7 +68,6 @@ WARNING_RULES: frozenset[str] = frozenset({
     "hook_matcher_without_tool_event",
     "hook_matcher_matches_nothing",
     # A6 — 훅을 만들고 부착을 잊으면 아무 일도 일어나지 않는다(프로젝트 훅만).
-    "orphan_hook",
     # 블랙보드(blackboard) 경고 — WP-BB
     "dangling_blackboard_ref",
     "orphan_blackboard_field",

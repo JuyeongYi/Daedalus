@@ -30,6 +30,30 @@ def hook_library(project, resolved_hooks: dict[str, HookDef] | None = None) -> l
     return list(resolved_hooks.values())
 
 
+def emitted_hooks(
+    project, resolved_hooks: dict[str, HookDef] | None = None
+) -> list[HookDef]:
+    """이 컴파일이 실제로 배출할 훅 (라이브러리 선언 순서 — 결정적).
+
+    **플러그인 훅은 전역이다**(공식 plugins-reference 확인 2026-09-07:
+    `hooks/hooks.json`과 plugin.json의 `hooks`는 **플러그인이 활성화되면
+    자동으로 동작**하며, 스킬·에이전트가 참조해야 켜지는 것이 아니다).
+    그래서 **프로젝트 훅 라이브러리는 참조 여부와 무관하게 전부 배출한다** —
+    예전에는 `config.hooks`로 부착된 것만 실어, 부착하지 않은 훅이 산출에서
+    말없이 사라졌다(사용자 보고: 만들어 둔 `log-tool-usage`가 빠졌다).
+
+    전역 훅(`~/.daedalus/hooks/`)은 다르다 — 다른 프로젝트가 쓰라고 둔 재사용
+    풀이므로 **명시 참조(`config.hooks`)가 있는 것만** 들어온다. 그러지 않으면
+    컴파일한 사람의 홈에 있는 훅 전부가 모든 산출에 실린다.
+    """
+    library = hook_library(project, resolved_hooks)
+    own = {
+        h.name for h in (getattr(project, "hook_library", None) or [])
+    }
+    referenced = set(_collect_referenced_hook_names(project))
+    return [h for h in library if h.name in own or h.name in referenced]
+
+
 def _collect_referenced_hook_names(project) -> list[str]:
     """프로젝트 전체 config.hooks 키(훅 이름 참조)를 첫 등장 순서·중복 제거로 수집.
 
@@ -82,14 +106,9 @@ def compile_hook_scripts(
     (`project_compiler._hook_script_name_conflicts` → `duplicate_hook_script`)가
     거부하므로, 여기 드롭은 게이트를 통과한 뒤에는 도달하지 않는다.
     """
-    library = hook_library(project, resolved_hooks)
-    referenced = set(_collect_referenced_hook_names(project))
-
     out: list[tuple[str, str]] = []
     seen: set[str] = set()
-    for hook in library:
-        if hook.name not in referenced:
-            continue
+    for hook in emitted_hooks(project, resolved_hooks):
         for filename, body in hook.script_files():
             if filename in seen:
                 continue
@@ -137,9 +156,7 @@ def compile_hooks_json(
     LF·UTF-8 보장 텍스트(끝 개행 1개). json.loads 왕복 가능.
     """
     library = hook_library(project, resolved_hooks)
-    by_name = {h.name: h for h in library}
-    referenced = _collect_referenced_hook_names(project)
-    resolved = [by_name[n] for n in referenced if n in by_name]
+    resolved = emitted_hooks(project, resolved_hooks)
 
     emit_progress = _should_emit_progress_hook(project)
 

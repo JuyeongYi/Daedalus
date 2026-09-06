@@ -1571,7 +1571,6 @@ blackboard/body_variables/build_target/workflow/workspace)을 합성한 오케�
 | `empty_hook_command` | HookDef.command 빈 값 경고 |
 | `hook_matcher_without_tool_event` | matcher가 있는데 event가 Pre/PostToolUse가 아니면 경고 (matcher는 도구 이벤트 전용) |
 | `dangling_hook_ref` | config.hooks 키가 hook_library에 없으면 경고 (스킬·에이전트 전부 검사) |
-| `orphan_hook` | hook_library의 훅을 어떤 컴포넌트도 참조하지 않으면 경고 (A6) — 훅은 `config.hooks`에 올라야 산출에 실린다(만들고 부착을 잊은 실사고). **프로젝트 훅만** 대상이고 `known_hook_names`(전역 훅) 주입에 영향받지 않는다 — 전역 훅은 다른 프로젝트가 쓰라고 둔 것이다 |
 | `hook_matcher_matches_nothing` | MCP matcher가 서버 이름까지만이면 어떤 도구와도 맞지 않으므로 경고 (정규식이 아니라 정확한 문자열 비교 — `server__.*`를 쓰라고 안내, WP-HS) |
 | `dangling_blackboard_ref` | State.reads/writes의 `"Class"`/`"Class.field"` 문자열 참조가 프로젝트 최상위 블랙보드 class_definitions에 없으면 경고 (재귀 — sub_machine/Region + 프로젝트 그래프 포함, 빈 문자열은 스킵) |
 | `orphan_blackboard_field` | 블랙보드 필드 중 어떤 상태의 reads/writes에도 등장하지 않으면 경고 (클래스 전체 참조는 그 필드 전부 커버로 간주, 프로젝트 전체에 접근 선언이 하나도 없으면 스킵 — 경고 폭주 방지) |
@@ -1608,9 +1607,28 @@ CC의 구조는 **3단**이다: 이벤트 → 그룹(matcher + 핸들러 목록)
 - **이벤트 31종**(`HookEvent`) — 스키마 `properties.hooks`의 키 전체. matcher를 받지 않는 8종은 `NO_MATCHER_EVENTS`(스키마 description이 "does not support matchers"라고 명시한 것들), 여집합이 `MATCHER_EVENTS`(구 `TOOL_MATCH_EVENTS` 별칭은 RF-1b에서 삭제). 공식 문서에 없는 2종은 `UNDOCUMENTED_EVENTS`.
 - **핸들러 5종**(`HookHandler` ABC + `CommandHook`/`PromptHook`/`AgentHook`/`HttpHook`/`McpToolHook`) — 공통 속성은 timeout / `condition`(→`if`, 예약어라 필드명이 다르다) / `status_message`(→`statusMessage`). command는 args·shell(`HookShell`)·`run_async`(→`async`)·`async_rewake`, prompt는 model·`continue_on_block`, http는 headers·`allowed_env_vars`, mcp_tool은 server·tool·`tool_input`(→`input`). `kind`가 CC `type` 값이자 다형성 태그이고, `to_json()`이 CC 스키마 객체를 만든다(빈 값 키 생략 — 결정적). `HOOK_HANDLER_TYPES`/`HOOK_HANDLER_LABELS`가 태그↔클래스↔표시문구의 단일 진실.
 - `HookDef.to_json()`은 **matcher를 그 이벤트가 받을 때만** 배출한다 — 무시되는 키를 내보내면 설정한 사람은 걸린 줄 알지만 아무 일도 일어나지 않는다.
-- `ComponentConfig.hooks: dict`는 **이름 참조**다 — 키=hook_library의 HookDef.name, 값=오버라이드(빈 dict면 정의 그대로). 선언 기본값은 `{}`가 아니라 `None`.
+- `ComponentConfig.hooks: dict`는 **이름 참조**다 — 키=hook_library의 HookDef.name, 값=오버라이드(빈 dict면 정의 그대로). 선언 기본값은 `{}`가 아니라 `None`. **이 참조는 훅을 켜는 조건이 아니다**(아래 배출 규칙) — 전역 훅을 이 프로젝트로 끌어오는 선언이고, LOCAL 에이전트 프론트매터(WP-LA)의 대상 선정이다.
 - `hook_presets.py`의 `BUILTIN_HOOK_PRESETS`는 복사해 출발점으로 쓰는 템플릿이며 `preset_copy`가 **핸들러까지 깊은 복사**한다(얕게 복사하면 한 프로젝트의 수정이 다른 쪽에 샌다). command 외 타입(prompt/agent)의 출발점도 포함한다.
-- **컴파일러**: 참조된 훅을 모아 `<out>/hooks/hooks.json` 생성(이벤트 키=HookEvent 선언 순서, 같은 이벤트 복수 훅=라이브러리 순서, 핸들러 0개인 훅은 배출 안 함). 스킬 프론트매터에는 `hooks: [이름, …]` 목록만. 프로젝트 설치 빌드의 에이전트는 프론트매터에 훅 본체가 나간다(WP-LA, 컴파일 정책 16번).
+- **컴파일러 — 무엇이 배출되나 (규격 확인 2026-09-07)**: **플러그인 훅은 전역이다**
+  (공식 plugins-reference: `hooks/hooks.json`과 plugin.json의 `hooks`는 플러그인이
+  **활성화되면 자동 동작**한다 — 컴포넌트가 참조해야 켜지는 것이 아니다). 그래서
+  배출 대상은 `emit.hooks.emitted_hooks`가 정한다: **프로젝트 `hook_library`는
+  참조 여부와 무관하게 전부**, **전역 훅(`~/.daedalus/hooks/`)은 `config.hooks`로
+  참조된 것만**(다른 프로젝트가 쓰라고 둔 재사용 풀이라 명시 참조가 있어야 한다).
+  예전에는 참조된 것만 실어 **부착을 잊은 훅이 산출에서 말없이 사라졌다**(사용자
+  보고 — 그 전제로 만든 `orphan_hook` 규칙도 함께 퇴역).
+  산출은 둘로 나뉜다 — ① 스크립트 파일 `hooks/scripts/<이름>.sh`(command 핸들러가
+  있는 훅마다, `compile_hook_scripts`) ② 등록: MARKETPLACE는 `<out>/hooks/hooks.json`,
+  LOCAL은 **파일을 만들지 않고** `.claude/settings*.json`의 `hooks` 섹션에 병합
+  (`_wire_local_install` → `wire_workspace`). 둘 다 같은 `emitted_hooks` 집합에서
+  나오므로 "파일만 있고 등록 안 된 훅"은 생기지 않는다. 이벤트 키=HookEvent 선언
+  순서, 같은 이벤트 복수 훅=라이브러리 순서, 핸들러 0개인 훅은 배출 안 함.
+  프로젝트 설치 빌드의 에이전트는 프론트매터에 훅 본체가 나간다(WP-LA, 컴파일 정책 16번).
+- **미해결 — 스킬 프론트매터 `hooks:`는 CC가 인식하지 않는다**(같은 확인:
+  SKILL.md 프론트매터 스키마에 hooks 키가 없다). 지금도 매트릭스가 그 키를
+  배출하지만 **무시된다** — 훅이 안 걸리는 것은 아니고(위 전역 배출로 동작한다)
+  그 줄이 아무 일도 하지 않을 뿐이다. 정리 방향(배출 중단 / SETTINGS 언급으로
+  이동)은 사용자 확정 대기.
 - **직렬화**: 핸들러는 `kind` 태그로 다형성 왕복. v1 파일(`handlers` 키 없이 `command`/`timeout`)은 `_migrate_v1`이 `CommandHook` 하나로 감싼다(경고 없음). 미지 `kind`는 건너뛴다 — 미래 버전 파일을 열어도 죽지 않는다.
 - **검증**: `empty_hook_command`는 핸들러 0개 또는 핸들러의 필수 값이 빈 경우다. 무엇이 필수인지는 타입마다 다르므로 `handler.summary()`가 `"("`로 시작하는지로 판정한다 — 타입이 늘어도 규칙이 따라간다. `hook_matcher_without_tool_event`는 이름만 예전 그대로이고 판정은 `MATCHER_EVENTS` 기준이다.
 - **라이프사이클 피커 (A10)**: 이벤트 콤보 옆 "라이프사이클에서 선택…" 버튼이

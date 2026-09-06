@@ -43,7 +43,9 @@ def test_hooks_json_schema_roundtrip():
 
     assert "hooks" in obj
     hooks = obj["hooks"]
-    assert set(hooks.keys()) == {"PostToolUse", "Stop"}
+    # **플러그인 훅은 전역이다** — 라이브러리의 훅은 컴포넌트 참조 여부와
+    # 무관하게 전부 실린다(guard-bash는 아무도 참조하지 않지만 배출된다).
+    assert set(hooks.keys()) == {"PreToolUse", "PostToolUse", "Stop"}
 
     # PostToolUse: matcher 있음 + timeout 있음
     post = hooks["PostToolUse"]
@@ -78,13 +80,27 @@ def test_hooks_json_event_key_order_deterministic():
     assert keys == ["PreToolUse", "PostToolUse", "Stop"]
 
 
-def test_hooks_json_none_when_no_refs():
+def test_project_hooks_emitted_without_any_reference():
+    """부착하지 않은 프로젝트 훅도 배출된다 (2026-09-07 규격 확인).
+
+    플러그인 훅은 활성화되면 자동으로 동작한다 — `config.hooks` 참조는 켜는
+    조건이 아니다. 예전에는 참조된 것만 실어, 만들어 둔 훅이 산출에서 말없이
+    사라졌다(사용자 보고).
+    """
     proj = PluginProject(name="p", hook_library=_library())  # 참조 없음
-    assert compile_hooks_json(proj) is None
+    obj = json.loads(compile_hooks_json(proj))
+    assert set(obj["hooks"].keys()) == {"PreToolUse", "PostToolUse", "Stop"}
+
+
+def test_hooks_json_none_when_library_empty():
+    """라이브러리가 비고 합성 훅도 없으면 파일을 만들지 않는다."""
+    assert compile_hooks_json(PluginProject(name="p")) is None
 
 
 def test_hooks_json_none_when_ref_dangling():
-    """라이브러리에 없는 이름만 참조하면 출력 없음(교집합 비어있음)."""
+    """라이브러리에 없는 이름만 참조하면 출력 없음(교집합 비어있음).
+
+    (dangling 참조는 `dangling_hook_ref` 경고가 따로 짚는다.)"""
     proj = PluginProject(name="p", agents=[_agent_with_hooks(["ghost"])])
     assert compile_hooks_json(proj) is None
 

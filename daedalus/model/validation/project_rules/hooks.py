@@ -121,38 +121,13 @@ class _HookRules:
                 ))
         return errors
 
-    @staticmethod
-    def _check_orphan_hooks(project) -> list[ValidationError]:
-        """orphan_hook — 프로젝트 훅 라이브러리의 훅을 어떤 컴포넌트도 참조하지
-        않으면 경고 (A6).
-
-        훅은 **만들어 두는 것만으로는 아무 일도 하지 않는다** — 스킬·에이전트의
-        `config.hooks`가 이름으로 참조해야 컴파일 산출(hooks.json / LOCAL
-        settings·에이전트 프론트매터)에 실린다. 훅을 정의하고 부착을 잊어 아무
-        일도 일어나지 않은 실사고의 재발 방지가 이 규칙이다.
-
-        **전역 훅(`~/.daedalus/hooks/`, A1)은 대상이 아니다** — 다른 프로젝트가
-        쓰라고 둔 물건이라 이 프로젝트에서 안 쓰이는 것이 정상이고, 애초에
-        검증기는 파일시스템을 읽지 않아 여기 보이지도 않는다. 그래서
-        `dangling_hook_ref`와 달리 `known_hook_names` 주입을 받지 않고
-        `project.hook_library`만 본다.
-        """
-        referenced = {name for _label, name, _subject in _HookRules._collect_hook_refs(project)}
-        errors: list[ValidationError] = []
-        for hook in getattr(project, "hook_library", []):
-            if hook.name in referenced:
-                continue
-            errors.append(ValidationError(
-                rule="orphan_hook",
-                message=(
-                    f"훅 '{hook.name}'을 참조하는 스킬·에이전트가 없습니다 — "
-                    f"훅은 컴포넌트의 hooks 목록에 올라야 산출에 실립니다. "
-                    f"쓸 곳에 부착하거나 라이브러리에서 지우세요."
-                ),
-                source=hook.name,
-                subject=hook,
-            ))
-        return errors
+    # (`orphan_hook`은 퇴역했다 — 전제가 틀렸다. 플러그인 훅은 **전역**이라
+    #  플러그인이 활성화되면 자동으로 동작하고, 컴포넌트가 `config.hooks`로
+    #  참조해야 켜지는 것이 아니다(공식 plugins-reference 확인 2026-09-07).
+    #  이제 프로젝트 훅 라이브러리는 참조 여부와 무관하게 배출되므로
+    #  "부착하지 않으면 산출에 실리지 않는다"는 안내 자체가 거짓이었다.
+    #  전역 훅을 이 프로젝트로 끌어오는 참조 역할은 `config.hooks`에 남아
+    #  있고, 없는 이름을 가리키는 것은 `dangling_hook_ref`가 계속 짚는다.)
 
     @staticmethod
     def _check_dangling_hook_refs(
