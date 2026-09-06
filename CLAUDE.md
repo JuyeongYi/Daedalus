@@ -80,6 +80,11 @@ daedalus/
 │   │                       # + rename_component(project, component, new_name) — 이름 변경 + 문자열 참조 3종 일괄 갱신 (Qt 무관)
 │   │                       # + remove_component(project, component) → list[str] — 모델 정리 (graph placement, skill_ref None화 등).
 │   │                       #   undo 가능한 삭제는 view/commands의 RemoveComponentCmd가 이것을 감싼다(A2) — 이 함수 자체는 계속 순수 모델
+│   │                       # + project_state_machines(project) — 그래프 + 각 스킬/에이전트 FSM(라벨 없음, 그래프 포함)
+│   │                       # + blackboard_rename_ref_updates(project, old, new) → [(state, "reads"|"writes", 새 리스트)] —
+│   │                       #   블랙보드 클래스 개명 시 갱신될 상태 접근 선언을 **계산만** 한다(모델 불변). GUI는 그대로 대입하고
+│   │                       #   MCP는 같은 값으로 SetAttrCmd를 만들어 1 undo 단위로 묶는다 — 적용은 표면마다 달라도 판정은 한 곳
+│   │                       # + blackboard_class_referrers(project, name) → list[str] — "name"/"name.field"를 참조하는 노드 이름(정렬)
 │   ├── package.py           # 프로젝트 패키지(WP-PK) — 폴더가 곧 프로젝트. PROJECT_FILENAME(".daedalus.json")/ARCHIVE_SUFFIX(".ddpj"),
 │   │                       #   resolve_project_file(저장 대상)/find_project_file(열 대상)/project_dir/display_name,
 │   │                       #   pack(결정적 zip)/unpack(zip slip 방어). Qt 무관 순수 stdlib.
@@ -176,7 +181,7 @@ daedalus/
 │   │   ├── session.py      #   세션(save_project/open_project/export_package/list_recent_projects)
 │   │   ├── canvas.py       #   캔버스 구조(place/create_state/move/rename/delete/connect/disconnect/set_transition/참조 노드)
 │   │   ├── ports.py        #   포트(set_transfer_on/add_agent_call/remove_agent_call)
-│   │   ├── blackboard.py   #   블랙보드(create_blackboard_class/set_state_access)
+│   │   ├── blackboard.py   #   블랙보드(create/update/delete_blackboard_class + set_blackboard_fields/set_state_access)
 │   │   ├── hooks.py        #   훅 라이브러리(create/update/delete_hook/set_component_hooks/get_hook/list_hook_events/hook_frontmatter_preview).
 │   │   │                   #     _hook_detail(전문 = 개요 + 핸들러 CC 스키마 + 스크립트 본문)은 get_hook과 편집 결과에서만
 │   │   ├── body.py         #   본문(set_component_body/get_body_outline/get_body_section/set_body_section — WP-BU/WP-BO 경로)
@@ -389,6 +394,9 @@ daedalus/
     │                       #   목록(＋/삭제/더블클릭 이름변경), 우: description(QLineEdit) + 필드 테이블(name/FieldType/CollectionType/required/default,
     │                       #   ＋필드/필드 삭제). 편집은 project.blackboard.class_definitions를 직접 갱신 + notify(structure 채널 — undo 커맨드화 범위
     │                       #   밖, hook_panel 폼 정책과 동일). blackboard_candidate_strings(project)가 "클래스"+"클래스.필드" 후보 문자열을 만든다.
+    │                       #   **이름 변경은 모델 blackboard_rename_ref_updates로 상태 reads/writes 참조를 함께 갱신한다** — MCP
+    │                       #   update_blackboard_class와 같은 판정(표면마다 결과가 다르면 안 된다). refresh_external은 목록을 새로 그린 뒤
+    │                       #   현재 행을 명시적으로 다시 로드한다(같은 행이면 setCurrentRow가 시그널을 내지 않아 설명·테이블이 스테일로 남는다).
     ├── panels/             # PropertyPanel, RegistryPanel, HistoryPanel, ValidationPanel (F7 검증 결과), FilePanel(WP-FR), ScriptListenerPanel
     │                       # RegistryPanel: component_delete_requested/component_preview_requested 시그널 + _RegistrySection 우클릭
     │                       #   "컴파일 미리보기…"/"삭제" 컨텍스트 메뉴. 미리보기는 캔버스 메뉴와 같은 실체(actions/preview) —
@@ -998,8 +1006,25 @@ daedalus-bb --schemas <경로> [--state-dir DIR] <command>
   **구조(노드+선)만 만들면 분기가 표현되지 않는다** — 여러 갈래로 나가는 노드는
   transfer_on에 갈래를 선언하고 각 전이에 trigger를 물려야 캔버스 포트가 갈라지고 라벨이 보인다.
   `set_transition`은 None=건드리지 않음, ""=지움 규약이다.
-- **블랙보드(WP-CE):** `create_blackboard_class`(스칼라 4종 + collection none/list/set 검증)/
-  `set_state_access`(노드의 reads/writes 선언 → 캔버스 뱃지 + 컴파일 산출 구체화).
+- **블랙보드(WP-CE + G1·G2 패리티):** `create_blackboard_class`/`update_blackboard_class`(이름·설명,
+  None=건드리지 않음)/`delete_blackboard_class`/`set_blackboard_fields`(목록 통째 교체)/
+  `set_state_access`(노드의 reads/writes 선언 → 캔버스 뱃지 + 컴파일 산출 구체화). GUI 블랙보드 탭이
+  하던 편집이 전부 올라왔고, 패널과 달리 **전부 CommandStack 경유라 undo된다**.
+  - **타입 검증은 `_build_blackboard_fields` 하나**다(생성·교체 공용) — 두 벌이면 도구에 따라
+    통과하는 값이 달라진다. 스칼라 4종 + collection none/list/set + 필드명 중복 거부.
+  - **개명은 참조를 따라가고 삭제는 따라가지 않는다.** 개명은 `rename_component`(문자열 참조 3종
+    일괄 갱신)와 같은 관례로 상태 reads/writes의 `"Class"`/`"Class.field"`를 함께 고치고 그 전부가
+    1 undo 단위다(이름만 되돌아가면 중간에 참조가 깨진 상태를 거친다). 삭제는 `delete_hook`/
+    `delete_component`와 같이 참조를 두고 `still_referenced_by`로 **보고**한다 — 지우면 undo로
+    클래스가 돌아와도 참조는 돌아오지 않는 비대칭이 된다. 남은 참조는 `dangling_blackboard_ref`가 짚는다.
+  - **필드 교체는 개명을 알 수 없다.** 목록만으로는 "이름 바꿈"과 "지우고 새로 넣음"이 구분되지
+    않으므로 `"Class.field"` 참조를 따라가지 않고, 사라진 필드를 가리키던 노드를
+    `dropped_field_references`로 보고한다.
+  - 판정의 단일 진실은 모델의 `blackboard_rename_ref_updates`/`blackboard_class_referrers`이고
+    **GUI 패널의 이름 변경도 같은 함수를 쓴다** — 같은 조작이 표면마다 다른 결과를 내면 안 된다.
+  - 화면 반영은 `BlackboardPanel.refresh_external()`(선택 보존)이다. 목록만 다시 그리면 같은 행이
+    선택된 채라 `setCurrentRow`가 시그널을 내지 않아 설명·필드 테이블이 스테일로 남으므로,
+    목록 재구성 뒤 현재 행을 **명시적으로** 다시 로드한다.
 - **에이전트 호출은 캔버스와 같은 규칙을 강제한다(WP-CE).** 초기 구현은 스킬→에이전트를 그냥
   직결시켰는데, 캔버스는 그걸 **막는다**(`FsmScene`: 에이전트 노드 입력은 call_agent 포트에서만,
   call_agent 포트는 에이전트로만). 같은 조작인데 경로에 따라 결과가 달라지면 협업 도구로 실격이라

@@ -161,6 +161,88 @@ def rename_component(
                     rp.skill_name = new_name
 
 
+def project_state_machines(project: PluginProject) -> list[StateMachine]:
+    """프로젝트가 소유한 최상위 FSM 전부 — 그래프 + 각 스킬/에이전트 FSM.
+
+    ``validation.project_rules.scan.project_machines``와 달리 라벨 없이 머신만
+    주고 **프로젝트 그래프를 포함**한다(상태 reads/writes는 배치 노드에도 붙는다).
+    """
+    machines: list[StateMachine] = [project.graph]
+    for skill in project.skills:
+        fsm = getattr(skill, "fsm", None)
+        if fsm is not None:
+            machines.append(fsm)
+    for agent in project.agents:
+        fsm = getattr(agent, "fsm", None)
+        if fsm is not None:
+            machines.append(fsm)
+    return machines
+
+
+def _rename_access_path(path: str, old_name: str, new_name: str) -> str:
+    """`"Class"` / `"Class.field"` 참조 하나의 클래스 부분만 갈아끼운다."""
+    if path == old_name:
+        return new_name
+    if path.startswith(old_name + "."):
+        return new_name + path[len(old_name) :]
+    return path
+
+
+def blackboard_rename_ref_updates(
+    project: PluginProject, old_name: str, new_name: str
+) -> list[tuple[object, str, list[str]]]:
+    """블랙보드 클래스 개명 시 갱신될 상태 reads/writes를 **계산만** 한다.
+
+    ``(state, "reads"|"writes", 새 리스트)`` 목록을 돌려주고 모델은 건드리지
+    않는다 — GUI는 그대로 대입하고, MCP는 같은 값으로 ``SetAttrCmd``를 만들어
+    undo 가능한 1 단위로 묶는다(적용 방식이 표면마다 다르되 **무엇을 갱신할지는
+    한 곳에서 정해진다**).
+
+    개명이 참조를 따라가는 것은 ``rename_component``의 관례와 같다 — 대상이
+    그대로 있는데 참조만 끊기면 그 편집이 조용히 고장을 만든다. 반대로 **삭제는
+    참조를 건드리지 않는다**(``remove_component``/``delete_hook``과 동일):
+    undo로 클래스가 돌아왔는데 참조는 돌아오지 않는 비대칭을 만들지 않기 위해서다.
+
+    실제로 바뀌는 항목만 담는다 — 값이 같은 SetAttrCmd를 쌓으면 Ctrl+Z가 빈
+    단계를 센다.
+    """
+    from daedalus.model.fsm.walk import iter_states
+
+    if not old_name or old_name == new_name:
+        return []
+
+    updates: list[tuple[object, str, list[str]]] = []
+    for machine in project_state_machines(project):
+        for state in iter_states(machine):
+            for attr in ("reads", "writes"):
+                current = list(getattr(state, attr, []) or [])
+                renamed = [_rename_access_path(p, old_name, new_name) for p in current]
+                if renamed != current:
+                    updates.append((state, attr, renamed))
+    return updates
+
+
+def blackboard_class_referrers(project: PluginProject, name: str) -> list[str]:
+    """`"name"` / `"name.field"`를 reads/writes로 참조하는 상태 이름 목록(정렬·중복 제거).
+
+    삭제가 참조를 지우지 않으므로(위 참조), 호출자가 `still_referenced_by`로
+    보고해 사용자가 정리할 수 있게 한다 — 남은 참조는 `dangling_blackboard_ref`
+    경고가 이어서 짚는다.
+    """
+    from daedalus.model.fsm.walk import iter_states
+
+    found: set[str] = set()
+    for machine in project_state_machines(project):
+        for state in iter_states(machine):
+            paths = [
+                *(getattr(state, "reads", []) or []),
+                *(getattr(state, "writes", []) or []),
+            ]
+            if any(p == name or p.startswith(name + ".") for p in paths):
+                found.add(getattr(state, "name", "?"))
+    return sorted(found)
+
+
 def remove_component(
     project: PluginProject,
     component: object,

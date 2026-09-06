@@ -33,7 +33,7 @@ from daedalus.model.fsm.blackboard import (
     DynamicField,
 )
 from daedalus.model.fsm.variable import FieldType
-from daedalus.model.project import PluginProject
+from daedalus.model.project import PluginProject, blackboard_rename_ref_updates
 from daedalus.view.widgets.combo_widgets import CollectionTypeComboBox, FieldTypeComboBox
 
 _FIELD_COLS = ("이름", "타입", "컬렉션", "필수", "기본값")
@@ -160,7 +160,11 @@ class BlackboardPanel(QWidget):
         self._loading = True
         try:
             self._desc_edit.setEnabled(cls is not None)
-            self._desc_edit.setText(cls.description if cls is not None else "")
+            desc = cls.description if cls is not None else ""
+            # 같은 값이어도 setText는 커서를 처음으로 되돌린다 — 외부 notify가
+            # 이 경로를 타고 들어올 수 있으므로 달라졌을 때만 쓴다.
+            if self._desc_edit.text() != desc:
+                self._desc_edit.setText(desc)
         finally:
             self._loading = False
         self._reload_table()
@@ -190,12 +194,19 @@ class BlackboardPanel(QWidget):
 
     def _on_rename_class(self, item: QListWidgetItem) -> None:
         cls = self._current_class()
-        if cls is None:
+        if cls is None or self._project is None:
             return
         name, ok = QInputDialog.getText(self, "클래스 이름 변경", "이름:", text=cls.name)
         if not ok or not name.strip():
             return
-        cls.name = name.strip()
+        old_name = cls.name
+        new_name = name.strip()
+        # 개명은 참조를 따라간다 — 계산은 모델(blackboard_rename_ref_updates)이
+        # 하고 여기서는 대입만 한다(MCP update_blackboard_class와 같은 판정).
+        updates = blackboard_rename_ref_updates(self._project, old_name, new_name)
+        cls.name = new_name
+        for state, attr, renamed in updates:
+            setattr(state, attr, renamed)
         self._reload_list(select_index=self._list.currentRow())
         self._notify()
 
@@ -322,12 +333,18 @@ class BlackboardPanel(QWidget):
                 self._self_notify = False
 
     def refresh_external(self) -> None:
-        """바깥(MCP `create_blackboard_class` 등)의 변경을 목록에 반영한다.
+        """바깥(MCP 블랙보드 도구 등)의 변경을 목록·설명·필드 테이블에 반영한다.
 
         hook_panel.refresh_external과 같은 패턴 — 자기 편집이 발화한 notify가
         되돌아온 경우는 건너뛴다(타이핑 중인 폼의 선택 리셋 방지).
+
+        **목록만 다시 그리면 부족하다**: 같은 행이 계속 선택돼 있으면
+        `setCurrentRow`가 시그널을 내지 않아 `_on_row_changed`가 돌지 않고,
+        MCP가 고친 설명·필드가 화면에 반영되지 않는다. 그래서 목록을 새로 그린
+        뒤 현재 행을 명시적으로 다시 로드한다.
         """
         if getattr(self, "_self_notify", False):
             return
         current = self._list.currentRow()
         self._reload_list(select_index=current if current >= 0 else None)
+        self._on_row_changed(self._list.currentRow())
