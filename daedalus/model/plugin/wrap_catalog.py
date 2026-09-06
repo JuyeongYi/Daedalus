@@ -84,8 +84,8 @@ class CataloguedPlugin:
     #: 있으면 빌드가 dependencies/enabledPlugins를 내고, 설치는 CC가 한다.
     installed: bool = True
     #: 미설치 플러그인의 marketplace.json 선언 `source` (설치된 것은 None).
-    #: 스킬 이름만이라도 원격에서 받아오려면 이것이 재료다 — GitHub 저장소면
-    #: `remote_skills`가 API로 `skills/` 디렉토리 목록을 훑는다.
+    #: 실물을 받아오려면 이것이 재료다 — `plugin_cache`가 이 선언으로 저장소를
+    #: 얕게 클론해 두고 `_scan_skills`가 그대로 스킬을 읽는다.
     source_spec: object | None = None
     #: 이 플러그인이 동봉 `.mcp.json`(또는 plugin.json `mcpServers`)으로
     #: 제공하는 MCP 서버 이름들 (이름순). 플러그인이 활성화되면 CC가 함께

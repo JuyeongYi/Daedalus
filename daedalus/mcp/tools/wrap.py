@@ -128,24 +128,23 @@ class WrapTools(_BaseTools):
 
         마켓은 플러그인을 선언만 하고 실물은 설치할 때 받아오므로, 받기 전에는
         스킬 목록을 알 수 없다 — 그러면 랩핑(WrappedSkill)을 만들 수 없다.
-        이 도구는 저장소를 클론하지 않고 **GitHub API로 `skills/` 디렉토리
-        목록 한 번**만 조회한다(디렉토리 이름이 곧 스킬 이름). 설명은 받지
-        않는다 — 스킬마다 파일을 또 받아야 하고 랩핑에 필요한 것은 이름이다.
+        이 도구는 실물을 `~/.daedalus/cache/plugin/`에 **얕게 클론**해 받아
+        두고 거기서 스킬을 읽는다 — 그래서 이름뿐 아니라 **설명(SKILL.md
+        프론트매터)까지** 나오고, 스캔은 설치된 플러그인과 **같은 코드**를 쓴다.
 
-        **여기서만 인터넷 요청이 나간다**(사용자 확정) — 카탈로그 조회·새로고침은
-        절대 나가지 않는다. 결과는 커밋 SHA까지 포함한 키로
-        `~/.daedalus/cache/remote-skills/`에 캐시되므로 같은 버전을 다시 물으면
-        요청이 없다(`refresh=true`로 강제 재조회).
+        **여기서만 인터넷에 나간다**(사용자 확정) — 카탈로그 조회·새로고침은
+        절대 받지 않는다. 캐시 폴더 이름에 커밋 SHA(없으면 ref)가 들어가므로
+        같은 버전은 다시 받지 않고, 버전이 바뀌면 새로 받는다
+        (`refresh=true`로 강제 재수신).
 
-        GitHub이 아닌 source(일반 git URL 등)는 API 형식이 제각각이라
-        `skills: null`로 돌려준다 — 억지로 추측하는 것보다 모른다고 말하는
-        편이 낫다. 이미 설치된 플러그인은 `list_wrappable_skills`가 로컬에서
-        읽으므로 여기 올 필요가 없다.
+        클론할 수 없는 source(마켓 폴더 안 상대 경로 등)는 `skills: null`이다.
+        git URL이면 GitHub이 아니어도 된다. 이미 설치된 플러그인은
+        `list_wrappable_skills`가 로컬에서 읽으므로 여기 올 필요가 없다.
 
         받은 이름으로 `create_skill(kind="wrapped", source="<plugin_id>:<스킬>")`
         를 만들 수 있다.
         """
-        from daedalus.model.plugin import remote_skills, wrap_catalog
+        from daedalus.model.plugin import plugin_cache, wrap_catalog
 
         target = None
         for _folder, plugins in wrap_catalog.scan_catalog():
@@ -168,26 +167,29 @@ class WrapTools(_BaseTools):
                 "note": "이미 설치돼 있어 로컬에서 읽었습니다(요청 없음).",
             }
 
-        names = remote_skills.skill_names(
+        skills = plugin_cache.cached_skills(
             plugin_id, target.source_spec, refresh=refresh,
         )
-        if names is None:
+        if skills is None:
             return {
                 "plugin_id": plugin_id,
                 "installed": False,
                 "skills": None,
                 "note": (
-                    "GitHub 저장소가 아니어서 원격 조회를 지원하지 않습니다 — "
-                    "설치 후 list_wrappable_skills로 확인하세요."
+                    "클론할 수 있는 저장소 주소가 선언에 없어 받아올 수 "
+                    "없습니다 — 설치 후 list_wrappable_skills로 확인하세요."
                 ),
             }
         return {
             "plugin_id": plugin_id,
             "installed": False,
-            "skills": names,
-            "sources": [f"{plugin_id}:{n}" for n in names],
+            "cached": True,
+            "skills": [
+                {"name": s.name, "description": s.description, "source": s.source}
+                for s in skills
+            ],
             "note": (
-                "이름만 받아왔습니다(설명은 설치 후) — create_skill"
+                "실물을 캐시에 받아 스킬을 읽었습니다 — source를 create_skill"
                 '(kind="wrapped", source=…)에 그대로 쓸 수 있습니다.'
             ),
         }

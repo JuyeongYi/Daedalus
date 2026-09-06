@@ -18,6 +18,7 @@ from __future__ import annotations
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
+    QApplication,
     QDialog,
     QFileDialog,
     QHBoxLayout,
@@ -60,9 +61,9 @@ class WrapCatalogDialog(QDialog):
     def __init__(self, window, parent=None) -> None:
         super().__init__(parent or window)
         self._window = window
-        # 원격에서 받아온 스킬 이름(plugin_id → [이름]) — 창이 열려 있는 동안의
-        # 표시용이다. 영속 캐시는 remote_skills가 홈에 따로 둔다.
-        self._remote_skills: dict[str, list[str]] = {}
+        # 캐시에서 읽은 미설치 플러그인의 스킬(plugin_id → [CataloguedSkill]) —
+        # 창이 열려 있는 동안의 표시용이다. 실물은 plugin_cache가 홈에 둔다.
+        self._fetched_skills: dict[str, list] = {}
         self.setWindowTitle("외부 플러그인 카탈로그")
         self.resize(560, 480)
 
@@ -97,13 +98,13 @@ class WrapCatalogDialog(QDialog):
         refresh_btn.clicked.connect(self.refresh)
         btn_row.addWidget(refresh_btn)
 
-        # 미설치 플러그인의 스킬 이름만 원격에서 받아온다(WP-WR) — **버튼을
-        # 누를 때만 인터넷 요청이 나간다**. 목록을 여는 것만으로는 절대 나가지
-        # 않는다(수백 개를 일괄 조회하면 API 한도에 걸린다).
+        # 미설치 플러그인의 실물을 캐시에 받아 스킬을 읽는다(WP-WR) — **버튼을
+        # 누를 때만 인터넷에 나간다**. 목록을 여는 것만으로는 절대 받지 않는다
+        # (수백 개를 일괄 클론하면 디스크도 시간도 감당할 수 없다).
         self._fetch_btn = QPushButton("스킬 목록 받아오기")
         self._fetch_btn.setToolTip(
-            "선택한 **미설치** 플러그인의 스킬 이름을 GitHub에서 조회한다"
-            "(클론 없이 디렉토리 목록 한 번). 설명은 설치 후에 보인다."
+            "선택한 **미설치** 플러그인의 실물을 ~/.daedalus/cache/plugin/에 "
+            "얕게 클론해 스킬 이름과 설명을 읽는다. 같은 버전은 다시 받지 않는다."
         )
         self._fetch_btn.clicked.connect(self.fetch_selected_skills)
         btn_row.addWidget(self._fetch_btn)
@@ -212,21 +213,24 @@ class WrapCatalogDialog(QDialog):
                     0, Qt.CheckState.Checked if used else Qt.CheckState.Unchecked
                 )
                 parent_item.addChild(plugin_item)
-                if not plugin.installed:
-                    for name in self._remote_skills.get(plugin.plugin_id, []):
-                        source = f"{plugin.plugin_id}:{name}"
-                        total += 1
-                        already = source in wrapped
-                        remote_item = QTreeWidgetItem(
-                            [f"{name} ✔" if already else name, "(설명은 설치 후)"],
-                        )
-                        remote_item.setToolTip(0, source)
-                        remote_item.setData(0, _ROLE_KIND, "skill")
-                        remote_item.setData(0, _ROLE_SOURCE, source)
-                        if already:
-                            remote_item.setForeground(0, _COLOR_WRAPPED)
-                        plugin_item.addChild(remote_item)
-                    plugin_item.setExpanded(bool(self._remote_skills.get(plugin.plugin_id)))
+                # 미설치 플러그인은 캐시에서 읽어 온 것이 있으면 보여준다 —
+                # 실물을 받았으므로 설치된 것과 **같은 항목**(이름 + 설명)이다.
+                fetched = self._fetched_skills.get(plugin.plugin_id, [])
+                for skill in fetched:
+                    total += 1
+                    already = skill.source in wrapped
+                    cached_item = QTreeWidgetItem(
+                        [f"{skill.name} ✔" if already else skill.name,
+                         skill.description],
+                    )
+                    cached_item.setToolTip(0, f"{skill.source} — 캐시에서 읽음")
+                    cached_item.setData(0, _ROLE_KIND, "skill")
+                    cached_item.setData(0, _ROLE_SOURCE, skill.source)
+                    if already:
+                        cached_item.setForeground(0, _COLOR_WRAPPED)
+                    plugin_item.addChild(cached_item)
+                if fetched:
+                    plugin_item.setExpanded(True)
                 for skill in plugin.skills:
                     total += 1
                     already = skill.source in wrapped
@@ -285,14 +289,14 @@ class WrapCatalogDialog(QDialog):
         ))
         return True
 
-    def fetch_selected_skills(self) -> list[str] | None:
-        """선택한 미설치 플러그인의 스킬 이름을 원격에서 받아 트리에 채운다.
+    def fetch_selected_skills(self) -> list | None:
+        """선택한 미설치 플러그인의 실물을 캐시에 받아 스킬을 트리에 채운다.
 
-        **이 메서드가 이 창에서 인터넷 요청이 나가는 유일한 지점이다.**
-        받아온 이름은 캐시되고(커밋 SHA 키), 다음 새로고침부터는 요청 없이
-        그대로 보인다.
+        **이 메서드가 이 창에서 인터넷에 나가는 유일한 지점이다.** 얕은 클론이
+        `~/.daedalus/cache/plugin/`에 남으므로 같은 버전은 다시 받지 않고,
+        스캔은 설치된 플러그인과 **같은 코드**를 써 이름과 설명이 함께 나온다.
         """
-        from daedalus.model.plugin import remote_skills
+        from daedalus.model.plugin import plugin_cache
 
         item = self._tree.currentItem()
         if item is None or item.data(0, _ROLE_KIND) != "plugin":
@@ -305,25 +309,31 @@ class WrapCatalogDialog(QDialog):
                 f"'{plugin_id}'는 이미 설치돼 있어 스킬이 목록에 보입니다."
             )
             return None
-        self._status.setText(f"'{plugin_id}' 스킬 목록을 받아오는 중…")
+        self._status.setText(f"'{plugin_id}' 실물을 받아오는 중… (클론)")
+        # 클론은 초 단위로 걸린다 — 상태 문구가 화면에 실제로 나온 뒤 시작해야
+        # 사용자가 창이 멈춘 것으로 오해하지 않는다.
+        QApplication.processEvents()
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
-            names = remote_skills.skill_names(plugin_id, spec)
-        except remote_skills.RemoteSkillsError as exc:
+            skills = plugin_cache.cached_skills(plugin_id, spec)
+        except plugin_cache.PluginCacheError as exc:
             self._status.setText(f"받아오지 못했습니다 — {exc}")
             return None
-        if names is None:
+        finally:
+            QApplication.restoreOverrideCursor()
+        if skills is None:
             self._status.setText(
-                f"'{plugin_id}'는 GitHub 저장소가 아니어서 원격 조회를 "
-                "지원하지 않습니다 — 설치 후 확인하세요."
+                f"'{plugin_id}'는 클론할 저장소 주소가 선언에 없어 받아올 수 "
+                "없습니다 — 설치 후 확인하세요."
             )
             return None
-        self._remote_skills[plugin_id] = names
+        self._fetched_skills[plugin_id] = list(skills)
         self.refresh()
         self._status.setText(
-            f"'{plugin_id}' 스킬 {len(names)}개를 받아왔습니다 — 이름만입니다"
-            "(설명은 설치 후). 캔버스로 끌어 워크플로 단계로 감쌀 수 있습니다."
+            f"'{plugin_id}' 스킬 {len(skills)}개를 캐시에서 읽었습니다 — "
+            "캔버스로 끌어 워크플로 단계로 감쌀 수 있습니다."
         )
-        return names
+        return list(skills)
 
     # ─────────────────────────── 마켓플레이스 폴더 등록 ───────────────────────────
 

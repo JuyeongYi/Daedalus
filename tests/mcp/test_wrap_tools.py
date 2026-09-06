@@ -239,9 +239,9 @@ def test_uninstalled_plugin_can_be_declared(tools, window, marketplace):
     assert plugins["remote-only"]["used"] is True
 
 
-def test_fetch_plugin_skills_uses_remote_for_uninstalled(tools, marketplace, monkeypatch):
-    """지목했을 때만 원격 조회 — 테스트는 네트워크에 나가지 않는다."""
-    from daedalus.model.plugin import remote_skills
+def test_fetch_plugin_skills_clones_uninstalled(tools, marketplace, monkeypatch):
+    """지목했을 때만 받아온다 — 테스트는 인터넷·git 없이 클론을 흉내 낸다."""
+    from daedalus.model.plugin import plugin_cache
 
     _declare_marketplace(marketplace, "mkt", [{
         "name": "remote-only",
@@ -249,15 +249,27 @@ def test_fetch_plugin_skills_uses_remote_for_uninstalled(tools, marketplace, mon
                    "path": "plugins/x", "sha": "abc"},
     }])
     tools.add_marketplace_folder(str(marketplace), "mkt")
-    monkeypatch.setattr(remote_skills, "fetch_skill_names", lambda ref: ["review"])
+
+    def _clone(source, dest):
+        sdir = dest / source.path / "skills" / "review"
+        sdir.mkdir(parents=True)
+        (sdir / "SKILL.md").write_text(
+            "---\nname: review\ndescription: Reviews code.\n---\n",
+            encoding="utf-8",
+        )
+
+    monkeypatch.setattr(plugin_cache, "_shallow_clone", _clone)
     monkeypatch.setattr(
-        remote_skills, "cache_dir", lambda home_dir=None: marketplace / "_cache",
+        plugin_cache, "cache_dir", lambda home_dir=None: marketplace / "_cache",
     )
 
     out = tools.fetch_plugin_skills("remote-only@mkt")
-    assert out["skills"] == ["review"]
-    # 받은 이름은 그대로 랩핑 source가 된다
-    assert out["sources"] == ["remote-only@mkt:review"]
+    # 클론이라 이름뿐 아니라 설명까지 나오고, source는 그대로 랩핑에 쓴다
+    assert out["skills"] == [{
+        "name": "review",
+        "description": "Reviews code.",
+        "source": "remote-only@mkt:review",
+    }]
 
 
 def test_fetch_plugin_skills_reads_local_when_installed(tools, marketplace):
