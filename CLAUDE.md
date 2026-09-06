@@ -620,18 +620,31 @@ daedalus/
   넣지 않는다** — 개별 도구 목록 미지원, 사용자 확정) ② LOCAL 컴파일 주입
   `compile_project(provided_server_names=)`(compile_inputs 합류 — 플러그인
   활성화가 서버를 가져오므로 `missing_mcp_server_def` 대상에서 제외)로 쓰인다.
-- **마켓이 선언만 한 플러그인(미설치)**(사용자 보고 2026-09-07): 마켓플레이스는
-  `marketplace.json`에 플러그인을 **선언**하고 실물은 설치할 때 받아온다 —
-  실측으로 공식 마켓은 **291개 선언 / 로컬 실물 40개**였고, 로컬만 훑던
-  카탈로그는 252개를 통째로 못 봤다. 이제 `discover_plugins`가 선언 목록을
-  합쳐 `installed=False`로 싣는다(이름·설명만. 로컬 실물이 있으면 그쪽이
-  이긴다). **스킬 목록은 실물을 받기 전까지 알 수 없다**(사용자 확인) —
-  그래서 `skills=[]`이고 랩핑(WrappedSkill)은 설치 후에만 된다. 반면
-  **사용 선언은 지금 할 수 있다**: plugin_id만 있으면 빌드가 dependencies/
-  enabledPlugins를 내고 설치는 CC가 한다. 표면: 카탈로그 창은 "⋯ 미설치 (N)"
-  **접힌 그룹**으로 묶고(수백 개가 설치된 것을 덮지 않도록) 체크는 그대로
-  되며, MCP는 `list_wrappable_skills(include_uninstalled=False)` 기본
-  설치분만 + `uninstalled_count`로 나머지를 알린다.
+- **실물의 출처는 세 곳, 기준은 "설치했는가"가 아니라 "실물을 읽었는가"**
+  (사용자 확정 2026-09-07 — "설치/미설치보다는 그냥 외부 플러그인으로 표시하고,
+  클론 여부에 따라 아이콘을"): 마켓플레이스는 `marketplace.json`에 플러그인을
+  **선언**만 하고 실물은 따로 온다(실측: 공식 마켓 291개 선언 / 저장소 동봉 40개).
+  `CataloguedPlugin.files_from`이 출처를 말한다 — `"marketplace"`(저장소 동봉) /
+  `"installed"`(**CC가 설치** — `~/.claude/plugins/cache/<마켓>/<이름>/<버전>/`,
+  `cc_installed_dirs()`가 `installed_plugins.json`에서 읽는다) / `"cache"`(우리가
+  클론) / `""`(못 읽음). `has_files` property가 그 판정이고, 어디서 왔든 스킬은
+  `_scan_skills` 하나가 읽는다.
+  - **마켓 저장소만 훑던 것이 버그였다**(사용자 보고) — CC는 마켓 저장소가 아니라
+    별도 캐시에 푸므로, 사용자가 **실제로 설치한** 플러그인이 "미설치"로 나왔다.
+  - 못 읽으면 `skills=[]`이라 랩핑(WrappedSkill)은 불가하지만 **사용 선언은 지금도
+    된다**: plugin_id만 있으면 빌드가 dependencies/enabledPlugins를 내고 설치는
+    CC가 한다. 매니페스트 없는 실물도 정상이다(스킬 없이 LSP·훅만 주는 플러그인 —
+    실측 pyright-lsp. 없는 파일에 경고를 내면 목록을 열 때마다 시끄럽다).
+  - 표면: 카탈로그 창은 아이콘으로 가르고(🧩 읽음 / ⬇ 받아야 함) 못 읽은 것은
+    "⋯ 스킬 미확인 (N)" **접힌 그룹**으로 묶는다(수백 개가 쓸 수 있는 것을 덮지
+    않도록). MCP는 `list_wrappable_skills(include_unfetched=False)`가 읽은 것만 +
+    `unfetched_count`로 나머지를 알리고 각 항목에 `files_from`을 싣는다.
+  - **창의 펼침 상태는 재구성을 견딘다** — 체크(사용 선언)마다 트리를 다시 그려
+    폴더가 접히던 것을 고쳤다(사용자 보고). 체크 토글은 트리를 건드리지 않고
+    상태 문구의 개수만 갱신하며(`_update_status_counts` — 모델 재스캔이 아니라
+    **화면을 센다**), 펼침은 plugin_id·폴더 경로 키 집합으로 복원한다. 덤으로
+    itemChanged를 쏜 아이템을 같은 호출에서 clear()로 파괴하던 플레이키 access
+    violation의 뿌리도 사라졌다.
 - **미설치 플러그인 실물 캐시**(사용자 확정 2026-09-07 — "그냥
   `~/.daedalus/cache/plugin/` 폴더에 클론하자"): `model/plugin/plugin_cache.py`가
   선언 `source`로 저장소를 **얕게 클론**해 캐시에 두고, 스킬 스캔은
@@ -650,9 +663,14 @@ daedalus/
     것"으로 보고 빈 디렉토리를 스캔한다. git 부재는 stack trace 대신 안내 문구.
   - 클론할 주소가 없는 source(마켓 폴더 안 상대 경로 등)는 `None`을 돌려주고
     "설치 후 확인"으로 안내한다. git URL이면 **GitHub이 아니어도 된다**.
+  - **받아 온 결과는 창이 아니라 카탈로그가 들고 있다**(사용자 보고 — "클론해도
+    사용 가능한 wrapped 스킬로 표시 안 됨"): `discover_plugins`가 매 스캔마다
+    `cached_path`(**절대 받지 않는 조회 전용**)로 캐시를 확인하므로, 받은 스킬은
+    설치본과 완전히 같은 경로로 실려 레지스트리 🔗 후보·MCP 목록에도 곧바로
+    나온다. 창 안 세션 dict에 담아 두면 받아왔는데도 어디서도 랩핑할 수 없다.
   - 표면: 카탈로그 창 "스킬 목록 받아오기" 버튼(이 창에서 인터넷에 나가는 유일한
     지점 — 클론 중 대기 커서) / MCP `fetch_plugin_skills(plugin_id,
-    refresh=False)` — 설치된 플러그인은 로컬에서 읽어 받지 않는다.
+    refresh=False)` — 실물이 이미 있으면 그 자리에서 읽어 받지 않는다.
     테스트는 `_shallow_clone`을 몽키패치해 **호출 횟수까지** 센다(언제 받느냐가
     이 기능의 계약이다) — 인터넷도 git도 쓰지 않는다.
 - **레지스트리 후보 노출 + 드롭 생성**(사용자 확정 — "목록에 그냥 자동으로

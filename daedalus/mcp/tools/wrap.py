@@ -23,20 +23,26 @@ class WrapTools(_BaseTools):
     """외부 플러그인 카탈로그 조회 + 마켓플레이스 폴더 등록 + 사용 선언."""
 
     def list_wrappable_skills(
-        self, include_uninstalled: bool = False
+        self, include_unfetched: bool = False
     ) -> dict[str, Any]:
         """등록된 마켓플레이스 폴더에서 외부 플러그인·스킬을 나열한다.
 
-        include_uninstalled(사용자 보고 2026-09-07): 마켓플레이스는 플러그인을
-        `marketplace.json`에 **선언**만 하고 실물은 설치할 때 받아온다(실측:
-        공식 마켓 291개 선언, 로컬 실물 40개). 기본값 False면 **설치된 것만**
-        나오고 `uninstalled_count`로 나머지가 몇 개인지 알려준다 — 수백 개를
-        매번 실으면 그것만으로 응답이 커진다. True면 미설치도 이름·설명과 함께
-        나온다(`installed: false`, `skills: []`).
+        **가르는 기준은 "설치했는가"가 아니라 "실물을 읽었는가"다**(사용자 확정
+        2026-09-07). 마켓은 플러그인을 `marketplace.json`에 **선언**만 하고
+        실물은 따로 있다(실측: 공식 마켓 291개 선언). 실물은 세 군데에서 온다 —
+        마켓 저장소 동봉 / Claude Code가 설치한 것 / `fetch_plugin_skills`로
+        받아 둔 캐시. 어디서 왔든 스킬은 같은 스캐너가 읽고 `files_from`이 출처를
+        말한다.
 
-        미설치 플러그인도 **사용 선언은 지금 할 수 있다** — plugin_id만 있으면
+        include_unfetched(기본 False)면 **실물을 읽은 것만** 나오고
+        `unfetched_count`로 나머지가 몇 개인지 알려준다 — 수백 개를 매번 실으면
+        그것만으로 응답이 커진다. True면 못 읽은 것도 이름·설명과 함께 나온다
+        (`has_files: false`, `skills: []`).
+
+        실물이 없어도 **사용 선언은 지금 할 수 있다** — plugin_id만 있으면
         빌드가 dependencies/enabledPlugins를 내고 설치는 CC가 한다. 다만
-        **랩핑(WrappedSkill)은 설치 후에만** 된다(스킬 이름을 알아야 한다).
+        **랩핑(WrappedSkill)은 스킬 이름을 알아야** 하므로 실물이 필요하다
+        (`fetch_plugin_skills`가 받아 온다).
 
         플러그인의 `plugin_id`(`이름[@마켓]`)를 `set_external_plugins`에 넣으면
         "이 프로젝트에서 사용" 선언이 되고 빌드가 dependencies(MARKETPLACE)/
@@ -59,22 +65,22 @@ class WrapTools(_BaseTools):
         wrapped = project_wrapped_sources(project)
         declared = set(getattr(project, "external_plugins", None) or [])
         folders_out: list[dict[str, Any]] = []
-        uninstalled_total = 0
+        unfetched_total = 0
         for folder, plugins in wrap_catalog.scan_catalog():
             plugins_out: list[dict[str, Any]] = []
             for p in plugins:
-                if not p.installed:
-                    uninstalled_total += 1
-                    if not include_uninstalled:
+                if not p.has_files:
+                    unfetched_total += 1
+                    if not include_unfetched:
                         continue
-                    # 실물을 받기 전에는 **스킬을 알 수 없다** — 마켓은 이름과
+                    # 실물이 없으면 **스킬을 알 수 없다** — 마켓은 이름과
                     # 설명만 선언한다. 사용 선언은 이것만으로 충분하다.
                     plugins_out.append({
                         "name": p.name,
                         "plugin_id": p.plugin_id,
                         "description": p.description,
                         "used": p.plugin_id in declared,
-                        "installed": False,
+                        "has_files": False,
                         "skills": [],
                     })
                     continue
@@ -83,7 +89,8 @@ class WrapTools(_BaseTools):
                     "plugin_id": p.plugin_id,
                     "description": p.description,
                     "used": p.plugin_id in declared,
-                    "installed": True,
+                    "has_files": True,
+                    "files_from": p.files_from,
                     "mcp_servers": list(p.mcp_servers),
                     "skills": [
                         {
@@ -105,14 +112,14 @@ class WrapTools(_BaseTools):
             "external_plugins": list(
                 getattr(project, "external_plugins", None) or []
             ),
-            # 마켓이 선언했지만 아직 받지 않은 것 — 스킬은 설치 후에야 안다.
-            "uninstalled_count": uninstalled_total,
+            # 마켓이 선언했지만 실물을 못 읽은 것 — 스킬은 받아야 안다.
+            "unfetched_count": unfetched_total,
         }
-        if uninstalled_total and not include_uninstalled:
-            out["uninstalled_note"] = (
-                f"설치되지 않은 플러그인 {uninstalled_total}개는 목록에서 뺐습니다 "
-                "— include_uninstalled=true로 이름·설명을 볼 수 있고, 사용 선언은 "
-                "설치 전에도 됩니다(스킬 목록과 랩핑은 설치 후)."
+        if unfetched_total and not include_unfetched:
+            out["unfetched_note"] = (
+                f"실물이 없어 스킬을 모르는 플러그인 {unfetched_total}개는 목록에서 "
+                "뺐습니다 — include_unfetched=true로 이름·설명을 볼 수 있고, 사용 "
+                "선언은 지금도 됩니다. 스킬이 필요하면 fetch_plugin_skills로 받으세요."
             )
         if not folders_out:
             out["note"] = (
@@ -124,10 +131,10 @@ class WrapTools(_BaseTools):
     def fetch_plugin_skills(
         self, plugin_id: str, refresh: bool = False
     ) -> dict[str, Any]:
-        """**미설치** 플러그인의 스킬 이름을 원격에서 받아온다 (WP-WR).
+        """실물이 없는 플러그인의 스킬을 받아온다 (WP-WR).
 
-        마켓은 플러그인을 선언만 하고 실물은 설치할 때 받아오므로, 받기 전에는
-        스킬 목록을 알 수 없다 — 그러면 랩핑(WrappedSkill)을 만들 수 없다.
+        마켓은 플러그인을 선언만 하므로 실물이 없으면 스킬 목록을 알 수 없고,
+        그러면 랩핑(WrappedSkill)을 만들 수 없다.
         이 도구는 실물을 `~/.daedalus/cache/plugin/`에 **얕게 클론**해 받아
         두고 거기서 스킬을 읽는다 — 그래서 이름뿐 아니라 **설명(SKILL.md
         프론트매터)까지** 나오고, 스캔은 설치된 플러그인과 **같은 코드**를 쓴다.
@@ -157,14 +164,18 @@ class WrapTools(_BaseTools):
         if target is None:
             raise ValueError(
                 f"카탈로그에 '{plugin_id}'가 없습니다 — list_wrappable_skills"
-                "(include_uninstalled=true)로 id를 확인하세요."
+                "(include_unfetched=true)로 id를 확인하세요."
             )
-        if target.installed:
+        if target.has_files:
             return {
                 "plugin_id": plugin_id,
-                "installed": True,
-                "skills": [s.name for s in target.skills],
-                "note": "이미 설치돼 있어 로컬에서 읽었습니다(요청 없음).",
+                "has_files": True,
+                "files_from": target.files_from,
+                "skills": [
+                    {"name": s.name, "description": s.description, "source": s.source}
+                    for s in target.skills
+                ],
+                "note": "실물이 이미 로컬에 있어 그대로 읽었습니다(받지 않음).",
             }
 
         skills = plugin_cache.cached_skills(
@@ -173,7 +184,7 @@ class WrapTools(_BaseTools):
         if skills is None:
             return {
                 "plugin_id": plugin_id,
-                "installed": False,
+                "has_files": False,
                 "skills": None,
                 "note": (
                     "클론할 수 있는 저장소 주소가 선언에 없어 받아올 수 "
@@ -182,8 +193,8 @@ class WrapTools(_BaseTools):
             }
         return {
             "plugin_id": plugin_id,
-            "installed": False,
-            "cached": True,
+            "has_files": True,
+            "files_from": "cache",
             "skills": [
                 {"name": s.name, "description": s.description, "source": s.source}
                 for s in skills

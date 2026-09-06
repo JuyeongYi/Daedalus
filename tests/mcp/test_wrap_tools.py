@@ -206,7 +206,7 @@ def _declare_marketplace(root, name, declared):
     )
 
 
-def test_uninstalled_hidden_by_default_but_counted(tools, marketplace):
+def test_unfetched_hidden_by_default_but_counted(tools, marketplace):
     _declare_marketplace(marketplace, "mkt", [
         {"name": "alpha"},
         {"name": "remote-only", "description": "아직 안 받음"},
@@ -215,26 +215,27 @@ def test_uninstalled_hidden_by_default_but_counted(tools, marketplace):
 
     out = tools.list_wrappable_skills()
     names = [p["name"] for p in out["marketplace_folders"][0]["plugins"]]
-    assert names == ["alpha"]  # 설치된 것만
-    assert out["uninstalled_count"] == 1
-    assert "include_uninstalled" in out["uninstalled_note"]
+    assert names == ["alpha"]  # 실물을 읽은 것만
+    assert out["unfetched_count"] == 1
+    assert "include_unfetched" in out["unfetched_note"]
 
-    full = tools.list_wrappable_skills(include_uninstalled=True)
+    full = tools.list_wrappable_skills(include_unfetched=True)
     plugins = {p["name"]: p for p in full["marketplace_folders"][0]["plugins"]}
     assert set(plugins) == {"alpha", "remote-only"}
-    # 실물을 받기 전에는 스킬을 알 수 없다
-    assert plugins["remote-only"]["installed"] is False
+    assert plugins["alpha"]["files_from"] == "marketplace"
+    # 실물이 없으면 스킬을 알 수 없다
+    assert plugins["remote-only"]["has_files"] is False
     assert plugins["remote-only"]["skills"] == []
 
 
-def test_uninstalled_plugin_can_be_declared(tools, window, marketplace):
-    """미설치도 **사용 선언은 된다** — 빌드가 의존성을 배선하고 설치는 CC가 한다."""
+def test_unfetched_plugin_can_be_declared(tools, window, marketplace):
+    """실물이 없어도 **사용 선언은 된다** — 빌드가 의존성을 배선하고 설치는 CC가 한다."""
     _declare_marketplace(marketplace, "mkt", [{"name": "remote-only"}])
     tools.add_marketplace_folder(str(marketplace), "mkt")
 
     tools.set_external_plugins(["remote-only@mkt"])
     assert window._project.external_plugins == ["remote-only@mkt"]
-    full = tools.list_wrappable_skills(include_uninstalled=True)
+    full = tools.list_wrappable_skills(include_unfetched=True)
     plugins = {p["name"]: p for p in full["marketplace_folders"][0]["plugins"]}
     assert plugins["remote-only"]["used"] is True
 
@@ -272,11 +273,13 @@ def test_fetch_plugin_skills_clones_uninstalled(tools, marketplace, monkeypatch)
     }]
 
 
-def test_fetch_plugin_skills_reads_local_when_installed(tools, marketplace):
+def test_fetch_plugin_skills_reads_local_when_files_present(tools, marketplace):
+    """실물이 이미 있으면 받지 않는다 — 그 자리에서 읽어 돌려준다."""
     tools.add_marketplace_folder(str(marketplace), "mkt")
     out = tools.fetch_plugin_skills("alpha@mkt")
-    assert out["installed"] is True
-    assert out["skills"] == ["lint", "review"]
+    assert out["has_files"] is True
+    assert out["files_from"] == "marketplace"
+    assert [s["name"] for s in out["skills"]] == ["lint", "review"]
 
 
 def test_fetch_plugin_skills_unknown_id_rejected(tools, marketplace):

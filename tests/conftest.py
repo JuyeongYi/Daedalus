@@ -54,6 +54,34 @@ def _isolate_external_marketplaces(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _isolate_plugin_realizations(tmp_path, monkeypatch):
+    """카탈로그가 보는 **실물 위치 두 곳**을 홈에서 떼어낸다.
+
+    ① CC 설치 기록(`~/.claude/plugins/installed_plugins.json`)과 ② 우리 클론
+    캐시(`~/.daedalus/cache/plugin/`)를 그대로 읽으면, 개발자가 실제로 설치한
+    플러그인에 따라 카탈로그 단언이 그 사람의 머신에서만 깨진다(전역 훅 격리와
+    같은 이유). 기본값은 둘 다 비어 있음이고, 필요한 테스트가 여기에 깐다.
+    """
+    from daedalus.model.plugin import plugin_cache, wrap_catalog
+
+    home = tmp_path / "home"
+    monkeypatch.setattr(
+        wrap_catalog, "cc_install_file",
+        lambda home_dir=None: (
+            (home_dir if home_dir is not None else home)
+            / ".claude" / "plugins" / "installed_plugins.json"
+        ),
+    )
+    monkeypatch.setattr(
+        plugin_cache, "cache_dir",
+        lambda home_dir=None: (
+            (home_dir if home_dir is not None else home)
+            / ".daedalus" / "cache" / "plugin"
+        ),
+    )
+
+
+@pytest.fixture(autouse=True)
 def _isolate_user_templates(tmp_path, monkeypatch):
     """사용자 템플릿 폴더(~/.daedalus/templates/)를 홈에서 떼어낸다.
 

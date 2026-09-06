@@ -15,7 +15,7 @@
 """
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QApplication,
@@ -36,9 +36,16 @@ _ROLE_KIND = Qt.ItemDataRole.UserRole + 1      # "marketplace" | "plugin" | "ski
 _ROLE_SOURCE = Qt.ItemDataRole.UserRole + 2    # skill 행: source 문자열
 _ROLE_FOLDER_PATH = Qt.ItemDataRole.UserRole + 3  # marketplace 행: 등록 경로
 _ROLE_PLUGIN_ID = Qt.ItemDataRole.UserRole + 4    # plugin 행: 설치 식별자
-#: 미설치 plugin 행: marketplace.json 선언 source(원격 조회 재료). 설치된
-#: 플러그인은 None — 스킬이 이미 로컬에 있어 조회할 이유가 없다.
+#: plugin 행: marketplace.json 선언 source — 실물을 받아오는 재료(클론).
+#: 마켓 저장소에 동봉된 플러그인은 None(받을 것이 없다).
 _ROLE_SOURCE_SPEC = Qt.ItemDataRole.UserRole + 5
+
+#: 실물을 어디서 읽었는지 — 툴팁 문구(CataloguedPlugin.files_from 값 → 표시).
+_FILES_FROM_LABELS = {
+    "marketplace": "마켓 저장소에 동봉",
+    "installed": "Claude Code가 설치한 실물",
+    "cache": "받아 둔 캐시 (~/.daedalus/cache/plugin/)",
+}
 
 _COLOR_WRAPPED = QColor("#448844")
 _COLOR_MUTED = QColor("#888888")
@@ -61,9 +68,12 @@ class WrapCatalogDialog(QDialog):
     def __init__(self, window, parent=None) -> None:
         super().__init__(parent or window)
         self._window = window
-        # 캐시에서 읽은 미설치 플러그인의 스킬(plugin_id → [CataloguedSkill]) —
-        # 창이 열려 있는 동안의 표시용이다. 실물은 plugin_cache가 홈에 둔다.
-        self._fetched_skills: dict[str, list] = {}
+        # 펼침 상태는 트리를 다시 그려도 살아남아야 한다(사용자 보고
+        # 2026-09-07 — 체크할 때마다 접혀서 불편했다). 키는 plugin_id /
+        # 마켓 폴더 경로라 목록이 바뀌어도 같은 행을 가리킨다.
+        self._expanded_plugins: set[str] = set()
+        self._expanded_groups: set[str] = set()
+        self._expanded_seeded = False
         self.setWindowTitle("외부 플러그인 카탈로그")
         self.resize(560, 480)
 
@@ -75,6 +85,8 @@ class WrapCatalogDialog(QDialog):
         # 플러그인 행 체크박스 = 이 프로젝트에서 사용 선언(external_plugins).
         # refresh가 blockSignals로 트리를 다시 그리므로 사람 토글에서만 온다.
         self._tree.itemChanged.connect(self._on_item_changed)
+        self._tree.itemExpanded.connect(self._on_expand_changed)
+        self._tree.itemCollapsed.connect(self._on_expand_changed)
         lay.addWidget(self._tree)
 
         self._status = QLabel("")
@@ -130,16 +142,42 @@ class WrapCatalogDialog(QDialog):
             self._tree.blockSignals(False)
         if total is None:
             return
-        self._status.setText(
-            f"외부 스킬 {total}개. 체크 = 이 프로젝트에서 사용(빌드가 의존성 "
-            f"자동 배선, 현재 {used_count}개). ✔ = 이미 랩핑됨."
-        )
         if total == 0:
             self._status.setText(
                 "등록된 마켓플레이스 폴더에서 스킬을 찾지 못했습니다 — 폴더 "
                 "아래에 .claude-plugin/plugin.json과 skills/<이름>/SKILL.md "
                 "구조가 있는지 확인하세요."
             )
+            return
+        self._status.setText(self._counts_text(total, used_count))
+
+    @staticmethod
+    def _counts_text(total: int, used_count: int) -> str:
+        return (
+            f"외부 스킬 {total}개. 체크 = 이 프로젝트에서 사용(빌드가 의존성 "
+            f"자동 배선, 현재 {used_count}개). ✔ = 이미 랩핑됨."
+        )
+
+    def _update_status_counts(self) -> None:
+        """트리는 그대로 두고 상태 문구의 개수만 갱신한다.
+
+        **화면을 세지 모델을 다시 스캔하지 않는다** — 지금 보이는 것과 문구가
+        어긋나면 안 되고, 체크 하나에 파일시스템을 다시 훑을 이유도 없다.
+        """
+        total = used = 0
+        stack = [
+            self._tree.topLevelItem(i) for i in range(self._tree.topLevelItemCount())
+        ]
+        while stack:
+            item = stack.pop()
+            kind = item.data(0, _ROLE_KIND)
+            if kind == "skill":
+                total += 1
+            elif kind == "plugin" and item.checkState(0) == Qt.CheckState.Checked:
+                used += 1
+            stack.extend(item.child(i) for i in range(item.childCount()))
+        if total:
+            self._status.setText(self._counts_text(total, used))
 
     def _rebuild_tree(self) -> tuple[int | None, int]:
         """트리 재구성. (스킬 수 | None=폴더 없음, 사용 선언된 플러그인 수)."""
@@ -165,47 +203,57 @@ class WrapCatalogDialog(QDialog):
             folder_item.setData(0, _ROLE_KIND, "marketplace")
             folder_item.setData(0, _ROLE_FOLDER_PATH, folder.path)
             self._tree.addTopLevelItem(folder_item)
-            # 마켓이 선언만 하고 실물은 아직 안 받은 플러그인은 별도 그룹으로
-            # 접어 둔다(사용자 보고 2026-09-07 — 공식 마켓은 291개 선언 중 로컬
-            # 실물이 40개였다. 한 목록에 쏟으면 설치된 것을 찾을 수 없다).
-            # **사용 선언은 여기서도 된다** — 스킬 목록과 랩핑만 설치 후다.
-            uninstalled = [p for p in plugins if not p.installed]
+            # 실물을 아직 못 읽은 플러그인은 별도 그룹으로 접어 둔다(사용자
+            # 보고 2026-09-07 — 공식 마켓은 291개 선언 중 실물이 40개였다. 한
+            # 목록에 쏟으면 쓸 수 있는 것을 찾을 수 없다). **사용 선언은 여기서도
+            # 된다** — 스킬 목록과 랩핑만 실물이 있어야 한다.
+            unread = [p for p in plugins if not p.has_files]
             group: QTreeWidgetItem | None = None
-            if uninstalled:
+            if unread:
                 group = QTreeWidgetItem(
-                    [f"⋯ 미설치 ({len(uninstalled)})",
-                     "이름·설명만 안다 — 체크(사용 선언)는 가능, 스킬은 설치 후"],
+                    [f"⋯ 스킬 미확인 ({len(unread)})",
+                     "이름·설명만 안다 — 체크(사용 선언)는 가능, "
+                     "[스킬 목록 받아오기]로 실물을 받으면 스킬이 보인다"],
                 )
-                group.setData(0, _ROLE_KIND, "uninstalled-group")
+                group.setData(0, _ROLE_KIND, "unread-group")
+                group.setData(0, _ROLE_FOLDER_PATH, folder.path)
                 group.setForeground(0, _COLOR_MUTED)
                 folder_item.addChild(group)
+                group.setExpanded(folder.path in self._expanded_groups)
             for plugin in plugins:
+                if not self._expanded_seeded and plugin.has_files:
+                    self._expanded_plugins.add(plugin.plugin_id)
                 used = plugin.plugin_id in declared
                 if used:
                     used_count += 1
-                parent_item = group if (not plugin.installed and group is not None) else folder_item
-                # 아이콘으로 실물 유무를 가른다(사용자 요청) — 🧩 받음 / ❌ 아직
-                # 안 받음. 미설치도 체크(사용 선언)는 되므로 색만으로는 약하다.
-                icon = "🧩" if plugin.installed else "❌"
+                parent_item = (
+                    group if (not plugin.has_files and group is not None)
+                    else folder_item
+                )
+                # 아이콘은 **실물을 읽었는가**를 가른다(사용자 확정 — 설치/미설치가
+                # 아니라 클론 여부). 🧩 = 스킬을 안다 / ⬇ = 아직 받아야 한다.
+                icon = "🧩" if plugin.has_files else "⬇"
                 plugin_item = QTreeWidgetItem(
                     [f"{icon} {plugin.name}", plugin.description]
                 )
-                if not plugin.installed:
+                if not plugin.has_files:
                     plugin_item.setForeground(0, _COLOR_MUTED)
                     plugin_item.setToolTip(
                         0,
-                        f"{plugin.plugin_id}\n아직 받지 않음 — 사용 선언은 지금 "
-                        f"가능하고(빌드가 의존성을 배선), 스킬 목록과 랩핑은 "
-                        f"설치 후에 됩니다.",
+                        f"{plugin.plugin_id}\n실물이 로컬에 없습니다 — 사용 선언은 "
+                        f"지금 가능하고(빌드가 의존성을 배선), 스킬 목록과 랩핑은 "
+                        f"[스킬 목록 받아오기]로 받은 뒤에 됩니다.",
                     )
                 else:
-                    plugin_item.setToolTip(0, f"{plugin.plugin_id}\n{plugin.path}")
+                    label = _FILES_FROM_LABELS.get(plugin.files_from, "")
+                    plugin_item.setToolTip(
+                        0, f"{plugin.plugin_id}\n{label}\n{plugin.path}"
+                    )
                 plugin_item.setData(0, _ROLE_KIND, "plugin")
                 plugin_item.setData(0, _ROLE_PLUGIN_ID, plugin.plugin_id)
-                plugin_item.setData(
-                    0, _ROLE_SOURCE_SPEC,
-                    None if plugin.installed else plugin.source_spec,
-                )
+                # 이미 받아 둔 것도 source_spec을 남긴다 — 새 버전을 다시 받는
+                # 경로(refresh)가 있어야 하고, 없애면 그 행에서 버튼이 죽는다.
+                plugin_item.setData(0, _ROLE_SOURCE_SPEC, plugin.source_spec)
                 plugin_item.setFlags(
                     plugin_item.flags() | Qt.ItemFlag.ItemIsUserCheckable
                 )
@@ -213,24 +261,6 @@ class WrapCatalogDialog(QDialog):
                     0, Qt.CheckState.Checked if used else Qt.CheckState.Unchecked
                 )
                 parent_item.addChild(plugin_item)
-                # 미설치 플러그인은 캐시에서 읽어 온 것이 있으면 보여준다 —
-                # 실물을 받았으므로 설치된 것과 **같은 항목**(이름 + 설명)이다.
-                fetched = self._fetched_skills.get(plugin.plugin_id, [])
-                for skill in fetched:
-                    total += 1
-                    already = skill.source in wrapped
-                    cached_item = QTreeWidgetItem(
-                        [f"{skill.name} ✔" if already else skill.name,
-                         skill.description],
-                    )
-                    cached_item.setToolTip(0, f"{skill.source} — 캐시에서 읽음")
-                    cached_item.setData(0, _ROLE_KIND, "skill")
-                    cached_item.setData(0, _ROLE_SOURCE, skill.source)
-                    if already:
-                        cached_item.setForeground(0, _COLOR_WRAPPED)
-                    plugin_item.addChild(cached_item)
-                if fetched:
-                    plugin_item.setExpanded(True)
                 for skill in plugin.skills:
                     total += 1
                     already = skill.source in wrapped
@@ -245,9 +275,26 @@ class WrapCatalogDialog(QDialog):
                             0, f"{skill.source} — 이미 이 프로젝트에서 랩핑됨"
                         )
                     plugin_item.addChild(skill_item)
-                plugin_item.setExpanded(plugin.installed)
+                plugin_item.setExpanded(
+                    plugin.plugin_id in self._expanded_plugins
+                )
             folder_item.setExpanded(True)
+        self._expanded_seeded = True
         return total, used_count
+
+    def _on_expand_changed(self, item: QTreeWidgetItem) -> None:
+        """펼침/접힘을 기억한다 — 재구성이 사용자의 시야를 되돌리지 않도록."""
+        kind = item.data(0, _ROLE_KIND)
+        if kind == "plugin":
+            target, key = self._expanded_plugins, item.data(0, _ROLE_PLUGIN_ID)
+        elif kind == "unread-group":
+            target, key = self._expanded_groups, item.data(0, _ROLE_FOLDER_PATH)
+        else:
+            return
+        if item.isExpanded():
+            target.add(key)
+        else:
+            target.discard(key)
 
     def _on_item_changed(self, item: QTreeWidgetItem, column: int) -> None:
         """플러그인 체크 토글 → external_plugins 선언 (SetAttrCmd — undo 가능)."""
@@ -257,12 +304,12 @@ class WrapCatalogDialog(QDialog):
             item.data(0, _ROLE_PLUGIN_ID),
             item.checkState(0) == Qt.CheckState.Checked,
         )
-        # itemChanged를 쏜 아이템을 같은 호출 안에서 clear()로 파괴하면 Qt가
-        # 시그널 반환 경로에서 그 아이템을 다시 만져 간헐적 access violation이
-        # 난다(실측 — 플레이키 크래시). 트리 재구성은 이벤트 루프로 미룬다.
-        # 수신 컨텍스트(self)를 주면 다이얼로그가 먼저 닫혀도 죽은 위젯에
-        # 발화하지 않는다(WP-WS 0ms 디바운스 수명 함정과 같은 결).
-        QTimer.singleShot(0, self, self.refresh)
+        # **트리를 다시 그리지 않는다**(사용자 보고 2026-09-07 — 체크할 때마다
+        # 폴더가 접혀 불편했다). 체크 상태 자체가 이미 화면의 진실이고, 재구성이
+        # 바꾸는 것은 상태 문구의 개수뿐이다. 덤으로 itemChanged를 쏜 아이템을
+        # 같은 호출에서 clear()로 파괴하던 플레이키 access violation의 뿌리도
+        # 사라져 지연 재구성(QTimer)이 필요 없어졌다.
+        self._update_status_counts()
 
     def set_plugin_used(self, plugin_id: str, used: bool) -> bool:
         """external_plugins 선언 토글의 실체 — 새 리스트를 SetAttrCmd로 대입
@@ -327,7 +374,11 @@ class WrapCatalogDialog(QDialog):
                 "없습니다 — 설치 후 확인하세요."
             )
             return None
-        self._fetched_skills[plugin_id] = list(skills)
+        # 세션 dict에 담아 두지 않는다 — 캐시에 실물이 남았으므로 다음
+        # `scan_catalog`부터 **설치된 플러그인과 완전히 같은 경로**로 실린다
+        # (레지스트리 🔗 후보도 그 목록에서 나온다. 창 안에만 들고 있으면
+        # 받아왔는데도 어디서도 랩핑할 수 없다 — 사용자 보고 2026-09-07).
+        self._expanded_plugins.add(plugin_id)
         self.refresh()
         self._status.setText(
             f"'{plugin_id}' 스킬 {len(skills)}개를 캐시에서 읽었습니다 — "

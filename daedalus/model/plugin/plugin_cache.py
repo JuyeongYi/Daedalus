@@ -128,6 +128,26 @@ def _shallow_clone(source: GitSource, dest: Path) -> None:
     _run_git(["checkout", "--quiet", "FETCH_HEAD"], cwd=dest)
 
 
+def _plugin_dir(source: GitSource) -> tuple[Path, Path]:
+    """(저장소 루트, 그 안의 플러그인 디렉토리) — 받았든 아니든 경로 계산만."""
+    root = cache_dir() / source.cache_key
+    sub = source.path.strip("/")
+    return root, (root / sub if sub else root)
+
+
+def cached_path(spec: object) -> Path | None:
+    """**이미 받아 둔** 실물의 플러그인 디렉토리 (없으면 None).
+
+    절대 받지 않는다 — 카탈로그가 매 새로고침마다 부르는 자리라 여기서
+    네트워크에 나가면 "지목했을 때만 받는다"는 규약이 무너진다.
+    """
+    source = parse_git_source(spec)
+    if source is None:
+        return None
+    _root, plugin_dir = _plugin_dir(source)
+    return plugin_dir if plugin_dir.is_dir() else None
+
+
 def ensure_cached(
     spec: object, refresh: bool = False,
 ) -> Path | None:
@@ -143,8 +163,7 @@ def ensure_cached(
     if source is None:
         return None
 
-    root = cache_dir() / source.cache_key
-    plugin_dir = root / source.path.strip("/") if source.path.strip("/") else root
+    root, plugin_dir = _plugin_dir(source)
     if root.exists() and not refresh:
         return plugin_dir if plugin_dir.is_dir() else None
     if root.exists():

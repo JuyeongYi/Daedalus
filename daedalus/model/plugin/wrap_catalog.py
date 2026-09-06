@@ -33,6 +33,8 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from daedalus.model.plugin import plugin_cache
+
 MARKETPLACES_FILENAME = "external_marketplaces.json"
 
 #: 플러그인 탐색 최대 깊이 (마켓플레이스 폴더 자신 = 0). 마켓 저장소는 보통
@@ -71,19 +73,20 @@ class CataloguedPlugin:
     marketplace: str = ""
     description: str = ""
     skills: list[CataloguedSkill] = field(default_factory=list)
-    #: 로컬에 실물이 받아져 있는가 (사용자 보고 2026-09-07).
+    #: 실물 파일을 **어디서 읽었는가** (사용자 확정 2026-09-07 — "설치/미설치
+    #: 보다는 그냥 외부 플러그인으로 표시하고, 클론 여부에 따라 아이콘을").
     #:
-    #: 마켓플레이스는 `marketplace.json`에 플러그인을 **선언**만 하고 실물은
-    #: 설치할 때 받아온다(실측: 공식 마켓은 291개 선언, 로컬 실물 40개).
-    #: 예전에는 실물이 있는 것만 훑어 "마켓에는 있는데 카탈로그에 안 뜨는"
-    #: 플러그인이 252개였다.
+    #: `""`(못 읽음) / `"marketplace"`(마켓 저장소에 동봉) /
+    #: `"installed"`(CC가 설치 — `~/.claude/plugins/cache/<마켓>/<이름>/<버전>/`) /
+    #: `"cache"`(우리가 클론 — `~/.daedalus/cache/plugin/`).
     #:
-    #: `False`면 **이름·설명만 안다** — 스킬 목록은 파일이 없어 알 수 없으므로
-    #: `skills`가 비어 있고, 따라서 랩핑(WrappedSkill)은 설치 후에만 된다.
-    #: 반면 **사용 선언(external_plugins)은 지금 할 수 있다** — plugin_id만
-    #: 있으면 빌드가 dependencies/enabledPlugins를 내고, 설치는 CC가 한다.
-    installed: bool = True
-    #: 미설치 플러그인의 marketplace.json 선언 `source` (설치된 것은 None).
+    #: "설치 여부"가 아니라 **스킬을 읽을 수 있는가**가 이 필드의 뜻이다. 마켓
+    #: 저장소만 훑던 시절에는 사용자가 CC로 설치한 플러그인이 "미설치"로 나왔다
+    #: (실측 — CC는 마켓 저장소가 아니라 별도 캐시에 푼다). 못 읽으면 `skills`가
+    #: 비어 랩핑(WrappedSkill)은 불가하지만, **사용 선언은 지금도 된다** —
+    #: plugin_id만 있으면 빌드가 dependencies/enabledPlugins를 내고 설치는 CC가 한다.
+    files_from: str = "marketplace"
+    #: 마켓플레이스가 선언한 `source` (마켓 저장소 동봉분은 None).
     #: 실물을 받아오려면 이것이 재료다 — `plugin_cache`가 이 선언으로 저장소를
     #: 얕게 클론해 두고 `_scan_skills`가 그대로 스킬을 읽는다.
     source_spec: object | None = None
@@ -94,6 +97,11 @@ class CataloguedPlugin:
     #: 없다). 개별 도구 목록은 지원하지 않는다(사용자 확정 — tools 후보에는
     #: 넣지 않는다).
     mcp_servers: list[str] = field(default_factory=list)
+
+    @property
+    def has_files(self) -> bool:
+        """실물을 읽었는가 — 스킬 목록과 랩핑 가능 여부가 여기에 달렸다."""
+        return bool(self.files_from)
 
     @property
     def plugin_id(self) -> str:
@@ -204,6 +212,51 @@ def _frontmatter_fields(md_path: Path) -> dict[str, str]:
         key, sep, value = line.partition(":")
         if sep and key.strip() and not key.startswith((" ", "\t")):
             out[key.strip()] = value.strip().strip('"').strip("'")
+    return out
+
+
+def cc_install_file(home_dir: Path | None = None) -> Path:
+    """CC의 설치 기록 파일. 테스트는 이 함수를 몽키패치해 홈을 격리한다."""
+    base = home_dir if home_dir is not None else Path.home()
+    return base / ".claude" / "plugins" / "installed_plugins.json"
+
+
+def cc_installed_dirs() -> dict[str, Path]:
+    """CC가 **실제로 설치한** 플러그인의 실물 위치 — `plugin_id` → 디렉토리.
+
+    CC는 마켓 저장소가 아니라 `~/.claude/plugins/cache/<마켓>/<이름>/<버전>/`에
+    푼다(실측). 마켓 폴더만 훑던 시절에는 사용자가 설치한 플러그인이 카탈로그에
+    "미설치"로 나왔다 — 그것이 이 함수가 생긴 이유다.
+
+    같은 id에 항목이 여럿이면(scope user/project 공존, 버전 여럿) **마지막으로
+    갱신된 것**을 쓴다. 실존하지 않는 installPath는 버린다 — 기록만 남고 폴더는
+    지워졌을 수 있고, 그러면 "읽었다"고 말해 놓고 스킬이 0개가 된다.
+    파일이 없거나 깨져 있으면 빈 dict(전역 훅·카탈로그와 같은 fail-soft).
+    """
+    path = cc_install_file()
+    if not path.is_file():
+        return {}
+    data = _read_json(path) or {}
+    entries = data.get("plugins")
+    if not isinstance(entries, dict):
+        return {}
+    out: dict[str, Path] = {}
+    for plugin_id, installs in entries.items():
+        best: tuple[str, Path] | None = None
+        for item in installs if isinstance(installs, list) else []:
+            if not isinstance(item, dict):
+                continue
+            raw = str(item.get("installPath", "") or "")
+            if not raw:
+                continue
+            directory = Path(raw)
+            if not directory.is_dir():
+                continue
+            stamp = str(item.get("lastUpdated", "") or item.get("installedAt", "") or "")
+            if best is None or stamp >= best[0]:
+                best = (stamp, directory)
+        if best is not None:
+            out[str(plugin_id)] = best[1]
     return out
 
 
@@ -327,19 +380,45 @@ def discover_plugins(folder: MarketplaceFolder) -> list[CataloguedPlugin]:
 
     visit(folder_dir, 0)
 
-    # 마켓이 **선언**했지만 로컬에 실물이 없는 플러그인 — 이름·설명만 싣는다
-    # (스킬은 파일이 없어 알 수 없다). 사용 선언은 이것만으로 충분하다.
+    # 마켓이 **선언**한 플러그인 중 저장소에 동봉되지 않은 것들. 실물은 세
+    # 군데에 있을 수 있고, 어디서 읽었든 스킬은 같은 스캐너가 읽는다:
+    #   ① CC 설치 캐시 — 사용자가 실제로 설치한 것 (실측으로 이것을 안 봐서
+    #      "설치했는데 미설치로 나온다"는 보고가 나왔다)
+    #   ② 우리 클론 캐시 — 카탈로그 창에서 "스킬 목록 받아오기"를 누른 것
+    # 둘 다 없으면 이름·설명만 싣는다(사용 선언에는 그것으로 충분하다).
+    installs = cc_installed_dirs()
     for name, description, source_spec in _declared_plugins(manifest):
         if name in seen:
             continue
         seen.add(name)
+        plugin_id = f"{name}@{marketplace}" if marketplace else name
+        local = installs.get(plugin_id)
+        files_from = "installed"
+        if local is None:
+            local = plugin_cache.cached_path(source_spec)
+            files_from = "cache"
+        if local is None:
+            files_from = ""
+        # 매니페스트가 없는 실물도 정상이다 — 스킬 없이 LSP·훅만 주는 플러그인이
+        # 있다(실측: pyright-lsp). 없는 파일에 경고를 내면 목록을 열 때마다 시끄럽다.
+        manifest_path = (
+            local / ".claude-plugin" / "plugin.json" if local is not None else None
+        )
+        plugin_manifest = (
+            _read_json(manifest_path) or {}
+        ) if manifest_path is not None and manifest_path.is_file() else {}
         plugins.append(CataloguedPlugin(
             name=name,
-            path="",  # 로컬 경로가 없다
+            path=str(local) if local is not None else "",
             marketplace=marketplace,
-            description=description,
-            skills=[],
-            installed=False,
+            # 선언의 설명이 정본이다 — 목록에서 이름 옆에 보이는 그것이고,
+            # 실물 매니페스트와 어긋나도 사용자가 고른 근거는 선언 쪽이다.
+            description=description or str(plugin_manifest.get("description", "") or ""),
+            skills=_scan_skills(local, plugin_id) if local is not None else [],
+            mcp_servers=(
+                _scan_mcp_servers(local, plugin_manifest) if local is not None else []
+            ),
+            files_from=files_from,
             source_spec=source_spec,
         ))
 

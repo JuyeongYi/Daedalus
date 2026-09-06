@@ -226,14 +226,14 @@ def _make_marketplace(root, name, declared):
     )
 
 
-def test_declared_but_not_installed_plugins_are_listed(tmp_path):
-    """마켓은 목록을 **선언**하고 실물은 설치 때 받아온다 — 실물이 없어도
-    이름·설명은 알 수 있어야 사용 선언을 할 수 있다(실측: 공식 마켓 291개
-    선언 / 로컬 실물 40개라 252개가 카탈로그에서 통째로 빠져 있었다).
+def test_declared_without_files_is_listed_by_name_only(tmp_path):
+    """마켓은 목록을 **선언**하고 실물은 따로 온다 — 실물이 없어도 이름·설명은
+    알 수 있어야 사용 선언을 할 수 있다(실측: 공식 마켓 291개 선언 / 저장소
+    동봉 40개라 나머지가 카탈로그에서 통째로 빠져 있었다).
     """
     root = tmp_path / "mkt"
     _make_marketplace(root, "m", [
-        {"name": "alpha", "description": "설치됨"},
+        {"name": "alpha", "description": "동봉"},
         {"name": "remote-only", "description": "아직 안 받음",
          "source": {"source": "git-subdir", "url": "https://x/y.git"}},
     ])
@@ -242,14 +242,16 @@ def test_declared_but_not_installed_plugins_are_listed(tmp_path):
     plugins = {p.name: p for p in discover_plugins(MarketplaceFolder(path=str(root)))}
     assert set(plugins) == {"alpha", "remote-only"}
 
-    assert plugins["alpha"].installed is True
+    assert plugins["alpha"].files_from == "marketplace"
+    assert plugins["alpha"].has_files is True
     assert [s.name for s in plugins["alpha"].skills] == ["s"]
 
     remote = plugins["remote-only"]
-    assert remote.installed is False
+    assert remote.has_files is False
+    assert remote.files_from == ""
     assert remote.description == "아직 안 받음"
     assert remote.plugin_id == "remote-only@m"  # 사용 선언은 이것만 있으면 된다
-    # **스킬은 실물을 받기 전까지 알 수 없다**(사용자 확인) — 랩핑은 설치 후
+    # **스킬은 실물이 있어야 안다** — 랩핑은 받아온 뒤에
     assert remote.skills == []
 
 
@@ -261,5 +263,107 @@ def test_local_실물이_선언을_이긴다(tmp_path):
 
     plugins = discover_plugins(MarketplaceFolder(path=str(root)))
     assert len(plugins) == 1
-    assert plugins[0].installed is True
+    assert plugins[0].files_from == "marketplace"
     assert plugins[0].description == "실물 설명"
+
+
+# --- 실물의 출처 세 곳 (사용자 보고 2026-09-07) ---
+
+
+def test_cc_installed_plugin_is_read(tmp_path, monkeypatch):
+    """CC가 설치한 플러그인의 실물은 **마켓 저장소가 아니라** 별도 캐시에 있다.
+
+    그곳을 안 보던 시절에는 사용자가 실제로 설치한 플러그인이 카탈로그에
+    "미설치"로 나왔다(사용자 보고 — 이 테스트가 그 회귀를 막는다).
+    """
+    from daedalus.model.plugin import wrap_catalog
+
+    root = tmp_path / "mkt"
+    _make_marketplace(root, "m", [{"name": "installed-one", "description": "선언"}])
+    installed_dir = tmp_path / "cc" / "cache" / "m" / "installed-one" / "1.0.0"
+    _make_plugin(installed_dir.parent, "1.0.0", skills=["review"])
+
+    record = tmp_path / "cc" / "installed_plugins.json"
+    record.parent.mkdir(parents=True, exist_ok=True)
+    record.write_text(json.dumps({"version": 2, "plugins": {
+        "installed-one@m": [{"scope": "user", "installPath": str(installed_dir),
+                             "lastUpdated": "2026-09-01T00:00:00Z"}],
+    }}), encoding="utf-8")
+    monkeypatch.setattr(wrap_catalog, "cc_install_file", lambda home_dir=None: record)
+
+    plugin = discover_plugins(MarketplaceFolder(path=str(root)))[0]
+    assert plugin.files_from == "installed"
+    assert [s.name for s in plugin.skills] == ["review"]
+    # 선언의 설명이 정본 — 목록에서 이름 옆에 보이는 그것이다
+    assert plugin.description == "선언"
+
+
+def test_cc_install_record_ignores_missing_dirs(tmp_path, monkeypatch):
+    """기록만 남고 폴더가 지워졌으면 '읽었다'고 말하지 않는다."""
+    from daedalus.model.plugin import wrap_catalog
+
+    record = tmp_path / "installed_plugins.json"
+    record.write_text(json.dumps({"plugins": {
+        "gone@m": [{"installPath": str(tmp_path / "nope")}],
+    }}), encoding="utf-8")
+    monkeypatch.setattr(wrap_catalog, "cc_install_file", lambda home_dir=None: record)
+    assert wrap_catalog.cc_installed_dirs() == {}
+
+
+def test_cc_install_record_takes_latest(tmp_path, monkeypatch):
+    """같은 id에 여러 설치가 있으면 마지막으로 갱신된 것."""
+    from daedalus.model.plugin import wrap_catalog
+
+    old_dir, new_dir = tmp_path / "v1", tmp_path / "v2"
+    old_dir.mkdir(); new_dir.mkdir()
+    record = tmp_path / "installed_plugins.json"
+    record.write_text(json.dumps({"plugins": {"p@m": [
+        {"installPath": str(old_dir), "lastUpdated": "2026-01-01T00:00:00Z"},
+        {"installPath": str(new_dir), "lastUpdated": "2026-08-01T00:00:00Z"},
+    ]}}), encoding="utf-8")
+    monkeypatch.setattr(wrap_catalog, "cc_install_file", lambda home_dir=None: record)
+    assert wrap_catalog.cc_installed_dirs() == {"p@m": new_dir}
+
+
+def test_cloned_cache_is_read(tmp_path, monkeypatch):
+    """받아 둔 클론도 실물이다 — 카탈로그가 그것을 읽어야 랩핑까지 이어진다.
+
+    창 안 세션 dict에만 담아 두면 "스킬 목록을 받아왔는데 어디서도 랩핑할 수
+    없다"가 된다(사용자 보고 2026-09-07).
+    """
+    from daedalus.model.plugin import plugin_cache
+
+    spec = {"source": "git-subdir", "url": "https://x/y.git", "path": "p",
+            "sha": "abc"}
+    root = tmp_path / "mkt"
+    _make_marketplace(root, "m", [{"name": "cloned", "source": spec}])
+
+    cached_dir = tmp_path / "cached-plugin"
+    _make_plugin(cached_dir.parent, cached_dir.name, skills=["lint"])
+    monkeypatch.setattr(plugin_cache, "cached_path", lambda s: cached_dir)
+
+    plugin = discover_plugins(MarketplaceFolder(path=str(root)))[0]
+    assert plugin.files_from == "cache"
+    assert [s.name for s in plugin.skills] == ["lint"]
+
+
+def test_files_without_manifest_are_not_an_error(tmp_path, monkeypatch, capsys):
+    """스킬 없이 LSP·훅만 주는 플러그인이 있다(실측: pyright-lsp) — 매니페스트가
+    없다고 목록을 열 때마다 경고를 쏟으면 안 된다."""
+    from daedalus.model.plugin import wrap_catalog
+
+    root = tmp_path / "mkt"
+    _make_marketplace(root, "m", [{"name": "bare"}])
+    bare = tmp_path / "bare-install"
+    bare.mkdir()
+    (bare / "README.md").write_text("x", encoding="utf-8")
+    record = tmp_path / "installed_plugins.json"
+    record.write_text(json.dumps({"plugins": {
+        "bare@m": [{"installPath": str(bare)}],
+    }}), encoding="utf-8")
+    monkeypatch.setattr(wrap_catalog, "cc_install_file", lambda home_dir=None: record)
+
+    plugin = discover_plugins(MarketplaceFolder(path=str(root)))[0]
+    assert plugin.files_from == "installed"
+    assert plugin.skills == []
+    assert "읽지 못했습니다" not in capsys.readouterr().err
