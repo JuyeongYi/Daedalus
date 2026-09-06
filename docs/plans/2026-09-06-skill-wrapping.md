@@ -80,3 +80,13 @@ wrapped_source_has_workflow.
 - plugin.json 의존성 선언의 정확한 키/형식 — 공식 스펙 확인 후 emit(A4 관례)
 - `enabledPlugins` 값 형식(플러그인 식별자 규격) — settings 스키마
   (tests/fixtures/specs 스냅샷) 대조
+
+## 인보크 표기 (교차 확인 2026-09-06)
+
+크로스 플러그인 스킬 지목의 공식 표기는 `/플러그인이름:스킬이름`이고 플러그인
+이름에 마켓 표기가 붙지 않는다 — `@마켓`은 설치 식별자로 dependencies(매니페스트)
+/enabledPlugins(settings) 전용이다. `_wrapped_procedure_section`이 이 표기를
+그대로 배출한다(invoke `/other:code-review`). 근거: 공식 plugins-reference +
+settings 문서, 백그라운드 조사 에이전트 보고(dependencies는 {name, version}
+객체형·전이적 해소·의존 대상 자동 활성화까지 확인 — 우리는 문자열형만 배출).
+

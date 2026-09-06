@@ -382,14 +382,19 @@ def _wrapped_procedure_section(skill) -> list[str]:
     )
     if not skill_name:
         return []
+    # 크로스 플러그인 스킬 지목의 공식 표기는 `/플러그인:스킬`이고 플러그인
+    # 이름에 마켓 표기가 붙지 않는다(공식 문서 확인 2026-09-06 — @마켓은
+    # 설치 식별자라 dependencies/enabledPlugins 전용이다).
+    bare_plugin = plugin_id.partition("@")[0]
     return [
         "## Procedure",
         (
-            f"This step's procedure lives in an external skill: invoke the "
-            f"skill `{skill_name}` from plugin `{plugin_id}` and follow its "
-            f"instructions now. That skill does not know this workflow — when "
-            f"it completes, return here and continue with the sections below "
-            f"(Next Steps, progress record)."
+            f"This step's procedure lives in an external skill: invoke "
+            f"`/{bare_plugin}:{skill_name}` (the skill `{skill_name}` from "
+            f"plugin `{bare_plugin}`) and follow its instructions now. That "
+            f"skill does not know this workflow — when it completes, return "
+            f"here and continue with the sections below (Next Steps, "
+            f"progress record)."
         ),
     ]
 

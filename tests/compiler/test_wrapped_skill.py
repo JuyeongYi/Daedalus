@@ -64,7 +64,11 @@ def test_wrapped_skill_roundtrip():
 def test_compile_emits_invoke_instruction_not_body():
     text = compile_skill(_wrapped())
     assert "## Procedure" in text
-    assert "invoke the skill `code-review` from plugin `other@mkt`" in text
+    # 공식 크로스 플러그인 표기 `/플러그인:스킬` — 마켓 표기는 설치 식별자라
+    # 인보크 토큰에는 붙지 않는다 (공식 문서 확인 2026-09-06)
+    assert "invoke `/other:code-review`" in text
+    assert "plugin `other`" in text
+    assert "other@mkt" not in text.split("## Requirements")[0]
     assert "return here and continue" in text  # 워크플로 복귀 지시
 
 
