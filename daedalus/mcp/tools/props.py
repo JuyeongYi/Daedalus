@@ -76,14 +76,22 @@ class PropsTools(_BaseTools):
         description: str = "",
         x: float | None = None,
         y: float | None = None,
+        source: str = "",
     ) -> dict[str, Any]:
         """스킬을 만든다.
 
         kind: procedural(작업 지침·자체 FSM) / declarative(배경 지식) /
-        transfer(전이 시 실행되는 보조 지침) / reference(참조 문서).
+        transfer(전이 시 실행되는 보조 지침) / reference(참조 문서) /
+        wrapped(다른 플러그인 스킬의 랩핑 — 본문 없음, WP-WR).
         에이전트에게 줄 지식도 전역 스킬로 만든다 — 전역 declarative와 에이전트
         노드에 링크된 reference는 컴파일 시 에이전트 skills 프론트매터에 자동
         합류된다(로컬 스킬은 퇴역, WP-RF-1c).
+
+        source(WP-WR): kind="wrapped" 전용 — `플러그인[@마켓]:스킬` 형식으로
+        감쌀 외부 스킬을 지정한다(`list_wrappable_skills`가 후보와 source
+        문자열을 준다). 다른 종류에 주면 거절한다(조용히 무시하면 "설정했는데
+        아무 일도 일어나지 않는" 상태가 된다). 생략하면 나중에
+        `set_component_field(name, "source", ...)`로 채운다.
 
         x/y(G14): **함께** 주면 만들자마자 그 좌표에 배치한다 — 생성과 배치가
         1 undo 단위로 묶인다(캔버스 "여기에 만들기"와 같은 경로). reference는
@@ -95,9 +103,21 @@ class PropsTools(_BaseTools):
             raise ValueError(
                 f"알 수 없는 스킬 종류 '{kind}'. 사용 가능: {', '.join(self._SKILL_KINDS)}"
             )
+        if source and kind != "wrapped":
+            raise ValueError(
+                f"source는 kind='wrapped' 전용입니다 — '{kind}' 스킬에는 감쌀 "
+                "외부 스킬 개념이 없습니다."
+            )
         self._reject_duplicate_name(name)
         placed = self._create_component(kind, name, description, x, y)
-        return {"created": name, "kind": kind, "placed": placed}
+        result: dict[str, Any] = {"created": name, "kind": kind, "placed": placed}
+        if source:
+            # 생성 커맨드가 이미 실행된 뒤의 대입이지만 undo 의미론은 깨지지
+            # 않는다 — undo는 CreateComponentCmd가 컴포넌트를 통째로 빼고,
+            # redo는 소스가 채워진 같은 객체를 다시 넣는다(중간 상태 없음).
+            self._find_component(name).config.source = source
+            result["source"] = source
+        return result
 
     def create_agent(
         self,

@@ -44,6 +44,8 @@ MainThreadInvoker로 마샬링한다). 여기서 스레드 안전성을 다시 �
 #                   set_body_section)
 #   props.py      — 생성·속성 (create_skill/create_agent/rename_component/
 #                   description/when_to_use/field/project_properties/set_mcp_server_def)
+#   wrap.py       — 랩핑 카탈로그 (list_wrappable_skills/list_plugin_roots/
+#                   add_plugin_root/remove_plugin_root — WP-WR D2)
 from __future__ import annotations
 
 # ── 분해 전 모듈의 부수 임포트 (파사드 완전성 — dir 기준 공개 집합 보존) ──
@@ -58,6 +60,7 @@ from .hooks import HookTools
 from .ports import PortTools
 from .props import PropsTools
 from .workspace import WorkspaceTools
+from .wrap import WrapTools
 from .query import QueryTools
 from .session import SessionTools
 
@@ -72,5 +75,6 @@ class DaedalusTools(
     BodyTools,
     PropsTools,
     WorkspaceTools,
+    WrapTools,
 ):
     """MainWindow 하나에 붙는 도구 모음."""

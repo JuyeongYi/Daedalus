@@ -373,6 +373,14 @@ class MainWindow(QMainWindow):
             global_hooks.triggered.connect(self._open_global_hooks_dir)
             tools_menu.addAction(global_hooks)
 
+            wrap_catalog_action = QAction("랩핑 스킬 카탈로그...", self)
+            wrap_catalog_action.setToolTip(
+                "등록된 플러그인 루트의 스킬을 플러그인별로 보고 "
+                "WrappedSkill로 만든다 (WP-WR)"
+            )
+            wrap_catalog_action.triggered.connect(self._show_wrap_catalog)
+            tools_menu.addAction(wrap_catalog_action)
+
         view_menu = menubar.addMenu("View")
         if view_menu is None:
             return
@@ -655,6 +663,12 @@ class MainWindow(QMainWindow):
         from PySide6.QtCore import QUrl
         from PySide6.QtGui import QDesktopServices
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(cat_dir)))
+
+    def _show_wrap_catalog(self) -> None:
+        """도구 메뉴 — 랩핑 스킬 카탈로그 창 (WP-WR, D2)."""
+        from daedalus.view.editors.wrap_catalog_dialog import WrapCatalogDialog
+
+        WrapCatalogDialog(self).exec()
 
     def _open_project_catalogue(self) -> None:
         """도구 메뉴 — 프로젝트 카탈로그 폴더를 탐색기로 연다 (없으면 만든다)."""

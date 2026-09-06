@@ -893,16 +893,13 @@ def _wire_local_install(
                 subject=project,
             ))
 
-    if out_dir is None:
-        return  # 대상 폴더를 모르면 병합 판정 자체가 불가능하다
-
-    hooks_text = compile_hooks_json(project, resolved_hooks)
-    hooks_map = json.loads(hooks_text).get("hooks", {}) if hooks_text else None
-
     # WP-WR — 랩핑 스킬의 소스 플러그인을 enabledPlugins로 활성화한다.
     # 형식은 settings 스키마(벤더링 스냅샷) 확인: {"plugin-id@marketplace-id": true}.
     # 마켓 표기가 없는 bare 이름은 enabledPlugins 키가 될 수 없어 경고 후 생략
-    # (매니페스트 dependencies와 달리 자기-마켓 해소 규칙이 없다).
+    # (매니페스트 dependencies와 달리 자기-마켓 해소 규칙이 없다). 이 판정은
+    # missing_mcp_server_def처럼 **대상 폴더와 무관**하므로 out_dir 조기 반환
+    # 앞에 있어야 한다 — 뒤에 두면 out_dir 없는 compile_check(dry-run)에서
+    # 경고가 통째로 사라진다.
     enabled_plugins: dict = {}
     for skill in getattr(project, "skills", []):
         if getattr(skill, "kind", "") != "wrapped_skill":
@@ -925,6 +922,12 @@ def _wire_local_install(
             ))
             continue
         enabled_plugins[plugin_id] = True
+
+    if out_dir is None:
+        return  # 대상 폴더를 모르면 병합 판정 자체가 불가능하다
+
+    hooks_text = compile_hooks_json(project, resolved_hooks)
+    hooks_map = json.loads(hooks_text).get("hooks", {}) if hooks_text else None
 
     baked_settings = dict(project.workspace_settings or {})
     if enabled_plugins:

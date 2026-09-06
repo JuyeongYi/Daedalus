@@ -212,6 +212,8 @@ daedalus/
 │   │   ├── props.py        #   생성·속성(create_skill/create_agent/rename_component/description/when_to_use/field/project_properties/set_mcp_server_def).
 │   │   │                   #     팩토리는 actions/creation.make_component 직호출(S1 — 자체 dict 2벌 폐기),
 │   │   │                   #     create_skill/create_agent의 x·y는 create_and_place로 생성+배치 1 undo(G14)
+│   │   ├── wrap.py         #   랩핑 카탈로그(WP-WR D2) — list_wrappable_skills/list_plugin_roots/add_plugin_root/
+│   │   │                   #     remove_plugin_root. 실체는 model/plugin/wrap_catalog(GUI 카탈로그 창과 공유)
 │   │   └── workspace.py    #   작업 폴더 문서(WP-WD) — list_workspace_docs/get_workspace_doc/set_claude_md/create_rule/
 │   │                       #     set_rule_body/set_rule_paths(A13)/rename_rule/delete_rule. 본문은 BodyTools와 같은
 │   │                       #     QTextDocument 경로(WP-BU), 구조 편집은 GUI 패널과 같은 모델 직접 기록.
@@ -529,10 +531,29 @@ daedalus/
 - **본문 수정 불가**: 에디터가 본문 패널을 잠근다(ComponentEditor). 매트릭스에
   CONTEXT/AGENT/SHELL 없음 — kind별 명시 부재는 test_field_matrix의
   `_KIND_ABSENT_FIELDS`가 계약으로 고정.
-- **후속(2단계)**: D2 카탈로그 발견(플러그인 루트 등록 → 소스 후보), 에디터
-  소스 콤보·본문 미리보기, `dangling_wrapped_source`(실존 검사),
-  `wrapped_source_has_workflow`(소스 워크플로 단락 충돌), MCP
-  `list_wrappable_skills`.
+- **카탈로그 발견(D2, 2단계 1차)**: `model/plugin/wrap_catalog.py`가 단일 진실
+  (파일시스템을 아는 모듈 — hook_store 지위. 검증기·컴파일러는 임포트 금지).
+  루트 등록은 `~/.daedalus/plugin_roots.json`(`plugin_roots_file` — 테스트는
+  conftest `_isolate_plugin_roots`가 격리), 발견은 루트 밑 깊이 4까지
+  `.claude-plugin/plugin.json` 탐색 + `skills/*/SKILL.md`(스킬 이름의 단일
+  진실은 **디렉토리명**). 마켓 이름 해소: 등록 시 명시 > 루트
+  `.claude-plugin/marketplace.json`의 name > bare. **GUI 창**은 도구 메뉴
+  "랩핑 스킬 카탈로그..."(`view/editors/wrap_catalog_dialog.WrapCatalogDialog`
+  — 루트→플러그인→스킬 트리, ✔=이미 랩핑됨, 루트 등록/제거, 생성은
+  make_component + **등록 전 source 대입** + CreateComponentCmd라 1 undo,
+  이름 충돌은 `-2` 접미 유일화). **MCP 짝**(패리티): `list_wrappable_skills`/
+  `list_plugin_roots`/`add_plugin_root`/`remove_plugin_root`(mcp/tools/wrap.py
+  — 루트 등록은 홈 설정 파일이라 undo 비대상) + `create_skill(kind="wrapped",
+  source=)`(다른 kind에 source를 주면 거절).
+- **배선 보증(테스트 고정)**: MARKETPLACE는 compile_project 산출 plugin.json에
+  dependencies 실림 / LOCAL은 선택한 settings 파일(settings.json |
+  settings.local.json)에 enabledPlugins 병합(기존 항목 불가침·멱등·dry-run
+  디스크 불변). **bare 소스 경고는 out_dir 없는 dry-run에서도 나온다** —
+  판정이 대상 폴더와 무관하므로 `_wire_local_install`의 out_dir 조기 반환
+  **앞**에 있다(missing_mcp_server_def와 같은 규약).
+- **후속(2단계 잔여)**: 에디터 소스 콤보·본문 미리보기,
+  `dangling_wrapped_source`(카탈로그 실존 검사 — 호출자 주입),
+  `wrapped_source_has_workflow`(소스 워크플로 단락 충돌).
 
 ### 에이전트 — 본문 + 출력 포트 (WP-AF, 내부 FSM 퇴역)
 

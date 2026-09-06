@@ -2,8 +2,14 @@
 
 2026-09-06 사용자 발안 + D1~D4 확정. **1단계 구현 완료(2026-09-06)** —
 모델·직렬화·매트릭스·emit·의존성 배선·검증 2종·에디터 잠금·레지스트리/뱃지·
-MCP kind 허용(tests/compiler/test_wrapped_skill.py 13건). 2단계(카탈로그
-발견·소스 미리보기·실존 검사)는 남음 — 문서 끝 후속 목록 참조.
+MCP kind 허용(tests/compiler/test_wrapped_skill.py 13건). **2단계 1차 완료(2026-09-06)** — D2 카탈로그
+발견(`model/plugin/wrap_catalog.py` + `~/.daedalus/plugin_roots.json`), GUI
+"랩핑 스킬 카탈로그" 창(플러그인별 트리·생성·✔), MCP 4종
+(list_wrappable_skills/list_plugin_roots/add_plugin_root/remove_plugin_root) +
+create_skill(source=), 빌드 배선 보증 테스트(마켓 dependencies·로컬
+enabledPlugins·settings 파일 선택·멱등·dry-run·out_dir 없는 dry-run의 bare
+경고). 잔여: 에디터 소스 콤보·미리보기, dangling_wrapped_source,
+wrapped_source_has_workflow.
 
 ## 동기
 

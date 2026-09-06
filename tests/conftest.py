@@ -34,6 +34,26 @@ def _isolate_global_hooks(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _isolate_plugin_roots(tmp_path, monkeypatch):
+    """랩핑 카탈로그 루트 파일(WP-WR)을 사용자 홈에서 떼어낸다.
+
+    ~/.daedalus/plugin_roots.json을 그대로 읽으면 개발자가 등록해 둔 루트에
+    따라 카탈로그 단언이 그 사람의 머신에서만 깨진다(전역 훅 격리와 같은
+    이유). 기본값은 빈 파일(존재하지 않음)이고, 카탈로그를 다루는 테스트가
+    여기에 등록을 깐다.
+    """
+    from daedalus.model.plugin import wrap_catalog
+
+    monkeypatch.setattr(
+        wrap_catalog, "plugin_roots_file",
+        lambda home_dir=None: (
+            (home_dir if home_dir is not None else tmp_path / "home")
+            / ".daedalus" / wrap_catalog.ROOTS_FILENAME
+        ),
+    )
+
+
+@pytest.fixture(autouse=True)
 def _isolate_user_templates(tmp_path, monkeypatch):
     """사용자 템플릿 폴더(~/.daedalus/templates/)를 홈에서 떼어낸다.
 

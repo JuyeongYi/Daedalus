@@ -149,6 +149,78 @@ def test_local_bare_plugin_warns_and_skips_enable(tmp_path):
         assert "enabledPlugins" not in json.loads(settings.read_text(encoding="utf-8"))
 
 
+def test_local_enabled_plugins_to_chosen_settings_file(tmp_path):
+    """settings_filename 선택(WP-WS)이 enabledPlugins 베이크에도 그대로 적용된다."""
+    from daedalus.compiler.project_compiler import compile_project
+
+    project = PluginProject(name="p", build_target=BuildTarget.LOCAL)
+    project.skills.append(_wrapped())
+    result = compile_project(project, tmp_path, settings_filename="settings.local.json")
+    assert not result.errors
+    obj = json.loads(
+        (tmp_path / ".claude" / "settings.local.json").read_text(encoding="utf-8")
+    )
+    assert obj["enabledPlugins"] == {"other@mkt": True}
+    assert not (tmp_path / ".claude" / "settings.json").exists()
+
+
+def test_local_existing_enabled_plugins_preserved(tmp_path):
+    """대상 폴더에 이미 있는 enabledPlugins 항목은 불가침 — 추가/갱신만·멱등."""
+    from daedalus.compiler.project_compiler import compile_project
+
+    claude_dir = tmp_path / ".claude"
+    claude_dir.mkdir()
+    (claude_dir / "settings.json").write_text(
+        json.dumps({"enabledPlugins": {"user-added@x": True}}), encoding="utf-8"
+    )
+    project = PluginProject(name="p", build_target=BuildTarget.LOCAL)
+    project.skills.append(_wrapped())
+    compile_project(project, tmp_path)
+    obj = json.loads((claude_dir / "settings.json").read_text(encoding="utf-8"))
+    assert obj["enabledPlugins"] == {"user-added@x": True, "other@mkt": True}
+    # 재컴파일 멱등
+    compile_project(project, tmp_path)
+    obj2 = json.loads((claude_dir / "settings.json").read_text(encoding="utf-8"))
+    assert obj2 == obj
+
+
+def test_local_dry_run_writes_nothing_but_reports(tmp_path):
+    from daedalus.compiler.project_compiler import compile_project
+
+    project = PluginProject(name="p", build_target=BuildTarget.LOCAL)
+    project.skills.append(_wrapped())
+    result = compile_project(project, tmp_path, dry_run=True)
+    assert not result.errors
+    assert not (tmp_path / ".claude").exists()  # 디스크 완전 불변
+    assert any(str(p).endswith("settings.json") for p in result.written)
+
+
+def test_bare_source_warning_survives_dry_run_without_out_dir():
+    """bare 소스 판정은 대상 폴더와 무관하다 — out_dir 없는 compile_check에서도
+    경고가 나와야 한다(missing_mcp_server_def와 같은 규약)."""
+    from daedalus.compiler.project_compiler import compile_project
+
+    project = PluginProject(name="p", build_target=BuildTarget.LOCAL)
+    project.skills.append(_wrapped(source="bare-plugin:skill"))
+    result = compile_project(project, None, dry_run=True)
+    assert "wrapped_source_no_marketplace" in [w.rule for w in result.warnings]
+
+
+def test_marketplace_build_wires_manifest_dependencies(tmp_path):
+    """MARKETPLACE 빌드 산출 파일에 dependencies가 실제로 실린다 (emit 단위가
+    아니라 compile_project 경로 — 사용자 요구 '관련 처리 확실하게')."""
+    from daedalus.compiler.project_compiler import compile_project
+
+    project = PluginProject(name="p")  # 기본 MARKETPLACE
+    project.skills.append(_wrapped())
+    result = compile_project(project, tmp_path)
+    assert not result.errors
+    manifest = json.loads(
+        (tmp_path / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8")
+    )
+    assert manifest["dependencies"] == ["other@mkt"]
+
+
 # ─────────────────────────── 검증 ───────────────────────────
 
 

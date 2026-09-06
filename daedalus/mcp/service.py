@@ -39,6 +39,11 @@ TOOL_NAMES = (
     "list_tool_candidates",
     "list_recent_projects",
     "list_project_templates",
+    # 랩핑 카탈로그 (WP-WR D2) — 루트 등록은 홈 설정 파일이라 undo 대상이 아니다
+    "list_wrappable_skills",
+    "list_plugin_roots",
+    "add_plugin_root",
+    "remove_plugin_root",
     # 세션 — 저장은 undo 대상이 아니다(파일 쓰기)
     "save_project",
     "open_project",
