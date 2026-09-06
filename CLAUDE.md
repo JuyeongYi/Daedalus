@@ -848,6 +848,16 @@ WP-WS를 사용자가 별도 리포로 만든 **QClaudeCodeSettingEditorWidget**
   원소만 순서 보존 추가, 스칼라는 갱신(추가/갱신만·멱등 — 수기 키 불가침).
   dry-run(G3) 경로 그대로 통과(디스크 불변). MARKETPLACE는 배출 없음 +
   `workspace_settings_in_marketplace_build` 경고.
+- **왜 마켓 빌드에는 못 싣나 (공식 문서 확인 2026-09-07)**: 플러그인도 루트
+  `settings.json`으로 "활성화 시 적용될 기본 설정"을 실을 수 있긴 하다. 다만
+  **허용 키가 `agent`와 `subagentStatusLine` 둘뿐**이라 우리가 다루는
+  `permissions` 등은 적용되지 않는다 — 그래서 workspace_settings는 LOCAL 전용이
+  맞고 위 경고도 정당하다(설정을 아예 못 싣는 게 아니라 **그 키들이 allowlist
+  밖**이라는 것이 정확한 이유다). 그 두 키의 기본값 배출은 아직 미지원 —
+  필요해지면 그때 별도 산출로 만든다. 참고로 plugin-dev의 `plugin-settings`
+  스킬이 문서화하는 `.claude/<플러그인>.local.md` 설정 패턴은 **공식 문서에
+  없다**(비공식 관습) — 그것을 배경 지식으로 들이면 존재하지 않는 표면을
+  설계하게 되므로 랩핑 대상에서 제외한다.
 - **MCP**: `get_workspace_settings`/`set_workspace_settings`(통째 교체,
   SetAttrCmd로 undo, hooks 키 거부) — 패리티 원칙에 따라 같은 WP에서 동반.
 - **위젯 수명 함정(테스트)**: 위젯의 0ms 디바운스(`singleShot(0, _flush_change)`)가
