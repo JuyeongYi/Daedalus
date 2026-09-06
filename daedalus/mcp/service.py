@@ -28,6 +28,7 @@ TOOL_NAMES = (
     "get_history",
     "validate_project",
     "compile_preview",
+    "get_hook",
     "list_hook_events",
     "hook_frontmatter_preview",
     "list_component_fields",

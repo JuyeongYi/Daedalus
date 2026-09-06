@@ -156,6 +156,9 @@ daedalus/
 │   └── token_report.py     # 토큰 비용 리포트(A5-lite) — estimate_tokens(문자수 휴리스틱)/TokenEstimate/TokenReport/
 │                           #   DEFAULT_FILE_TOKEN_THRESHOLD/CONTEXT_KINDS. **표시 전용**이다: 산출 텍스트 불변,
 │                           #   임계 초과는 검증 규칙이 아니라 정보성 1줄(notice()). 순수 stdlib(외부 토크나이저 금지).
+│                           #   **임계 판정은 리포트만 한다** — TokenEstimate는 값만 들고, 항목 단위 판정 property를
+│                           #   두면 모듈 상수를 봐서 TokenReport.threshold와 진실이 둘이 된다. 리포트 전체를 dict로
+│                           #   내는 직렬화도 두지 않는다(소비자가 생기면 그 호출 지점에서 만든다).
 ├── mcp/              # 앱 내장 MCP 서버 (WP-MCP) — CC와 협업하는 창구
 │   ├── endpoint.py         # 접속 정보(~/.daedalus/mcp-endpoint.json) + 포트 탐색 + .mcp.json 스니펫 (Qt 무관 순수)
 │   ├── invoker.py          # MainThreadInvoker — uvicorn 워커 스레드 → Qt 메인 스레드 마샬링(시그널+Event, 타임아웃)
@@ -165,13 +168,17 @@ daedalus/
 │   │   ├── __init__.py     #   재-export 파사드 + DaedalusTools 합성 클래스(믹스인 8종 상속) — 메서드 이름·시그니처·
 │   │   │                   #   docstring 분해 전과 동일(SDK 입력 스키마 원료 — service._wrap의 functools.wraps 경로),
 │   │   │                   #   기존 `from daedalus.mcp.tools import DaedalusTools` 무수정 동작(test_tools_facade.py가 고정)
-│   │   ├── _base.py        #   _BaseTools — 공통 헬퍼(_project/_vm/_find_component/_find_state_vm/_scope/_reject_duplicate_name)
-│   │   ├── query.py        #   조회(get_project/get_selection/get_component/validate_project/compile_preview) + undo 스택(undo/redo/get_history)
+│   │   ├── _base.py        #   _BaseTools — 공통 헬퍼(_project/_vm/_find_component/_find_state_vm/_scope/_reject_duplicate_name
+│   │   │                   #     + _hook_summary — 훅 **개요**. QueryTools와 HookTools가 함께 쓰므로 소유가 여기다)
+│   │   ├── query.py        #   조회(get_project/get_selection/get_component/validate_project/compile_preview) + undo 스택(undo/redo/get_history).
+│   │   │                   #     get_project의 hook_library는 **개요만**(전문은 get_hook), 전이 요약은 guard 서술(컴파일러
+│   │   │                   #     _describe_guard 재사용)과 waypoint_count를 포함한다
 │   │   ├── session.py      #   세션(save_project/open_project/export_package/list_recent_projects)
 │   │   ├── canvas.py       #   캔버스 구조(place/create_state/move/rename/delete/connect/disconnect/set_transition/참조 노드)
 │   │   ├── ports.py        #   포트(set_transfer_on/add_agent_call/remove_agent_call)
 │   │   ├── blackboard.py   #   블랙보드(create_blackboard_class/set_state_access)
-│   │   ├── hooks.py        #   훅 라이브러리(create/update/delete_hook/set_component_hooks/list_hook_events/hook_frontmatter_preview)
+│   │   ├── hooks.py        #   훅 라이브러리(create/update/delete_hook/set_component_hooks/get_hook/list_hook_events/hook_frontmatter_preview).
+│   │   │                   #     _hook_detail(전문 = 개요 + 핸들러 CC 스키마 + 스크립트 본문)은 get_hook과 편집 결과에서만
 │   │   ├── body.py         #   본문(set_component_body/get_body_outline/get_body_section/set_body_section — WP-BU/WP-BO 경로)
 │   │   ├── props.py        #   생성·속성(create_skill/create_agent/rename_component/description/when_to_use/field/project_properties/set_mcp_server_def)
 │   │   └── workspace.py    #   작업 폴더 문서(WP-WD) — list_workspace_docs/get_workspace_doc/set_claude_md/create_rule/
@@ -945,6 +952,15 @@ daedalus-bb --schemas <경로> [--state-dir DIR] <command>
   가능해야 한다. **새 GUI 기능을 넣을 때 대응 MCP 도구(또는 기존 도구의 파라미터)를 같은 WP에서
   함께 만든다** — 나중에 채우는 갭이 아니라 기능의 완성 조건이다. 기존 갭 목록은
   A3 실측 보고(G1~G16 편집 갭 + Q1~Q6 조회 낭비)가 정본이고 배치로 소거 중.
+- **조회는 개요 ↔ 전문으로 나눈다 (Q1).** 목록을 주는 도구는 각 항목을 축약본으로 싣고, 전문은
+  그 하나를 지목하는 도구가 준다 — `get_body_outline` ↔ `get_body_section`이 그 원형이고,
+  `get_project`의 `hook_library`(개요: 이름·이벤트·matcher·핸들러 개수·설명) ↔ `get_hook(name)`
+  (전문: 핸들러 CC 스키마 + 스크립트 본문)이 같은 논리다. 개요에 셸 스크립트 전문을 실으면
+  프로젝트를 볼 때마다 그 값을 통째로 낸다. 축약본 헬퍼 `_hook_summary`의 소유는 `_base.py`다 —
+  `QueryTools`와 `HookTools`가 함께 쓰므로 한쪽 믹스인에 두면 합성 순서에 기대는 호출이 된다.
+- **쓸 수 있으면 읽을 수도 있어야 한다 (Q2).** `set_transition(guard=)`으로 가드를 쓸 수는 있는데
+  어떤 도구로도 읽을 수 없던 갭을 `get_project`의 전이 요약에 `guard`(컴파일러 `_describe_guard`
+  재사용 — 화면·산출·조회가 같은 문구를 말한다)와 `waypoint_count`로 메웠다.
 - **전송이 HTTP인 이유:** stdio는 **클라이언트가 서버 프로세스를 실행하는** 모델이라 이미 떠 있는
   GUI에 나중에 붙을 수 없다. Streamable HTTP면 앱이 먼저 켜져 서버를 열어두고 CC가 원할 때
   접속하는 순서가 그대로 성립한다. 바인딩은 항상 `127.0.0.1` — 로컬 전용이므로 TLS를 얹지 않는다.

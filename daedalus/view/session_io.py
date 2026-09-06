@@ -80,7 +80,7 @@ class SessionIO:
             service.update_project_path(w._current_path)  # type: ignore[attr-defined]
 
     def update_title(self) -> None:
-        """창 제목 갱신 — 미저장 변경이 있으면 앞에 `*`를 붙인다 (A7 관례)."""
+        """창 제목 갱신 — 미저장 변경이 있으면 앞에 `*`를 붙인다 (미저장 변경 확인 관례)."""
         w = self._w
         base = "Daedalus — FSM Plugin Designer"
         if w._current_path:
@@ -122,7 +122,7 @@ class SessionIO:
         moved_files += template_files
         path = target
         w._current_path = path
-        # 디스크와 메모리가 일치했다 (A7). update_title 전에 내려야 제목의 `*`가
+        # 디스크와 메모리가 일치했다. update_title 전에 내려야 제목의 `*`가
         # 같은 호출에서 지워진다.
         w._dirty = False
         self.update_title()

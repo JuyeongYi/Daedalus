@@ -42,7 +42,7 @@ EXIT_INVALID = 1
 EXIT_USAGE = 2
 EXIT_NO_FILE = 3
 
-# write의 낙관적 잠금 재시도 횟수 (A6). 충돌은 "남이 방금 썼다"는 뜻이므로 다시
+# write의 낙관적 잠금 재시도 횟수. 충돌은 "남이 방금 썼다"는 뜻이므로 다시
 # 읽어 적용하면 대개 한 번에 끝난다 — 무한 재시도는 살아 있는 락 경쟁에서
 # 프로세스가 돌아오지 않게 만들 뿐이라 상한을 둔다.
 _WRITE_MAX_ATTEMPTS = 3
@@ -367,7 +367,7 @@ def read_state(path: Path) -> Any:
 
 
 def read_raw(path: Path) -> str | None:
-    """상태 파일의 원문. 없으면 None (A6 — 낙관적 잠금의 비교 기준).
+    """상태 파일의 원문. 없으면 None (낙관적 잠금의 비교 기준).
 
     mtime이 아니라 **내용**을 비교한다. Windows의 mtime 해상도(파일시스템에 따라
     수십 ms~2초)로는 빠른 연속 쓰기를 구분하지 못해, 남의 쓰기를 못 본 채
@@ -382,7 +382,7 @@ def read_raw(path: Path) -> str | None:
 
 
 def write_state_checked(path: Path, obj: Any, expected_raw: str | None) -> bool:
-    """디스크 내용이 `expected_raw` 그대로일 때만 쓴다 (A6). 달랐으면 False.
+    """디스크 내용이 `expected_raw` 그대로일 때만 쓴다 (낙관적 잠금). 달랐으면 False.
 
     읽기-수정-쓰기 사이에 다른 프로세스가 쓴 것을 덮지 않기 위한 낙관적 잠금이다
     (병렬 서브에이전트가 같은 클래스를 갱신하는 시나리오에서 lost update가 났다).
@@ -582,7 +582,7 @@ def _cmd_write(
         raise CliError("--set / --append / --remove 중 최소 하나가 필요하다")
     path = state_path(state_dir, cls)
 
-    # 낙관적 잠금 + 재시도 (A6). 남이 그 사이에 썼으면 **다시 읽어 수정을 새
+    # 낙관적 잠금 + 재시도. 남이 그 사이에 썼으면 **다시 읽어 수정을 새
     # 내용 위에 다시 적용한다** — 병합할 수 없는 충돌이 아니라 잃어버린 갱신을
     # 막는 것이 목적이므로, 되풀이하면 두 쓰기가 모두 살아남는다.
     for attempt in range(1, _WRITE_MAX_ATTEMPTS + 1):

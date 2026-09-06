@@ -280,6 +280,28 @@ def test_connect_states_with_trigger_and_guard(tools, window):
     assert tvm.model.guard.evaluation.prompt == "GPU 시간이 최대일 때"
 
 
+def test_get_project_transition_exposes_guard_and_waypoints(tools, window):
+    """가드를 쓸 수는 있는데 읽을 수 없던 갭 (Q2)."""
+    tools.create_state("a")
+    tools.create_state("b")
+    tools.connect_states("a", "b", trigger="gpu", guard="GPU 시간이 최대일 때")
+    window._project_vm.transition_vms[0].waypoints = [(10.0, 20.0), (30.0, 40.0)]
+
+    entry = tools.get_project()["transitions"][0]
+    assert entry["trigger"] == "gpu"
+    assert "GPU 시간이 최대일 때" in entry["guard"]
+    assert entry["waypoint_count"] == 2
+
+
+def test_get_project_transition_guard_none_when_unset(tools, window):
+    tools.create_state("a")
+    tools.create_state("b")
+    tools.connect_states("a", "b")
+
+    entry = tools.get_project()["transitions"][0]
+    assert entry["guard"] is None and entry["waypoint_count"] == 0
+
+
 def test_set_transition_updates_existing_edge(tools, window):
     tools.create_state("a")
     tools.create_state("b")

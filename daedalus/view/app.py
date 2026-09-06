@@ -92,7 +92,7 @@ class MainWindow(QMainWindow):
         # 폴더형 템플릿의 동봉 폴더 — 첫 저장 시 files/·skill-files/ 복사 원천.
         # SessionIO(new_project/open_path/carry_template_assets)가 관리한다.
         self._pending_template_assets: Path | None = None
-        # 미저장 변경 플래그 (A7) — notify 양 채널 리스너가 True로 올리고,
+        # 미저장 변경 플래그 — notify 양 채널 리스너가 True로 올리고,
         # 저장/로드/새 프로젝트가 내린다. closeEvent가 이 값으로 종료를 막는다.
         self._dirty = False
         self._project_vm = ProjectViewModel()
@@ -168,7 +168,7 @@ class MainWindow(QMainWindow):
 
         # 프로젝트 VM 변경 시 레지스트리 dim 갱신
         self._project_vm.add_listener(self._on_project_vm_changed)
-        # 미저장 변경 감지 (A7) — **양 채널 모두** 등록해야 한다. notify("content")는
+        # 미저장 변경 감지 — **양 채널 모두** 등록해야 한다. notify("content")는
         # content 리스너만 부르므로(project_vm.notify) structure 한쪽만 등록하면
         # 본문 타이핑(body_documents 경로)이 통째로 새어 나간다.
         self._project_vm.add_listener(self._mark_dirty)
@@ -459,7 +459,7 @@ class MainWindow(QMainWindow):
         # (notify는 set_project → _load_project_graph 끝에서 1회 발화 — 중복 금지)
         self.set_project(project)
 
-        # 4) 방금 로드한 상태는 미저장 변경이 아니다 (A7). 위 notify가 _mark_dirty를
+        # 4) 방금 로드한 상태는 미저장 변경이 아니다. 위 notify가 _mark_dirty를
         # 깨우므로 **로드 뒤에** 내려야 한다 — 호출자(open_path/new_project)가
         # 각자 내리게 하면 새 경로가 생길 때마다 빠뜨린다.
         self.mark_clean()
@@ -493,7 +493,7 @@ class MainWindow(QMainWindow):
         from PySide6.QtGui import QDesktopServices
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(hooks_dir)))
 
-    # --- 미저장 변경 (A7) ---
+    # --- 미저장 변경 ---
 
     def _mark_dirty(self) -> None:
         """편집이 일어났다 — 창 제목에 `*`를 붙인다.
@@ -639,7 +639,7 @@ class MainWindow(QMainWindow):
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(cat_dir)))
 
     def closeEvent(self, event) -> None:  # noqa: N802 (Qt override)
-        """미저장 변경을 확인한 뒤 닫고, 닫으면 MCP 서버도 함께 내린다 (A7).
+        """미저장 변경을 확인한 뒤 닫고, 닫으면 MCP 서버도 함께 내린다.
 
         MCP/GUI 편집은 메모리에만 있으므로 확인 없이 닫으면 그대로 사라진다
         (실사고 3회). 취소를 고르면 `event.ignore()`로 창을 유지한다 — MCP

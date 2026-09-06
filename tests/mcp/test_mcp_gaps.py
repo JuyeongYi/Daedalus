@@ -342,6 +342,28 @@ def test_get_project_lists_hook_library(tools):
     tools.create_hook("h", command="x", event="SessionEnd")
     entry = tools.get_project()["hook_library"][0]
     assert entry["name"] == "h" and entry["event"] == "SessionEnd"
+    assert entry["handler_count"] == 1
+
+
+def test_get_project_hook_summary_omits_script_bodies(tools):
+    """개요에 셸 스크립트 전문을 실으면 프로젝트를 볼 때마다 그 값을 다 낸다 (Q1)."""
+    tools.create_hook("h", command="echo 매우-긴-스크립트", event="SessionEnd")
+    entry = tools.get_project()["hook_library"][0]
+    assert "scripts" not in entry and "handlers" not in entry
+
+
+def test_get_hook_returns_full_definition(tools):
+    tools.create_hook("h", command="echo hi", event="SessionEnd", matcher="")
+    detail = tools.get_hook("h")
+    # 개요 필드를 그대로 품고, 전문을 더한다
+    assert detail["name"] == "h" and detail["handler_count"] == 1
+    assert detail["handlers"][0]["type"] == "command"
+    assert "echo hi" in "\n".join(detail["scripts"].values())
+
+
+def test_get_hook_unknown_name(tools):
+    with pytest.raises(ValueError, match="없습니다"):
+        tools.get_hook("nope")
 
 
 # --- 참조 노드 ---

@@ -30,21 +30,31 @@ class HookTools(_BaseTools):
         known = ", ".join(h.name for h in self._project.hook_library) or "(없음)"
         raise ValueError(f"'{name}' 훅이 없습니다. 현재 라이브러리: {known}")
 
-    @staticmethod
-    def _hook_summary(hook: Any) -> dict[str, Any]:
+    def _hook_detail(self, hook: Any) -> dict[str, Any]:
+        """훅 1건의 **전문** — 개요(`_hook_summary`) + 핸들러 + 스크립트 본문.
+
+        목록(`get_project`)에는 개요만 실린다 (Q1) — 이 전문은 `get_hook`과
+        편집 도구의 결과에서만 나간다.
+        """
         # 그룹 단위로 만들어야 command 훅의 스크립트 경로가 채워진다 — 핸들러를
         # 개별로 to_json()하면 경로를 모르므로 command가 빈 값으로 나온다.
         group = hook.to_json()
         return {
-            "name": hook.name,
-            "event": getattr(hook.event, "value", str(hook.event)),
-            "matcher": hook.matcher,
-            "description": getattr(hook, "description", ""),
+            **self._hook_summary(hook),
             # CC 스키마 그대로의 핸들러 목록 — 이 값이 hooks.json에 그대로 나간다
             "handlers": group["hooks"],
             # 경로만 보면 무엇이 실행되는지 알 수 없다. 스크립트 본문도 함께 준다.
             "scripts": dict(hook.script_files()),
         }
+
+    def get_hook(self, name: str) -> dict[str, Any]:
+        """훅 하나의 전문 — 핸들러(CC 스키마 그대로)와 스크립트 본문까지.
+
+        `get_project`의 `hook_library`는 개요만 준다(이름·이벤트·matcher·
+        핸들러 개수). 무엇이 실제로 실행되는지 봐야 할 때 이 도구로 그 훅만
+        펼친다.
+        """
+        return self._hook_detail(self._find_hook(name))
 
     @staticmethod
     def _build_hook_handler(spec: dict[str, Any]) -> Any:
@@ -179,7 +189,7 @@ class HookTools(_BaseTools):
             )
         )
         self._refresh_hook_ui()
-        result = self._hook_summary(hook)
+        result = self._hook_detail(hook)
         if matcher and hook_event not in MATCHER_EVENTS:
             result["note"] = (
                 f"{hook_event.value}는 matcher를 받지 않습니다 — 무시되고 검증 경고가 뜹니다."
@@ -206,7 +216,7 @@ class HookTools(_BaseTools):
         from daedalus.view.commands.base import MacroCommand
 
         hook = self._find_hook(name)
-        before = self._hook_summary(hook)
+        before = self._hook_detail(hook)
         cmds: list[Any] = []
 
         def _set(attr: str, value: Any) -> None:
@@ -239,7 +249,7 @@ class HookTools(_BaseTools):
             else MacroCommand(children=cmds, description=f"훅 '{name}' 변경")
         )
         self._refresh_hook_ui()
-        return {"before": before, **self._hook_summary(hook)}
+        return {"before": before, **self._hook_detail(hook)}
 
     def hook_frontmatter_preview(self, names: list[str] | None = None) -> dict[str, Any]:
         """훅을 **서브에이전트 프론트매터 YAML**로 변환해 돌려준다 (WP-HK).

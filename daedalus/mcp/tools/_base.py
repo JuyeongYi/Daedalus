@@ -72,6 +72,25 @@ class _BaseTools:
         return self._vm, self._project.graph
 
     @staticmethod
+    def _hook_summary(hook: Any) -> dict[str, Any]:
+        """훅 1건의 **개요** — 목록에 실리는 축약본 (Q1).
+
+        전문(핸들러 CC 스키마 + 스크립트 본문)은 `get_hook`이 준다.
+        `get_project`가 훅마다 셸 스크립트 전문을 싣던 것을 여기서 끊는다 —
+        `get_body_outline` ↔ `get_body_section` 분리와 같은 논리다.
+
+        소유가 `_BaseTools`인 이유: `QueryTools.get_project`와 `HookTools`가
+        함께 쓰므로, 어느 한쪽 믹스인에 두면 합성 순서에 의존하는 호출이 된다.
+        """
+        return {
+            "name": hook.name,
+            "event": getattr(hook.event, "value", str(hook.event)),
+            "matcher": hook.matcher,
+            "description": getattr(hook, "description", ""),
+            "handler_count": len(getattr(hook, "handlers", []) or []),
+        }
+
+    @staticmethod
     def _component_kind(comp: Any) -> str:
         return str(getattr(comp, "kind", type(comp).__name__))
 

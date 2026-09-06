@@ -75,15 +75,13 @@ def test_report_notice_only_for_context_kinds():
     assert [e.path for e in report.over_threshold()] == ["skills/fat/SKILL.md"]
 
 
-def test_report_to_dict_shape():
+def test_report_entry_shape():
+    """항목은 값만 들고, 임계 판정은 리포트가 한다 — 진실이 둘이면 안 된다."""
     report = TokenReport()
-    report.add("skills/a/SKILL.md", "skill", "hello")
-    data = report.to_dict()
-    assert data["total_tokens"] == report.total_tokens
-    assert data["threshold"] == DEFAULT_FILE_TOKEN_THRESHOLD
-    assert data["notice"] is None
-    assert data["files"][0]["path"] == "skills/a/SKILL.md"
-    assert data["files"][0]["over_threshold"] is False
+    entry = report.add("skills/a/SKILL.md", "skill", "hello")
+    assert (entry.path, entry.kind, entry.chars) == ("skills/a/SKILL.md", "skill", 5)
+    assert report.threshold == DEFAULT_FILE_TOKEN_THRESHOLD
+    assert not hasattr(entry, "over_threshold")
 
 
 # ─────────────────────── compile_project 동봉 ───────────────────────

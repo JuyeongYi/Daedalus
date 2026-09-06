@@ -75,9 +75,9 @@ class TokenEstimate:
     chars: int
     tokens: int
 
-    @property
-    def over_threshold(self) -> bool:
-        return self.kind in CONTEXT_KINDS and self.tokens > DEFAULT_FILE_TOKEN_THRESHOLD
+    # 임계 판정은 **리포트가 한다**(`TokenReport.over_threshold`) — 항목이
+    # 스스로 판정하면 모듈 상수를 보게 되어 리포트의 `threshold` 필드와
+    # 진실이 둘이 된다. 항목 단위 판정 property는 그래서 두지 않는다.
 
 
 @dataclass
@@ -128,20 +128,7 @@ class TokenReport:
         """상태바 한 조각용 요약."""
         return f"≈{self.total_tokens:,}토큰"
 
-    def to_dict(self) -> dict:
-        """MCP 응답용 직렬화."""
-        return {
-            "total_tokens": self.total_tokens,
-            "total_chars": self.total_chars,
-            "threshold": self.threshold,
-            "files": [
-                {
-                    "path": e.path, "kind": e.kind,
-                    "chars": e.chars, "tokens": e.tokens,
-                    "over_threshold": e.tokens > self.threshold
-                    and e.kind in CONTEXT_KINDS,
-                }
-                for e in self.entries
-            ],
-            "notice": self.notice(),
-        }
+    # 직렬화(`to_dict`)는 두지 않는다 — 소비자가 실제로 생기기 전에 만든 응답
+    # 형상은 아무도 쓰지 않은 채 낡는다(MCP `compile_preview`는 파일 1건의
+    # 수치만 직접 싣는다). 리포트 전체를 응답에 실을 도구가 생기면 그 호출
+    # 지점에서 필요한 모양대로 만든다.

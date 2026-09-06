@@ -39,16 +39,26 @@ class QueryTools(_BaseTools):
         return out
 
     def _transition_summary(self) -> list[dict[str, Any]]:
+        # guard 서술은 컴파일러의 `_describe_guard`를 그대로 쓴다 (Q2) —
+        # 화면·산출·조회가 같은 문구를 말해야 한다(가드를 쓸 수는 있는데
+        # 읽을 수는 없던 갭). 쓰기는 set_transition(guard="...")이고 그 자연어가
+        # LLM 판정 문구로 들어간다.
+        from daedalus.compiler.emit.sections import _describe_guard
+
         out: list[dict[str, Any]] = []
         for tvm in self._vm.transition_vms:
             trans = tvm.model
             trigger = getattr(trans, "trigger", None)
+            guard = _describe_guard(getattr(trans, "guard", None))
             out.append(
                 {
                     "source": tvm.source_vm.model.name,
                     "target": tvm.target_vm.model.name,
                     "trigger": getattr(trigger, "name", None),
+                    "guard": guard or None,
                     "transfer_skill": getattr(getattr(trans, "skill_ref", None), "name", None),
+                    # 엣지 경유점(WP-ER) 개수 — 좌표까지는 싣지 않는다(캔버스 표현).
+                    "waypoint_count": len(getattr(tvm, "waypoints", []) or []),
                 }
             )
         return out
@@ -81,7 +91,11 @@ class QueryTools(_BaseTools):
     # ------------------------------------------------------------------
 
     def get_project(self) -> dict[str, Any]:
-        """지금 열려 있는 프로젝트의 전체 개요 — 컴포넌트 목록, 캔버스 배치, 블랙보드."""
+        """지금 열려 있는 프로젝트의 전체 개요 — 컴포넌트 목록, 캔버스 배치, 블랙보드.
+
+        `hook_library`는 **개요만** 준다(이름·이벤트·matcher·핸들러 개수) —
+        핸들러 스키마와 스크립트 본문까지 보려면 `get_hook(name)`을 쓰라.
+        """
         project = self._project
         blackboard = getattr(project, "blackboard", None)
         classes = list(getattr(blackboard, "class_definitions", []) or [])
