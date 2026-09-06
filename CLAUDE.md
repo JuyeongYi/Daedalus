@@ -252,8 +252,13 @@ daedalus/
     │                       #   F7 "프로젝트 검증", Ctrl+B "컴파일", 파일→"프로젝트 속성...", 도구→"MCP 서버 정보..."/"Claude Code 실행".
     │                       # 컴포넌트 생성·이름 변경·삭제는 component_actions.py로 이관(아래 항목) — 창에는 한 줄 위임만.
     │                       # 탭 구조(WP-BB/WP-HK/WP-WD): 0=프로젝트 FSM 캔버스, 1=블랙보드(BlackboardPanel), 2=훅 라이브러리(HookLibraryPanel),
-    │                       #   3=CLAUDE.md 구역(ClaudeMdPanel), 4=규칙(RulesPanel) — 상주·닫기 불가 고정 5개. _close_tab이 다섯 인덱스를
+    │                       #   3=CLAUDE.md 구역(ClaudeMdPanel), 4=규칙(RulesPanel), 5=작업 폴더 설정(WorkspaceSettingsPanel — WP-WS)
+    │                       #   — 상주·닫기 불가 고정 6개. _close_tab이 여섯 인덱스를
     │                       #   모두 거부하고, load_project의 탭 정리 루프는 _LAST_FIXED_TAB_INDEX 다음부터 닫는다.
+    │                       #   **LOCAL 전용 탭 표시(WP-WS)**: 탭 3·4·5는 빌드 타깃이 LOCAL일 때만 보인다 —
+    │                       #   _refresh_target_dependent_tabs가 setTabVisible로 **숨긴다**(제거 아님 — 인덱스가
+    │                       #   보존돼야 고정 탭 체계·_open_tabs가 흔들리지 않는다). set_project와
+    │                       #   _on_project_vm_changed(빌드 타깃 변경 notify)가 갱신, 프로젝트 없으면 보임(기능 발견).
     │                       #   set_project가 blackboard_panel.set_project(project) + tag_input.set_blackboard_candidate_provider(...)를 배선.
     │                       # 파일 독(WP-FR): _setup_docks가 FilePanel을 "플러그인 파일 (공용)" 독으로 배치하고
     │                       #   markdown_editor.set_files_root_provider(lambda: self._file_panel.files_root())를 등록.
@@ -678,6 +683,7 @@ LOCAL 플러그인이 설치 대상 작업 폴더에 남기는 **항상 컨텍�
 | `duplicate_rule_name` | 에러 | 이름이 곧 파일명이라 서로 덮어쓴다 |
 | `invalid_rule_name` | 경고 | 컴포넌트와 같은 이름 규약. 컴파일 게이트가 에러로 승격 |
 | `workspace_doc_in_marketplace_build` | 경고 | 내용이 있을 때만(빈 문서는 잃을 것이 없다) |
+| `workspace_settings_in_marketplace_build` | 경고 | 작업 폴더 설정(WP-WS)이 있는데 마켓 타깃 — 베이크 불가 |
 | `unmergeable_claude_md` | 경고 | 손상된 표식 — 컴파일러 emit |
 | `rule_body_frontmatter` | 경고 | paths 필드 + 본문 수기 프론트매터 충돌(A13) — 컴파일러 emit |
 
@@ -689,6 +695,37 @@ LOCAL 플러그인이 설치 대상 작업 폴더에 남기는 **항상 컨텍�
 되돌릴 수 있다. `set_rule_paths`는 빈 목록으로 지우고(항상 로드), 조회 2종은
 `paths`를 함께 돌려준다. `delete_rule`은 **이미 산출된 파일을 지우지 않는다**
 (컴파일은 쓰기만 한다).
+
+### 작업 폴더 설정 (WP-WS) — settings.local.json 베이크
+
+LOCAL 플러그인이 설치 대상 작업 폴더의 `.claude/settings.local.json`에 베이크하는
+설정이다(permissions.deny 등 — 훅 차단보다 강한 선언적 강제의 자리). 보류됐던
+WP-WS를 사용자가 별도 리포로 만든 **QClaudeCodeSettingEditorWidget**(external/
+서브모듈, SchemaStore 스키마 구동 — 전 키 자동 생성)이 UI를 채우며 재개했다.
+
+- **모델**: `PluginProject.workspace_settings: dict`(JSON 호환, 직렬화 왕복, 키
+  부재→빈 dict). **hooks 키는 두지 않는다** — 훅 정본은 hook_library다. 편집
+  다이얼로그가 훅 카테고리를 제외(`Category.ALL & ~Category.HOOKS`)하고, 패널
+  저장(`strip_hooks`)·베이크(`wire_workspace`)·MCP(`set_workspace_settings` 거부)
+  3층이 방어한다.
+- **UI**: 상주 탭 5 "⚙ 설정"(`view/editors/workspace_settings_panel.py`) — 위젯을
+  모델에 배선하는 어댑터. 편집은 모델 직접 기록 + notify("content")(블랙보드
+  패널 정책). **편집 위젯은 지연 생성**(showEvent/ensure_editor) — 스키마 구동
+  전 키 UI가 무거워 즉시 만들면 MainWindow를 수십 개 만드는 스위트가 60초 →
+  타임아웃으로 폭주했다(실측). 위젯 미설치(서브모듈 미초기화)면 안내 자리 표시자.
+- **베이크**: LOCAL 컴파일이 `wire_workspace(extra_settings=)`로
+  settings.local.json에 **깊은 병합** — dict는 하위 키 병합, 리스트는 없는
+  원소만 순서 보존 추가, 스칼라는 갱신(추가/갱신만·멱등 — 수기 키 불가침).
+  dry-run(G3) 경로 그대로 통과(디스크 불변). MARKETPLACE는 배출 없음 +
+  `workspace_settings_in_marketplace_build` 경고.
+- **MCP**: `get_workspace_settings`/`set_workspace_settings`(통째 교체,
+  SetAttrCmd로 undo, hooks 키 거부) — 패리티 원칙에 따라 같은 WP에서 동반.
+- **위젯 수명 함정(테스트)**: 위젯의 0ms 디바운스(`singleShot(0, _flush_change)`)가
+  위젯 파괴 후 발화하면 stale row 접근으로 죽는다 — 부모 없는 패널을 쓰고
+  버리는 테스트는 살아 있는 동안 processEvents로 타이머를 소진해야 한다
+  (tests/view/test_workspace_settings.py의 make_panel 픽스처).
+- **조율점**: 위젯이 번들한 스키마와 A4 드리프트 감시 스냅샷은 같은 상류의
+  별도 사본 — 갱신 시점이 어긋날 수 있다(위젯 갱신 시 A4 스크립트도 확인).
 
 ### 블랙보드 CLI `daedalus-bb` (WP-BB1)
 

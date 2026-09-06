@@ -151,6 +151,8 @@ def deserialize_project(
         mcp_server_defs={
             k: dict(v) for k, v in data.get("mcp_server_defs", {}).items()
         },
+        # WP-WS — 구버전 파일(키 부재) → 빈 dict (경고 없음).
+        workspace_settings=dict(data.get("workspace_settings") or {}),
         # WP-WD — 구버전 파일(키 부재) → None / 빈 리스트 (경고 없음).
         claude_md=_deser_workspace_doc(data.get("claude_md")),
         rules=_deser_workspace_docs(data.get("rules")),

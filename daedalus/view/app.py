@@ -45,6 +45,7 @@ from daedalus.model.plugin.skill import (
     ReferenceSkill,
     TransferSkill,
 )
+from daedalus.model.plugin.enums import BuildTarget
 from daedalus.model.project import PluginProject
 from daedalus.model.validation import ValidationError
 from daedalus.view.canvas.canvas_view import FsmCanvasView
@@ -71,10 +72,17 @@ _BLACKBOARD_TAB_INDEX = 1  # 블랙보드 편집 탭은 항상 탭 1 (WP-BB — 
 _HOOK_TAB_INDEX = 2  # 훅 라이브러리 탭은 항상 탭 2 (WP-HK — 닫기 불가 고정 탭)
 _CLAUDE_MD_TAB_INDEX = 3  # .claude/CLAUDE.md 구역 탭 (WP-WD — 닫기 불가 고정 탭)
 _RULES_TAB_INDEX = 4  # .claude/rules/ 탭 (WP-WD — 닫기 불가 고정 탭)
+_SETTINGS_TAB_INDEX = 5  # 작업 폴더 settings 탭 (WP-WS — 닫기 불가 고정 탭)
 # 고정 탭 = 컴포넌트 에디터가 아닌 상주 탭. 새 에디터는 이 뒤에 붙는다.
 _FIXED_TAB_INDEXES = (
     _FSM_TAB_INDEX, _BLACKBOARD_TAB_INDEX, _HOOK_TAB_INDEX,
-    _CLAUDE_MD_TAB_INDEX, _RULES_TAB_INDEX,
+    _CLAUDE_MD_TAB_INDEX, _RULES_TAB_INDEX, _SETTINGS_TAB_INDEX,
+)
+# LOCAL 빌드 전용 탭 — 산출이 작업 폴더 .claude/로만 나가는 표면(WP-WD/WP-WS).
+# 마켓플레이스 프로젝트에서는 setTabVisible로 숨긴다(제거가 아니라 숨김 —
+# 인덱스가 보존돼야 _open_tabs/고정 인덱스 체계가 흔들리지 않는다).
+_LOCAL_ONLY_TAB_INDEXES = (
+    _CLAUDE_MD_TAB_INDEX, _RULES_TAB_INDEX, _SETTINGS_TAB_INDEX,
 )
 _LAST_FIXED_TAB_INDEX = max(_FIXED_TAB_INDEXES)
 
@@ -159,6 +167,17 @@ class MainWindow(QMainWindow):
         self._tabs.addTab(self._claude_md_panel, "📌 CLAUDE.md")
         self._rules_panel = RulesPanel(on_notify_fn=self._project_vm.notify)
         self._tabs.addTab(self._rules_panel, "📐 규칙")
+
+        # 작업 폴더 settings 탭 — 항상 탭 5, 닫을 수 없음 (WP-WS, LOCAL 전용 표시).
+        # 편집기 실체는 external/ 서브모듈 위젯(훅 카테고리 제외 — 훅 정본은
+        # hook_library)이고 패널은 모델 배선 어댑터다.
+        from daedalus.view.editors.workspace_settings_panel import (
+            WorkspaceSettingsPanel,
+        )
+        self._workspace_settings_panel = WorkspaceSettingsPanel(
+            on_notify_fn=self._project_vm.notify
+        )
+        self._tabs.addTab(self._workspace_settings_panel, "⚙ 설정")
 
         # 고정 탭의 닫기 버튼 숨김
         tab_bar = self._tabs.tabBar()
@@ -392,6 +411,8 @@ class MainWindow(QMainWindow):
         self._hook_panel.set_project(project)
         self._claude_md_panel.set_project(project)
         self._rules_panel.set_project(project)
+        self._workspace_settings_panel.set_project(project)
+        self._refresh_target_dependent_tabs()
         if self._fsm_scene is not None:
             self._fsm_scene.set_project(project)
         # HOOKS TagInput이 이 프로젝트의 hook_library 이름을 후보로 표시하도록 연결.
@@ -718,6 +739,26 @@ class MainWindow(QMainWindow):
         # 반영한다 — 패널 자신이 발화한 notify는 각 패널이 알아서 건너뛴다.
         self._hook_panel.refresh_external()
         self._blackboard_panel.refresh_external()
+        self._workspace_settings_panel.refresh_external()
+        self._refresh_target_dependent_tabs()
+
+    def _refresh_target_dependent_tabs(self) -> None:
+        """LOCAL 전용 탭(CLAUDE.md·규칙·설정)의 표시를 빌드 타깃에 맞춘다.
+
+        setTabVisible은 탭을 **제거하지 않고 숨긴다** — 인덱스가 보존돼
+        고정 탭 체계(_FIXED_TAB_INDEXES·_open_tabs)가 흔들리지 않는다.
+        프로젝트가 없으면 보인다(빈 상태에서 표면을 숨기면 기능 발견이 안 된다).
+        """
+        project = self._project
+        local = (
+            project is None
+            or getattr(project, "build_target", None) is BuildTarget.LOCAL
+        )
+        tab_bar = self._tabs.tabBar()
+        if tab_bar is None:
+            return
+        for index in _LOCAL_ONLY_TAB_INDEXES:
+            tab_bar.setTabVisible(index, local)
 
     def _sync_tab_titles(self) -> None:
         """열린 탭의 타이틀을 현재 컴포넌트 이름과 동기화한다.

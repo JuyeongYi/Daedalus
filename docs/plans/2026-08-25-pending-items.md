@@ -52,7 +52,7 @@
 
 ## 5. 보류 (2026-09-06 추가)
 
-- **WP-WS 작업 폴더 설정 편집** (사용자 보류 확정): settings.local.json의
+- ~~WP-WS 작업 폴더 설정 편집~~ (2026-09-07 **재개·완료** — 사용자 위젯 리포 편입으로 기획 축소, CLAUDE.md "작업 폴더 설정 (WP-WS)" 참조): settings.local.json의
   permissions(allow/deny/ask)·env 등을 설계 모델에서 편집·배출하는 기능.
   동기는 실재한다 — 훅 차단은 스크립트가 돌아야 막지만 `permissions.deny`는
   CC 권한 시스템의 선언적 강제라 우회가 없다(state/** deny + 블랙보드 연동

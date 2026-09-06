@@ -77,6 +77,7 @@ WARNING_RULES: frozenset[str] = frozenset({
     # duplicate_rule_name은 서로 덮어쓰므로 에러 등급(여기 등재하지 않는다).
     "invalid_rule_name",
     "workspace_doc_in_marketplace_build",
+    "workspace_settings_in_marketplace_build",  # WP-WS
     # 빌드 타깃(build_target) 경고 — WP-TG
     "mcp_agent_in_marketplace_build",
     "plugin_root_in_local_build",

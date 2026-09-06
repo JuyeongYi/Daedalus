@@ -54,6 +54,7 @@ _WARN_RULES = frozenset({
     "dangling_file_ref",  # WP-FR — 아래 _EXTERNALLY_EMITTED_RULES 참조
     "invalid_rule_name",
     "workspace_doc_in_marketplace_build",
+    "workspace_settings_in_marketplace_build",  # WP-WS
     "unmergeable_claude_md",
     "rule_body_frontmatter",  # A13 — 아래 _EXTERNALLY_EMITTED_RULES 참조
     "mcp_agent_in_marketplace_build",  # WP-TG

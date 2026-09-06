@@ -893,7 +893,12 @@ def _wire_local_install(
     hooks_text = compile_hooks_json(project, resolved_hooks)
     hooks_map = json.loads(hooks_text).get("hooks", {}) if hooks_text else None
 
-    wired = wire_workspace(out_dir, entries, hooks_map, dry_run=dry_run)
+    wired = wire_workspace(
+        out_dir, entries, hooks_map, dry_run=dry_run,
+        # WP-WS — 프로젝트의 작업 폴더 설정 베이크. hooks 키는 wire_workspace가
+        # 무시한다(훅 정본은 hook_library — hooks_map 경로 전담).
+        extra_settings=project.workspace_settings or None,
+    )
     result.written.extend(wired.written)
     for path in wired.unmergeable:
         result.warnings.append(ValidationError(

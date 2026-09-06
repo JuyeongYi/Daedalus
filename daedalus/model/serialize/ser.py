@@ -9,6 +9,8 @@
 """
 from __future__ import annotations
 
+import copy
+
 from typing import Any
 
 from daedalus.model.fsm.action import Action
@@ -100,6 +102,8 @@ def serialize_project(project: PluginProject) -> dict:
         "build_target": project.build_target.value,
         # WP-MW — MCP 서버 정의(이름 → .mcp.json 서버 객체). 구버전 파일(키 부재)은 빈 dict.
         "mcp_server_defs": {k: dict(v) for k, v in project.mcp_server_defs.items()},
+        # WP-WS — 작업 폴더 settings 베이크 원본(JSON 호환 dict). 키 부재는 빈 dict.
+        "workspace_settings": copy.deepcopy(project.workspace_settings),
         # WP-WD — 작업 폴더 문서. 구버전 파일(키 부재)은 각각 None / 빈 리스트.
         "claude_md": _ser_workspace_doc(project.claude_md),
         "rules": [_ser_workspace_doc(doc) for doc in project.rules],

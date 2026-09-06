@@ -196,3 +196,53 @@ class WorkspaceTools(_BaseTools):
         body_documents.registry().discard(doc)
         self._refresh_panels()
         return {"name": name, "note": "이미 산출된 파일은 지우지 않습니다."}
+
+    # --- 작업 폴더 settings (WP-WS) ---
+
+    def get_workspace_settings(self) -> dict[str, Any]:
+        """작업 폴더 settings 베이크 원본(project.workspace_settings)을 돌려준다.
+
+        LOCAL 빌드가 대상 작업 폴더의 .claude/settings.local.json에 깊은
+        병합(추가/갱신만·멱등)으로 베이크하는 dict다. hooks 키는 여기 없다 —
+        훅의 정본은 hook_library다(create_hook/set_component_hooks 참조).
+        """
+        import copy
+
+        return {
+            "build_target": self._project.build_target.value,
+            "settings": copy.deepcopy(self._project.workspace_settings),
+        }
+
+    def set_workspace_settings(self, settings: dict) -> dict[str, Any]:
+        """작업 폴더 settings를 통째로 교체한다 (undo 가능 — SetAttrCmd).
+
+        settings: CC settings.json 스키마의 dict(예: {"permissions": {"deny":
+        ["Read(state/**)"]}}). **hooks 키는 거부한다** — 훅의 정본은
+        hook_library이고, 여기 실리면 베이크 병합에서 진실이 둘이 된다.
+        빈 dict({})로 전체 해제. GUI 설정 탭(LOCAL 전용 표시)과 같은 모델을
+        편집하며, MARKETPLACE 프로젝트에서는 저장은 되지만 베이크되지 않는다
+        (workspace_settings_in_marketplace_build 경고가 짚는다).
+        """
+        import copy
+
+        from daedalus.view.commands.attr_commands import SetAttrCmd
+
+        if not isinstance(settings, dict):
+            raise ValueError("settings는 dict여야 합니다.")
+        if "hooks" in settings:
+            raise ValueError(
+                "hooks 키는 받지 않습니다 — 훅의 정본은 hook_library입니다. "
+                "create_hook/set_component_hooks를 쓰세요."
+            )
+        new_value = copy.deepcopy(settings)
+        self._vm.execute(SetAttrCmd(
+            target=self._project,
+            attr="workspace_settings",
+            new_value=new_value,
+            label="작업 폴더 settings 교체",
+            script=f"set_workspace_settings(keys={sorted(new_value)})",
+        ))
+        panel = getattr(self._window, "_workspace_settings_panel", None)
+        if panel is not None:
+            panel.refresh_external()
+        return {"settings": copy.deepcopy(new_value)}

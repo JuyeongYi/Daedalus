@@ -15,6 +15,8 @@
 """
 from __future__ import annotations
 
+import copy
+
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -49,6 +51,7 @@ def wire_workspace(
     server_entries: dict[str, dict] | None = None,
     hooks_map: dict | None = None,
     dry_run: bool = False,
+    extra_settings: dict | None = None,
 ) -> WireResult:
     """대상 작업 폴더의 CC 설정 파일을 생성/수정한다.
 
@@ -57,6 +60,11 @@ def wire_workspace(
         `enabledMcpjsonServers`에 이름을 올린다.
     hooks_map: CC settings `hooks` 스키마 dict(이벤트 → 그룹 목록).
         `settings.local.json`의 `hooks`에 병합한다(동일 그룹은 중복 삽입 안 함).
+    extra_settings(WP-WS): 프로젝트의 workspace_settings dict.
+        `settings.local.json`에 **깊은 병합**한다 — dict는 하위 키 단위 병합,
+        리스트는 없는 원소만 순서 보존 추가, 스칼라는 갱신(추가/갱신만 관례 —
+        남의 키를 지우지 않는다). `hooks` 키는 무시한다 — 훅의 정본은
+        hook_library이고 hooks_map 경로가 전담한다(진실 이원화 방지).
     dry_run(G3): **파일을 하나도 쓰지 않는다.** 기존 파일을 읽고 병합을
         메모리에서 계산하는 것까지는 그대로라 `written`(쓰였을 파일)과
         `unmergeable`(깨진 JSON) 판정이 실제 배선과 같다 — 컴파일 dry-run이
@@ -82,8 +90,9 @@ def wire_workspace(
                     _dump_json(mcp_path, mcp_obj)
                 result.written.append(mcp_path)
 
-    # 2. .claude/settings.local.json — enabledMcpjsonServers + hooks 병합
-    if not entries and hooks_map is None:
+    # 2. .claude/settings.local.json — enabledMcpjsonServers + hooks + settings 병합
+    baked = {k: v for k, v in (extra_settings or {}).items() if k != "hooks"}
+    if not entries and hooks_map is None and not baked:
         return result
     settings_path = target / ".claude" / "settings.local.json"
     settings_obj = _load_json_or_none(settings_path)
@@ -119,8 +128,43 @@ def wire_workspace(
                     bucket.append(group)
                     changed = True
 
+    for key, value in baked.items():
+        if _merge_setting_value(settings_obj, key, value):
+            changed = True
+
     if changed or not settings_path.exists():
         if not dry_run:
             _dump_json(settings_path, settings_obj)
         result.written.append(settings_path)
     return result
+
+
+def _merge_setting_value(container: dict, key: str, value) -> bool:
+    """settings 키 하나를 깊은 병합한다. 바뀌었으면 True (WP-WS).
+
+    - 양쪽 다 dict → 하위 키 재귀 병합 (수기 하위 키 보존)
+    - 양쪽 다 list → 없는 원소만 순서 보존 추가 (enabledMcpjsonServers 관례)
+    - 그 외 → 값이 다르면 프로젝트 값으로 갱신
+    멱등: 같은 입력을 다시 병합하면 False.
+    """
+    if key not in container:
+        container[key] = copy.deepcopy(value)
+        return True
+    existing = container[key]
+    if isinstance(existing, dict) and isinstance(value, dict):
+        changed = False
+        for sub_key, sub_value in value.items():
+            if _merge_setting_value(existing, sub_key, sub_value):
+                changed = True
+        return changed
+    if isinstance(existing, list) and isinstance(value, list):
+        changed = False
+        for item in value:
+            if item not in existing:
+                existing.append(copy.deepcopy(item))
+                changed = True
+        return changed
+    if existing != value:
+        container[key] = copy.deepcopy(value)
+        return True
+    return False

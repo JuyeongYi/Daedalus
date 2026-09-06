@@ -69,4 +69,18 @@ class _WorkspaceDocRules:
                     source=project.name,
                     subject=project,
                 ))
+            # WP-WS — settings 베이크도 작업 폴더 문서와 같은 제약이다:
+            # 마켓플레이스 플러그인은 settings.local.json에 쓸 수 없다.
+            if getattr(project, "workspace_settings", None):
+                errors.append(ValidationError(
+                    rule="workspace_settings_in_marketplace_build",
+                    message=(
+                        "작업 폴더 설정(workspace_settings)이 있지만 빌드 타깃이 "
+                        "마켓플레이스라 베이크되지 않습니다 — 플러그인은 설치 대상 "
+                        "작업 폴더의 .claude/settings.local.json에 쓸 수 없습니다. "
+                        "로컬 플러그인으로 바꾸세요."
+                    ),
+                    source=project.name,
+                    subject=project,
+                ))
         return errors

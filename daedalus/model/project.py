@@ -89,6 +89,16 @@ class PluginProject:
     # 구버전 파일(키 부재)은 빈 dict.
     mcp_server_defs: dict[str, dict] = field(default_factory=dict)
 
+    # 작업 폴더 settings.json 설정 (WP-WS) — LOCAL 빌드가 대상 작업 폴더의
+    # .claude/settings.local.json에 베이크하는 설정 dict(JSON 호환). 편집은
+    # QClaudeCodeSettingEditorWidget(external/ 서브모듈, 스키마 구동) 다이얼로그.
+    # **hooks 키는 여기 두지 않는다** — 훅은 Daedalus의 hook_library가 정본이라
+    # 편집 다이얼로그가 훅 카테고리를 제외하고, 저장·베이크 양쪽이 방어적으로
+    # 걷어낸다(진실이 둘이면 병합 순서에 따라 다른 산출이 나온다).
+    # MARKETPLACE에서는 배출되지 않는다(workspace_doc과 같은 제약 — 경고 규칙
+    # workspace_settings_in_marketplace_build). 구버전 파일(키 부재)은 빈 dict.
+    workspace_settings: dict = field(default_factory=dict)
+
     def __post_init__(self) -> None:
         # 블랙보드 스코핑 — 프로젝트 그래프 FSM의 blackboard를 최상위 블랙보드의
         # 자식으로 연결한다 (생성 경로의 책임). deserialize_project도 동일 배선을 한다.

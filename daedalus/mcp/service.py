@@ -93,6 +93,8 @@ TOOL_NAMES = (
     "create_rule",
     "set_rule_body",
     "set_rule_paths",
+    "get_workspace_settings",
+    "set_workspace_settings",
     "rename_rule",
     "delete_rule",
     "undo",
