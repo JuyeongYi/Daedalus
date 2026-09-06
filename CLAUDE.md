@@ -6,7 +6,9 @@ FSM 기반 Claude Code 플러그인 하네스 엔지니어링 도구.
 ## 개발 환경
 
 ```bash
+git submodule update --init  # external/ 서브모듈 (설정 편집 위젯)
 pip install -e ".[dev]"      # 개발 의존성 설치
+pip install -e external/QClaudeCodeSettingEditorWidget  # 설정 편집 위젯 (WP-WS UI)
 python -m pytest tests/ -v   # 전체 테스트
 python -m pytest tests/model/fsm/ -v      # FSM 코어만
 python -m pytest tests/model/plugin/ -v  # 플러그인 레이어만
