@@ -711,8 +711,11 @@ WP-WS를 사용자가 별도 리포로 만든 **QClaudeCodeSettingEditorWidget**
 - **UI**: 상주 탭 5 "⚙ 설정"(`view/editors/workspace_settings_panel.py`) — 위젯을
   모델에 배선하는 어댑터. 편집은 모델 직접 기록 + notify("content")(블랙보드
   패널 정책). **편집 위젯은 지연 생성**(showEvent/ensure_editor) — 스키마 구동
-  전 키 UI가 무거워 즉시 만들면 MainWindow를 수십 개 만드는 스위트가 60초 →
-  타임아웃으로 폭주했다(실측). 위젯 미설치(서브모듈 미초기화)면 안내 자리 표시자.
+  전 키 UI가 무거워(첫 구축 ~0.8s 실측) 즉시 만들면 MainWindow를 수십 개 만드는
+  스위트가 60초 → 타임아웃으로 폭주했다(실측). 첫 탭 진입 멈춤은 **유휴
+  프리웜**(app._schedule_settings_prewarm — 창이 보이고 _SETTINGS_PREWARM_MS 뒤
+  구축)이 흡수한다. isVisible 가드가 핵심 — 창을 안 띄우는 테스트에서는 절대
+  발동하지 않는다. 위젯 미설치(서브모듈 미초기화)면 안내 자리 표시자.
 - **베이크**: LOCAL 컴파일이 `wire_workspace(extra_settings=)`로
   settings.local.json에 **깊은 병합** — dict는 하위 키 병합, 리스트는 없는
   원소만 순서 보존 추가, 스칼라는 갱신(추가/갱신만·멱등 — 수기 키 불가침).

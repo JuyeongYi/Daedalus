@@ -84,6 +84,9 @@ _FIXED_TAB_INDEXES = (
 _LOCAL_ONLY_TAB_INDEXES = (
     _CLAUDE_MD_TAB_INDEX, _RULES_TAB_INDEX, _SETTINGS_TAB_INDEX,
 )
+# 설정 위젯 유휴 프리웜 지연(ms) — 창이 뜨고 잠시 뒤 미리 구축해 첫 탭 진입의
+# ~0.8s 동기 구축 멈춤(실측)을 사용자가 클릭하기 전 유휴 시점으로 옮긴다.
+_SETTINGS_PREWARM_MS = 800
 _LAST_FIXED_TAB_INDEX = max(_FIXED_TAB_INDEXES)
 
 
@@ -662,6 +665,35 @@ class MainWindow(QMainWindow):
         from PySide6.QtCore import QUrl
         from PySide6.QtGui import QDesktopServices
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(cat_dir)))
+
+    def showEvent(self, event) -> None:  # noqa: N802 (Qt override)
+        super().showEvent(event)
+        self._schedule_settings_prewarm()
+
+    def _schedule_settings_prewarm(self) -> None:
+        """설정 위젯 유휴 프리웜 (WP-WS).
+
+        스키마 구동 위젯의 첫 구축이 ~0.8s(실측) 동기 멈춤이라, 창이 화면에
+        보이는 유휴 시점에 미리 만들어 둔다. **isVisible 가드가 핵심** —
+        창을 띄우지 않는 테스트 스위트(수백 개 MainWindow)에서는 절대
+        발동하지 않아야 지연 생성의 목적(스위트 속도)이 지켜진다.
+        LOCAL 프로젝트에서만 — 마켓 프로젝트는 탭 자체가 숨어 있다.
+        """
+        if not self.isVisible():
+            return
+        project = self._project
+        if project is not None and getattr(project, "build_target", None) is not BuildTarget.LOCAL:
+            return
+        from PySide6.QtCore import QTimer
+
+        def _prewarm(window=self) -> None:
+            if not window.isVisible():
+                return
+            panel = getattr(window, "_workspace_settings_panel", None)
+            if panel is not None:
+                panel.ensure_editor()
+
+        QTimer.singleShot(_SETTINGS_PREWARM_MS, _prewarm)
 
     def closeEvent(self, event) -> None:  # noqa: N802 (Qt override)
         """미저장 변경을 확인한 뒤 닫고, 닫으면 MCP 서버도 함께 내린다.

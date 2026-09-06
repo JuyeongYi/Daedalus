@@ -285,3 +285,36 @@ def test_mcp_tools_registered():
 
     assert "get_workspace_settings" in TOOL_NAMES
     assert "set_workspace_settings" in TOOL_NAMES
+
+
+# ─────────────────────── 유휴 프리웜 (첫 진입 멈춤 완화) ───────────────────────
+
+
+def test_prewarm_not_scheduled_for_hidden_window(qapp):
+    """창을 띄우지 않으면(테스트 스위트 조건) 프리웜이 위젯을 만들지 않는다."""
+    from daedalus.view.app import MainWindow
+
+    window = MainWindow()
+    window.load_project(PluginProject(name="p", build_target=BuildTarget.LOCAL))
+    window._schedule_settings_prewarm()
+    qapp.processEvents()
+    assert window._workspace_settings_panel._editor is None
+    window.close()
+
+
+def test_prewarm_builds_editor_when_visible(qapp, monkeypatch):
+    """창이 보이면 유휴 타이머가 설정 위젯을 미리 구축한다."""
+    import daedalus.view.app as app_module
+    from daedalus.view.app import MainWindow
+
+    monkeypatch.setattr(app_module, "_SETTINGS_PREWARM_MS", 0)
+    window = MainWindow()
+    window.load_project(PluginProject(name="p", build_target=BuildTarget.LOCAL))
+    window.show()  # offscreen에서도 showEvent가 돈다
+    for _ in range(10):
+        qapp.processEvents()
+        if window._workspace_settings_panel._editor is not None:
+            break
+    assert window._workspace_settings_panel._editor is not None
+    window.close()
+    qapp.processEvents()
