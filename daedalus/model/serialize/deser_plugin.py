@@ -90,6 +90,7 @@ def _deser_config(d: dict) -> Any:
         c = WrappedSkillConfig(
             source=d.get("source", ""),
             usage=str(d.get("usage", "state") or ""),
+            enabled=bool(d.get("enabled", True)),
             disable_model_invocation=d.get("disable_model_invocation"),  # tri-state
             user_invocable=d.get("user_invocable"),
         )

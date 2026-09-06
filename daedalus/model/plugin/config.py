@@ -76,9 +76,18 @@ class WrappedSkillConfig(SkillConfig):
     (링크된 노드의 산출에 consult 지시만 합류). 배치 경로가 고정하는 파생
     상태라 프론트매터로 나가지 않고 매트릭스에도 없다(set_component_field
     거부). 구버전 파일(키 부재)은 "state"로 로드된다 — 그때는 state만 있었다.
+
+    ``enabled``(사용자 확정 2026-09-07 — "삭제가 불가능하게 해라. 삭제 대신
+    비활성화"): 랩핑 스킬은 **지울 수 없고** 이 스위치로 끈다. 소스·프론트매터·
+    배선을 다시 입력하는 비용이 큰 데다, 지우면 이 프로젝트가 그 외부 스킬을
+    한때 썼다는 사실 자체가 사라진다. `False`면 산출에서 빠지고(state 용도는
+    SKILL.md 미산출, reference 용도는 consult 지시 미합류) 외부 플러그인 배선
+    판정에서도 참조로 치지 않는다 — 꺼둔 것은 쓰지 않는 것이다. 구버전
+    파일(키 부재)은 True.
     """
     source: str = ""
     usage: str = ""
+    enabled: bool = True
     disable_model_invocation: bool | None = None
     user_invocable: bool | None = None
 

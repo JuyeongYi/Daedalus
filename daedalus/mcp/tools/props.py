@@ -189,6 +189,10 @@ class PropsTools(_BaseTools):
         참조가 돌아오지 않는 비대칭을 만들지 않기 위해서다). 남은 참조는
         `validate_project`의 `dangling_string_reference` 경고가 짚어 준다 —
         결과의 `still_referenced_by`로 그 목록을 함께 돌려준다.
+
+        **랩핑 스킬(kind="wrapped")은 삭제할 수 없다**(사용자 확정 2026-09-07) —
+        `set_wrapped_enabled(name, false)`로 끄면 산출·배선에서 빠지고 소스와
+        배치는 남아 언제든 되돌릴 수 있다.
         """
         from daedalus.model.plugin.agent import AgentDefinition
         from daedalus.model.plugin.config import AgentConfig, ProceduralSkillConfig

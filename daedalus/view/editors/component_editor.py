@@ -189,6 +189,11 @@ class _WrappedSourcePanel(QWidget):
         self._btn_usage = QPushButton("")
         self._btn_usage.clicked.connect(self.toggle_usage)
         lay.addWidget(self._btn_usage)
+        # 활성/비활성 (WP-WR, 사용자 확정 2026-09-07) — 랩핑 스킬은 삭제할 수
+        # 없고 이 버튼이 그 대체재다. 배치는 건드리지 않는다.
+        self._btn_enabled = QPushButton("")
+        self._btn_enabled.clicked.connect(self.toggle_enabled)
+        lay.addWidget(self._btn_enabled)
         self._w_status = QLabel("")
         self._w_status.setWordWrap(True)
         lay.addWidget(self._w_status)
@@ -221,10 +226,23 @@ class _WrappedSourcePanel(QWidget):
                 "이미 캔버스에 놓여 있으면 무엇이 함께 지워지는지 먼저 묻습니다 "
                 "— 전환은 그 배치를 걷어낸 뒤에만 성립합니다(한 스킬 두 용도 금지)."
             )
+        enabled = bool(getattr(self._component.config, "enabled", True))
+        enabled_label = "비활성화" if enabled else "활성화"
+        if self._btn_enabled.text() != enabled_label:
+            self._btn_enabled.setText(enabled_label)
+            self._btn_enabled.setToolTip(
+                "랩핑 스킬은 삭제할 수 없습니다 — 대신 끄면 산출(SKILL.md·참조 "
+                "지시)과 외부 플러그인 참조 판정에서 빠집니다. 소스·프론트매터·"
+                "배치는 그대로 남아 언제든 되돌릴 수 있습니다."
+            )
         if not source:
             self._w_status.setText(
                 "source가 비어 있습니다 — 좌측 프론트매터에서 "
                 "`플러그인[@마켓]:스킬`을 지정하세요."
+            )
+        elif not enabled:
+            self._w_status.setText(
+                "비활성 상태입니다 — 이 스킬은 빌드 산출에 나가지 않습니다."
             )
         elif self._w_status.text():
             self._w_status.setText("")
@@ -284,4 +302,20 @@ class _WrappedSourcePanel(QWidget):
         from PySide6.QtGui import QDesktopServices
 
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(md)))
+        return True
+
+    def toggle_enabled(self) -> bool:
+        """활성 ↔ 비활성 (WP-WR) — 실체는 `actions.wrapped_usage.
+        set_wrapped_enabled`이고 MCP `set_wrapped_enabled`와 같은 함수다."""
+        from daedalus.view.actions.wrapped_usage import set_wrapped_enabled
+
+        window = self.window()
+        if getattr(window, "_project", None) is None:
+            self._w_status.setText("열린 프로젝트가 없습니다.")
+            return False
+        enabled = bool(getattr(self._component.config, "enabled", True))
+        result = set_wrapped_enabled(window, self._component, not enabled)
+        self.refresh()
+        if result["enabled"]:
+            self._w_status.setText("활성화했습니다 — 다시 빌드 산출에 포함됩니다.")
         return True

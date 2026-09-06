@@ -587,6 +587,25 @@ daedalus/
   `wrapped_skill`(보라 + 🔗 — 없어서 빈 상태와 같은 기본 스타일로 그려졌다),
   `ref_node_item`은 모델 kind가 wrapped면 "🔗 EXT REFERENCE" + 보라(우리
   문서 참조는 산출 파일이 있고 외부 참조는 없다).
+- **삭제 불가 — 대신 비활성화**(사용자 확정 2026-09-07): 랩핑 스킬은 **어느
+  경로로도 지울 수 없다**(GUI 레지스트리·캔버스·MCP `delete_component` 전부
+  거절 — 실체는 `ComponentActions.delete_component`가 지나는 한 지점).
+  소스·프론트매터·배선을 다시 입력하는 비용이 크고, 지우면 이 프로젝트가 그
+  외부 스킬을 한때 썼다는 사실 자체가 사라진다. "쓰지 않는다"는
+  `WrappedSkillConfig.enabled`(기본 True, 직렬화 왕복, 키 부재=True)로 말하고
+  판정의 단일 진실은 `model/plugin/skill.is_disabled_wrapped`다.
+  - **끄면 빠지는 곳**: 산출 계획(state 용도 SKILL.md 미산출) / 참조 용도의
+    `## Background Skills` consult 지시 / 외부 플러그인 참조 판정
+    (`unused`·`undeclared` 둘 다 — 꺼둔 것은 쓰지 않는 것이다).
+    **`external_plugins` 선언과 배선은 건드리지 않는다** — 선언은 사용자 소유다.
+  - **배치는 걷어내지 않는다** — 끄는 것과 캔버스에서 치우는 것은 다른
+    결정이고, 전이가 말없이 사라지면 안 된다(용도 전환이 force를 요구하는 것과
+    같은 이유). 비활성인 채 배치가 남으면 `disabled_wrapped_placed` 경고.
+  - 실체는 `view/actions/wrapped_usage.set_wrapped_enabled`(SetAttrCmd — undo,
+    값이 같으면 no-op) 하나이고 표면 셋이 공유한다: 랩핑 편집기
+    [비활성화]/[활성화] 버튼 / 레지스트리 우클릭(랩핑 행은 '삭제' 자리에 이
+    항목이 온다 — 눌러 봐야 거절당하는 항목을 보이지 않는다) / MCP
+    `set_wrapped_enabled(name, enabled)`.
 - **본문 편집 없음**(사용자 확정): wrapped 에디터의 중앙은 본문 편집기가
   아예 없고 `_WrappedSourcePanel`(원본 경로 읽기 전용 + "원본 열기" 버튼 —
   `wrap_catalog.resolve_skill_file`로 카탈로그에서 SKILL.md 해석)이다 —

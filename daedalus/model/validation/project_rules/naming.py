@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import re
 
+from daedalus.model.plugin.skill import is_disabled_wrapped
 from daedalus.model.validation.severity import ValidationError
 
 COMPONENT_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
@@ -116,6 +117,18 @@ class _NamingRules:
                     ),
                     source=skill.name, subject=skill,
                 ))
+            if is_disabled_wrapped(skill) and (as_state or as_ref):
+                where = "워크플로 단계" if as_state else "참조 노드"
+                errors.append(ValidationError(
+                    rule="disabled_wrapped_placed",
+                    message=(
+                        f"랩핑 스킬 '{skill.name}'은 비활성인데 캔버스에 "
+                        f"{where}로 배치돼 있습니다 — 산출에 나가지 않으므로 그 "
+                        f"자리는 빈 단계가 됩니다. 다시 활성화하거나 배치를 "
+                        f"걷어내세요(랩핑 스킬은 삭제할 수 없습니다)."
+                    ),
+                    source=skill.name, subject=skill,
+                ))
         return errors
 
     @staticmethod
@@ -142,6 +155,11 @@ class _NamingRules:
         errors: list[ValidationError] = []
         for skill in getattr(project, "skills", []):
             if getattr(skill, "kind", "") != "wrapped_skill":
+                continue
+            # 비활성 랩퍼는 참조로 치지 않는다 — 산출에 안 나가므로 배선이
+            # 필요 없고(undeclared 대상 아님), 그 플러그인을 쓰는 것도 아니다
+            # (unused는 사실 그대로다). WP-WR 삭제 대신 비활성화.
+            if is_disabled_wrapped(skill):
                 continue
             source = getattr(getattr(skill, "config", None), "source", "") or ""
             plugin_id, _, skill_name = source.partition(":")

@@ -348,10 +348,14 @@ def _background_references_section(component, project) -> list[str]:
     }
     if not node_names:
         return []
+    # 비활성 랩퍼는 빠진다 — 끈 것은 쓰지 않는 것이다(WP-WR).
+    from daedalus.model.plugin.skill import is_disabled_wrapped
+
     wrapped_refs = {
         s.name: s for s in project.skills
         if getattr(s, "kind", "") == "wrapped_skill"
         and getattr(getattr(s, "config", None), "usage", "") == "reference"
+        and not is_disabled_wrapped(s)
     }
     entries: list[tuple[str, str]] = []  # (source, description)
     seen: set[str] = set()

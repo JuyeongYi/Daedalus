@@ -407,6 +407,8 @@ def _ser_config(c: Any) -> dict:
             # 배치가 고정한다. 키를 항상 내보내 ""도 왕복한다(키 부재는 구버전
             # = "state"로 로드).
             usage=c.usage,
+            # enabled — 랩핑 스킬은 지울 수 없고 이것으로 끈다(키 부재는 True).
+            enabled=c.enabled,
             disable_model_invocation=c.disable_model_invocation,
             user_invocable=c.user_invocable,
         )

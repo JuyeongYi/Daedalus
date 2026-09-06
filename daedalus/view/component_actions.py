@@ -21,6 +21,8 @@ from typing import TYPE_CHECKING
 
 from PySide6.QtWidgets import QInputDialog, QMessageBox
 
+from daedalus.model.plugin.skill import WrappedSkill
+
 if TYPE_CHECKING:  # pragma: no cover - 타입 전용
     from daedalus.view.app import MainWindow
 
@@ -156,6 +158,18 @@ class ComponentActions:
             return
 
         comp_name = getattr(component, "name", str(component))
+        # 랩핑 스킬은 지울 수 없다(WP-WR, 사용자 확정 2026-09-07) — 여기서
+        # 먼저 막고 대안을 말한다. 실체 delete_component도 다시 막지만, 확인
+        # 다이얼로그를 띄운 뒤 거절하면 "지웠는데 남아 있다"로 보인다.
+        if isinstance(component, WrappedSkill):
+            QMessageBox.information(
+                w, "삭제할 수 없음",
+                f"랩핑 스킬 '{comp_name}'은 삭제할 수 없습니다.\n\n"
+                f"대신 비활성화하면 산출과 배선에서 빠집니다 — 스킬 편집기의 "
+                f"[비활성화] 버튼을 쓰세요. 소스·프론트매터·배선을 다시 "
+                f"입력하지 않고 언제든 되돌릴 수 있습니다.",
+            )
+            return
 
         # 참조 요약 수집 (간략 — validate 없이 빠른 사전 검사)
         ref_lines: list[str] = []
@@ -217,6 +231,15 @@ class ComponentActions:
         w = self._w
         if w._project is None:
             return
+        # 랩핑 스킬 삭제 금지의 **실체**가 여기다 — GUI 레지스트리·캔버스·MCP가
+        # 전부 이 함수를 지나므로, 한 곳에서 막으면 어느 경로로도 지워지지 않는다.
+        if isinstance(component, WrappedSkill):
+            raise ValueError(
+                f"랩핑 스킬 '{getattr(component, 'name', '')}'은 삭제할 수 "
+                f"없습니다 — 대신 비활성화하세요(set_wrapped_enabled / 스킬 "
+                f"편집기의 [비활성화]). 끄면 산출과 배선에서 빠지고 언제든 "
+                f"되돌릴 수 있습니다."
+            )
 
         comp_id = getattr(component, "id", None)
 

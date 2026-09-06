@@ -122,3 +122,39 @@ def change_wrapped_usage(
         "changed": True, "old": old, "new": new_usage,
         "removed": counts if placed else {"states": 0, "transitions": 0, "references": 0},
     }
+
+
+def set_wrapped_enabled(window, component, enabled: bool) -> dict[str, Any]:
+    """랩핑 스킬을 켜고 끈다 — GUI 버튼과 MCP `set_wrapped_enabled`의 실체.
+
+    **삭제의 대체재다**(사용자 확정 2026-09-07): 랩핑 스킬은 지울 수 없고 이
+    스위치로 끈다. 끄면 산출(state 용도 SKILL.md / reference 용도 consult 지시)과
+    외부 플러그인 참조 판정에서 빠지지만, 배치·소스·프론트매터는 그대로 남아
+    다시 켜면 즉시 되돌아온다.
+
+    **배치를 걷어내지 않는다** — 끄는 것과 캔버스에서 치우는 것은 다른 결정이고,
+    전이가 말없이 사라지면 안 된다(용도 전환이 force를 요구하는 것과 같은 이유).
+    비활성인 채 배치가 남아 있으면 `disabled_wrapped_placed` 경고가 짚는다.
+
+    Returns: {"changed", "enabled", "placed"} — placed는 지금 남아 있는 배치 수.
+    Raises: ValueError — 대상이 랩핑 스킬이 아닐 때.
+    """
+    from daedalus.model.plugin.skill import WrappedSkill
+    from daedalus.view.commands.attr_commands import SetAttrCmd
+
+    if not isinstance(component, WrappedSkill):
+        raise ValueError(
+            f"'{getattr(component, 'name', '?')}'은 랩핑 스킬이 아닙니다 — "
+            "비활성화는 랩핑 스킬 전용입니다(다른 컴포넌트는 삭제할 수 있습니다)."
+        )
+    counts = placement_counts(window._project, window._project_vm, component)
+    if bool(getattr(component.config, "enabled", True)) == bool(enabled):
+        return {"changed": False, "enabled": bool(enabled), "placed": counts}
+
+    word = "활성화" if enabled else "비활성화"
+    window._project_vm.execute(SetAttrCmd(
+        component.config, "enabled", bool(enabled),
+        label=f"'{component.name}' {word}",
+        script=f'set_wrapped_enabled("{component.name}", {bool(enabled)})',
+    ))
+    return {"changed": True, "enabled": bool(enabled), "placed": counts}

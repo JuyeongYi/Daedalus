@@ -274,6 +274,29 @@ class WrapTools(_BaseTools):
         result = change_wrapped_usage(self._window, comp, usage, force=force)
         return {"component": name, **result}
 
+    def set_wrapped_enabled(self, name: str, enabled: bool) -> dict[str, Any]:
+        """랩핑 스킬을 켜고 끈다 — **삭제의 대체재**(WP-WR), undo 가능.
+
+        랩핑 스킬은 `delete_component`로 지울 수 없다(사용자 확정 2026-09-07) —
+        소스·프론트매터·배선을 다시 입력하는 비용이 크고, 지우면 이 프로젝트가
+        그 외부 스킬을 한때 썼다는 사실 자체가 사라진다. 대신 이 스위치로 끈다.
+
+        끄면 빌드 산출에서 빠지고(state 용도는 SKILL.md 미산출, reference 용도는
+        consult 지시 미합류) 외부 플러그인 참조 판정에서도 제외된다 — 꺼둔 것은
+        쓰지 않는 것이다. **배치는 그대로 둔다**: 끄는 것과 캔버스에서 치우는
+        것은 다른 결정이고 전이가 말없이 사라지면 안 된다(용도 전환이 force를
+        요구하는 것과 같은 이유). 비활성인 채 배치가 남아 있으면
+        `disabled_wrapped_placed` 경고가 짚는다. 다시 켜면 즉시 되돌아온다.
+
+        GUI 랩핑 편집기의 [비활성화]/[활성화] 버튼과 같은 실체
+        (`actions/wrapped_usage.set_wrapped_enabled`).
+        """
+        from daedalus.view.actions.wrapped_usage import set_wrapped_enabled
+
+        comp = self._find_component(name)
+        result = set_wrapped_enabled(self._window, comp, enabled)
+        return {"component": name, **result}
+
     def set_external_plugins(self, plugins: list[str]) -> dict[str, Any]:
         """이 프로젝트가 사용하는 외부 플러그인 선언을 **통째로 교체**한다 —
         undo 가능 (SetAttrCmd).

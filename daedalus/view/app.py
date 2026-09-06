@@ -413,6 +413,9 @@ class MainWindow(QMainWindow):
         self._registry_panel.component_double_clicked.connect(self._open_component)
         self._registry_panel.new_component_requested.connect(self._on_new_component)
         self._registry_panel.component_delete_requested.connect(self._on_delete_component)
+        self._registry_panel.component_enabled_toggled.connect(
+            self._on_wrapped_enabled_toggled
+        )
         self._registry_panel.component_preview_requested.connect(self._on_preview_component)
         self._fsm_scene.node_double_clicked.connect(self._open_component)
         self._active_stack.add_listener(self._update_undo_redo)
@@ -879,6 +882,12 @@ class MainWindow(QMainWindow):
 
     def _on_delete_component(self, component: object) -> None:
         self._component_actions.on_delete_component(component)
+
+    def _on_wrapped_enabled_toggled(self, component: object, enabled: bool) -> None:
+        """레지스트리 '비활성화/활성화' — 랩핑 편집기 버튼·MCP와 같은 실체."""
+        from daedalus.view.actions.wrapped_usage import set_wrapped_enabled
+
+        set_wrapped_enabled(self, component, enabled)
 
     def delete_component(self, component: object) -> None:
         """컴포넌트 삭제 (A2) — MCP `delete_component`가 직접 부르는 표면."""

@@ -67,7 +67,7 @@ from daedalus.compiler.workspace import (
     render_rule,
 )
 from daedalus.model.plugin.hook import HOOK_SCRIPT_DIR
-from daedalus.model.plugin.skill import Skill
+from daedalus.model.plugin.skill import Skill, is_disabled_wrapped
 from daedalus.model.validation import ValidationError, Validator
 
 # CC 플러그인 산출물 이름 규약 — Validator._COMPONENT_NAME_RE와 동일 패턴.
@@ -280,6 +280,11 @@ def _plan_outputs(
         # 불필요)가 사라진다.
         if (getattr(skill, "kind", "") == "wrapped_skill"
                 and getattr(getattr(skill, "config", None), "usage", "") == "reference"):
+            continue
+        # 비활성 랩핑 스킬(WP-WR, 사용자 확정 2026-09-07 — 삭제 대신 비활성화)도
+        # 산출하지 않는다. 끈 것을 그대로 내보내면 "껐는데 플러그인에는 들어
+        # 있다"가 된다.
+        if is_disabled_wrapped(skill):
             continue
         label = f"스킬 '{skill.name}'"
         check_name(skill.name, label, skill)

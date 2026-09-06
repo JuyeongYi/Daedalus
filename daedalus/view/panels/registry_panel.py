@@ -76,6 +76,9 @@ class _RegistrySection(QWidget):
     item_double_clicked = Signal(object)
     delete_requested = Signal(object)  # component
     preview_requested = Signal(object)  # component — 컴파일 미리보기 (A9-1)
+    #: 랩핑 스킬 켜고 끄기 (WP-WR) — (component, enabled). 삭제의 대체재라
+    #: 랩핑 스킬 행에서는 이것이 '삭제' 자리를 대신한다.
+    enabled_toggle_requested = Signal(object, bool)
 
     def __init__(
         self,
@@ -181,9 +184,28 @@ class _RegistrySection(QWidget):
         preview_action = menu.addAction("컴파일 미리보기…")
         if preview_action is not None:
             preview_action.triggered.connect(lambda: self.preview_requested.emit(comp))
-        delete_action = menu.addAction("삭제")
-        if delete_action is not None:
-            delete_action.triggered.connect(lambda: self.delete_requested.emit(comp))
+        # 랩핑 스킬은 삭제할 수 없다(WP-WR, 사용자 확정 2026-09-07) — 메뉴에
+        # 아예 내지 않고 그 자리에 켜고 끄는 항목을 둔다. 눌러 봐야 거절당하는
+        # 항목을 보여 주면 "왜 안 되지"를 매번 다시 겪는다.
+        from daedalus.model.plugin.skill import WrappedSkill
+
+        if isinstance(comp, WrappedSkill):
+            enabled = bool(getattr(comp.config, "enabled", True))
+            toggle = menu.addAction("비활성화" if enabled else "활성화")
+            if toggle is not None:
+                toggle.setToolTip(
+                    "끄면 빌드 산출과 외부 플러그인 배선에서 빠집니다 — 소스와 "
+                    "배치는 그대로라 언제든 되돌릴 수 있습니다."
+                )
+                toggle.triggered.connect(
+                    lambda: self.enabled_toggle_requested.emit(comp, not enabled)
+                )
+        else:
+            delete_action = menu.addAction("삭제")
+            if delete_action is not None:
+                delete_action.triggered.connect(
+                    lambda: self.delete_requested.emit(comp)
+                )
         menu.exec(self._list.mapToGlobal(pos))
 
 
@@ -194,6 +216,7 @@ class RegistryPanel(QWidget):
     new_component_requested = Signal(str)  # kind: "procedural"|"declarative"|"transfer"|"agent"
     component_delete_requested = Signal(object)  # component
     component_preview_requested = Signal(object)  # component — 컴파일 미리보기
+    component_enabled_toggled = Signal(object, bool)  # 랩핑 스킬 켜고 끄기 (WP-WR)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -234,6 +257,7 @@ class RegistryPanel(QWidget):
             section.add_requested.connect(lambda k=kind: self.new_component_requested.emit(k))
             section.item_double_clicked.connect(self.component_double_clicked)
             section.delete_requested.connect(self.component_delete_requested)
+            section.enabled_toggle_requested.connect(self.component_enabled_toggled)
             section.preview_requested.connect(self.component_preview_requested)
             idx = self._tabs.addTab(section, tab_labels[kind])
             self._tabs.setTabToolTip(idx, section.label_text)
