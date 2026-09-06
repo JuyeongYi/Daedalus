@@ -6,10 +6,12 @@
   `~/.daedalus/external_marketplaces.json`), **사용 선언은 프로젝트 모델**
   (`PluginProject.external_plugins` — 사용자 확정: 프로젝트 단위 저장)이다.
   체크 토글은 SetAttrCmd라 undo되고 저장 파일에 왕복한다.
-- 사용 선언만으로 빌드가 dependencies(MARKETPLACE)/enabledPlugins(LOCAL)를
-  자동 배선한다 — 랩핑 스킬 생성은 그 스킬을 **워크플로 단계로 놓을 때만**
-  필요하다(더블클릭/버튼 — `actions/creation.create_wrapped_skill`, MCP와
-  같은 실체·생성+선언 1 undo).
+- **이 창의 동작은 등록과 선언뿐이다**(사용자 확정) — 실제 랩핑(인보크 지시
+  산출 + dependencies/enabledPlugins 배선)은 **빌드가** 한다. 외부 스킬을
+  워크플로 단계로 놓고 싶을 때만 WrappedSkill을 만드는데, 그 생성은 기존
+  경로(레지스트리 🔗 탭·캔버스 "여기에 만들기"·MCP `create_skill(source=)`)
+  소관이라 여기에는 생성 버튼이 없다. 스킬 행은 후보 확인용이고 ✔는 이미
+  랩핑된 소스 표시다.
 """
 from __future__ import annotations
 
@@ -49,7 +51,7 @@ def project_wrapped_sources(project) -> set[str]:
 
 
 class WrapCatalogDialog(QDialog):
-    """마켓플레이스 폴더 → 플러그인(체크=사용) → 스킬 트리 + 랩핑 스킬 생성."""
+    """마켓플레이스 폴더 → 플러그인(체크=사용 선언) → 스킬 트리."""
 
     def __init__(self, window, parent=None) -> None:
         super().__init__(parent or window)
@@ -62,7 +64,6 @@ class WrapCatalogDialog(QDialog):
         self._tree = QTreeWidget()
         self._tree.setHeaderLabels(["마켓플레이스 / 플러그인 / 스킬", "설명"])
         self._tree.setColumnWidth(0, 280)
-        self._tree.itemDoubleClicked.connect(lambda *_: self.create_wrapped_from_selection())
         # 플러그인 행 체크박스 = 이 프로젝트에서 사용 선언(external_plugins).
         # refresh가 blockSignals로 트리를 다시 그리므로 사람 토글에서만 온다.
         self._tree.itemChanged.connect(self._on_item_changed)
@@ -90,19 +91,6 @@ class WrapCatalogDialog(QDialog):
         btn_row.addWidget(refresh_btn)
 
         btn_row.addStretch()
-
-        # 주 동작은 플러그인 체크(사용 선언)다 — 이 버튼은 선택한 스킬을
-        # **워크플로 단계로** 놓고 싶을 때만 쓰는 보조 동작이라, 라벨이 그
-        # 조건을 그대로 말한다("랩핑 스킬 생성"만 있으면 이 창의 기본 흐름이
-        # 개별 생성인 것처럼 읽힌다 — 사용자 지적).
-        create_btn = QPushButton("워크플로 단계로 감싸기 (WrappedSkill)")
-        create_btn.setToolTip(
-            "선택한 스킬을 워크플로 단계로 감싸는 WrappedSkill을 만든다 "
-            "(더블클릭도 동일). 사용 선언(체크)만으로 충분하면 만들 필요 없다 — "
-            "플러그인이 활성화되면 스킬은 CC가 그대로 로드한다."
-        )
-        create_btn.clicked.connect(self.create_wrapped_from_selection)
-        btn_row.addWidget(create_btn)
 
         close_btn = QPushButton("닫기")
         close_btn.clicked.connect(self.accept)
@@ -263,29 +251,3 @@ class WrapCatalogDialog(QDialog):
         wrap_catalog.remove_marketplace(item.data(0, _ROLE_FOLDER_PATH))
         self.refresh()
 
-    # ─────────────────────────── 랩핑 스킬 생성 ───────────────────────────
-
-    def create_wrapped_from_selection(self) -> object | None:
-        """선택한 스킬 행 → WrappedSkill 생성 (생성+선언 1 undo)."""
-        item = self._tree.currentItem()
-        if item is None or item.data(0, _ROLE_KIND) != "skill":
-            self._status.setText("워크플로 단계로 감쌀 스킬 행을 먼저 선택하세요.")
-            return None
-        return self.create_wrapped(item.data(0, _ROLE_SOURCE))
-
-    def create_wrapped(self, source: str) -> object | None:
-        """source 문자열로 WrappedSkill을 만들어 프로젝트에 등록한다.
-
-        실체는 `actions/creation.create_wrapped_skill` — MCP
-        `create_skill(kind="wrapped", source=)`과 같은 경로(생성 + 미선언이면
-        사용 선언까지 1 undo)다.
-        """
-        from daedalus.view.actions.creation import create_wrapped_skill
-
-        component = create_wrapped_skill(self._window, source)
-        if component is None:
-            self._status.setText("열린 프로젝트가 없습니다.")
-            return None
-        self._status.setText(f"'{component.name}' 생성됨 — source: {source}")
-        self.refresh()
-        return component

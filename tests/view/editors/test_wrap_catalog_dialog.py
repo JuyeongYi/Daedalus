@@ -1,9 +1,11 @@
 # tests/view/editors/test_wrap_catalog_dialog.py
-"""외부 플러그인 카탈로그 창 (WP-WR D2) — 트리 구성 + 사용 선언 체크 + 생성.
+"""외부 플러그인 카탈로그 창 (WP-WR D2) — 트리 구성 + 사용 선언 체크.
 
-발견 로직 자체는 tests/model/plugin/test_wrap_catalog.py가 검증한다 — 여기서는
-창이 그 결과를 트리로 옮기고, 체크가 external_plugins 선언(SetAttrCmd — undo)
-을, 생성이 create_wrapped_skill(생성+선언 1 undo)을 타는지만 본다.
+발견 로직 자체는 tests/model/plugin/test_wrap_catalog.py가 검증한다. 이 창의
+동작은 등록·선언뿐이고(사용자 확정 — 실제 랩핑은 빌드 소관) 생성 버튼이 없다.
+WrappedSkill 생성의 공유 실체 `actions/creation.create_wrapped_skill`
+(레지스트리·캔버스·MCP 경로)도 여기서 함께 검증한다 — 창은 그 결과(✔)를
+표시만 한다.
 """
 from __future__ import annotations
 
@@ -94,18 +96,26 @@ def test_plugin_checkbox_declares_external_plugin(window, marketplace, qapp):
     qapp.processEvents()
 
 
-def test_create_wrapped_registers_and_declares_with_undo(window, marketplace):
-    from daedalus.model.plugin import wrap_catalog
-
-    wrap_catalog.add_marketplace(str(marketplace), "mkt")
+def test_dialog_has_no_create_action(window):
+    """이 창의 동작은 등록·선언뿐이다(사용자 확정) — 생성 버튼/메서드가 없다."""
     dlg = _make_dialog(window)
-    component = dlg.create_wrapped("alpha@mkt:review")
+    from PySide6.QtWidgets import QPushButton
+
+    labels = [b.text() for b in dlg.findChildren(QPushButton)]
+    assert not any("감싸기" in t or "생성" in t for t in labels)
+    assert not hasattr(dlg, "create_wrapped")
+
+
+def test_create_wrapped_skill_action_registers_and_declares_with_undo(window):
+    """공유 실체(레지스트리·캔버스·MCP 경로) — 생성 + 미선언이면 선언까지 1 undo."""
+    from daedalus.view.actions.creation import create_wrapped_skill
+
+    component = create_wrapped_skill(window, "alpha@mkt:review")
     assert component is not None
     assert window._project.skills[0] is component
     assert component.kind == "wrapped_skill"
     assert component.name == "review"
     assert component.config.source == "alpha@mkt:review"
-    # 미선언 플러그인이면 선언까지 함께 (사용자 확정 — 자동 명시)
     assert window._project.external_plugins == ["alpha@mkt"]
 
     window._undo()  # 생성+선언 1 undo
@@ -116,20 +126,22 @@ def test_create_wrapped_registers_and_declares_with_undo(window, marketplace):
     assert window._project.external_plugins == ["alpha@mkt"]
 
 
-def test_create_wrapped_uniquifies_name(window):
-    dlg = _make_dialog(window)
-    first = dlg.create_wrapped("alpha@mkt:review")
-    second = dlg.create_wrapped("alpha@mkt:review")
+def test_create_wrapped_skill_action_uniquifies_name(window):
+    from daedalus.view.actions.creation import create_wrapped_skill
+
+    first = create_wrapped_skill(window, "alpha@mkt:review")
+    second = create_wrapped_skill(window, "alpha@mkt:review")
     assert first.name == "review"
     assert second.name == "review-2"
 
 
 def test_already_wrapped_marker_in_tree(window, marketplace):
     from daedalus.model.plugin import wrap_catalog
+    from daedalus.view.actions.creation import create_wrapped_skill
 
     wrap_catalog.add_marketplace(str(marketplace), "mkt")
     dlg = _make_dialog(window)
-    dlg.create_wrapped("alpha@mkt:review")
+    create_wrapped_skill(window, "alpha@mkt:review")
     dlg.refresh()
     skill_item = dlg._tree.topLevelItem(0).child(0).child(0)
     assert "✔" in skill_item.text(0)
@@ -137,21 +149,6 @@ def test_already_wrapped_marker_in_tree(window, marketplace):
     from PySide6.QtCore import Qt
 
     assert dlg._tree.topLevelItem(0).child(0).checkState(0) == Qt.CheckState.Checked
-
-
-def test_create_from_selection_requires_skill_row(window, marketplace):
-    from daedalus.model.plugin import wrap_catalog
-
-    wrap_catalog.add_marketplace(str(marketplace), "mkt")
-    dlg = _make_dialog(window)
-    # 선택 없음 → 안내만, 생성 없음
-    assert dlg.create_wrapped_from_selection() is None
-    assert window._project.skills == []
-    # 스킬 행 선택 → 생성
-    skill_item = dlg._tree.topLevelItem(0).child(0).child(0)
-    dlg._tree.setCurrentItem(skill_item)
-    assert dlg.create_wrapped_from_selection() is not None
-    assert window._project.skills[0].config.source == "alpha@mkt:review"
 
 
 def test_remove_selected_marketplace(window, marketplace):

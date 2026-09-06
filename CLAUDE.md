@@ -557,10 +557,12 @@ daedalus/
   (`external_plugins`에 SetAttrCmd — undo·저장 왕복), ✔=이미 랩핑됨. 체크
   토글의 트리 재구성은 singleShot(0, self, refresh)으로 미룬다(itemChanged를
   쏜 아이템을 같은 호출에서 clear()로 파괴하면 간헐 access violation — 실측.
-  수신 컨텍스트 덕에 닫힌 다이얼로그에 발화하지 않는다). 랩핑 스킬 생성의
-  실체는 `actions/creation.create_wrapped_skill`(등록 전 source 대입 +
-  미선언이면 **선언까지 MacroCommand 1 undo**, 이름 충돌 `-2` 접미) —
-  창 더블클릭과 MCP가 같은 함수를 부른다.
+  수신 컨텍스트 덕에 닫힌 다이얼로그에 발화하지 않는다). **이 창의 동작은
+  등록·선언뿐이다**(사용자 확정 — 실제 랩핑은 빌드 소관이라 생성 버튼 없음).
+  WrappedSkill 생성(워크플로 단계로 놓을 때만)의 실체는
+  `actions/creation.create_wrapped_skill`(등록 전 source 대입 + 미선언이면
+  **선언까지 MacroCommand 1 undo**, 이름 충돌 `-2` 접미) — 레지스트리 🔗
+  탭·캔버스 "여기에 만들기"·MCP `create_skill(source=)`가 부른다.
 - **외부 플러그인의 MCP 서버 활용**: 사용 선언된 플러그인의
   `mcp_servers`가 ① 에이전트 MCP_SERVERS TagInput 자동완성 후보
   (`tag_input.set_mcp_server_candidate_provider` — app.set_project가

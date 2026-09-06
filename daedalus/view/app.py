@@ -376,7 +376,7 @@ class MainWindow(QMainWindow):
             wrap_catalog_action = QAction("외부 플러그인 카탈로그...", self)
             wrap_catalog_action.setToolTip(
                 "등록된 마켓플레이스 폴더의 외부 플러그인을 체크로 사용 "
-                "선언하고, 스킬을 워크플로 단계(WrappedSkill)로 감싼다 (WP-WR)"
+                "선언한다 — 빌드가 의존성을 자동 배선 (WP-WR)"
             )
             wrap_catalog_action.triggered.connect(self._show_wrap_catalog)
             tools_menu.addAction(wrap_catalog_action)
