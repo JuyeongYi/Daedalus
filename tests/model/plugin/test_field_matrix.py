@@ -67,13 +67,18 @@ def test_matrix_declarative_context_default():
 # kind별 **명시적 부재** 필드 (WP-WR) — 매트릭스 부재 = 그 kind에 비적용.
 # 컴파일러(_frontmatter_lines_skill)는 부재를 건너뛰므로 KeyError는 없지만,
 # 부재는 여기 등재된 것만 허용한다 — 등재 없는 누락은 실수다.
+# HOOKS는 **전 스킬 종류에서 부재**다 (2026-09-07 규격 확인): SKILL.md
+# 프론트매터에 hooks 키가 없어 내보내도 CC가 무시한다. 훅은 플러그인 전역
+# (hooks.json/settings)이거나 에이전트 프론트매터이지 스킬에 붙지 않는다.
+_ABSENT_EVERYWHERE = {SkillField.HOOKS}
 _KIND_ABSENT_FIELDS = {
-    "procedural": {SkillField.SOURCE},
-    "declarative": {SkillField.SOURCE},
-    "transfer": {SkillField.SOURCE},
-    "reference": {SkillField.SOURCE},
+    "procedural": {SkillField.SOURCE} | _ABSENT_EVERYWHERE,
+    "declarative": {SkillField.SOURCE} | _ABSENT_EVERYWHERE,
+    "transfer": {SkillField.SOURCE} | _ABSENT_EVERYWHERE,
+    "reference": {SkillField.SOURCE} | _ABSENT_EVERYWHERE,
     # wrapped는 본문을 만들지 않는다 — 본문 실행 방식 필드 3종이 비적용.
-    "wrapped": {SkillField.CONTEXT, SkillField.AGENT, SkillField.SHELL},
+    "wrapped": {SkillField.CONTEXT, SkillField.AGENT, SkillField.SHELL}
+    | _ABSENT_EVERYWHERE,
 }
 
 

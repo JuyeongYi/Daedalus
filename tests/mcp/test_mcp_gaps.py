@@ -282,27 +282,39 @@ def test_delete_hook_removes_definition(tools, window):
 
 
 def test_delete_hook_reports_dangling_references(tools):
+    tools.create_agent("worker")
     tools.create_hook("h", command="x")
-    tools.set_component_hooks("init", ["h"])
+    tools.set_component_hooks("worker", ["h"])
     result = tools.delete_hook("h")
-    assert result["still_referenced_by"] == ["init"]
+    assert result["still_referenced_by"] == ["worker"]
 
 
 def test_set_component_hooks_records_reference(tools):
+    """훅 참조는 **에이전트**에만 건다 — 스킬 프론트매터에는 hooks 키가 없다."""
+    tools.create_agent("worker")
     tools.create_hook("h", command="x")
-    tools.set_component_hooks("init", ["h"])
-    assert tools._find_component("init").config.hooks == {"h": {}}
+    tools.set_component_hooks("worker", ["h"])
+    assert tools._find_component("worker").config.hooks == {"h": {}}
 
     tools.undo()
     # 선언 기본값은 {}가 아니라 None이다 — undo는 그 원래 값으로 되돌린다
-    assert tools._find_component("init").config.hooks is None
+    assert tools._find_component("worker").config.hooks is None
+
+
+def test_set_component_hooks_rejects_skill(tools):
+    """스킬에 걸면 거부한다 (2026-09-07 규격 확인) — CC가 무시하는 설정을
+    받아 두면 "걸었는데 안 걸린다"가 된다."""
+    tools.create_hook("h", command="x")
+    with pytest.raises(ValueError, match="스킬"):
+        tools.set_component_hooks("init", ["h"])
 
 
 def test_set_component_hooks_rejects_unknown_hook(tools):
     """오타는 컴파일까지 조용히 흘러가 경고로만 드러난다 — 여기서 막는다."""
+    tools.create_agent("worker")
     tools.create_hook("real", command="x")
     with pytest.raises(ValueError, match="real"):
-        tools.set_component_hooks("init", ["typo"])
+        tools.set_component_hooks("worker", ["typo"])
 
 
 def test_set_component_hooks_accepts_global_hook(tools, tmp_path, monkeypatch):
@@ -324,18 +336,20 @@ def test_set_component_hooks_accepts_global_hook(tools, tmp_path, monkeypatch):
         encoding="utf-8",
     )
 
-    tools.set_component_hooks("init", ["shared"])
-    assert list(tools._find_component("init").config.hooks) == ["shared"]
+    tools.create_agent("worker")
+    tools.set_component_hooks("worker", ["shared"])
+    assert list(tools._find_component("worker").config.hooks) == ["shared"]
 
 
 def test_set_component_hooks_preserves_overrides(tools):
+    tools.create_agent("worker")
     tools.create_hook("a", command="x")
     tools.create_hook("b", command="y")
-    tools.set_component_hooks("init", ["a"])
-    tools._find_component("init").config.hooks["a"] = {"timeout": 9}
+    tools.set_component_hooks("worker", ["a"])
+    tools._find_component("worker").config.hooks["a"] = {"timeout": 9}
 
-    tools.set_component_hooks("init", ["a", "b"])
-    assert tools._find_component("init").config.hooks["a"] == {"timeout": 9}
+    tools.set_component_hooks("worker", ["a", "b"])
+    assert tools._find_component("worker").config.hooks["a"] == {"timeout": 9}
 
 
 def test_get_project_lists_hook_library(tools):

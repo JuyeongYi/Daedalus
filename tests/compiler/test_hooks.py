@@ -164,12 +164,17 @@ def test_hooks_json_same_event_multiple_hooks_library_order():
 
 # ── 프론트매터 hooks 표기 ──
 
-def test_frontmatter_hooks_name_list():
-    """스킬 프론트매터 hooks는 참조 이름 flow-list로 표기."""
+def test_skill_frontmatter_never_emits_hooks():
+    """스킬 프론트매터에는 hooks가 나가지 않는다 (규격 확인 2026-09-07).
+
+    SKILL.md 프론트매터에 hooks 키가 없어 CC가 무시한다 — 내보내면 "설정했는데
+    아무 일도 안 하는" 줄이 된다. 훅은 플러그인 전역(hooks.json/settings)이거나
+    에이전트 프론트매터다. 남은 참조는 `skill_hooks_ignored`가 짚는다.
+    """
     skill = make_declarative("kb")
     skill.config.hooks = {"fmt-on-edit": {}, "notify-stop": {}}
     text = compile_skill(skill)
-    assert "hooks: [fmt-on-edit, notify-stop]" in text
+    assert "hooks:" not in text
 
 
 def test_frontmatter_hooks_omitted_when_empty():

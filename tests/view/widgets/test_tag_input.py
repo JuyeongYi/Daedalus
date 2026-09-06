@@ -116,17 +116,21 @@ def test_hook_name_provider_registered(qapp):
 
 
 def test_hook_names_feed_the_hooks_taginput_candidates(qapp):
-    """제공자가 사는 유일한 이유 — HOOKS 필드의 자동완성 후보다."""
-    from daedalus.model.plugin.enums import SkillField
+    """제공자가 사는 유일한 이유 — HOOKS 필드의 자동완성 후보다.
+
+    HOOKS는 **에이전트 전용**이다(스킬 프론트매터에는 hooks 키가 없다 —
+    2026-09-07 규격 확인).
+    """
+    from daedalus.model.plugin.enums import AgentField
     from daedalus.view.editors.skill_editor import _FrontmatterPanel
     from daedalus.view.widgets.tag_input import set_hook_name_provider
 
-    from tests.compiler.builders import make_procedural
+    from tests.compiler.builders import make_agent
 
     set_hook_name_provider(lambda: ["lint", "fmt"])
     try:
-        panel = _FrontmatterPanel(make_procedural())
-        widget = panel._field_widgets[SkillField.HOOKS]
+        panel = _FrontmatterPanel(make_agent("worker"))
+        widget = panel._field_widgets[AgentField.HOOKS]
         assert widget.get_candidates() == ["lint", "fmt"]
     finally:
         set_hook_name_provider(None)

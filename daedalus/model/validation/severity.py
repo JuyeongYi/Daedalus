@@ -66,6 +66,7 @@ WARNING_RULES: frozenset[str] = frozenset({
     "dangling_hook_ref",
     "empty_hook_command",
     "hook_matcher_without_tool_event",
+    "skill_hooks_ignored",  # 스킬 프론트매터에는 hooks 키가 없다(2026-09-07)
     "hook_matcher_matches_nothing",
     # A6 — 훅을 만들고 부착을 잊으면 아무 일도 일어나지 않는다(프로젝트 훅만).
     # 블랙보드(blackboard) 경고 — WP-BB

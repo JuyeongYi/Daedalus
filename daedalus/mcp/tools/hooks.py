@@ -447,18 +447,30 @@ class HookTools(_BaseTools):
     def set_component_hooks(
         self, name: str, hooks: list[str]
     ) -> dict[str, Any]:
-        """스킬/에이전트가 참조하는 훅 이름 목록을 통째로 지정한다.
+        """**에이전트**가 참조하는 훅 이름 목록을 통째로 지정한다.
 
         라이브러리에 없는 이름은 거부한다 — 오타는 컴파일까지 조용히 흘러가
         `dangling_hook_ref` 경고로만 드러나기 때문이다. 유효 집합은 프로젝트
         `hook_library` **∪ 전역 훅**(`~/.daedalus/hooks/`)이다 (A1).
+
+        **스킬에는 걸 수 없다**(규격 확인 2026-09-07): SKILL.md 프론트매터에
+        hooks 키가 없어 CC가 무시한다. 훅을 켜려면 라이브러리에서
+        `create_hook`/`update_hook`의 `enabled`로 전역 배출을 켜거나(플러그인
+        훅은 전역이다), 그 훅을 쓸 **에이전트**에 건다.
         """
+        from daedalus.model.plugin.agent import AgentDefinition
         from daedalus.view.commands.attr_commands import SetAttrCmd
 
         comp = self._find_component(name)
         config = getattr(comp, "config", None)
         if config is None:
             raise ValueError(f"'{name}'에는 config가 없어 훅을 붙일 수 없습니다.")
+        if not isinstance(comp, AgentDefinition):
+            raise ValueError(
+                f"'{name}'은 스킬입니다 — 스킬 프론트매터에는 hooks 키가 없어 "
+                "CC가 무시합니다. 훅은 라이브러리에서 enabled로 켜거나(플러그인 "
+                "전역) 에이전트에 거세요."
+            )
 
         known = set(self._window.resolved_hooks())
         unknown = [h for h in hooks if h not in known]

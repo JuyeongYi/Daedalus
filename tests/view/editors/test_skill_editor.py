@@ -481,16 +481,19 @@ def test_hooks_load_into_taginput_and_add_keeps_dict(qapp):
     """hooks dict가 TagInput에 로드되고, 추가 후에도 dict 타입이 유지된다.
 
     체크박스(PresetPicker) → TagInput 전환(사용자 요청) 후의 회귀 테스트.
+    **에이전트 기준**이다 — 스킬 프론트매터에는 hooks 키가 없다(2026-09-07).
     """
-    from daedalus.model.plugin.enums import SkillField
+    from daedalus.model.plugin.enums import AgentField
     from daedalus.view.widgets.tag_input import TagInput
 
+    from tests.compiler.builders import make_agent
+
     from daedalus.view.editors.skill_editor import _FrontmatterPanel
-    comp = _make_procedural()
+    comp = make_agent("worker")
     comp.config.hooks = {"lint": {"cmd": "ruff"}}
     panel = _FrontmatterPanel(comp)
 
-    widget = panel._field_widgets.get(SkillField.HOOKS)
+    widget = panel._field_widgets.get(AgentField.HOOKS)
     assert widget is not None and isinstance(widget, TagInput), "hooks TagInput 없음"
 
     # (b-1) 로드: hooks dict의 키가 태그로 반영
@@ -513,9 +516,14 @@ def test_hooks_load_into_taginput_and_add_keeps_dict(qapp):
 
 
 def test_hooks_optional_uncheck_clears_to_none(qapp, tmp_path, monkeypatch):
-    """hooks _OptionalRow 해제 시 []가 아닌 None으로 클리어된다 (dict 필드)."""
-    from daedalus.model.plugin.enums import SkillField
+    """hooks _OptionalRow 해제 시 []가 아닌 None으로 클리어된다 (dict 필드).
+
+    **에이전트 기준**이다 — 스킬에는 hooks 필드가 없다(2026-09-07 규격 확인).
+    """
+    from daedalus.model.plugin.enums import AgentField
     from daedalus.view.editors.skill_editor import _OptionalRow
+
+    from tests.compiler.builders import make_agent
 
     hooks_dir = tmp_path / ".claude" / "hooks"
     hooks_dir.mkdir(parents=True)
@@ -523,11 +531,11 @@ def test_hooks_optional_uncheck_clears_to_none(qapp, tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
 
     from daedalus.view.editors.skill_editor import _FrontmatterPanel
-    comp = _make_procedural()
+    comp = make_agent("worker")
     comp.config.hooks = {"lint": {}}
     panel = _FrontmatterPanel(comp)
 
-    picker = panel._field_widgets[SkillField.HOOKS]
+    picker = panel._field_widgets[AgentField.HOOKS]
     parent = picker.parent()
     assert isinstance(parent, _OptionalRow)
     parent.set_checked(False)

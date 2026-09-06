@@ -54,6 +54,7 @@ _WARN_RULES = frozenset({
     "dangling_hook_ref",
     "empty_hook_command",
     "hook_matcher_without_tool_event",
+    "skill_hooks_ignored",  # 스킬 프론트매터에 hooks 키 없음(2026-09-07)
     "dangling_blackboard_ref",
     "orphan_blackboard_field",
     "dangling_file_ref",  # WP-FR — 아래 _EXTERNALLY_EMITTED_RULES 참조

@@ -121,6 +121,39 @@ class _HookRules:
                 ))
         return errors
 
+    @staticmethod
+    def _check_skill_hook_refs(project) -> list[ValidationError]:
+        """skill_hooks_ignored — 스킬 `config.hooks`는 아무 일도 하지 않는다.
+
+        규격 확인 2026-09-07: SKILL.md 프론트매터에는 hooks 키가 없다. 예전에
+        우리가 그 키를 내보내고 있었고(CC는 무시), 매트릭스에서 뺀 뒤에도
+        **이미 저장된 프로젝트에는 참조가 남는다** — 조용히 지우면 "내가 설정한
+        게 사라졌다"가 되고, 그냥 두면 "걸어 뒀는데 안 걸린다"가 된다. 그래서
+        지우지 않고 짚어 준다.
+
+        훅을 켜는 길은 둘이다: 라이브러리 훅의 `enabled`(플러그인 전역 배출),
+        또는 **에이전트** `config.hooks`(그 에이전트 안에서만).
+        """
+        errors: list[ValidationError] = []
+        for skill in getattr(project, "skills", []):
+            cfg = getattr(skill, "config", None)
+            hooks = getattr(cfg, "hooks", None)
+            if not isinstance(hooks, dict) or not hooks:
+                continue
+            errors.append(ValidationError(
+                rule="skill_hooks_ignored",
+                message=(
+                    f"스킬 '{skill.name}'이 훅 {', '.join(sorted(hooks))}을(를) "
+                    f"참조하지만 **스킬에는 훅을 걸 수 없습니다** — SKILL.md "
+                    f"프론트매터에 hooks 키가 없어 CC가 무시합니다. 훅 "
+                    f"라이브러리에서 그 훅을 켜거나(플러그인 전역) 쓸 "
+                    f"에이전트에 거세요."
+                ),
+                source=skill.name,
+                subject=skill,
+            ))
+        return errors
+
     # (`orphan_hook`은 퇴역했다 — 전제가 틀렸다. 플러그인 훅은 **전역**이라
     #  플러그인이 활성화되면 자동으로 동작하고, 컴포넌트가 `config.hooks`로
     #  참조해야 켜지는 것이 아니다(공식 plugins-reference 확인 2026-09-07).

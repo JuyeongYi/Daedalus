@@ -1570,6 +1570,7 @@ blackboard/body_variables/build_target/workflow/workspace)을 합성한 오케�
 | `duplicate_hook_name` | `hook_library` 내 동명 HookDef 에러 (이름 참조 모호) |
 | `empty_hook_command` | HookDef.command 빈 값 경고 |
 | `hook_matcher_without_tool_event` | matcher가 있는데 event가 Pre/PostToolUse가 아니면 경고 (matcher는 도구 이벤트 전용) |
+| `skill_hooks_ignored` | 스킬 `config.hooks` 참조 경고 — SKILL.md에는 hooks 키가 없어 CC가 무시한다(2026-09-07). 훅은 라이브러리 `enabled`(전역) 또는 에이전트에 건다 |
 | `dangling_hook_ref` | config.hooks 키가 hook_library에 없으면 경고 (스킬·에이전트 전부 검사) |
 | `hook_matcher_matches_nothing` | MCP matcher가 서버 이름까지만이면 어떤 도구와도 맞지 않으므로 경고 (정규식이 아니라 정확한 문자열 비교 — `server__.*`를 쓰라고 안내, WP-HS) |
 | `dangling_blackboard_ref` | State.reads/writes의 `"Class"`/`"Class.field"` 문자열 참조가 프로젝트 최상위 블랙보드 class_definitions에 없으면 경고 (재귀 — sub_machine/Region + 프로젝트 그래프 포함, 빈 문자열은 스킵) |
@@ -1643,11 +1644,15 @@ CC의 구조는 **3단**이다: 이벤트 → 그룹(matcher + 핸들러 목록)
   `PostToolUse`/`Stop`이고, **프론트매터의 `Stop`은 런타임에 `SubagentStop`으로
   자동 변환된다** — 설계자가 `SubagentStop`을 직접 걸면 의미가 겹칠 수 있으니
   `Stop`으로 두는 편이 낫다.
-- **미해결 — 스킬 프론트매터 `hooks:`는 CC가 인식하지 않는다**(같은 확인:
-  SKILL.md 프론트매터 스키마에 hooks 키가 없다). 지금도 매트릭스가 그 키를
-  배출하지만 **무시된다** — 훅이 안 걸리는 것은 아니고(위 전역 배출로 동작한다)
-  그 줄이 아무 일도 하지 않을 뿐이다. 정리 방향(배출 중단 / SETTINGS 언급으로
-  이동)은 사용자 확정 대기.
+- **스킬에는 훅을 걸 수 없다**(사용자 확정 2026-09-07, 같은 규격 확인:
+  SKILL.md 프론트매터 스키마에 hooks 키가 없다). `SKILL_FIELD_MATRIX`에서
+  `SkillField.HOOKS`를 **전 종류에서 제거**해 배출·편집 노출을 끊었다
+  (`_KIND_ABSENT_FIELDS`의 `_ABSENT_EVERYWHERE`가 계약으로 고정). MCP
+  `set_component_hooks`는 스킬을 **거부**하고(에이전트 전용), 이미 저장된
+  프로젝트에 남은 스킬 참조는 지우지 않고 `skill_hooks_ignored` 경고로
+  짚는다 — 조용히 지우면 "설정한 게 사라졌다"가 되고 그냥 두면 "걸어 뒀는데
+  안 걸린다"가 된다. 훅을 켜는 길은 둘뿐이다: 라이브러리 훅의 `enabled`
+  (플러그인 전역), 또는 **에이전트** `config.hooks`.
 - **직렬화**: 핸들러는 `kind` 태그로 다형성 왕복. v1 파일(`handlers` 키 없이 `command`/`timeout`)은 `_migrate_v1`이 `CommandHook` 하나로 감싼다(경고 없음). 미지 `kind`는 건너뛴다 — 미래 버전 파일을 열어도 죽지 않는다.
 - **검증**: `empty_hook_command`는 핸들러 0개 또는 핸들러의 필수 값이 빈 경우다. 무엇이 필수인지는 타입마다 다르므로 `handler.summary()`가 `"("`로 시작하는지로 판정한다 — 타입이 늘어도 규칙이 따라간다. `hook_matcher_without_tool_event`는 이름만 예전 그대로이고 판정은 `MATCHER_EVENTS` 기준이다.
 - **라이프사이클 피커 (A10)**: 이벤트 콤보 옆 "라이프사이클에서 선택…" 버튼이
