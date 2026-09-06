@@ -61,16 +61,34 @@
   별도 계획 문서부터.
 - **B2 기존 플러그인 임포트** — 개시 미정 (docs/plans/2026-09-06-improvement-batch.md 참조).
 
-## 6. 배치 완료 직후 작업 큐 (2026-09-06)
+## 6. 배치 완료 직후 작업 큐 (2026-09-06) — 전부 완료
 
-1. **새 프로젝트 통합 다이얼로그** (사용자 확정 스펙): Ctrl+N 한 흐름에서
-   ① 출발점 선택(빈 프로젝트 | 템플릿 목록 — A7 산출 3종) ② 빌드 타깃
-   선택(마켓플레이스/로컬)이 **같이** 되는 형태. A7이 별도 메뉴로 노출했다면
-   그 표면을 이 통합 다이얼로그로 재조정한다. 취소 시 생성 취소(기존 규약),
-   템플릿 내용은 타깃 중립 유지 — 타깃은 항상 생성 시 사용자가 고른다.
-2. 트랜스퍼 스킬 컴파일 미리보기 표면 — 전이 엣지 우클릭(transfer 부착 시)
-   + 레지스트리 우클릭 공통 항목 (기능 실체는 view/actions/preview.py 재사용).
-3. MCP `update_hook`의 scriptName `.sh.sh` 버그 — 확장자 무조건 덧붙임 수정.
+1. ~~새 프로젝트 통합 다이얼로그~~ (877c502) 2. ~~트랜스퍼 미리보기~~ (70d567c)
+3. ~~scriptName .sh.sh~~ (06761f7). 폴더형 템플릿도 완료(f35b7f6).
+
+## 8. MCP 패리티 배치 (2026-09-07 사용자 확정)
+
+**원칙(상시): GUI에서 가능한 모든 동작은 MCP로도 가능해야 한다** — CLAUDE.md
+WP-MCP 섹션에 기록. 새 GUI 기능은 대응 MCP 도구를 같은 WP에서 함께 만든다.
+
+이번 배치 범위 — A3 실측 보고 전체 소거 + 리뷰 소품:
+- 편집 갭 G1~G16 전체 (P1: G1 블랙보드 클래스 수정·삭제·개명 / G2 필드 단위
+  편집 / G3 컴파일 dry-run — 컴파일러 emit 경고 가시화. P2: G4 진행 훅 토글 /
+  G5 진입점 프리셋(apply_entry_preset 직호출, 1 undo) / G6 call_agents 수정
+  (set_transfer_on 짝) / G7 전역 훅 조회+프로젝트로 복사 / G8 훅 프리셋 생성 /
+  G9 카탈로그 후보 조회 / G11 new_project(template_id, build_target — 통합
+  다이얼로그와 동형, 저장 게이트). P3: G10 웨이포인트 / G12 새 프로젝트·패키지
+  가져오기 / G13 참조 이동 / G14 생성+배치 1 undo(creation.make_component
+  환원 — S1 팩토리 3중복 해소 동반) / G15 transfer 생성+할당 1 undo /
+  G16 focus_node·select_nodes)
+- 조회 낭비 Q1~Q6 (P1: Q1 get_project 훅 스크립트 전문 축약 + get_hook 신설 /
+  Q2 전이 guard·waypoint_count 노출. P2: Q3 config 비기본값만 / Q4 sections
+  선택 파라미터. P3: Q5 validate 필터 / Q6 workspace_docs 개수 신호)
+- 부수: S1 팩토리 중복(G14와 함께), S2 _hook_summary 소유 이동(Q1과 함께)
+- 리뷰 소품 2건: A5-lite 죽은 코드(over_threshold property·to_dict — 삭제 또는
+  실사용 배선), 배치 A-번호와 기존 A-번호(A1 전역 훅/A7 미저장 확인 등) 충돌
+  문구 정리(session_io docstring 등).
+- 착수 순서 권고(보고서): Q1+Q2 → G1+G2 → G3 → G4~G6 → G7~G9 → G10~G16.
 
 ## 7. 다음 배치 확정 항목 (2026-09-07 사용자 확정)
 
