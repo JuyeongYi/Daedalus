@@ -19,6 +19,13 @@ _BG = QColor("#1a2a2a")
 _BORDER = QColor("#66aaaa")
 _HEADER_LABEL = "📖 REFERENCE"
 
+# 참조 용도 랩핑 스킬 (WP-WR) — 같은 참조 노드지만 정본이 **외부 플러그인**이라
+# 한눈에 갈려야 한다(우리 문서는 산출 파일이 있고 이쪽은 없다). 색·아이콘은
+# 레지스트리 🔗 탭·상태 노드의 wrapped 스타일과 같은 보라 계열.
+_WRAPPED_BG = QColor("#241a2a")
+_WRAPPED_BORDER = QColor("#8a5aaa")
+_WRAPPED_HEADER_LABEL = "🔗 EXT REFERENCE"
+
 
 class ReferenceNodeItem(DraggableItemMixin, QGraphicsItem):
     """참조 스킬 노드 — 컴팩트 카드, 상단 포트, 점선 테두리."""
@@ -73,25 +80,30 @@ class ReferenceNodeItem(DraggableItemMixin, QGraphicsItem):
         if painter is None:
             return
 
-        border = _BORDER.lighter(160) if self.isSelected() else _BORDER
+        # 외부 스킬 참조(WP-WR)와 우리 문서 참조를 색·헤더로 가른다.
+        is_wrapped = getattr(self._ref_vm.model, "kind", "") == "wrapped_skill"
+        bg = _WRAPPED_BG if is_wrapped else _BG
+        base_border = _WRAPPED_BORDER if is_wrapped else _BORDER
+        header_label = _WRAPPED_HEADER_LABEL if is_wrapped else _HEADER_LABEL
+        border = base_border.lighter(160) if self.isSelected() else base_border
 
         # 본체 — 점선 테두리
         body = QRectF(0, 0, _W, _H)
         pen = QPen(border, 2, Qt.PenStyle.DashLine)
         painter.setPen(pen)
-        painter.setBrush(QBrush(_BG))
+        painter.setBrush(QBrush(bg))
         painter.drawRoundedRect(body, 7, 7)
 
         # 헤더
         hdr = QRectF(1, 1, _W - 2, _HEADER_H - 1)
         painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QBrush(_BG.darker(140)))
+        painter.setBrush(QBrush(bg.darker(140)))
         painter.drawRoundedRect(hdr, 6, 6)
         painter.drawRect(QRectF(1, 9, _W - 2, _HEADER_H - 10))
 
         painter.setPen(QPen(border.lighter(130)))
         painter.setFont(QFont("Segoe UI", 7))
-        painter.drawText(hdr.adjusted(6, 0, 0, 0), Qt.AlignmentFlag.AlignVCenter, _HEADER_LABEL)
+        painter.drawText(hdr.adjusted(6, 0, 0, 0), Qt.AlignmentFlag.AlignVCenter, header_label)
 
         # 이름
         name = getattr(self._ref_vm.model, "name", "?")

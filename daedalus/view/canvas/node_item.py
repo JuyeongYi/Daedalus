@@ -24,6 +24,11 @@ _TYPE_STYLE: dict[str | None, tuple[str, str, str, str]] = {
     # 헤더 라벨 "PROCEDURAL"은 형용사라 어색 — 배치는 플러그인 FSM의 상태이므로
     # STATE로 표기 (사용자 확정). 종류 구분은 색·아이콘이 담당.
     "procedural_skill": ("#1a2a1a", "#4a8a4a", "STATE", "⚙"),
+    # 랩핑 스킬(WP-WR)도 배치되면 플러그인 FSM의 상태라 헤더는 STATE지만,
+    # 본문 정본이 외부에 있다는 것이 한눈에 보여야 한다 — 레지스트리 🔗 탭과
+    # 같은 보라 계열 + 🔗 아이콘. 이 항목이 없어 wrapped가 기본 스타일(빈
+    # 상태와 구분되지 않는 회청색)로 그려졌다(사용자 보고 2026-09-07).
+    "wrapped_skill":    ("#241a2a", "#8a5aaa", "STATE", "🔗"),
     "declarative_skill": ("#2a2a1a", "#8a8a4a", "DECLARATIVE", "📄"),
     "agent":             ("#2a1a1a", "#8a4a4a", "AGENT",       "🤖"),
     "entry_point":       ("#1a1a3a", "#4488ff", "▶ ENTRY",     ""),

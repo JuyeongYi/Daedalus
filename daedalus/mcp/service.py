@@ -46,6 +46,7 @@ TOOL_NAMES = (
     "add_marketplace_folder",
     "remove_marketplace_folder",
     "set_external_plugins",
+    "set_wrapped_usage",
     # 세션 — 저장은 undo 대상이 아니다(파일 쓰기)
     "save_project",
     "open_project",

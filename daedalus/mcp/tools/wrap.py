@@ -131,6 +131,27 @@ class WrapTools(_BaseTools):
             raise ValueError(f"등록되지 않은 폴더입니다: {path}. 현재 등록: {known}")
         return {"removed": path}
 
+    def set_wrapped_usage(
+        self, name: str, usage: str, force: bool = False
+    ) -> dict[str, Any]:
+        """랩핑 스킬의 용도를 바꾼다 — state ↔ reference (WP-WR), undo 가능.
+
+        최초 배치가 용도를 고정하지만 나중에 바꿀 수 있다. 지켜지는 불변식은
+        "**동시에** 두 용도로 쓰이지 않는다"이므로, 전환은 기존 배치를 걷어낸
+        뒤에만 성립한다 — 이미 놓여 있으면 무엇을 지워야 하는지 알리며
+        **거부**하고, `force=True`면 그 배치(참조 노드·워크플로 노드·연결
+        전이)를 함께 지우고 전환까지 **1 undo**로 묶는다. 전이가 말없이
+        사라지지 않도록 기본값이 거부인 것이다.
+
+        GUI 랩핑 편집기의 "용도를 …로 바꾸기" 버튼과 같은 실체
+        (`actions/wrapped_usage.change_wrapped_usage`).
+        """
+        from daedalus.view.actions.wrapped_usage import change_wrapped_usage
+
+        comp = self._find_component(name)
+        result = change_wrapped_usage(self._window, comp, usage, force=force)
+        return {"component": name, **result}
+
     def set_external_plugins(self, plugins: list[str]) -> dict[str, Any]:
         """이 프로젝트가 사용하는 외부 플러그인 선언을 **통째로 교체**한다 —
         undo 가능 (SetAttrCmd).

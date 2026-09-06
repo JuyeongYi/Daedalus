@@ -334,6 +334,9 @@ daedalus/
     │   │                   #     파일은 쓰지 않는다. 산출은 **원문 그대로** 보인다(렌더하면 프론트매터가 사라진다).
     │   ├── model_effort.py #   모델/effort 지정(A9-2) — MODEL_CHOICES/EFFORT_CHOICES(표시 순서 단일 진실) + set_model/set_effort.
     │   │                   #     새로 만드는 것은 UI가 아니라 **쓰기 경로의 단일 진실**이다(에디터 콤보와 같은 SetAttrCmd 경로).
+    │   ├── wrapped_usage.py#   랩핑 용도 전환(WP-WR) — change_wrapped_usage/placement_counts/describe_placements.
+    │   │                   #     배치 없으면 SetAttrCmd 하나, 있으면 거부(force면 _canvas_cleanup_commands로 정리 + 전환 1 undo).
+    │   │                   #     GUI 버튼과 MCP set_wrapped_usage의 공용 실체
     │   ├── creation.py     #   생성+배치 — NO_PLACE_KINDS(레지스트리 no_place와 같은 규칙)/create_wrapped_skill(WP-WR —
     │   │                   #     생성+선언+배치 1 undo, WRAPPED_SOURCE_MIME_PREFIX)/
     │   │                   #     ("여기에 만들기" 빈 캔버스 메뉴(A9-9)·CREATABLE_KINDS는 퇴역 — 정확한 이름 타이핑 요구, 사용자 확정)/
@@ -557,8 +560,22 @@ daedalus/
   키 부재(구버전)는 "state" 로드. 검증 `wrapped_usage_conflict` 경고(용도 ↔
   배치 어긋남 — MCP·구버전 파일 대비). MCP: `create_skill(usage=)`,
   `set_transfer_on`은 reference 용도 거절, `set_component_field("usage")`
-  거절(배치가 고정). 에디터: reference 용도는 포트 패널 대신
-  `_ReferenceLinkPanel`, 원본 패널에 용도 표시.
+  거절(배치가 고정 — 전환은 아래 전용 경로). 에디터: reference 용도는 포트
+  패널 대신 `_ReferenceLinkPanel`, 원본 패널에 용도 표시.
+- **용도 전환 — 배치를 걷어낸 뒤에만**(사용자 보고 2026-09-07): 지켜야 할
+  불변식은 "**동시에** 두 용도로 쓰이지 않는다"이지 "영원히 못 바꾼다"가
+  아니다(없으면 삭제·재생성뿐이라 이름·설명·프론트매터·source를 다시 넣어야
+  한다). 실체는 `view/actions/wrapped_usage.change_wrapped_usage(window,
+  component, usage, force=False)` — 배치가 없으면 SetAttrCmd 하나, 있으면
+  **기본은 거부**하고 무엇을 지워야 하는지 말한다(전이가 말없이 사라지면 안
+  된다). `force=True`면 `RemoveComponentCmd`와 **같은 조립**
+  (`_canvas_cleanup_commands`)으로 참조 노드·전이·상태를 걷어내고 전환까지
+  MacroCommand **1 undo**. 표면: 랩핑 편집기의 "용도를 …로 바꾸기" 버튼
+  (배치가 있으면 QMessageBox로 확인) / MCP `set_wrapped_usage(name, usage,
+  force=)`. **캔버스 시각 구분**(같은 보고): `node_item._TYPE_STYLE`에
+  `wrapped_skill`(보라 + 🔗 — 없어서 빈 상태와 같은 기본 스타일로 그려졌다),
+  `ref_node_item`은 모델 kind가 wrapped면 "🔗 EXT REFERENCE" + 보라(우리
+  문서 참조는 산출 파일이 있고 외부 참조는 없다).
 - **본문 편집 없음**(사용자 확정): wrapped 에디터의 중앙은 본문 편집기가
   아예 없고 `_WrappedSourcePanel`(원본 경로 읽기 전용 + "원본 열기" 버튼 —
   `wrap_catalog.resolve_skill_file`로 카탈로그에서 SKILL.md 해석)이다 —

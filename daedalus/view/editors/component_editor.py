@@ -184,6 +184,11 @@ class _WrappedSourcePanel(QWidget):
         )
         self._btn_open.clicked.connect(self.open_source)
         lay.addWidget(self._btn_open)
+        # 용도 전환 (WP-WR) — 최초 배치가 고정하지만 **바꿀 길은 있어야 한다**
+        # (사용자 보고 2026-09-07). 배치가 남아 있으면 무엇이 지워지는지 묻는다.
+        self._btn_usage = QPushButton("")
+        self._btn_usage.clicked.connect(self.toggle_usage)
+        lay.addWidget(self._btn_usage)
         self._w_status = QLabel("")
         self._w_status.setWordWrap(True)
         lay.addWidget(self._w_status)
@@ -205,6 +210,17 @@ class _WrappedSourcePanel(QWidget):
         }.get(usage, "용도: 미정 — 최초 배치 시 State/Reference를 선택하면 고정됩니다")
         if self._w_usage.text() != usage_text:
             self._w_usage.setText(usage_text)
+        target = "state" if usage == "reference" else "reference"
+        label = {
+            "state": "용도를 워크플로 단계(State)로 바꾸기",
+            "reference": "용도를 참조(Reference)로 바꾸기",
+        }[target]
+        if self._btn_usage.text() != label:
+            self._btn_usage.setText(label)
+            self._btn_usage.setToolTip(
+                "이미 캔버스에 놓여 있으면 무엇이 함께 지워지는지 먼저 묻습니다 "
+                "— 전환은 그 배치를 걷어낸 뒤에만 성립합니다(한 스킬 두 용도 금지)."
+            )
         if not source:
             self._w_status.setText(
                 "source가 비어 있습니다 — 좌측 프론트매터에서 "
@@ -212,6 +228,46 @@ class _WrappedSourcePanel(QWidget):
             )
         elif self._w_status.text():
             self._w_status.setText("")
+
+    def toggle_usage(self) -> bool:
+        """현재 용도의 반대로 전환 (WP-WR). 배치가 남아 있으면 먼저 묻는다.
+
+        전환의 실체는 `actions/wrapped_usage.change_wrapped_usage` — MCP
+        `set_wrapped_usage`와 같은 함수다(표면마다 다른 규칙이면 안 된다).
+        """
+        from PySide6.QtWidgets import QMessageBox
+
+        from daedalus.view.actions.wrapped_usage import (
+            change_wrapped_usage,
+            describe_placements,
+            placement_counts,
+        )
+
+        window = self.window()
+        project = getattr(window, "_project", None)
+        if project is None:
+            self._w_status.setText("열린 프로젝트가 없습니다.")
+            return False
+        usage = getattr(self._component.config, "usage", "") or ""
+        target = "state" if usage == "reference" else "reference"
+        counts = placement_counts(project, window._project_vm, self._component)
+        if any(counts.values()):
+            answer = QMessageBox.question(
+                self,
+                "용도 변경",
+                f"'{self._component.name}'의 배치({describe_placements(counts)})를 "
+                f"함께 지우고 {target}로 바꿉니다. 계속할까요?\n"
+                f"(한 번의 Ctrl+Z로 전부 되돌릴 수 있습니다.)",
+            )
+            if answer != QMessageBox.StandardButton.Yes:
+                return False
+        change_wrapped_usage(window, self._component, target, force=True)
+        self.refresh()
+        self._w_status.setText(
+            f"용도를 {target}로 바꿨습니다 — 편집 탭을 닫았다 열면 패널 구성이 "
+            f"바뀝니다(참조 용도는 출력 포트가 없습니다)."
+        )
+        return True
 
     def open_source(self) -> bool:
         """원본 SKILL.md를 OS 기본 프로그램으로 연다. 찾으면 True."""

@@ -329,21 +329,24 @@ class CanvasTools(_BaseTools):
         return matches[index]
 
     def place_reference(self, name: str, x: float = 0.0, y: float = 0.0) -> dict[str, Any]:
-        """ReferenceSkill을 프로젝트 캔버스에 참조 노드로 배치한다.
+        """참조 문서를 프로젝트 캔버스에 참조 노드로 배치한다.
 
-        참조 노드는 상태가 아니라 **여러 상태가 공유하는 문서**라, 같은 스킬을
-        여러 번 놓을 수 있다(그래서 place_component가 아니라 별도 도구다).
-        놓은 뒤 link_reference로 상태에 연결한다.
+        대상은 ReferenceSkill과 **용도가 reference로 고정된 랩핑 스킬**이다
+        (WP-WR — 판정의 단일 진실은 `is_reference_usage`). 참조 노드는 상태가
+        아니라 **여러 상태가 공유하는 문서**라, 같은 스킬을 여러 번 놓을 수
+        있다(그래서 place_component가 아니라 별도 도구다). 놓은 뒤
+        link_reference로 상태에 연결한다.
         """
         from PySide6.QtCore import QPointF
 
-        from daedalus.model.plugin.skill import ReferenceSkill
+        from daedalus.model.plugin.skill import is_reference_usage
 
         comp = self._find_component(name)
-        if not isinstance(comp, ReferenceSkill):
+        if not is_reference_usage(comp):
             raise ValueError(
-                f"'{name}'은 ReferenceSkill이 아닙니다(현재 {self._component_kind(comp)}) — "
-                "일반 스킬·에이전트는 place_component로 배치하라."
+                f"'{name}'은 참조 문서가 아닙니다(현재 {self._component_kind(comp)}) — "
+                "일반 스킬·에이전트는 place_component로 배치하라(랩핑 스킬은 "
+                "생성 시 usage=\"reference\"로 고정해야 참조로 놓을 수 있다)."
             )
         before = len(self._vm.reference_vms)
         self._scene.drop_reference_skill(name, QPointF(float(x), float(y)))
