@@ -297,6 +297,9 @@ def _deser_hook(d: dict) -> HookDef:
         description=d.get("description", ""),
         event=_to_enum(HookEvent, d.get("event"), HookEvent.PRE_TOOL_USE),
         matcher=d.get("matcher", ""),
+        # 키 부재(구버전 파일)는 True — 그때는 선별 개념이 없었고 라이브러리에
+        # 있는 훅은 참조되면 배출됐다.
+        enabled=bool(d.get("enabled", True)),
         handlers=handlers,
         id=d.get("id") or _new_id(),
     )

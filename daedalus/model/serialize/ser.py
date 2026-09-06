@@ -150,6 +150,8 @@ def _ser_hook(h: HookDef) -> dict:
         "description": h.description,
         "event": h.event.value,
         "matcher": h.matcher,
+        # 빌드 포함 여부 — 구버전 파일(키 부재)은 역직렬화 시 True.
+        "enabled": h.enabled,
         "handlers": [_ser_hook_handler(x) for x in h.handlers],
     }
 

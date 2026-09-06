@@ -393,6 +393,17 @@ class HookLibraryPanel(QWidget):
         )
         self._matcher.textChanged.connect(self._save_head)
         form.addRow("matcher", self._matcher)
+
+        # 빌드 포함 스위치 — 라이브러리는 "정의를 모아 두고 고르는 곳"이다.
+        # 꺼도 **에이전트가 참조하면 그 프론트매터에는 들어간다**(전역 훅으로
+        # 켤지의 스위치이지 훅을 지우는 것이 아니다).
+        self._enabled = QCheckBox("이 플러그인 빌드에 포함 (hooks.json / settings)")
+        self._enabled.setToolTip(
+            "끄면 전역 훅 등록에서 빠집니다. 에이전트가 참조하는 경우 그 "
+            "에이전트 프론트매터에는 계속 포함되고 스크립트 파일도 함께 나갑니다."
+        )
+        self._enabled.toggled.connect(self._save_head)
+        form.addRow("", self._enabled)
         lay.addLayout(form)
 
         self._matcher_note = QLabel()
@@ -483,7 +494,8 @@ class HookLibraryPanel(QWidget):
     def _set_enabled(self, on: bool, *, read_only: bool = False) -> None:
         """편집 위젯 활성화. read_only면 값은 보이되 고칠 수 없다 (전역 훅, A1)."""
         editable = on and not read_only
-        for w in (self._name, self._description, self._event, self._matcher):
+        for w in (self._name, self._description, self._event, self._matcher,
+                  self._enabled):
             w.setEnabled(editable)
         self._remove_btn.setEnabled(editable)
         self._handler_add_btn.setEnabled(editable)
@@ -541,6 +553,8 @@ class HookLibraryPanel(QWidget):
         label = f"{hook.name or '(이름 없음)'}  ·  {hook.event.value}"
         if not hook.handlers:
             label += "  ⚠"
+        if not getattr(hook, "enabled", True):
+            label += "  (빌드 제외)"
         return f"🌐 {label}" if is_global else label
 
     def _current_hook(self) -> HookDef | None:
@@ -564,6 +578,7 @@ class HookLibraryPanel(QWidget):
             if hook is not None:
                 self._event.setCurrentIndex(list(HookEvent).index(hook.event))
             self._matcher.setText(hook.matcher if hook else "")
+            self._enabled.setChecked(bool(getattr(hook, "enabled", True)) if hook else True)
             self._set_enabled(hook is not None, read_only=self._current_is_global())
             self._sync_matcher_state(hook)
         finally:
@@ -606,6 +621,7 @@ class HookLibraryPanel(QWidget):
         hook.description = self._description.text()
         hook.event = self._event.currentData()
         hook.matcher = self._matcher.text()
+        hook.enabled = self._enabled.isChecked()
         self._sync_matcher_state(hook)
         self._sync_script_ref()  # 훅 이름이 스크립트 파일명이 된다
         self._refresh_current_label()

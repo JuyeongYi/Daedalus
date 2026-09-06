@@ -127,8 +127,15 @@ class HookTools(_BaseTools):
         description: str = "",
         command: str = "",
         preset: str = "",
+        enabled: bool = True,
     ) -> dict[str, Any]:
         """프로젝트 훅 라이브러리에 훅을 추가한다.
+
+        enabled(기본 True): 이 훅을 **빌드에 넣을지**. 플러그인 훅은 전역이라
+        컴포넌트 참조로 켜고 끌 수 없으므로, 라이브러리에 정의만 모아 두고
+        고르는 스위치가 훅 자신에게 있다. False로 두면 hooks.json/settings
+        등록에서 빠지지만 **에이전트가 참조하면 그 프론트매터에는 들어간다**
+        (전역으로는 끄고 특정 에이전트에서만 쓰는 정상 사용).
 
         구조는 CC settings hooks 스키마 그대로다 — 이벤트 + 선택적 matcher +
         핸들러 목록.
@@ -190,6 +197,7 @@ class HookTools(_BaseTools):
                 raise ValueError(f"알 수 없는 훅 프리셋 '{preset}'. 사용 가능: {names}")
             hook = preset_copy(found)
             hook.name = name
+            hook.enabled = bool(enabled)
         else:
             from daedalus.model.plugin.hook import HookDef, HookEvent
 
@@ -210,6 +218,7 @@ class HookTools(_BaseTools):
                 event=hook_event,
                 matcher=matcher,
                 handlers=built,
+                enabled=bool(enabled),
             )
 
         self._vm.execute(
@@ -296,11 +305,15 @@ class HookTools(_BaseTools):
         handlers: list[dict[str, Any]] | None = None,
         matcher: str | None = None,
         description: str | None = None,
+        enabled: bool | None = None,
     ) -> dict[str, Any]:
         """라이브러리의 훅 정의를 고친다.
 
         빈 문자열/None은 "건드리지 않음"이다. matcher와 description은 ""를 주면
         지워진다. handlers를 주면 **목록 전체를 교체**한다(형식은 create_hook 참조).
+
+        enabled: 빌드 포함 스위치(create_hook 참조). None이면 건드리지 않는다 —
+        불리언 필드라 빈 문자열로 "미변경"을 표현할 자리가 없다.
         """
         from daedalus.model.plugin.hook import HookEvent
         from daedalus.view.commands.attr_commands import SetAttrCmd
@@ -331,6 +344,8 @@ class HookTools(_BaseTools):
             _set("matcher", matcher)
         if description is not None:
             _set("description", description)
+        if enabled is not None:
+            _set("enabled", bool(enabled))
 
         if not cmds:
             return {"changed": [], **before}

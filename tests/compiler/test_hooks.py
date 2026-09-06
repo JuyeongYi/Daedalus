@@ -92,6 +92,50 @@ def test_project_hooks_emitted_without_any_reference():
     assert set(obj["hooks"].keys()) == {"PreToolUse", "PostToolUse", "Stop"}
 
 
+def test_disabled_hook_is_not_emitted():
+    """`enabled=False`인 훅은 hooks.json에도 스크립트에도 나가지 않는다.
+
+    라이브러리는 "정의를 모아 두고 고르는 곳"이라 만들어 두고 아직 켜지 않은
+    훅이 있을 수 있다(사용자 확정 2026-09-07).
+    """
+    from daedalus.compiler.emit import compile_hook_scripts
+
+    lib = _library()
+    lib[2].enabled = False  # guard-bash (PreToolUse)
+    proj = PluginProject(name="p", hook_library=lib)
+
+    obj = json.loads(compile_hooks_json(proj))
+    assert set(obj["hooks"].keys()) == {"PostToolUse", "Stop"}
+    assert "guard-bash.sh" not in [n for n, _ in compile_hook_scripts(proj)]
+
+
+def test_disabled_hook_still_goes_to_agent_frontmatter():
+    """전역 배출을 꺼도 **에이전트가 참조하면** 그 프론트매터에는 들어간다.
+
+    `enabled`는 플러그인 전역 훅 스위치이고, 에이전트 프론트매터 훅은 그
+    에이전트 안에서만 도는 별개 경로다(사용자 확정). 스크립트 파일도 함께
+    나가야 한다 — 안 그러면 에이전트가 없는 파일을 실행한다.
+    """
+    from daedalus.compiler.emit import compile_agent, compile_hook_scripts
+    from daedalus.model.plugin.enums import BuildTarget
+
+    lib = _library()
+    lib[2].enabled = False  # guard-bash
+    agent = _agent_with_hooks(["guard-bash"])
+    proj = PluginProject(
+        name="p", agents=[agent], hook_library=lib,
+        build_target=BuildTarget.LOCAL,  # 에이전트 hooks 프론트매터는 LOCAL 전용
+    )
+
+    # 전역 등록에는 없다
+    text = compile_hooks_json(proj)
+    assert text is None or "PreToolUse" not in json.loads(text)["hooks"]
+    # 에이전트 프론트매터에는 있다
+    assert "PreToolUse" in compile_agent(agent, project=proj)
+    # 스크립트 파일도 함께 나간다
+    assert "guard-bash.sh" in [n for n, _ in compile_hook_scripts(proj)]
+
+
 def test_hooks_json_none_when_library_empty():
     """라이브러리가 비고 합성 훅도 없으면 파일을 만들지 않는다."""
     assert compile_hooks_json(PluginProject(name="p")) is None
@@ -167,3 +211,19 @@ def test_dangling_hook_ref_warns_but_compiles(tmp_path):
     result = compile_project(proj, tmp_path)
     assert result.ok, [e.message for e in result.errors]
     assert "dangling_hook_ref" in {w.rule for w in result.warnings}
+
+
+def test_enabled_roundtrips_through_serialization():
+    """빌드 포함 스위치는 저장/로드를 견딘다. 구버전 파일(키 부재)은 True."""
+    from daedalus.model.serialize import deserialize_project, serialize_project
+
+    lib = _library()
+    lib[0].enabled = False
+    proj = PluginProject(name="p", hook_library=lib)
+
+    data = serialize_project(proj)
+    loaded = deserialize_project(data)
+    assert [h.enabled for h in loaded.hook_library] == [False, True, True]
+
+    del data["hook_library"][0]["enabled"]  # 구버전 파일
+    assert deserialize_project(data).hook_library[0].enabled is True

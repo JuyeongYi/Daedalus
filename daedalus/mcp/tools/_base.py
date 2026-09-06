@@ -102,6 +102,9 @@ class _BaseTools:
             "matcher": hook.matcher,
             "description": getattr(hook, "description", ""),
             "handler_count": len(getattr(hook, "handlers", []) or []),
+            # 빌드 포함 스위치 — False면 전역 등록(hooks.json/settings)에서
+            # 빠진다(에이전트 프론트매터 참조는 그대로).
+            "enabled": bool(getattr(hook, "enabled", True)),
         }
 
     def _visible_global_hooks(self) -> list[Any]:

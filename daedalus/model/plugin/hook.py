@@ -359,6 +359,17 @@ class HookDef(PluginComponent):
     event: HookEvent = HookEvent.PRE_TOOL_USE
     matcher: str = ""
     handlers: list[HookHandler] = field(default_factory=list)
+    #: 이 훅을 빌드에 포함할지 (사용자 확정 2026-09-07).
+    #:
+    #: 플러그인 훅은 **전역**이라 컴포넌트 참조로는 켜고 끌 수 없다(참조는
+    #: 규격상 그런 역할이 아니다). 그렇다고 라이브러리에 있는 것을 무조건
+    #: 배출하면 "만들어 두고 아직 안 쓰는 훅"을 둘 자리가 사라진다 — 라이브러리
+    #: 아이디어(정의를 모아 두고 고르기)를 지키려면 선별 스위치가 훅 자신에게
+    #: 있어야 한다. 이름 목록을 프로젝트에 따로 두지 않는 이유는 개명 때
+    #: 끊어지기 때문이다(우리가 반복해서 겪은 실패다).
+    #:
+    #: 기본값 True — 만들면 켜진다. 구버전 파일(키 부재)도 그대로 배출된다.
+    enabled: bool = True
     id: str = field(default_factory=lambda: uuid4().hex, compare=False, kw_only=True)
 
     @property

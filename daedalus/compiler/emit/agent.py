@@ -202,6 +202,12 @@ def _agent_hook_groups(
     구조는 `compile_hooks_json`이 만드는 것과 같다 — 서브에이전트 프론트매터의
     `hooks`가 settings.json의 `hooks`와 동일한 형식을 쓰기 때문이다.
     라이브러리에 없는 이름은 조용히 빠진다(`dangling_hook_ref`가 잡는다).
+
+    **`HookDef.enabled`를 보지 않는 것이 의도다**(사용자 확정 2026-09-07):
+    그 스위치는 "플러그인 전역 훅으로 켤지"이고, 여기는 그 에이전트 안에서만
+    도는 별개 경로다 — 전역으로는 끄고 특정 에이전트에서만 쓰는 것이 정상적인
+    사용이다. 그러므로 `emitted_hooks`로 바꾸지 마라(스크립트 파일 쪽은
+    `hooks_needing_scripts`가 이 경로까지 포함해 함께 낸다).
     """
     referenced = list(getattr(agent.config, "hooks", None) or {})
     if not referenced or project is None:

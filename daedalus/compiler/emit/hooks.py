@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from daedalus.compiler.emit.common import _graph_placements_any
+from daedalus.compiler.emit.common import _graph_placements_any, _is_local_build
 from daedalus.compiler.emit.manifest import expand_root_token
 from daedalus.model.plugin.hook import (
     HOOK_SCRIPT_REF_PREFIX,
@@ -45,13 +45,48 @@ def emitted_hooks(
     전역 훅(`~/.daedalus/hooks/`)은 다르다 — 다른 프로젝트가 쓰라고 둔 재사용
     풀이므로 **명시 참조(`config.hooks`)가 있는 것만** 들어온다. 그러지 않으면
     컴파일한 사람의 홈에 있는 훅 전부가 모든 산출에 실린다.
+
+    선별은 **훅 자신의 `enabled`**가 한다(사용자 확정) — 라이브러리는 "정의를
+    모아 두고 고르는 곳"이므로 만들어 두고 아직 켜지 않은 훅이 있을 수 있다.
+    컴포넌트 참조로 켜고 끌 수 없는 이유는 위와 같다(참조는 규격상 스위치가
+    아니다).
     """
     library = hook_library(project, resolved_hooks)
     own = {
         h.name for h in (getattr(project, "hook_library", None) or [])
     }
     referenced = set(_collect_referenced_hook_names(project))
-    return [h for h in library if h.name in own or h.name in referenced]
+    return [
+        h for h in library
+        if (h.name in own or h.name in referenced)
+        and getattr(h, "enabled", True)
+    ]
+
+
+def hooks_needing_scripts(
+    project, resolved_hooks: dict[str, HookDef] | None = None
+) -> list[HookDef]:
+    """스크립트 파일을 배출해야 할 훅 (라이브러리 선언 순서 — 결정적).
+
+    ``emitted_hooks``(전역 등록 대상) **∪ 에이전트 프론트매터가 참조하는 훅**이다.
+    후자는 ``enabled=False``여도 포함된다(사용자 확정 2026-09-07): `enabled`는
+    "플러그인 전역 훅으로 켤지"의 스위치이고, 에이전트 프론트매터 훅은 **그
+    에이전트 안에서만 도는 별개 경로**라 전역으로는 끄고 특정 에이전트에서만
+    쓰는 것이 정상적인 사용이다. 그 커맨드가 가리키는 스크립트가 없으면
+    에이전트는 존재하지 않는 파일을 실행하게 된다.
+
+    에이전트 참조를 LOCAL 빌드에서만 세는 이유는 그 프론트매터가 거기서만
+    배출되기 때문이다(WP-LA — 마켓 배포 에이전트의 hooks는 CC가 무시한다).
+    마켓 빌드에서까지 세면 아무 데서도 쓰이지 않는 스크립트가 산출에 남는다.
+    """
+    library = hook_library(project, resolved_hooks)
+    wanted = {h.name for h in emitted_hooks(project, resolved_hooks)}
+    if _is_local_build(project):
+        for agent in getattr(project, "agents", []):
+            cfg_hooks = getattr(getattr(agent, "config", None), "hooks", None)
+            if isinstance(cfg_hooks, dict):
+                wanted.update(cfg_hooks)
+    return [h for h in library if h.name in wanted]
 
 
 def _collect_referenced_hook_names(project) -> list[str]:
@@ -108,7 +143,7 @@ def compile_hook_scripts(
     """
     out: list[tuple[str, str]] = []
     seen: set[str] = set()
-    for hook in emitted_hooks(project, resolved_hooks):
+    for hook in hooks_needing_scripts(project, resolved_hooks):
         for filename, body in hook.script_files():
             if filename in seen:
                 continue
