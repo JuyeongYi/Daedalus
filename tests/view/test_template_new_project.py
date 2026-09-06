@@ -156,3 +156,102 @@ def test_template_load_failure_reports_and_keeps_project(qapp, monkeypatch):
     assert window._project is original
     assert "템플릿 열기 실패" in window._status_label.text()
     window.close()
+
+
+# ─────────── 폴더형 템플릿 — 첫 저장 시 files/ 동반 복사 ───────────
+
+
+def _make_folder_template(name: str, files: dict[str, str]):
+    import json as _json
+    from daedalus.model.serialize import serialize_project
+
+    d = templates.user_templates_dir() / name
+    d.mkdir(parents=True, exist_ok=True)
+    (d / ".daedalus.json").write_text(
+        _json.dumps(serialize_project(PluginProject(name=name))), encoding="utf-8"
+    )
+    for rel, content in files.items():
+        f = d / "files" / rel
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_text(content, encoding="utf-8")
+    return d
+
+
+def test_folder_template_files_carried_on_first_save(qapp, monkeypatch, tmp_path):
+    """템플릿 생성 → 첫 저장에서 files/가 프로젝트 폴더로 딸려 간다."""
+    _make_folder_template("ue-seed", {"build.ps1": "echo build"})
+    window = MainWindow()
+    _stub_dialog(monkeypatch, "ue-seed", BuildTarget.LOCAL)
+    window._new_project()
+    assert window._pending_template_assets is not None
+
+    dest = tmp_path / "my-proj"
+    assert window._save_to_path(str(dest)) is True
+    assert (dest / "files" / "build.ps1").read_text(encoding="utf-8") == "echo build"
+    assert window._pending_template_assets is None  # 1회성 예약
+    # 두 번째 저장은 다시 복사하지 않는다 (예약 소진)
+    (dest / "files" / "build.ps1").write_text("edited", encoding="utf-8")
+    assert window._save_to_path(str(dest)) is True
+    assert (dest / "files" / "build.ps1").read_text(encoding="utf-8") == "edited"
+    window.close()
+
+
+def test_folder_template_does_not_overwrite_existing_files_dir(qapp, monkeypatch, tmp_path):
+    """목적지에 files/가 이미 있으면 불가침 (carry_files_dir와 같은 정책)."""
+    _make_folder_template("ue-seed", {"build.ps1": "from-template"})
+    window = MainWindow()
+    _stub_dialog(monkeypatch, "ue-seed", BuildTarget.LOCAL)
+    window._new_project()
+
+    dest = tmp_path / "my-proj"
+    (dest / "files").mkdir(parents=True)
+    (dest / "files" / "build.ps1").write_text("mine", encoding="utf-8")
+    assert window._save_to_path(str(dest)) is True
+    assert (dest / "files" / "build.ps1").read_text(encoding="utf-8") == "mine"
+    window.close()
+
+
+def test_folder_template_source_vanished_fails_soft(qapp, monkeypatch, tmp_path):
+    """저장 전 템플릿 폴더가 삭제됐으면 경고 후 스킵 — 저장 자체는 성공."""
+    import shutil
+
+    src = _make_folder_template("ue-seed", {"build.ps1": "x"})
+    window = MainWindow()
+    _stub_dialog(monkeypatch, "ue-seed", BuildTarget.LOCAL)
+    window._new_project()
+    shutil.rmtree(src)
+
+    dest = tmp_path / "my-proj"
+    assert window._save_to_path(str(dest)) is True
+    assert not (dest / "files").exists()
+    assert "복사하지 못했습니다" in window._status_label.text()
+    window.close()
+
+
+def test_open_path_clears_pending_template_assets(qapp, monkeypatch, tmp_path):
+    """다른 프로젝트를 열면 동반 복사 예약이 무효화된다."""
+    _make_folder_template("ue-seed", {"build.ps1": "x"})
+    window = MainWindow()
+    _stub_dialog(monkeypatch, "ue-seed", BuildTarget.LOCAL)
+    window._new_project()
+    assert window._pending_template_assets is not None
+
+    other = tmp_path / "other"
+    win2 = MainWindow()
+    win2.load_project(PluginProject(name="other"))
+    win2._current_path = None
+    assert win2._save_to_path(str(other)) is True
+    win2.close()
+
+    assert window.open_path(str(other)) is True
+    assert window._pending_template_assets is None
+    window.close()
+
+
+def test_builtin_template_has_no_pending_assets(qapp, monkeypatch):
+    """내장 템플릿(단일 JSON)은 동반 복사 예약이 없다."""
+    window = MainWindow()
+    _stub_dialog(monkeypatch, templates.TEMPLATES[0].id, BuildTarget.MARKETPLACE)
+    window._new_project()
+    assert window._pending_template_assets is None
+    window.close()

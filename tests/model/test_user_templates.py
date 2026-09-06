@@ -74,3 +74,55 @@ def test_unknown_id_error_lists_user_templates_too():
     _write_user_template("mine-seed", PluginProject(name="m"))
     with pytest.raises(templates.TemplateError, match="mine-seed"):
         templates.find_template("no-such-id")
+
+
+# ─────────── 폴더형 템플릿 — files/ 동반의 원천 ───────────
+
+
+def _write_folder_template(name: str, project: PluginProject, files: dict[str, str] | None = None) -> None:
+    d = templates.user_templates_dir() / name
+    d.mkdir(parents=True, exist_ok=True)
+    (d / ".daedalus.json").write_text(
+        json.dumps(serialize_project(project)), encoding="utf-8"
+    )
+    for rel, content in (files or {}).items():
+        f = d / "files" / rel
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_text(content, encoding="utf-8")
+
+
+def test_folder_template_listed_with_source_dir():
+    _write_folder_template("ue-dev", PluginProject(name="ue-seed", description="UE"),
+                           files={"build.ps1": "echo build"})
+    entry = templates.find_template("ue-dev")
+    assert entry.title == "ue-seed"
+    assert entry.source_dir is not None
+    assert (entry.source_dir / "files" / "build.ps1").is_file()
+
+
+def test_folder_template_loads_project():
+    _write_folder_template("ue-dev", PluginProject(name="ue-seed"))
+    assert templates.load_template("ue-dev").name == "ue-seed"
+
+
+def test_folder_form_beats_flat_json_with_same_id(capsys):
+    """동명 id 공존 시 폴더형 우선 + 스킵 경고."""
+    _write_folder_template("dup", PluginProject(name="from-folder"))
+    _write_user_template("dup", PluginProject(name="from-file"))
+    catalogue = [t for t in templates.list_templates() if t.id == "dup"]
+    assert len(catalogue) == 1
+    assert catalogue[0].source_dir is not None
+    assert templates.load_template("dup").name == "from-folder"
+    assert "폴더형" in capsys.readouterr().err
+
+
+def test_flat_json_has_no_source_dir():
+    _write_user_template("flat", PluginProject(name="f"))
+    assert templates.find_template("flat").source_dir is None
+
+
+def test_dir_without_project_file_ignored():
+    d = templates.user_templates_dir() / "not-a-template"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "readme.txt").write_text("x", encoding="utf-8")
+    assert "not-a-template" not in [t.id for t in templates.list_templates()]

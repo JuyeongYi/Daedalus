@@ -89,6 +89,9 @@ class MainWindow(QMainWindow):
 
         self._project: PluginProject | None = None
         self._current_path: str | None = None  # 현재 저장 경로 (.daedalus.json)
+        # 폴더형 템플릿의 동봉 폴더 — 첫 저장 시 files/·skill-files/ 복사 원천.
+        # SessionIO(new_project/open_path/carry_template_assets)가 관리한다.
+        self._pending_template_assets: Path | None = None
         # 미저장 변경 플래그 (A7) — notify 양 채널 리스너가 True로 올리고,
         # 저장/로드/새 프로젝트가 내린다. closeEvent가 이 값으로 종료를 막는다.
         self._dirty = False

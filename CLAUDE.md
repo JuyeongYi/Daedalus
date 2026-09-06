@@ -90,7 +90,11 @@ daedalus/
 │   │                       #   list_templates/find_template/load_template(TemplateError).
 │   │                       #   **사용자 템플릿**: `~/.daedalus/templates/<id>.json`(저장 파일 그대로 복사)이
 │   │                       #   카탈로그에 병합 — 동명 id는 사용자 우선, 제목=name·요약=description, 깨진 파일은
-│   │                       #   stderr 스킵(전역 훅 규약). 영어·플레이스홀더 게이트 비대상. files/ 미동반(후속).
+│   │                       #   stderr 스킵(전역 훅 규약). 영어·플레이스홀더 게이트 비대상. **폴더형**
+│   │                       #   `<id>/.daedalus.json`도 인식(동명 공존 시 폴더형 우선 + 경고) — source_dir의
+│   │                       #   files/·skill-files/가 첫 저장 때 프로젝트 폴더로 동반 복사된다
+│   │                       #   (SessionIO.carry_template_assets — 원본 참조 방식, 소실 시 fail-soft 경고 1회,
+│   │                       #   목적지 실존 시 불가침. 복사 루프는 carry_files_dir와 _copy_side_dirs 공용).
 │   │                       #   테스트 격리는 conftest _isolate_user_templates. 실제 시드는
 │   │                       #   `daedalus/templates/<id>.json`(serialize 산출 format 2)이고 로드는 기존
 │   │                       #   deserialize_project를 그대로 탄다 — 전용 파서 없음. Qt 무관 순수 stdlib.

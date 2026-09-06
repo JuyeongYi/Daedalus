@@ -118,6 +118,8 @@ class SessionIO:
             w._status_label.setText(f"저장 실패: {exc}")
             return False
         moved_files = self.carry_files_dir(target)
+        template_files, assets_warning = self.carry_template_assets(target)
+        moved_files += template_files
         path = target
         w._current_path = path
         # 디스크와 메모리가 일치했다 (A7). update_title 전에 내려야 제목의 `*`가
@@ -127,6 +129,8 @@ class SessionIO:
         self.sync_files_root()
         self.remember_recent(path)
         note = f" (files/ {moved_files}개 복사)" if moved_files else ""
+        if assets_warning:
+            note += f" — ⚠ {assets_warning}"
         w._status_label.setText(f"저장됨: {path}{note}")
         return True
 
@@ -141,19 +145,30 @@ class SessionIO:
         덮어쓰는 것보다 아무것도 안 하는 편이 낫다(그 경우는 사용자가 의도한
         배치다).
         """
+        w = self._w
+        old = w._current_path
+        if not old:
+            return 0
+        return self._copy_side_dirs(Path(old).parent, Path(new_file).parent)
+
+    def _copy_side_dirs(self, source_root: Path, dest_root: Path) -> int:
+        """`files/`·`skill-files/`를 source_root → dest_root로 복사 (공용 실체).
+
+        carry_files_dir(다른 폴더로 저장)와 템플릿 동반 복사가 같은 정책을
+        공유한다: 같은 폴더·원본 부재·**목적지 실존 시 불가침**.
+        """
         import shutil
 
         from daedalus.compiler.project_compiler import SKILL_FILES_DIRNAME
 
         w = self._w
-        old = w._current_path
-        if not old:
-            return 0
         copied = 0
         for dirname in ("files", SKILL_FILES_DIRNAME):
-            source = Path(old).parent / dirname
-            dest = Path(new_file).parent / dirname
-            if source.resolve() == dest.resolve() or not source.is_dir() or dest.exists():
+            source = source_root / dirname
+            dest = dest_root / dirname
+            if not source.is_dir() or dest.exists():
+                continue
+            if source.resolve() == dest.resolve():
                 continue
             try:
                 shutil.copytree(source, dest, symlinks=False)
@@ -162,6 +177,28 @@ class SessionIO:
                 continue
             copied += sum(1 for p in dest.rglob("*") if p.is_file())
         return copied
+
+    def carry_template_assets(self, new_file: str) -> tuple[int, str | None]:
+        """폴더형 템플릿의 동봉 파일을 **첫 저장 시** 프로젝트 폴더로 복사한다.
+
+        템플릿에서 만든 프로젝트는 미저장 상태로 시작해 files/를 놓을 곳이
+        없다 — 저장 위치가 정해지는 순간이 복사 시점이다. 원천은 저장 시점까지
+        **원본 폴더를 참조**한다(임시 보관보다 단순). 그 사이 템플릿이
+        삭제됐으면 경고 후 스킵하고 다시 시도하지 않는다(fail-soft — 반복
+        경고는 소음이고, 원본이 사라진 이상 재시도해도 결과가 같다).
+        """
+        w = self._w
+        pending = getattr(w, "_pending_template_assets", None)
+        if pending is None:
+            return 0, None
+        w._pending_template_assets = None
+        source_root = Path(pending)
+        if not source_root.is_dir():
+            # 상태바에 직접 쓰면 save_to_path의 "저장됨" 문구가 곧바로 덮어써
+            # 경고가 보이지 않는다 — 반환해 최종 문구에 합류시킨다(협력 객체는
+            # 무상태 계약이라 self에 스테이징하지 않는다).
+            return 0, "템플릿 동봉 파일 원본이 사라져 files/를 복사하지 못했습니다"
+        return self._copy_side_dirs(source_root, Path(new_file).parent), None
 
     def save_project(self) -> None:
         w = self._w
@@ -233,12 +270,14 @@ class SessionIO:
             new_proj = PluginProject(name="new-plugin", build_target=target)
             w.load_project(new_proj)
             w._current_path = None
+            w._pending_template_assets = None
             self.update_title()
             self.sync_files_root()
             w._status_label.setText("새 프로젝트")
             return
 
         try:
+            entry = templates.find_template(template_id)
             project = templates.load_template(template_id)
         except templates.TemplateError as exc:
             w._status_label.setText(f"템플릿 열기 실패: {exc}")
@@ -248,6 +287,9 @@ class SessionIO:
 
         w.load_project(project)
         w._current_path = None
+        # 폴더형 템플릿의 files/·skill-files/는 첫 저장 때 딸려 간다
+        # (carry_template_assets). 단일 JSON형·내장은 None.
+        w._pending_template_assets = entry.source_dir
         # 빈 프로젝트와 달리 잃을 내용이 있고 저장 경로는 아직 없다 —
         # 미저장 변경으로 표시해 닫기 확인(미저장 변경 확인 기능)이 받는다.
         w._mark_dirty()
@@ -444,6 +486,8 @@ class SessionIO:
             return False
         w.load_project(project)
         w._current_path = path
+        # 다른 프로젝트를 열었으니 템플릿 동반 복사 예약은 무의미하다.
+        w._pending_template_assets = None
         self.update_title()
         self.sync_files_root()
         self.remember_recent(path)

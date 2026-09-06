@@ -24,8 +24,13 @@ JSON을 고치지 않는다 — 파일은 직렬화기의 산출이라는 성질
 **사용자 템플릿:** `~/.daedalus/templates/<id>.json`(프로젝트 저장 파일을 그대로
 복사)이 카탈로그에 병합된다 — 동명 id는 사용자가 이긴다. 내장과 달리 영어
 본문·플레이스홀더 게이트의 대상이 아니다(자기 프로젝트를 시드로 삼는 것이라
-내용은 소유자의 것). 갱신 = 파일 재복사. **files/ 는 딸려 가지 않는다** —
-템플릿은 JSON 하나이고 files/ 동반은 후속 설계 항목이다.
+내용은 소유자의 것). 갱신 = 파일 재복사.
+
+**폴더형 사용자 템플릿:** `~/.daedalus/templates/<id>/`(= `.daedalus.json` +
+`files/`·`skill-files/`)도 인식한다 — 프로젝트 폴더를 그대로 복사해 두면 되고,
+동봉 파일은 템플릿에서 만든 프로젝트를 **처음 저장할 때** 프로젝트 폴더로
+딸려 간다(SessionIO.carry_template_assets). 동명 id의 폴더형과 단일 JSON형이
+공존하면 폴더형이 이긴다.
 """
 from __future__ import annotations
 
@@ -61,6 +66,9 @@ class ProjectTemplate:
     title: str
     summary: str
     file: Path | None = None
+    # 폴더형 사용자 템플릿의 폴더 — files/·skill-files/ 동반 복사의 원천.
+    # None이면 동반 파일 없음(내장·단일 JSON형).
+    source_dir: Path | None = None
 
     @property
     def path(self) -> Path:
@@ -99,14 +107,39 @@ def user_templates_dir(home_dir: Path | None = None) -> Path:
     return home / ".daedalus" / "templates"
 
 
-def _load_user_templates() -> list[ProjectTemplate]:
-    """사용자 템플릿을 카탈로그 항목으로 읽는다 — 파일 1개 = 템플릿 1개.
+def _read_template_head(file: Path) -> dict | None:
+    """템플릿 JSON에서 표시용 name/description을 읽는다. 깨졌으면 None + stderr."""
+    import sys
 
-    id = 파일 stem(내장과 같은 규약). 표시 문구는 내장과 달리 코드에 없으므로
-    **파일 안의 프로젝트 name/description을 그대로 쓴다** — 사용자 템플릿은
-    "내 프로젝트를 시드로 삼는 것"이라 그 이름이 곧 제목이다. 깨진 파일은
-    stderr 경고 후 스킵한다(카탈로그·전역 훅 관례 — 파일 하나 때문에 새
-    프로젝트 다이얼로그가 안 뜨면 안 된다).
+    try:
+        with open(file, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, json.JSONDecodeError) as exc:
+        print(f"[daedalus] 사용자 템플릿 스킵 {file.name}: {exc}", file=sys.stderr)
+        return None
+    if not isinstance(data, dict):
+        print(f"[daedalus] 사용자 템플릿 스킵 {file.name}: 프로젝트 JSON이 아님",
+              file=sys.stderr)
+        return None
+    return data
+
+
+def _load_user_templates() -> list[ProjectTemplate]:
+    """사용자 템플릿을 카탈로그 항목으로 읽는다 — 두 형태를 인식한다.
+
+    - **단일 JSON형**: `<id>.json` (프로젝트 저장 파일 복사).
+    - **폴더형**: `<id>/.daedalus.json` — 프로젝트 폴더를 그대로 둔 것.
+      `files/`·`skill-files/`가 함께 살고, 템플릿에서 만든 프로젝트를 처음
+      저장할 때 동반 복사된다(SessionIO — 동봉 스크립트가 딸려 가지 않던
+      한계의 해소).
+
+    id = 파일 stem/폴더 이름(내장과 같은 규약). 표시 문구는 내장과 달리 코드에
+    없으므로 **파일 안의 프로젝트 name/description을 그대로 쓴다** — 사용자
+    템플릿은 "내 프로젝트를 시드로 삼는 것"이라 그 이름이 곧 제목이다. 깨진
+    파일은 stderr 경고 후 스킵한다(카탈로그·전역 훅 관례 — 파일 하나 때문에
+    새 프로젝트 다이얼로그가 안 뜨면 안 된다). 같은 id의 폴더형과 단일 JSON형이
+    공존하면 **폴더형이 이긴다**(더 완전한 쪽) — 정렬상 폴더 이름이 항상 먼저
+    오지만, 순서에 기대지 않고 명시적으로 판정해 경고를 낸다.
     """
     import sys
 
@@ -114,23 +147,39 @@ def _load_user_templates() -> list[ProjectTemplate]:
     if not directory.is_dir():
         return []
     out: list[ProjectTemplate] = []
-    for file in sorted(directory.glob(f"*{TEMPLATE_SUFFIX}")):
-        try:
-            with open(file, "r", encoding="utf-8") as f:
-                data = json.load(f)
-        except (OSError, json.JSONDecodeError) as exc:
-            print(f"[daedalus] 사용자 템플릿 스킵 {file.name}: {exc}", file=sys.stderr)
-            continue
-        if not isinstance(data, dict):
-            print(f"[daedalus] 사용자 템플릿 스킵 {file.name}: 프로젝트 JSON이 아님",
-                  file=sys.stderr)
-            continue
+    seen: set[str] = set()
+
+    def _add(template_id: str, file: Path, source_dir: Path | None) -> None:
+        if template_id in seen:
+            print(
+                f"[daedalus] 사용자 템플릿 스킵 {file}: 동명 id '{template_id}'의 "
+                "폴더형이 이미 있습니다(폴더형 우선)",
+                file=sys.stderr,
+            )
+            return
+        data = _read_template_head(file)
+        if data is None:
+            return
+        seen.add(template_id)
         out.append(ProjectTemplate(
-            id=file.stem,
-            title=str(data.get("name") or file.stem),
+            id=template_id,
+            title=str(data.get("name") or template_id),
             summary=str(data.get("description") or "사용자 템플릿"),
             file=file,
+            source_dir=source_dir,
         ))
+
+    # 폴더형 먼저 — 동명 충돌 시 이기는 쪽을 먼저 등록해야 스킵 경고가 정확하다.
+    from daedalus.model.package import PROJECT_FILENAME
+
+    for child in sorted(p for p in directory.iterdir() if p.is_dir()):
+        inner = child / PROJECT_FILENAME
+        if inner.is_file():
+            _add(child.name, inner, source_dir=child)
+    for file in sorted(directory.glob(f"*{TEMPLATE_SUFFIX}")):
+        if file.is_file():
+            _add(file.stem, file, source_dir=None)
+    out.sort(key=lambda t: t.id)
     return out
 
 
