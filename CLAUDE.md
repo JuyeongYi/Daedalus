@@ -1021,7 +1021,17 @@ daedalus-bb --schemas <경로> [--state-dir DIR] <command>
   trigger·guard)/`connect_states`의 trigger·guard 인자.
   **구조(노드+선)만 만들면 분기가 표현되지 않는다** — 여러 갈래로 나가는 노드는
   transfer_on에 갈래를 선언하고 각 전이에 trigger를 물려야 캔버스 포트가 갈라지고 라벨이 보인다.
-  `set_transition`은 None=건드리지 않음, ""=지움 규약이다.
+  `set_transition`은 None=건드리지 않음, ""=지움 규약이다. `set_agent_calls(skill, events)`(G6)는
+  `set_transfer_on`의 call_agents 짝 — 에이전트 호출 포트 **전체**를 한 번에 교체한다(`add_agent_call`/
+  `remove_agent_call`은 하나씩 넣고 빼는 지름길로 존치). 포트 description이 호출 계약(WP-CT)의 유일한
+  채널이라 여러 포트를 함께 고쳐야 할 때의 실질 결손이었다 — 구현은 `set_transfer_on`과 같은
+  `_make_event_defs` + `SetAttrCmd`(새 리스트).
+- **진입점 프리셋(G5):** `set_entry_preset(name, preset)` — `preset`은 `entry`/`user_only`/`pure`/
+  `default` 4종(`view/actions/entrypoint.EntryPreset`과 매핑). **`apply_entry_preset`을 그대로
+  호출한다**(캔버스 우클릭 "진입점 설정"·스킬 에디터 프론트매터 콤보와 같은 실체) — 두 필드가 1 undo
+  단위로 함께 바뀌고, 이미 그 프리셋이면 no-op(`changed: False`). FIXED 종류(transfer/reference)·
+  에이전트는 `supports_entry_presets`가 거부하며 이유를 말한다(프리셋을 걸어도 컴파일이
+  `fixed_value`를 강제해 아무 일도 안 일어나는 상태를 만들지 않기 위해서다).
 - **블랙보드(WP-CE + G1·G2 패리티):** `create_blackboard_class`/`update_blackboard_class`(이름·설명,
   None=건드리지 않음)/`delete_blackboard_class`/`set_blackboard_fields`(목록 통째 교체)/
   `set_state_access`(노드의 reads/writes 선언 → 캔버스 뱃지 + 컴파일 산출 구체화). GUI 블랙보드 탭이
@@ -1065,10 +1075,12 @@ daedalus-bb --schemas <경로> [--state-dir DIR] <command>
   구현은 `FsmScene.drop_reference_skill`/`create_reference_link`/`delete_reference_node`를
   그대로 호출한다 — 캔버스와 같은 커맨드·같은 `_sync_refs_to_model` 경로다. 프로젝트 캔버스
   전용(`agent` 인자 없음).
-- **프로젝트 속성(WP-CE 4차):** `set_project_properties(name/description/version/build_target)` —
-  빈 값은 건드리지 않고, 여러 필드를 한 번에 주면 `MacroCommand`로 1 undo 단위가 된다.
-  `set_component_description`도 이때 커맨드화됐고(이전에는 이 편집만 Ctrl+Z가 듣지 않았다)
-  `set_component_when_to_use`가 함께 붙었다.
+- **프로젝트 속성(WP-CE 4차 + G4):** `set_project_properties(name/description/version/build_target/
+  emit_progress_hook)` — 문자열 필드는 빈 값이 건드리지 않음이고, `emit_progress_hook`(bool 필드,
+  A8 tri-state가 아니다 — 미지정 상태 자체가 없다)은 그 자리를 `None`이 대신한다(GUI 프로젝트 속성
+  다이얼로그의 "세션 시작 시 진행 상태 자동 주입" 체크박스와 같다, WP-RS). 여러 필드를 한 번에 주면
+  `MacroCommand`로 1 undo 단위가 된다. `set_component_description`도 이때 커맨드화됐고(이전에는 이
+  편집만 Ctrl+Z가 듣지 않았다) `set_component_when_to_use`가 함께 붙었다.
 - **MCP 서버 정의(WP-MW):** `set_mcp_server_def(name, config)` — 이름 → `.mcp.json` 서버 객체를
   `project.mcp_server_defs`에 등록/갱신(config=None이면 삭제, 미존재 삭제는 거부). SetAttrCmd에
   **새 dict**를 넘겨 undo 가능(제자리 수정이면 undo가 같은 객체를 가리킨다). LOCAL 컴파일의

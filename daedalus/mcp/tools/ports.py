@@ -102,6 +102,47 @@ class PortTools(_BaseTools):
         )
         return {"skill": skill, "call_agents": [e.name for e in new_list]}
 
+    def set_agent_calls(
+        self, skill: str, events: list[dict[str, Any]]
+    ) -> dict[str, Any]:
+        """ProceduralSkill의 **에이전트 호출 포트 전체**를 통째로 교체한다.
+
+        `set_transfer_on`의 call_agents 짝(G6) — `add_agent_call`/
+        `remove_agent_call`은 하나씩 넣고 빼는 지름길이고, 이 도구는 여러 포트를
+        한 번에 갈아끼운다. 포트 description은 호출 계약(WP-CT)의 유일한
+        채널이라 여러 개를 함께 고쳐야 할 때 하나씩 지웠다 다시 만드는 것보다
+        이쪽이 안전하다(1 undo 단위).
+
+        events: [{"name": "review", "description": "GPU 병목 조사", "color": "#ff8844"}, ...]
+        이 포트를 trigger로 쓰던 전이는 목록에서 빠진 이름이어도 **함께 지우지
+        않는다**(remove_agent_call과 같은 정책) — 남은 전이는
+        `trigger_unknown_event` 경고로 드러난다.
+        """
+        from daedalus.model.plugin.skill import ProceduralSkill
+        from daedalus.view.commands.attr_commands import SetAttrCmd
+
+        comp = self._find_component(skill)
+        if not isinstance(comp, ProceduralSkill):
+            raise ValueError(
+                f"'{skill}'은 ProceduralSkill이 아닙니다 — 에이전트 호출 포트는 절차형 스킬에만 붙는다."
+            )
+        defs = self._make_event_defs(events)
+        names = [d.name for d in defs]
+        dupes = {n for n in names if names.count(n) > 1}
+        if dupes:
+            raise ValueError(f"중복된 이벤트 이름: {', '.join(sorted(dupes))}")
+
+        self._vm.execute(
+            SetAttrCmd(
+                comp,
+                "call_agents",
+                defs,
+                label=f"'{skill}' 에이전트 호출 포트 {len(defs)}개 설정",
+                script=f'set_agent_calls("{skill}", {names})',
+            )
+        )
+        return {"skill": skill, "call_agents": names}
+
     def remove_agent_call(self, skill: str, event: str) -> dict[str, Any]:
         """ProceduralSkill의 에이전트 호출 포트를 제거한다.
 

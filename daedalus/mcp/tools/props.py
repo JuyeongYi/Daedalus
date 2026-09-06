@@ -163,18 +163,69 @@ class PropsTools(_BaseTools):
         )
         return {"component": name, "old": old, "new": when_to_use}
 
+    def set_entry_preset(self, name: str, preset: str) -> dict[str, Any]:
+        """진입 의미론 프리셋을 적용한다 — user_invocable × disable_model_invocation
+        세트 지정 (A8/G5).
+
+        preset: entry(진입점으로) / user_only(유저 전용 진입점으로) /
+        pure(순수 상태로) / default(일반 상태로 — 두 필드 미지정).
+
+        캔버스 노드 우클릭 "진입점 설정" 서브메뉴·스킬 에디터 프론트매터의
+        "진입 설정" 콤보와 **같은 실체**(`view/actions/entrypoint.apply_entry_preset`)를
+        호출한다 — 두 필드가 1 undo 단위로 함께 바뀐다. 이미 그 프리셋이면
+        아무것도 하지 않는다(`changed`: False).
+
+        FIXED 종류(transfer/reference)와 에이전트에는 적용할 수 없다 — 그
+        종류는 컴파일이 값을 강제해 프리셋을 걸어도 아무 일도 일어나지
+        않기 때문이다(거부하며 이유를 말한다).
+        """
+        from daedalus.view.actions.entrypoint import (
+            EntryPreset,
+            apply_entry_preset,
+            current_entry_preset,
+            supports_entry_presets,
+        )
+
+        comp = self._find_component(name)
+        if not supports_entry_presets(comp):
+            raise ValueError(
+                f"'{name}'({self._component_kind(comp)})에는 진입점 프리셋을 적용할 "
+                "수 없습니다 — user_invocable/disable_model_invocation이 고정되어 "
+                "있거나(transfer/reference) 그 필드 자체가 없는 종류(에이전트)입니다."
+            )
+        try:
+            target = EntryPreset(preset)
+        except ValueError:
+            allowed = ", ".join(p.value for p in EntryPreset)
+            raise ValueError(f"알 수 없는 프리셋 '{preset}'. 사용 가능: {allowed}") from None
+
+        before = current_entry_preset(comp)
+        changed = apply_entry_preset(self._vm, comp, target)
+        return {
+            "component": name,
+            "preset": target.value,
+            "changed": changed,
+            "before": before.value if before is not None else None,
+        }
+
     def set_project_properties(
         self,
         name: str = "",
         description: str = "",
         version: str = "",
         build_target: str = "",
+        emit_progress_hook: bool | None = None,
     ) -> dict[str, Any]:
-        """플러그인 매니페스트 속성을 바꾼다 — 빈 값은 "건드리지 않음".
+        """플러그인 매니페스트 속성을 바꾼다 — 빈 값(문자열 필드)/None(불리언
+        필드)은 "건드리지 않음".
 
         name은 plugin.json의 플러그인 식별자가 되므로 `^[a-z0-9][a-z0-9-]*$`를
         지켜야 컴파일 게이트를 통과한다(F7에서는 경고 등급).
         build_target: marketplace / local.
+        emit_progress_hook: 세션 시작 시 진행 상태 자동 주입(SessionStart 훅)
+        토글 — GUI 프로젝트 속성 다이얼로그의 체크박스와 같다(WP-RS). 문자열
+        필드와 규약이 다른 이유: 이 필드는 `bool`(A8 tri-state 아님)이라 빈
+        문자열로 "미변경"을 표현할 자리가 없다 — 대신 `None`이 그 자리다.
         """
         from daedalus.model.plugin.enums import BuildTarget
         from daedalus.view.commands.attr_commands import SetAttrCmd
@@ -186,6 +237,7 @@ class PropsTools(_BaseTools):
             "description": project.description,
             "version": project.version,
             "build_target": project.build_target.value,
+            "emit_progress_hook": project.emit_progress_hook,
         }
 
         cmds: list[Any] = []
@@ -221,6 +273,16 @@ class PropsTools(_BaseTools):
                     script=f'set_project_properties(build_target="{target.value}")',
                 )
             )
+        if emit_progress_hook is not None:
+            cmds.append(
+                SetAttrCmd(
+                    project,
+                    "emit_progress_hook",
+                    bool(emit_progress_hook),
+                    label=f"진행 상태 자동 주입 → {bool(emit_progress_hook)}",
+                    script=f'set_project_properties(emit_progress_hook={bool(emit_progress_hook)})',
+                )
+            )
 
         if not cmds:
             return {"changed": [], **before}
@@ -236,6 +298,7 @@ class PropsTools(_BaseTools):
             "description": project.description,
             "version": project.version,
             "build_target": project.build_target.value,
+            "emit_progress_hook": project.emit_progress_hook,
         }
 
     def set_mcp_server_def(

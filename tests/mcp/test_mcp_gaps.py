@@ -453,3 +453,116 @@ def test_link_reference_without_placed_reference_errors(tools):
     tools.place_component("init", 0, 0)
     with pytest.raises(ValueError, match="참조 노드가 없습니다"):
         tools.link_reference("init", "guide")
+
+
+# --- 진행 훅 토글 (G4) ---
+
+
+def test_set_project_properties_toggles_progress_hook(tools, window):
+    assert window._project.emit_progress_hook is True
+
+    result = tools.set_project_properties(emit_progress_hook=False)
+    assert result["emit_progress_hook"] is False
+    assert window._project.emit_progress_hook is False
+
+    tools.undo()
+    assert window._project.emit_progress_hook is True
+
+
+def test_set_project_properties_progress_hook_none_is_untouched(tools, window):
+    tools.set_project_properties(emit_progress_hook=False)
+    tools.set_project_properties(name="renamed")
+    assert window._project.emit_progress_hook is False, "None(생략)은 건드리지 않는다"
+
+
+def test_set_project_properties_progress_hook_joins_macro_with_other_fields(tools, window):
+    """다른 필드와 함께 오면 1 undo 단위로 묶인다."""
+    tools.set_project_properties(version="9.9.9", emit_progress_hook=False)
+    assert window._project.version == "9.9.9"
+    assert window._project.emit_progress_hook is False
+
+    tools.undo()
+    assert window._project.version == "0.1.0"
+    assert window._project.emit_progress_hook is True
+
+
+# --- 진입점 프리셋 (G5) ---
+
+
+def test_set_entry_preset_applies_and_undoes(tools, window):
+    comp = tools._find_component("init")
+    assert comp.config.user_invocable is None
+
+    result = tools.set_entry_preset("init", "entry")
+    assert result["changed"] is True
+    assert result["preset"] == "entry"
+    assert comp.config.user_invocable is True
+    assert comp.config.disable_model_invocation is False
+
+    tools.undo()
+    assert comp.config.user_invocable is None
+    assert comp.config.disable_model_invocation is None
+
+
+def test_set_entry_preset_same_preset_is_noop(tools):
+    tools.set_entry_preset("init", "entry")
+    result = tools.set_entry_preset("init", "entry")
+    assert result["changed"] is False
+    assert result["before"] == "entry"
+
+
+def test_set_entry_preset_rejects_unknown_preset(tools):
+    with pytest.raises(ValueError, match="default"):
+        tools.set_entry_preset("init", "nope")
+
+
+def test_set_entry_preset_rejects_fixed_kind(tools):
+    """ReferenceSkill은 user_invocable/disable_model_invocation이 고정이다."""
+    with pytest.raises(ValueError, match="진입점 프리셋을 적용할 수 없습니다"):
+        tools.set_entry_preset("guide", "entry")
+
+
+def test_set_entry_preset_uses_same_realization_as_canvas(tools, window):
+    """캔버스 메뉴·프론트매터 콤보와 같은 apply_entry_preset을 부른다 —
+    current_entry_preset으로 되짚어도 같은 프리셋이 나와야 한다."""
+    from daedalus.view.actions.entrypoint import EntryPreset, current_entry_preset
+
+    tools.set_entry_preset("init", "user_only")
+    comp = tools._find_component("init")
+    assert current_entry_preset(comp) is EntryPreset.USER_ONLY
+
+
+# --- 에이전트 호출 포트 일괄 교체 (G6) ---
+
+
+def test_set_agent_calls_replaces_whole_list(tools, window):
+    tools.add_agent_call("init", "legacy")
+    result = tools.set_agent_calls(
+        "init",
+        [
+            {"name": "review", "description": "코드 리뷰 위임", "color": "#ff8844"},
+            {"name": "profile"},
+        ],
+    )
+    assert result["call_agents"] == ["review", "profile"]
+    comp = tools._find_component("init")
+    assert [e.name for e in comp.call_agents] == ["review", "profile"]
+    assert comp.call_agents[0].description == "코드 리뷰 위임"
+
+    tools.undo()
+    assert [e.name for e in tools._find_component("init").call_agents] == ["legacy"]
+
+
+def test_set_agent_calls_rejects_duplicate_names(tools):
+    with pytest.raises(ValueError, match="review"):
+        tools.set_agent_calls("init", [{"name": "review"}, {"name": "review"}])
+
+
+def test_set_agent_calls_rejects_non_procedural_skill(tools):
+    with pytest.raises(ValueError, match="ProceduralSkill"):
+        tools.set_agent_calls("guide", [{"name": "review"}])
+
+
+def test_set_agent_calls_accepts_bare_strings(tools):
+    result = tools.set_agent_calls("init", ["a", "b"])
+    assert result["call_agents"] == ["a", "b"]
