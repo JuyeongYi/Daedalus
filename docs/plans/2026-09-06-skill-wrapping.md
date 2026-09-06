@@ -47,8 +47,9 @@
 - 에디터: 프론트매터+transfer_on 패널 정상, 본문 패널 읽기 전용(소스 본문
   회색 미리보기 + "본문의 정본은 <source>" 안내). 소스 콤보는 카탈로그 후보.
 - 캔버스: 🔗 뱃지 + 소스 툴팁. 배치·전이 규칙은 ProceduralSkill과 동일.
-- 컴파일: 프론트매터(우리 것) + 재개/진입 단락 + "Follow skill `<source>`"
-  지시 + 다음 단계/진행 기록. 요구 환경에 소스 플러그인 명시.
+- 컴파일: 프론트매터(우리 것) + 재개/진입 단락 + **소스 본문 복사(D1)** +
+  다음 단계/진행 기록. 본문 앞에 출처 주석(HTML 주석 — 토큰 비용 0) 한 줄로
+  "어디서 언제 긁었는지"를 남긴다(드리프트 추적).
 - 검증: `dangling_wrapped_source`(경고) + 소스 이름 형식 검사.
 - MCP 패리티(같은 WP): `create_skill(kind="wrapped", source=)`,
   `set_component_field(source=)`, `list_wrappable_skills()`(카탈로그 후보 조회).
