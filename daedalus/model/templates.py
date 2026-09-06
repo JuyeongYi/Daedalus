@@ -35,6 +35,7 @@ JSON을 고치지 않는다 — 파일은 직렬화기의 산출이라는 성질
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -192,6 +193,107 @@ def list_templates() -> tuple[ProjectTemplate, ...]:
     users = _load_user_templates()
     shadowed = {t.id for t in users}
     return tuple(t for t in TEMPLATES if t.id not in shadowed) + tuple(users)
+
+
+#: 사용자 템플릿 id 규약 — 파일·폴더 이름이 되므로 경로 문자를 받지 않는다.
+#: 컴포넌트 이름과 같은 규약을 쓰는 이유는 예측 가능성이다(둘 다 파일 이름이
+#: 된다). 어긋난 입력은 **거절하고 알려준다** — 조용히 슬러그로 바꾸면 사용자가
+#: 지은 이름과 카탈로그에 뜨는 이름이 달라진다.
+_TEMPLATE_ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
+
+
+def save_user_template(
+    project: PluginProject,
+    template_id: str,
+    source_dir: Path | None = None,
+    overwrite: bool = False,
+) -> Path:
+    """현재 프로젝트를 사용자 템플릿으로 저장한다 — `~/.daedalus/templates/`.
+
+    저장 형식은 **프로젝트 저장 파일 그 자체**다(`serialize_project`의 format 2)
+    — 로드가 `deserialize_project`를 그대로 타는 설계를 저장 쪽에서도 지킨다.
+
+    `source_dir`(프로젝트 폴더)에 동봉 파일(`files/`·`skill-files/`)이 있으면
+    **폴더형**(`<id>/.daedalus.json` + 그 디렉토리들)으로 저장한다 — 그래야
+    이 템플릿에서 만든 프로젝트가 처음 저장될 때 동봉 파일이 함께 간다
+    (`SessionIO.carry_template_assets`). 없으면 단일 JSON(`<id>.json`).
+
+    같은 id가 이미 있으면 `overwrite=False`에서 `TemplateError`다 — 덮어쓰기는
+    남의 템플릿을 지우는 일이라 호출자가 명시해야 한다.
+
+    Returns: 실제로 쓴 정본 파일 경로.
+    """
+    import shutil
+
+    from daedalus.model.package import PROJECT_FILENAME
+    from daedalus.model.serialize import serialize_project
+
+    name = (template_id or "").strip()
+    if not _TEMPLATE_ID_RE.match(name):
+        raise TemplateError(
+            f"템플릿 id '{template_id}'는 쓸 수 없습니다 — 소문자·숫자·하이픈만 "
+            "쓰고 소문자나 숫자로 시작하세요(파일 이름이 됩니다)."
+        )
+
+    root = user_templates_dir()
+    file_form = root / f"{name}{TEMPLATE_SUFFIX}"
+    dir_form = root / name
+    existing = [p for p in (file_form, dir_form) if p.exists()]
+    if existing and not overwrite:
+        raise TemplateError(
+            f"템플릿 '{name}'이 이미 있습니다: {existing[0]} — 덮어쓰려면 "
+            "overwrite를 지정하세요."
+        )
+
+    side_dirs = []
+    if source_dir is not None:
+        for sub in ("files", "skill-files"):
+            candidate = Path(source_dir) / sub
+            if candidate.is_dir() and any(candidate.iterdir()):
+                side_dirs.append((sub, candidate))
+
+    text = json.dumps(serialize_project(project), ensure_ascii=False, indent=2)
+    text = text.replace("\r\n", "\n").replace("\r", "\n") + "\n"
+
+    root.mkdir(parents=True, exist_ok=True)
+    if side_dirs:
+        # 폴더형 — 기존 것을 통째로 갈아엎는다(부분 갱신이면 지운 파일이 남는다).
+        if dir_form.exists():
+            shutil.rmtree(dir_form)
+        if file_form.exists():
+            file_form.unlink()  # 같은 id의 단일 JSON형은 폴더형에 가려진다
+        dir_form.mkdir(parents=True)
+        target = dir_form / PROJECT_FILENAME
+        target.write_text(text, encoding="utf-8", newline="")
+        for sub, src in side_dirs:
+            shutil.copytree(src, dir_form / sub, symlinks=False)
+        return target
+
+    if dir_form.exists():
+        shutil.rmtree(dir_form)  # 폴더형 → 파일형으로 바뀌는 갱신
+    file_form.write_text(text, encoding="utf-8", newline="")
+    return file_form
+
+
+def delete_user_template(template_id: str) -> bool:
+    """사용자 템플릿을 지운다(파일형·폴더형 둘 다). 지운 것이 있으면 True.
+
+    내장 템플릿은 패키지 데이터라 지울 수 없다 — 그쪽 id를 주면 False다
+    (같은 id의 **사용자** 사본만 지워지고 내장이 다시 드러난다).
+    """
+    import shutil
+
+    root = user_templates_dir()
+    removed = False
+    file_form = root / f"{template_id}{TEMPLATE_SUFFIX}"
+    dir_form = root / template_id
+    if file_form.is_file():
+        file_form.unlink()
+        removed = True
+    if dir_form.is_dir():
+        shutil.rmtree(dir_form)
+        removed = True
+    return removed
 
 
 def find_template(template_id: str) -> ProjectTemplate:

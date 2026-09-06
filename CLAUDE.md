@@ -94,7 +94,18 @@ daedalus/
 │   │                       #   find_section(제목·"## 제목" 레벨 지정·"부모 > 자식" 경로, 0개·복수 매칭 ValueError)/
 │   │                       #   section_text/char_span/replacement_text/replace_section(비교체 구간 바이트 보존). Qt 무관 순수 stdlib.
 │   ├── templates.py         # 시작 템플릿 카탈로그(A7) — 아키타입 3종의 id/제목/요약(TEMPLATES) +
-│   │                       #   list_templates/find_template/load_template(TemplateError).
+│   │                       #   list_templates/find_template/load_template(TemplateError) +
+│   │                       #   **save_user_template/delete_user_template**(Save As Template) —
+│   │                       #   현재 프로젝트를 ~/.daedalus/templates/에 저장한다. 형식은 저장 파일 그
+│   │                       #   자체(serialize_project 산출)이고, source_dir에 동봉 파일이 있으면
+│   │                       #   폴더형(<id>/.daedalus.json + files/·skill-files/ 복사)으로 — 그래야 첫
+│   │                       #   저장 때 딸려 간다. id는 ^[a-z0-9][a-z0-9-]*$ 강제(파일 이름이 된다 —
+│   │                       #   조용히 슬러그로 바꾸면 지은 이름과 목록의 이름이 달라진다), 동명은
+│   │                       #   overwrite 명시 필요, 형식 전환 시 옛 형태 제거. 표면: File 메뉴
+│   │                       #   "템플릿으로 저장…"(SessionIO.save_as_template_dialog) / MCP
+│   │                       #   save_as_template·delete_user_template(홈 파일 쓰기라 undo 비대상).
+│   │                       #   **두 경로가 함께 산다**: 내장은 패키지 데이터(pyproject package-data —
+│   │                       #   재설치 때 갈린다), 사용자 템플릿은 홈에 남는다.
 │   │                       #   **사용자 템플릿**: `~/.daedalus/templates/<id>.json`(저장 파일 그대로 복사)이
 │   │                       #   카탈로그에 병합 — 동명 id는 사용자 우선, 제목=name·요약=description, 깨진 파일은
 │   │                       #   stderr 스킵(전역 훅 규약). 영어·플레이스홀더 게이트 비대상. **폴더형**

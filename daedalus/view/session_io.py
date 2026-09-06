@@ -386,6 +386,58 @@ class SessionIO:
             return
         w._status_label.setText(f"내보냄: {target} ({len(members)}개 파일)")
 
+    def save_as_template_dialog(self) -> None:
+        """현재 프로젝트를 **사용자 템플릿**으로 저장한다 — `~/.daedalus/templates/`.
+
+        내장 템플릿은 패키지 데이터라 재설치 때 갈리지만, 여기 저장한 것은 홈에
+        남는다. 저장 형식은 프로젝트 저장 파일 그 자체이고, 동봉 파일
+        (`files/`·`skill-files/`)이 있으면 폴더형으로 함께 복사된다 — 그래야 이
+        템플릿에서 만든 프로젝트가 처음 저장될 때 그 파일들이 딸려 간다.
+        """
+        from daedalus.model import templates
+
+        w = self._w
+        if w._project is None:
+            return
+        suggested = w._project.name or "my-template"
+        template_id, ok = QInputDialog.getText(
+            w, "템플릿으로 저장",
+            "템플릿 id (소문자·숫자·하이픈 — 새 프로젝트 목록에 이 이름으로 뜹니다):",
+            text=suggested,
+        )
+        if not ok or not template_id.strip():
+            return
+        template_id = template_id.strip()
+
+        # 프로젝트 폴더를 알면 동봉 파일까지 데려간다(미저장이면 모델만).
+        source_dir = package.project_dir(w._current_path) if w._current_path else None
+        try:
+            path = templates.save_user_template(
+                w._project, template_id, source_dir=source_dir,
+            )
+        except templates.TemplateError as exc:
+            # 이미 있는 id면 덮어쓸지 묻는다 — 남의 템플릿을 말없이 지우지 않는다.
+            if "이미 있습니다" not in str(exc):
+                QMessageBox.warning(w, "템플릿으로 저장", str(exc))
+                return
+            answer = QMessageBox.question(
+                w, "템플릿으로 저장",
+                f"템플릿 '{template_id}'이 이미 있습니다. 덮어쓸까요?",
+            )
+            if answer != QMessageBox.StandardButton.Yes:
+                return
+            try:
+                path = templates.save_user_template(
+                    w._project, template_id, source_dir=source_dir, overwrite=True,
+                )
+            except (templates.TemplateError, OSError) as exc2:
+                QMessageBox.warning(w, "템플릿으로 저장", str(exc2))
+                return
+        except OSError as exc:
+            QMessageBox.warning(w, "템플릿으로 저장", f"저장 실패: {exc}")
+            return
+        w._status_label.setText(f"템플릿으로 저장됨: {path}")
+
     def import_package_dialog(self) -> None:
         """`.ddpj`를 폴더에 풀고 그 프로젝트를 연다.
 

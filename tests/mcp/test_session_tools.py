@@ -206,3 +206,34 @@ def test_tools_are_exposed():
 
     for name in ("open_project", "save_project", "list_recent_projects"):
         assert name in TOOL_NAMES
+
+
+# --- Save As Template (사용자 템플릿) ---
+
+
+def test_save_as_template_and_list(tools, window):
+    """저장 즉시 새 프로젝트 목록에 뜬다 — 홈에 남아 재설치를 견딘다."""
+    out = tools.save_as_template("my-seed")
+    assert out["saved"] == "my-seed"
+    assert out["folder_form"] is False
+
+    ids = [t["id"] for t in tools.list_project_templates()["templates"]]
+    assert "my-seed" in ids
+
+
+def test_save_as_template_rejects_duplicate_without_overwrite(tools):
+    tools.save_as_template("my-seed")
+    with pytest.raises(Exception, match="이미 있습니다"):
+        tools.save_as_template("my-seed")
+    tools.save_as_template("my-seed", overwrite=True)  # 명시하면 통과
+
+
+def test_save_as_template_rejects_unsafe_id(tools):
+    with pytest.raises(Exception, match="쓸 수 없습니다"):
+        tools.save_as_template("My Seed")
+
+
+def test_delete_user_template_tool(tools):
+    tools.save_as_template("my-seed")
+    assert tools.delete_user_template("my-seed")["removed"] is True
+    assert tools.delete_user_template("my-seed")["removed"] is False

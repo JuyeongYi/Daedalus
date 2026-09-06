@@ -151,6 +151,53 @@ class SessionTools(_BaseTools):
             ]
         }
 
+    def save_as_template(
+        self, template_id: str, overwrite: bool = False
+    ) -> dict[str, Any]:
+        """현재 프로젝트를 **사용자 템플릿**으로 저장한다 — `~/.daedalus/templates/`.
+
+        새 프로젝트 목록(`list_project_templates`)에 곧바로 뜨고, 내장 템플릿과
+        달리 홈에 남아 **재설치·업데이트를 견딘다**(내장은 패키지 데이터라 갈린다).
+        동명 id면 사용자 템플릿이 내장을 가린다.
+
+        `template_id`는 파일·폴더 이름이 되므로 `^[a-z0-9][a-z0-9-]*$`만 받는다
+        (조용히 슬러그로 바꾸면 지은 이름과 목록에 뜨는 이름이 달라진다).
+        표시 제목·요약은 프로젝트의 name·description을 그대로 쓴다.
+
+        프로젝트가 저장돼 있고 동봉 파일(`files/`·`skill-files/`)이 있으면
+        **폴더형**으로 저장해 그 파일들까지 템플릿에 포함한다 — 그래야 이
+        템플릿에서 만든 프로젝트의 첫 저장 때 함께 딸려 간다.
+
+        이미 있는 id는 `overwrite=True` 없이는 거부한다(남의 템플릿을 말없이
+        지우지 않는다). 홈 파일 쓰기라 **undo 대상이 아니다**(save_project 관례).
+        """
+        from daedalus.model import templates
+        from daedalus.model.package import project_dir
+
+        w = self._window
+        if w._project is None:
+            raise ValueError("열린 프로젝트가 없습니다.")
+        source_dir = project_dir(w._current_path) if w._current_path else None
+        path = templates.save_user_template(
+            w._project, template_id, source_dir=source_dir, overwrite=overwrite,
+        )
+        return {
+            "saved": template_id,
+            "path": str(path),
+            "folder_form": path.name != f"{template_id}{templates.TEMPLATE_SUFFIX}",
+        }
+
+    def delete_user_template(self, template_id: str) -> dict[str, Any]:
+        """사용자 템플릿을 지운다 (`~/.daedalus/templates/`).
+
+        내장 템플릿은 패키지 데이터라 지울 수 없다 — 같은 id의 **사용자 사본**만
+        지워지고 내장이 다시 드러난다. 지운 것이 없으면 `removed: false`.
+        """
+        from daedalus.model import templates
+
+        removed = templates.delete_user_template(template_id)
+        return {"template": template_id, "removed": removed}
+
     def new_project(
         self,
         template_id: str | None = None,

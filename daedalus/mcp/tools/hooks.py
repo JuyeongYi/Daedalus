@@ -465,11 +465,15 @@ class HookTools(_BaseTools):
         config = getattr(comp, "config", None)
         if config is None:
             raise ValueError(f"'{name}'에는 config가 없어 훅을 붙일 수 없습니다.")
-        if not isinstance(comp, AgentDefinition):
+        # 스킬에는 걸 수 없다. 다만 **빈 목록은 받는다** — 이미 저장된
+        # 프로젝트의 스킬 참조를 정리하는 유일한 경로이고, 막아 두면
+        # `skill_hooks_ignored` 경고를 없앨 방법이 사라진다(실측: 라이브
+        # 프로젝트에 그 참조가 남아 있었다).
+        if hooks and not isinstance(comp, AgentDefinition):
             raise ValueError(
                 f"'{name}'은 스킬입니다 — 스킬 프론트매터에는 hooks 키가 없어 "
                 "CC가 무시합니다. 훅은 라이브러리에서 enabled로 켜거나(플러그인 "
-                "전역) 에이전트에 거세요."
+                "전역) 에이전트에 거세요(빈 목록을 주면 기존 참조를 정리합니다)."
             )
 
         known = set(self._window.resolved_hooks())

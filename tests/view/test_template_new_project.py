@@ -75,11 +75,15 @@ def test_dialog_target_combo_matches_build_target_labels(qapp):
 
 
 def test_file_menu_has_single_new_project_entry(qapp):
-    """별도 '템플릿에서 새 프로젝트' 항목은 통합으로 흡수됐다."""
+    """별도 '템플릿에서 새 프로젝트' 항목은 통합으로 흡수됐다.
+
+    고정하려는 것은 **새 프로젝트 진입점이 하나**라는 것이다 — 단어 '템플릿'의
+    부재가 아니다(반대 방향인 "템플릿으로 저장…"은 정상 항목이다).
+    """
     window = MainWindow()
     texts = _menu_action_texts(window)
-    assert "새 프로젝트" in texts
-    assert all("템플릿" not in t for t in texts)
+    assert [t for t in texts if "새 프로젝트" in t] == ["새 프로젝트"]
+    assert all("템플릿에서" not in t for t in texts)
     window.close()
 
 

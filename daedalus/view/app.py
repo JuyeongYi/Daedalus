@@ -296,6 +296,14 @@ class MainWindow(QMainWindow):
 
             file_menu.addSeparator()
 
+            tpl_action = QAction("템플릿으로 저장…", self)
+            tpl_action.setToolTip(
+                "현재 프로젝트를 ~/.daedalus/templates/에 시작 템플릿으로 저장한다 "
+                "— 새 프로젝트 목록에 뜨고 재설치해도 남는다"
+            )
+            tpl_action.triggered.connect(self._save_as_template_dialog)
+            file_menu.addAction(tpl_action)
+
             export_action = QAction("패키지로 내보내기… (.ddpj)", self)
             export_action.triggered.connect(self._export_package_dialog)
             file_menu.addAction(export_action)
@@ -619,6 +627,9 @@ class MainWindow(QMainWindow):
 
     def _open_file_dialog(self) -> None:
         self._session_io.open_file_dialog()
+
+    def _save_as_template_dialog(self) -> None:
+        self._session_io.save_as_template_dialog()
 
     def _export_package_dialog(self) -> None:
         self._session_io.export_package_dialog()

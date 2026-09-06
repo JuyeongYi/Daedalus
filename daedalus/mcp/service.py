@@ -53,6 +53,8 @@ TOOL_NAMES = (
     "new_project",
     "import_package",
     "export_package",
+    "save_as_template",
+    "delete_user_template",
     # 편집 — 전부 undo 가능
     "create_skill",
     "create_agent",
