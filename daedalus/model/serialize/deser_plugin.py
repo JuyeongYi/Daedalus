@@ -17,6 +17,7 @@ from daedalus.model.fsm.join import JoinStrategy
 from daedalus.model.fsm.section import EventDef
 from daedalus.model.plugin.agent import AgentDefinition
 from daedalus.model.plugin.config import (
+    WrappedSkillConfig,
     AgentConfig,
     DeclarativeSkillConfig,
     ProceduralSkillConfig,
@@ -36,6 +37,7 @@ from daedalus.model.plugin.enums import (
 from daedalus.model.plugin.hook import HookDef, HookEvent
 from daedalus.model.plugin.policy import ExecutionPolicy
 from daedalus.model.plugin.skill import (
+    WrappedSkill,
     DeclarativeSkill,
     ProceduralSkill,
     ReferenceSkill,
@@ -82,7 +84,14 @@ def _deser_config(d: dict) -> Any:
     effort = _to_enum(EffortLevel, d.get("effort"))
     hooks = d.get("hooks")
 
-    if kind == "procedural":
+    if kind == "wrapped":
+        # WP-WR — source는 외부 스킬 참조 문자열(plugin@marketplace:skill).
+        c = WrappedSkillConfig(
+            source=d.get("source", ""),
+            disable_model_invocation=d.get("disable_model_invocation"),  # tri-state
+            user_invocable=d.get("user_invocable"),
+        )
+    elif kind == "procedural":
         c = ProceduralSkillConfig(
             # tri-state (A8) — 키 부재는 **미지정(None)**이다. 저장된 true/false는
             # 그대로 왕복한다(스크럽 금지 — 사용자가 명시 지정한 값이다).
@@ -162,6 +171,16 @@ def _deser_skill(d: dict, reg: _Registry) -> Any:
         skill = ProceduralSkill(
             fsm=fsm, name=name, description=desc, id=sid,
             config=config or ProceduralSkillConfig(),
+            body=body,
+            transfer_on=[_deser_eventdef(e) for e in d.get("transfer_on", [])],
+            call_agents=[_deser_eventdef(e) for e in d.get("call_agents", [])],
+        )
+    elif kind == "wrapped_skill":
+        # WP-WR — body는 구조상 왕복하되 정본은 config.source의 외부 스킬이다.
+        fsm = _deser_machine(d["fsm"], reg, parent_bb=None)
+        skill = WrappedSkill(
+            fsm=fsm, name=name, description=desc, id=sid,
+            config=config or WrappedSkillConfig(),
             body=body,
             transfer_on=[_deser_eventdef(e) for e in d.get("transfer_on", [])],
             call_agents=[_deser_eventdef(e) for e in d.get("call_agents", [])],

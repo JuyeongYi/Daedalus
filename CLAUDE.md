@@ -505,7 +505,34 @@ daedalus/
 | DeclarativeSkill | 배경 지식 | FSM 없음 |
 | TransferSkill | 전이 시 실행되는 보조 지침 | 자체 FSM 보유 |
 | ReferenceSkill | 참조 문서 | FSM 없음, 참조 노드로 복수 배치 |
+| WrappedSkill | 다른 플러그인 스킬의 랩핑(WP-WR) | 본문 없음 — 정본은 config.source의 외부 스킬(런타임 참조). 배치·transfer_on은 procedural과 동일(단일 배치) |
 | AgentDefinition | 별도 컨텍스트의 작업자 | **내부 FSM 퇴역(WP-AF)** — 절차는 본문, 결과 분기는 transfer_on |
+
+### 스킬 랩핑 (WP-WR) — 절차 재사용
+
+다른 플러그인의 스킬을 워크플로 단계로 감싼다. 상세 설계·확정 결정(D1~D4)은
+`docs/plans/2026-09-06-skill-wrapping.md`가 정본. 요지:
+
+- **런타임 참조(D1)**: 산출 본문 = 그래프 유도 단락 + "invoke the skill
+  `<skill>` from plugin `<plugin>`" 지시(`emit.skill._wrapped_procedure_section`).
+  소스는 자기 플러그인에서 실행돼 경로 변수·프론트매터가 소스 기준 — 본문
+  복사안의 변수 오동작이 원천 소멸.
+- **source 규격**: `플러그인[@마켓]:스킬`(`parse_wrapped_source`). 프론트매터
+  키가 아니라 본문 지시로 배출(SkillField.SOURCE.frontmatter_key == None).
+- **의존성 배선**: MARKETPLACE는 plugin.json `dependencies`(스키마 확인
+  2026-09-06 — bare name은 자기 마켓 해소), LOCAL은 settings `enabledPlugins`
+  `{"plugin@마켓": true}` 컴파일 합성(WP-WS 베이크 합류, 모델 불변). 마켓 표기
+  없는 bare 소스는 enabledPlugins 불가라 `wrapped_source_no_marketplace` 경고.
+- **재사용은 랩퍼 복수로**(사용자 확정): 같은 source를 여러 랩퍼가 감싸는 것이
+  정상이고, 랩퍼 자신은 단일 배치(no_duplicate_skill_ref — 레퍼런스형 복수
+  배치는 "배치=FSM 위치" 의미론을 깨서 비채택).
+- **본문 수정 불가**: 에디터가 본문 패널을 잠근다(ComponentEditor). 매트릭스에
+  CONTEXT/AGENT/SHELL 없음 — kind별 명시 부재는 test_field_matrix의
+  `_KIND_ABSENT_FIELDS`가 계약으로 고정.
+- **후속(2단계)**: D2 카탈로그 발견(플러그인 루트 등록 → 소스 후보), 에디터
+  소스 콤보·본문 미리보기, `dangling_wrapped_source`(실존 검사),
+  `wrapped_source_has_workflow`(소스 워크플로 단락 충돌), MCP
+  `list_wrappable_skills`.
 
 ### 에이전트 — 본문 + 출력 포트 (WP-AF, 내부 FSM 퇴역)
 
@@ -1454,6 +1481,8 @@ blackboard/body_variables/build_target/workflow/workspace)을 합성한 오케�
 | `duplicate_rule_name` | 작업 폴더 규칙 문서의 동명 에러 — 상세는 "작업 폴더 문서 (WP-WD) #### 검증" 표 |
 | `invalid_rule_name` | 규칙 문서 이름 규약 경고 (컴파일 게이트가 에러로 승격) — 같은 표 |
 | `workspace_doc_in_marketplace_build` | MARKETPLACE 빌드인데 작업 폴더 문서에 내용이 있으면 경고 — 같은 표 |
+| `wrapped_source_missing` | 랩핑 스킬 source 빈 값·형식 불일치 경고 (WP-WR — `플러그인[@마켓]:스킬`) |
+| `wrapped_source_no_marketplace` | 마켓 표기 없는 소스는 enabledPlugins 배선 불가 경고 (컴파일러 emit, WP-WR) |
 | `mid_chain_user_invocable` | 프로젝트 그래프에 배치된 ProceduralSkill 중 **incoming 전이가 1개 이상**인데 `config.user_invocable`의 **실효값**이 true면 경고 (A3 + A8 tri-state — `None`(미지정)은 CC 기본 true이므로 경고 대상이고 메시지에 병기, **명시 `False`만 통과**) — user-invocable은 진입점으로 기능할 노드만 true여야 한다(중간 노드로 사용자가 맥락 없이 진입하는 사고 방지. false여도 모델 인보크는 되므로 체인은 안 끊긴다). incoming 0개(진입점 후보)·미배치 스킬(독립 스킬)은 대상 아님. **EntryPoint 출발 전이는 incoming으로 세지 않는다** — 그것이 곧 "여기서 시작한다"는 선언이다(WP-EP로 캔버스에 그리지 않을 뿐 구버전 파일의 시작 전이는 모델에 남아 있다) |
 
 도구 모델(`tool.py`): `Tool(PluginComponent, ABC)` 단일 진실 + `BuiltinTool`/`MCPTool`/`UserDefinedTool`. shelf = 프로젝트(`PluginProject.tool_shelf`) 소유, FSM은 `Tool.name` 문자열로 참조(fsm/는 plugin 무관 — 객체 참조 금지, Validator가 실존 검증). `CC_BUILTIN_TOOLS`는 `validation/project_rules/tools.py` 모듈 frozenset이다(파사드 재-export로 `daedalus.model.validation`에서도 임포트 가능 — Read/Write/Edit/Bash/Glob/Grep/WebFetch/WebSearch/Agent/Task/TodoWrite/NotebookEdit/SlashCommand/PowerShell).

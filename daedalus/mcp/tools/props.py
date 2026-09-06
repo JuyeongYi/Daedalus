@@ -20,7 +20,7 @@ class PropsTools(_BaseTools):
     """컴포넌트 생성 + 속성/프론트매터 편집 + 프로젝트 속성."""
 
     #: create_skill이 받는 종류 (에이전트는 create_agent가 따로 맡는다).
-    _SKILL_KINDS = ("procedural", "declarative", "transfer", "reference")
+    _SKILL_KINDS = ("procedural", "declarative", "transfer", "reference", "wrapped")
 
     def _create_component(
         self,

@@ -7,6 +7,7 @@ from uuid import uuid4
 from daedalus.model.fsm.section import EventDef
 from daedalus.model.plugin.base import PluginComponent, WorkflowComponent
 from daedalus.model.plugin.config import (
+    WrappedSkillConfig,
     DeclarativeSkillConfig,
     ProceduralSkillConfig,
     ReferenceSkillConfig,
@@ -24,6 +25,32 @@ class Skill(PluginComponent, ABC):
     when_to_use: str = ""
     # 안정 식별자 — 값 동등성 비교에서는 제외(compare=False).
     id: str = field(default_factory=lambda: uuid4().hex, compare=False, kw_only=True)
+
+
+@dataclass
+class WrappedSkill(Skill, WorkflowComponent):
+    """랩핑 스킬 (WP-WR) — 다른 플러그인 스킬을 워크플로 단계로 감싼다.
+
+    본문의 정본은 config.source가 가리키는 외부 스킬이다(런타임 참조 — 컴파일
+    산출은 "그 스킬을 따르라" 지시 + 우리 그래프 유도 단락). body 필드는
+    구조상 남지만 **항상 빈 값**이어야 한다 — 편집 UI가 잠그고 컴파일이
+    무시한다. 배치 규칙은 procedural과 동일(단일 배치 — no_duplicate_skill_ref).
+    같은 source를 여러 랩퍼가 감싸는 것은 정상이다(재사용은 랩퍼 복수로).
+    """
+    config: WrappedSkillConfig = field(default_factory=WrappedSkillConfig)
+    body: str = ""
+    transfer_on: list[EventDef] = field(
+        default_factory=lambda: [EventDef("done")]
+    )
+    call_agents: list[EventDef] = field(default_factory=list)
+
+    @property
+    def kind(self) -> str:
+        return "wrapped_skill"
+
+    @property
+    def output_events(self) -> list[str]:
+        return [e.name for e in self.transfer_on]
 
 
 @dataclass

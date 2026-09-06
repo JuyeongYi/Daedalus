@@ -53,6 +53,8 @@ WARNING_RULES: frozenset[str] = frozenset({
     "parallel_join_count",
     # 프로젝트 수준 경고
     "dangling_string_reference",
+    "wrapped_source_missing",  # WP-WR
+    "wrapped_source_no_marketplace",  # WP-WR — 컴파일러 emit
     "invalid_component_name",  # 빈 이름 제외는 is_warning에서 처리
     # 도구(tool_shelf) 경고
     "dangling_tool_ref",

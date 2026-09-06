@@ -27,6 +27,7 @@ from daedalus.model.plugin.agent import AgentDefinition
 from daedalus.model.plugin.skill import (
     DeclarativeSkill,
     ProceduralSkill,
+    WrappedSkill,
     ReferenceSkill,
     Skill,
     TransferSkill,
@@ -340,6 +341,8 @@ def _progress_terminal_section(project) -> list[str]:
 
 def _skill_kind_key(skill: Skill) -> str:
     """Skill 인스턴스 → SKILL_FIELD_MATRIX 키."""
+    if isinstance(skill, WrappedSkill):
+        return "wrapped"
     if isinstance(skill, ProceduralSkill):
         return "procedural"
     if isinstance(skill, TransferSkill):
@@ -349,6 +352,76 @@ def _skill_kind_key(skill: Skill) -> str:
     if isinstance(skill, ReferenceSkill):
         return "reference"
     raise TypeError(f"알 수 없는 스킬 타입: {type(skill).__name__}")
+
+
+def parse_wrapped_source(source: str) -> tuple[str, str]:
+    """WP-WR source 참조 `plugin[@marketplace]:skill` → (plugin_id, skill_name).
+
+    형식이 어긋나면 ("", "") — 검증 경고(`wrapped_source_missing`)가 짚고
+    emit은 지시 단락을 생략한다(빈 참조로 산출을 오염시키지 않는다).
+    """
+    if ":" not in (source or ""):
+        return "", ""
+    plugin_id, _, skill_name = source.partition(":")
+    plugin_id, skill_name = plugin_id.strip(), skill_name.strip()
+    if not plugin_id or not skill_name:
+        return "", ""
+    return plugin_id, skill_name
+
+
+def _wrapped_procedure_section(skill) -> list[str]:
+    """랩핑 스킬의 절차 단락 (WP-WR/D1 — 런타임 참조).
+
+    소스 스킬은 자기 플러그인에서 실행되므로 경로 변수·프론트매터가 소스
+    기준으로 동작한다. 이 단락은 "그 스킬을 지금 인보크해 따르라"와 "끝나면
+    이 워크플로로 돌아오라"만 말한다 — 워크플로 지시(다음 단계·진행 기록)는
+    이 문서 소유다.
+    """
+    plugin_id, skill_name = parse_wrapped_source(
+        getattr(getattr(skill, "config", None), "source", "")
+    )
+    if not skill_name:
+        return []
+    return [
+        "## Procedure",
+        (
+            f"This step's procedure lives in an external skill: invoke the "
+            f"skill `{skill_name}` from plugin `{plugin_id}` and follow its "
+            f"instructions now. That skill does not know this workflow — when "
+            f"it completes, return here and continue with the sections below "
+            f"(Next Steps, progress record)."
+        ),
+    ]
+
+
+def _wrapped_requirements_section(skill) -> list[str]:
+    """랩핑 스킬의 요구 환경 — 소스 플러그인 설치·활성 + MCP 서버 합류.
+
+    `_mcp_requirement_section_skill`과 헤딩이 겹치지 않도록 여기서 한 단락으로
+    합쳐 만든다(같은 사실을 두 번 말하지 않는다).
+    """
+    from daedalus.compiler.emit.sections import _mcp_servers_from_tools
+
+    plugin_id, _skill_name = parse_wrapped_source(
+        getattr(getattr(skill, "config", None), "source", "")
+    )
+    lines: list[str] = []
+    if plugin_id:
+        lines.append(
+            f"This skill wraps a skill from plugin `{plugin_id}` — that plugin "
+            f"must be installed and enabled (settings `enabledPlugins`)."
+        )
+    servers = _mcp_servers_from_tools(
+        getattr(getattr(skill, "config", None), "allowed_tools", None)
+    )
+    if servers:
+        names = ", ".join(f"`{x}`" for x in servers)
+        lines.append(
+            f"This skill requires these MCP servers to be connected: {names}"
+        )
+    if not lines:
+        return []
+    return ["## Requirements", "\n\n".join(lines)]
 
 
 def compile_skill(
@@ -372,7 +445,7 @@ def compile_skill(
     progress_placements: list = []
     if (
         project is not None
-        and isinstance(skill, (ProceduralSkill, DeclarativeSkill))
+        and isinstance(skill, (ProceduralSkill, DeclarativeSkill, WrappedSkill))
     ):
         progress_placements = _graph_placements(skill, project)
     if progress_placements:
@@ -397,6 +470,14 @@ def compile_skill(
         blocks.append("## Progress Record")
         blocks.append(_transfer_progress_note(project))
 
+    # WrappedSkill (WP-WR) — 절차는 외부 스킬 인보크 지시. FSM 절차·tool_shelf는
+    # 없다(본문의 정본이 소스라 여기서 만들 절차가 없다). 블랙보드 단락은
+    # placement reads/writes 기반이라 유지.
+    if isinstance(skill, WrappedSkill):
+        blocks.extend(_wrapped_procedure_section(skill))
+        if project is not None:
+            blocks.extend(_blackboard_section(project, skill))
+
     # ProceduralSkill — FSM 절차 + tool_shelf
     if isinstance(skill, ProceduralSkill):
         blocks.extend(_describe_fsm(skill.fsm, skill))
@@ -406,7 +487,11 @@ def compile_skill(
 
     # 요구 환경(MCP 서버 자동 언급) — allowed_tools의 mcp__ 접두에서 추출.
     # project 유무와 무관(스킬 자체 config만 참조), "다음 단계" 단락 앞.
-    blocks.extend(_mcp_requirement_section_skill(skill))
+    # WrappedSkill은 소스 플러그인 의존까지 합쳐 전용 단락으로(헤딩 중복 방지).
+    if isinstance(skill, WrappedSkill):
+        blocks.extend(_wrapped_requirements_section(skill))
+    else:
+        blocks.extend(_mcp_requirement_section_skill(skill))
 
     # 프로젝트 그래프 기반 "다음 단계" (버그 2).
     # WP-RS: 배치 스킬이면 다음 단계 단락 끝에 진행 상태 갱신 규칙을 합류시키고,

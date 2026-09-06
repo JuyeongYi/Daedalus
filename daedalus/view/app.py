@@ -44,6 +44,7 @@ from daedalus.model.plugin.skill import (
     ProceduralSkill,
     ReferenceSkill,
     TransferSkill,
+    WrappedSkill,
 )
 from daedalus.model.plugin.enums import BuildTarget
 from daedalus.model.project import PluginProject
@@ -869,7 +870,7 @@ class MainWindow(QMainWindow):
             idx = self._tabs.addTab(editor, f"🤖 {name}")
             self._open_tabs[comp_id] = idx
             self._tabs.setCurrentIndex(idx)
-        elif isinstance(component, (ProceduralSkill, DeclarativeSkill, TransferSkill, ReferenceSkill)):
+        elif isinstance(component, (ProceduralSkill, DeclarativeSkill, TransferSkill, ReferenceSkill, WrappedSkill)):
             editor = SkillEditor(
                 component, on_notify_fn=self._project_vm.notify,
                 project_vm=self._project_vm,

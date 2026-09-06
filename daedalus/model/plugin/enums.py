@@ -107,6 +107,7 @@ class SkillField(Enum):
     HOOKS = "hooks"
     DISABLE_MODEL = "disable_model_invocation"
     USER_INVOCABLE = "user_invocable"
+    SOURCE = "source"  # WP-WR 랩핑 스킬 전용 — 외부 스킬 참조
 
     @property
     def frontmatter_key(self) -> str | None:
@@ -116,6 +117,10 @@ class SkillField(Enum):
         정책이므로 None을 반환한다. 나머지는 snake_case → kebab-case 변환.
         """
         if self is SkillField.WHEN_TO_USE:
+            return None
+        if self is SkillField.SOURCE:
+            # WP-WR — 프론트매터 키가 아니라 본문 지시("Follow skill …")로
+            # 배출된다. 프론트매터에 내면 CC가 모르는 키라 조용히 무시된다.
             return None
         return self.value.replace("_", "-")
 

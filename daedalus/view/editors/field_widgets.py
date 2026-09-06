@@ -40,6 +40,7 @@ FIELD_WIDGETS: dict[SkillField, type[QWidget]] = {
     SkillField.AGENT:          QLineEdit,
     SkillField.SHELL:          ShellComboBox,
     SkillField.PATHS:          TagInput,
+    SkillField.SOURCE:         QLineEdit,  # WP-WR — plugin@marketplace:skill
     SkillField.HOOKS:          TagInput,
     SkillField.DISABLE_MODEL:  QCheckBox,
     SkillField.USER_INVOCABLE: QCheckBox,

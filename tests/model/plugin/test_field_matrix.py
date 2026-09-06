@@ -17,7 +17,8 @@ def test_skill_field_values():
     assert SkillField.HOOKS.value == "hooks"
     assert SkillField.DISABLE_MODEL.value == "disable_model_invocation"
     assert SkillField.USER_INVOCABLE.value == "user_invocable"
-    assert len(SkillField) == 14
+    assert SkillField.SOURCE.value == "source"  # WP-WR
+    assert len(SkillField) == 15
 
 
 from daedalus.model.plugin.field_matrix import FieldRule, SKILL_FIELD_MATRIX
@@ -33,7 +34,7 @@ def test_field_rule_dataclass():
 
 
 def test_matrix_has_all_skill_kinds():
-    expected = {"procedural", "declarative", "transfer", "reference"}
+    expected = {"procedural", "declarative", "transfer", "reference", "wrapped"}
     assert set(SKILL_FIELD_MATRIX.keys()) == expected
 
 
@@ -63,11 +64,24 @@ def test_matrix_declarative_context_default():
     assert rules[SkillField.CONTEXT].visibility == FieldVisibility.DEFAULT
 
 
+# kind별 **명시적 부재** 필드 (WP-WR) — 매트릭스 부재 = 그 kind에 비적용.
+# 컴파일러(_frontmatter_lines_skill)는 부재를 건너뛰므로 KeyError는 없지만,
+# 부재는 여기 등재된 것만 허용한다 — 등재 없는 누락은 실수다.
+_KIND_ABSENT_FIELDS = {
+    "procedural": {SkillField.SOURCE},
+    "declarative": {SkillField.SOURCE},
+    "transfer": {SkillField.SOURCE},
+    "reference": {SkillField.SOURCE},
+    # wrapped는 본문을 만들지 않는다 — 본문 실행 방식 필드 3종이 비적용.
+    "wrapped": {SkillField.CONTEXT, SkillField.AGENT, SkillField.SHELL},
+}
+
+
 def test_matrix_all_kinds_have_all_fields():
-    """모든 kind에 14개 SkillField가 전부 정의되어 있어야 함."""
+    """모든 kind가 전 SkillField를 커버한다 — 명시 부재 목록 제외 (WP-WR)."""
     for kind, rules in SKILL_FIELD_MATRIX.items():
-        for field in SkillField:
-            assert field in rules, f"{kind} missing {field.value}"
+        absent = _KIND_ABSENT_FIELDS[kind]
+        assert set(rules) == set(SkillField) - absent, f"{kind} 필드 집합 불일치"
 
 
 # ---------------------------------------------------------------------------
@@ -75,10 +89,13 @@ def test_matrix_all_kinds_have_all_fields():
 # ---------------------------------------------------------------------------
 
 def test_frontmatter_key_mapping():
-    """WHEN_TO_USE → None, 나머지 → kebab-case."""
+    """WHEN_TO_USE·SOURCE → None(직출 금지), 나머지 → kebab-case."""
     assert SkillField.WHEN_TO_USE.frontmatter_key is None
+    # SOURCE(WP-WR)는 프론트매터 키가 아니라 본문 지시로 배출 — CC가 모르는
+    # 키를 내면 조용히 무시된다.
+    assert SkillField.SOURCE.frontmatter_key is None
     for field in SkillField:
-        if field is SkillField.WHEN_TO_USE:
+        if field in (SkillField.WHEN_TO_USE, SkillField.SOURCE):
             continue
         key = field.frontmatter_key
         assert key is not None
@@ -213,11 +230,11 @@ def test_skill_matrix_when_to_use_emit_body():
 
 
 def test_skill_matrix_other_fields_emit_frontmatter():
-    """6개 스킬 매트릭스에서 WHEN_TO_USE 외 필드의 emit은 FRONTMATTER이어야 한다."""
+    """스킬 매트릭스에서 WHEN_TO_USE·SOURCE(본문 배출) 외 필드의 emit은 FRONTMATTER."""
     from daedalus.model.plugin.field_matrix import SKILL_FIELD_MATRIX
     for kind, rules in SKILL_FIELD_MATRIX.items():
         for fld, rule in rules.items():
-            if fld is SkillField.WHEN_TO_USE:
+            if fld in (SkillField.WHEN_TO_USE, SkillField.SOURCE):
                 continue
             assert rule.emit == FieldEmit.FRONTMATTER, (
                 f"{kind}/{fld} emit이 FRONTMATTER이 아님: {rule.emit!r}"

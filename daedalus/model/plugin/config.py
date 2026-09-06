@@ -62,6 +62,23 @@ class ProceduralSkillConfig(SkillConfig):
 
 
 @dataclass
+class WrappedSkillConfig(SkillConfig):
+    """스킬 랩핑 (WP-WR) — 다른 플러그인 스킬의 절차 재사용.
+
+    ``source``가 핵심이다: ``<플러그인>:<스킬>`` 문자열 참조로, 본문의 정본은
+    그 스킬이고 랩퍼는 워크플로 위치·배선·프론트매터만 소유한다(사용자 확정 —
+    본문 수정 불가). 진입 의미론 tri-state는 ProceduralSkillConfig와 동일.
+    """
+    source: str = ""
+    disable_model_invocation: bool | None = None
+    user_invocable: bool | None = None
+
+    @property
+    def kind(self) -> str:
+        return "wrapped"
+
+
+@dataclass
 class DeclarativeSkillConfig(SkillConfig):
     # tri-state — ProceduralSkillConfig의 같은 필드 주석 참조 (A8).
     disable_model_invocation: bool | None = None

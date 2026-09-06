@@ -899,11 +899,45 @@ def _wire_local_install(
     hooks_text = compile_hooks_json(project, resolved_hooks)
     hooks_map = json.loads(hooks_text).get("hooks", {}) if hooks_text else None
 
+    # WP-WR — 랩핑 스킬의 소스 플러그인을 enabledPlugins로 활성화한다.
+    # 형식은 settings 스키마(벤더링 스냅샷) 확인: {"plugin-id@marketplace-id": true}.
+    # 마켓 표기가 없는 bare 이름은 enabledPlugins 키가 될 수 없어 경고 후 생략
+    # (매니페스트 dependencies와 달리 자기-마켓 해소 규칙이 없다).
+    enabled_plugins: dict = {}
+    for skill in getattr(project, "skills", []):
+        if getattr(skill, "kind", "") != "wrapped_skill":
+            continue
+        source = getattr(getattr(skill, "config", None), "source", "") or ""
+        plugin_id, _, skill_part = source.partition(":")
+        plugin_id = plugin_id.strip()
+        if not plugin_id or not skill_part.strip():
+            continue  # wrapped_source_missing(검증기)이 이미 짚는다
+        if "@" not in plugin_id:
+            result.warnings.append(ValidationError(
+                rule="wrapped_source_no_marketplace",
+                message=(
+                    f"랩핑 스킬 '{skill.name}'의 source '{plugin_id}'에 마켓플레이스 "
+                    f"표기가 없어 enabledPlugins에 올릴 수 없습니다 — "
+                    f"`플러그인@마켓:스킬` 형식이면 설치 배선까지 자동입니다."
+                ),
+                source=skill.name,
+                subject=skill,
+            ))
+            continue
+        enabled_plugins[plugin_id] = True
+
+    baked_settings = dict(project.workspace_settings or {})
+    if enabled_plugins:
+        merged = dict(baked_settings.get("enabledPlugins") or {})
+        merged.update(enabled_plugins)
+        baked_settings["enabledPlugins"] = merged
+
     wired = wire_workspace(
         out_dir, entries, hooks_map, dry_run=dry_run,
         # WP-WS — 프로젝트의 작업 폴더 설정 베이크. hooks 키는 wire_workspace가
         # 무시한다(훅 정본은 hook_library — hooks_map 경로 전담).
-        extra_settings=project.workspace_settings or None,
+        # WP-WR — 랩핑 소스 플러그인의 enabledPlugins 합성 포함(모델 불변).
+        extra_settings=baked_settings or None,
         settings_name=settings_filename,
     )
     result.written.extend(wired.written)

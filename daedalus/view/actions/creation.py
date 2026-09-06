@@ -20,6 +20,7 @@ CREATABLE_KINDS: tuple[tuple[str, str], ...] = (
     ("procedural", "Procedural Skill"),
     ("declarative", "Declarative Skill (배치 없음)"),
     ("reference", "Reference Skill"),
+    ("wrapped", "Wrapped Skill (외부 스킬 랩핑)"),
     ("agent", "Agent"),
 )
 
@@ -41,6 +42,7 @@ def make_component(window, kind: str, name: str, description: str = ""):
         ProceduralSkill,
         ReferenceSkill,
         TransferSkill,
+        WrappedSkill,
     )
 
     factories = {
@@ -52,6 +54,9 @@ def make_component(window, kind: str, name: str, description: str = ""):
             fsm=window._make_fsm(name), name=name, description=description
         ),
         "reference": lambda: ReferenceSkill(name=name, description=description),
+        "wrapped": lambda: WrappedSkill(
+            fsm=window._make_fsm(name), name=name, description=description
+        ),
         "agent": lambda: AgentDefinition(
             fsm=window._make_agent_fsm(name), name=name, description=description,
             transfer_on=[EventDef(name="done")],

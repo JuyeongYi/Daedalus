@@ -96,8 +96,13 @@ def badges_for(component: object) -> list[tuple[str, str]]:
     config = getattr(component, "config", None)
     if config is None:
         return []
-
     result: list[tuple[str, str]] = []
+
+    # WP-WR — 랩핑 스킬은 본문의 정본이 외부 스킬이다. 소스를 뱃지로 보인다
+    # (미지정도 표시 — 배치는 됐는데 소스가 빈 노드를 화면에서 바로 잡는다).
+    if getattr(component, "kind", "") == "wrapped_skill":
+        source = getattr(config, "source", None) or "(source 미지정)"
+        result.append(("🔗", f"랩핑 스킬 — 본문 정본: {source}"))
 
     # 진입 의미론 (A8) — user_invocable × disable_model_invocation을 **한 뱃지로**
     # 합친다. 두 필드가 따로 뱃지를 달면 "유저 전용 진입점"에 뱃지가 둘 붙어

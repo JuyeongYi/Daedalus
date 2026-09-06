@@ -67,6 +67,24 @@ _PROCEDURAL: dict[SkillField, FieldRule] = {
     SkillField.USER_INVOCABLE: FieldRule(O),
 }
 
+# WP-WR 랩핑 스킬 — 본문의 정본은 source가 가리키는 외부 스킬이라, 본문을
+# 만드는 필드(shell/context/agent)는 없다. source는 프론트매터가 아니라 본문
+# 지시로 emit된다(SkillField.SOURCE.frontmatter_key == None).
+_WRAPPED: dict[SkillField, FieldRule] = {
+    SkillField.NAME:           FieldRule(R),
+    SkillField.DESCRIPTION:    FieldRule(R),
+    SkillField.WHEN_TO_USE:    FieldRule(O, emit=FieldEmit.BODY),
+    SkillField.SOURCE:         FieldRule(R, emit=FieldEmit.BODY),
+    SkillField.ARGUMENT_HINT:  FieldRule(O),
+    SkillField.MODEL:          FieldRule(R, default_value=ModelType.INHERIT),
+    SkillField.EFFORT:         FieldRule(O),
+    SkillField.ALLOWED_TOOLS:  FieldRule(O),
+    SkillField.PATHS:          FieldRule(O),
+    SkillField.HOOKS:          FieldRule(O),
+    SkillField.DISABLE_MODEL:  FieldRule(O),
+    SkillField.USER_INVOCABLE: FieldRule(O),
+}
+
 _DECLARATIVE: dict[SkillField, FieldRule] = {
     SkillField.NAME:           FieldRule(R),
     SkillField.DESCRIPTION:    FieldRule(R),
@@ -123,6 +141,7 @@ _REFERENCE: dict[SkillField, FieldRule] = {
 SKILL_FIELD_MATRIX: dict[str, dict[SkillField, FieldRule]] = {
     "procedural": _PROCEDURAL,
     "declarative": _DECLARATIVE,
+    "wrapped": _WRAPPED,
     "transfer": _TRANSFER,
     "reference": _REFERENCE,
 }

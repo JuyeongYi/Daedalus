@@ -44,6 +44,7 @@ from daedalus.view.widgets.tag_input import TagInput
 # 로드(load) 경로와 저장(write-back) 경로가 같은 테이블을 공유한다.
 # ---------------------------------------------------------------------------
 _FIELD_ATTR_MAP: dict[SkillField | AgentField, str] = {
+    SkillField.SOURCE: "source",  # WP-WR
     SkillField.ARGUMENT_HINT: "argument_hint",
     SkillField.MODEL: "model",
     SkillField.EFFORT: "effort",

@@ -83,6 +83,20 @@ def compile_plugin_manifest(project) -> str:
         manifest["description"] = description
     manifest["version"] = getattr(project, "version", "0.1.0")
 
+    # WP-WR — 랩핑 스킬의 소스 플러그인을 의존성으로 선언한다. 키·형식은
+    # SchemaStore claude-code-plugin-manifest.json 스키마 확인(2026-09-06):
+    # "dependencies": ["name" | "name@marketplace"] — bare name은 자기
+    # 마켓플레이스 기준 해소. 이름순 정렬·중복 제거(결정적).
+    deps = sorted({
+        source.partition(":")[0].strip()
+        for skill in getattr(project, "skills", [])
+        if getattr(skill, "kind", "") == "wrapped_skill"
+        for source in [getattr(getattr(skill, "config", None), "source", "") or ""]
+        if source.partition(":")[0].strip() and source.partition(":")[2].strip()
+    })
+    if deps:
+        manifest["dependencies"] = deps
+
     text = json.dumps(manifest, ensure_ascii=False, indent=2)
     text = text.replace("\r\n", "\n").replace("\r", "\n")
     if not text.endswith("\n"):

@@ -44,6 +44,7 @@ from daedalus.model.fsm.transition import Transition
 from daedalus.model.fsm.variable import Variable
 from daedalus.model.plugin.agent import AgentDefinition
 from daedalus.model.plugin.config import (
+    WrappedSkillConfig,
     AgentConfig,
     DeclarativeSkillConfig,
     ProceduralSkillConfig,
@@ -52,7 +53,7 @@ from daedalus.model.plugin.config import (
 )
 from daedalus.model.plugin.hook import HookDef
 from daedalus.model.plugin.policy import ExecutionPolicy
-from daedalus.model.plugin.skill import ProceduralSkill, TransferSkill
+from daedalus.model.plugin.skill import ProceduralSkill, TransferSkill, WrappedSkill
 from daedalus.model.plugin.tool import BuiltinTool, MCPTool, Tool, UserDefinedTool
 from daedalus.model.project import PluginProject, ReferencePlacement
 
@@ -395,7 +396,13 @@ def _ser_config(c: Any) -> dict:
         d["argument_hint"] = c.argument_hint
         d["allowed_tools"] = list(c.allowed_tools)
         d["paths"] = c.paths
-    if isinstance(c, ProceduralSkillConfig):
+    if isinstance(c, WrappedSkillConfig):
+        d.update(
+            source=c.source,
+            disable_model_invocation=c.disable_model_invocation,
+            user_invocable=c.user_invocable,
+        )
+    elif isinstance(c, ProceduralSkillConfig):
         d.update(
             disable_model_invocation=c.disable_model_invocation,
             user_invocable=c.user_invocable,
@@ -454,9 +461,9 @@ def _ser_skill(s: Any) -> dict:
         "body": s.body,
         "config": _ser_config(s.config),
     }
-    if isinstance(s, (ProceduralSkill, TransferSkill)):
+    if isinstance(s, (ProceduralSkill, TransferSkill, WrappedSkill)):
         d["fsm"] = _ser_machine(s.fsm)
-    if isinstance(s, ProceduralSkill):
+    if isinstance(s, (ProceduralSkill, WrappedSkill)):
         d["transfer_on"] = [_ser_eventdef(e) for e in s.transfer_on]
         d["call_agents"] = [_ser_eventdef(e) for e in s.call_agents]
     return d

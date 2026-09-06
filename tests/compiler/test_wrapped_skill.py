@@ -1,0 +1,176 @@
+# tests/compiler/test_wrapped_skill.py
+"""스킬 랩핑 (WP-WR) — 모델·직렬화·emit·의존성 배선·검증.
+
+D1=런타임 참조(사용자 확정): 산출 본문은 소스 복사가 아니라 인보크 지시 +
+우리 그래프 유도 단락. 소스는 자기 플러그인에서 실행돼 경로 변수·프론트매터가
+소스 기준으로 동작한다.
+"""
+from __future__ import annotations
+
+import json
+
+from daedalus.compiler.emit import compile_skill
+from daedalus.compiler.emit.manifest import compile_plugin_manifest
+from daedalus.compiler.emit.skill import parse_wrapped_source
+from daedalus.model.fsm.event import CompletionEvent
+from daedalus.model.fsm.machine import StateMachine
+from daedalus.model.fsm.pseudo import EntryPoint
+from daedalus.model.fsm.state import SimpleState
+from daedalus.model.fsm.transition import Transition
+from daedalus.model.plugin.config import WrappedSkillConfig
+from daedalus.model.plugin.enums import BuildTarget
+from daedalus.model.plugin.skill import WrappedSkill
+from daedalus.model.project import PluginProject
+from daedalus.model.serialize import deserialize_project, serialize_project
+from daedalus.model.validation import Validator
+
+
+def _wrapped(name: str = "review-step", source: str = "other@mkt:code-review") -> WrappedSkill:
+    entry = EntryPoint(name="start")
+    return WrappedSkill(
+        fsm=StateMachine(name=f"{name}_fsm", states=[entry], initial_state=entry),
+        name=name, description="Wrapped review step.",
+        config=WrappedSkillConfig(source=source),
+    )
+
+
+# ─────────────────────────── source 파싱 ───────────────────────────
+
+
+def test_parse_wrapped_source():
+    assert parse_wrapped_source("other@mkt:code-review") == ("other@mkt", "code-review")
+    assert parse_wrapped_source("bare-plugin:skill") == ("bare-plugin", "skill")
+    assert parse_wrapped_source("") == ("", "")
+    assert parse_wrapped_source("no-colon") == ("", "")
+    assert parse_wrapped_source(":skill-only") == ("", "")
+
+
+# ─────────────────────────── 직렬화 왕복 ───────────────────────────
+
+
+def test_wrapped_skill_roundtrip():
+    project = PluginProject(name="p")
+    project.skills.append(_wrapped())
+    loaded = deserialize_project(serialize_project(project))
+    skill = loaded.skills[0]
+    assert skill.kind == "wrapped_skill"
+    assert skill.config.source == "other@mkt:code-review"
+    assert skill.output_events == ["done"]
+
+
+# ─────────────────────────── emit ───────────────────────────
+
+
+def test_compile_emits_invoke_instruction_not_body():
+    text = compile_skill(_wrapped())
+    assert "## Procedure" in text
+    assert "invoke the skill `code-review` from plugin `other@mkt`" in text
+    assert "return here and continue" in text  # 워크플로 복귀 지시
+
+
+def test_compile_requirements_mention_plugin():
+    text = compile_skill(_wrapped())
+    assert "## Requirements" in text
+    assert "plugin `other@mkt`" in text
+    assert "enabledPlugins" in text
+
+
+def test_compile_empty_source_omits_instruction():
+    """소스 미지정은 지시 단락 생략 — 빈 참조로 산출을 오염시키지 않는다."""
+    text = compile_skill(_wrapped(source=""))
+    assert "invoke the skill" not in text
+    assert "## Procedure" not in text
+
+
+def test_placed_wrapped_gets_graph_sections():
+    """배치되면 재개·다음 단계 등 그래프 유도 단락을 받는다 (procedural과 동급)."""
+    project = PluginProject(name="p")
+    wrapped = _wrapped()
+    project.skills.append(wrapped)
+    from daedalus.model.plugin.config import DeclarativeSkillConfig
+    from daedalus.model.plugin.skill import DeclarativeSkill
+
+    follow = DeclarativeSkill(name="after", description="d",
+                              config=DeclarativeSkillConfig())
+    project.skills.append(follow)
+    node = SimpleState(name="review-step", skill_ref=wrapped)
+    done = SimpleState(name="after", skill_ref=follow)
+    project.graph.states.extend([node, done])
+    project.graph.transitions.append(
+        Transition(source=node, target=done, trigger=CompletionEvent(name="done"))
+    )
+    text = compile_skill(wrapped, project=project)
+    assert "## Resuming Work" in text
+    assert "## Next Steps" in text
+
+
+# ─────────────────────────── 의존성 배선 ───────────────────────────
+
+
+def test_manifest_declares_dependencies():
+    project = PluginProject(name="p")
+    project.skills.append(_wrapped(source="other@mkt:code-review"))
+    project.skills.append(_wrapped(name="w2", source="second:lint"))
+    manifest = json.loads(compile_plugin_manifest(project))
+    # 이름순 정렬·중복 제거, name@marketplace/bare 둘 다 (매니페스트는 bare 허용)
+    assert manifest["dependencies"] == ["other@mkt", "second"]
+
+
+def test_manifest_no_dependencies_key_without_wrapped():
+    manifest = json.loads(compile_plugin_manifest(PluginProject(name="p")))
+    assert "dependencies" not in manifest
+
+
+def test_local_compile_bakes_enabled_plugins(tmp_path):
+    from daedalus.compiler.project_compiler import compile_project
+
+    project = PluginProject(name="p", build_target=BuildTarget.LOCAL)
+    project.skills.append(_wrapped())
+    result = compile_project(project, tmp_path)
+    assert not result.errors
+    obj = json.loads(
+        (tmp_path / ".claude" / "settings.json").read_text(encoding="utf-8")
+    )
+    assert obj["enabledPlugins"] == {"other@mkt": True}
+    # 모델은 불변 — enabledPlugins는 컴파일 합성이다
+    assert "enabledPlugins" not in project.workspace_settings
+
+
+def test_local_bare_plugin_warns_and_skips_enable(tmp_path):
+    from daedalus.compiler.project_compiler import compile_project
+
+    project = PluginProject(name="p", build_target=BuildTarget.LOCAL)
+    project.skills.append(_wrapped(source="bare-plugin:skill"))
+    result = compile_project(project, tmp_path)
+    rules = [w.rule for w in result.warnings]
+    assert "wrapped_source_no_marketplace" in rules
+    settings = tmp_path / ".claude" / "settings.json"
+    if settings.exists():
+        assert "enabledPlugins" not in json.loads(settings.read_text(encoding="utf-8"))
+
+
+# ─────────────────────────── 검증 ───────────────────────────
+
+
+def test_wrapped_source_missing_warns():
+    project = PluginProject(name="p")
+    project.skills.append(_wrapped(source=""))
+    rules = [e.rule for e in Validator.validate_project(project)]
+    assert "wrapped_source_missing" in rules
+
+
+def test_valid_source_no_warning():
+    project = PluginProject(name="p")
+    project.skills.append(_wrapped())
+    rules = [e.rule for e in Validator.validate_project(project)]
+    assert "wrapped_source_missing" not in rules
+
+
+def test_same_source_multiple_wrappers_is_normal():
+    """같은 source의 복수 랩핑은 정상(사용자 확정 — 재사용은 랩퍼 복수로)."""
+    project = PluginProject(name="p")
+    project.skills.append(_wrapped(name="review-a"))
+    project.skills.append(_wrapped(name="review-b"))
+    issues = Validator.validate_project(project)
+    assert not [e for e in issues if not e.is_warning]
+    assert "wrapped_source_missing" not in [e.rule for e in issues]

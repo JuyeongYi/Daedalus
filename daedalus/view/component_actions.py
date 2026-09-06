@@ -34,6 +34,7 @@ class ComponentActions:
         "declarative": "새 Declarative Skill",
         "transfer": "새 Transfer Skill",
         "reference": "새 Reference Skill",
+        "wrapped": "새 Wrapped Skill",
         "agent": "새 Agent",
     }
 

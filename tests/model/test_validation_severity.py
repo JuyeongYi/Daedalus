@@ -43,6 +43,8 @@ _WARN_RULES = frozenset({
     "choice_completeness_missing_else",
     "parallel_join_count",
     "dangling_string_reference",
+    "wrapped_source_missing",  # WP-WR
+    "wrapped_source_no_marketplace",  # WP-WR — 아래 _EXTERNALLY_EMITTED_RULES
     "invalid_component_name",
     "dangling_tool_ref",
     "empty_tool_definition",
@@ -83,6 +85,7 @@ _EXTERNALLY_EMITTED_RULES = frozenset({
     "rule_body_frontmatter",  # daedalus/compiler/project_compiler.py 소관 (A13)
     "dangling_skill_file_ref",  # daedalus/compiler/project_compiler.py 소관 (WP-SF)
     "unknown_skill_files_dir",  # daedalus/compiler/project_compiler.py 소관 (WP-SF)
+    "wrapped_source_no_marketplace",  # daedalus/compiler/project_compiler.py 소관 (WP-WR)
 })
 
 

@@ -25,7 +25,10 @@ from daedalus.view.editors.body_editor import (
 from daedalus.view.editors.skill_editor import _FrontmatterPanel
 from daedalus.view.editors.variable_loader import get_build_target, variables_for
 
-_ComponentType = ProceduralSkill | DeclarativeSkill | TransferSkill | ReferenceSkill | AgentDefinition
+_ComponentType = (
+    ProceduralSkill | DeclarativeSkill | TransferSkill | ReferenceSkill
+    | AgentDefinition
+)
 
 _LEFT_MIN_W = 120
 _CENTER_MIN_W = 200
@@ -79,6 +82,17 @@ class ComponentEditor(QWidget):
         self._content_panel.variable_insert_requested.connect(self._on_variable_insert)
         self._content_panel.content_changed.connect(self._on_content_changed)
         self._content_panel.show_body(component)
+        # WP-WR — 랩핑 스킬의 본문은 수정 불가(정본은 config.source의 외부
+        # 스킬). 편집기를 잠그고 이유를 placeholder로 말한다.
+        from daedalus.model.plugin.skill import WrappedSkill as _Wrapped
+
+        if isinstance(component, _Wrapped):
+            self._content_panel.setEnabled(False)
+            self._content_panel.setToolTip(
+                "랩핑 스킬의 본문은 수정할 수 없습니다 — 본문의 정본은 "
+                "source가 가리키는 외부 스킬입니다(컴파일이 인보크 지시를 "
+                "생성합니다)."
+            )
         root_splitter.addWidget(self._content_panel)
 
         # --- 우측: right_widgets (수직 스플리터, 있을 때만) ---

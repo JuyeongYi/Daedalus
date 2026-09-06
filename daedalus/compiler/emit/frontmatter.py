@@ -95,7 +95,12 @@ def _frontmatter_lines_skill(
     lines: list[str] = []
 
     for sfield in SkillField:
-        rule = matrix[sfield]
+        rule = matrix.get(sfield)
+        if rule is None:
+            # 그 kind에 없는 필드 (WP-WR — wrapped에는 CONTEXT/AGENT/SHELL이
+            # 없고, 다른 kind에는 SOURCE가 없다). 매트릭스가 정의의 단일
+            # 진실이므로 부재 = 비적용이다.
+            continue
         if rule.emit is not FieldEmit.FRONTMATTER:
             continue
         key = sfield.frontmatter_key

@@ -45,6 +45,32 @@ class _NamingRules:
         return errors
 
     @staticmethod
+    def _check_wrapped_sources(project) -> list[ValidationError]:
+        """랩핑 스킬 source 형식 검사 (WP-WR) — `plugin[@marketplace]:skill`.
+
+        빈 값·형식 불일치는 경고다(wrapped_source_missing) — 편집 중일 수
+        있다. 실존(카탈로그 해소) 검사는 파일시스템 소관이라 여기 없다.
+        """
+        errors: list[ValidationError] = []
+        for skill in getattr(project, "skills", []):
+            if getattr(skill, "kind", "") != "wrapped_skill":
+                continue
+            source = getattr(getattr(skill, "config", None), "source", "") or ""
+            plugin_id, _, skill_name = source.partition(":")
+            if not plugin_id.strip() or not skill_name.strip():
+                errors.append(ValidationError(
+                    rule="wrapped_source_missing",
+                    message=(
+                        f"랩핑 스킬 '{skill.name}'의 source가 비었거나 형식이 "
+                        f"어긋납니다({source!r}) — `플러그인[@마켓]:스킬` 형식으로 "
+                        f"지정하세요. 컴파일 산출의 인보크 지시가 생략됩니다."
+                    ),
+                    source=skill.name,
+                    subject=skill,
+                ))
+        return errors
+
+    @staticmethod
     def _check_invalid_component_name(project) -> list[ValidationError]:
         """invalid_component_name — 이름이 ^[a-z0-9][a-z0-9-]*$ 불일치 시 경고. 빈 이름은 에러."""
         all_components = [

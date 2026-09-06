@@ -22,6 +22,7 @@ from daedalus.model.plugin.skill import (
     ProceduralSkill,
     ReferenceSkill,
     TransferSkill,
+    WrappedSkill,
 )
 from daedalus.model.project import PluginProject
 
@@ -35,6 +36,7 @@ _ICON = {
     "procedural_skill": "⚙",
     "declarative_skill": "📄",
     "transfer_skill": "⚡",
+    "wrapped_skill": "🔗",
     "reference_skill": "📖",
     "agent": "🤖",
 }
@@ -182,6 +184,7 @@ class RegistryPanel(QWidget):
             "declarative": _RegistrySection("📄 DECLARATIVE", QColor("#cccc88"), no_place=True),
             "transfer": _RegistrySection("⚡ TRANSFER", QColor("#88aacc"), no_place=True),
             "reference": _RegistrySection("📖 REFERENCE", QColor("#66aaaa")),
+            "wrapped": _RegistrySection("🔗 WRAPPED", QColor("#aa88cc")),
             "agent": _RegistrySection("🤖 AGENTS", QColor("#cc8888")),
         }
         # 종류별 세로 스택 대신 **탭**으로 담는다 (사용자 확정 — 좌측 열을
@@ -194,6 +197,7 @@ class RegistryPanel(QWidget):
             "declarative": "📄",
             "transfer": "⚡",
             "reference": "📖",
+            "wrapped": "🔗",
             "agent": "🤖",
         }
         for kind, section in self._sections.items():
@@ -220,7 +224,9 @@ class RegistryPanel(QWidget):
             return
         for skill in self._project.skills:
             placed = id(skill) in self._placed_ids
-            if isinstance(skill, TransferSkill):
+            if isinstance(skill, WrappedSkill):
+                self._sections["wrapped"].add_item(skill, placed)
+            elif isinstance(skill, TransferSkill):
                 self._sections["transfer"].add_item(skill, placed=False)
             elif isinstance(skill, ReferenceSkill):
                 self._sections["reference"].add_item(skill, placed)
