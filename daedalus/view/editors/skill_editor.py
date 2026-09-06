@@ -64,10 +64,15 @@ class SkillEditor(QWidget):
         from daedalus.view.editors.component_editor import ComponentEditor
         from daedalus.view.panels.file_panel import SkillFilesPanel
 
+        from daedalus.model.plugin.skill import WrappedSkill
+
         right_widgets: list[QWidget] = []
         # 입력 경로 편집 패널은 없다(WP-IP) — (출처, 트리거)가 경로를 특정하고,
         # 무엇을 넘기는지는 출처가 자기 출력 포트에 적는다.
-        if isinstance(component, ProceduralSkill):
+        # WrappedSkill도 워크플로 단계라 출력 포트·에이전트 호출을 procedural과
+        # 동일하게 갖는다(WP-WR — 본문만 외부 정본이지 배선은 우리 소유.
+        # 이 분기에서 빠져 있어 GUI에서 출력 추가가 불가능했다 — 사용자 보고).
+        if isinstance(component, (ProceduralSkill, WrappedSkill)):
             right_widgets.append(_TransferOnPanel(component.transfer_on, title="⇄ Transfer On"))
             right_widgets.append(
                 _TransferOnPanel(component.call_agents, title="🤖 Agent Call", default_color="#8a4a4a", multiline_desc=True)

@@ -142,6 +142,18 @@ def _make_wrapped(window, source="alpha@mkt:review"):
     return create_wrapped_skill(window, source)
 
 
+def test_wrapped_skill_editor_has_output_port_panels(window, qapp):
+    """wrapped도 워크플로 단계 — 출력 포트·에이전트 호출 패널이 procedural과
+    동일하게 붙는다(빠져 있어 GUI에서 출력 추가가 불가능했다 — 사용자 보고)."""
+    from daedalus.view.editors.skill_editor import SkillEditor, _TransferOnPanel
+
+    comp = _make_wrapped(window)
+    editor = SkillEditor(comp, project_vm=window._project_vm)
+    panels = editor.findChildren(_TransferOnPanel)
+    assert len(panels) == 2  # ⇄ Transfer On + 🤖 Agent Call
+    editor.deleteLater()
+
+
 def test_wrapped_editor_has_no_body_editor(window, qapp):
     from daedalus.view.editors.component_editor import ComponentEditor
 
