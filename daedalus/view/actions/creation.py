@@ -15,14 +15,9 @@ from __future__ import annotations
 #: declarative/transfer는 워크플로 노드가 아니다 — 만들기만 하고 배치는 없다.
 NO_PLACE_KINDS: frozenset[str] = frozenset({"declarative", "transfer"})
 
-#: 캔버스 "여기에 만들기" 메뉴에 낼 종류와 표시 문구 (표시 순서 = 이 순서).
-CREATABLE_KINDS: tuple[tuple[str, str], ...] = (
-    ("procedural", "Procedural Skill"),
-    ("declarative", "Declarative Skill (배치 없음)"),
-    ("reference", "Reference Skill"),
-    ("wrapped", "Wrapped Skill (외부 스킬 랩핑)"),
-    ("agent", "Agent"),
-)
+# (CREATABLE_KINDS는 "여기에 만들기" 빈 캔버스 메뉴(A9-9)와 함께 퇴역 —
+#  이름을 정확히 타이핑해야 해서 쓰기 어려웠다(사용자 확정). 생성 표면은
+#  레지스트리 "+" / 카탈로그 선언 후 드래그 / MCP create_skill이다.)
 
 
 def make_component(window, kind: str, name: str, description: str = ""):
@@ -78,21 +73,31 @@ def unique_component_name(project, base: str) -> str:
     return f"{base}-{n}"
 
 
+#: 레지스트리 🔗 후보 행이 캔버스로 끄는 드래그 mime 접두 (WP-WR) —
+#: `wrapped-source:<source>`. 일반 컴포넌트 드래그(mime=컴포넌트 이름)와
+#: 구분하는 단일 진실이고, canvas_view.dropEvent와 registry_panel이 함께 쓴다.
+WRAPPED_SOURCE_MIME_PREFIX = "wrapped-source:"
+
+
 def create_wrapped_skill(
-    window, source: str, name: str | None = None, description: str = ""
+    window, source: str, name: str | None = None, description: str = "",
+    x: float | None = None, y: float | None = None,
 ):
     """WrappedSkill 생성 + source 대입 + 사용 플러그인 자동 선언 — 1 undo (WP-WR).
 
-    카탈로그 창의 "랩핑 스킬 생성"과 MCP `create_skill(kind="wrapped",
+    레지스트리 🔗 후보 행의 캔버스 드롭과 MCP `create_skill(kind="wrapped",
     source=)`가 둘 다 이것을 부른다. source의 플러그인부가
     `project.external_plugins`에 없으면 **함께 선언한다**(사용자 확정 —
     사용하기로 한 플러그인은 목록에 자동 명시). 등록 전에 source를 채우므로
-    undo/redo에 소스 없는 중간 상태가 없고, 선언 추가까지 MacroCommand
-    한 단위다.
+    undo/redo에 소스 없는 중간 상태가 없고, 선언 추가·(x/y가 있으면) 캔버스
+    배치까지 MacroCommand 한 단위다 — `create_and_place`와 같은 결.
     """
+    from daedalus.model.fsm.state import SimpleState
     from daedalus.view.commands.attr_commands import SetAttrCmd
     from daedalus.view.commands.base import Command, MacroCommand
     from daedalus.view.commands.component_commands import CreateComponentCmd
+    from daedalus.view.commands.state_commands import CreateStateCmd
+    from daedalus.view.viewmodel.state_vm import StateViewModel
 
     project = getattr(window, "_project", None)
     if project is None:
@@ -115,6 +120,12 @@ def create_wrapped_skill(
             [*declared, plugin_id],
             label=f"외부 플러그인 사용 선언: {plugin_id}",
             script=f'external_plugins += "{plugin_id}"',
+        ))
+    if x is not None and y is not None:
+        state = SimpleState(name=name, skill_ref=component)
+        vm = StateViewModel(model=state, x=float(x), y=float(y))
+        children.append(CreateStateCmd(
+            window._project_vm, vm, fsm=project.graph
         ))
     window._project_vm.execute(
         children[0] if len(children) == 1

@@ -90,10 +90,10 @@ class PropsTools(_BaseTools):
         source(WP-WR): kind="wrapped" 전용 — `플러그인[@마켓]:스킬` 형식으로
         감쌀 외부 스킬을 지정한다(`list_wrappable_skills`가 후보와 source
         문자열을 준다). source의 플러그인이 external_plugins에 미선언이면
-        **선언까지 함께** 1 undo로 들어간다(GUI 카탈로그 창과 같은 실체 —
+        **선언까지 함께** 1 undo로 들어가고, x/y를 함께 주면 배치까지 같은
+        1 undo다(레지스트리 🔗 후보 행의 캔버스 드롭과 같은 실체 —
         `actions/creation.create_wrapped_skill`). 다른 종류에 주면 거절한다
         (조용히 무시하면 "설정했는데 아무 일도 일어나지 않는" 상태가 된다).
-        source와 x/y는 함께 줄 수 없다 — 배치는 `place_component`로 잇는다.
         생략하면 나중에 `set_component_field(name, "source", ...)`로 채운다.
 
         x/y(G14): **함께** 주면 만들자마자 그 좌표에 배치한다 — 생성과 배치가
@@ -113,22 +113,23 @@ class PropsTools(_BaseTools):
             )
         self._reject_duplicate_name(name)
         if source:
-            if x is not None or y is not None:
+            if (x is None) != (y is None):
                 raise ValueError(
-                    "source와 x/y는 함께 줄 수 없습니다 — 만든 뒤 "
-                    "place_component로 배치하세요."
+                    "x와 y는 함께 주어야 합니다 — 한쪽만으로는 배치 좌표가 "
+                    "정해지지 않습니다."
                 )
             from daedalus.view.actions.creation import create_wrapped_skill
 
             component = create_wrapped_skill(
-                self._window, source, name=name, description=description
+                self._window, source, name=name, description=description,
+                x=x, y=y,
             )
             if component is None:  # pragma: no cover — 프로젝트는 항상 있다
                 raise RuntimeError(f"'{name}'을(를) 만들지 못했습니다.")
             return {
                 "created": name,
                 "kind": kind,
-                "placed": False,
+                "placed": x is not None,
                 "source": source,
                 "external_plugins": list(self._project.external_plugins),
             }

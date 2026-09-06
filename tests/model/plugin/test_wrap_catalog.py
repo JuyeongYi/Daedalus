@@ -191,6 +191,16 @@ def test_plugin_mcp_servers_discovered(tmp_path):
     assert plugins[0].mcp_servers == ["srv-a", "srv-b"]  # 이름순
 
 
+def test_resolve_skill_file(tmp_path):
+    plugin_dir = _make_plugin(tmp_path, "alpha", skills=["review"])
+    add_marketplace(str(tmp_path), "m")
+    md = wrap_catalog.resolve_skill_file("alpha@m:review")
+    assert md == plugin_dir / "skills" / "review" / "SKILL.md"
+    assert wrap_catalog.resolve_skill_file("alpha@other:review") is None  # 마켓 불일치
+    assert wrap_catalog.resolve_skill_file("alpha@m:nope") is None
+    assert wrap_catalog.resolve_skill_file("") is None
+
+
 def test_used_plugin_mcp_servers_filters_by_declaration(tmp_path):
     from daedalus.model.project import PluginProject
 

@@ -76,24 +76,26 @@ class ComponentEditor(QWidget):
         self._fm.content_changed.connect(lambda: self._on_model_changed(scope="content"))
         root_splitter.addWidget(self._fm)
 
-        # --- 중앙: SectionContentPanel(본문 body) ---
-        self._content_panel = SectionContentPanel()
-        self._content_panel.setMinimumWidth(_CENTER_MIN_W)
-        self._content_panel.variable_insert_requested.connect(self._on_variable_insert)
-        self._content_panel.content_changed.connect(self._on_content_changed)
-        self._content_panel.show_body(component)
-        # WP-WR — 랩핑 스킬의 본문은 수정 불가(정본은 config.source의 외부
-        # 스킬). 편집기를 잠그고 이유를 placeholder로 말한다.
+        # --- 중앙: 본문(SectionContentPanel) — wrapped는 원본 패널로 대체 ---
+        # WP-WR(사용자 확정): 랩핑 스킬은 본문 편집이 **아예 불가능**하다 —
+        # 정본은 config.source의 외부 스킬이고 컴파일이 인보크 지시를 생성한다.
+        # 비활성 편집기를 보여 주는 대신 원본 경로 + "원본 열기" 버튼만 둔다
+        # (프론트매터·연결선 정의는 좌/우 패널이 그대로 담당).
         from daedalus.model.plugin.skill import WrappedSkill as _Wrapped
 
+        self._content_panel: SectionContentPanel | None = None
+        self._wrapped_panel: _WrappedSourcePanel | None = None
         if isinstance(component, _Wrapped):
-            self._content_panel.setEnabled(False)
-            self._content_panel.setToolTip(
-                "랩핑 스킬의 본문은 수정할 수 없습니다 — 본문의 정본은 "
-                "source가 가리키는 외부 스킬입니다(컴파일이 인보크 지시를 "
-                "생성합니다)."
-            )
-        root_splitter.addWidget(self._content_panel)
+            self._wrapped_panel = _WrappedSourcePanel(component)
+            self._wrapped_panel.setMinimumWidth(_CENTER_MIN_W)
+            root_splitter.addWidget(self._wrapped_panel)
+        else:
+            self._content_panel = SectionContentPanel()
+            self._content_panel.setMinimumWidth(_CENTER_MIN_W)
+            self._content_panel.variable_insert_requested.connect(self._on_variable_insert)
+            self._content_panel.content_changed.connect(self._on_content_changed)
+            self._content_panel.show_body(component)
+            root_splitter.addWidget(self._content_panel)
 
         # --- 우측: right_widgets (수직 스플리터, 있을 때만) ---
         rw = right_widgets or []
@@ -124,14 +126,18 @@ class ComponentEditor(QWidget):
 
         # Variable popup — 생성·위치 계산은 body_editor의 공용 헬퍼가 맡는다
         # (작업 폴더 문서 탭이 같은 함수를 부른다). variables_fn이라 열 때마다
-        # 컨텍스트·빌드 타깃 필터를 다시 적용한다.
-        self._var_popup = make_variable_popup(
-            self._content_panel,
-            variables_fn=lambda: variables_for(var_context, get_build_target()),
-        )
+        # 컨텍스트·빌드 타깃 필터를 다시 적용한다. wrapped는 본문 편집기가
+        # 없으므로 팝업도 없다.
+        self._var_popup = None
+        if self._content_panel is not None:
+            self._var_popup = make_variable_popup(
+                self._content_panel,
+                variables_fn=lambda: variables_for(var_context, get_build_target()),
+            )
 
     def _on_variable_insert(self) -> None:
-        toggle_variable_popup(self._content_panel, self._var_popup)
+        if self._content_panel is not None and self._var_popup is not None:
+            toggle_variable_popup(self._content_panel, self._var_popup)
 
     def _on_content_changed(self) -> None:
         # 본문 키스트로크 — content 채널로 보내 무거운 structure 리스너(캔버스
@@ -140,5 +146,75 @@ class ComponentEditor(QWidget):
 
     def _on_model_changed(self, scope: str = "structure") -> None:
         from daedalus.view.viewmodel.project_vm import call_notify
+        if self._wrapped_panel is not None:
+            # 프론트매터에서 source를 고치면 원본 패널 표시가 따라간다.
+            self._wrapped_panel.refresh()
         self.changed.emit()
         call_notify(self._on_notify_fn, scope)  # type: ignore[arg-type]
+
+
+class _WrappedSourcePanel(QWidget):
+    """랩핑 스킬의 중앙 패널 (WP-WR, 사용자 확정) — 본문 편집기 대신 원본
+    경로 표시 + "원본 열기" 버튼만.
+
+    본문의 정본은 source가 가리키는 외부 스킬이고 인보크 지시는 빌드가
+    생성한다 — 여기서 편집할 본문이라는 것 자체가 없다. 원본 해석은
+    `wrap_catalog.resolve_skill_file`(등록된 마켓플레이스 폴더 기준)이다.
+    """
+
+    def __init__(self, component, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._component = component
+
+        from PySide6.QtWidgets import QLabel, QLineEdit, QPushButton, QVBoxLayout
+
+        lay = QVBoxLayout(self)
+        lay.addStretch()
+        lay.addWidget(QLabel("본문 정본 (외부 스킬) — 인보크 지시는 빌드가 생성"))
+        self._w_source = QLineEdit()
+        self._w_source.setReadOnly(True)
+        lay.addWidget(self._w_source)
+        self._btn_open = QPushButton("원본 열기")
+        self._btn_open.setToolTip(
+            "등록된 마켓플레이스 폴더에서 원본 SKILL.md를 찾아 연다"
+        )
+        self._btn_open.clicked.connect(self.open_source)
+        lay.addWidget(self._btn_open)
+        self._w_status = QLabel("")
+        self._w_status.setWordWrap(True)
+        lay.addWidget(self._w_status)
+        lay.addStretch()
+
+        self.refresh()
+
+    def _source(self) -> str:
+        return getattr(getattr(self._component, "config", None), "source", "") or ""
+
+    def refresh(self) -> None:
+        source = self._source()
+        if self._w_source.text() != source:
+            self._w_source.setText(source)
+        if not source:
+            self._w_status.setText(
+                "source가 비어 있습니다 — 좌측 프론트매터에서 "
+                "`플러그인[@마켓]:스킬`을 지정하세요."
+            )
+        elif self._w_status.text():
+            self._w_status.setText("")
+
+    def open_source(self) -> bool:
+        """원본 SKILL.md를 OS 기본 프로그램으로 연다. 찾으면 True."""
+        from daedalus.model.plugin.wrap_catalog import resolve_skill_file
+
+        md = resolve_skill_file(self._source())
+        if md is None:
+            self._w_status.setText(
+                "원본을 찾지 못했습니다 — 도구 → 외부 플러그인 카탈로그에서 "
+                "이 플러그인이 있는 마켓플레이스 폴더를 등록했는지 확인하세요."
+            )
+            return False
+        from PySide6.QtCore import QUrl
+        from PySide6.QtGui import QDesktopServices
+
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(md)))
+        return True

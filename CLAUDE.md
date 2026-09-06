@@ -334,7 +334,9 @@ daedalus/
     │   │                   #     파일은 쓰지 않는다. 산출은 **원문 그대로** 보인다(렌더하면 프론트매터가 사라진다).
     │   ├── model_effort.py #   모델/effort 지정(A9-2) — MODEL_CHOICES/EFFORT_CHOICES(표시 순서 단일 진실) + set_model/set_effort.
     │   │                   #     새로 만드는 것은 UI가 아니라 **쓰기 경로의 단일 진실**이다(에디터 콤보와 같은 SetAttrCmd 경로).
-    │   ├── creation.py     #   캔버스에서 생성+배치(A9-9) — CREATABLE_KINDS/NO_PLACE_KINDS(레지스트리 no_place와 같은 규칙)/
+    │   ├── creation.py     #   생성+배치 — NO_PLACE_KINDS(레지스트리 no_place와 같은 규칙)/create_wrapped_skill(WP-WR —
+    │   │                   #     생성+선언+배치 1 undo, WRAPPED_SOURCE_MIME_PREFIX)/
+    │   │                   #     ("여기에 만들기" 빈 캔버스 메뉴(A9-9)·CREATABLE_KINDS는 퇴역 — 정확한 이름 타이핑 요구, 사용자 확정)/
     │   │                   #     make_component(창의 _make_fsm 재사용 — 레지스트리와 같은 물건이어야 한다)/create_and_place.
     │   │                   #     생성(CreateComponentCmd)+배치(CreateStateCmd 또는 CreateRefCmd)를 MacroCommand로 묶어 1 undo 단위.
     │   │                   #     **MCP props.py도 이 둘을 직접 부른다**(S1/G14) — 자체 팩토리 dict를 들고 있던 것을
@@ -540,9 +542,12 @@ daedalus/
 - **재사용은 랩퍼 복수로**(사용자 확정): 같은 source를 여러 랩퍼가 감싸는 것이
   정상이고, 랩퍼 자신은 단일 배치(no_duplicate_skill_ref — 레퍼런스형 복수
   배치는 "배치=FSM 위치" 의미론을 깨서 비채택).
-- **본문 수정 불가**: 에디터가 본문 패널을 잠근다(ComponentEditor). 매트릭스에
-  CONTEXT/AGENT/SHELL 없음 — kind별 명시 부재는 test_field_matrix의
-  `_KIND_ABSENT_FIELDS`가 계약으로 고정.
+- **본문 편집 없음**(사용자 확정): wrapped 에디터의 중앙은 본문 편집기가
+  아예 없고 `_WrappedSourcePanel`(원본 경로 읽기 전용 + "원본 열기" 버튼 —
+  `wrap_catalog.resolve_skill_file`로 카탈로그에서 SKILL.md 해석)이다 —
+  프론트매터·연결선 정의만 여기서 한다. 매트릭스에 CONTEXT/AGENT/SHELL 없음
+  — kind별 명시 부재는 test_field_matrix의 `_KIND_ABSENT_FIELDS`가 계약으로
+  고정.
 - **외부 플러그인 카탈로그(D2)**: `model/plugin/wrap_catalog.py`가 발견의
   단일 진실(파일시스템을 아는 모듈 — hook_store 지위. 검증기·컴파일러는
   임포트 금지, 필요하면 호출자 주입). **마켓플레이스 폴더** 등록은 전역
@@ -570,12 +575,21 @@ daedalus/
   넣지 않는다** — 개별 도구 목록 미지원, 사용자 확정) ② LOCAL 컴파일 주입
   `compile_project(provided_server_names=)`(compile_inputs 합류 — 플러그인
   활성화가 서버를 가져오므로 `missing_mcp_server_def` 대상에서 제외)로 쓰인다.
+- **레지스트리 후보 노출 + 드롭 생성**(사용자 확정 — "목록에 그냥 자동으로
+  명시"): 사용 선언된 플러그인의 스킬 중 미랩핑 소스가 레지스트리 🔗 탭에
+  **후보 행**(이탤릭·회색, 컴포넌트 아님)으로 자동 노출된다. 드래그 mime은
+  `wrapped-source:<source>`(`WRAPPED_SOURCE_MIME_PREFIX` — creation.py 단일
+  진실)이고 캔버스 드롭 시점에 `FsmScene.drop_wrapped_source` →
+  `create_wrapped_skill(x, y)`로 생성+선언+배치가 MacroCommand 1 undo.
+  카탈로그 스캔은 파일시스템이라 레지스트리가 선언 목록 키로 캐시한다
+  (`_wrapped_candidates` — notify마다 재스캔 금지).
 - **MCP 짝**(패리티): `list_wrappable_skills`(plugin_id·used·mcp_servers·
   source·already_wrapped)/`list_marketplace_folders`/`add_marketplace_folder`/
   `remove_marketplace_folder`(홈 설정 파일 — undo 비대상)/
   `set_external_plugins`(선언 통째 교체 — undo 가능) +
-  `create_skill(kind="wrapped", source=)`(생성+선언 1 undo, x·y와 병용 불가,
-  다른 kind에 source는 거절). `get_project` meta에 `external_plugins`.
+  `create_skill(kind="wrapped", source=, x=, y=)`(생성+선언+배치 1 undo —
+  후보 드롭과 같은 경로, 다른 kind에 source는 거절). `get_project` meta에
+  `external_plugins`.
 - **후속(2단계 잔여)**: 에디터 소스 콤보·본문 미리보기,
   `dangling_wrapped_source`(카탈로그 실존 검사 — 호출자 주입),
   `wrapped_source_has_workflow`(소스 워크플로 단락 충돌).

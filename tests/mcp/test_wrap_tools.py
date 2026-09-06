@@ -149,7 +149,18 @@ def test_source_rejected_for_non_wrapped(tools, window):
     assert window._project.skills == []  # 거절이면 생성도 없어야 한다
 
 
-def test_source_with_xy_rejected(tools, window):
-    with pytest.raises(ValueError, match="place_component"):
-        tools.create_skill("s", kind="wrapped", source="other@mkt:x", x=10, y=20)
+def test_source_with_xy_places_in_one_undo(tools, window):
+    """source+x/y = 생성+선언+배치 1 undo — 레지스트리 후보 드롭과 같은 경로."""
+    out = tools.create_skill("s", kind="wrapped", source="other@mkt:x", x=10, y=20)
+    assert out["placed"] is True
+    vm = next(v for v in window._project_vm.state_vms if v.model.name == "s")
+    assert (vm.x, vm.y) == (10.0, 20.0)
+    tools.undo()
+    assert window._project.skills == []
+    assert window._project.external_plugins == []
+
+
+def test_source_with_half_coordinates_rejected(tools, window):
+    with pytest.raises(ValueError, match="함께"):
+        tools.create_skill("s", kind="wrapped", source="other@mkt:x", x=10)
     assert window._project.skills == []

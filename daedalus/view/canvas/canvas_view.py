@@ -103,11 +103,20 @@ class FsmCanvasView(QGraphicsView):
     def dropEvent(self, event: QDropEvent | None) -> None:
         if event is None or not event.mimeData().hasText():
             return
-        skill_name = event.mimeData().text()
+        text = event.mimeData().text()
         scene_pos = self.mapToScene(event.position().toPoint())
         sc = self.scene()
         if isinstance(sc, FsmScene):
-            sc.drop_skill(skill_name, scene_pos)
+            # 레지스트리 🔗 후보 행(아직 컴포넌트가 아닌 외부 스킬)은 mime
+            # 접두로 구분한다 (WP-WR) — 드롭 시점에 WrappedSkill이 생성·배치된다.
+            from daedalus.view.actions.creation import WRAPPED_SOURCE_MIME_PREFIX
+
+            if text.startswith(WRAPPED_SOURCE_MIME_PREFIX):
+                sc.drop_wrapped_source(
+                    text[len(WRAPPED_SOURCE_MIME_PREFIX):], scene_pos
+                )
+            else:
+                sc.drop_skill(text, scene_pos)
         event.acceptProposedAction()
 
     # --- 줌 (제한 있음) ---

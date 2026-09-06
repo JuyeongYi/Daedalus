@@ -2,9 +2,6 @@
 from __future__ import annotations
 
 import pytest
-from PySide6.QtCore import QPointF
-from PySide6.QtWidgets import QInputDialog, QMenu
-
 from daedalus.model.fsm.state import SimpleState
 from daedalus.model.plugin.agent import AgentDefinition
 from daedalus.model.plugin.skill import (
@@ -14,7 +11,6 @@ from daedalus.model.plugin.skill import (
 )
 from daedalus.model.project import PluginProject
 from daedalus.view.actions.creation import (
-    CREATABLE_KINDS,
     NO_PLACE_KINDS,
     create_and_place,
     make_component,
@@ -135,89 +131,34 @@ def test_no_project_is_safe(qapp):
     win.close()
 
 
-# --- 캔버스 메뉴 호출부 ---
+# --- 캔버스 메뉴 호출부 (퇴역) ---
+# "여기에 만들기" 빈 캔버스 서브메뉴는 사용자 확정으로 제거됐다 — 이름을
+# 정확히 타이핑해야 해서 쓰기 어려웠다. create_and_place는 MCP 경로가 계속
+# 쓰므로 위 테스트가 유지된다.
 
 
-def test_menu_lists_creatable_kinds(window):
+def test_canvas_creation_menu_is_retired():
     from daedalus.view.canvas import context_menus
 
-    menu = QMenu()
-    mapping = context_menus.add_canvas_creation_menu(
-        window._fsm_scene, menu, QPointF(0, 0)
-    )
-    assert len(mapping) == len(CREATABLE_KINDS)
-    sub = next(m for m in menu.findChildren(QMenu) if m.title() == "여기에 만들기")
-    assert [a.text() for a in sub.actions()] == [
-        f"{label}…" for _kind, label in CREATABLE_KINDS
-    ]
-    menu.deleteLater()
+    assert not hasattr(context_menus, "add_canvas_creation_menu")
+    assert not hasattr(context_menus, "create_component_at")
 
 
-def test_menu_absent_without_project(qapp):
-    from daedalus.view.canvas import context_menus
-
-    win = MainWindow()
-    menu = QMenu()
-    assert context_menus.add_canvas_creation_menu(
-        win._fsm_scene, menu, QPointF(0, 0)
-    ) == {}
-    menu.deleteLater()
-    win.close()
+# --- create_wrapped_skill 배치 (WP-WR) ---
 
 
-def test_menu_action_creates_at_the_click_position(window, monkeypatch):
-    from daedalus.view.canvas import context_menus
+def test_create_wrapped_with_position_places_node(window):
+    """x/y까지 주면 생성+선언+배치가 MacroCommand 1 undo (드롭·MCP 공유 경로)."""
+    from daedalus.view.actions.creation import create_wrapped_skill
 
-    monkeypatch.setattr(
-        QInputDialog, "getText", staticmethod(lambda *a, **k: ("beta", True))
-    )
-    menu = QMenu()
-    mapping = context_menus.add_canvas_creation_menu(
-        window._fsm_scene, menu, QPointF(300, 400)
-    )
-    sub = next(m for m in menu.findChildren(QMenu) if m.title() == "여기에 만들기")
-    act = next(a for a in sub.actions() if a.text().startswith("Procedural"))
+    comp = create_wrapped_skill(window, "alpha@mkt:review", x=30.0, y=40.0)
+    assert comp in window._project.skills
+    assert window._project.external_plugins == ["alpha@mkt"]
+    vm = next(v for v in window._project_vm.state_vms if v.model.name == "review")
+    assert (vm.x, vm.y) == (30.0, 40.0)
+    assert len(window._project_vm.command_stack.history) == 1
 
-    mapping[act]()
-    vm = next(v for v in window._project_vm.state_vms if v.model.name == "beta")
-    assert (vm.x, vm.y) == (300.0, 400.0)
-    menu.deleteLater()
-
-
-def test_menu_action_cancelled_creates_nothing(window, monkeypatch):
-    from daedalus.view.canvas import context_menus
-
-    monkeypatch.setattr(
-        QInputDialog, "getText", staticmethod(lambda *a, **k: ("", False))
-    )
-    menu = QMenu()
-    mapping = context_menus.add_canvas_creation_menu(
-        window._fsm_scene, menu, QPointF(0, 0)
-    )
-    act = next(iter(mapping))
-    mapping[act]()
-
+    window._project_vm.command_stack.undo()
     assert window._project.skills == []
-    assert window._project_vm.command_stack.history == []
-    menu.deleteLater()
-
-
-def test_menu_rejects_duplicate_name(window, monkeypatch):
-    """이름 중복 검사는 레지스트리 생성과 같은 창 헬퍼(_ask_unique_name)를 쓴다."""
-    from daedalus.view.canvas import context_menus
-
-    create_and_place(window._fsm_scene, window, "procedural", "alpha", 0.0, 0.0)
-
-    prompts: list = []
-    monkeypatch.setattr(
-        QInputDialog, "getText",
-        staticmethod(lambda *a, **k: prompts.append(1) or ("alpha", False)),
-    )
-    from PySide6.QtWidgets import QMessageBox
-
-    monkeypatch.setattr(QMessageBox, "warning", staticmethod(lambda *a, **k: None))
-
-    assert context_menus.create_component_at(
-        window._fsm_scene, "procedural", QPointF(0, 0)
-    ) is None
-    assert [s.name for s in window._project.skills] == ["alpha"]
+    assert window._project.external_plugins == []
+    assert _placements(window) == []

@@ -429,6 +429,24 @@ class FsmScene(QGraphicsScene):
         vm = StateViewModel(model=model, x=scene_pos.x(), y=scene_pos.y())
         self._project_vm.execute(CreateStateCmd(self._project_vm, vm, fsm=self._target_fsm))
 
+    def drop_wrapped_source(self, source: str, scene_pos: QPointF) -> None:
+        """레지스트리 🔗 **후보 행**(선언된 외부 플러그인의 스킬) 드롭 (WP-WR).
+
+        아직 컴포넌트가 아니므로 여기서 WrappedSkill을 만들어 배치한다 —
+        실체는 `actions/creation.create_wrapped_skill`(생성 + 미선언이면 선언 +
+        배치까지 MacroCommand 1 undo, MCP `create_skill(source=, x=, y=)`와
+        같은 경로). 창 참조는 컨텍스트 메뉴와 같은 관례(views()[0].window()) —
+        씬은 MainWindow를 직접 참조하지 않는다.
+        """
+        views = self.views()
+        if not views:
+            return
+        from daedalus.view.actions.creation import create_wrapped_skill
+
+        create_wrapped_skill(
+            views[0].window(), source, x=scene_pos.x(), y=scene_pos.y()
+        )
+
     # --- 컨텍스트 메뉴 ---
 
     def contextMenuEvent(self, event: QGraphicsSceneContextMenuEvent | None) -> None:
@@ -483,7 +501,10 @@ class FsmScene(QGraphicsScene):
         elif isinstance(item, WaypointHandleItem):
             self._handle_waypoint_handle_menu(menu, item, event.screenPos())
         else:
-            dispatch = context_menus.add_canvas_creation_menu(self, menu, pos)
+            # 빈 캔버스 — "여기에 만들기" 서브메뉴(A9-9)는 퇴역했다(사용자
+            # 확정: 이름을 정확히 타이핑해야 해서 쓰기 어려웠다). 생성은
+            # 레지스트리 "+" / 카탈로그 선언 후 드래그 / MCP가 맡는다.
+            dispatch: dict = {}
             add_act = menu.addAction("빈 상태 추가")
             dispatch[add_act] = lambda p=pos: self._create_state(p)
             chosen = menu.exec(event.screenPos())

@@ -290,6 +290,27 @@ def scan_catalog(
     return [(folder, discover_plugins(folder)) for folder in folders]
 
 
+def resolve_skill_file(source: str) -> Path | None:
+    """랩핑 source(`플러그인[@마켓]:스킬`) → 카탈로그에서 원본 SKILL.md 경로.
+
+    등록된 마켓플레이스 폴더에서 plugin_id 정확 일치로 찾는다. 못 찾으면
+    None — 폴더 미등록이거나 소스가 다른 머신의 것이다(에러가 아니라 안내
+    대상). wrapped 에디터의 "원본 열기" 버튼이 쓴다.
+    """
+    plugin_id, _, skill_name = source.partition(":")
+    plugin_id, skill_name = plugin_id.strip(), skill_name.strip()
+    if not plugin_id or not skill_name:
+        return None
+    for _folder, plugins in scan_catalog():
+        for plugin in plugins:
+            if plugin.plugin_id != plugin_id:
+                continue
+            md = Path(plugin.path) / "skills" / skill_name / "SKILL.md"
+            if md.is_file():
+                return md
+    return None
+
+
 def used_plugin_mcp_servers(project) -> list[str]:
     """사용 선언된 외부 플러그인이 제공하는 MCP 서버 이름 합집합 (이름순).
 
