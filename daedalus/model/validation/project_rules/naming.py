@@ -71,6 +71,54 @@ class _NamingRules:
         return errors
 
     @staticmethod
+    def _check_wrapped_usage(project) -> list[ValidationError]:
+        """랩핑 스킬 용도 고정 ↔ 배치 정합 (WP-WR, 사용자 확정 2026-09-07).
+
+        용도는 최초 배치가 고정하고 한 스킬 두 용도는 금지다 — 배치 경로가
+        구조로 막지만, MCP·구버전 파일 등 모델 직접 경로 대비 경고로 짚는다:
+        reference 용도인데 그래프 상태 배치가 있거나, state(또는 미정)
+        용도인데 참조 배치가 있으면 어긋남이다.
+        """
+        errors: list[ValidationError] = []
+        ref_placed = {
+            rp.skill_name
+            for rp in getattr(project, "reference_placements", []) or []
+        }
+        state_placed = {
+            id(getattr(s, "skill_ref", None))
+            for s in getattr(project.graph, "states", [])
+            if getattr(s, "skill_ref", None) is not None
+        }
+        for skill in getattr(project, "skills", []):
+            if getattr(skill, "kind", "") != "wrapped_skill":
+                continue
+            usage = getattr(getattr(skill, "config", None), "usage", "") or ""
+            as_state = id(skill) in state_placed
+            as_ref = skill.name in ref_placed
+            if usage == "reference" and as_state:
+                errors.append(ValidationError(
+                    rule="wrapped_usage_conflict",
+                    message=(
+                        f"랩핑 스킬 '{skill.name}'은 용도가 reference로 고정됐는데 "
+                        f"그래프에 워크플로 단계로 배치돼 있습니다 — 참조 용도는 "
+                        f"산출 파일이 없어 그 단계가 빈 참조가 됩니다."
+                    ),
+                    source=skill.name, subject=skill,
+                ))
+            elif usage != "reference" and as_ref:
+                errors.append(ValidationError(
+                    rule="wrapped_usage_conflict",
+                    message=(
+                        f"랩핑 스킬 '{skill.name}'은 용도가 "
+                        f"{'state' if usage == 'state' else '미정'}인데 참조 노드로 "
+                        f"배치돼 있습니다 — 한 랩핑 스킬은 한 용도만 가집니다"
+                        f"(최초 배치가 고정)."
+                    ),
+                    source=skill.name, subject=skill,
+                ))
+        return errors
+
+    @staticmethod
     def _check_external_plugins(project) -> list[ValidationError]:
         """외부 플러그인 사용 선언 ↔ 랩핑 참조 정합 (WP-WR, 사용자 확정).
 

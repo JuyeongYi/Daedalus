@@ -143,6 +143,34 @@ def test_create_skill_with_source_already_declared(tools, window):
     assert window._project.external_plugins == ["other@mkt"]
 
 
+def test_create_skill_reference_usage(tools, window):
+    """usage=reference — 산출 파일 없는 참조 용도로 고정 생성 + 참조 배치."""
+    out = tools.create_skill(
+        "bg", kind="wrapped", source="other@mkt:x", usage="reference", x=1, y=2,
+    )
+    assert out["usage"] == "reference"
+    comp = window._project.skills[0]
+    assert comp.config.usage == "reference"
+    assert window._project.reference_placements[0].skill_name == "bg"
+
+
+def test_reference_usage_rejects_transfer_on(tools):
+    tools.create_skill("bg", kind="wrapped", source="other@mkt:x", usage="reference")
+    with pytest.raises(ValueError, match="출력 포트"):
+        tools.set_transfer_on("bg", [{"name": "done"}])
+
+
+def test_usage_field_not_directly_settable(tools):
+    tools.create_skill("w", kind="wrapped", source="other@mkt:x")
+    with pytest.raises(ValueError, match="최초 배치"):
+        tools.set_component_field("w", "usage", "reference")
+
+
+def test_usage_without_source_rejected(tools):
+    with pytest.raises(ValueError, match="usage"):
+        tools.create_skill("w", kind="wrapped", usage="reference")
+
+
 def test_source_rejected_for_non_wrapped(tools, window):
     with pytest.raises(ValueError, match="wrapped"):
         tools.create_skill("s", kind="procedural", source="other@mkt:x")

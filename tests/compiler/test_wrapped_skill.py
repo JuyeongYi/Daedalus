@@ -136,6 +136,106 @@ def test_placed_wrapped_gets_graph_sections():
     assert "## Next Steps" in text
 
 
+# ─────────────────────────── 용도 고정 (usage — state/reference) ───────────────────────────
+
+
+def test_usage_roundtrip_and_legacy_default():
+    """usage는 왕복하고, 키 부재(구버전 파일)는 state로 로드된다 — 그때는
+    state 용도만 있었다."""
+    project = PluginProject(name="p")
+    w = _wrapped()
+    w.config.usage = "reference"
+    project.skills.append(w)
+    loaded = deserialize_project(serialize_project(project))
+    assert loaded.skills[0].config.usage == "reference"
+
+    data = serialize_project(project)
+    del data["skills"][0]["config"]["usage"]
+    assert deserialize_project(data).skills[0].config.usage == "state"
+
+
+def test_reference_usage_emits_no_skill_file(tmp_path):
+    """참조 용도는 산출 파일이 없다(사용자 확정) — 링크된 노드의 consult
+    지시가 유일한 흔적이다."""
+    from daedalus.compiler.project_compiler import compile_project
+
+    project = _project_with_wrapped()
+    project.skills[0].config.usage = "reference"
+    result = compile_project(project, tmp_path, dry_run=True)
+    assert not result.errors
+    assert not any("review-step" in str(p) for p in result.written)
+
+
+def test_linked_nodes_get_background_skills_section():
+    """참조 용도 wrapped가 링크된 스킬·에이전트 산출에 consult 지시가 합류한다."""
+    from daedalus.compiler.emit import compile_agent
+    from daedalus.model.fsm.section import EventDef
+    from daedalus.model.plugin.agent import AgentDefinition
+    from daedalus.model.plugin.config import AgentConfig, ProceduralSkillConfig
+    from daedalus.model.plugin.skill import ProceduralSkill
+    from daedalus.model.project import ReferencePlacement
+
+    project = PluginProject(name="p")
+    ref = _wrapped(name="bg-doc", source="other@mkt:code-review")
+    ref.config.usage = "reference"
+    project.skills.append(ref)
+    project.external_plugins.append("other@mkt")
+
+    entry = EntryPoint(name="s")
+    step = ProceduralSkill(
+        fsm=StateMachine(name="f", states=[entry], initial_state=entry),
+        name="step", description="d", config=ProceduralSkillConfig(),
+    )
+    project.skills.append(step)
+    node = SimpleState(name="step", skill_ref=step)
+    project.graph.states.append(node)
+
+    a_entry = EntryPoint(name="s")
+    agent = AgentDefinition(
+        fsm=StateMachine(name="af", states=[a_entry], initial_state=a_entry),
+        name="worker", description="w", config=AgentConfig(),
+        transfer_on=[EventDef(name="done")],
+    )
+    project.agents.append(agent)
+    a_node = SimpleState(name="worker", skill_ref=agent)
+    project.graph.states.append(a_node)
+
+    project.reference_placements.append(ReferencePlacement(
+        skill_name="bg-doc", x=0, y=0, connected_states=["step", "worker"],
+    ))
+
+    skill_text = compile_skill(step, project=project)
+    assert "## Background Skills" in skill_text
+    assert "`/other:code-review`" in skill_text  # 마켓 표기 없는 공식 인보크 토큰
+
+    agent_text = compile_agent(agent, project=project)
+    assert "## Background Skills" in agent_text
+    assert "`/other:code-review`" in agent_text
+    # skills 프론트매터에는 합류하지 않는다 — 외부 이름 공간
+    assert "bg-doc" not in agent_text.split("---")[1]
+
+
+def test_usage_conflict_warnings():
+    from daedalus.model.project import ReferencePlacement
+
+    project = _project_with_wrapped()
+    wrapped = project.skills[0]
+    # state 용도인데 참조 배치
+    wrapped.config.usage = "state"
+    project.reference_placements.append(ReferencePlacement(
+        skill_name=wrapped.name, x=0, y=0, connected_states=[],
+    ))
+    rules = [e.rule for e in Validator.validate_project(project)]
+    assert "wrapped_usage_conflict" in rules
+
+    # reference 용도인데 그래프 상태 배치
+    project.reference_placements.clear()
+    wrapped.config.usage = "reference"
+    project.graph.states.append(SimpleState(name="review-step", skill_ref=wrapped))
+    rules = [e.rule for e in Validator.validate_project(project)]
+    assert "wrapped_usage_conflict" in rules
+
+
 # ─────────────────────────── 의존성 배선 — 선언(external_plugins) 기반 ───────────────────────────
 
 

@@ -274,6 +274,13 @@ def _plan_outputs(
     for skill in project.skills:
         if not isinstance(skill, Skill):
             continue
+        # 참조 용도 wrapped(WP-WR, 사용자 확정 2026-09-07)는 **산출 파일이
+        # 없다** — 링크된 노드의 산출에 consult 지시만 합류한다(emit
+        # _background_references_section). SKILL.md를 내면 존재 이유(파일 생성
+        # 불필요)가 사라진다.
+        if (getattr(skill, "kind", "") == "wrapped_skill"
+                and getattr(getattr(skill, "config", None), "usage", "") == "reference"):
+            continue
         label = f"스킬 '{skill.name}'"
         check_name(skill.name, label, skill)
         skill_dirs[_skill_dir_name(skill.name)] = skill

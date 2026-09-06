@@ -15,6 +15,7 @@ from daedalus.compiler.emit.frontmatter import (
     _frontmatter_lines_skill,
 )
 from daedalus.compiler.emit.sections import (
+    _background_references_section,
     _blackboard_section,
     _describe_fsm,
     _mcp_requirement_section_skill,
@@ -489,6 +490,11 @@ def compile_skill(
         if project is not None:
             blocks.extend(_tool_shelf_section(project))
             blocks.extend(_blackboard_section(project, skill))
+
+    # 배치 노드에 링크된 참조 용도 랩핑 스킬 → consult 지시 (WP-WR).
+    # 참조 용도는 산출 파일이 없어 이 단락이 유일한 흔적이다.
+    if project is not None:
+        blocks.extend(_background_references_section(skill, project))
 
     # 요구 환경(MCP 서버 자동 언급) — allowed_tools의 mcp__ 접두에서 추출.
     # project 유무와 무관(스킬 자체 config만 참조), "다음 단계" 단락 앞.

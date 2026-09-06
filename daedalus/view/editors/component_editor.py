@@ -174,6 +174,10 @@ class _WrappedSourcePanel(QWidget):
         self._w_source = QLineEdit()
         self._w_source.setReadOnly(True)
         lay.addWidget(self._w_source)
+        # 용도 표시 (WP-WR) — 최초 배치가 고정하고 여기서 바꿀 수 없다
+        # (한 스킬 두 용도 금지, 사용자 확정 2026-09-07).
+        self._w_usage = QLabel("")
+        lay.addWidget(self._w_usage)
         self._btn_open = QPushButton("원본 열기")
         self._btn_open.setToolTip(
             "등록된 마켓플레이스 폴더에서 원본 SKILL.md를 찾아 연다"
@@ -194,6 +198,13 @@ class _WrappedSourcePanel(QWidget):
         source = self._source()
         if self._w_source.text() != source:
             self._w_source.setText(source)
+        usage = getattr(getattr(self._component, "config", None), "usage", "") or ""
+        usage_text = {
+            "state": "용도: 워크플로 단계 (State) — 최초 배치로 고정됨",
+            "reference": "용도: 참조 (Reference — 산출 파일 없음) — 최초 배치로 고정됨",
+        }.get(usage, "용도: 미정 — 최초 배치 시 State/Reference를 선택하면 고정됩니다")
+        if self._w_usage.text() != usage_text:
+            self._w_usage.setText(usage_text)
         if not source:
             self._w_status.setText(
                 "source가 비어 있습니다 — 좌측 프론트매터에서 "

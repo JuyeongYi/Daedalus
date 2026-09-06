@@ -51,10 +51,19 @@ class PortTools(_BaseTools):
         events: [{"name": "gpu", "description": "GPU 병목", "color": "#ff8844"}, ...]
         분기가 여러 갈래인 노드는 여기에 갈래를 선언해야 캔버스 포트가 갈라지고,
         각 전이의 trigger로 어느 갈래인지 지정할 수 있다.
+
+        참조 용도로 고정된 랩핑 스킬은 거절한다(WP-WR) — 참조는 워크플로
+        단계가 아니라 출력 포트가 무의미하다.
         """
+        from daedalus.model.plugin.skill import WrappedSkill, is_reference_usage
         from daedalus.view.commands.attr_commands import SetAttrCmd
 
         comp = self._find_component(name)
+        if isinstance(comp, WrappedSkill) and is_reference_usage(comp):
+            raise ValueError(
+                f"'{name}'은 참조 용도로 고정된 랩핑 스킬입니다 — 참조는 "
+                "워크플로 단계가 아니라 출력 포트를 갖지 않습니다."
+            )
         defs = self._make_event_defs(events)
         self._vm.execute(
             SetAttrCmd(

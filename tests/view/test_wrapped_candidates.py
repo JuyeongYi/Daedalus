@@ -98,7 +98,7 @@ def test_undeclared_plugin_has_no_candidates(window, marketplace):
 
 def test_drop_wrapped_source_creates_and_places(window):
     scene = window._fsm_scene
-    scene.drop_wrapped_source("alpha@mkt:review", QPointF(150.0, 250.0))
+    scene.drop_wrapped_source("alpha@mkt:review", QPointF(150.0, 250.0), usage="state")
 
     skill = window._project.skills[0]
     assert skill.kind == "wrapped_skill"
@@ -128,9 +128,84 @@ def test_canvas_view_routes_wrapped_mime(window):
     text = f"{WRAPPED_SOURCE_MIME_PREFIX}alpha@mkt:review"
     assert text.startswith(WRAPPED_SOURCE_MIME_PREFIX)
     scene.drop_wrapped_source(
-        text[len(WRAPPED_SOURCE_MIME_PREFIX):], QPointF(0.0, 0.0)
+        text[len(WRAPPED_SOURCE_MIME_PREFIX):], QPointF(0.0, 0.0), usage="state"
     )
     assert window._project.skills[0].config.source == "alpha@mkt:review"
+
+
+# ─────────────────────────── 용도 고정 (state vs reference) ───────────────────────────
+
+
+def test_create_wrapped_reference_places_ref_node(window):
+    """usage=reference → 참조 노드 배치 + 산출 없음 용도 고정 — 1 undo."""
+    from daedalus.view.actions.creation import create_wrapped_skill
+
+    comp = create_wrapped_skill(
+        window, "alpha@mkt:review", x=10.0, y=20.0, usage="reference",
+    )
+    assert comp.config.usage == "reference"
+    assert [r.model for r in window._project_vm.reference_vms] == [comp]
+    assert window._project.reference_placements[0].skill_name == "review"
+    assert [s for s in window._project.graph.states
+            if getattr(s, "skill_ref", None) is comp] == []
+
+    window._undo()  # 생성+선언+참조 배치 1 undo
+    assert window._project.skills == []
+    assert window._project_vm.reference_vms == []
+
+
+def test_drop_wrapped_source_asks_usage(window, monkeypatch):
+    """후보 드롭은 usage를 묻는다 — 취소하면 아무것도 만들지 않는다."""
+    from PySide6.QtCore import QPointF
+
+    scene = window._fsm_scene
+    monkeypatch.setattr(scene, "_ask_wrapped_usage", lambda: None)
+    scene.drop_wrapped_source("alpha@mkt:review", QPointF(0, 0))
+    assert window._project.skills == []
+
+    monkeypatch.setattr(scene, "_ask_wrapped_usage", lambda: "reference")
+    scene.drop_wrapped_source("alpha@mkt:review", QPointF(5, 6))
+    assert window._project.skills[0].config.usage == "reference"
+    assert window._project_vm.reference_vms != []
+
+
+def test_undetermined_wrapped_drop_fixes_usage(window, monkeypatch):
+    """레지스트리 '+'로 만든 미정 wrapped — 최초 드롭이 물어서 고정 + 배치가
+    1 undo(undo하면 미정으로 되돌아온다)."""
+    from PySide6.QtCore import QPointF
+
+    from daedalus.view.actions.creation import make_component
+
+    comp = make_component(window, "wrapped", "raw")
+    window._register_component(comp)
+    assert comp.config.usage == ""  # 미정
+
+    scene = window._fsm_scene
+    monkeypatch.setattr(scene, "_ask_wrapped_usage", lambda: "state")
+    scene.drop_skill("raw", QPointF(30, 40))
+    assert comp.config.usage == "state"
+    assert any(getattr(s, "skill_ref", None) is comp
+               for s in window._project.graph.states)
+
+    window._undo()  # 고정+배치가 한 단위 — 반쪽 상태 없음
+    assert comp.config.usage == ""
+    assert not any(getattr(s, "skill_ref", None) is comp
+                   for s in window._project.graph.states)
+
+
+def test_reference_usage_wrapped_drops_as_ref_node(window):
+    """용도가 reference로 고정된 wrapped는 일반 드롭도 참조 경로를 탄다
+    (복수 배치 허용 — ReferenceSkill과 같은 의미론)."""
+    from PySide6.QtCore import QPointF
+
+    from daedalus.view.actions.creation import create_wrapped_skill
+
+    comp = create_wrapped_skill(window, "alpha@mkt:review", usage="reference")
+    scene = window._fsm_scene
+    scene.drop_skill("review", QPointF(1, 2))
+    scene.drop_skill("review", QPointF(3, 4))
+    assert len(window._project_vm.reference_vms) == 2
+    assert all(r.model is comp for r in window._project_vm.reference_vms)
 
 
 # ─────────────────────────── wrapped 에디터 중앙 패널 ───────────────────────────
@@ -163,6 +238,20 @@ def test_wrapped_editor_has_no_body_editor(window, qapp):
     assert editor._wrapped_panel is not None
     assert editor._wrapped_panel._w_source.text() == "alpha@mkt:review"
     assert editor._wrapped_panel._w_source.isReadOnly()
+    assert "워크플로 단계" in editor._wrapped_panel._w_usage.text()  # 용도 표시
+    editor.deleteLater()
+
+
+def test_reference_usage_editor_swaps_port_panel_for_links(window, qapp):
+    """참조 용도 wrapped — 출력 포트 패널 없음 + 참조 링크 패널 있음."""
+    from daedalus.view.actions.creation import create_wrapped_skill
+    from daedalus.view.editors.reference_link_panel import _ReferenceLinkPanel
+    from daedalus.view.editors.skill_editor import SkillEditor, _TransferOnPanel
+
+    comp = create_wrapped_skill(window, "alpha@mkt:review", usage="reference")
+    editor = SkillEditor(comp, project_vm=window._project_vm)
+    assert editor.findChildren(_TransferOnPanel) == []
+    assert len(editor.findChildren(_ReferenceLinkPanel)) == 1
     editor.deleteLater()
 
 

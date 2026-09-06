@@ -86,8 +86,10 @@ def _deser_config(d: dict) -> Any:
 
     if kind == "wrapped":
         # WP-WR — source는 외부 스킬 참조 문자열(plugin@marketplace:skill).
+        # usage 키 부재는 구버전 파일 — 그때는 state 용도만 있었다.
         c = WrappedSkillConfig(
             source=d.get("source", ""),
+            usage=str(d.get("usage", "state") or ""),
             disable_model_invocation=d.get("disable_model_invocation"),  # tri-state
             user_invocable=d.get("user_invocable"),
         )

@@ -329,6 +329,62 @@ def _component_access_union(component, project) -> tuple[set[str], set[str]]:
     return reads, writes
 
 
+def _background_references_section(component, project) -> list[str]:
+    """이 컴포넌트의 배치 노드에 링크된 **참조 용도 랩핑 스킬** → consult 지시
+    (WP-WR, 사용자 확정 2026-09-07 — 참조 용도는 산출 파일이 없으므로 링크된
+    노드의 산출에 이 지시가 유일한 흔적이다).
+
+    스킬·에이전트 공용 — 배치 노드 이름을 구해 reference_placements의
+    connected_states와 교집합을 본다(에이전트 skills 프론트매터 자동 합류를
+    쓰지 않는 이유: 그 키는 우리 플러그인의 스킬 이름 공간이라 외부
+    플러그인의 스킬을 담을 수 없다). 출력은 소스 기준 이름순 정렬 — 결정적.
+    ReferenceSkill(자체 산출이 있는 진짜 참조 문서)은 대상이 아니다.
+    """
+    if project is None:
+        return []
+    node_names = {
+        s.name for s in getattr(project.graph, "states", [])
+        if getattr(s, "skill_ref", None) is component
+    }
+    if not node_names:
+        return []
+    wrapped_refs = {
+        s.name: s for s in project.skills
+        if getattr(s, "kind", "") == "wrapped_skill"
+        and getattr(getattr(s, "config", None), "usage", "") == "reference"
+    }
+    entries: list[tuple[str, str]] = []  # (source, description)
+    seen: set[str] = set()
+    for rp in getattr(project, "reference_placements", []) or []:
+        skill = wrapped_refs.get(rp.skill_name)
+        if skill is None or skill.name in seen:
+            continue
+        if not node_names & set(getattr(rp, "connected_states", []) or []):
+            continue
+        source = getattr(skill.config, "source", "") or ""
+        plugin_id, _, skill_name = source.partition(":")
+        if not plugin_id.strip() or not skill_name.strip():
+            continue  # wrapped_source_missing 소관 — 빈 지시를 내지 않는다
+        seen.add(skill.name)
+        bare_plugin = plugin_id.partition("@")[0]
+        entries.append((f"/{bare_plugin}:{skill_name.strip()}", skill.description))
+    if not entries:
+        return []
+    entries.sort(key=lambda e: e[0])
+    lines = [
+        "## Background Skills",
+        (
+            "External skills linked to this step as background — invoke them "
+            "when their subject comes up (they are provided by plugins this "
+            "plugin depends on; no local copy exists):"
+        ),
+    ]
+    for token, description in entries:
+        suffix = f" — {description}" if description else ""
+        lines.append(f"- `{token}`{suffix}")
+    return ["\n".join(lines)]
+
+
 def _blackboard_section(project, component=None) -> list[str]:
     """프로젝트 최상위 블랙보드 class_definitions → '## Shared State (Blackboard)' 블록.
 

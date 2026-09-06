@@ -82,6 +82,7 @@ WRAPPED_SOURCE_MIME_PREFIX = "wrapped-source:"
 def create_wrapped_skill(
     window, source: str, name: str | None = None, description: str = "",
     x: float | None = None, y: float | None = None,
+    usage: str = "state",
 ):
     """WrappedSkill 생성 + source 대입 + 사용 플러그인 자동 선언 — 1 undo (WP-WR).
 
@@ -91,14 +92,22 @@ def create_wrapped_skill(
     사용하기로 한 플러그인은 목록에 자동 명시). 등록 전에 source를 채우므로
     undo/redo에 소스 없는 중간 상태가 없고, 선언 추가·(x/y가 있으면) 캔버스
     배치까지 MacroCommand 한 단위다 — `create_and_place`와 같은 결.
+
+    usage(사용자 확정 2026-09-07): "state"(워크플로 단계 — SimpleState 배치·
+    SKILL.md 산출) / "reference"(참조 노드 복수 배치 — 산출 파일 없음, 링크된
+    노드에 consult 지시 합류). 생성 시 고정된다 — 한 스킬 두 용도 금지.
     """
     from daedalus.model.fsm.state import SimpleState
+    from daedalus.view.canvas.sync import sync_refs_to_model
     from daedalus.view.commands.attr_commands import SetAttrCmd
     from daedalus.view.commands.base import Command, MacroCommand
     from daedalus.view.commands.component_commands import CreateComponentCmd
+    from daedalus.view.commands.reference_commands import CreateRefCmd
     from daedalus.view.commands.state_commands import CreateStateCmd
-    from daedalus.view.viewmodel.state_vm import StateViewModel
+    from daedalus.view.viewmodel.state_vm import ReferenceViewModel, StateViewModel
 
+    if usage not in ("state", "reference"):
+        raise ValueError(f"usage는 state 또는 reference여야 합니다 (받은 값: {usage!r}).")
     project = getattr(window, "_project", None)
     if project is None:
         return None
@@ -109,7 +118,9 @@ def create_wrapped_skill(
     if component is None:  # pragma: no cover — kind는 고정 문자열
         return None
     component.config.source = source
+    component.config.usage = usage
 
+    project_vm = window._project_vm
     children: list[Command] = [CreateComponentCmd(project, component)]
     plugin_id = source.partition(":")[0].strip()
     declared = list(getattr(project, "external_plugins", None) or [])
@@ -122,12 +133,19 @@ def create_wrapped_skill(
             script=f'external_plugins += "{plugin_id}"',
         ))
     if x is not None and y is not None:
-        state = SimpleState(name=name, skill_ref=component)
-        vm = StateViewModel(model=state, x=float(x), y=float(y))
-        children.append(CreateStateCmd(
-            window._project_vm, vm, fsm=project.graph
-        ))
-    window._project_vm.execute(
+        if usage == "reference":
+            rvm = ReferenceViewModel(model=component, x=float(x), y=float(y))
+            children.append(CreateRefCmd(
+                project_vm, rvm,
+                sync_fn=lambda: sync_refs_to_model(
+                    project_vm, project.reference_placements
+                ),
+            ))
+        else:
+            state = SimpleState(name=name, skill_ref=component)
+            vm = StateViewModel(model=state, x=float(x), y=float(y))
+            children.append(CreateStateCmd(project_vm, vm, fsm=project.graph))
+    project_vm.execute(
         children[0] if len(children) == 1
         else MacroCommand(children, f"wrapped '{name}' 생성 + 플러그인 선언")
     )

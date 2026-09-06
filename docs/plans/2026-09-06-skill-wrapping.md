@@ -101,6 +101,17 @@ wrapped_source_has_workflow.
    LOCAL 컴파일 `provided_server_names` 주입(missing_mcp_server_def 오탐
    억제)에 쓴다. 개별 도구 목록은 미지원이라 tools 후보에는 넣지 않는다.
 
+## 용도 고정 — state vs reference (사용자 확정 2026-09-07)
+
+wrapped 스킬은 **최초 배치 시 State/Reference를 물어 용도를 고정**하고 한
+스킬 두 용도는 금지다. state=워크플로 단계(단일 배치·SKILL.md 산출),
+reference=참조 노드 복수 배치 + **산출 파일 없음**(링크된 노드 산출에
+`## Background Skills` consult 지시만 합류 — 에이전트 skills 프론트매터는
+우리 이름 공간이라 본문 단락으로). `WrappedSkillConfig.usage`(왕복, 구버전
+키 부재=state), 판정 단일 진실 `is_reference_usage`, 검증
+`wrapped_usage_conflict`. 함께: wrapped 에디터에 출력 포트·에이전트 호출
+패널 합류(state 용도 — 빠져 있던 GUI 갭 수정).
+
 ## 인보크 표기 (교차 확인 2026-09-06)
 
 크로스 플러그인 스킬 지목의 공식 표기는 `/플러그인이름:스킬이름`이고 플러그인

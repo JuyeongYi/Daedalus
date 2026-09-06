@@ -542,6 +542,23 @@ daedalus/
 - **재사용은 랩퍼 복수로**(사용자 확정): 같은 source를 여러 랩퍼가 감싸는 것이
   정상이고, 랩퍼 자신은 단일 배치(no_duplicate_skill_ref — 레퍼런스형 복수
   배치는 "배치=FSM 위치" 의미론을 깨서 비채택).
+- **용도 고정 — state vs reference**(사용자 확정 2026-09-07):
+  `WrappedSkillConfig.usage` ""(미정)/"state"/"reference" — **최초 배치가
+  고정**하고 한 스킬 두 용도는 금지다. state=워크플로 단계(단일 배치·SKILL.md
+  산출, 현행). reference=**참조 노드 복수 배치 + 산출 파일 없음** —
+  `_plan_outputs`가 SKILL.md를 내지 않고, 링크된 스킬·에이전트 산출에
+  `## Background Skills`(consult `/플러그인:스킬` 지시,
+  `emit.sections._background_references_section` — 에이전트 skills 프론트매터
+  자동 합류는 우리 이름 공간이라 못 쓴다)만 합류한다. 판정의 단일 진실은
+  `model/plugin/skill.is_reference_usage`(캔버스 드롭·링크·에디터·emit·검증
+  공유). 후보/미정 wrapped의 캔버스 드롭은 `FsmScene._ask_wrapped_usage`
+  팝업으로 묻고(테스트는 몽키패치 봉합선), 미정 고정+배치는 MacroCommand
+  1 undo(따로면 undo가 배치만 되돌려 반쪽 상태). 직렬화: usage 키 항상 배출,
+  키 부재(구버전)는 "state" 로드. 검증 `wrapped_usage_conflict` 경고(용도 ↔
+  배치 어긋남 — MCP·구버전 파일 대비). MCP: `create_skill(usage=)`,
+  `set_transfer_on`은 reference 용도 거절, `set_component_field("usage")`
+  거절(배치가 고정). 에디터: reference 용도는 포트 패널 대신
+  `_ReferenceLinkPanel`, 원본 패널에 용도 표시.
 - **본문 편집 없음**(사용자 확정): wrapped 에디터의 중앙은 본문 편집기가
   아예 없고 `_WrappedSourcePanel`(원본 경로 읽기 전용 + "원본 열기" 버튼 —
   `wrap_catalog.resolve_skill_file`로 카탈로그에서 SKILL.md 해석)이다 —
@@ -1542,6 +1559,7 @@ blackboard/body_variables/build_target/workflow/workspace)을 합성한 오케�
 | `invalid_rule_name` | 규칙 문서 이름 규약 경고 (컴파일 게이트가 에러로 승격) — 같은 표 |
 | `workspace_doc_in_marketplace_build` | MARKETPLACE 빌드인데 작업 폴더 문서에 내용이 있으면 경고 — 같은 표 |
 | `wrapped_source_missing` | 랩핑 스킬 source 빈 값·형식 불일치 경고 (WP-WR — `플러그인[@마켓]:스킬`) |
+| `wrapped_usage_conflict` | 랩핑 스킬 용도 고정(state/reference) ↔ 배치 어긋남 경고 (WP-WR — 한 스킬 두 용도 금지) |
 | `unused_external_plugin` | 외부 플러그인을 사용 선언했는데 어떤 랩핑 스킬도 참조하지 않음 — 배선은 그대로, 경고만 (WP-WR) |
 | `undeclared_external_plugin` | 랩핑 스킬 source가 미선언 플러그인을 가리킴 — 배선이 안 나가 런타임에 못 찾는다 (WP-WR) |
 | `external_plugin_no_marketplace` | 마켓 표기 없는 bare 선언은 enabledPlugins 배선 불가 경고 (컴파일러 emit, WP-WR) |

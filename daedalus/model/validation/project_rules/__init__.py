@@ -107,6 +107,7 @@ class _ProjectRules(
         errors.extend(_NamingRules._check_dangling_string_references(project))
         errors.extend(_NamingRules._check_wrapped_sources(project))
         errors.extend(_NamingRules._check_external_plugins(project))
+        errors.extend(_NamingRules._check_wrapped_usage(project))
         # 도구(tool_shelf) 규칙
         errors.extend(_ToolRules._check_duplicate_tool_name(project))
         errors.extend(_ToolRules._check_empty_tool_definition(project))

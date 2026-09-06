@@ -64,7 +64,7 @@ class SkillEditor(QWidget):
         from daedalus.view.editors.component_editor import ComponentEditor
         from daedalus.view.panels.file_panel import SkillFilesPanel
 
-        from daedalus.model.plugin.skill import WrappedSkill
+        from daedalus.model.plugin.skill import WrappedSkill, is_reference_usage
 
         right_widgets: list[QWidget] = []
         # 입력 경로 편집 패널은 없다(WP-IP) — (출처, 트리거)가 경로를 특정하고,
@@ -72,13 +72,17 @@ class SkillEditor(QWidget):
         # WrappedSkill도 워크플로 단계라 출력 포트·에이전트 호출을 procedural과
         # 동일하게 갖는다(WP-WR — 본문만 외부 정본이지 배선은 우리 소유.
         # 이 분기에서 빠져 있어 GUI에서 출력 추가가 불가능했다 — 사용자 보고).
-        if isinstance(component, (ProceduralSkill, WrappedSkill)):
+        # 단, **참조 용도로 고정된 wrapped는 제외** — 참조는 워크플로 단계가
+        # 아니라 포트가 무의미하다(사용자 확정 2026-09-07).
+        if (isinstance(component, (ProceduralSkill, WrappedSkill))
+                and not is_reference_usage(component)):
             right_widgets.append(_TransferOnPanel(component.transfer_on, title="⇄ Transfer On"))
             right_widgets.append(
                 _TransferOnPanel(component.call_agents, title="🤖 Agent Call", default_color="#8a4a4a", multiline_desc=True)
             )
-        # 참조 스킬의 링크 관리 (A9-7) — 캔버스 우클릭 "링크 추가"와 같은 함수.
-        if isinstance(component, ReferenceSkill) and project_vm is not None:
+        # 참조 링크 관리 (A9-7) — 캔버스 우클릭 "링크 추가"와 같은 함수.
+        # 참조 용도 wrapped도 같은 패널이다(is_reference_usage 단일 판정).
+        if is_reference_usage(component) and project_vm is not None:
             right_widgets.append(_ReferenceLinkPanel(component, project_vm))
 
         # 스킬별 동봉 파일 (WP-SF) — 전역 파일 독과 **동시에** 떠서, 이 스킬

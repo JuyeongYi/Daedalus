@@ -68,8 +68,17 @@ class WrappedSkillConfig(SkillConfig):
     ``source``가 핵심이다: ``<플러그인>:<스킬>`` 문자열 참조로, 본문의 정본은
     그 스킬이고 랩퍼는 워크플로 위치·배선·프론트매터만 소유한다(사용자 확정 —
     본문 수정 불가). 진입 의미론 tri-state는 ProceduralSkillConfig와 동일.
+
+    ``usage``(사용자 확정 2026-09-07): ""(미정) / "state" / "reference".
+    최초 배치 시 사용자가 고르면 **고정**된다 — 한 랩핑 스킬이 워크플로
+    단계와 참조 두 용도로 동시에 쓰이는 것을 막는다. state는 단일 배치 +
+    SKILL.md 산출(현행), reference는 참조 노드 복수 배치 + **산출 파일 없음**
+    (링크된 노드의 산출에 consult 지시만 합류). 배치 경로가 고정하는 파생
+    상태라 프론트매터로 나가지 않고 매트릭스에도 없다(set_component_field
+    거부). 구버전 파일(키 부재)은 "state"로 로드된다 — 그때는 state만 있었다.
     """
     source: str = ""
+    usage: str = ""
     disable_model_invocation: bool | None = None
     user_invocable: bool | None = None
 

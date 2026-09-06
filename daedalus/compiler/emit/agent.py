@@ -23,6 +23,7 @@ from daedalus.compiler.emit.frontmatter import (
     _yaml_scalar,
 )
 from daedalus.compiler.emit.sections import (
+    _background_references_section,
     _blackboard_section,
     _describe_access,
     _describe_guard,
@@ -399,6 +400,10 @@ def compile_agent(
     blocks.extend(_agent_outputs_section(agent))
 
     if project is not None:
+        # 배치 노드에 링크된 참조 용도 랩핑 스킬 → consult 지시 (WP-WR).
+        # skills 프론트매터 자동 합류(WP-AS)는 우리 플러그인의 스킬 이름
+        # 공간이라 외부 스킬을 담을 수 없어 본문 단락으로 낸다.
+        blocks.extend(_background_references_section(agent, project))
         blocks.extend(_tool_shelf_section(project))
         blocks.extend(_blackboard_section(project, agent))
 

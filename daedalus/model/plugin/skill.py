@@ -53,6 +53,22 @@ class WrappedSkill(Skill, WorkflowComponent):
         return [e.name for e in self.transfer_on]
 
 
+def is_reference_usage(component: object) -> bool:
+    """참조처럼 배치되는 컴포넌트인가 — ReferenceSkill, 또는 용도가
+    reference로 고정된 WrappedSkill (WP-WR, 사용자 확정 2026-09-07).
+
+    캔버스 드롭·링크·에디터 패널·emit·검증이 전부 이 판정을 쓴다 — 표면마다
+    다른 판정을 들고 있으면 참조 노드로 놓이는데 산출은 파일을 만드는 식의
+    어긋남이 생긴다.
+    """
+    if isinstance(component, ReferenceSkill):
+        return True
+    return (
+        isinstance(component, WrappedSkill)
+        and getattr(component.config, "usage", "") == "reference"
+    )
+
+
 @dataclass
 class ProceduralSkill(Skill, WorkflowComponent):
     """절차형 = Skill + FSM.

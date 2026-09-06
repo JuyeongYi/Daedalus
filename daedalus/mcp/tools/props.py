@@ -77,6 +77,7 @@ class PropsTools(_BaseTools):
         x: float | None = None,
         y: float | None = None,
         source: str = "",
+        usage: str = "",
     ) -> dict[str, Any]:
         """스킬을 만든다.
 
@@ -96,6 +97,13 @@ class PropsTools(_BaseTools):
         (조용히 무시하면 "설정했는데 아무 일도 일어나지 않는" 상태가 된다).
         생략하면 나중에 `set_component_field(name, "source", ...)`로 채운다.
 
+        usage(WP-WR): kind="wrapped"+source 전용 — "state"(기본: 워크플로
+        단계, SKILL.md 산출·단일 배치) 또는 "reference"(참조 노드 복수 배치,
+        **산출 파일 없음** — 링크된 노드의 산출에 consult 지시만 합류).
+        생성 시 **고정**되며 한 스킬 두 용도는 금지다(어긋난 배치는
+        `wrapped_usage_conflict` 경고). reference의 배치·링크는
+        `place_reference`/`link_reference`를 쓴다.
+
         x/y(G14): **함께** 주면 만들자마자 그 좌표에 배치한다 — 생성과 배치가
         1 undo 단위로 묶인다(캔버스 "여기에 만들기"와 같은 경로). reference는
         상태 노드가 아니라 참조 노드로 놓인다. declarative/transfer는 캔버스
@@ -111,6 +119,11 @@ class PropsTools(_BaseTools):
                 f"source는 kind='wrapped' 전용입니다 — '{kind}' 스킬에는 감쌀 "
                 "외부 스킬 개념이 없습니다."
             )
+        if usage and not source:
+            raise ValueError(
+                "usage는 kind='wrapped'+source와 함께만 씁니다 — 용도는 랩핑 "
+                "스킬의 개념입니다(state/reference)."
+            )
         self._reject_duplicate_name(name)
         if source:
             if (x is None) != (y is None):
@@ -122,13 +135,14 @@ class PropsTools(_BaseTools):
 
             component = create_wrapped_skill(
                 self._window, source, name=name, description=description,
-                x=x, y=y,
+                x=x, y=y, usage=usage or "state",
             )
             if component is None:  # pragma: no cover — 프로젝트는 항상 있다
                 raise RuntimeError(f"'{name}'을(를) 만들지 못했습니다.")
             return {
                 "created": name,
                 "kind": kind,
+                "usage": component.config.usage,
                 "placed": x is not None,
                 "source": source,
                 "external_plugins": list(self._project.external_plugins),
@@ -581,6 +595,12 @@ class PropsTools(_BaseTools):
             raise ValueError(f"'{name}'에는 config가 없습니다.")
         if field == "hooks":
             raise ValueError("훅 참조는 set_component_hooks를 쓰세요.")
+        if field == "usage":
+            raise ValueError(
+                "usage는 직접 설정할 수 없습니다 — 랩핑 스킬의 용도는 최초 "
+                "배치(또는 create_skill의 usage 인자)가 고정하며, 한 스킬 두 "
+                "용도는 금지입니다(WP-WR). 바꾸려면 스킬을 지우고 다시 만드세요."
+            )
         if not hasattr(config, field):
             known = [
                 f["field"] for f in self.list_component_fields(name)["fields"]

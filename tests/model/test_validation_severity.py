@@ -44,6 +44,7 @@ _WARN_RULES = frozenset({
     "parallel_join_count",
     "dangling_string_reference",
     "wrapped_source_missing",  # WP-WR
+    "wrapped_usage_conflict",  # WP-WR — 용도 고정 ↔ 배치 어긋남
     "unused_external_plugin",  # WP-WR — 선언·미참조
     "undeclared_external_plugin",  # WP-WR — 참조·미선언
     "external_plugin_no_marketplace",  # WP-WR — 아래 _EXTERNALLY_EMITTED_RULES
