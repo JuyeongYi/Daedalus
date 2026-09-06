@@ -212,3 +212,54 @@ def test_used_plugin_mcp_servers_filters_by_declaration(tmp_path):
     assert used_plugin_mcp_servers(project) == []  # 선언 없음 — 스캔도 생략
     project.external_plugins.append("alpha@m")
     assert used_plugin_mcp_servers(project) == ["srv-a"]  # 선언된 것만
+
+
+# ────────── 마켓이 선언만 하고 실물은 없는 플러그인 (사용자 보고 2026-09-07) ──────────
+
+
+def _make_marketplace(root, name, declared):
+    """marketplace.json에 plugins를 선언한 마켓 폴더."""
+    meta = root / ".claude-plugin"
+    meta.mkdir(parents=True, exist_ok=True)
+    (meta / "marketplace.json").write_text(
+        json.dumps({"name": name, "plugins": declared}), encoding="utf-8"
+    )
+
+
+def test_declared_but_not_installed_plugins_are_listed(tmp_path):
+    """마켓은 목록을 **선언**하고 실물은 설치 때 받아온다 — 실물이 없어도
+    이름·설명은 알 수 있어야 사용 선언을 할 수 있다(실측: 공식 마켓 291개
+    선언 / 로컬 실물 40개라 252개가 카탈로그에서 통째로 빠져 있었다).
+    """
+    root = tmp_path / "mkt"
+    _make_marketplace(root, "m", [
+        {"name": "alpha", "description": "설치됨"},
+        {"name": "remote-only", "description": "아직 안 받음",
+         "source": {"source": "git-subdir", "url": "https://x/y.git"}},
+    ])
+    _make_plugin(root / "plugins", "alpha", skills=["s"])
+
+    plugins = {p.name: p for p in discover_plugins(MarketplaceFolder(path=str(root)))}
+    assert set(plugins) == {"alpha", "remote-only"}
+
+    assert plugins["alpha"].installed is True
+    assert [s.name for s in plugins["alpha"].skills] == ["s"]
+
+    remote = plugins["remote-only"]
+    assert remote.installed is False
+    assert remote.description == "아직 안 받음"
+    assert remote.plugin_id == "remote-only@m"  # 사용 선언은 이것만 있으면 된다
+    # **스킬은 실물을 받기 전까지 알 수 없다**(사용자 확인) — 랩핑은 설치 후
+    assert remote.skills == []
+
+
+def test_local_실물이_선언을_이긴다(tmp_path):
+    """같은 이름이면 로컬 실물 쪽이 남는다 — 그쪽만 스킬을 안다."""
+    root = tmp_path / "mkt"
+    _make_marketplace(root, "m", [{"name": "alpha", "description": "선언 설명"}])
+    _make_plugin(root / "plugins", "alpha", skills=["s"], description="실물 설명")
+
+    plugins = discover_plugins(MarketplaceFolder(path=str(root)))
+    assert len(plugins) == 1
+    assert plugins[0].installed is True
+    assert plugins[0].description == "실물 설명"

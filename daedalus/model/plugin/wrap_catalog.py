@@ -71,6 +71,18 @@ class CataloguedPlugin:
     marketplace: str = ""
     description: str = ""
     skills: list[CataloguedSkill] = field(default_factory=list)
+    #: 로컬에 실물이 받아져 있는가 (사용자 보고 2026-09-07).
+    #:
+    #: 마켓플레이스는 `marketplace.json`에 플러그인을 **선언**만 하고 실물은
+    #: 설치할 때 받아온다(실측: 공식 마켓은 291개 선언, 로컬 실물 40개).
+    #: 예전에는 실물이 있는 것만 훑어 "마켓에는 있는데 카탈로그에 안 뜨는"
+    #: 플러그인이 252개였다.
+    #:
+    #: `False`면 **이름·설명만 안다** — 스킬 목록은 파일이 없어 알 수 없으므로
+    #: `skills`가 비어 있고, 따라서 랩핑(WrappedSkill)은 설치 후에만 된다.
+    #: 반면 **사용 선언(external_plugins)은 지금 할 수 있다** — plugin_id만
+    #: 있으면 빌드가 dependencies/enabledPlugins를 내고, 설치는 CC가 한다.
+    installed: bool = True
     #: 이 플러그인이 동봉 `.mcp.json`(또는 plugin.json `mcpServers`)으로
     #: 제공하는 MCP 서버 이름들 (이름순). 플러그인이 활성화되면 CC가 함께
     #: 로드하므로 — 에이전트 `mcp_servers` 필드 후보가 되고, LOCAL 컴파일의
@@ -191,11 +203,36 @@ def _frontmatter_fields(md_path: Path) -> dict[str, str]:
     return out
 
 
+def _read_marketplace_manifest(folder_dir: Path) -> dict | None:
+    """폴더가 마켓플레이스 저장소면 그 매니페스트(``marketplace.json``)."""
+    path = folder_dir / ".claude-plugin" / "marketplace.json"
+    return _read_json(path) if path.is_file() else None
+
+
 def _marketplace_name(folder_dir: Path) -> str:
     """폴더가 마켓플레이스 저장소면 그 이름 (``.claude-plugin/marketplace.json``)."""
-    mkt = _read_json(folder_dir / ".claude-plugin" / "marketplace.json") \
-        if (folder_dir / ".claude-plugin" / "marketplace.json").is_file() else None
+    mkt = _read_marketplace_manifest(folder_dir)
     return str(mkt.get("name", "") or "") if mkt else ""
+
+
+def _declared_plugins(manifest: dict | None) -> list[tuple[str, str]]:
+    """마켓플레이스가 **선언**한 플러그인 — [(이름, 설명)] (선언 순서).
+
+    실물이 로컬에 없어도 여기에는 있다 — 마켓은 목록을 선언하고 실물은 설치할
+    때 받아오기 때문이다. 항목의 `source`는 마켓 저장소 안 상대 경로일 수도,
+    외부 git 저장소 참조일 수도 있는데 **여기서는 구분하지 않는다**: 우리가
+    쓰는 것은 이름과 설명뿐이고, 받아오는 일은 CC 몫이다.
+    """
+    if not manifest:
+        return []
+    out: list[tuple[str, str]] = []
+    for item in manifest.get("plugins") or []:
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("name", "") or "").strip()
+        if name:
+            out.append((name, str(item.get("description", "") or "")))
+    return out
 
 
 def _scan_skills(plugin_dir: Path, plugin_id: str) -> list[CataloguedSkill]:
@@ -241,7 +278,10 @@ def discover_plugins(folder: MarketplaceFolder) -> list[CataloguedPlugin]:
     folder_dir = Path(folder.path)
     if not folder_dir.is_dir():
         return []
-    marketplace = folder.marketplace or _marketplace_name(folder_dir)
+    manifest = _read_marketplace_manifest(folder_dir)
+    marketplace = folder.marketplace or (
+        str(manifest.get("name", "") or "") if manifest else ""
+    )
 
     plugins: list[CataloguedPlugin] = []
     seen: set[str] = set()
@@ -277,6 +317,22 @@ def discover_plugins(folder: MarketplaceFolder) -> list[CataloguedPlugin]:
             visit(child, depth + 1)
 
     visit(folder_dir, 0)
+
+    # 마켓이 **선언**했지만 로컬에 실물이 없는 플러그인 — 이름·설명만 싣는다
+    # (스킬은 파일이 없어 알 수 없다). 사용 선언은 이것만으로 충분하다.
+    for name, description in _declared_plugins(manifest):
+        if name in seen:
+            continue
+        seen.add(name)
+        plugins.append(CataloguedPlugin(
+            name=name,
+            path="",  # 로컬 경로가 없다
+            marketplace=marketplace,
+            description=description,
+            skills=[],
+            installed=False,
+        ))
+
     plugins.sort(key=lambda p: p.name)
     return plugins
 

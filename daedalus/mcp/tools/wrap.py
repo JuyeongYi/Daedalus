@@ -22,8 +22,21 @@ from ._base import _BaseTools
 class WrapTools(_BaseTools):
     """외부 플러그인 카탈로그 조회 + 마켓플레이스 폴더 등록 + 사용 선언."""
 
-    def list_wrappable_skills(self) -> dict[str, Any]:
+    def list_wrappable_skills(
+        self, include_uninstalled: bool = False
+    ) -> dict[str, Any]:
         """등록된 마켓플레이스 폴더에서 외부 플러그인·스킬을 나열한다.
+
+        include_uninstalled(사용자 보고 2026-09-07): 마켓플레이스는 플러그인을
+        `marketplace.json`에 **선언**만 하고 실물은 설치할 때 받아온다(실측:
+        공식 마켓 291개 선언, 로컬 실물 40개). 기본값 False면 **설치된 것만**
+        나오고 `uninstalled_count`로 나머지가 몇 개인지 알려준다 — 수백 개를
+        매번 실으면 그것만으로 응답이 커진다. True면 미설치도 이름·설명과 함께
+        나온다(`installed: false`, `skills: []`).
+
+        미설치 플러그인도 **사용 선언은 지금 할 수 있다** — plugin_id만 있으면
+        빌드가 dependencies/enabledPlugins를 내고 설치는 CC가 한다. 다만
+        **랩핑(WrappedSkill)은 설치 후에만** 된다(스킬 이름을 알아야 한다).
 
         플러그인의 `plugin_id`(`이름[@마켓]`)를 `set_external_plugins`에 넣으면
         "이 프로젝트에서 사용" 선언이 되고 빌드가 dependencies(MARKETPLACE)/
@@ -46,36 +59,61 @@ class WrapTools(_BaseTools):
         wrapped = project_wrapped_sources(project)
         declared = set(getattr(project, "external_plugins", None) or [])
         folders_out: list[dict[str, Any]] = []
+        uninstalled_total = 0
         for folder, plugins in wrap_catalog.scan_catalog():
-            folders_out.append({
-                "path": folder.path,
-                "marketplace": folder.marketplace or None,
-                "plugins": [
-                    {
+            plugins_out: list[dict[str, Any]] = []
+            for p in plugins:
+                if not p.installed:
+                    uninstalled_total += 1
+                    if not include_uninstalled:
+                        continue
+                    # 실물을 받기 전에는 **스킬을 알 수 없다** — 마켓은 이름과
+                    # 설명만 선언한다. 사용 선언은 이것만으로 충분하다.
+                    plugins_out.append({
                         "name": p.name,
                         "plugin_id": p.plugin_id,
                         "description": p.description,
                         "used": p.plugin_id in declared,
-                        "mcp_servers": list(p.mcp_servers),
-                        "skills": [
-                            {
-                                "name": s.name,
-                                "description": s.description,
-                                "source": s.source,
-                                "already_wrapped": s.source in wrapped,
-                            }
-                            for s in p.skills
-                        ],
-                    }
-                    for p in plugins
-                ],
+                        "installed": False,
+                        "skills": [],
+                    })
+                    continue
+                plugins_out.append({
+                    "name": p.name,
+                    "plugin_id": p.plugin_id,
+                    "description": p.description,
+                    "used": p.plugin_id in declared,
+                    "installed": True,
+                    "mcp_servers": list(p.mcp_servers),
+                    "skills": [
+                        {
+                            "name": s.name,
+                            "description": s.description,
+                            "source": s.source,
+                            "already_wrapped": s.source in wrapped,
+                        }
+                        for s in p.skills
+                    ],
+                })
+            folders_out.append({
+                "path": folder.path,
+                "marketplace": folder.marketplace or None,
+                "plugins": plugins_out,
             })
         out: dict[str, Any] = {
             "marketplace_folders": folders_out,
             "external_plugins": list(
                 getattr(project, "external_plugins", None) or []
             ),
+            # 마켓이 선언했지만 아직 받지 않은 것 — 스킬은 설치 후에야 안다.
+            "uninstalled_count": uninstalled_total,
         }
+        if uninstalled_total and not include_uninstalled:
+            out["uninstalled_note"] = (
+                f"설치되지 않은 플러그인 {uninstalled_total}개는 목록에서 뺐습니다 "
+                "— include_uninstalled=true로 이름·설명을 볼 수 있고, 사용 선언은 "
+                "설치 전에도 됩니다(스킬 목록과 랩핑은 설치 후)."
+            )
         if not folders_out:
             out["note"] = (
                 "등록된 마켓플레이스 폴더가 없습니다 — add_marketplace_folder"

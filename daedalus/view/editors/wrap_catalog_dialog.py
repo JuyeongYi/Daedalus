@@ -37,6 +37,7 @@ _ROLE_FOLDER_PATH = Qt.ItemDataRole.UserRole + 3  # marketplace 행: 등록 경�
 _ROLE_PLUGIN_ID = Qt.ItemDataRole.UserRole + 4    # plugin 행: 설치 식별자
 
 _COLOR_WRAPPED = QColor("#448844")
+_COLOR_MUTED = QColor("#888888")
 
 
 def project_wrapped_sources(project) -> set[str]:
@@ -146,11 +147,28 @@ class WrapCatalogDialog(QDialog):
             folder_item.setData(0, _ROLE_KIND, "marketplace")
             folder_item.setData(0, _ROLE_FOLDER_PATH, folder.path)
             self._tree.addTopLevelItem(folder_item)
+            # 마켓이 선언만 하고 실물은 아직 안 받은 플러그인은 별도 그룹으로
+            # 접어 둔다(사용자 보고 2026-09-07 — 공식 마켓은 291개 선언 중 로컬
+            # 실물이 40개였다. 한 목록에 쏟으면 설치된 것을 찾을 수 없다).
+            # **사용 선언은 여기서도 된다** — 스킬 목록과 랩핑만 설치 후다.
+            uninstalled = [p for p in plugins if not p.installed]
+            group: QTreeWidgetItem | None = None
+            if uninstalled:
+                group = QTreeWidgetItem(
+                    [f"⋯ 미설치 ({len(uninstalled)})",
+                     "이름·설명만 안다 — 체크(사용 선언)는 가능, 스킬은 설치 후"],
+                )
+                group.setData(0, _ROLE_KIND, "uninstalled-group")
+                group.setForeground(0, _COLOR_MUTED)
+                folder_item.addChild(group)
             for plugin in plugins:
                 used = plugin.plugin_id in declared
                 if used:
                     used_count += 1
+                parent_item = group if (not plugin.installed and group is not None) else folder_item
                 plugin_item = QTreeWidgetItem([f"🧩 {plugin.name}", plugin.description])
+                if not plugin.installed:
+                    plugin_item.setForeground(0, _COLOR_MUTED)
                 plugin_item.setToolTip(
                     0, f"{plugin.plugin_id}\n{plugin.path}"
                 )
@@ -162,7 +180,7 @@ class WrapCatalogDialog(QDialog):
                 plugin_item.setCheckState(
                     0, Qt.CheckState.Checked if used else Qt.CheckState.Unchecked
                 )
-                folder_item.addChild(plugin_item)
+                parent_item.addChild(plugin_item)
                 for skill in plugin.skills:
                     total += 1
                     already = skill.source in wrapped
@@ -177,7 +195,7 @@ class WrapCatalogDialog(QDialog):
                             0, f"{skill.source} — 이미 이 프로젝트에서 랩핑됨"
                         )
                     plugin_item.addChild(skill_item)
-                plugin_item.setExpanded(True)
+                plugin_item.setExpanded(plugin.installed)
             folder_item.setExpanded(True)
         return total, used_count
 
