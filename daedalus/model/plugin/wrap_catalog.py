@@ -192,11 +192,14 @@ def _read_json(path: Path) -> dict | None:
 
 
 def _frontmatter_fields(md_path: Path) -> dict[str, str]:
-    """SKILL.md 맨 앞 프론트매터의 단순 ``key: value`` 필드만 뽑는다.
+    """SKILL.md 맨 앞 프론트매터의 ``key: value`` 필드를 뽑는다.
 
-    풀 YAML 파서가 아니다 — name/description 표시용이라 한 줄 스칼라만 다루고,
-    그 외(멀티라인·리스트)는 조용히 건너뛴다. 파일이 없거나 프론트매터가 없으면
-    빈 dict.
+    풀 YAML 파서가 아니다 — name/description 표시용이다. 한 줄 스칼라와
+    **블록 스칼라**(``description: >`` / ``|`` 뒤에 들여쓴 여러 줄)를 다루고,
+    그 외(리스트 등)는 조용히 건너뛴다. 블록 스칼라를 넣은 이유는 실측이다:
+    공식 마켓의 여러 스킬이 그 형식을 쓰는데, 한 줄만 보면 설명이 문자 그대로
+    `">"`로 표시된다. 접힘 여부와 무관하게 한 줄로 합친다(목록 한 칸에 들어갈
+    문자열이 필요할 뿐이다). 파일이 없거나 프론트매터가 없으면 빈 dict.
     """
     try:
         text = md_path.read_text(encoding="utf-8", errors="replace")
@@ -206,12 +209,32 @@ def _frontmatter_fields(md_path: Path) -> dict[str, str]:
     if not lines or lines[0].strip() != "---":
         return {}
     out: dict[str, str] = {}
-    for line in lines[1:]:
+    body = lines[1:]
+    i = 0
+    while i < len(body):
+        line = body[i]
+        i += 1
         if line.strip() == "---":
             break
         key, sep, value = line.partition(":")
-        if sep and key.strip() and not key.startswith((" ", "\t")):
-            out[key.strip()] = value.strip().strip('"').strip("'")
+        if not sep or not key.strip() or key.startswith((" ", "\t")):
+            continue
+        key = key.strip()
+        value = value.strip()
+        if value.rstrip("-+") in (">", "|"):
+            # 블록 스칼라 — 뒤따르는 들여쓴 줄들이 값이다.
+            chunk: list[str] = []
+            while i < len(body):
+                nxt = body[i]
+                if nxt.strip() == "---":
+                    break
+                if nxt.strip() and not nxt.startswith((" ", "\t")):
+                    break
+                chunk.append(nxt.strip())
+                i += 1
+            out[key] = " ".join(part for part in chunk if part)
+            continue
+        out[key] = value.strip('"').strip("'")
     return out
 
 

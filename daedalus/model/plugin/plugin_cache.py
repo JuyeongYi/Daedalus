@@ -24,6 +24,7 @@ Qt 무관 순수 stdlib(+ `git` 실행 파일). 검증기·컴파일러는 이 �
 """
 from __future__ import annotations
 
+import hashlib
 import re
 import shutil
 import subprocess
@@ -51,9 +52,22 @@ class GitSource:
 
     @property
     def cache_key(self) -> str:
-        """캐시 폴더 이름 — 경로로 쓸 수 있게 안전한 문자만 남긴다."""
+        """캐시 폴더 이름 — **짧게** 유지한다(사용자 보고 2026-09-07).
+
+        Windows 기본 경로 한도는 260자이고, 저장소 안 파일 경로가 그 예산의
+        대부분을 쓴다. 예전에는 url·path·ref를 그대로 이어 붙여(최대 120자)
+        폴더 이름 하나가 예산의 절반을 먹었고, 깊은 저장소를 받으면 git이
+        "Filename too long"으로 실패했다.
+
+        이제 저장소 이름(사람이 캐시 폴더를 보고 알아볼 수 있게) + 원본 전체의
+        해시로 짧게 만든다. 해시라 충돌 걱정 없이 url·path·ref가 다르면 다른
+        폴더이고, 같으면 같은 폴더다(재수신 회피의 근거는 그대로).
+        """
         raw = f"{self.url}__{self.path}__{self.ref or 'HEAD'}"
-        return re.sub(r"[^A-Za-z0-9._-]+", "_", raw)[:120]
+        digest = hashlib.sha1(raw.encode("utf-8")).hexdigest()[:10]
+        stem = re.sub(r"[^A-Za-z0-9._-]+", "-", self.url.rstrip("/").rsplit("/", 1)[-1])
+        stem = stem.removesuffix(".git")[:24].strip("-.") or "repo"
+        return f"{stem}-{digest}"
 
 
 def parse_git_source(spec: object) -> GitSource | None:
@@ -110,19 +124,54 @@ def _run_git(args: list[str], cwd: Path | None = None) -> None:
     except subprocess.CalledProcessError as exc:
         detail = (exc.stderr or b"").decode("utf-8", "replace").strip().splitlines()
         tail = detail[-1] if detail else f"git 종료 코드 {exc.returncode}"
-        raise PluginCacheError(f"받지 못했습니다 — {tail}") from exc
+        message = f"받지 못했습니다 — {tail}"
+        # Windows 260자 한도에 걸린 경우. 우리 쪽 예산(캐시 키·sparse)은 이미
+        # 줄였으므로 남는 길은 OS·git 설정이다 — 무엇을 켜야 하는지 말해 준다.
+        if "Filename too long" in (tail or "") or "too long" in (tail or "").lower():
+            message += (
+                "\n경로가 너무 깁니다(Windows 260자 한도). "
+                "`git config --global core.longpaths true`를 켜고, 그래도 안 되면 "
+                "Windows의 긴 경로 지원(LongPathsEnabled)을 활성화하세요."
+            )
+        raise PluginCacheError(message) from exc
+
+
+def _try_git(args: list[str], cwd: Path | None = None) -> bool:
+    """실패해도 넘어가는 git 실행 — 있으면 좋은 최적화 전용."""
+    try:
+        _run_git(args, cwd=cwd)
+    except PluginCacheError:
+        return False
+    return True
 
 
 def _shallow_clone(source: GitSource, dest: Path) -> None:
-    """지정한 ref 하나만 얕게 받는다.
+    """지정한 ref 하나만, 필요한 하위 경로만 얕게 받는다.
 
     `git clone --branch`는 태그·브랜치만 받으므로 **커밋 SHA를 지정할 수
     없다**(선언에는 SHA가 흔하다). init + fetch 조합이면 SHA·태그·브랜치가
     모두 통한다.
+
+    경로 길이 대책 둘(사용자 보고 2026-09-07 — 파일 이름이 길어 실패):
+    - `core.longpaths`를 이 저장소에 켠다. 전역 설정을 건드리지 않으므로
+      사용자의 다른 작업에 영향이 없다.
+    - 선언에 `path`가 있으면 **그 디렉토리만** 체크아웃한다(sparse). 받는 양도
+      줄고, 저장소 다른 곳의 긴 경로가 애초에 펼쳐지지 않는다.
+
+    둘 다 **best-effort**다 — 낡은 git이 거부하면 그냥 전체를 받는다. 있으면
+    좋은 최적화 때문에 받기 자체가 실패하면 안 된다.
     """
     dest.mkdir(parents=True, exist_ok=True)
     _run_git(["init", "--quiet"], cwd=dest)
+    _try_git(["config", "core.longpaths", "true"], cwd=dest)
     _run_git(["remote", "add", "origin", source.url], cwd=dest)
+
+    sub = source.path.strip("/")
+    if sub and _try_git(["sparse-checkout", "init", "--cone"], cwd=dest):
+        if not _try_git(["sparse-checkout", "set", sub], cwd=dest):
+            # 켜 두고 대상을 못 정하면 체크아웃이 텅 빈다 — 되돌려 전체를 받는다.
+            _try_git(["sparse-checkout", "disable"], cwd=dest)
+
     target = source.ref or "HEAD"
     _run_git(["fetch", "--depth", "1", "--quiet", "origin", target], cwd=dest)
     _run_git(["checkout", "--quiet", "FETCH_HEAD"], cwd=dest)

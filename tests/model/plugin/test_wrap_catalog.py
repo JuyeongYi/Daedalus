@@ -367,3 +367,33 @@ def test_files_without_manifest_are_not_an_error(tmp_path, monkeypatch, capsys):
     assert plugin.files_from == "installed"
     assert plugin.skills == []
     assert "읽지 못했습니다" not in capsys.readouterr().err
+
+
+def test_block_scalar_description_is_read(tmp_path):
+    """공식 마켓의 여러 스킬이 `description: >` 형식을 쓴다 — 한 줄만 보면
+    설명이 문자 그대로 ">"로 표시된다(실측)."""
+    root = tmp_path / "mkt"
+    plugin_dir = root / "plugins" / "p"
+    meta = plugin_dir / ".claude-plugin"
+    meta.mkdir(parents=True)
+    (meta / "plugin.json").write_text(json.dumps({"name": "p"}), encoding="utf-8")
+    sdir = plugin_dir / "skills" / "s"
+    sdir.mkdir(parents=True)
+    (sdir / "SKILL.md").write_text(
+        "\n".join([
+            "---",
+            "name: s",
+            "description: >",
+            "  Edits photos in bulk.",
+            "  Use when the user has many images.",
+            "allowed-tools: [Read]",
+            "---",
+            "",
+        ]),
+        encoding="utf-8",
+    )
+
+    plugin = discover_plugins(MarketplaceFolder(path=str(root)))[0]
+    assert plugin.skills[0].description == (
+        "Edits photos in bulk. Use when the user has many images."
+    )

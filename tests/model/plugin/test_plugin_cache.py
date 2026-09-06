@@ -79,14 +79,19 @@ def test_parse_rejects_non_clonable(spec):
     assert plugin_cache.parse_git_source(spec) is None
 
 
-def test_cache_key_is_path_safe_and_bounded():
+def test_cache_key_is_path_safe_and_short():
+    """폴더 이름이 길면 그만큼 파일 경로 예산을 먹는다 — Windows 260자 한도에서
+    깊은 저장소가 "Filename too long"으로 실패한다(사용자 보고 2026-09-07)."""
     key = plugin_cache.GitSource(
-        url="https://github.com/o/r.git", path="a/b", ref="x" * 300
+        url="https://github.com/o/some-very-long-repository-name.git",
+        path="a/b/c/d", ref="x" * 300,
     ).cache_key
-    assert len(key) <= 120
+    assert len(key) <= 40
     assert not set(key) - set(
         "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-"
     )
+    # 사람이 캐시 폴더를 보고 어느 저장소인지 알아볼 수 있어야 한다
+    assert key.startswith("some-very-long-repositor")
 
 
 def test_cache_key_separates_refs():
@@ -181,4 +186,71 @@ def test_missing_git_is_reported_plainly(cache_home, monkeypatch):
 
     monkeypatch.setattr(plugin_cache.subprocess, "run", _no_git)
     with pytest.raises(plugin_cache.PluginCacheError, match="git"):
+        plugin_cache.cached_skills("p@mkt", SPEC)
+
+
+# --- 경로 길이 대책 (사용자 보고 2026-09-07 — "파일 길다고 안 되는 경우") ---
+
+
+@pytest.fixture
+def git_calls(monkeypatch, tmp_path):
+    """`_run_git`을 가로채 인자를 기록한다 — 진짜 git은 돌지 않는다."""
+    calls: list[list[str]] = []
+
+    def _fake(args, cwd=None):
+        calls.append(list(args))
+        if args[:1] == ["checkout"] and cwd is not None:
+            _write_plugin(Path(cwd) / "plugins" / "x", {"review": "R."})
+
+    monkeypatch.setattr(plugin_cache, "_run_git", _fake)
+    return calls
+
+
+def test_clone_enables_long_paths_and_sparse_checkout(cache_home, git_calls):
+    plugin_cache.cached_skills("p@mkt", SPEC)
+    flat = [" ".join(c) for c in git_calls]
+    # 전역 설정을 건드리지 않고 이 저장소에만 켠다
+    assert "config core.longpaths true" in flat
+    # 선언에 path가 있으면 그 디렉토리만 — 받는 양도, 펼쳐지는 경로도 줄어든다
+    assert "sparse-checkout set plugins/x" in flat
+
+
+def test_no_sparse_when_plugin_is_repo_root(cache_home, git_calls, monkeypatch):
+    monkeypatch.setattr(
+        plugin_cache, "_run_git",
+        lambda args, cwd=None: (
+            git_calls.append(list(args)),
+            _write_plugin(Path(cwd), {"a": "A."}) if args[:1] == ["checkout"] else None,
+        )[0],
+    )
+    plugin_cache.cached_skills("p@mkt", {**SPEC, "path": ""})
+    assert not any(c[:1] == ["sparse-checkout"] for c in git_calls)
+
+
+def test_sparse_failure_falls_back_to_full_checkout(cache_home, monkeypatch):
+    """있으면 좋은 최적화 때문에 받기 자체가 실패하면 안 된다."""
+    calls: list[list[str]] = []
+
+    def _fake(args, cwd=None):
+        calls.append(list(args))
+        if args[:1] == ["sparse-checkout"] and args[1:2] != ["disable"]:
+            raise plugin_cache.PluginCacheError("낡은 git")
+        if args[:1] == ["checkout"] and cwd is not None:
+            _write_plugin(Path(cwd) / "plugins" / "x", {"review": "R."})
+
+    monkeypatch.setattr(plugin_cache, "_run_git", _fake)
+    skills = plugin_cache.cached_skills("p@mkt", SPEC)
+    assert [s.name for s in skills] == ["review"]  # 전체를 받아 그대로 읽었다
+
+
+def test_long_path_failure_explains_the_fix(cache_home, monkeypatch):
+    import subprocess
+
+    def _boom(*args, **kwargs):
+        raise subprocess.CalledProcessError(
+            128, "git", stderr=b"error: unable to create file x: Filename too long"
+        )
+
+    monkeypatch.setattr(plugin_cache.subprocess, "run", _boom)
+    with pytest.raises(plugin_cache.PluginCacheError, match="core.longpaths"):
         plugin_cache.cached_skills("p@mkt", SPEC)
