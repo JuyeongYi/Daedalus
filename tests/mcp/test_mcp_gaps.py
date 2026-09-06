@@ -713,7 +713,7 @@ def test_get_project_sections_default_is_full(tools):
     full = tools.get_project()
     assert set(full) == {
         "name", "description", "version", "build_target", "saved_path",
-        "emit_progress_hook", "mcp_server_defs", "workspace_docs",
+        "emit_progress_hook", "mcp_server_defs", "external_plugins", "workspace_docs",
         "can_undo", "can_redo",
         "skills", "agents", "placements", "transitions", "references",
         "blackboard_classes", "hook_library", "global_hooks",
@@ -729,7 +729,7 @@ def test_get_project_sections_combines_multiple_groups(tools):
     result = tools.get_project(sections=["meta", "hooks"])
     assert set(result) == {
         "name", "description", "version", "build_target", "saved_path",
-        "emit_progress_hook", "mcp_server_defs", "workspace_docs",
+        "emit_progress_hook", "mcp_server_defs", "external_plugins", "workspace_docs",
         "can_undo", "can_redo",
         "hook_library", "global_hooks",
     }

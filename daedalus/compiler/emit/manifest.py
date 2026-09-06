@@ -71,6 +71,22 @@ def compile_schemas_json(project) -> str | None:
 # ─────────────────────────── plugin.json (매니페스트) ───────────────────────────
 
 
+def external_plugin_ids(project) -> list[str]:
+    """사용 선언된 외부 플러그인 id 목록 (이름순 정렬·중복 제거 — 결정적).
+
+    배선(dependencies/enabledPlugins)의 단일 진실은
+    ``PluginProject.external_plugins`` **선언**이다 — 랩핑 스킬 source를
+    스캔하지 않는다(사용자 확정 2026-09-06: 사용 선언이 따로 있으므로 랩핑
+    여부와 무관하고, 선언·참조의 어긋남은 검증 경고
+    ``unused_external_plugin``/``undeclared_external_plugin``이 짚는다).
+    """
+    return sorted({
+        str(p).strip()
+        for p in getattr(project, "external_plugins", None) or []
+        if str(p).strip()
+    })
+
+
 def compile_plugin_manifest(project) -> str:
     """프로젝트 → .claude-plugin/plugin.json 텍스트 (LF, 결정적, 항상 생성).
 
@@ -83,17 +99,11 @@ def compile_plugin_manifest(project) -> str:
         manifest["description"] = description
     manifest["version"] = getattr(project, "version", "0.1.0")
 
-    # WP-WR — 랩핑 스킬의 소스 플러그인을 의존성으로 선언한다. 키·형식은
-    # SchemaStore claude-code-plugin-manifest.json 스키마 확인(2026-09-06):
+    # WP-WR — 사용 외부 플러그인을 의존성으로 선언한다. 키·형식은 SchemaStore
+    # claude-code-plugin-manifest.json 스키마 확인(2026-09-06):
     # "dependencies": ["name" | "name@marketplace"] — bare name은 자기
     # 마켓플레이스 기준 해소. 이름순 정렬·중복 제거(결정적).
-    deps = sorted({
-        source.partition(":")[0].strip()
-        for skill in getattr(project, "skills", [])
-        if getattr(skill, "kind", "") == "wrapped_skill"
-        for source in [getattr(getattr(skill, "config", None), "source", "") or ""]
-        if source.partition(":")[0].strip() and source.partition(":")[2].strip()
-    })
+    deps = external_plugin_ids(project)
     if deps:
         manifest["dependencies"] = deps
 

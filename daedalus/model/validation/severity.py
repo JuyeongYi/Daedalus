@@ -54,7 +54,9 @@ WARNING_RULES: frozenset[str] = frozenset({
     # 프로젝트 수준 경고
     "dangling_string_reference",
     "wrapped_source_missing",  # WP-WR
-    "wrapped_source_no_marketplace",  # WP-WR — 컴파일러 emit
+    "unused_external_plugin",  # WP-WR — 선언했는데 어떤 랩핑 스킬도 참조 안 함
+    "undeclared_external_plugin",  # WP-WR — 랩핑 소스가 미선언 플러그인을 가리킴
+    "external_plugin_no_marketplace",  # WP-WR — 컴파일러 emit (bare 선언은 enabledPlugins 불가)
     "invalid_component_name",  # 빈 이름 제외는 is_warning에서 처리
     # 도구(tool_shelf) 경고
     "dangling_tool_ref",

@@ -4,6 +4,10 @@
 D1=런타임 참조(사용자 확정): 산출 본문은 소스 복사가 아니라 인보크 지시 +
 우리 그래프 유도 단락. 소스는 자기 플러그인에서 실행돼 경로 변수·프론트매터가
 소스 기준으로 동작한다.
+
+배선(dependencies/enabledPlugins)의 단일 진실은 **`PluginProject.
+external_plugins` 사용 선언**이다(사용자 확정 2026-09-06) — 랩핑 스킬 source는
+배선에 쓰이지 않고, 선언·참조의 어긋남은 검증 경고 2종이 짚는다.
 """
 from __future__ import annotations
 
@@ -34,6 +38,17 @@ def _wrapped(name: str = "review-step", source: str = "other@mkt:code-review") -
     )
 
 
+def _project_with_wrapped(source: str = "other@mkt:code-review", declare: bool = True,
+                          build_target: BuildTarget = BuildTarget.MARKETPLACE):
+    """랩핑 스킬 1개 + (기본) 그 플러그인 사용 선언까지 갖춘 프로젝트."""
+    project = PluginProject(name="p", build_target=build_target)
+    project.skills.append(_wrapped(source=source))
+    if declare:
+        plugin_id = source.partition(":")[0]
+        project.external_plugins.append(plugin_id)
+    return project
+
+
 # ─────────────────────────── source 파싱 ───────────────────────────
 
 
@@ -56,6 +71,19 @@ def test_wrapped_skill_roundtrip():
     assert skill.kind == "wrapped_skill"
     assert skill.config.source == "other@mkt:code-review"
     assert skill.output_events == ["done"]
+
+
+def test_external_plugins_roundtrip():
+    project = PluginProject(name="p")
+    project.external_plugins.extend(["other@mkt", "bare-plugin"])
+    loaded = deserialize_project(serialize_project(project))
+    assert loaded.external_plugins == ["other@mkt", "bare-plugin"]
+
+
+def test_legacy_file_without_external_plugins_loads_empty():
+    data = serialize_project(PluginProject(name="p"))
+    del data["external_plugins"]
+    assert deserialize_project(data).external_plugins == []
 
 
 # ─────────────────────────── emit ───────────────────────────
@@ -108,19 +136,26 @@ def test_placed_wrapped_gets_graph_sections():
     assert "## Next Steps" in text
 
 
-# ─────────────────────────── 의존성 배선 ───────────────────────────
+# ─────────────────────────── 의존성 배선 — 선언(external_plugins) 기반 ───────────────────────────
 
 
-def test_manifest_declares_dependencies():
+def test_manifest_dependencies_from_declaration():
+    """dependencies는 external_plugins 선언에서 나온다 — 랩핑 스킬이 없어도."""
     project = PluginProject(name="p")
-    project.skills.append(_wrapped(source="other@mkt:code-review"))
-    project.skills.append(_wrapped(name="w2", source="second:lint"))
+    project.external_plugins.extend(["second", "other@mkt", "other@mkt"])
     manifest = json.loads(compile_plugin_manifest(project))
-    # 이름순 정렬·중복 제거, name@marketplace/bare 둘 다 (매니페스트는 bare 허용)
-    assert manifest["dependencies"] == ["other@mkt", "second"]
+    assert manifest["dependencies"] == ["other@mkt", "second"]  # 정렬·중복 제거
 
 
-def test_manifest_no_dependencies_key_without_wrapped():
+def test_manifest_ignores_wrapped_sources_without_declaration():
+    """랩핑 스킬 source는 배선에 쓰이지 않는다(선언이 단일 진실) — 어긋남은
+    undeclared_external_plugin 경고 소관."""
+    project = _project_with_wrapped(declare=False)
+    manifest = json.loads(compile_plugin_manifest(project))
+    assert "dependencies" not in manifest
+
+
+def test_manifest_no_dependencies_key_without_declaration():
     manifest = json.loads(compile_plugin_manifest(PluginProject(name="p")))
     assert "dependencies" not in manifest
 
@@ -128,8 +163,7 @@ def test_manifest_no_dependencies_key_without_wrapped():
 def test_local_compile_bakes_enabled_plugins(tmp_path):
     from daedalus.compiler.project_compiler import compile_project
 
-    project = PluginProject(name="p", build_target=BuildTarget.LOCAL)
-    project.skills.append(_wrapped())
+    project = _project_with_wrapped(build_target=BuildTarget.LOCAL)
     result = compile_project(project, tmp_path)
     assert not result.errors
     obj = json.loads(
@@ -140,14 +174,28 @@ def test_local_compile_bakes_enabled_plugins(tmp_path):
     assert "enabledPlugins" not in project.workspace_settings
 
 
-def test_local_bare_plugin_warns_and_skips_enable(tmp_path):
+def test_local_enabled_plugins_without_any_wrapped_skill(tmp_path):
+    """사용 선언만으로 배선된다 — 랩핑 스킬을 만들 필요가 없다(사용자 확정)."""
     from daedalus.compiler.project_compiler import compile_project
 
     project = PluginProject(name="p", build_target=BuildTarget.LOCAL)
-    project.skills.append(_wrapped(source="bare-plugin:skill"))
+    project.external_plugins.append("other@mkt")
+    result = compile_project(project, tmp_path)
+    assert not result.errors
+    obj = json.loads(
+        (tmp_path / ".claude" / "settings.json").read_text(encoding="utf-8")
+    )
+    assert obj["enabledPlugins"] == {"other@mkt": True}
+
+
+def test_local_bare_declaration_warns_and_skips_enable(tmp_path):
+    from daedalus.compiler.project_compiler import compile_project
+
+    project = PluginProject(name="p", build_target=BuildTarget.LOCAL)
+    project.external_plugins.append("bare-plugin")
     result = compile_project(project, tmp_path)
     rules = [w.rule for w in result.warnings]
-    assert "wrapped_source_no_marketplace" in rules
+    assert "external_plugin_no_marketplace" in rules
     settings = tmp_path / ".claude" / "settings.json"
     if settings.exists():
         assert "enabledPlugins" not in json.loads(settings.read_text(encoding="utf-8"))
@@ -157,8 +205,7 @@ def test_local_enabled_plugins_to_chosen_settings_file(tmp_path):
     """settings_filename 선택(WP-WS)이 enabledPlugins 베이크에도 그대로 적용된다."""
     from daedalus.compiler.project_compiler import compile_project
 
-    project = PluginProject(name="p", build_target=BuildTarget.LOCAL)
-    project.skills.append(_wrapped())
+    project = _project_with_wrapped(build_target=BuildTarget.LOCAL)
     result = compile_project(project, tmp_path, settings_filename="settings.local.json")
     assert not result.errors
     obj = json.loads(
@@ -177,8 +224,7 @@ def test_local_existing_enabled_plugins_preserved(tmp_path):
     (claude_dir / "settings.json").write_text(
         json.dumps({"enabledPlugins": {"user-added@x": True}}), encoding="utf-8"
     )
-    project = PluginProject(name="p", build_target=BuildTarget.LOCAL)
-    project.skills.append(_wrapped())
+    project = _project_with_wrapped(build_target=BuildTarget.LOCAL)
     compile_project(project, tmp_path)
     obj = json.loads((claude_dir / "settings.json").read_text(encoding="utf-8"))
     assert obj["enabledPlugins"] == {"user-added@x": True, "other@mkt": True}
@@ -191,38 +237,69 @@ def test_local_existing_enabled_plugins_preserved(tmp_path):
 def test_local_dry_run_writes_nothing_but_reports(tmp_path):
     from daedalus.compiler.project_compiler import compile_project
 
-    project = PluginProject(name="p", build_target=BuildTarget.LOCAL)
-    project.skills.append(_wrapped())
+    project = _project_with_wrapped(build_target=BuildTarget.LOCAL)
     result = compile_project(project, tmp_path, dry_run=True)
     assert not result.errors
     assert not (tmp_path / ".claude").exists()  # 디스크 완전 불변
     assert any(str(p).endswith("settings.json") for p in result.written)
 
 
-def test_bare_source_warning_survives_dry_run_without_out_dir():
-    """bare 소스 판정은 대상 폴더와 무관하다 — out_dir 없는 compile_check에서도
+def test_bare_declaration_warning_survives_dry_run_without_out_dir():
+    """bare 선언 판정은 대상 폴더와 무관하다 — out_dir 없는 compile_check에서도
     경고가 나와야 한다(missing_mcp_server_def와 같은 규약)."""
     from daedalus.compiler.project_compiler import compile_project
 
     project = PluginProject(name="p", build_target=BuildTarget.LOCAL)
-    project.skills.append(_wrapped(source="bare-plugin:skill"))
+    project.external_plugins.append("bare-plugin")
     result = compile_project(project, None, dry_run=True)
-    assert "wrapped_source_no_marketplace" in [w.rule for w in result.warnings]
+    assert "external_plugin_no_marketplace" in [w.rule for w in result.warnings]
 
 
 def test_marketplace_build_wires_manifest_dependencies(tmp_path):
-    """MARKETPLACE 빌드 산출 파일에 dependencies가 실제로 실린다 (emit 단위가
-    아니라 compile_project 경로 — 사용자 요구 '관련 처리 확실하게')."""
+    """MARKETPLACE 빌드 산출 파일에 dependencies가 실제로 실린다."""
     from daedalus.compiler.project_compiler import compile_project
 
-    project = PluginProject(name="p")  # 기본 MARKETPLACE
-    project.skills.append(_wrapped())
+    project = _project_with_wrapped()  # 기본 MARKETPLACE + 선언
     result = compile_project(project, tmp_path)
     assert not result.errors
     manifest = json.loads(
         (tmp_path / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8")
     )
     assert manifest["dependencies"] == ["other@mkt"]
+
+
+# ─────────────── 외부 플러그인 제공 MCP 서버 (provided_server_names) ───────────────
+
+
+def _project_with_agent_server(server: str = "extsrv"):
+    from daedalus.model.plugin.agent import AgentDefinition
+    from daedalus.model.plugin.config import AgentConfig
+    from daedalus.model.fsm.section import EventDef
+
+    project = PluginProject(name="p", build_target=BuildTarget.LOCAL)
+    entry = EntryPoint(name="start")
+    project.agents.append(AgentDefinition(
+        fsm=StateMachine(name="a_fsm", states=[entry], initial_state=entry),
+        name="worker", description="w",
+        config=AgentConfig(mcp_servers=[server]),
+        transfer_on=[EventDef(name="done")],
+    ))
+    return project
+
+
+def test_provided_server_names_suppress_missing_def(tmp_path):
+    """사용 선언된 외부 플러그인이 동봉 .mcp.json으로 제공하는 서버는 정의가
+    없어도 missing_mcp_server_def를 내지 않는다 — 플러그인 활성화가 가져온다."""
+    from daedalus.compiler.project_compiler import compile_project
+
+    project = _project_with_agent_server("extsrv")
+    without = compile_project(project, tmp_path / "a", dry_run=True)
+    assert "missing_mcp_server_def" in [w.rule for w in without.warnings]
+    with_provided = compile_project(
+        project, tmp_path / "b", dry_run=True,
+        provided_server_names={"extsrv"},
+    )
+    assert "missing_mcp_server_def" not in [w.rule for w in with_provided.warnings]
 
 
 # ─────────────────────────── 검증 ───────────────────────────
@@ -235,11 +312,41 @@ def test_wrapped_source_missing_warns():
     assert "wrapped_source_missing" in rules
 
 
-def test_valid_source_no_warning():
-    project = PluginProject(name="p")
-    project.skills.append(_wrapped())
+def test_valid_declared_source_no_warning():
+    project = _project_with_wrapped()
     rules = [e.rule for e in Validator.validate_project(project)]
     assert "wrapped_source_missing" not in rules
+    assert "undeclared_external_plugin" not in rules
+    assert "unused_external_plugin" not in rules
+
+
+def test_undeclared_external_plugin_warns():
+    """랩핑 스킬이 미선언 플러그인을 가리키면 경고 — 선언이 없으면 배선이
+    나가지 않아 런타임에 스킬을 찾지 못한다."""
+    project = _project_with_wrapped(declare=False)
+    rules = [e.rule for e in Validator.validate_project(project)]
+    assert "undeclared_external_plugin" in rules
+
+
+def test_unused_external_plugin_warns():
+    """선언했는데 어떤 랩핑 스킬도 참조하지 않으면 경고만 — 배선은 그대로
+    나간다(의도적 활성화 허용, 사용자 확정)."""
+    project = PluginProject(name="p")
+    project.external_plugins.append("other@mkt")
+    issues = Validator.validate_project(project)
+    rules = [e.rule for e in issues]
+    assert "unused_external_plugin" in rules
+    assert all(e.is_warning for e in issues if e.rule == "unused_external_plugin")
+
+
+def test_marketplace_mismatch_is_both_warnings():
+    """alpha@mkt 선언 ↔ alpha 참조는 다른 설치 대상 — 양쪽 경고."""
+    project = PluginProject(name="p")
+    project.skills.append(_wrapped(source="alpha:skill"))
+    project.external_plugins.append("alpha@mkt")
+    rules = [e.rule for e in Validator.validate_project(project)]
+    assert "undeclared_external_plugin" in rules
+    assert "unused_external_plugin" in rules
 
 
 def test_same_source_multiple_wrappers_is_normal():
@@ -247,6 +354,8 @@ def test_same_source_multiple_wrappers_is_normal():
     project = PluginProject(name="p")
     project.skills.append(_wrapped(name="review-a"))
     project.skills.append(_wrapped(name="review-b"))
+    project.external_plugins.append("other@mkt")
     issues = Validator.validate_project(project)
     assert not [e for e in issues if not e.is_warning]
     assert "wrapped_source_missing" not in [e.rule for e in issues]
+    assert "undeclared_external_plugin" not in [e.rule for e in issues]

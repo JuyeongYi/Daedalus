@@ -1,23 +1,27 @@
 # daedalus/model/plugin/wrap_catalog.py
-"""랩핑 소스 카탈로그 (WP-WR 2단계, D2) — 등록된 플러그인 루트에서 랩핑 가능한
-스킬을 발견한다.
+"""외부 마켓플레이스 카탈로그 (WP-WR 2단계, D2) — 등록된 **마켓플레이스 폴더**에서
+외부 플러그인·스킬을 발견한다.
 
 **파일시스템을 아는 모듈이다**(hook_store와 같은 지위) — 검증기·컴파일러는 이
 모듈을 임포트하지 않는다(그쪽은 파일시스템 무접근 순수성을 유지하고, 실존 검사가
 필요해지면 호출자가 결과를 주입한다). Qt 무관 순수 stdlib.
 
-루트 등록의 단일 진실은 ``~/.daedalus/plugin_roots.json``:
+마켓플레이스 폴더 등록의 단일 진실은 ``~/.daedalus/external_marketplaces.json``:
 
     [{"path": "C:/Users/me/.claude/plugins/marketplaces/my-mkt", "marketplace": "my-mkt"},
      {"path": "D:/plugins/standalone", "marketplace": ""}]
 
-- 루트 하나는 "그 밑을 훑으면 플러그인들이 나오는 폴더"다 — 마켓플레이스 저장소,
-  ``~/.claude/plugins`` 계열 폴더, 플러그인 디렉토리 자체 전부 가능하다.
+- 마켓플레이스 폴더 하나는 "그 밑을 훑으면 플러그인들이 나오는 폴더"다 —
+  마켓플레이스 저장소, ``~/.claude/plugins`` 계열 폴더, 플러그인 디렉토리
+  자체 전부 가능하다.
 - 마켓플레이스 이름 해소 순서: 등록 시 명시한 ``marketplace`` >
-  루트 자신의 ``.claude-plugin/marketplace.json``의 ``name`` > 빈 문자열(bare).
-  이름이 있으면 소스가 ``플러그인@마켓:스킬``로 나와 LOCAL enabledPlugins
-  배선까지 자동이고, 없으면 bare(``플러그인:스킬``)라 마켓 빌드 dependencies만
-  가능하다(컴파일이 ``wrapped_source_no_marketplace``로 짚는다).
+  폴더 자신의 ``.claude-plugin/marketplace.json``의 ``name`` > 빈 문자열(bare).
+  이름이 있으면 플러그인 id가 ``플러그인@마켓``으로 나와 LOCAL enabledPlugins
+  배선까지 자동이고, 없으면 bare(``플러그인``)라 마켓 빌드 dependencies만
+  가능하다(컴파일이 경고로 짚는다).
+- **여기는 발견(전역)만이다** — 실제로 어느 외부 플러그인을 쓰는지는
+  프로젝트 모델(``PluginProject.external_plugins``)이 저장한다(사용자 확정 —
+  사용 선언은 프로젝트 단위).
 - 깨진 JSON·읽기 실패는 stderr 경고 후 스킵한다(전역 훅 규약 — 파일 하나
   때문에 카탈로그 전체가 죽으면 안 된다).
 """
@@ -29,11 +33,11 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
-ROOTS_FILENAME = "plugin_roots.json"
+MARKETPLACES_FILENAME = "external_marketplaces.json"
 
-#: 플러그인 탐색 최대 깊이 (루트 자신 = 0). 마켓 저장소는 보통
-#: ``<루트>/plugins/<플러그인>`` 정도라 4면 충분하고, 무제한 재귀는 홈 폴더를
-#: 루트로 등록하는 실수 한 번에 UI를 멈춘다.
+#: 플러그인 탐색 최대 깊이 (마켓플레이스 폴더 자신 = 0). 마켓 저장소는 보통
+#: ``<폴더>/plugins/<플러그인>`` 정도라 4면 충분하고, 무제한 재귀는 홈 폴더를
+#: 등록하는 실수 한 번에 UI를 멈춘다.
 _MAX_SCAN_DEPTH = 4
 
 #: 탐색에서 건너뛰는 디렉토리 이름 (숨김 폴더는 ``.claude-plugin`` 확인용으로만
@@ -42,25 +46,16 @@ _SKIP_DIRS = frozenset({".git", "node_modules", "__pycache__", ".venv", "venv"})
 
 
 @dataclass
-class PluginRoot:
-    """등록된 탐색 루트.
-
-    ``excluded``는 랩핑 후보에서 **제외**할 하위 플러그인 이름 목록이다 —
-    체크 관리의 저장 극성은 제외 목록이다(사용자 확정 UX: 마켓플레이스를
-    등록하면 하위 플러그인을 체크로 관리). 새로 발견된 플러그인은 목록에
-    없으므로 기본 포함(체크됨)이고, 구버전 파일(키 부재)도 전부 포함이라
-    하위 호환이다. 사라진 플러그인의 제외 항목은 지우지 않는다 — 루트가
-    일시적으로 비어 보일 때(네트워크 드라이브 등) 상태가 증발하면 안 된다.
-    """
+class MarketplaceFolder:
+    """등록된 외부 마켓플레이스 폴더."""
 
     path: str
     marketplace: str = ""
-    excluded: list[str] = field(default_factory=list)
 
 
 @dataclass
 class CataloguedSkill:
-    """발견된 랩핑 가능 스킬."""
+    """발견된 외부 스킬."""
 
     name: str
     description: str
@@ -69,56 +64,63 @@ class CataloguedSkill:
 
 @dataclass
 class CataloguedPlugin:
-    """발견된 플러그인."""
+    """발견된 외부 플러그인."""
 
     name: str
     path: str
     marketplace: str = ""
     description: str = ""
     skills: list[CataloguedSkill] = field(default_factory=list)
+    #: 이 플러그인이 동봉 `.mcp.json`(또는 plugin.json `mcpServers`)으로
+    #: 제공하는 MCP 서버 이름들 (이름순). 플러그인이 활성화되면 CC가 함께
+    #: 로드하므로 — 에이전트 `mcp_servers` 필드 후보가 되고, LOCAL 컴파일의
+    #: `missing_mcp_server_def` 판정에서 제외된다(이 프로젝트가 배선할 것이
+    #: 없다). 개별 도구 목록은 지원하지 않는다(사용자 확정 — tools 후보에는
+    #: 넣지 않는다).
+    mcp_servers: list[str] = field(default_factory=list)
+
+    @property
+    def plugin_id(self) -> str:
+        """설치 식별자 ``이름[@마켓]`` — external_plugins·dependencies·
+        enabledPlugins가 쓰는 형식."""
+        return f"{self.name}@{self.marketplace}" if self.marketplace else self.name
 
 
-# ─────────────────────────── 루트 등록 파일 ───────────────────────────
+# ─────────────────────────── 마켓플레이스 폴더 등록 파일 ───────────────────────────
 
 
-def plugin_roots_file(home_dir: Path | None = None) -> Path:
-    """루트 등록 파일 경로. 테스트는 이 함수를 몽키패치해 홈을 격리한다."""
+def marketplaces_file(home_dir: Path | None = None) -> Path:
+    """등록 파일 경로. 테스트는 이 함수를 몽키패치해 홈을 격리한다."""
     base = home_dir if home_dir is not None else Path.home()
-    return base / ".daedalus" / ROOTS_FILENAME
+    return base / ".daedalus" / MARKETPLACES_FILENAME
 
 
-def load_plugin_roots() -> list[PluginRoot]:
-    """등록된 루트 목록. 파일이 없거나 깨져 있으면 빈 목록(stderr 경고)."""
-    path = plugin_roots_file()
+def load_marketplaces() -> list[MarketplaceFolder]:
+    """등록된 마켓플레이스 폴더 목록. 파일이 없거나 깨져 있으면 빈 목록(stderr 경고)."""
+    path = marketplaces_file()
     if not path.is_file():
         return []
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
-        print(f"[daedalus] 플러그인 루트 파일을 읽지 못했습니다 ({path}): {exc}",
+        print(f"[daedalus] 마켓플레이스 등록 파일을 읽지 못했습니다 ({path}): {exc}",
               file=sys.stderr)
         return []
-    roots: list[PluginRoot] = []
+    folders: list[MarketplaceFolder] = []
     for entry in data if isinstance(data, list) else []:
         if not isinstance(entry, dict) or not str(entry.get("path", "")).strip():
             continue
-        raw_excluded = entry.get("excluded", [])
-        roots.append(PluginRoot(
+        folders.append(MarketplaceFolder(
             path=str(entry["path"]),
             marketplace=str(entry.get("marketplace", "") or ""),
-            excluded=[str(name) for name in raw_excluded
-                      if isinstance(raw_excluded, list) and str(name).strip()],
         ))
-    return roots
+    return folders
 
 
-def save_plugin_roots(roots: list[PluginRoot]) -> None:
-    path = plugin_roots_file()
+def save_marketplaces(folders: list[MarketplaceFolder]) -> None:
+    path = marketplaces_file()
     path.parent.mkdir(parents=True, exist_ok=True)
-    data = [
-        {"path": r.path, "marketplace": r.marketplace, "excluded": r.excluded}
-        for r in roots
-    ]
+    data = [{"path": f.path, "marketplace": f.marketplace} for f in folders]
     path.write_text(
         json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )
@@ -129,49 +131,26 @@ def _norm(p: str) -> str:
     return os.path.normcase(os.path.normpath(str(p)))
 
 
-def add_plugin_root(path: str, marketplace: str = "") -> list[PluginRoot]:
-    """루트를 등록한다(경로 기준 중복이면 marketplace만 갱신 — **excluded는
-    보존**한다. 재등록으로 체크 관리 상태가 날아가면 안 된다). 갱신된 목록 반환."""
-    roots = load_plugin_roots()
-    for r in roots:
-        if _norm(r.path) == _norm(path):
-            r.marketplace = marketplace
+def add_marketplace(path: str, marketplace: str = "") -> list[MarketplaceFolder]:
+    """마켓플레이스 폴더를 등록한다(경로 기준 중복이면 이름만 갱신). 갱신된 목록 반환."""
+    folders = load_marketplaces()
+    for f in folders:
+        if _norm(f.path) == _norm(path):
+            f.marketplace = marketplace
             break
     else:
-        roots.append(PluginRoot(path=str(path), marketplace=marketplace))
-    save_plugin_roots(roots)
-    return roots
+        folders.append(MarketplaceFolder(path=str(path), marketplace=marketplace))
+    save_marketplaces(folders)
+    return folders
 
 
-def set_plugin_excluded(
-    root_path: str, plugin_name: str, excluded: bool
-) -> PluginRoot:
-    """루트 하나의 플러그인을 랩핑 후보에서 제외/포함한다 (체크 관리의 실체).
-
-    GUI 카탈로그 창의 플러그인 체크박스와 MCP ``set_plugin_excluded``가 둘 다
-    이 함수를 부른다 — 같은 조작이 표면마다 다른 결과를 내면 안 된다.
-    미등록 루트는 ValueError(체크할 대상 자체가 없다).
-    """
-    roots = load_plugin_roots()
-    for r in roots:
-        if _norm(r.path) == _norm(root_path):
-            if excluded and plugin_name not in r.excluded:
-                r.excluded.append(plugin_name)
-            elif not excluded and plugin_name in r.excluded:
-                r.excluded = [n for n in r.excluded if n != plugin_name]
-            save_plugin_roots(roots)
-            return r
-    known = ", ".join(r.path for r in roots) or "(없음)"
-    raise ValueError(f"등록되지 않은 루트입니다: {root_path}. 현재 등록: {known}")
-
-
-def remove_plugin_root(path: str) -> bool:
-    """루트 등록을 지운다. 있었으면 True."""
-    roots = load_plugin_roots()
-    kept = [r for r in roots if _norm(r.path) != _norm(path)]
-    if len(kept) == len(roots):
+def remove_marketplace(path: str) -> bool:
+    """마켓플레이스 폴더 등록을 지운다. 있었으면 True."""
+    folders = load_marketplaces()
+    kept = [f for f in folders if _norm(f.path) != _norm(path)]
+    if len(kept) == len(folders):
         return False
-    save_plugin_roots(kept)
+    save_marketplaces(kept)
     return True
 
 
@@ -182,7 +161,7 @@ def _read_json(path: Path) -> dict | None:
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
-        print(f"[daedalus] 플러그인 카탈로그 파일을 읽지 못했습니다 ({path}): {exc}",
+        print(f"[daedalus] 마켓플레이스 카탈로그 파일을 읽지 못했습니다 ({path}): {exc}",
               file=sys.stderr)
         return None
     return data if isinstance(data, dict) else None
@@ -212,10 +191,10 @@ def _frontmatter_fields(md_path: Path) -> dict[str, str]:
     return out
 
 
-def _marketplace_name(root_dir: Path) -> str:
-    """루트가 마켓플레이스 저장소면 그 이름 (``.claude-plugin/marketplace.json``)."""
-    mkt = _read_json(root_dir / ".claude-plugin" / "marketplace.json") \
-        if (root_dir / ".claude-plugin" / "marketplace.json").is_file() else None
+def _marketplace_name(folder_dir: Path) -> str:
+    """폴더가 마켓플레이스 저장소면 그 이름 (``.claude-plugin/marketplace.json``)."""
+    mkt = _read_json(folder_dir / ".claude-plugin" / "marketplace.json") \
+        if (folder_dir / ".claude-plugin" / "marketplace.json").is_file() else None
     return str(mkt.get("name", "") or "") if mkt else ""
 
 
@@ -240,13 +219,29 @@ def _scan_skills(plugin_dir: Path, plugin_id: str) -> list[CataloguedSkill]:
     return out
 
 
-def discover_plugins(root: PluginRoot) -> list[CataloguedPlugin]:
-    """루트 하나에서 플러그인(``.claude-plugin/plugin.json`` 보유 디렉토리)을
-    찾아 스킬 목록과 함께 돌려준다 (플러그인 이름순 정렬 — 결정적)."""
-    root_dir = Path(root.path)
-    if not root_dir.is_dir():
+def _scan_mcp_servers(plugin_dir: Path, manifest: dict) -> list[str]:
+    """플러그인이 제공하는 MCP 서버 이름 — 동봉 `.mcp.json`의 mcpServers 키
+    ∪ plugin.json의 `mcpServers` 키 (이름순 정렬)."""
+    names: set[str] = set()
+    mcp_json = plugin_dir / ".mcp.json"
+    if mcp_json.is_file():
+        data = _read_json(mcp_json) or {}
+        servers = data.get("mcpServers")
+        if isinstance(servers, dict):
+            names.update(str(k) for k in servers)
+    manifest_servers = manifest.get("mcpServers")
+    if isinstance(manifest_servers, dict):
+        names.update(str(k) for k in manifest_servers)
+    return sorted(names)
+
+
+def discover_plugins(folder: MarketplaceFolder) -> list[CataloguedPlugin]:
+    """마켓플레이스 폴더 하나에서 플러그인(``.claude-plugin/plugin.json`` 보유
+    디렉토리)을 찾아 스킬 목록과 함께 돌려준다 (플러그인 이름순 정렬 — 결정적)."""
+    folder_dir = Path(folder.path)
+    if not folder_dir.is_dir():
         return []
-    marketplace = root.marketplace or _marketplace_name(root_dir)
+    marketplace = folder.marketplace or _marketplace_name(folder_dir)
 
     plugins: list[CataloguedPlugin] = []
     seen: set[str] = set()
@@ -265,6 +260,7 @@ def discover_plugins(root: PluginRoot) -> list[CataloguedPlugin]:
                     marketplace=marketplace,
                     description=str(manifest.get("description", "") or ""),
                     skills=_scan_skills(directory, plugin_id),
+                    mcp_servers=_scan_mcp_servers(directory, manifest),
                 ))
             return  # 플러그인 안에 또 플러그인은 없다 — 하위 재귀 중단
         if depth >= _MAX_SCAN_DEPTH:
@@ -280,15 +276,40 @@ def discover_plugins(root: PluginRoot) -> list[CataloguedPlugin]:
                 continue
             visit(child, depth + 1)
 
-    visit(root_dir, 0)
+    visit(folder_dir, 0)
     plugins.sort(key=lambda p: p.name)
     return plugins
 
 
 def scan_catalog(
-    roots: list[PluginRoot] | None = None,
-) -> list[tuple[PluginRoot, list[CataloguedPlugin]]]:
-    """전체 카탈로그: 등록 순서대로 (루트, 발견된 플러그인들) 쌍 목록."""
-    if roots is None:
-        roots = load_plugin_roots()
-    return [(root, discover_plugins(root)) for root in roots]
+    folders: list[MarketplaceFolder] | None = None,
+) -> list[tuple[MarketplaceFolder, list[CataloguedPlugin]]]:
+    """전체 카탈로그: 등록 순서대로 (마켓플레이스 폴더, 발견된 플러그인들) 쌍 목록."""
+    if folders is None:
+        folders = load_marketplaces()
+    return [(folder, discover_plugins(folder)) for folder in folders]
+
+
+def used_plugin_mcp_servers(project) -> list[str]:
+    """사용 선언된 외부 플러그인이 제공하는 MCP 서버 이름 합집합 (이름순).
+
+    소비처 두 곳: ① 에이전트 `mcp_servers` 필드의 자동완성 후보
+    (app.set_project가 provider로 등록), ② LOCAL 컴파일 주입
+    (`compile_project(provided_server_names=)` — 이 서버들은 플러그인
+    활성화가 가져오므로 `missing_mcp_server_def` 대상이 아니다). 컴파일러는
+    파일시스템을 읽지 않으므로 호출 환경이 이 함수를 불러 주입한다
+    (resolved_hooks와 같은 경계).
+    """
+    declared = {
+        str(p).strip()
+        for p in getattr(project, "external_plugins", None) or []
+        if str(p).strip()
+    }
+    if not declared:
+        return []
+    names: set[str] = set()
+    for _folder, plugins in scan_catalog():
+        for plugin in plugins:
+            if plugin.plugin_id in declared:
+                names.update(plugin.mcp_servers)
+    return sorted(names)

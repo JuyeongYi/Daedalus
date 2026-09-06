@@ -66,6 +66,63 @@ def make_component(window, kind: str, name: str, description: str = ""):
     return factory() if factory is not None else None
 
 
+def unique_component_name(project, base: str) -> str:
+    """스킬·에이전트 이름과 겹치지 않는 이름 (겹치면 -2, -3 … 접미)."""
+    taken = {c.name for c in list(getattr(project, "skills", None) or [])
+             + list(getattr(project, "agents", None) or [])}
+    if base not in taken:
+        return base
+    n = 2
+    while f"{base}-{n}" in taken:
+        n += 1
+    return f"{base}-{n}"
+
+
+def create_wrapped_skill(
+    window, source: str, name: str | None = None, description: str = ""
+):
+    """WrappedSkill 생성 + source 대입 + 사용 플러그인 자동 선언 — 1 undo (WP-WR).
+
+    카탈로그 창의 "랩핑 스킬 생성"과 MCP `create_skill(kind="wrapped",
+    source=)`가 둘 다 이것을 부른다. source의 플러그인부가
+    `project.external_plugins`에 없으면 **함께 선언한다**(사용자 확정 —
+    사용하기로 한 플러그인은 목록에 자동 명시). 등록 전에 source를 채우므로
+    undo/redo에 소스 없는 중간 상태가 없고, 선언 추가까지 MacroCommand
+    한 단위다.
+    """
+    from daedalus.view.commands.attr_commands import SetAttrCmd
+    from daedalus.view.commands.base import Command, MacroCommand
+    from daedalus.view.commands.component_commands import CreateComponentCmd
+
+    project = getattr(window, "_project", None)
+    if project is None:
+        return None
+    if name is None:
+        _, _, skill_part = source.partition(":")
+        name = unique_component_name(project, skill_part.strip() or "wrapped-skill")
+    component = make_component(window, "wrapped", name, description)
+    if component is None:  # pragma: no cover — kind는 고정 문자열
+        return None
+    component.config.source = source
+
+    children: list[Command] = [CreateComponentCmd(project, component)]
+    plugin_id = source.partition(":")[0].strip()
+    declared = list(getattr(project, "external_plugins", None) or [])
+    if plugin_id and plugin_id not in declared:
+        children.append(SetAttrCmd(
+            project,
+            "external_plugins",
+            [*declared, plugin_id],
+            label=f"외부 플러그인 사용 선언: {plugin_id}",
+            script=f'external_plugins += "{plugin_id}"',
+        ))
+    window._project_vm.execute(
+        children[0] if len(children) == 1
+        else MacroCommand(children, f"wrapped '{name}' 생성 + 플러그인 선언")
+    )
+    return component
+
+
 def create_and_place(
     scene, window, kind: str, name: str, x: float, y: float, description: str = ""
 ) -> object | None:

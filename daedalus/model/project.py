@@ -89,6 +89,15 @@ class PluginProject:
     # 구버전 파일(키 부재)은 빈 dict.
     mcp_server_defs: dict[str, dict] = field(default_factory=dict)
 
+    # 이 프로젝트가 사용하는 외부 플러그인 id 목록 (WP-WR — 사용자 확정: 사용
+    # 선언은 프로젝트 단위 저장). 형식은 "이름[@마켓]"이고 카탈로그 창의
+    # 플러그인 체크박스·MCP set_external_plugins가 채운다. 빌드가 이 목록에서
+    # dependencies(MARKETPLACE)/enabledPlugins(LOCAL)를 자동 배선한다 —
+    # 랩핑 스킬을 만들지 않아도 사용 선언만으로 배선이 나간다(플러그인이
+    # 활성화되면 그 스킬들은 CC가 네이티브로 로드하므로, WrappedSkill은
+    # 워크플로 단계로 놓을 때만 필요하다). 구버전 파일(키 부재)은 빈 리스트.
+    external_plugins: list[str] = field(default_factory=list)
+
     # 작업 폴더 settings.json 설정 (WP-WS) — LOCAL 빌드가 대상 작업 폴더의
     # .claude/settings.local.json에 베이크하는 설정 dict(JSON 호환). 편집은
     # QClaudeCodeSettingEditorWidget(external/ 서브모듈, 스키마 구동) 다이얼로그.

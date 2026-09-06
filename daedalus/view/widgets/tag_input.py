@@ -251,3 +251,25 @@ def get_hook_names() -> list[str]:
     if _HOOK_NAME_PROVIDER is not None:
         return list(_HOOK_NAME_PROVIDER())
     return []
+
+
+# MCP 서버 이름 후보 (WP-WR) — 에이전트 MCP_SERVERS TagInput용. 사용 선언된
+# 외부 플러그인이 동봉 .mcp.json으로 제공하는 서버 + 프로젝트 mcp_server_defs
+# 이름을 app.set_project가 등록한다. tools 후보에는 넣지 않는다(개별 도구
+# 목록 미지원 — 사용자 확정). 위 provider들과 같은 패턴·같은 스냅샷 규약.
+_MCP_SERVER_PROVIDER: Callable[[], list[str]] | None = None
+
+
+def set_mcp_server_candidate_provider(
+    provider: Callable[[], list[str]] | None,
+) -> None:
+    """MCP_SERVERS TagInput이 표시할 서버 이름 목록 제공자를 등록한다."""
+    global _MCP_SERVER_PROVIDER
+    _MCP_SERVER_PROVIDER = provider
+
+
+def get_mcp_server_candidates() -> list[str]:
+    """등록된 제공자에서 현재 MCP 서버 이름 목록을 가져온다 (없으면 빈 목록)."""
+    if _MCP_SERVER_PROVIDER is not None:
+        return list(_MCP_SERVER_PROVIDER())
+    return []

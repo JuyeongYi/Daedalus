@@ -1,8 +1,9 @@
 # tests/mcp/test_wrap_tools.py
-"""랩핑 카탈로그 MCP 도구 (WP-WR D2) — GUI 카탈로그 창과의 패리티.
+"""외부 플러그인 카탈로그 MCP 도구 (WP-WR D2) — GUI 카탈로그 창과의 패리티.
 
-list_wrappable_skills/list_plugin_roots/add_plugin_root/remove_plugin_root +
-create_skill(kind="wrapped", source=...) 경로. 루트 파일은 conftest가 격리한다.
+list_wrappable_skills/list_marketplace_folders/add_marketplace_folder/
+remove_marketplace_folder/set_external_plugins +
+create_skill(kind="wrapped", source=...) 경로. 등록 파일은 conftest가 격리한다.
 """
 from __future__ import annotations
 
@@ -31,8 +32,8 @@ def tools(window):
 
 
 @pytest.fixture
-def plugin_root(tmp_path):
-    """플러그인 1개(스킬 2개) 픽스처 트리."""
+def marketplace(tmp_path):
+    """플러그인 1개(스킬 2개 + .mcp.json 서버 1개) 픽스처 마켓플레이스 폴더."""
     plugin_dir = tmp_path / "catalog" / "alpha"
     meta = plugin_dir / ".claude-plugin"
     meta.mkdir(parents=True)
@@ -45,88 +46,110 @@ def plugin_root(tmp_path):
         (sdir / "SKILL.md").write_text(
             f"---\nname: {skill}\ndescription: Does {skill}.\n---\n", encoding="utf-8"
         )
+    (plugin_dir / ".mcp.json").write_text(
+        json.dumps({"mcpServers": {"alpha-srv": {"command": "x"}}}), encoding="utf-8"
+    )
     return tmp_path / "catalog"
 
 
-def test_roots_empty_note(tools):
+def test_folders_empty_note(tools):
     out = tools.list_wrappable_skills()
-    assert out["roots"] == []
-    assert "add_plugin_root" in out["note"]
+    assert out["marketplace_folders"] == []
+    assert "add_marketplace_folder" in out["note"]
 
 
-def test_add_list_remove_roots(tools, plugin_root):
-    out = tools.add_plugin_root(str(plugin_root), "mkt")
-    assert out["roots"][0]["marketplace"] == "mkt"
-    assert tools.list_plugin_roots()["roots"][0]["path"] == str(plugin_root)
-    assert tools.remove_plugin_root(str(plugin_root)) == {"removed": str(plugin_root)}
-    assert tools.list_plugin_roots()["roots"] == []
+def test_add_list_remove_folders(tools, marketplace):
+    out = tools.add_marketplace_folder(str(marketplace), "mkt")
+    assert out["marketplace_folders"][0]["marketplace"] == "mkt"
+    assert tools.list_marketplace_folders()["marketplace_folders"][0]["path"] == str(marketplace)
+    assert tools.remove_marketplace_folder(str(marketplace)) == {"removed": str(marketplace)}
+    assert tools.list_marketplace_folders()["marketplace_folders"] == []
 
 
-def test_add_nonexistent_root_rejected(tools):
+def test_add_nonexistent_folder_rejected(tools):
     with pytest.raises(ValueError, match="실존"):
-        tools.add_plugin_root("Z:/no/such/dir")
+        tools.add_marketplace_folder("Z:/no/such/dir")
 
 
-def test_remove_unknown_root_rejected(tools):
+def test_remove_unknown_folder_rejected(tools):
     with pytest.raises(ValueError, match="등록되지 않은"):
-        tools.remove_plugin_root("C:/never")
+        tools.remove_marketplace_folder("C:/never")
 
 
-def test_list_wrappable_skills(tools, plugin_root):
-    tools.add_plugin_root(str(plugin_root), "mkt")
+def test_list_wrappable_skills(tools, marketplace):
+    tools.add_marketplace_folder(str(marketplace), "mkt")
     out = tools.list_wrappable_skills()
-    plugins = out["roots"][0]["plugins"]
-    assert [p["name"] for p in plugins] == ["alpha"]
+    plugins = out["marketplace_folders"][0]["plugins"]
+    assert [p["plugin_id"] for p in plugins] == ["alpha@mkt"]
+    assert plugins[0]["used"] is False
+    assert plugins[0]["mcp_servers"] == ["alpha-srv"]
     sources = [s["source"] for s in plugins[0]["skills"]]
     assert sources == ["alpha@mkt:lint", "alpha@mkt:review"]
-    assert all(s["already_wrapped"] is False for s in plugins[0]["skills"])
+    assert out["external_plugins"] == []
 
 
-def test_already_wrapped_marker(tools, plugin_root):
-    tools.add_plugin_root(str(plugin_root), "mkt")
-    tools.create_skill("my-review", kind="wrapped", source="alpha@mkt:review")
-    skills = tools.list_wrappable_skills()["roots"][0]["plugins"][0]["skills"]
-    by_name = {s["name"]: s["already_wrapped"] for s in skills}
-    assert by_name == {"review": True, "lint": False}
+def test_set_external_plugins_replace_and_undo(tools, window):
+    out = tools.set_external_plugins(["alpha@mkt", "beta@mkt", "alpha@mkt"])
+    assert out["new"] == ["alpha@mkt", "beta@mkt"]  # 순서 보존·중복 제거
+    assert window._project.external_plugins == ["alpha@mkt", "beta@mkt"]
+    tools.undo()
+    assert window._project.external_plugins == []
+    tools.redo()
+    assert window._project.external_plugins == ["alpha@mkt", "beta@mkt"]
 
 
-def test_set_plugin_excluded_filters_listing(tools, plugin_root):
-    """체크 해제된 플러그인은 스킬 목록 없이 excluded 표시만 — GUI 체크박스와
-    같은 실체(wrap_catalog.set_plugin_excluded)."""
-    tools.add_plugin_root(str(plugin_root), "mkt")
-    out = tools.set_plugin_excluded(str(plugin_root), "alpha", True)
-    assert out["excluded_now"] == ["alpha"]
-    assert tools.list_plugin_roots()["roots"][0]["excluded"] == ["alpha"]
-    plugins = tools.list_wrappable_skills()["roots"][0]["plugins"]
-    assert plugins == [{"name": "alpha", "excluded": True}]
-    # 복귀하면 스킬이 다시 나온다
-    tools.set_plugin_excluded(str(plugin_root), "alpha", False)
-    plugins = tools.list_wrappable_skills()["roots"][0]["plugins"]
-    assert [s["name"] for s in plugins[0]["skills"]] == ["lint", "review"]
+def test_set_external_plugins_rejects_empty_id(tools):
+    with pytest.raises(ValueError, match="빈 플러그인"):
+        tools.set_external_plugins(["ok@mkt", "  "])
 
 
-def test_set_plugin_excluded_unknown_root_rejected(tools):
-    with pytest.raises(ValueError, match="등록되지 않은"):
-        tools.set_plugin_excluded("C:/never", "p", True)
+def test_used_flag_follows_declaration(tools, marketplace):
+    tools.add_marketplace_folder(str(marketplace), "mkt")
+    tools.set_external_plugins(["alpha@mkt"])
+    plugins = tools.list_wrappable_skills()["marketplace_folders"][0]["plugins"]
+    assert plugins[0]["used"] is True
 
 
-def test_create_skill_with_source(tools, window):
+def test_get_project_meta_lists_external_plugins(tools):
+    tools.set_external_plugins(["alpha@mkt"])
+    out = tools.get_project(sections=["meta"])
+    assert out["external_plugins"] == ["alpha@mkt"]
+
+
+def test_create_skill_with_source_declares_plugin(tools, window):
+    """랩핑 생성 시 미선언 플러그인은 선언까지 함께 — 1 undo (GUI와 같은 실체)."""
     out = tools.create_skill("wrap-it", kind="wrapped", source="other@mkt:code-review")
     assert out["source"] == "other@mkt:code-review"
+    assert out["external_plugins"] == ["other@mkt"]
     skill = window._project.skills[0]
     assert skill.kind == "wrapped_skill"
     assert skill.config.source == "other@mkt:code-review"
+    assert window._project.external_plugins == ["other@mkt"]
 
-
-def test_create_skill_with_source_is_one_undo(tools, window):
-    tools.create_skill("wrap-it", kind="wrapped", source="other@mkt:code-review")
-    tools.undo()
+    tools.undo()  # 생성+선언이 한 단위로 되돌아온다
     assert window._project.skills == []
+    assert window._project.external_plugins == []
     tools.redo()
     assert window._project.skills[0].config.source == "other@mkt:code-review"
+    assert window._project.external_plugins == ["other@mkt"]
+
+
+def test_create_skill_with_source_already_declared(tools, window):
+    tools.set_external_plugins(["other@mkt"])
+    tools.create_skill("wrap-it", kind="wrapped", source="other@mkt:code-review")
+    assert window._project.external_plugins == ["other@mkt"]  # 중복 선언 없음
+    tools.undo()  # 생성만 되돌아온다 (선언은 이전 편집 소유)
+    assert window._project.skills == []
+    assert window._project.external_plugins == ["other@mkt"]
 
 
 def test_source_rejected_for_non_wrapped(tools, window):
     with pytest.raises(ValueError, match="wrapped"):
         tools.create_skill("s", kind="procedural", source="other@mkt:x")
     assert window._project.skills == []  # 거절이면 생성도 없어야 한다
+
+
+def test_source_with_xy_rejected(tools, window):
+    with pytest.raises(ValueError, match="place_component"):
+        tools.create_skill("s", kind="wrapped", source="other@mkt:x", x=10, y=20)
+    assert window._project.skills == []

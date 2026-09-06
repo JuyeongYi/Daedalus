@@ -71,6 +71,64 @@ class _NamingRules:
         return errors
 
     @staticmethod
+    def _check_external_plugins(project) -> list[ValidationError]:
+        """외부 플러그인 사용 선언 ↔ 랩핑 참조 정합 (WP-WR, 사용자 확정).
+
+        배선(dependencies/enabledPlugins)의 단일 진실은
+        ``project.external_plugins`` 선언이다 — 그래서 어긋남은 두 방향 다
+        경고다: ① 선언했는데 어떤 랩핑 스킬도 그 플러그인을 참조하지 않음
+        (unused_external_plugin — 쓰기로 해놓고 안 쓴 경우), ② 랩핑 스킬이
+        미선언 플러그인을 가리킴(undeclared_external_plugin — 선언이 없으면
+        빌드 배선이 나가지 않아 런타임에 그 스킬을 찾지 못한다).
+
+        매칭은 설치 식별자 정확 일치다(``alpha@mkt`` ≠ ``alpha`` — 마켓이
+        다르면 다른 설치 대상이다). 형식이 깨진 source는
+        wrapped_source_missing이 이미 짚으므로 여기서 중복 경고하지 않는다.
+        """
+        declared = {
+            str(p).strip()
+            for p in getattr(project, "external_plugins", None) or []
+            if str(p).strip()
+        }
+        referenced: set[str] = set()
+        errors: list[ValidationError] = []
+        for skill in getattr(project, "skills", []):
+            if getattr(skill, "kind", "") != "wrapped_skill":
+                continue
+            source = getattr(getattr(skill, "config", None), "source", "") or ""
+            plugin_id, _, skill_name = source.partition(":")
+            plugin_id = plugin_id.strip()
+            if not plugin_id or not skill_name.strip():
+                continue  # wrapped_source_missing 소관
+            referenced.add(plugin_id)
+            if plugin_id not in declared:
+                errors.append(ValidationError(
+                    rule="undeclared_external_plugin",
+                    message=(
+                        f"랩핑 스킬 '{skill.name}'이 사용 선언되지 않은 플러그인 "
+                        f"'{plugin_id}'를 가리킵니다 — external_plugins에 없으면 "
+                        f"빌드가 dependencies/enabledPlugins를 배선하지 않아 "
+                        f"런타임에 그 스킬을 찾지 못합니다. 카탈로그 창에서 "
+                        f"플러그인을 체크하거나 set_external_plugins로 선언하세요."
+                    ),
+                    source=skill.name,
+                    subject=skill,
+                ))
+        for plugin_id in sorted(declared - referenced):
+            errors.append(ValidationError(
+                rule="unused_external_plugin",
+                message=(
+                    f"외부 플러그인 '{plugin_id}'를 사용하기로 선언했지만 어떤 "
+                    f"랩핑 스킬도 참조하지 않습니다 — 빌드 배선(dependencies/"
+                    f"enabledPlugins)은 그대로 나갑니다. 워크플로 단계로 쓰지 "
+                    f"않는 의도적 활성화면 무시해도 됩니다."
+                ),
+                source=plugin_id,
+                subject=project,
+            ))
+        return errors
+
+    @staticmethod
     def _check_invalid_component_name(project) -> list[ValidationError]:
         """invalid_component_name — 이름이 ^[a-z0-9][a-z0-9-]*$ 불일치 시 경고. 빈 이름은 에러."""
         all_components = [

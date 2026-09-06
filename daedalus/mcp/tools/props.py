@@ -89,9 +89,12 @@ class PropsTools(_BaseTools):
 
         source(WP-WR): kind="wrapped" 전용 — `플러그인[@마켓]:스킬` 형식으로
         감쌀 외부 스킬을 지정한다(`list_wrappable_skills`가 후보와 source
-        문자열을 준다). 다른 종류에 주면 거절한다(조용히 무시하면 "설정했는데
-        아무 일도 일어나지 않는" 상태가 된다). 생략하면 나중에
-        `set_component_field(name, "source", ...)`로 채운다.
+        문자열을 준다). source의 플러그인이 external_plugins에 미선언이면
+        **선언까지 함께** 1 undo로 들어간다(GUI 카탈로그 창과 같은 실체 —
+        `actions/creation.create_wrapped_skill`). 다른 종류에 주면 거절한다
+        (조용히 무시하면 "설정했는데 아무 일도 일어나지 않는" 상태가 된다).
+        source와 x/y는 함께 줄 수 없다 — 배치는 `place_component`로 잇는다.
+        생략하면 나중에 `set_component_field(name, "source", ...)`로 채운다.
 
         x/y(G14): **함께** 주면 만들자마자 그 좌표에 배치한다 — 생성과 배치가
         1 undo 단위로 묶인다(캔버스 "여기에 만들기"와 같은 경로). reference는
@@ -109,15 +112,28 @@ class PropsTools(_BaseTools):
                 "외부 스킬 개념이 없습니다."
             )
         self._reject_duplicate_name(name)
-        placed = self._create_component(kind, name, description, x, y)
-        result: dict[str, Any] = {"created": name, "kind": kind, "placed": placed}
         if source:
-            # 생성 커맨드가 이미 실행된 뒤의 대입이지만 undo 의미론은 깨지지
-            # 않는다 — undo는 CreateComponentCmd가 컴포넌트를 통째로 빼고,
-            # redo는 소스가 채워진 같은 객체를 다시 넣는다(중간 상태 없음).
-            self._find_component(name).config.source = source
-            result["source"] = source
-        return result
+            if x is not None or y is not None:
+                raise ValueError(
+                    "source와 x/y는 함께 줄 수 없습니다 — 만든 뒤 "
+                    "place_component로 배치하세요."
+                )
+            from daedalus.view.actions.creation import create_wrapped_skill
+
+            component = create_wrapped_skill(
+                self._window, source, name=name, description=description
+            )
+            if component is None:  # pragma: no cover — 프로젝트는 항상 있다
+                raise RuntimeError(f"'{name}'을(를) 만들지 못했습니다.")
+            return {
+                "created": name,
+                "kind": kind,
+                "placed": False,
+                "source": source,
+                "external_plugins": list(self._project.external_plugins),
+            }
+        placed = self._create_component(kind, name, description, x, y)
+        return {"created": name, "kind": kind, "placed": placed}
 
     def create_agent(
         self,

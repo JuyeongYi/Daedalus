@@ -59,6 +59,7 @@ from daedalus.compiler.emit import (
     hook_library,
     referenced_mcp_servers,
 )
+from daedalus.compiler.emit.manifest import external_plugin_ids
 from daedalus.compiler.token_report import TokenReport
 from daedalus.compiler.workspace import (
     has_manual_frontmatter,
@@ -629,12 +630,20 @@ def compile_project(
     resolved_hooks: dict | None = None,
     dry_run: bool = False,
     settings_filename: str = "settings.json",
+    provided_server_names: set[str] | frozenset[str] | None = None,
 ) -> CompileResult:
     """프로젝트를 out_dir에 컴파일한다.
 
     settings_filename(WP-WS, LOCAL 전용): `.claude/` 밑 설정 산출 파일 —
     "settings.json"(기본, 공유) 또는 "settings.local.json"(개인). 빌드 시
     호출자가 고른다(GUI 컴파일 다이얼로그 / MCP compile_check 파라미터).
+
+    provided_server_names(WP-WR): 사용 선언된 외부 플러그인이 자기 `.mcp.json`
+    으로 **제공하는** MCP 서버 이름들 — 호출 환경(앱)이 카탈로그를 훑어
+    주입한다(컴파일러는 파일시스템을 읽지 않는다 — resolved_hooks와 같은
+    경계). 여기 든 이름은 프로젝트에 정의가 없어도 `missing_mcp_server_def`
+    경고를 내지 않는다: 플러그인 활성화가 그 서버를 함께 가져오므로 이
+    프로젝트가 .mcp.json에 배선할 것이 없다.
 
     게이트: 검증 에러 + 게이트 강화 에러(이름 규약·경로 충돌)가 1건이라도 있으면
     파일을 쓰지 않고 거부한다. 경고만 있으면 통과시키고 warnings에 동봉한다.
@@ -781,6 +790,7 @@ def compile_project(
         _wire_local_install(
             project, out_root, result, extra_server_defs, resolved_hooks,
             dry_run=dry_run, settings_filename=settings_filename,
+            provided_server_names=provided_server_names,
         )
         _merge_claude_md_region(project, out_root, result, dry_run=dry_run)
 
@@ -858,6 +868,7 @@ def _wire_local_install(
     resolved_hooks: dict | None = None,
     dry_run: bool = False,
     settings_filename: str = "settings.json",
+    provided_server_names: set[str] | frozenset[str] | None = None,
 ) -> None:
     """LOCAL 빌드의 설치 배선 — 대상 작업 폴더의 설정 파일을 생성/수정한다.
 
@@ -879,8 +890,9 @@ def _wire_local_install(
     defs.update(getattr(project, "mcp_server_defs", None) or {})  # 프로젝트가 우선
     referenced = referenced_mcp_servers(project)
     entries = {name: defs[name] for name in referenced if name in defs}
+    provided = set(provided_server_names or ())
     for name in referenced:
-        if name not in defs:
+        if name not in defs and name not in provided:
             result.warnings.append(ValidationError(
                 rule="missing_mcp_server_def",
                 message=(
@@ -893,32 +905,27 @@ def _wire_local_install(
                 subject=project,
             ))
 
-    # WP-WR — 랩핑 스킬의 소스 플러그인을 enabledPlugins로 활성화한다.
-    # 형식은 settings 스키마(벤더링 스냅샷) 확인: {"plugin-id@marketplace-id": true}.
+    # WP-WR — 사용 선언된 외부 플러그인(external_plugins)을 enabledPlugins로
+    # 활성화한다. 배선의 단일 진실은 선언이다 — 랩핑 스킬 source를 스캔하지
+    # 않는다(사용자 확정. 선언·참조의 어긋남은 검증 경고가 짚는다). 형식은
+    # settings 스키마(벤더링 스냅샷) 확인: {"plugin-id@marketplace-id": true}.
     # 마켓 표기가 없는 bare 이름은 enabledPlugins 키가 될 수 없어 경고 후 생략
     # (매니페스트 dependencies와 달리 자기-마켓 해소 규칙이 없다). 이 판정은
     # missing_mcp_server_def처럼 **대상 폴더와 무관**하므로 out_dir 조기 반환
     # 앞에 있어야 한다 — 뒤에 두면 out_dir 없는 compile_check(dry-run)에서
     # 경고가 통째로 사라진다.
     enabled_plugins: dict = {}
-    for skill in getattr(project, "skills", []):
-        if getattr(skill, "kind", "") != "wrapped_skill":
-            continue
-        source = getattr(getattr(skill, "config", None), "source", "") or ""
-        plugin_id, _, skill_part = source.partition(":")
-        plugin_id = plugin_id.strip()
-        if not plugin_id or not skill_part.strip():
-            continue  # wrapped_source_missing(검증기)이 이미 짚는다
+    for plugin_id in external_plugin_ids(project):
         if "@" not in plugin_id:
             result.warnings.append(ValidationError(
-                rule="wrapped_source_no_marketplace",
+                rule="external_plugin_no_marketplace",
                 message=(
-                    f"랩핑 스킬 '{skill.name}'의 source '{plugin_id}'에 마켓플레이스 "
+                    f"사용 선언된 외부 플러그인 '{plugin_id}'에 마켓플레이스 "
                     f"표기가 없어 enabledPlugins에 올릴 수 없습니다 — "
-                    f"`플러그인@마켓:스킬` 형식이면 설치 배선까지 자동입니다."
+                    f"`플러그인@마켓` 형식이면 설치 배선까지 자동입니다."
                 ),
-                source=skill.name,
-                subject=skill,
+                source=plugin_id,
+                subject=project,
             ))
             continue
         enabled_plugins[plugin_id] = True

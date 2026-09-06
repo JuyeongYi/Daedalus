@@ -137,7 +137,21 @@ class CompileActions:
             # 전역 훅(~/.daedalus/hooks/)까지 해소해서 넘긴다 — 컴파일러는
             # 파일시스템을 읽지 않으므로 여기가 주입 지점이다 (A1).
             "resolved_hooks": w.resolved_hooks(),
+            # 사용 선언된 외부 플러그인이 동봉 .mcp.json으로 제공하는 서버
+            # 이름들 (WP-WR) — 플러그인 활성화가 함께 가져오므로 이 프로젝트가
+            # 배선할 것이 없어 missing_mcp_server_def 대상에서 뺀다. 주입인
+            # 이유는 resolved_hooks와 같다(컴파일러 파일시스템 무접근).
+            "provided_server_names": self.provided_server_names(),
         }
+
+    def provided_server_names(self) -> frozenset[str]:
+        """사용 선언된 외부 플러그인이 제공하는 MCP 서버 이름 집합 (WP-WR)."""
+        from daedalus.model.plugin.wrap_catalog import used_plugin_mcp_servers
+
+        w = self._w
+        if w._project is None:
+            return frozenset()
+        return frozenset(used_plugin_mcp_servers(w._project))
 
     def show_token_notice(self, result) -> None:
         """임계를 넘은 산출물이 있으면 정보성 안내를 띄운다 (A5-lite).

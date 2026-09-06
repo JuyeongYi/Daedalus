@@ -121,6 +121,11 @@ class QueryTools(_BaseTools):
                 "saved_path": getattr(self._window, "_current_path", None),
                 "emit_progress_hook": getattr(project, "emit_progress_hook", None),
                 "mcp_server_defs": dict(getattr(project, "mcp_server_defs", None) or {}),
+                # WP-WR — 사용 선언된 외부 플러그인("이름[@마켓]"). 후보·상세는
+                # list_wrappable_skills, 편집은 set_external_plugins.
+                "external_plugins": list(
+                    getattr(project, "external_plugins", None) or []
+                ),
                 # 작업 폴더 문서(WP-WD)의 **존재 신호**만 (Q6) — 내용은
                 # list_workspace_docs/get_workspace_doc이 준다. 신호가 없으면
                 # 그 표면이 있다는 것 자체를 몰라 CLAUDE.md 구역과 규칙이

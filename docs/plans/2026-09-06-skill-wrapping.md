@@ -81,6 +81,26 @@ wrapped_source_has_workflow.
 - `enabledPlugins` 값 형식(플러그인 식별자 규격) — settings 스키마
   (tests/fixtures/specs 스냅샷) 대조
 
+## 재설계 (사용자 확정 2026-09-06 저녁) — 사용 선언 중심
+
+1. 용어: "플러그인 루트" → **마켓플레이스 폴더**. 전역 등록 파일
+   `plugin_roots.json` → `external_marketplaces.json`.
+2. **사용 선언은 프로젝트 단위**: `PluginProject.external_plugins: list[str]`
+   ("이름[@마켓]", 직렬화 왕복). 카탈로그 창의 플러그인 체크박스 = 사용 선언
+   (SetAttrCmd — undo). 전역 excluded(제외 목록) 개념은 이것으로 대체·퇴역.
+3. **배선의 단일 진실은 선언**: dependencies(MARKETPLACE)/enabledPlugins
+   (LOCAL)는 external_plugins에서만 나온다 — 랩핑 스킬 source 스캔 퇴역.
+   랩핑 스킬은 워크플로 단계로 놓을 때만 만들면 되고(활성화된 플러그인의
+   스킬은 CC가 네이티브 로드), 생성 시 미선언 플러그인은 선언까지 1 undo로
+   자동 명시(`actions/creation.create_wrapped_skill` — GUI·MCP 공유).
+4. 정합 경고: `unused_external_plugin`(선언·미참조 — 경고만, 배선은 그대로),
+   `undeclared_external_plugin`(참조·미선언), `external_plugin_no_marketplace`
+   (bare 선언 — 컴파일러 emit). `wrapped_source_no_marketplace`는 퇴역.
+5. **외부 플러그인의 동봉 .mcp.json 활용**: 서버 이름을 발견해
+   (`CataloguedPlugin.mcp_servers`) 에이전트 mcp_servers 자동완성 후보 +
+   LOCAL 컴파일 `provided_server_names` 주입(missing_mcp_server_def 오탐
+   억제)에 쓴다. 개별 도구 목록은 미지원이라 tools 후보에는 넣지 않는다.
+
 ## 인보크 표기 (교차 확인 2026-09-06)
 
 크로스 플러그인 스킬 지목의 공식 표기는 `/플러그인이름:스킬이름`이고 플러그인

@@ -212,8 +212,10 @@ daedalus/
 │   │   ├── props.py        #   생성·속성(create_skill/create_agent/rename_component/description/when_to_use/field/project_properties/set_mcp_server_def).
 │   │   │                   #     팩토리는 actions/creation.make_component 직호출(S1 — 자체 dict 2벌 폐기),
 │   │   │                   #     create_skill/create_agent의 x·y는 create_and_place로 생성+배치 1 undo(G14)
-│   │   ├── wrap.py         #   랩핑 카탈로그(WP-WR D2) — list_wrappable_skills/list_plugin_roots/add_plugin_root/
-│   │   │                   #     remove_plugin_root. 실체는 model/plugin/wrap_catalog(GUI 카탈로그 창과 공유)
+│   │   ├── wrap.py         #   외부 플러그인 카탈로그(WP-WR D2) — list_wrappable_skills/list_marketplace_folders/
+│   │   │                   #     add_marketplace_folder/remove_marketplace_folder(홈 파일 — undo 비대상)/
+│   │   │                   #     set_external_plugins(프로젝트 사용 선언 — undo). 실체는 model/plugin/wrap_catalog +
+│   │   │                   #     actions/creation.create_wrapped_skill(GUI 카탈로그 창과 공유)
 │   │   └── workspace.py    #   작업 폴더 문서(WP-WD) — list_workspace_docs/get_workspace_doc/set_claude_md/create_rule/
 │   │                       #     set_rule_body/set_rule_paths(A13)/rename_rule/delete_rule. 본문은 BodyTools와 같은
 │   │                       #     QTextDocument 경로(WP-BU), 구조 편집은 GUI 패널과 같은 모델 직접 기록.
@@ -521,45 +523,57 @@ daedalus/
   복사안의 변수 오동작이 원천 소멸.
 - **source 규격**: `플러그인[@마켓]:스킬`(`parse_wrapped_source`). 프론트매터
   키가 아니라 본문 지시로 배출(SkillField.SOURCE.frontmatter_key == None).
-- **의존성 배선**: MARKETPLACE는 plugin.json `dependencies`(스키마 확인
-  2026-09-06 — bare name은 자기 마켓 해소), LOCAL은 settings `enabledPlugins`
-  `{"plugin@마켓": true}` 컴파일 합성(WP-WS 베이크 합류, 모델 불변). 마켓 표기
-  없는 bare 소스는 enabledPlugins 불가라 `wrapped_source_no_marketplace` 경고.
+- **의존성 배선 — 단일 진실은 사용 선언이다**(사용자 확정 2026-09-06):
+  `PluginProject.external_plugins: list[str]`("이름[@마켓]", 직렬화 왕복 —
+  사용 선언은 **프로젝트 단위** 저장)에서 MARKETPLACE는 plugin.json
+  `dependencies`(스키마 확인 — bare name은 자기 마켓 해소, 의존 대상 자동
+  활성화), LOCAL은 settings `enabledPlugins` `{"plugin@마켓": true}` 컴파일
+  합성(WP-WS 베이크 합류, 모델 불변, `emit.manifest.external_plugin_ids`가
+  단일 진실). **랩핑 스킬 source는 배선에 쓰이지 않는다** — 선언만으로 배선이
+  나가고(플러그인이 활성화되면 스킬은 CC가 네이티브 로드 — WrappedSkill은
+  워크플로 단계로 놓을 때만 필요), 어긋남은 경고 2종이 짚는다:
+  `unused_external_plugin`(선언·미참조 — 의도적 활성화면 무시),
+  `undeclared_external_plugin`(랩핑 소스가 미선언 플러그인 참조 — 배선이 안
+  나가 런타임에 스킬을 못 찾는다). bare 선언은 enabledPlugins 불가라
+  `external_plugin_no_marketplace` 경고(컴파일러 emit — out_dir 없는
+  dry-run에서도 나온다, 폴더 무관 판정).
 - **재사용은 랩퍼 복수로**(사용자 확정): 같은 source를 여러 랩퍼가 감싸는 것이
   정상이고, 랩퍼 자신은 단일 배치(no_duplicate_skill_ref — 레퍼런스형 복수
   배치는 "배치=FSM 위치" 의미론을 깨서 비채택).
 - **본문 수정 불가**: 에디터가 본문 패널을 잠근다(ComponentEditor). 매트릭스에
   CONTEXT/AGENT/SHELL 없음 — kind별 명시 부재는 test_field_matrix의
   `_KIND_ABSENT_FIELDS`가 계약으로 고정.
-- **카탈로그 발견(D2, 2단계 1차)**: `model/plugin/wrap_catalog.py`가 단일 진실
-  (파일시스템을 아는 모듈 — hook_store 지위. 검증기·컴파일러는 임포트 금지).
-  루트 등록은 `~/.daedalus/plugin_roots.json`(`plugin_roots_file` — 테스트는
-  conftest `_isolate_plugin_roots`가 격리), 발견은 루트 밑 깊이 4까지
+- **외부 플러그인 카탈로그(D2)**: `model/plugin/wrap_catalog.py`가 발견의
+  단일 진실(파일시스템을 아는 모듈 — hook_store 지위. 검증기·컴파일러는
+  임포트 금지, 필요하면 호출자 주입). **마켓플레이스 폴더** 등록은 전역
+  `~/.daedalus/external_marketplaces.json`(`marketplaces_file` — 테스트는
+  conftest `_isolate_external_marketplaces`가 격리), 발견은 폴더 밑 깊이 4까지
   `.claude-plugin/plugin.json` 탐색 + `skills/*/SKILL.md`(스킬 이름의 단일
-  진실은 **디렉토리명**). 마켓 이름 해소: 등록 시 명시 > 루트
+  진실은 **디렉토리명**) + 동봉 `.mcp.json`/`plugin.json`의 `mcpServers` 키
+  (`CataloguedPlugin.mcp_servers`). 마켓 이름 해소: 등록 시 명시 > 폴더
   `.claude-plugin/marketplace.json`의 name > bare. **GUI 창**은 도구 메뉴
-  "랩핑 스킬 카탈로그..."(`view/editors/wrap_catalog_dialog.WrapCatalogDialog`
-  — 루트→플러그인→스킬 트리, ✔=이미 랩핑됨, 루트 등록/제거, 생성은
-  make_component + **등록 전 source 대입** + CreateComponentCmd라 1 undo,
-  이름 충돌은 `-2` 접미 유일화). **하위 플러그인 체크 관리**(사용자 확정 UX):
-  트리의 플러그인 행 체크박스로 랩핑 후보 포함/제외 — 저장 극성은 루트의
-  `excluded` 목록(새 발견 플러그인은 기본 포함·구버전 파일 하위 호환·재등록
-  시 보존), 실체는 `wrap_catalog.set_plugin_excluded` 하나(GUI·MCP 공유).
-  제외된 플러그인은 트리에서 스킬을 펼치지 않고 MCP 목록에서 `excluded:
-  true`로만 나온다. **체크 토글의 트리 재구성은 singleShot(0)으로 미룬다** —
-  itemChanged를 쏜 아이템을 같은 호출에서 clear()로 파괴하면 간헐 access
-  violation(실측 플레이키 크래시). 수신 컨텍스트(self)를 줘 닫힌 다이얼로그에
-  발화하지 않는다(WP-WS 0ms 디바운스 수명 함정과 같은 결). **MCP 짝**(패리티):
-  `list_wrappable_skills`/`list_plugin_roots`/`add_plugin_root`/
-  `remove_plugin_root`/`set_plugin_excluded`(mcp/tools/wrap.py — 루트 등록·체크
-  관리는 홈 설정 파일이라 undo 비대상) + `create_skill(kind="wrapped",
-  source=)`(다른 kind에 source를 주면 거절).
-- **배선 보증(테스트 고정)**: MARKETPLACE는 compile_project 산출 plugin.json에
-  dependencies 실림 / LOCAL은 선택한 settings 파일(settings.json |
-  settings.local.json)에 enabledPlugins 병합(기존 항목 불가침·멱등·dry-run
-  디스크 불변). **bare 소스 경고는 out_dir 없는 dry-run에서도 나온다** —
-  판정이 대상 폴더와 무관하므로 `_wire_local_install`의 out_dir 조기 반환
-  **앞**에 있다(missing_mcp_server_def와 같은 규약).
+  "외부 플러그인 카탈로그..."(`view/editors/wrap_catalog_dialog`) — 폴더→
+  플러그인→스킬 트리, **플러그인 체크 = 이 프로젝트에서 사용 선언**
+  (`external_plugins`에 SetAttrCmd — undo·저장 왕복), ✔=이미 랩핑됨. 체크
+  토글의 트리 재구성은 singleShot(0, self, refresh)으로 미룬다(itemChanged를
+  쏜 아이템을 같은 호출에서 clear()로 파괴하면 간헐 access violation — 실측.
+  수신 컨텍스트 덕에 닫힌 다이얼로그에 발화하지 않는다). 랩핑 스킬 생성의
+  실체는 `actions/creation.create_wrapped_skill`(등록 전 source 대입 +
+  미선언이면 **선언까지 MacroCommand 1 undo**, 이름 충돌 `-2` 접미) —
+  창 더블클릭과 MCP가 같은 함수를 부른다.
+- **외부 플러그인의 MCP 서버 활용**: 사용 선언된 플러그인의
+  `mcp_servers`가 ① 에이전트 MCP_SERVERS TagInput 자동완성 후보
+  (`tag_input.set_mcp_server_candidate_provider` — app.set_project가
+  `used_plugin_mcp_servers(project) ∪ mcp_server_defs` 등록. **tools 후보에는
+  넣지 않는다** — 개별 도구 목록 미지원, 사용자 확정) ② LOCAL 컴파일 주입
+  `compile_project(provided_server_names=)`(compile_inputs 합류 — 플러그인
+  활성화가 서버를 가져오므로 `missing_mcp_server_def` 대상에서 제외)로 쓰인다.
+- **MCP 짝**(패리티): `list_wrappable_skills`(plugin_id·used·mcp_servers·
+  source·already_wrapped)/`list_marketplace_folders`/`add_marketplace_folder`/
+  `remove_marketplace_folder`(홈 설정 파일 — undo 비대상)/
+  `set_external_plugins`(선언 통째 교체 — undo 가능) +
+  `create_skill(kind="wrapped", source=)`(생성+선언 1 undo, x·y와 병용 불가,
+  다른 kind에 source는 거절). `get_project` meta에 `external_plugins`.
 - **후속(2단계 잔여)**: 에디터 소스 콤보·본문 미리보기,
   `dangling_wrapped_source`(카탈로그 실존 검사 — 호출자 주입),
   `wrapped_source_has_workflow`(소스 워크플로 단락 충돌).
@@ -1512,7 +1526,9 @@ blackboard/body_variables/build_target/workflow/workspace)을 합성한 오케�
 | `invalid_rule_name` | 규칙 문서 이름 규약 경고 (컴파일 게이트가 에러로 승격) — 같은 표 |
 | `workspace_doc_in_marketplace_build` | MARKETPLACE 빌드인데 작업 폴더 문서에 내용이 있으면 경고 — 같은 표 |
 | `wrapped_source_missing` | 랩핑 스킬 source 빈 값·형식 불일치 경고 (WP-WR — `플러그인[@마켓]:스킬`) |
-| `wrapped_source_no_marketplace` | 마켓 표기 없는 소스는 enabledPlugins 배선 불가 경고 (컴파일러 emit, WP-WR) |
+| `unused_external_plugin` | 외부 플러그인을 사용 선언했는데 어떤 랩핑 스킬도 참조하지 않음 — 배선은 그대로, 경고만 (WP-WR) |
+| `undeclared_external_plugin` | 랩핑 스킬 source가 미선언 플러그인을 가리킴 — 배선이 안 나가 런타임에 못 찾는다 (WP-WR) |
+| `external_plugin_no_marketplace` | 마켓 표기 없는 bare 선언은 enabledPlugins 배선 불가 경고 (컴파일러 emit, WP-WR) |
 | `mid_chain_user_invocable` | 프로젝트 그래프에 배치된 ProceduralSkill 중 **incoming 전이가 1개 이상**인데 `config.user_invocable`의 **실효값**이 true면 경고 (A3 + A8 tri-state — `None`(미지정)은 CC 기본 true이므로 경고 대상이고 메시지에 병기, **명시 `False`만 통과**) — user-invocable은 진입점으로 기능할 노드만 true여야 한다(중간 노드로 사용자가 맥락 없이 진입하는 사고 방지. false여도 모델 인보크는 되므로 체인은 안 끊긴다). incoming 0개(진입점 후보)·미배치 스킬(독립 스킬)은 대상 아님. **EntryPoint 출발 전이는 incoming으로 세지 않는다** — 그것이 곧 "여기서 시작한다"는 선언이다(WP-EP로 캔버스에 그리지 않을 뿐 구버전 파일의 시작 전이는 모델에 남아 있다) |
 
 도구 모델(`tool.py`): `Tool(PluginComponent, ABC)` 단일 진실 + `BuiltinTool`/`MCPTool`/`UserDefinedTool`. shelf = 프로젝트(`PluginProject.tool_shelf`) 소유, FSM은 `Tool.name` 문자열로 참조(fsm/는 plugin 무관 — 객체 참조 금지, Validator가 실존 검증). `CC_BUILTIN_TOOLS`는 `validation/project_rules/tools.py` 모듈 frozenset이다(파사드 재-export로 `daedalus.model.validation`에서도 임포트 가능 — Read/Write/Edit/Bash/Glob/Grep/WebFetch/WebSearch/Agent/Task/TodoWrite/NotebookEdit/SlashCommand/PowerShell).

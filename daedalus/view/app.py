@@ -373,10 +373,10 @@ class MainWindow(QMainWindow):
             global_hooks.triggered.connect(self._open_global_hooks_dir)
             tools_menu.addAction(global_hooks)
 
-            wrap_catalog_action = QAction("랩핑 스킬 카탈로그...", self)
+            wrap_catalog_action = QAction("외부 플러그인 카탈로그...", self)
             wrap_catalog_action.setToolTip(
-                "등록된 플러그인 루트의 스킬을 플러그인별로 보고 "
-                "WrappedSkill로 만든다 (WP-WR)"
+                "등록된 마켓플레이스 폴더의 외부 플러그인을 체크로 사용 "
+                "선언하고, 스킬을 워크플로 단계(WrappedSkill)로 감싼다 (WP-WR)"
             )
             wrap_catalog_action.triggered.connect(self._show_wrap_catalog)
             tools_menu.addAction(wrap_catalog_action)
@@ -450,6 +450,20 @@ class MainWindow(QMainWindow):
         from daedalus.view.widgets.tag_input import set_blackboard_candidate_provider
 
         set_blackboard_candidate_provider(lambda p=project: blackboard_candidate_strings(p))
+        # 에이전트 MCP_SERVERS TagInput 후보 (WP-WR) — 사용 선언된 외부
+        # 플러그인이 동봉 .mcp.json으로 제공하는 서버 ∪ 프로젝트
+        # mcp_server_defs 이름. tools 후보에는 넣지 않는다(개별 도구 목록
+        # 미지원 — 사용자 확정).
+        from daedalus.view.widgets.tag_input import set_mcp_server_candidate_provider
+
+        def _mcp_server_candidates(p=project) -> list[str]:
+            from daedalus.model.plugin.wrap_catalog import used_plugin_mcp_servers
+
+            names = set(used_plugin_mcp_servers(p))
+            names.update(getattr(p, "mcp_server_defs", None) or {})
+            return sorted(names)
+
+        set_mcp_server_candidate_provider(_mcp_server_candidates)
         # 변수 팝업의 빌드 타깃 제공자 — 팝업을 열 때마다 조회하므로 프로젝트
         # 속성에서 타깃을 바꾸면 즉시 반영된다(로컬 빌드는 ${CLAUDE_PLUGIN_ROOT}
         # 사용 불가 — 사용자 확정 매트릭스).
@@ -665,7 +679,7 @@ class MainWindow(QMainWindow):
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(cat_dir)))
 
     def _show_wrap_catalog(self) -> None:
-        """도구 메뉴 — 랩핑 스킬 카탈로그 창 (WP-WR, D2)."""
+        """도구 메뉴 — 외부 플러그인 카탈로그 창 (WP-WR, D2)."""
         from daedalus.view.editors.wrap_catalog_dialog import WrapCatalogDialog
 
         WrapCatalogDialog(self).exec()
