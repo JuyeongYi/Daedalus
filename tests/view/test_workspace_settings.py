@@ -58,7 +58,7 @@ def test_settings_local_or_empty_no_warning():
 def test_bake_deep_merges_and_is_idempotent(tmp_path):
     from daedalus.compiler.wiring import wire_workspace
 
-    settings_path = tmp_path / ".claude" / "settings.local.json"
+    settings_path = tmp_path / ".claude" / "settings.json"
     settings_path.parent.mkdir(parents=True)
     settings_path.write_text(json.dumps({
         "permissions": {"deny": ["Bash(rm *)"], "allow": ["Read"]},
@@ -70,7 +70,9 @@ def test_bake_deep_merges_and_is_idempotent(tmp_path):
         "model": "opus",
         "hooks": {"PreToolUse": []},  # 무시돼야 한다 — 훅 정본은 hook_library
     }
-    wire_workspace(tmp_path, extra_settings=extra)
+    # wire_workspace의 settings_name 기본값은 하위 호환상 local이다("Claude
+    # Code 실행" 메뉴 배선) — 컴파일 경로가 명시적으로 넘기는 값을 그대로 쓴다.
+    wire_workspace(tmp_path, extra_settings=extra, settings_name="settings.json")
     obj = json.loads(settings_path.read_text(encoding="utf-8"))
     # 깊은 병합: deny는 없는 원소만 추가(순서 보존), allow(수기)는 불가침
     assert obj["permissions"]["deny"] == ["Bash(rm *)", "Read(state/**)"]
@@ -79,7 +81,7 @@ def test_bake_deep_merges_and_is_idempotent(tmp_path):
     assert "hooks" not in obj  # hooks 키 무시
 
     before = settings_path.read_bytes()
-    wire_workspace(tmp_path, extra_settings=extra)  # 멱등
+    wire_workspace(tmp_path, extra_settings=extra, settings_name="settings.json")  # 멱등
     assert settings_path.read_bytes() == before
 
 
@@ -93,7 +95,7 @@ def test_local_compile_bakes_settings(tmp_path):
     result = compile_project(project, tmp_path)
     assert not result.errors
     obj = json.loads(
-        (tmp_path / ".claude" / "settings.local.json").read_text(encoding="utf-8")
+        (tmp_path / ".claude" / "settings.json").read_text(encoding="utf-8")
     )
     assert obj["permissions"]["deny"] == ["Edit(state/**)"]
 
@@ -106,7 +108,7 @@ def test_marketplace_compile_does_not_bake(tmp_path):
         workspace_settings={"model": "opus"},
     )
     compile_project(project, tmp_path)
-    assert not (tmp_path / ".claude" / "settings.local.json").exists()
+    assert not (tmp_path / ".claude" / "settings.json").exists()
 
 
 def test_dry_run_reports_but_writes_nothing(tmp_path):
@@ -318,3 +320,52 @@ def test_prewarm_builds_editor_when_visible(qapp, monkeypatch):
     assert window._workspace_settings_panel._editor is not None
     window.close()
     qapp.processEvents()
+
+
+def test_compile_settings_filename_choice(tmp_path):
+    """빌드 시 settings.local.json을 고르면 그 파일로 병합된다 (기본은 settings.json)."""
+    from daedalus.compiler.project_compiler import compile_project
+
+    project = PluginProject(
+        name="p", build_target=BuildTarget.LOCAL,
+        workspace_settings={"model": "opus"},
+    )
+    compile_project(project, tmp_path, settings_filename="settings.local.json")
+    assert (tmp_path / ".claude" / "settings.local.json").exists()
+    assert not (tmp_path / ".claude" / "settings.json").exists()
+
+
+def test_compile_dialog_settings_choice_flows_through(qapp, monkeypatch, tmp_path):
+    """Ctrl+B 다이얼로그의 선택이 compile_project까지 흐른다. 취소 = 컴파일 취소."""
+    from daedalus.view.app import MainWindow
+    from daedalus.view.compile_actions import CompileActions
+    import daedalus.view.compile_actions as ca_module
+
+    window = MainWindow()
+    window.load_project(PluginProject(name="p", build_target=BuildTarget.LOCAL))
+    monkeypatch.setattr(
+        ca_module.QFileDialog, "getExistingDirectory",
+        staticmethod(lambda *a, **k: str(tmp_path)),
+    )
+    captured: dict = {}
+    real_compile = __import__("daedalus.compiler", fromlist=["compile_project"]).compile_project
+
+    def spy(project, out_dir, **kwargs):
+        captured.update(kwargs)
+        return real_compile(project, out_dir, **kwargs)
+
+    monkeypatch.setattr("daedalus.compiler.compile_project", spy)
+    monkeypatch.setattr(
+        CompileActions, "prompt_settings_filename", lambda self: "settings.local.json"
+    )
+    window._compile_project_dialog()
+    assert captured.get("settings_filename") == "settings.local.json"
+
+    # 취소 = 컴파일 취소
+    captured.clear()
+    monkeypatch.setattr(
+        CompileActions, "prompt_settings_filename", lambda self: None
+    )
+    window._compile_project_dialog()
+    assert "settings_filename" not in captured
+    window.close()

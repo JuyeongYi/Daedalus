@@ -3,7 +3,7 @@
 
 LOCAL은 **컴파일이 곧 설치**다. out_dir가 대상 작업 폴더이고, 산출물이 CC가
 실제로 읽는 위치(.claude/skills, .claude/agents)에 바로 놓이며, .mcp.json과
-.claude/settings.local.json이 생성/병합된다. 이전의 INSTALL.md/install.ps1/
+.claude/settings.json이 생성/병합된다. 이전의 INSTALL.md/install.ps1/
 install.sh 동봉 방식은 폐기됐다.
 """
 from __future__ import annotations
@@ -124,7 +124,7 @@ def test_local_build_substitutes_file_refs_in_agent_body(tmp_path):
     assert "${CLAUDE_PROJECT_DIR}/files/agent-doc.txt" in agent_text
 
 
-# ─────────────────────── LOCAL — 훅: settings.local.json 병합 ───────────────────────
+# ─────────────────────── LOCAL — 훅: settings.json 병합 ───────────────────────
 
 
 def _hooked_project() -> PluginProject:
@@ -140,14 +140,14 @@ def _hooked_project() -> PluginProject:
 
 
 def test_local_hooks_merge_into_settings_local(tmp_path):
-    """LOCAL은 hooks/hooks.json 파일 대신 settings.local.json의 hooks 섹션이다 —
+    """LOCAL은 hooks/hooks.json 파일 대신 settings.json의 hooks 섹션이다 —
     컴파일이 곧 설치이므로 CC가 실제로 읽는 자리에 놓는다."""
     result = compile_project(_hooked_project(), tmp_path)
     assert result.ok, [e.message for e in result.errors]
 
     assert not (tmp_path / "hooks" / "hooks.json").exists()
     settings = json.loads(
-        (tmp_path / ".claude" / "settings.local.json").read_text(encoding="utf-8")
+        (tmp_path / ".claude" / "settings.json").read_text(encoding="utf-8")
     )
     groups = settings["hooks"]["PostToolUse"]
     command = groups[0]["hooks"][0]["command"]
@@ -162,14 +162,14 @@ def test_local_hooks_merge_is_idempotent(tmp_path):
     compile_project(project, tmp_path)
     compile_project(project, tmp_path)
     settings = json.loads(
-        (tmp_path / ".claude" / "settings.local.json").read_text(encoding="utf-8")
+        (tmp_path / ".claude" / "settings.json").read_text(encoding="utf-8")
     )
     assert len(settings["hooks"]["PostToolUse"]) == 1
 
 
 def test_local_hooks_merge_preserves_existing_settings(tmp_path):
     """사용자가 이미 갖고 있던 설정은 지우지 않는다 — 병합은 추가만 한다."""
-    settings_path = tmp_path / ".claude" / "settings.local.json"
+    settings_path = tmp_path / ".claude" / "settings.json"
     settings_path.parent.mkdir(parents=True)
     settings_path.write_text(json.dumps({
         "permissions": {"allow": ["Bash(ls:*)"]},
@@ -187,7 +187,7 @@ def test_local_hooks_merge_preserves_existing_settings(tmp_path):
 
 def test_local_broken_settings_left_untouched_with_warning(tmp_path):
     """깨진 JSON에 병합을 강행하면 수기 설정을 덮어쓴다 — 건드리지 않고 경고한다."""
-    settings_path = tmp_path / ".claude" / "settings.local.json"
+    settings_path = tmp_path / ".claude" / "settings.json"
     settings_path.parent.mkdir(parents=True)
     settings_path.write_text("{ not json", encoding="utf-8")
 
@@ -230,7 +230,7 @@ def test_local_wires_mcp_json_and_enables_server(tmp_path):
     assert mcp["mcpServers"]["daedalus"] == _DAEDALUS_DEF
 
     settings = json.loads(
-        (tmp_path / ".claude" / "settings.local.json").read_text(encoding="utf-8")
+        (tmp_path / ".claude" / "settings.json").read_text(encoding="utf-8")
     )
     assert settings["enabledMcpjsonServers"] == ["daedalus"]
 
@@ -254,7 +254,7 @@ def test_local_mcp_wiring_is_idempotent(tmp_path):
     compile_project(project, tmp_path)
     compile_project(project, tmp_path)
     settings = json.loads(
-        (tmp_path / ".claude" / "settings.local.json").read_text(encoding="utf-8")
+        (tmp_path / ".claude" / "settings.json").read_text(encoding="utf-8")
     )
     assert settings["enabledMcpjsonServers"] == ["daedalus"]
 

@@ -432,7 +432,10 @@ class QueryTools(_BaseTools):
             "token_notice": report.notice(),
         }
 
-    def compile_check(self, out_dir: str | None = None) -> dict[str, Any]:
+    def compile_check(
+        self, out_dir: str | None = None,
+        settings_filename: str = "settings.json",
+    ) -> dict[str, Any]:
         """컴파일을 **파일을 쓰지 않고** 예행한다 — 게이트 판정 + 경고 전부 + 토큰 요약.
 
         `validate_project`가 못 보여주는 컴파일러 경고를 여기서 본다:
@@ -447,6 +450,10 @@ class QueryTools(_BaseTools):
         판정하는 경고 2종(`unmergeable_settings_json`/`unmergeable_claude_md`)만
         건너뛴다. 나머지 판정은 그대로다.
 
+        settings_filename(WP-WS): LOCAL 빌드의 설정 산출 파일 —
+        "settings.json"(기본, 공유) 또는 "settings.local.json"(개인). 병합
+        판정(unmergeable_settings_json)이 이 파일을 읽는다.
+
         디스크는 절대 바뀌지 않는다(쓰기·복사·JSON 병합 전부 생략) — 따라서
         undo 대상도 아니다. 동봉 파일 루트·전역 훅·서버 정의 주입은 Ctrl+B
         컴파일과 **같은 경로**를 쓰므로 결과가 실제 컴파일과 일치한다.
@@ -455,7 +462,7 @@ class QueryTools(_BaseTools):
 
         project = self._project
         result = compile_project(
-            project, out_dir, dry_run=True, **self._window.compile_inputs(),
+            project, out_dir, dry_run=True, settings_filename=settings_filename, **self._window.compile_inputs(),
         )
 
         base = Path(out_dir) if out_dir else None

@@ -716,8 +716,14 @@ WP-WS를 사용자가 별도 리포로 만든 **QClaudeCodeSettingEditorWidget**
   프리웜**(app._schedule_settings_prewarm — 창이 보이고 _SETTINGS_PREWARM_MS 뒤
   구축)이 흡수한다. isVisible 가드가 핵심 — 창을 안 띄우는 테스트에서는 절대
   발동하지 않는다. 위젯 미설치(서브모듈 미초기화)면 안내 자리 표시자.
-- **베이크**: LOCAL 컴파일이 `wire_workspace(extra_settings=)`로
-  settings.local.json에 **깊은 병합** — dict는 하위 키 병합, 리스트는 없는
+- **베이크**: LOCAL 컴파일이 `wire_workspace(extra_settings=)`로 설정 파일에 **깊은 병합** —
+  산출 파일은 빌드 시 선택한다(사용자 확정): `.claude/settings.json`(기본, 공유) 또는
+  `.claude/settings.local.json`(개인). `compile_project(settings_filename=)` ←
+  Ctrl+B의 `CompileActions.prompt_settings_filename`(취소=컴파일 취소) / MCP
+  `compile_check(settings_filename=)`. 훅·enabledMcpjsonServers 병합도 **같은 파일**로
+  간다(wire_workspace 단일 쓰기). wire_workspace 자체의 기본값은 하위 호환상
+  local("Claude Code 실행" 메뉴 배선 불변) — 컴파일 경로가 명시적으로 넘긴다.
+  병합 정책 — dict는 하위 키 병합, 리스트는 없는
   원소만 순서 보존 추가, 스칼라는 갱신(추가/갱신만·멱등 — 수기 키 불가침).
   dry-run(G3) 경로 그대로 통과(디스크 불변). MARKETPLACE는 배출 없음 +
   `workspace_settings_in_marketplace_build` 경고.

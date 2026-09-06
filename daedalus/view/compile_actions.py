@@ -46,9 +46,19 @@ class CompileActions:
         if not out_dir:
             return
 
+        extra: dict = {}
+        if is_local:
+            # WP-WS — 설정(+훅·MCP 배선) 산출 파일 선택. 기본 settings.json(공유).
+            settings_filename = self.prompt_settings_filename()
+            if settings_filename is None:
+                return  # 취소 = 컴파일 취소 (빌드 타깃 선택과 같은 규약)
+            extra["settings_filename"] = settings_filename
+
         from daedalus.compiler import compile_project
 
-        result = compile_project(w._project, out_dir, **self.compile_inputs())
+        result = compile_project(
+            w._project, out_dir, **self.compile_inputs(), **extra
+        )
         if not result.ok:
             # 에러 — 검증 패널에 동봉(경고 포함) 표시
             w._validation_panel.set_errors(result.errors + result.warnings)
@@ -73,6 +83,33 @@ class CompileActions:
             # 인지하게 두지 않는다.
             w._validation_panel.set_errors(result.warnings)
             w._show_validation_dock()
+
+    # 산출 설정 파일 선택지 (WP-WS) — 표시 문구·값의 단일 진실.
+    SETTINGS_FILE_CHOICES = (
+        ("settings.json", ".claude/settings.json — 공유 (저장소에 커밋되는 설정)"),
+        ("settings.local.json", ".claude/settings.local.json — 개인 (커밋 제외)"),
+    )
+
+    def prompt_settings_filename(self) -> str | None:
+        """LOCAL 컴파일의 설정 산출 파일을 고르게 한다. 취소 시 None.
+
+        훅·enabledMcpjsonServers·workspace_settings 베이크가 전부 이 한 파일로
+        간다(wire_workspace). 기본값은 settings.json(사용자 확정).
+        """
+        from PySide6.QtWidgets import QInputDialog
+
+        labels = [label for _name, label in self.SETTINGS_FILE_CHOICES]
+        choice, ok = QInputDialog.getItem(
+            self._w, "설정 산출 파일",
+            "훅·MCP 배선·작업 폴더 설정을 어느 파일에 병합할까요?",
+            labels, 0, False,
+        )
+        if not ok:
+            return None
+        for name, label in self.SETTINGS_FILE_CHOICES:
+            if label == choice:
+                return name
+        return "settings.json"
 
     def compile_inputs(self) -> dict:
         """`compile_project`에 넘길 **환경 주입 인자**의 단일 진실 (G3).

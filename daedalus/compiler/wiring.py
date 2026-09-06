@@ -52,6 +52,7 @@ def wire_workspace(
     hooks_map: dict | None = None,
     dry_run: bool = False,
     extra_settings: dict | None = None,
+    settings_name: str = "settings.local.json",
 ) -> WireResult:
     """대상 작업 폴더의 CC 설정 파일을 생성/수정한다.
 
@@ -94,7 +95,7 @@ def wire_workspace(
     baked = {k: v for k, v in (extra_settings or {}).items() if k != "hooks"}
     if not entries and hooks_map is None and not baked:
         return result
-    settings_path = target / ".claude" / "settings.local.json"
+    settings_path = target / ".claude" / settings_name
     settings_obj = _load_json_or_none(settings_path)
     if settings_obj is None:
         result.unmergeable.append(settings_path)

@@ -628,8 +628,13 @@ def compile_project(
     skill_files_dir: Path | str | None = None,
     resolved_hooks: dict | None = None,
     dry_run: bool = False,
+    settings_filename: str = "settings.json",
 ) -> CompileResult:
     """프로젝트를 out_dir에 컴파일한다.
+
+    settings_filename(WP-WS, LOCAL 전용): `.claude/` 밑 설정 산출 파일 —
+    "settings.json"(기본, 공유) 또는 "settings.local.json"(개인). 빌드 시
+    호출자가 고른다(GUI 컴파일 다이얼로그 / MCP compile_check 파라미터).
 
     게이트: 검증 에러 + 게이트 강화 에러(이름 규약·경로 충돌)가 1건이라도 있으면
     파일을 쓰지 않고 거부한다. 경고만 있으면 통과시키고 warnings에 동봉한다.
@@ -775,7 +780,7 @@ def compile_project(
     if _is_local_build(project):
         _wire_local_install(
             project, out_root, result, extra_server_defs, resolved_hooks,
-            dry_run=dry_run,
+            dry_run=dry_run, settings_filename=settings_filename,
         )
         _merge_claude_md_region(project, out_root, result, dry_run=dry_run)
 
@@ -852,6 +857,7 @@ def _wire_local_install(
     extra_server_defs: dict[str, dict] | None = None,
     resolved_hooks: dict | None = None,
     dry_run: bool = False,
+    settings_filename: str = "settings.json",
 ) -> None:
     """LOCAL 빌드의 설치 배선 — 대상 작업 폴더의 설정 파일을 생성/수정한다.
 
@@ -898,6 +904,7 @@ def _wire_local_install(
         # WP-WS — 프로젝트의 작업 폴더 설정 베이크. hooks 키는 wire_workspace가
         # 무시한다(훅 정본은 hook_library — hooks_map 경로 전담).
         extra_settings=project.workspace_settings or None,
+        settings_name=settings_filename,
     )
     result.written.extend(wired.written)
     for path in wired.unmergeable:

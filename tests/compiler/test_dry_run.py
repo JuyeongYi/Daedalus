@@ -187,7 +187,7 @@ def test_dry_run_does_not_merge_local_settings(tmp_path):
     work.mkdir()
     (work / ".claude").mkdir()
     (work / ".claude" / "CLAUDE.md").write_text("# Team\n\nkeep me\n", encoding="utf-8")
-    (work / ".claude" / "settings.local.json").write_text(
+    (work / ".claude" / "settings.json").write_text(
         json.dumps({"env": {"A": "1"}}), encoding="utf-8",
     )
     project = _local_project()
@@ -204,14 +204,14 @@ def test_dry_run_does_not_merge_local_settings(tmp_path):
     assert _snapshot(work) == before
     # 병합됐을 파일은 "쓰였을" 목록에 그대로 보고된다.
     written = {p.name for p in result.written}
-    assert {".mcp.json", "settings.local.json", "CLAUDE.md"} <= written
+    assert {".mcp.json", "settings.json", "CLAUDE.md"} <= written
 
 
 def test_dry_run_detects_broken_settings_json(tmp_path):
     """깨진 JSON은 읽어서 판정만 한다 — 고치지도, 덮어쓰지도 않는다."""
     work = tmp_path / "work"
     (work / ".claude").mkdir(parents=True)
-    broken = work / ".claude" / "settings.local.json"
+    broken = work / ".claude" / "settings.json"
     broken.write_text("{not json", encoding="utf-8")
     project = _local_project()
     project.mcp_server_defs = {"github": {"type": "http", "url": "http://x/mcp"}}
