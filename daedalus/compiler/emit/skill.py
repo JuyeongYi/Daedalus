@@ -214,8 +214,9 @@ def _resume_preamble_section(project, skill_name: str) -> list[str]:
             "stop and confirm with the user before continuing."
         ),
         (
-            "- Exit code 3 means this plugin has no progress entry yet. Start from "
-            f'the beginning and record it: `{cli} set --current {skill_name}`.'
+            "- Exit code 3 means this plugin has no progress entry yet. That is not "
+            "an error — do not retry the read. Start from the beginning and record "
+            f'it: `{cli} set --current {skill_name}`.'
         ),
     ])
     return ["## Resuming Work", body]

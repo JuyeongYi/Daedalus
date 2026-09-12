@@ -358,3 +358,9 @@ def test_deserialize_missing_emit_progress_sections_defaults_true():
     data.pop("emit_progress_sections", None)
     assert deserialize_project(data).emit_progress_sections is True
 
+
+def test_resume_preamble_says_exit_3_is_not_an_error():
+    project, a, _ = _placed_pair()
+    text = compile_skill(a, project=project)
+    assert "not an error" in text
+    assert "do not retry" in text
