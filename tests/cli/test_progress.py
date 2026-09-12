@@ -180,3 +180,11 @@ def test_broken_json_is_rejected(run, tmp_path: Path):
     code, _, err = run("alpha")("progress", "set", "--current", "new")
     assert code == 2
     assert "__progress__.json" in err
+
+
+def test_read_missing_says_it_is_expected_not_an_error(run):
+    code, out, err = run("alpha")("progress", "read")
+    assert code == 3
+    assert out is None
+    assert "정상" in err, "첫 실행의 '기록 없음'은 오류가 아니라고 stderr에 명시해야 모델이 재시도하지 않는다"
+    assert "exit 3" in err

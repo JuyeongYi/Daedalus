@@ -214,8 +214,9 @@ def _resume_preamble_section(project, skill_name: str) -> list[str]:
             "stop and confirm with the user before continuing."
         ),
         (
-            "- Exit code 3 means this plugin has no progress entry yet. Start from "
-            f'the beginning and record it: `{cli} set --current {skill_name}`.'
+            "- Exit code 3 means this plugin has no progress entry yet. That is not "
+            "an error — do not retry the read. Start from the beginning and record "
+            f'it: `{cli} set --current {skill_name}`.'
         ),
     ])
     return ["## Resuming Work", body]
@@ -448,9 +449,12 @@ def compile_skill(
     # 배치된 Procedural/Declarative 스킬에 배출(미배치는 없음).
     # Declarative 포함 이유: 배치되면 "다음 단계"를 받는데 갱신 규칙이 빠지면
     # 그 노드에서 진행 사슬이 끊긴다 (리뷰 지적 ①).
+    # emit_progress_sections=False면 진행 단락 전체(프리앰블·진입 맥락·갱신
+    # 규칙·완료 단락)를 배출하지 않는다 — 산출물이 daedalus-bb 없이 완결된다.
     progress_placements: list = []
     if (
         project is not None
+        and getattr(project, "emit_progress_sections", True)
         and isinstance(skill, (ProceduralSkill, DeclarativeSkill, WrappedSkill))
     ):
         progress_placements = _graph_placements(skill, project)
@@ -471,6 +475,7 @@ def compile_skill(
     if (
         isinstance(skill, TransferSkill)
         and project is not None
+        and getattr(project, "emit_progress_sections", True)
         and _graph_placements_any(project)
     ):
         blocks.append("## Progress Record")

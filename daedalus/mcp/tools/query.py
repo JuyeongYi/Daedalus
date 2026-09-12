@@ -120,6 +120,7 @@ class QueryTools(_BaseTools):
                 "build_target": getattr(getattr(project, "build_target", None), "value", None),
                 "saved_path": getattr(self._window, "_current_path", None),
                 "emit_progress_hook": getattr(project, "emit_progress_hook", None),
+                "emit_progress_sections": getattr(project, "emit_progress_sections", None),
                 "mcp_server_defs": dict(getattr(project, "mcp_server_defs", None) or {}),
                 # WP-WR — 사용 선언된 외부 플러그인("이름[@마켓]"). 후보·상세는
                 # list_wrappable_skills, 편집은 set_external_plugins.

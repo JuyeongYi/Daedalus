@@ -314,3 +314,53 @@ def test_terminal_section_adds_self_to_completed():
     text = compile_skill(c, project=project)
     assert "## Finishing Up" in text
     assert "progress set --completed <this skill>" in text
+
+
+# ── 6) emit_progress_sections 스위치: 본문 진행 단락 전체 배출 억제 ──
+
+
+def test_progress_sections_off_removes_resume_preamble_and_cli_mentions():
+    project, a, _ = _placed_pair()
+    project.emit_progress_sections = False
+    text = compile_skill(a, project=project)
+    assert "## Resuming Work" not in text
+    assert "daedalus-bb" not in text
+    assert "__progress__" not in text
+    assert "## Next Steps" in text, "다음 단계 단락 자체는 남는다 — 갱신 규칙만 빠진다"
+
+
+def test_progress_sections_off_terminal_has_no_finishing_up():
+    project, c = _placed_terminal()
+    project.emit_progress_sections = False
+    text = compile_skill(c, project=project)
+    assert "## Finishing Up" not in text
+    assert "daedalus-bb" not in text
+
+
+def test_progress_sections_off_transfer_has_no_progress_record():
+    project, _, _ = _placed_pair()
+    project.emit_progress_sections = False
+    text = compile_skill(make_transfer("edge-skill"), project=project)
+    assert "## Progress Record" not in text
+
+
+def test_serialize_roundtrip_emit_progress_sections_false():
+    project, _, _ = _placed_pair()
+    project.emit_progress_sections = False
+    data = serialize_project(project)
+    assert data["emit_progress_sections"] is False
+    assert deserialize_project(data).emit_progress_sections is False
+
+
+def test_deserialize_missing_emit_progress_sections_defaults_true():
+    project, _, _ = _placed_pair()
+    data = serialize_project(project)
+    data.pop("emit_progress_sections", None)
+    assert deserialize_project(data).emit_progress_sections is True
+
+
+def test_resume_preamble_says_exit_3_is_not_an_error():
+    project, a, _ = _placed_pair()
+    text = compile_skill(a, project=project)
+    assert "not an error" in text
+    assert "do not retry" in text

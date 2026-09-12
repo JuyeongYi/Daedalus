@@ -143,6 +143,8 @@ def deserialize_project(
         },
         # WP-RS Part B — 구버전 파일(키 부재) → 기본 True.
         emit_progress_hook=data.get("emit_progress_hook", True),
+        # 구버전 파일(키 부재) → 기본 True.
+        emit_progress_sections=data.get("emit_progress_sections", True),
         # WP-TG — 구버전 파일(키 부재) → MARKETPLACE(경고 없음, 하위 호환 게이트).
         build_target=_to_enum(
             BuildTarget, data.get("build_target"), BuildTarget.MARKETPLACE

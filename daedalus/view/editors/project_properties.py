@@ -67,6 +67,13 @@ class ProjectPropertiesDialog(QDialog):
             self._emit_progress_hook_cb,
         )
 
+        self._emit_progress_sections_cb = QCheckBox()
+        self._emit_progress_sections_cb.setChecked(project.emit_progress_sections)
+        form.addRow(
+            "스킬 본문에 진행 상태 단락 배출 (daedalus-bb progress):",
+            self._emit_progress_sections_cb,
+        )
+
         self._build_target_combo = QComboBox()
         for target, label in BUILD_TARGET_LABELS:
             self._build_target_combo.addItem(label, target)
@@ -87,4 +94,5 @@ class ProjectPropertiesDialog(QDialog):
         project.description = self._description_edit.text()
         project.version = self._version_edit.text()
         project.emit_progress_hook = self._emit_progress_hook_cb.isChecked()
+        project.emit_progress_sections = self._emit_progress_sections_cb.isChecked()
         project.build_target = self._build_target_combo.currentData()

@@ -126,7 +126,10 @@ def cmd_read(state_dir: Path, plugin: str) -> int:
     entry = data.get(plugin)
     if entry is None:
         raise CliError(
-            f"'{plugin}'의 진행 기록이 없다: {path.as_posix()}", EXIT_NO_FILE
+            f"'{plugin}'의 진행 기록이 없다 — 아직 시작 전이면 정상이다"
+            f"(exit 3, 재시도 불필요. 첫 기록은 `progress set --current <스킬>`): "
+            f"{path.as_posix()}",
+            EXIT_NO_FILE,
         )
     _emit(entry)
     return EXIT_OK

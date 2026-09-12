@@ -727,7 +727,7 @@ def test_get_project_sections_default_is_full(tools):
     full = tools.get_project()
     assert set(full) == {
         "name", "description", "version", "build_target", "saved_path",
-        "emit_progress_hook", "mcp_server_defs", "external_plugins", "workspace_docs",
+        "emit_progress_hook", "emit_progress_sections", "mcp_server_defs", "external_plugins", "workspace_docs",
         "can_undo", "can_redo",
         "skills", "agents", "placements", "transitions", "references",
         "blackboard_classes", "hook_library", "global_hooks",
@@ -743,7 +743,7 @@ def test_get_project_sections_combines_multiple_groups(tools):
     result = tools.get_project(sections=["meta", "hooks"])
     assert set(result) == {
         "name", "description", "version", "build_target", "saved_path",
-        "emit_progress_hook", "mcp_server_defs", "external_plugins", "workspace_docs",
+        "emit_progress_hook", "emit_progress_sections", "mcp_server_defs", "external_plugins", "workspace_docs",
         "can_undo", "can_redo",
         "hook_library", "global_hooks",
     }
@@ -771,3 +771,19 @@ def test_create_hook_without_event_still_defaults_to_pretooluse(tools):
     """event 생략(미지정) 기본값은 종전대로 PreToolUse — 하위 호환."""
     result = tools.create_hook("h-default", command="echo hi")
     assert result["event"] == "PreToolUse"
+
+
+def test_set_project_properties_toggles_progress_sections(tools, window):
+    assert window._project.emit_progress_sections is True
+
+    result = tools.set_project_properties(emit_progress_sections=False)
+    assert result["emit_progress_sections"] is False
+    assert window._project.emit_progress_sections is False
+
+    tools.undo()
+    assert window._project.emit_progress_sections is True
+
+
+def test_get_project_meta_reports_emit_progress_sections(tools):
+    meta = tools.get_project(sections=["meta"])
+    assert meta["emit_progress_sections"] is True
