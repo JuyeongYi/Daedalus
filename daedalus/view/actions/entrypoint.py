@@ -116,6 +116,19 @@ def current_entry_preset(component: object) -> EntryPreset | None:
     return None
 
 
+def is_user_entry(component: object) -> bool:
+    """유저가 `/스킬`로 발동하는 진입점으로 **못 박은** 컴포넌트인가.
+
+    `user_invocable is True`(프리셋 "진입점으로"·"유저 전용 진입점으로")만 참이다.
+    미지정(None)도 실효값은 true지만 대부분의 노드가 그 상태라 표시하면 전부
+    칠해진다 — 뱃지(🚪)와 같은 기준으로 **선언한 것만** 보인다. 프리셋을 걸 수
+    없는 종류(FIXED·에이전트)는 항상 False.
+    """
+    if not supports_entry_presets(component):
+        return False
+    return getattr(getattr(component, "config", None), USER_INVOCABLE_ATTR, None) is True
+
+
 def apply_entry_preset(project_vm, component: object, preset: EntryPreset) -> bool:
     """프리셋을 적용한다 — 두 필드가 **1 undo 단위**. 적용했으면 True.
 

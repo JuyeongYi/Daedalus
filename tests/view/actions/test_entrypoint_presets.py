@@ -186,3 +186,41 @@ def test_preset_value_sets_are_distinct():
         for spec in ENTRY_PRESETS
     }
     assert len(combos) == len(ENTRY_PRESETS)
+
+
+# --- 유저 발동 진입점 테두리 (2026-09-12) ---
+
+
+@pytest.mark.parametrize("preset, expected", [
+    (EntryPreset.ENTRY, True),
+    (EntryPreset.USER_ONLY, True),
+    (EntryPreset.PURE, False),
+    (EntryPreset.DEFAULT, False),  # 미지정은 실효 true지만 선언한 것만 보인다
+])
+def test_is_user_entry_follows_explicit_user_invocable(vm, preset, expected):
+    from daedalus.view.actions.entrypoint import is_user_entry
+
+    skill = _proc()
+    apply_entry_preset(vm, skill, preset)
+    assert is_user_entry(skill) is expected
+
+
+def test_is_user_entry_false_for_fixed_kinds_and_agents():
+    from daedalus.view.actions.entrypoint import is_user_entry
+
+    assert not is_user_entry(_transfer())
+    assert not is_user_entry(_agent())
+
+
+def test_node_border_color_marks_user_entry(vm):
+    from daedalus.view.canvas.node_item import _USER_ENTRY_BORDER, node_border_color
+
+    skill = _proc()
+    node = SimpleState(name="worker", skill_ref=skill)
+    assert node_border_color(node, "#4a8a4a") == "#4a8a4a"
+    apply_entry_preset(vm, skill, EntryPreset.USER_ONLY)
+    assert node_border_color(node, "#4a8a4a") == _USER_ENTRY_BORDER
+    apply_entry_preset(vm, skill, EntryPreset.PURE)
+    assert node_border_color(node, "#4a8a4a") == "#4a8a4a"
+    # skill_ref 없는 노드(빈 상태)는 종류 색 그대로
+    assert node_border_color(SimpleState(name="empty"), "#334466") == "#334466"

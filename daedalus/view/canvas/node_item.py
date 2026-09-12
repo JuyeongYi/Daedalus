@@ -36,6 +36,21 @@ _TYPE_STYLE: dict[str | None, tuple[str, str, str, str]] = {
     None:                ("#1a1a2a", "#334466", "STATE",        ""),
 }
 
+# 유저 발동 진입점(user_invocable 명시 true — 🚪 뱃지와 같은 기준)의 테두리 색.
+# 종류 색(배경·헤더 글자)은 그대로 두고 **외곽선만** 바꾼다 — "어디서 사용자가
+# 시작할 수 있는가"를 캔버스 전체에서 한눈에 찾게 한다(사용자 요청 2026-09-12).
+_USER_ENTRY_BORDER = "#e0b030"
+
+
+def node_border_color(model: object, kind_border: str) -> str:
+    """노드 외곽선 색 — 유저 발동 진입점이면 전용 색, 아니면 종류 색."""
+    from daedalus.view.actions.entrypoint import is_user_entry
+
+    ref = getattr(model, "skill_ref", None)
+    if ref is not None and is_user_entry(ref):
+        return _USER_ENTRY_BORDER
+    return kind_border
+
 
 class StateNodeItem(DraggableItemMixin, QGraphicsItem):
     """캔버스 위의 스킬/에이전트 노드."""
@@ -181,7 +196,8 @@ class StateNodeItem(DraggableItemMixin, QGraphicsItem):
             kind = ref.kind if ref is not None else None
             bg_str, border_str, header_label, icon = _TYPE_STYLE.get(kind, _TYPE_STYLE[None])
         border_color = QColor(border_str)
-        active_border = border_color.lighter(160) if self.isSelected() else border_color
+        outline = QColor(node_border_color(model, border_str))
+        active_border = outline.lighter(160) if self.isSelected() else outline
 
         h = self._height()
 
