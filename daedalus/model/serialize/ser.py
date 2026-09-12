@@ -499,6 +499,8 @@ def _ser_agent(a: AgentDefinition) -> dict:
         },
         # WP-AF — 출력 포트. v1 파일의 ExitPoint는 _migrate_v1이 승계한다.
         "transfer_on": [_ser_eventdef(e) for e in a.transfer_on],
+        # 에이전트 호출 포트(2026-09-12) — 키 부재인 구버전 파일은 빈 목록으로 로드된다.
+        "call_agents": [_ser_eventdef(e) for e in a.call_agents],
     }
 
 

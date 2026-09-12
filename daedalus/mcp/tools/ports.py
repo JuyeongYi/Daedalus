@@ -76,22 +76,36 @@ class PortTools(_BaseTools):
         )
         return {"component": name, "transfer_on": [d.name for d in defs]}
 
+    @staticmethod
+    def _require_call_port_owner(comp: Any, name: str) -> Any:
+        """에이전트 호출 포트를 가질 수 있는 컴포넌트인지 확인하고 그대로 돌려준다.
+
+        절차형 스킬·state 용도 랩핑 스킬·**에이전트**(2026-09-12 — CC 중첩 스폰
+        허용)가 대상이다. 선언적/참조 스킬과 참조 용도 랩퍼는 워크플로 단계가
+        아니라 호출 포트가 무의미하다.
+        """
+        from daedalus.model.plugin.skill import is_reference_usage
+
+        if not hasattr(comp, "call_agents") or is_reference_usage(comp):
+            raise ValueError(
+                f"'{name}'에는 에이전트 호출 포트를 붙일 수 없습니다 — 절차형 스킬, "
+                f"state 용도 랩핑 스킬, 에이전트만 가능합니다."
+            )
+        return comp
+
     def add_agent_call(
         self, skill: str, event: str, description: str = "", color: str = ""
     ) -> dict[str, Any]:
-        """ProceduralSkill에 **에이전트 호출 포트**를 추가한다.
+        """스킬/에이전트에 **에이전트 호출 포트**를 추가한다.
 
         에이전트로 가는 전이는 이 포트에서만 나갈 수 있다(캔버스와 같은 규칙).
         포트를 만든 뒤 connect_states(..., trigger=<event>)로 연결한다.
+        에이전트에 붙이면 그 에이전트가 다른 에이전트를 서브에이전트로 부른다 —
+        깊이·모델 티어 제약은 검증(agent_chain_too_deep/agent_calls_higher_model)이 짚는다.
         """
-        from daedalus.model.plugin.skill import ProceduralSkill
         from daedalus.view.commands.attr_commands import SetAttrCmd
 
-        comp = self._find_component(skill)
-        if not isinstance(comp, ProceduralSkill):
-            raise ValueError(
-                f"'{skill}'은 ProceduralSkill이 아닙니다 — 에이전트 호출 포트는 절차형 스킬에만 붙는다."
-            )
+        comp = self._require_call_port_owner(self._find_component(skill), skill)
         if any(e.name == event for e in comp.call_agents):
             raise ValueError(f"'{skill}'에 이미 '{event}' 호출 포트가 있습니다.")
         spec: dict[str, Any] = {"name": event}
@@ -114,7 +128,7 @@ class PortTools(_BaseTools):
     def set_agent_calls(
         self, skill: str, events: list[dict[str, Any]]
     ) -> dict[str, Any]:
-        """ProceduralSkill의 **에이전트 호출 포트 전체**를 통째로 교체한다.
+        """스킬/에이전트의 **에이전트 호출 포트 전체**를 통째로 교체한다.
 
         `set_transfer_on`의 call_agents 짝(G6) — `add_agent_call`/
         `remove_agent_call`은 하나씩 넣고 빼는 지름길이고, 이 도구는 여러 포트를
@@ -127,14 +141,9 @@ class PortTools(_BaseTools):
         않는다**(remove_agent_call과 같은 정책) — 남은 전이는
         `trigger_unknown_event` 경고로 드러난다.
         """
-        from daedalus.model.plugin.skill import ProceduralSkill
         from daedalus.view.commands.attr_commands import SetAttrCmd
 
-        comp = self._find_component(skill)
-        if not isinstance(comp, ProceduralSkill):
-            raise ValueError(
-                f"'{skill}'은 ProceduralSkill이 아닙니다 — 에이전트 호출 포트는 절차형 스킬에만 붙는다."
-            )
+        comp = self._require_call_port_owner(self._find_component(skill), skill)
         defs = self._make_event_defs(events)
         names = [d.name for d in defs]
         dupes = {n for n in names if names.count(n) > 1}
@@ -153,18 +162,15 @@ class PortTools(_BaseTools):
         return {"skill": skill, "call_agents": names}
 
     def remove_agent_call(self, skill: str, event: str) -> dict[str, Any]:
-        """ProceduralSkill의 에이전트 호출 포트를 제거한다.
+        """스킬/에이전트의 에이전트 호출 포트를 제거한다.
 
         그 포트를 trigger로 쓰는 전이는 **함께 지우지 않는다**(캔버스에서 포트를
         지웠을 때와 같다) — 남은 전이는 `trigger_unknown_event` 경고로 드러나므로,
         결과의 `orphaned_transitions`를 보고 disconnect_states로 정리하라.
         """
-        from daedalus.model.plugin.skill import ProceduralSkill
         from daedalus.view.commands.attr_commands import SetAttrCmd
 
-        comp = self._find_component(skill)
-        if not isinstance(comp, ProceduralSkill):
-            raise ValueError(f"'{skill}'은 ProceduralSkill이 아닙니다.")
+        comp = self._require_call_port_owner(self._find_component(skill), skill)
         if not any(e.name == event for e in comp.call_agents):
             known = ", ".join(e.name for e in comp.call_agents) or "(없음)"
             raise ValueError(f"'{skill}'에 '{event}' 호출 포트가 없습니다. 현재: {known}")

@@ -170,7 +170,11 @@ class _MachineRules:
                     rule="no_agent_to_agent",
                     message=(
                         f"Agent '{t.source.name}' → Agent '{t.target.name}' "
-                        f"직접 전이 불가. Skill을 경유해야 합니다."
+                        f"직접 전이입니다. 에이전트가 에이전트를 부르는 것 자체는 "
+                        f"가능하지만(CC 중첩 스폰, 주 대화 기준 3계층), 그 구간의 "
+                        f"중간 결과는 메인 컨텍스트에 남지 않아 진행 기록·재개가 "
+                        f"약해집니다. 끊겼을 때 그 지점부터 이어받아야 하면 "
+                        f"스킬을 경유하세요."
                     ),
                     source=f"{t.source.name}->{t.target.name}",
                     subject=t,

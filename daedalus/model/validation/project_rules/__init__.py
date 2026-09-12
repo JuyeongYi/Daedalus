@@ -134,6 +134,9 @@ class _ProjectRules(
         errors.extend(_WorkflowRules._check_mid_chain_user_invocable(project))
         # 전이 스킬 재사용 금지 — A11
         errors.extend(_WorkflowRules._check_transfer_skill_reused(project))
+        # 에이전트 중첩 호출 — 깊이·모델 티어 (2026-09-12)
+        errors.extend(_WorkflowRules._check_agent_chain_depth(project))
+        errors.extend(_WorkflowRules._check_agent_calls_higher_model(project))
         # 작업 폴더 문서 — WP-WD
         errors.extend(_WorkspaceDocRules._check_workspace_docs(project))
         return errors

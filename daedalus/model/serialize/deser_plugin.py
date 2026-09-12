@@ -236,6 +236,8 @@ def _deser_agent(d: dict, reg: _Registry) -> AgentDefinition:
         },
         # WP-AF — 출력 포트가 단일 진실. v1의 ExitPoint 승계는 _migrate_v1 소관.
         transfer_on=[_deser_eventdef(e) for e in d.get("transfer_on", [])],
+        # 에이전트 호출 포트(2026-09-12) — 키 부재(구버전) → 빈 목록, 경고 없음.
+        call_agents=[_deser_eventdef(e) for e in d.get("call_agents", [])],
     )
     reg.components[sid] = agent
     return agent

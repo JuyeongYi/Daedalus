@@ -48,6 +48,11 @@ WARNING_RULES: frozenset[str] = frozenset({
     "unreachable_state",
     "invalid_data_map_source",
     "trigger_unknown_event",
+    # 2026-09-12 — CC가 서브에이전트의 중첩 스폰을 허용하면서 에이전트→에이전트
+    # 직접 전이가 금지가 아니게 됐다(에러 → 경고). 남은 대가는 진행 기록·재개가
+    # 약해지는 것뿐이라 판단은 설계자 몫이다. 하드 제약(깊이·모델 티어)은
+    # agent_chain_too_deep / agent_calls_higher_model이 에러로 잡는다.
+    "no_agent_to_agent",
     # WP-M FSM 의미론 경고
     "choice_completeness_missing_else",
     "parallel_join_count",

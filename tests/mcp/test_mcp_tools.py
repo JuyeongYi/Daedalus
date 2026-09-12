@@ -451,9 +451,33 @@ def test_call_port_cannot_target_non_agent(tools, with_agent):
         tools.connect_states("init", "rules", trigger="delegate")
 
 
-def test_add_agent_call_rejects_non_procedural(tools):
-    with pytest.raises(ValueError, match="ProceduralSkill이 아닙니다"):
+def test_add_agent_call_rejects_component_without_call_ports(tools):
+    """선언적/참조 스킬은 워크플로 단계가 아니라 호출 포트가 무의미하다."""
+    with pytest.raises(ValueError, match="에이전트 호출 포트를 붙일 수 없습니다"):
         tools.add_agent_call("rules", "x")
+
+
+def test_add_agent_call_on_agent(tools, with_agent):
+    """에이전트도 호출 포트를 갖는다 (2026-09-12 — CC 중첩 스폰 허용)."""
+    tools.add_agent_call("worker", "subtask", description="하위 조사")
+    agent = next(a for a in with_agent._project.agents if a.name == "worker")
+    assert [e.name for e in agent.call_agents] == ["subtask"]
+    assert agent.call_agents[0].description == "하위 조사"
+    tools.undo()
+    assert agent.call_agents == []
+
+
+def test_agent_can_call_another_agent(tools, with_agent):
+    """에이전트 → 에이전트 연결 (2026-09-12) — 캔버스와 같은 규칙(호출 포트 경유)."""
+    tools.create_agent("scout")
+    tools.place_component("scout", x=400, y=0)
+    tools.add_agent_call("worker", "probe")
+    tools.connect_states("worker", "scout", trigger="probe")
+    pairs = [
+        (t.source_vm.model.name, t.target_vm.model.name)
+        for t in with_agent._project_vm.transition_vms
+    ]
+    assert ("worker", "scout") in pairs
 
 
 def test_add_agent_call_is_undoable(tools, window):

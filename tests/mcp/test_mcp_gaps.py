@@ -572,8 +572,9 @@ def test_set_agent_calls_rejects_duplicate_names(tools):
         tools.set_agent_calls("init", [{"name": "review"}, {"name": "review"}])
 
 
-def test_set_agent_calls_rejects_non_procedural_skill(tools):
-    with pytest.raises(ValueError, match="ProceduralSkill"):
+def test_set_agent_calls_rejects_component_without_call_ports(tools):
+    """호출 포트는 절차형 스킬·state 용도 랩퍼·에이전트만 가진다 (2026-09-12)."""
+    with pytest.raises(ValueError, match="에이전트 호출 포트를 붙일 수 없습니다"):
         tools.set_agent_calls("guide", [{"name": "review"}])
 
 

@@ -60,6 +60,7 @@ from daedalus.compiler.emit import (
     referenced_mcp_servers,
 )
 from daedalus.compiler.emit.manifest import external_plugin_ids
+from daedalus.compiler.emit.wrapped import compile_wrapped_runner, needs_runner_agent
 from daedalus.compiler.token_report import TokenReport
 from daedalus.compiler.workspace import (
     has_manual_frontmatter,
@@ -296,6 +297,17 @@ def _plan_outputs(
             kind="skill",
             component=skill,
         ))
+        # state 용도 랩핑 스킬의 실행 서브에이전트 (WP-WR, 사용자 확정
+        # 2026-09-12 — 외부 플러그인 스킬은 서브에이전트에서만 쓴다). 이름이
+        # 랩퍼와 같아 사용자 에이전트와는 duplicate_component_name이 이미 막는다.
+        if needs_runner_agent(skill):
+            plan.append(_PlannedOutput(
+                rel_path=cc_prefix / "agents" / f"{skill.name}.md",
+                label=f"랩핑 스킬 '{skill.name}'의 실행 서브에이전트",
+                subject=skill,
+                kind="wrapped_runner",
+                component=skill,
+            ))
 
     # 에이전트
     for agent in project.agents:
@@ -769,6 +781,8 @@ def compile_project(
         elif item.kind == "agent":
             text = compile_agent(item.component, project=project,
                                  resolved_hooks=resolved_hooks)
+        elif item.kind == "wrapped_runner":
+            text = compile_wrapped_runner(item.component)
         elif item.kind == "hooks_json":
             text = compile_hooks_json(project, resolved_hooks) or ""
         elif item.kind == "hook_script":
@@ -786,7 +800,7 @@ def compile_project(
 
         # 타깃 중립 토큰 ${ROOT}를 빌드 타깃에 맞는 CC 변수로 확장한다(WP-RT).
         # 본문 정본은 어느 타깃에도 기울지 않고, 여기서만 갈라진다.
-        if item.kind in ("skill", "agent"):
+        if item.kind in ("skill", "agent", "wrapped_runner"):
             text = expand_root_token(text, project)
 
         path = _out(item.rel_path)

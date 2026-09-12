@@ -329,15 +329,15 @@ def _component_access_union(component, project) -> tuple[set[str], set[str]]:
     return reads, writes
 
 
-def _background_references_section(component, project) -> list[str]:
-    """이 컴포넌트의 배치 노드에 링크된 **참조 용도 랩핑 스킬** → consult 지시
-    (WP-WR, 사용자 확정 2026-09-07 — 참조 용도는 산출 파일이 없으므로 링크된
-    노드의 산출에 이 지시가 유일한 흔적이다).
+def linked_background_skills(component, project) -> list[tuple[str, str]]:
+    """이 컴포넌트의 배치 노드에 링크된 **참조 용도 랩핑 스킬** →
+    [(CC 명령 이름 `플러그인:스킬`, 랩퍼 description)] (WP-WR).
 
-    스킬·에이전트 공용 — 배치 노드 이름을 구해 reference_placements의
-    connected_states와 교집합을 본다(에이전트 skills 프론트매터 자동 합류를
-    쓰지 않는 이유: 그 키는 우리 플러그인의 스킬 이름 공간이라 외부
-    플러그인의 스킬을 담을 수 없다). 출력은 소스 기준 이름순 정렬 — 결정적.
+    소비자가 둘이다 — 스킬 산출은 consult 지시 단락
+    (`_background_references_section`), 에이전트 산출은 `skills` 프론트매터
+    주입(`_agent_skills_list` — 외부 플러그인 스킬은 서브에이전트에서만 쓴다,
+    사용자 확정 2026-09-12). 판정을 한 곳에 둬야 둘이 같은 목록을 말한다.
+    비활성 랩퍼·source 형식 불일치는 빠진다. 명령 이름순 정렬 — 결정적.
     ReferenceSkill(자체 산출이 있는 진짜 참조 문서)은 대상이 아니다.
     """
     if project is None:
@@ -348,7 +348,7 @@ def _background_references_section(component, project) -> list[str]:
     }
     if not node_names:
         return []
-    # 비활성 랩퍼는 빠진다 — 끈 것은 쓰지 않는 것이다(WP-WR).
+    from daedalus.compiler.emit.wrapped import external_skill_name
     from daedalus.model.plugin.skill import is_disabled_wrapped
 
     wrapped_refs = {
@@ -357,7 +357,7 @@ def _background_references_section(component, project) -> list[str]:
         and getattr(getattr(s, "config", None), "usage", "") == "reference"
         and not is_disabled_wrapped(s)
     }
-    entries: list[tuple[str, str]] = []  # (source, description)
+    entries: list[tuple[str, str]] = []
     seen: set[str] = set()
     for rp in getattr(project, "reference_placements", []) or []:
         skill = wrapped_refs.get(rp.skill_name)
@@ -365,16 +365,24 @@ def _background_references_section(component, project) -> list[str]:
             continue
         if not node_names & set(getattr(rp, "connected_states", []) or []):
             continue
-        source = getattr(skill.config, "source", "") or ""
-        plugin_id, _, skill_name = source.partition(":")
-        if not plugin_id.strip() or not skill_name.strip():
+        ext = external_skill_name(getattr(skill.config, "source", "") or "")
+        if not ext:
             continue  # wrapped_source_missing 소관 — 빈 지시를 내지 않는다
         seen.add(skill.name)
-        bare_plugin = plugin_id.partition("@")[0]
-        entries.append((f"/{bare_plugin}:{skill_name.strip()}", skill.description))
+        entries.append((ext, skill.description))
+    entries.sort(key=lambda e: e[0])
+    return entries
+
+
+def _background_references_section(component, project) -> list[str]:
+    """링크된 참조 용도 랩핑 스킬 → consult 지시 단락 (WP-WR — 스킬 산출 전용).
+
+    참조 용도는 산출 파일이 없으므로 링크된 노드의 산출에 이 지시가 유일한
+    흔적이다. 에이전트는 이 단락 대신 `skills` 프론트매터로 주입받는다.
+    """
+    entries = linked_background_skills(component, project)
     if not entries:
         return []
-    entries.sort(key=lambda e: e[0])
     lines = [
         "## Background Skills",
         (
@@ -383,9 +391,9 @@ def _background_references_section(component, project) -> list[str]:
             "plugin depends on; no local copy exists):"
         ),
     ]
-    for token, description in entries:
+    for name, description in entries:
         suffix = f" — {description}" if description else ""
-        lines.append(f"- `{token}`{suffix}")
+        lines.append(f"- `/{name}`{suffix}")
     return ["\n".join(lines)]
 
 

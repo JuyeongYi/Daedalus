@@ -42,7 +42,7 @@ DEFAULT_FILE_TOKEN_THRESHOLD = 5000
 # hooks.json/schemas.json/plugin.json은 CC가 설정으로 읽을 뿐 대화 컨텍스트에
 # 실리지 않으므로 총합에는 넣되 임계로 재지 않는다.
 CONTEXT_KINDS: frozenset[str] = frozenset(
-    {"skill", "agent", "workspace_rule", "claude_md"}
+    {"skill", "agent", "wrapped_runner", "workspace_rule", "claude_md"}
 )
 
 _ASCII_CHARS_PER_TOKEN = 4.0

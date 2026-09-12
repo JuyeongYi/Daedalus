@@ -46,7 +46,10 @@ def test_no_agent_inside_agent():
 
 
 def test_no_agent_to_agent_direct():
-    """Agent→Agent 직접 엣지 불가."""
+    """Agent→Agent 직접 엣지는 **경고**다 (2026-09-12 — CC 중첩 스폰 허용).
+
+    금지가 아니라 "진행 기록·재개가 약해진다"는 알림이다.
+    """
     a1 = _make_agent("agent1", ["x"])
     a2 = _make_agent("agent2", ["y"])
     t = Transition(source=a1, target=a2)

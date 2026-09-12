@@ -17,8 +17,10 @@ _ERROR_RULES = frozenset({
     "initial_state_in_states",
     "final_states_in_states",
     "no_nested_agent",
-    "no_agent_to_agent",
     "no_duplicate_skill_ref",
+    # 2026-09-12 — CC 중첩 한계·모델 티어는 설계대로 돌지 않게 만드는 하드 제약
+    "agent_chain_too_deep",
+    "agent_calls_higher_model",
     "transfer_on_not_empty",
     "transition_endpoint_not_in_states",
     "duplicate_component_name",
@@ -39,6 +41,7 @@ _WARN_RULES = frozenset({
     "unreachable_state",
     "invalid_data_map_source",
     "trigger_unknown_event",
+    "no_agent_to_agent",  # 2026-09-12 — 중첩 스폰 허용으로 에러 → 경고
     "invalid_blackboard_field_type",
     "choice_completeness_missing_else",
     "parallel_join_count",

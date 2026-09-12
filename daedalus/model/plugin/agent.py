@@ -35,6 +35,12 @@ class AgentDefinition(PluginComponent, WorkflowComponent):
     # transfer_on이 담는다. v1 파일의 ExitPoint 출력 포트는 로드 시 transfer_on으로
     # 마이그레이션된다(serialize._migrate_v1) — 여기가 단일 진실이다.
     transfer_on: list[EventDef] = field(default_factory=list)
+    # 에이전트 호출 포트 — 스킬과 **같은 필드·같은 의미론**이다(2026-09-12).
+    # CC가 서브에이전트의 중첩 스폰을 허용하면서(주 대화 기준 3계층) 에이전트도
+    # 다른 에이전트를 부를 수 있게 됐다. 이 포트에서 나가는 전이만 에이전트
+    # 노드로 갈 수 있다(캔버스 규칙과 동일). 깊이·모델 티어 제약은 프로젝트
+    # 검증(agent_chain_too_deep / agent_calls_higher_model)이 짚는다.
+    call_agents: list[EventDef] = field(default_factory=list)
     # 안정 식별자 — 값 동등성 비교에서는 제외(compare=False).
     id: str = field(default_factory=lambda: uuid4().hex, compare=False, kw_only=True)
 

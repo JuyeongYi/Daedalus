@@ -103,6 +103,10 @@ def _frontmatter_lines_skill(
             continue
         if rule.emit is not FieldEmit.FRONTMATTER:
             continue
+        # 랩핑 스킬의 model/effort는 실행 서브에이전트 프론트매터로 간다
+        # (emit/wrapped.py) — SKILL.md는 위임만 하는 메인 스레드 단계다.
+        if kind_key == "wrapped" and sfield in (SkillField.MODEL, SkillField.EFFORT):
+            continue
         key = sfield.frontmatter_key
         if key is None:  # WHEN_TO_USE — 본문/description 합류
             continue

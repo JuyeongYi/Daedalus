@@ -21,6 +21,18 @@ class ModelType(Enum):
     INHERIT = "inherit"
 
 
+#: 모델 티어 순서 — 값이 클수록 상위 모델. 에이전트가 **자기보다 상위 모델의
+#: 에이전트를 부르지 못하게** 하는 규칙(agent_calls_higher_model)의 단일 진실이다.
+#: INHERIT는 표에 없다 — 부르는 쪽 맥락을 물려받으므로 "상위/하위"가 성립하지
+#: 않는다(어느 한쪽이 INHERIT면 판정을 건너뛴다).
+MODEL_TIER: dict[ModelType, int] = {
+    ModelType.HAIKU: 1,
+    ModelType.SONNET: 2,
+    ModelType.OPUS: 3,
+    ModelType.FABLE: 4,
+}
+
+
 class EffortLevel(Enum):
     """CC effort 5단 (2026-07 기준: low/medium/high/xhigh/max)."""
     LOW = "low"

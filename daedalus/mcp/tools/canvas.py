@@ -109,10 +109,12 @@ class CanvasTools(_BaseTools):
         **에이전트 노드로 가는 전이는 반드시 call_agent 포트에서 나가야 한다** —
         캔버스와 같은 규칙이다. 호출 계약은 컴파일러가 그래프(호출 포트 + 전이)
         에서 유도하므로 에이전트 쪽에 따로 입력할 것이 없다(WP-CT).
+        출발은 호출 포트를 가질 수 있는 컴포넌트면 된다 — 절차형 스킬, state 용도
+        랩핑 스킬, 그리고 **에이전트**(2026-09-12 — CC 중첩 스폰 허용). 깊이·모델
+        티어 제약은 검증이 짚는다(agent_chain_too_deep/agent_calls_higher_model).
         """
         from daedalus.model.fsm.transition import Transition
         from daedalus.model.plugin.agent import AgentDefinition
-        from daedalus.model.plugin.skill import ProceduralSkill
         from daedalus.view.commands.transition_commands import CreateTransitionCmd
         from daedalus.view.viewmodel.state_vm import TransitionViewModel
 
@@ -121,12 +123,16 @@ class CanvasTools(_BaseTools):
         tgt = self._find_state_vm(target, vm)
         src_ref = getattr(src.model, "skill_ref", None)
         tgt_ref = getattr(tgt.model, "skill_ref", None)
+        # 호출 포트를 가질 수 있는가 — 판정은 PortTools._require_call_port_owner와
+        # 같은 기준(call_agents 필드 보유)이다.
+        src_has_call_ports = hasattr(src_ref, "call_agents")
 
         is_agent_call = False
         if isinstance(tgt_ref, AgentDefinition):
-            if not isinstance(src_ref, ProceduralSkill):
+            if not src_has_call_ports:
                 raise ValueError(
-                    f"에이전트 '{target}'은 ProceduralSkill에서만 호출할 수 있습니다."
+                    f"에이전트 '{target}'은 호출 포트를 가진 컴포넌트에서만 호출할 수 "
+                    f"있습니다 — 절차형 스킬, state 용도 랩핑 스킬, 에이전트."
                 )
             if not trigger:
                 raise ValueError(
@@ -134,16 +140,17 @@ class CanvasTools(_BaseTools):
                     f'add_agent_call("{source}", "<포트명>") 으로 포트를 먼저 만들고 '
                     "trigger로 지정하세요."
                 )
-            if not any(e.name == trigger for e in src_ref.call_agents):
-                have = ", ".join(e.name for e in src_ref.call_agents) or "(없음)"
+            ports = getattr(src_ref, "call_agents", [])
+            if not any(e.name == trigger for e in ports):
+                have = ", ".join(e.name for e in ports) or "(없음)"
                 raise ValueError(
                     f"'{source}'에 '{trigger}' 에이전트 호출 포트가 없습니다(현재: {have}). "
                     f'add_agent_call("{source}", "{trigger}") 로 먼저 만드세요.'
                 )
             is_agent_call = True
-        elif trigger and isinstance(src_ref, ProceduralSkill):
+        elif trigger and src_has_call_ports:
             # call_agent 포트는 에이전트로만 나갈 수 있다 (캔버스와 같은 규칙)
-            if any(e.name == trigger for e in src_ref.call_agents):
+            if any(e.name == trigger for e in getattr(src_ref, "call_agents", [])):
                 raise ValueError(
                     f"'{trigger}'는 에이전트 호출 포트입니다 — 에이전트가 아닌 "
                     f"'{target}'으로는 연결할 수 없습니다."

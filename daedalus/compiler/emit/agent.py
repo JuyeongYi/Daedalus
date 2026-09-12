@@ -23,7 +23,6 @@ from daedalus.compiler.emit.frontmatter import (
     _yaml_scalar,
 )
 from daedalus.compiler.emit.sections import (
-    _background_references_section,
     _blackboard_section,
     _describe_access,
     _describe_guard,
@@ -32,6 +31,7 @@ from daedalus.compiler.emit.sections import (
     _ordered_states,
     _tool_shelf_section,
     _transition_condition,
+    linked_background_skills,
 )
 from daedalus.model.fsm.pseudo import ChoiceState, ExitPoint
 from daedalus.model.fsm.state import CompositeState, SimpleState
@@ -116,6 +116,12 @@ def _agent_skills_list(agent: AgentDefinition, project) -> list[str]:
                 if rp.skill_name in ref_names and node_names & set(rp.connected_states):
                     if rp.skill_name not in auto:
                         auto.append(rp.skill_name)
+        # 3. 링크된 참조 용도 랩핑 스킬(외부 플러그인) — `플러그인:스킬` 이름으로
+        #    주입한다. CC가 이 이름을 플러그인 스킬 명령과 정확히 맞춰 해석한다
+        #    (emit/wrapped.py docstring의 실측). 외부 스킬은 서브에이전트에서만 쓴다.
+        for ext, _desc in linked_background_skills(agent, project):
+            if ext not in auto:
+                auto.append(ext)
     for name in getattr(agent.config, "skills", None) or []:
         if name not in auto:
             auto.append(name)
@@ -376,6 +382,60 @@ def _call_contract_section(agent: AgentDefinition, project) -> list[str]:
     return blocks
 
 
+def _agent_delegation_section(agent: AgentDefinition, project=None) -> list[str]:
+    """"## Delegation" — 이 에이전트가 호출 포트로 부르는 다른 에이전트 (2026-09-12).
+
+    스킬의 "## Next Steps"에 해당하는 것을 에이전트 쪽에 두는 단락이다. 호출은
+    **동기**다 — 부른 에이전트의 보고를 받아 이 에이전트가 자기 출구를 고른다.
+    중간 결과는 메인 컨텍스트에 올라가지 않으므로 진행 기록은 건드리지 않는다
+    (그건 메인 스레드에서 도는 스킬 소유다).
+
+    포트 이름순 정렬 — 결정적. 호출 전이가 없으면 단락 생략.
+    """
+    if project is None:
+        return []
+    graph = getattr(project, "graph", None)
+    if graph is None:
+        return []
+    port_desc = {e.name: (e.description or "").strip() for e in agent.call_agents}
+    entries: list[tuple[str, str, str, str]] = []  # (port, callee, desc, guard)
+    seen: set[tuple[str, str]] = set()
+    for trans in getattr(graph, "transitions", []) or []:
+        if getattr(trans.source, "skill_ref", None) is not agent:
+            continue
+        callee = getattr(trans.target, "skill_ref", None)
+        if not isinstance(callee, AgentDefinition):
+            continue
+        port = getattr(getattr(trans, "trigger", None), "name", "") or ""
+        if (port, callee.name) in seen:
+            continue
+        seen.add((port, callee.name))
+        entries.append(
+            (port, callee.name, port_desc.get(port, ""), _describe_guard(getattr(trans, "guard", None)))
+        )
+    if not entries:
+        return []
+    entries.sort(key=lambda e: (e[0], e[1]))
+    lines = [
+        "## Delegation",
+        (
+            "Parts of this task are delegated to the agents below. Spawn one with "
+            "the Agent tool, pass it the context it needs, and wait for its report — "
+            "you own what it produced and you choose this agent's exit from it. The "
+            "caller of this agent never sees those reports, so summarize what "
+            "matters in your own final report."
+        ),
+    ]
+    for port, callee, desc, guard in entries:
+        line = f"- `{port}` → delegate to agent `{callee}`" if port else f"- delegate to agent `{callee}`"
+        if guard:
+            line += f" [guard: {guard}]"
+        if desc:
+            line += f" — {desc}"
+        lines.append(line)
+    return ["\n".join(lines)]
+
+
 def compile_agent(
     agent: AgentDefinition, project=None,
     resolved_hooks: dict[str, HookDef] | None = None,
@@ -393,6 +453,8 @@ def compile_agent(
 
     # 호출 계약(WP-CT) — 그래프에서 유도. 수동 계약 카드는 퇴역했다.
     blocks.extend(_call_contract_section(agent, project))
+    # 이 에이전트가 부르는 다른 에이전트 (2026-09-12 — CC 중첩 스폰)
+    blocks.extend(_agent_delegation_section(agent, project))
 
     # 호출 파라미터(INVOCATION)
     blocks.extend(_invocation_section_agent(agent))
@@ -406,10 +468,8 @@ def compile_agent(
     blocks.extend(_agent_outputs_section(agent))
 
     if project is not None:
-        # 배치 노드에 링크된 참조 용도 랩핑 스킬 → consult 지시 (WP-WR).
-        # skills 프론트매터 자동 합류(WP-AS)는 우리 플러그인의 스킬 이름
-        # 공간이라 외부 스킬을 담을 수 없어 본문 단락으로 낸다.
-        blocks.extend(_background_references_section(agent, project))
+        # 링크된 참조 용도 랩핑 스킬은 본문 consult 지시가 아니라 skills
+        # 프론트매터로 주입된다(_agent_skills_list 3단계, WP-WR).
         blocks.extend(_tool_shelf_section(project))
         blocks.extend(_blackboard_section(project, agent))
 
@@ -487,7 +547,12 @@ def _agent_outputs_section(agent: AgentDefinition) -> list[str]:
     호출자 그래프가 이 이름들로 분기하므로, 에이전트는 종료 시 자신이 어느
     출구로 끝났는지 명시해야 한다. description이 있으면 판정 기준으로 병기.
     """
-    events = agent.output_event_defs
+    return _exits_section(agent.output_event_defs)
+
+
+def _exits_section(events) -> list[str]:
+    """출구 목록 → "## Exits" 단락. 에이전트와 랩핑 스킬 실행 에이전트
+    (emit/wrapped.py)가 공유한다 — 호출자가 분기하는 규약이 같아야 한다."""
     if not events:
         return []
     lines = [

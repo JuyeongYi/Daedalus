@@ -1,9 +1,11 @@
 # tests/compiler/test_wrapped_skill.py
 """스킬 랩핑 (WP-WR) — 모델·직렬화·emit·의존성 배선·검증.
 
-D1=런타임 참조(사용자 확정): 산출 본문은 소스 복사가 아니라 인보크 지시 +
+D1=런타임 참조(사용자 확정): 산출 본문은 소스 복사가 아니라 위임 지시 +
 우리 그래프 유도 단락. 소스는 자기 플러그인에서 실행돼 경로 변수·프론트매터가
-소스 기준으로 동작한다.
+소스 기준으로 동작한다. 외부 스킬은 **서브에이전트에서만** 쓴다(2026-09-12) —
+state 용도는 실행 에이전트(skills 프론트매터 주입), 참조 용도는 링크된
+에이전트의 skills 프론트매터로.
 
 배선(dependencies/enabledPlugins)의 단일 진실은 **`PluginProject.
 external_plugins` 사용 선언**이다(사용자 확정 2026-09-06) — 랩핑 스킬 source는
@@ -12,6 +14,8 @@ external_plugins` 사용 선언**이다(사용자 확정 2026-09-06) — 랩핑 
 from __future__ import annotations
 
 import json
+
+import pytest
 
 from daedalus.compiler.emit import compile_skill
 from daedalus.compiler.emit.manifest import compile_plugin_manifest
@@ -89,15 +93,75 @@ def test_legacy_file_without_external_plugins_loads_empty():
 # ─────────────────────────── emit ───────────────────────────
 
 
-def test_compile_emits_invoke_instruction_not_body():
+def test_compile_delegates_to_runner_not_direct_invoke():
+    """외부 플러그인 스킬은 서브에이전트에서만 쓴다(사용자 확정 2026-09-12) —
+    SKILL.md는 실행 에이전트에게 위임하고 직접 인보크를 금한다."""
     text = compile_skill(_wrapped())
     assert "## Procedure" in text
+    assert "Delegate it to agent `review-step`" in text
     # 공식 크로스 플러그인 표기 `/플러그인:스킬` — 마켓 표기는 설치 식별자라
     # 인보크 토큰에는 붙지 않는다 (공식 문서 확인 2026-09-06)
-    assert "invoke `/other:code-review`" in text
+    assert "Do not invoke `/other:code-review` yourself" in text
     assert "plugin `other`" in text
     assert "other@mkt" not in text.split("## Requirements")[0]
-    assert "return here and continue" in text  # 워크플로 복귀 지시
+    assert "Next Steps, progress record" in text  # 워크플로 복귀 지시
+
+
+def test_runner_agent_preloads_external_skill():
+    from daedalus.compiler.emit.wrapped import compile_wrapped_runner
+
+    text = compile_wrapped_runner(_wrapped())
+    front = text.split("---")[1]
+    assert "name: review-step" in front
+    assert "skills: [other:code-review]" in front  # 마켓 표기 없는 명령 이름
+    assert "preloaded" in text
+    assert "invoke `/other:code-review` with the Skill tool" in text  # 주입 실패 폴백
+    assert "do not update progress records" in text
+    assert "## Exits" in text and "- `done`" in text
+
+
+def test_model_and_effort_move_to_runner():
+    from daedalus.compiler.emit.wrapped import compile_wrapped_runner
+    from daedalus.model.plugin.enums import EffortLevel, ModelType
+
+    wrapped = _wrapped()
+    wrapped.config.model = ModelType.SONNET
+    wrapped.config.effort = EffortLevel.HIGH
+    skill_front = compile_skill(wrapped).split("---")[1]
+    assert "model:" not in skill_front
+    assert "effort:" not in skill_front
+    runner_front = compile_wrapped_runner(wrapped).split("---")[1]
+    assert "model: sonnet" in runner_front
+    assert "effort: high" in runner_front
+
+
+@pytest.mark.parametrize("target, prefix", [
+    (BuildTarget.MARKETPLACE, ""),
+    (BuildTarget.LOCAL, ".claude/"),
+])
+def test_compile_project_emits_runner_agent(tmp_path, target, prefix):
+    from daedalus.compiler.project_compiler import compile_project
+
+    project = _project_with_wrapped(build_target=target)
+    result = compile_project(project, tmp_path, dry_run=True)
+    assert not result.errors
+    written = {p.relative_to(tmp_path).as_posix() for p in result.written}
+    assert f"{prefix}skills/review-step/SKILL.md" in written
+    assert f"{prefix}agents/review-step.md" in written
+
+
+@pytest.mark.parametrize("mutate", [
+    lambda w: setattr(w.config, "usage", "reference"),
+    lambda w: setattr(w.config, "enabled", False),
+    lambda w: setattr(w.config, "source", ""),
+])
+def test_no_runner_without_state_usage_or_source(tmp_path, mutate):
+    from daedalus.compiler.project_compiler import compile_project
+
+    project = _project_with_wrapped()
+    mutate(project.skills[0])
+    result = compile_project(project, tmp_path, dry_run=True)
+    assert not any(p.name == "review-step.md" for p in result.written)
 
 
 def test_compile_requirements_mention_plugin():
@@ -209,10 +273,12 @@ def test_linked_nodes_get_background_skills_section():
     assert "`/other:code-review`" in skill_text  # 마켓 표기 없는 공식 인보크 토큰
 
     agent_text = compile_agent(agent, project=project)
-    assert "## Background Skills" in agent_text
-    assert "`/other:code-review`" in agent_text
-    # skills 프론트매터에는 합류하지 않는다 — 외부 이름 공간
-    assert "bg-doc" not in agent_text.split("---")[1]
+    # 에이전트는 본문 consult 지시 대신 skills 프론트매터로 주입받는다 — CC가
+    # `플러그인:스킬`을 플러그인 스킬 명령 이름과 정확히 맞춰 해석한다.
+    front = agent_text.split("---")[1]
+    assert "skills: [other:code-review]" in front
+    assert "bg-doc" not in front  # 랩퍼 이름이 아니라 외부 명령 이름
+    assert "## Background Skills" not in agent_text
 
 
 def test_usage_conflict_warnings():

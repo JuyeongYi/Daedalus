@@ -10,10 +10,171 @@ from daedalus.model.validation.project_rules.scan import (
 from daedalus.model.validation.severity import ValidationError
 
 
+#: 한 체인에 이어 붙일 수 있는 에이전트 수. CC는 주 대화 기준 **3계층**까지
+#: 서브에이전트 중첩을 허용하고, 한계에 닿은 서브에이전트에게서는 Agent 도구를
+#: 회수한다 — 그러면 위임 지시를 따를 수 없어 그 에이전트가 혼자 처리한다.
+#: 스킬은 메인 스레드에서 돌므로 그 스킬이 부른 에이전트가 1계층이다.
+MAX_AGENT_CHAIN = 3
+
+
+def _agent_call_edges(project) -> list[tuple]:
+    """프로젝트 그래프의 **에이전트 → 에이전트** 전이 목록.
+
+    반환: [(source_state, target_state, caller_agent, callee_agent, port)] — 선언 순서.
+    스킬 → 에이전트는 대상이 아니다(메인 스레드가 부르므로 중첩이 아니다).
+    """
+    from daedalus.model.fsm.state import SimpleState
+    from daedalus.model.plugin.agent import AgentDefinition
+
+    graph = getattr(project, "graph", None)
+    if graph is None:
+        return []
+    out: list[tuple] = []
+    for trans in getattr(graph, "transitions", []) or []:
+        src, tgt = trans.source, trans.target
+        if not isinstance(src, SimpleState) or not isinstance(tgt, SimpleState):
+            continue
+        caller, callee = src.skill_ref, tgt.skill_ref
+        if not isinstance(caller, AgentDefinition) or not isinstance(callee, AgentDefinition):
+            continue
+        port = getattr(getattr(trans, "trigger", None), "name", "") or ""
+        out.append((src, tgt, caller, callee, port))
+    return out
+
+
 class _WorkflowRules:
-    """전이 스킬 재사용·진입점 의미론 규칙 모음 (_ProjectRules 믹스인)."""
+    """전이 스킬 재사용·진입점 의미론·에이전트 중첩 규칙 모음 (_ProjectRules 믹스인)."""
 
     _scan_transitions = staticmethod(scan_transitions)
+    _agent_call_edges = staticmethod(_agent_call_edges)
+
+    @staticmethod
+    def _check_agent_chain_depth(project) -> list[ValidationError]:
+        """agent_chain_too_deep — 에이전트 호출 체인이 CC 깊이 제한을 넘으면 에러.
+
+        에이전트가 에이전트를 부르는 것은 2026-09-12부터 허용되지만, CC의 중첩
+        한계(주 대화 기준 3계층)를 넘는 체인은 **설계대로 돌지 않는다** — 한계에
+        닿은 서브에이전트는 Agent 도구를 빼앗겨 위임하지 못하고 혼자 처리한다.
+        조용히 다르게 도는 것이므로 경고가 아니라 에러다.
+
+        순환(A→B→A)은 깊이가 무한이라 같은 규칙이 잡되 메시지를 달리한다.
+        """
+        edges = _agent_call_edges(project)
+        if not edges:
+            return []
+
+        adj: dict[int, list[int]] = {}
+        node: dict[int, object] = {}
+        for src, tgt, caller, callee, _port in edges:
+            node[id(src)], node[id(tgt)] = caller, callee
+            adj.setdefault(id(src), []).append(id(tgt))
+            adj.setdefault(id(tgt), [])
+
+        errors: list[ValidationError] = []
+        longest: dict[int, int] = {}
+        on_stack: dict[int, bool] = {}
+        cycles: list[list[int]] = []
+        stack: list[int] = []
+
+        def walk(key: int) -> int:
+            """key에서 시작하는 체인의 최대 에이전트 수(자기 포함)."""
+            if on_stack.get(key):
+                cycles.append(stack[stack.index(key):] + [key])
+                return 0  # 순환은 별도 보고 — 깊이 계산에는 0으로 접는다
+            if key in longest:
+                return longest[key]
+            on_stack[key] = True
+            stack.append(key)
+            best = 0
+            for nxt in adj.get(key, []):
+                best = max(best, walk(nxt))
+            stack.pop()
+            on_stack[key] = False
+            longest[key] = best + 1
+            return longest[key]
+
+        for key in list(adj):
+            walk(key)
+
+        seen_cycle: set[tuple[str, ...]] = set()
+        for cyc in cycles:
+            names = tuple(getattr(node.get(k), "name", "?") for k in cyc)
+            if names in seen_cycle:
+                continue
+            seen_cycle.add(names)
+            errors.append(ValidationError(
+                rule="agent_chain_too_deep",
+                message=(
+                    f"에이전트 호출이 순환합니다: {' → '.join(names)}. 깊이가 "
+                    f"무한이라 CC 중첩 한계({MAX_AGENT_CHAIN}계층)에 반드시 걸립니다 — "
+                    f"순환 구간을 끊고 스킬을 경유하세요."
+                ),
+                source=" -> ".join(names),
+                subject=node.get(cyc[0]),
+                path=("project",),
+            ))
+
+        # 체인의 시작점(들어오는 에이전트 호출이 없는 노드)에서만 보고한다 —
+        # 같은 체인을 노드마다 반복해서 짚으면 같은 사실이 여러 번 나온다.
+        has_incoming = {tgt for outs in adj.values() for tgt in outs}
+        for key, depth in sorted(longest.items(), key=lambda kv: -kv[1]):
+            if key in has_incoming or depth <= MAX_AGENT_CHAIN:
+                continue
+            errors.append(ValidationError(
+                rule="agent_chain_too_deep",
+                message=(
+                    f"에이전트 '{getattr(node.get(key), 'name', '?')}'에서 시작하는 "
+                    f"호출 체인이 {depth}단계입니다 — CC는 주 대화 기준 "
+                    f"{MAX_AGENT_CHAIN}계층까지만 중첩을 허용하고, 한계에 닿은 "
+                    f"에이전트는 Agent 도구를 빼앗겨 위임하지 못한 채 혼자 "
+                    f"처리합니다. 중간을 스킬로 끊으면 그 스킬이 메인 스레드에서 "
+                    f"돌아 깊이가 다시 1부터 시작합니다."
+                ),
+                source=getattr(node.get(key), "name", "?"),
+                subject=node.get(key),
+                path=("project",),
+            ))
+        return errors
+
+    @staticmethod
+    def _check_agent_calls_higher_model(project) -> list[ValidationError]:
+        """agent_calls_higher_model — 자기보다 상위 모델의 에이전트 호출 금지 (사용자 확정 2026-09-12).
+
+        상위 모델이 필요한 판단은 메인 스레드가 부르게 한다 — 하위 모델이 상위
+        모델을 부리는 구조는 "무엇을 시킬지"를 결정하는 쪽이 더 얕게 보는 것이라
+        비용만 크고 판단은 나아지지 않는다.
+
+        어느 한쪽이라도 `INHERIT`(미지정)면 건너뛴다 — 물려받는 값이라 상위/하위가
+        성립하지 않는다. 티어 표의 단일 진실은 `model/plugin/enums.MODEL_TIER`.
+        """
+        from daedalus.model.plugin.enums import MODEL_TIER, ModelType
+
+        def tier(component) -> int | None:
+            model = getattr(getattr(component, "config", None), "model", None)
+            return MODEL_TIER.get(model) if isinstance(model, ModelType) else None
+
+        errors: list[ValidationError] = []
+        for src, _tgt, caller, callee, port in _agent_call_edges(project):
+            caller_tier, callee_tier = tier(caller), tier(callee)
+            if caller_tier is None or callee_tier is None:
+                continue
+            if callee_tier <= caller_tier:
+                continue
+            port_note = f"(포트 '{port}') " if port else ""
+            errors.append(ValidationError(
+                rule="agent_calls_higher_model",
+                message=(
+                    f"에이전트 '{caller.name}'"
+                    f"({caller.config.model.value})가 {port_note}상위 모델 에이전트 "
+                    f"'{callee.name}'({callee.config.model.value})를 호출합니다. "
+                    f"상위 모델은 메인 스레드가 부르게 하세요 — 호출 포트를 스킬로 "
+                    f"옮기거나 두 에이전트의 모델 티어를 맞추세요."
+                ),
+                source=f"{caller.name}->{callee.name}",
+                subject=src,
+                path=("project",),
+            ))
+        return errors
 
     @staticmethod
     def _check_transfer_skill_reused(project) -> list[ValidationError]:
