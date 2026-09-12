@@ -1,7 +1,7 @@
 # tests/compiler/test_work_resume.py
 """WP-RS: 작업 재개(플러그인 FSM 진행 상태 저장) — 컴파일러 배출 3종 + SessionStart 훅.
 
-단위 단독 진실: state/__progress__.json 규약(docs/plans/2026-08-02-wp-rs-work-resume.md).
+설계 정본: state/__progress__.json 규약(docs/design/compiler.md 컴파일 정책 12번).
 저장 단위는 플러그인 FSM(프로젝트 그래프)의 위치 — 스킬 내부 FSM 상태는 다루지 않는다.
 """
 from __future__ import annotations

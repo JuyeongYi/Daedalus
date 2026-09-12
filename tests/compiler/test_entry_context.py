@@ -1,7 +1,7 @@
 # tests/compiler/test_entry_context.py
 """WP-IC Part C: "## Entry Context" 단락 + prev 규약 + "## Invocation Contract" 그래프 유도.
 
-단일 진실: docs/plans/2026-08-02-wp-ic-input-ports-entry-context.md Part C.
+설계 정본: docs/design/compiler.md 컴파일 정책 13번(진입 맥락 + 호출 계약).
 """
 from __future__ import annotations
 
