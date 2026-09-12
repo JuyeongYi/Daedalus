@@ -160,3 +160,17 @@ def test_new_project_cancelled_build_target_aborts_creation(qapp, monkeypatch):
     assert window._project is original
     assert window._project.name == "original-project"
     window.close()
+
+
+def test_dialog_reflects_emit_progress_sections_false(qapp):
+    project = PluginProject(name="p", emit_progress_sections=False)
+    dialog = ProjectPropertiesDialog(project)
+    assert dialog._emit_progress_sections_cb.isChecked() is False
+
+
+def test_apply_to_updates_emit_progress_sections(qapp):
+    project = PluginProject(name="p")
+    dialog = ProjectPropertiesDialog(project)
+    dialog._emit_progress_sections_cb.setChecked(False)
+    dialog.apply_to(project)
+    assert project.emit_progress_sections is False

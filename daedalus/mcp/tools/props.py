@@ -313,6 +313,7 @@ class PropsTools(_BaseTools):
         version: str = "",
         build_target: str = "",
         emit_progress_hook: bool | None = None,
+        emit_progress_sections: bool | None = None,
     ) -> dict[str, Any]:
         """플러그인 매니페스트 속성을 바꾼다 — 빈 값(문자열 필드)/None(불리언
         필드)은 "건드리지 않음".
@@ -324,6 +325,10 @@ class PropsTools(_BaseTools):
         토글 — GUI 프로젝트 속성 다이얼로그의 체크박스와 같다(WP-RS). 문자열
         필드와 규약이 다른 이유: 이 필드는 `bool`(A8 tri-state 아님)이라 빈
         문자열로 "미변경"을 표현할 자리가 없다 — 대신 `None`이 그 자리다.
+        emit_progress_sections: 스킬 본문의 진행 상태 단락(Resuming Work /
+        Finishing Up / Progress Record / 다음 단계 갱신 규칙) 배출 토글 — False면
+        산출 SKILL.md가 daedalus-bb 없이 완결된다. emit_progress_hook과 독립이며
+        None 규약도 같다.
         """
         from daedalus.model.plugin.enums import BuildTarget
         from daedalus.view.commands.attr_commands import SetAttrCmd
@@ -336,6 +341,7 @@ class PropsTools(_BaseTools):
             "version": project.version,
             "build_target": project.build_target.value,
             "emit_progress_hook": project.emit_progress_hook,
+            "emit_progress_sections": project.emit_progress_sections,
         }
 
         cmds: list[Any] = []
@@ -381,6 +387,16 @@ class PropsTools(_BaseTools):
                     script=f'set_project_properties(emit_progress_hook={bool(emit_progress_hook)})',
                 )
             )
+        if emit_progress_sections is not None:
+            cmds.append(
+                SetAttrCmd(
+                    project,
+                    "emit_progress_sections",
+                    bool(emit_progress_sections),
+                    label=f"진행 상태 단락 배출 → {bool(emit_progress_sections)}",
+                    script=f'set_project_properties(emit_progress_sections={bool(emit_progress_sections)})',
+                )
+            )
 
         if not cmds:
             return {"changed": [], **before}
@@ -397,6 +413,7 @@ class PropsTools(_BaseTools):
             "version": project.version,
             "build_target": project.build_target.value,
             "emit_progress_hook": project.emit_progress_hook,
+            "emit_progress_sections": project.emit_progress_sections,
         }
 
     def set_mcp_server_def(

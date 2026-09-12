@@ -99,6 +99,8 @@ def serialize_project(project: PluginProject) -> dict:
         },
         # WP-RS Part B — 구버전 파일(키 부재)은 역직렬화 시 기본 True로 취급.
         "emit_progress_hook": project.emit_progress_hook,
+        # 구버전 파일(키 부재)은 역직렬화 시 기본 True로 취급.
+        "emit_progress_sections": project.emit_progress_sections,
         # WP-TG — 구버전 파일(키 부재)은 역직렬화 시 MARKETPLACE로 취급(경고 없음).
         "build_target": project.build_target.value,
         # WP-MW — MCP 서버 정의(이름 → .mcp.json 서버 객체). 구버전 파일(키 부재)은 빈 dict.

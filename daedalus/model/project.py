@@ -77,6 +77,11 @@ class PluginProject:
     # 않는다(compiler/emit.py의 compile_hooks_json이 컴파일 시점에 합성).
     # 구버전 프로젝트 파일(키 부재)은 True로 취급(deserialize_project).
     emit_progress_hook: bool = True
+    # 스킬 본문의 진행 상태 단락(Resuming Work / Finishing Up / Progress Record /
+    # 다음 단계의 갱신 규칙)을 배출할지 여부. 기본 True. False면 산출 SKILL.md가
+    # daedalus-bb 없이도 완결된다 — 단일 스킬·설치 PC에 daedalus-bb가 없는 배포용.
+    # emit_progress_hook과 독립(훅만/단락만 끌 수 있다). 구버전 파일(키 부재)은 True.
+    emit_progress_sections: bool = True
     # WP-TG — 빌드 타깃: 마켓플레이스 플러그인(기본) / 로컬 플러그인(.claude/ 반입형).
     # 프로젝트 생성 시 선택하고 프로젝트 속성에서 변경 가능. 구버전 프로젝트 파일
     # (키 부재)은 MARKETPLACE로 취급(deserialize_project) — 하위 호환 게이트.
