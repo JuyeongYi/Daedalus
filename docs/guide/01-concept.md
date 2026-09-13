@@ -73,7 +73,7 @@ Daedalus에서는 **그래프(그림)가 원본**입니다. 스킬과 에이전�
 | 랩핑 스킬 | 다른 플러그인의 스킬을 감싸 내 워크플로의 단계로 씁니다 |
 | 에이전트 | 별도 컨텍스트에서 일하는 작업자. 절차는 본문에, 결과 갈래는 출력 포트로 |
 
-각 종류의 필드와 쓰임새는 [02-registry.md](02-registry.md))에 자세히 있습니다.
+각 종류의 필드와 쓰임새는 [02-registry.md](02-registry.md)에 자세히 있습니다.
 
 ## 4. FSM + 블랙보드: 왜 이렇게 나눴나
 
@@ -174,7 +174,7 @@ MCP로 한 블랙보드 편집은 되돌릴 수 있습니다 — 자세한 내�
 
 둘은 **같은 프로젝트, 같은 되돌리기 기록**을 씁니다. Claude가 만든 노드는 화면에 바로 나타나고,
 마음에 안 들면 `Ctrl+Z`로 지우면 됩니다. GUI로 되는 일은 MCP로도 됩니다.
-자세한 사용법은 [06-mcp.md](06-mcp.md)), 도구 전체 목록은 [`docs/MCP.md`](../MCP.md)에 있습니다.
+자세한 사용법은 [06-mcp.md](06-mcp.md), 도구 전체 목록은 [`docs/MCP.md`](../MCP.md)에 있습니다.
 
 ## 8. 빌드 타깃
 
@@ -184,7 +184,7 @@ MCP로 한 블랙보드 편집은 되돌릴 수 있습니다 — 자세한 내�
 - **로컬** — 대상 작업 폴더의 `.claude/`에 바로 넣습니다. **컴파일이 곧 설치**입니다.
   MCP 서버·훅·권한 모드를 쓰는 에이전트는 마켓플레이스 플러그인에서 Claude Code가 무시하므로, 이런 에이전트는 로컬로 만듭니다.
 
-차이는 [04-local-vs-marketplace.md](04-local-vs-marketplace.md)), 로컬에서만 되는 기능은 [05-local-only-features.md](05-local-only-features.md))를 보세요.
+차이는 [04-local-vs-marketplace.md](04-local-vs-marketplace.md), 로컬에서만 되는 기능은 [05-local-only-features.md](05-local-only-features.md)를 보세요.
 
 ## 9. 따라 해 보기: 3단계 코드 리뷰 워크플로
 

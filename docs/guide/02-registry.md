@@ -267,7 +267,7 @@
 
 **주의할 점.**
 - MARKETPLACE 빌드에서는 Claude Code가 플러그인 에이전트의 `hooks`·`mcpServers`·`permissionMode`를 무시합니다.
-  편집기가 잠그고 경고도 띄웁니다. 이 기능이 필요하면 LOCAL로 빌드하세요([LOCAL 전용 기능](05-local-only-features.md)).
+  편집기가 잠그고 경고도 띄웁니다. 이 기능이 필요하면 LOCAL로 빌드하세요([LOCAL 전용 기능](05-local-only-features.md).
 - 에이전트 → 에이전트 호출은 가능하지만, 중간 결과가 메인 대화에 남지 않는다는 경고가 뜹니다.
 - 호출 체인이 3단계를 넘으면 **에러**입니다. 이때 fork 스킬도 한 단계로 셉니다.
 - 자기보다 **상위 모델**의 에이전트를 부르면 **에러**입니다(haiku < sonnet < opus < fable).

@@ -115,7 +115,7 @@ daedalus --no-mcp          # 서버를 띄우지 않습니다
 | 블랙보드 | `create_blackboard_class`, `set_state_access` | 공유 상태 설계, 노드별 읽기·쓰기 선언 |
 | 훅 | `create_hook`, `set_component_hooks` | 훅 라이브러리, 프리셋, 전역 훅 복사 |
 | 본문 | `set_component_body`, `set_body_section` | 스킬·에이전트 본문 편집 |
-| 작업 폴더 문서·설정 | `set_claude_md`, `create_rule` | `.claude/CLAUDE.md` 구역, 규칙, 설정 베이크 ([LOCAL 전용 기능](05-local-only-features.md)) |
+| 작업 폴더 문서·설정 | `set_claude_md`, `create_rule` | `.claude/CLAUDE.md` 구역, 규칙, 설정 베이크 ([LOCAL 전용 기능](05-local-only-features.md) |
 | 외부 플러그인 | `list_wrappable_skills`, `set_external_plugins` | 다른 플러그인 스킬을 감싸 쓰기 |
 | 세션 | `save_project`, `open_project` | 저장·열기·새 프로젝트·패키지·템플릿 |
 | undo | `undo`, `redo` | 되돌리기·다시 하기 |
