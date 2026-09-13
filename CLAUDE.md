@@ -64,7 +64,7 @@ pytest는 `python -m pytest`로 실행한다 (`pytest` 직접 실행 시 command
 | 문서 | 다루는 것 |
 |------|-----------|
 | `architecture.md` | 컴파일러 패턴·경계 계약·요약 모듈 지도 + 파일 단위 상세 지도(각 모듈의 책임·분해 이력·테스트 봉합선) |
-| `plugin-model.md` | 스킬 5종·에이전트 표, `SKILL_FIELD_MATRIX`/`FieldRule`, `FieldType`, 진입 의미론 tri-state + 진입점 프리셋(A8), config 계층 |
+| `plugin-model.md` | 스킬 6종·에이전트 표, fork 스킬(몸 에이전트 세 종류·전환·실측), `SKILL_FIELD_MATRIX`/`FieldRule`, `FieldType`, 진입 의미론 tri-state + 진입점 프리셋(A8), config 계층 |
 | `fsm-model.md` | CompositeState/Region/조인, FSM+블랙보드 하이브리드, body·Section·EventDef, 입력 포트 퇴역(WP-IP), `PluginProject.graph`(EntryPoint 격하 WP-EP), CompletionEvent, 전략 패턴, 안정 ID + 직렬화·마이그레이션 |
 | `agents.md` | 에이전트 내부 FSM 퇴역(WP-AF), 출력 포트, 로컬 스킬 승격, 그래프 유도 호출 계약(WP-CT) |
 | `wrapped-skills.md` | 외부 플러그인 스킬 랩핑(WP-WR) — 서브에이전트 강제 산출, 사용 선언 배선, 용도 state/reference, 비활성화, 카탈로그·클론 캐시 |
@@ -75,7 +75,7 @@ pytest는 `python -m pytest`로 실행한다 (`pytest` 직접 실행 시 command
 | `hooks.md` | 훅 3단 구조·핸들러 5종·배출 규칙·`enabled`, 라이프사이클 피커(A10), 규격 드리프트 감시(A4), 전역 훅 2단 스코프(A1) |
 | `validation.md` | Validator 구성, 머신 수준·프로젝트 수준 규칙 표, skip_rules |
 | `project-files.md` | 시작 템플릿(A7), 폴더=프로젝트·`.ddpj`(WP-PK), 공용 `files/`(WP-FR), 스킬별 `skill-files/`(WP-SF) |
-| `compiler.md` | 산출 구조(MARKETPLACE/LOCAL), 컴파일 정책 1~19번(게이트·다음 단계·작업 재개·진입 맥락·LOCAL 설치·dry-run·토큰 리포트·위임), 산출 언어 |
+| `compiler.md` | 산출 구조(MARKETPLACE/LOCAL), 컴파일 정책 1~20번(게이트·다음 단계·작업 재개·진입 맥락·LOCAL 설치·dry-run·토큰 리포트·위임·fork 스킬), 산출 언어 |
 
 `docs/MCP.md`는 같은 MCP 서버를 **쓰는 쪽**(도구 지도·연결·협업 관례) 문서다 — 설계 정본인
 `docs/design/mcp-server.md`와 역할이 다르니 한쪽만 고치지 않는다.

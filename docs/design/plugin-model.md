@@ -8,6 +8,7 @@
 | 종류 | 본질 | FSM 관계 |
 |------|------|---------|
 | ProceduralSkill | 작업 지침 | 자체 FSM을 가진 독립 워크플로우 |
+| ForkSkill | 서브에이전트에서 도는 작업 지침 (2026-09-13) | 절차형의 하위 종류 — 배치·포트·전이는 같고, 본문이 `config.agent` 서브에이전트의 작업 지시가 된다(아래 "fork 스킬") |
 | DeclarativeSkill | 배경 지식 | FSM 없음 |
 | TransferSkill | 전이 시 실행되는 보조 지침 | 자체 FSM 보유 |
 | ReferenceSkill | 참조 문서 | FSM 없음, 참조 노드로 복수 배치 |
@@ -16,7 +17,7 @@
 
 ## SKILL_FIELD_MATRIX
 
-스킬 유형(procedural, declarative, transfer, reference)별로 프론트매터 필드의 `FieldRule`을 정의하는 매트릭스.
+스킬 유형(procedural, fork, declarative, transfer, reference, wrapped)별로 프론트매터 필드의 `FieldRule`을 정의하는 매트릭스. 매트릭스에 없는 필드는 그 종류에 없다 — `context`·`agent`는 fork 전용이고, fork에는 `allowed_tools`가 없다.
 
 ```python
 @dataclass
@@ -110,9 +111,54 @@ class FieldType(Enum):
 ```
 ComponentConfig(ABC)          # model, effort, hooks 공통 필드
 ├── SkillConfig(ABC)          # argument_hint, allowed_tools, paths
-│   ├── ProceduralSkillConfig # disable_model_invocation·user_invocable(**tri-state**, A8), context, agent, shell 등
+│   ├── ProceduralSkillConfig # disable_model_invocation·user_invocable(**tri-state**, A8), shell
+│   │   └── ForkSkillConfig   # + agent (기본 "general-purpose")
+│   ├── WrappedSkillConfig    # source, usage, enabled (WP-WR)
 │   ├── DeclarativeSkillConfig
 │   ├── TransferSkillConfig
 │   └── ReferenceSkillConfig
 └── AgentConfig               # tools, permission_mode, skills, isolation 등
 ```
+
+## fork 스킬 (사용자 확정 2026-09-13)
+
+CC의 `context: fork` 스킬은 SKILL.md 본문을 작업 지시로 삼아 `agent` 서브에이전트를 띄운다. 예전에는
+절차형·선언형에 `context`·`agent` 필드가 따로 있어서, fork로 두고 agent를 비우거나 틀려도 아무도 짚지 않았고
+CC는 **조용히 범용 에이전트로 돌렸다**. 그래서 fork를 **별도 스킬 종류**로 떼어 냈다 — 나머지 스킬은 fork·agent를
+지정할 수 없다.
+
+- **모델:** `ForkSkill(ProceduralSkill)` / `ForkSkillConfig(ProceduralSkillConfig)`. 절차형의 하위 클래스라
+  배치·포트·전이·본문 규칙이 같고, fork만 달라야 하는 곳은 `ForkSkill`을 **먼저** 검사한다. 새 필드는
+  `agent: str = "general-purpose"` 하나. 매트릭스 `"fork"`: `context` FIXED `"fork"`, `agent` REQUIRED,
+  `allowed_tools` 없음(fork에서는 에이전트 도구가 이긴다). 에이전트를 **소유하지 않는** 가벼운 종류다 — 컴파일러가
+  에이전트 파일을 새로 만드는 일은 없다.
+- **퇴역:** `SkillContext` enum, 절차형·전이형의 `context`/`agent` 필드. 구파일은
+  `serialize.migrate.migrate_skill_context`가 흡수한다 — 절차형 `context: fork` → fork 스킬(agent가 비면
+  `general-purpose`, `allowed_tools`는 버리고 경고) / inline 키는 조용히 드롭 / 전이형 fork는 경고 후 드롭.
+  format 2 파일에도 적용된다(`needs_skill_context_migration` 게이트).
+- **몸 에이전트 세 종류** (`view/actions/fork_skill.fork_agent_choices` — 편집기 피커와 MCP 검증이 공유):
+  ① 내장 `general-purpose`/`Explore`/`Plan`(`config.BUILTIN_FORK_AGENTS`) ② 사용 선언한 외부 플러그인의
+  에이전트(`플러그인:이름`, 카탈로그 `used_plugin_agents`) ③ **캔버스에 배치되지 않은** 프로젝트 에이전트.
+  배치된 에이전트는 워크플로 단계라 몸을 겸하면 캔버스에 안 보이는 연결("점프")이 생겨 뺀다.
+- **전환:** 절차형 ↔ fork는 명시 액션이다(편집기 버튼 `kind_switch_row`·캔버스 우클릭·MCP `convert_skill`, 실체
+  `convert_skill_kind`). 객체를 새로 만들지 않고 `config`와 `__class__`를 바꾸는 `SetAttrCmd` 2개를
+  `MacroCommand` **1 undo**로 묶는다 — 그래프 참조·본문 문서·열린 탭이 끊기지 않는다. 버린 값(fork로:
+  `allowed_tools`, 절차형으로: `agent`)은 `dropped`로 보고한다. 필드 구성은 탭을 닫았다 열면 바뀐다.
+- **편집기·캔버스:** 구리색 `#c07a3a` 노드(🍴), 레지스트리 🍴 FORK 탭, AGENT 피커(`ForkAgentComboBox` — 후보 밖
+  저장값도 보인다), 안내문 "도구는 몸 에이전트가, 모델·effort는 이 스킬 값이(비우면 몸 에이전트 값)".
+- 산출은 `compiler.md` 20번, 검증은 `validation.md`의 `fork_*` 규칙.
+
+**실측 사실 (CC 2.1.268 — 실행 파일 + `claude -p` 실행 후 기록 파일의 실제 값으로 판정, 2026-09-13)**
+
+| 항목 | 사실 |
+|------|------|
+| 스키마 | SKILL.md에 `context: inline\|fork`, `agent`, `background`, `hooks`가 있다 |
+| `background` | fork 전용. 기본은 백그라운드(부른 쪽이 기다리지 않고 알림으로 보고). `false`면 부른 쪽이 기다린다 |
+| agent 해석 | agentType **정확 일치**(대소문자 포함). 없으면 **조용히 general-purpose로 실행**(디버그 로그만) |
+| 이름 형식 | 플러그인 에이전트는 `플러그인:이름`만 찾힌다. LOCAL(`.claude/agents`)은 `이름`으로 된다 |
+| model·effort | 스킬에 값이 있으면 **스킬이 이긴다**(effort는 값을 뒤바꿔 두 번 확인). 스킬이 비면 **에이전트 값**이 쓰인다 |
+| tools | **에이전트가 이긴다** — 스킬 `allowed-tools`는 도구를 늘리지 못한다 |
+| 전달 구조 | 에이전트 본문 → 시스템 프롬프트, 스킬 본문 → 작업 지시. `$ARGUMENTS`는 치환된다 |
+| 몸 에이전트 설정 | `skills:` 프리로드·`maxTurns`는 **적용**, `isolation: worktree`는 **적용되지 않는다** |
+| 내장 이름 | `general-purpose` / `Explore` / `Plan` (`statusline-setup`도 있으나 후보에서 뺀다) |
+| 도구 0개 몸 | 이 환경에 없는 도구만 준 에이전트로는 fork가 아무 일도 하지 못했다 |

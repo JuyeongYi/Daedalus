@@ -78,7 +78,7 @@
 - **도구 래핑:** `service._wrap`이 `functools.wraps`로 감싸므로 원본 시그니처·타입힌트·docstring이
   보존되고 SDK가 그로부터 입력 스키마를 만든다. 래퍼를 `(**kwargs)`로만 노출하면 **도구에 인자가
   없는 것으로 보여 CC가 값을 넘길 방법이 사라진다**(`test_tool_schema_exposes_arguments`가 고정).
-- **편집은 전부 CommandStack 경유**(`create_skill`/`create_agent`/`rename_component`/
+- **편집은 전부 CommandStack 경유**(`create_skill`/`create_agent`/`convert_skill`/`rename_component`/
   `place_component`/`create_state`/`move_state`/`rename_state`/`delete_state`/`connect_states`/
   `disconnect_states`/`undo`/`redo`) — 사용자가 Ctrl+Z로 되돌릴 수 있다. `delete_state`는 연결
   전이까지 `MacroCommand`로 묶어 1 undo 단위. **본문(`set_component_body`)만 예외적으로 컴포넌트의

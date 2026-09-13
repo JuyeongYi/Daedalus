@@ -166,6 +166,23 @@
     받는 쪽 에이전트의 "## Invocation Contract"(13번)는 호출자가 스킬이든 에이전트든 같은
     경로로 유도되므로 별도 처리가 없다.
 
+20. **fork 스킬 (2026-09-13, `emit/fork.py`)**: CC는 fork 스킬 본문을 `agent` 서브에이전트의 작업 지시로
+    쓴다(모델·실측은 `plugin-model.md` "fork 스킬").
+    - 프론트매터에 `context: fork`(매트릭스 FIXED)와 `agent:`를 낸다. 기본값 `general-purpose`도 **명시
+      배출**한다(결정적·읽는 사람에게 분명). 프로젝트 에이전트는 MARKETPLACE `플러그인:이름` / LOCAL `이름`
+      (`resolve_fork_agent_name`), 내장·외부는 저장된 문자열 그대로다(정확 일치).
+    - 배치된 fork는 `background: false` — 기본은 백그라운드라 부른 쪽이 보고를 기다리지 않고, 그러면 보고로
+      분기를 고를 수 없다.
+    - **서브에이전트는 다음 단계를 시작하지도, 진행 기록을 쓰지도 않는다** — 몸이 `Explore`/`Plan`이면 상태 파일
+      쓰기가 어색하고, 메인에는 SKILL.md가 보이지 않는다. 대신 **보고가 지시가 된다**: 배치된 fork는
+      "## Next Steps"/진행 갱신 규칙/"## Finishing Up" 대신 **"## Report"**(`fork_report_section`)를 낸다 —
+      갈래 목록(Next Steps와 같은 줄) + 보고 첫 줄 `EXIT: <branch> / NEXT: /<skill>` + 끝에 메인이 실행할
+      `daedalus-bb … progress set …` 명령. 터미널 배치면 `EXIT: done / NEXT: (end)` + `--current done`.
+    - "## Resuming Work"는 내지 않는다(서브에이전트는 사용자에게 되묻거나 진행 파일을 쓸 수 없다 — 재개 판단은
+      부르는 메인 몫). "## Entry Context"·블랙보드 단락은 그대로다. 미배치 fork는 `background`·Report가 없다.
+    - 몸으로 쓰이는 프로젝트 에이전트 `.md`의 "## Invocation Contract"에 `- Execution base of fork skill \`X\` …`
+      줄이 유도된다(`fork_skills_using`) — 캔버스에 선이 없으니 여기서 말하지 않으면 그 쓰임을 모른다.
+
 출력은 결정적(같은 모델 → 같은 텍스트), LF 줄바꿈, UTF-8(BOM 없음). 텍스트 생성(`compile_skill`/`compile_agent`)은 파일시스템과 분리되어 문자열 단위 테스트 가능.
 
 **산출 언어는 영어다 (A12).** 컴파일러가 **생성하는** 텍스트(헤딩·지시문·조건
@@ -180,7 +197,7 @@ description, 블랙보드 클래스·필드 설명 …)은 손대지 않고 그�
 - **주요 헤딩 대응:** `## Next Steps` / `## Resuming Work` / `## Entry Context` /
   `## Shared State (Blackboard)` / `## Invocation Contract` / `## Exits` /
   `## Procedure` / `## Output Events` / `## Requirements` /
-  `## Invocation Parameters` / `## Progress Record` / `## Finishing Up` /
+  `## Invocation Parameters` / `## Progress Record` / `## Finishing Up` / `## Report` /
   `## Internal Workflow` / `## Reference: Tool Shelf`.
 - **제외(한국어 유지):** `ValidationError` 메시지와 컴파일 게이트 경고(설계자가
   읽는 것이지 산출에 나가지 않는다), 내부 예외 메시지, GUI 문자열, 사용자 정의

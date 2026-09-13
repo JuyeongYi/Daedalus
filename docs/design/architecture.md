@@ -81,12 +81,12 @@ daedalus/
 │   │                       #   **machine_rules._validate_machine은 의도적 예외** — path 누적(agent:/region:)이
 │   │                       #   재귀 골격과 얽혀 있어 순회만 떼면 경로 라벨 불변을 보장할 수 없다(주석으로 명시).
 │   ├── plugin/       # Claude 플러그인 메타데이터
-│   │   ├── enums.py        # ModelType, EffortLevel, SkillContext, PermissionMode, AgentField, FieldEmit, BuildTarget(WP-TG) 등
+│   │   ├── enums.py        # ModelType, EffortLevel, PermissionMode, AgentField, FieldEmit, BuildTarget(WP-TG) 등
 │   │   ├── policy.py       # ExecutionPolicy (병렬 서브에이전트). JoinStrategy는 fsm/join.py에서 직수입 (re-export 없음 — RF-1b)
-│   │   ├── config.py       # ComponentConfig(ABC), SkillConfig(ABC), ProceduralSkillConfig,
-│   │   │                   # DeclarativeSkillConfig, TransferSkillConfig, ReferenceSkillConfig, AgentConfig
+│   │   ├── config.py       # ComponentConfig(ABC), SkillConfig(ABC), ProceduralSkillConfig, ForkSkillConfig(+BUILTIN_FORK_AGENTS),
+│   │   │                   # WrappedSkillConfig, DeclarativeSkillConfig, TransferSkillConfig, ReferenceSkillConfig, AgentConfig
 │   │   ├── base.py         # PluginComponent(ABC), WorkflowComponent(ABC)
-│   │   ├── skill.py        # Skill(ABC), ProceduralSkill, DeclarativeSkill, TransferSkill, ReferenceSkill
+│   │   ├── skill.py        # Skill(ABC), ProceduralSkill, ForkSkill(절차형 하위 — 2026-09-13), WrappedSkill, DeclarativeSkill, TransferSkill, ReferenceSkill
 │   │   ├── agent.py        # AgentDefinition
 │   │   ├── tool.py         # Tool(ABC) + BuiltinTool/MCPTool/UserDefinedTool (tool_shelf 도구 단일 진실)
 │   │   ├── hook.py         # HookDef + HookEvent(CC 9종) (hook_library 훅 단일 진실)
@@ -144,6 +144,7 @@ daedalus/
 │   │   ├── ser.py          #   정방향 — serialize_project + _ser_* 전부. FORMAT_VERSION의 단일 진실(쓰는 쪽이 선언)
 │   │   ├── migrate.py      #   v1→v2 단방향 마이그레이션 집약 — _migrate_v1/_promote_local_skills/_v1_all_machines/
 │   │   │                   #   _v1_scrub_number + _deser_section(v1 sections 트리 전용이라 여기 — deser에 두면 순환)
+│   │   │                   #   + migrate_skill_context/needs_skill_context_migration(스킬 context·agent 퇴역 — format 2에도 적용)
 │   │   ├── deser_fsm.py    #   역방향 FSM 계층 — _Registry(id→객체, dangling 경고. 그것을 소비하는 최하위 계층이라
 │   │   │                   #   여기 산다) + _to_enum/변수/전략/액션/가드/이벤트/블랙보드/상태/전이/머신
 │   │   ├── deser_plugin.py #   역방향 플러그인 계층 — 본문/포트(EventDef)/config/정책/스킬/에이전트/참조 배치/
@@ -159,13 +160,13 @@ daedalus/
 │       │                   #   + SKIPPABLE_RULES(skip_rules 허용 이름)
 │       └── project_rules/   #   프로젝트 수준 규칙(_ProjectRules 믹스인 — validate_project 오케스트레이터).
 │                            #   A6에서 1,090줄 단일 모듈을 그룹별 믹스인 패키지로 분해(이동만·동작 불변).
-│                            #   __init__.py = 재-export 파사드 + 믹스인 8종 합성(CC_BUILTIN_TOOLS·
+│                            #   __init__.py = 재-export 파사드 + 믹스인 9종 합성(CC_BUILTIN_TOOLS·
 │                            #   _strip_markdown_code·_ProjectRules 기존 임포트 무수정 동작).
 │                            #   text.py(코드 스팬 제외) / scan.py(공용 순회 — graph_has_placements·
 │                            #   project_machines·scan_state_access·scan_transitions **모듈 함수**가 실체,
 │                            #   믹스인이 staticmethod로 재노출. 그룹끼리 _ProjectRules 경유로 부르면
 │                            #   파사드와 순환) / naming / tools / hooks / blackboard / body_variables /
-│                            #   build_target / workflow / workspace
+│                            #   build_target / workflow / fork(fork 스킬 몸 에이전트 — fork_body_agent) / workspace
 ├── compiler/         # 순수 모델 → 플러그인 파일 (Qt 무관)
 │   ├── emit/               # model → SKILL.md/agent .md/hooks.json 텍스트 (결정적, LF). 구 emit.py를 WP-RF-3a로 패키지 분해(이동만·동작 불변)
 │   │   ├── __init__.py     #   재-export 파사드 — 분해 전 emit.py의 모든 속성(public + 테스트가 쓰는 _헬퍼) 그대로 제공,
@@ -176,6 +177,8 @@ daedalus/
 │   │   ├── skill.py        #   SKILL.md 조립 — 다음 단계·작업 재개(WP-RS)·진입 맥락(WP-IC) + compile_skill
 │   │   ├── agent.py        #   에이전트 .md 조립 — 프론트매터(skills 합류·LOCAL hooks/mcpServers)·호출 계약·출구 + compile_agent
 │   │   ├── wrapped.py      #   랩핑 스킬 산출 — 위임 절차 단락 + 실행 서브에이전트(compile_wrapped_runner/needs_runner_agent/parse_wrapped_source)
+│   │   ├── fork.py         #   fork 스킬 산출(2026-09-13) — resolve_fork_agent_name(타깃별 agent 이름)/fork_frontmatter_lines
+│   │   │                   #   (background: false)/fork_report_section("## Report")/fork_skills_using(몸 에이전트 호출 계약)
 │   │   ├── hooks.py        #   compile_hooks_json/compile_hook_scripts (진행 상태 합성 훅 포함)
 │   │   └── manifest.py     #   compile_plugin_manifest/compile_schemas_json + 경로 변수 확장(expand_root_token)
 │   ├── project_compiler.py # compile_project(project, out_dir=None, files_dir=None, resolved_hooks=None, dry_run=False) → CompileResult
@@ -370,6 +373,8 @@ daedalus/
     │   ├── wrapped_usage.py#   랩핑 용도 전환(WP-WR) — change_wrapped_usage/placement_counts/describe_placements.
     │   │                   #     배치 없으면 SetAttrCmd 하나, 있으면 거부(force면 _canvas_cleanup_commands로 정리 + 전환 1 undo).
     │   │                   #     GUI 버튼과 MCP set_wrapped_usage의 공용 실체
+    │   ├── fork_skill.py   #   fork 스킬(2026-09-13) — fork_agent_choices(몸 후보 세 종류)/validate_fork_agent/skill_kind_of/
+    │   │                   #     convert_skill_kind(절차형 ↔ fork — config·__class__ 교체 1 undo). 피커·캔버스 메뉴·MCP 공용 실체
     │   ├── creation.py     #   생성+배치 — NO_PLACE_KINDS(레지스트리 no_place와 같은 규칙)/create_wrapped_skill(WP-WR —
     │   │                   #     생성+선언+배치 1 undo, WRAPPED_SOURCE_MIME_PREFIX)/
     │   │                   #     ("여기에 만들기" 빈 캔버스 메뉴(A9-9)·CREATABLE_KINDS는 퇴역 — 정확한 이름 타이핑 요구, 사용자 확정)/
@@ -434,6 +439,7 @@ daedalus/
     │                       #                              우선순위**다 — isinstance는 서브클래스에도 참이라 순서를 바꾸면 동작이 바뀐다.
     │                       #     transfer_on_panel.py   — _COLOR_PRESETS + _ColorPickerPopup + _EventCard + _TransferOnPanel
     │                       #     reference_link_panel.py— _ReferenceLinkPanel
+    │                       #     kind_switch_row.py     — 절차형 ↔ fork 전환 버튼·안내 행(build_kind_switch_row, 800줄 예산 때문에 분리)
     │                       # **필드 행 정렬 규칙**: 라벨|필드 행은 열 폭을 공유하는 레이아웃에 넣는다 — skill_editor._FrontmatterPanel은
     │                       #   QGridLayout(0=체크박스·1=라벨(우측 정렬)·2=값 위젯, 스팬 행은 헤더/그룹 구분 라벨/버튼 행), 나머지는
     │                       #   QFormLayout(hook_panel·property_panel·project_properties·workspace_editor). ad-hoc HBox로 행을

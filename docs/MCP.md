@@ -44,7 +44,7 @@ GUI가 켜지면 `127.0.0.1`에 Streamable HTTP로 뜬다.
 
 여러 창을 띄우면 `.mcp.json`이 고정 포트를 가리키므로 **먼저 켜진 인스턴스**가 협업 대상이 된다. 인스턴스마다 다른 세션을 붙이려면 `daedalus --mcp-port <포트>`로 고정한다(그 포트가 점유돼 있으면 물러나지 않고 실패한다 — 지정한 의미를 지키기 위해서다).
 
-## 도구 지도 (86종)
+## 도구 지도 (87종)
 
 ### 조회 (19)
 
@@ -54,11 +54,11 @@ GUI가 켜지면 `127.0.0.1`에 Streamable HTTP로 뜬다.
 
 `get_project(sections=[...])`로 구획만(meta / components / canvas / blackboard / hooks) 받을 수 있고, `validate_project(severity=, component=)`로 걸러 받을 수 있다.
 
-### 편집 — 캔버스와 모델 (40)
+### 편집 — 캔버스와 모델 (41)
 
 | 묶음 | 도구 |
 |------|------|
-| 컴포넌트 | `create_skill` `create_agent` `rename_component` `delete_component` `set_component_description` `set_component_when_to_use` `set_component_field` `set_entry_preset` |
+| 컴포넌트 | `create_skill` `create_agent` `convert_skill` `rename_component` `delete_component` `set_component_description` `set_component_when_to_use` `set_component_field` `set_entry_preset` |
 | 캔버스 구조 | `place_component` `create_state` `move_state` `rename_state` `delete_state` `connect_states` `disconnect_states` `set_transition` `set_transition_waypoints` |
 | 포트·분기 | `set_transfer_on` `add_agent_call` `remove_agent_call` `set_agent_calls` |
 | 참조 노드 | `place_reference` `link_reference` `unlink_reference` `unplace_reference` `move_reference` |

@@ -65,7 +65,7 @@ blackboard/body_variables/build_target/workflow/workspace)을 합성한 오케�
 |------|------|
 | `duplicate_component_name` | skills/agents 전체에서 동명 컴포넌트 에러 (컴파일 디렉토리 충돌) |
 | `invalid_component_name` | 이름이 `^[a-z0-9][a-z0-9-]*$` 불일치 시 경고, 빈 이름은 에러 |
-| `dangling_string_reference` | `ProceduralSkillConfig.agent`, `AgentConfig.skills`, `reference_placements.skill_name`의 문자열 참조 실존 검사 (스킬 이름은 전역 skills 기준) |
+| `dangling_string_reference` | `AgentConfig.skills`, `reference_placements.skill_name`의 문자열 참조 실존 검사 (스킬 이름은 전역 skills 기준). fork 스킬 `agent`는 내장·외부도 가리킬 수 있어 여기서 보지 않는다 — `fork_agent_missing`이 맡는다 |
 | `duplicate_tool_name` | `tool_shelf` 내 동명 Tool 에러 (이름 참조 모호) |
 | `empty_tool_definition` | UserDefinedTool 본문(body) 빈 값 / MCPTool server·tool_name 빈 값 경고 |
 | `dangling_tool_ref` | FSM의 ToolEvaluation/ToolExecution.tool이 `tool_shelf ∪ CC_BUILTIN_TOOLS`에 없으면 경고 (빈 문자열은 스킵). 참조 수집은 상태 훅·custom_events·전이 가드/액션 체인 + Composite 중첩 + sub_machine/Region 재귀 |
@@ -91,8 +91,13 @@ blackboard/body_variables/build_target/workflow/workspace)을 합성한 오케�
 | `unused_external_plugin` | 외부 플러그인을 사용 선언했는데 어떤 랩핑 스킬도 참조하지 않음 — 배선은 그대로, 경고만 (WP-WR) |
 | `undeclared_external_plugin` | 랩핑 스킬 source가 미선언 플러그인을 가리킴 — 배선이 안 나가 런타임에 못 찾는다 (WP-WR) |
 | `external_plugin_no_marketplace` | 마켓 표기 없는 bare 선언은 enabledPlugins 배선 불가 경고 (컴파일러 emit, WP-WR) |
-| `agent_chain_too_deep` | 프로젝트 그래프의 **에이전트 → 에이전트 호출 체인**이 `MAX_AGENT_CHAIN`(3)을 넘으면 **에러** (2026-09-12). CC는 주 대화 기준 3계층까지만 중첩을 허용하고 한계에 닿은 서브에이전트에게서 Agent 도구를 회수하므로, 더 깊은 체인은 **설계대로 돌지 않고 조용히 달라진다**(마지막 에이전트가 혼자 처리). 스킬은 메인 스레드에서 도니 중간에 스킬을 끼우면 깊이가 1부터 다시 시작한다. 보고는 **체인 시작점에서 한 번**(노드마다 반복 금지), 순환(A→B→A)은 깊이 무한이라 같은 규칙이 다른 메시지로 잡는다 |
-| `agent_calls_higher_model` | 에이전트가 **자기보다 상위 모델**의 에이전트를 호출하면 **에러** (사용자 확정 2026-09-12). 티어 표의 단일 진실은 `model/plugin/enums.MODEL_TIER`(haiku<sonnet<opus<fable). 어느 한쪽이 `INHERIT`면 물려받는 값이라 상위/하위가 성립하지 않아 건너뛴다. 스킬 → 상위 모델 에이전트는 대상이 아니다(메인 스레드가 부르는 것이라 중첩이 아니다) |
+| `agent_chain_too_deep` | 프로젝트 그래프의 **에이전트 → 에이전트 호출 체인**이 `MAX_AGENT_CHAIN`(3)을 넘으면 **에러** (2026-09-12). CC는 주 대화 기준 3계층까지만 중첩을 허용하고 한계에 닿은 서브에이전트에게서 Agent 도구를 회수하므로, 더 깊은 체인은 **설계대로 돌지 않고 조용히 달라진다**(마지막 에이전트가 혼자 처리). 스킬은 메인 스레드에서 도니 중간에 스킬을 끼우면 깊이가 1부터 다시 시작한다. 보고는 **체인 시작점에서 한 번**(노드마다 반복 금지), 순환(A→B→A)은 깊이 무한이라 같은 규칙이 다른 메시지로 잡는다. **fork 스킬은 에이전트 1계층 호출자로 센다**(2026-09-13 — 서브에이전트에서 돈다) |
+| `agent_calls_higher_model` | 에이전트가 **자기보다 상위 모델**의 에이전트를 호출하면 **에러** (사용자 확정 2026-09-12). 티어 표의 단일 진실은 `model/plugin/enums.MODEL_TIER`(haiku<sonnet<opus<fable). 어느 한쪽이 `INHERIT`면 물려받는 값이라 상위/하위가 성립하지 않아 건너뛴다. 스킬 → 상위 모델 에이전트는 대상이 아니다(메인 스레드가 부르는 것이라 중첩이 아니다). 단 **fork 스킬은 호출자로 본다** — 티어는 실효 모델(스킬이 `INHERIT`면 몸 프로젝트 에이전트 값) |
+| `fork_agent_missing` | fork 스킬 `agent`가 내장도, `플러그인:이름` 형식도, 프로젝트 에이전트도 아니면 **에러** (2026-09-13) — CC는 못 찾은 에이전트를 조용히 general-purpose로 돌린다. 정확 일치(대소문자 포함) |
+| `fork_agent_undeclared_plugin` | `플러그인:이름`의 플러그인이 `external_plugins`에 없으면 **에러** — 플러그인이 켜지지 않아 역시 조용히 범용으로 돈다(랩핑의 `undeclared_external_plugin`은 경고지만 fork는 에러). 그 에이전트가 플러그인에 실제로 있는지는 파일시스템이라 검증기가 보지 않는다(피커·MCP는 카탈로그로 거른다) |
+| `fork_agent_placed` | 몸 프로젝트 에이전트가 캔버스에 배치돼 있으면 **에러** — 워크플로 단계와 몸을 겸하면 보이지 않는 연결이 생긴다. 드롭 자체는 막지 않는다(조작 거절은 이유가 안 보인다) |
+| `fork_model_overrides_agent` | 스킬과 몸 프로젝트 에이전트 **양쪽에 model(또는 effort)이 있고 다르면** 경고 — fork에서는 스킬 값이 이긴다(실측). 스킬이 비면 에이전트 값이 쓰이므로 정상 |
+| `fork_agent_isolation_ignored` | 몸 프로젝트 에이전트에 `isolation`이 있으면 경고 — fork 실행에는 적용되지 않는다(실측) |
 | `mid_chain_user_invocable` | 프로젝트 그래프에 배치된 ProceduralSkill 중 **incoming 전이가 1개 이상**인데 `config.user_invocable`의 **실효값**이 true면 경고 (A3 + A8 tri-state — `None`(미지정)은 CC 기본 true이므로 경고 대상이고 메시지에 병기, **명시 `False`만 통과**) — user-invocable은 진입점으로 기능할 노드만 true여야 한다(중간 노드로 사용자가 맥락 없이 진입하는 사고 방지. false여도 모델 인보크는 되므로 체인은 안 끊긴다). incoming 0개(진입점 후보)·미배치 스킬(독립 스킬)은 대상 아님. **EntryPoint 출발 전이는 incoming으로 세지 않는다** — 그것이 곧 "여기서 시작한다"는 선언이다(WP-EP로 캔버스에 그리지 않을 뿐 구버전 파일의 시작 전이는 모델에 남아 있다) |
 
 도구 모델(`tool.py`): `Tool(PluginComponent, ABC)` 단일 진실 + `BuiltinTool`/`MCPTool`/`UserDefinedTool`. shelf = 프로젝트(`PluginProject.tool_shelf`) 소유, FSM은 `Tool.name` 문자열로 참조(fsm/는 plugin 무관 — 객체 참조 금지, Validator가 실존 검증). `CC_BUILTIN_TOOLS`는 `validation/project_rules/tools.py` 모듈 frozenset이다(파사드 재-export로 `daedalus.model.validation`에서도 임포트 가능 — Read/Write/Edit/Bash/Glob/Grep/WebFetch/WebSearch/Agent/Task/TodoWrite/NotebookEdit/SlashCommand/PowerShell).
