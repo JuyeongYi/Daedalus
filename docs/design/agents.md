@@ -41,7 +41,7 @@
   결과가 메인 컨텍스트에 남지 않는 것이다(진행 기록·재개가 약해진다 — `no_agent_to_agent`
   경고). 하드 제약 둘은 에러다: `agent_chain_too_deep`(깊이 3), `agent_calls_higher_model`
   (자기보다 상위 모델 호출 금지 — 사용자 확정).
-- **fork 스킬의 몸 (2026-09-13):** 캔버스에 배치되지 않은 프로젝트 에이전트는 fork 스킬의 몸이 될 수 있다 —
+- **fork 에이전트 (2026-09-13):** 캔버스에 배치되지 않은 프로젝트 에이전트는 fork 에이전트가 될 수 있다 —
   그 에이전트 본문이 시스템 프롬프트, fork 스킬 본문이 작업 지시다(실측). `.md`의 "## Invocation Contract"에
   "Execution base of fork skill X"가 유도된다. `skills` 프리로드·`maxTurns`는 적용되고 `isolation`은 적용되지
   않는다(`fork_agent_isolation_ignored`). 상세는 `plugin-model.md` "fork 스킬".

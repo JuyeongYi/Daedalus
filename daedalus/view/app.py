@@ -475,7 +475,7 @@ class MainWindow(QMainWindow):
             return sorted(names)
 
         set_mcp_server_candidate_provider(_mcp_server_candidates)
-        # fork 스킬 몸 에이전트 피커 후보 (2026-09-13) — MCP 검증과 같은 함수.
+        # fork 에이전트 피커 후보 (2026-09-13) — MCP 검증과 같은 함수.
         from daedalus.view.actions.fork_skill import fork_agent_choices
         from daedalus.view.widgets.tag_input import set_fork_agent_choice_provider
 

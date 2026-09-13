@@ -166,7 +166,7 @@ daedalus/
 │                            #   project_machines·scan_state_access·scan_transitions **모듈 함수**가 실체,
 │                            #   믹스인이 staticmethod로 재노출. 그룹끼리 _ProjectRules 경유로 부르면
 │                            #   파사드와 순환) / naming / tools / hooks / blackboard / body_variables /
-│                            #   build_target / workflow / fork(fork 스킬 몸 에이전트 — fork_body_agent) / workspace
+│                            #   build_target / workflow / fork(fork 에이전트 — fork_project_agent) / workspace
 ├── compiler/         # 순수 모델 → 플러그인 파일 (Qt 무관)
 │   ├── emit/               # model → SKILL.md/agent .md/hooks.json 텍스트 (결정적, LF). 구 emit.py를 WP-RF-3a로 패키지 분해(이동만·동작 불변)
 │   │   ├── __init__.py     #   재-export 파사드 — 분해 전 emit.py의 모든 속성(public + 테스트가 쓰는 _헬퍼) 그대로 제공,
@@ -178,7 +178,7 @@ daedalus/
 │   │   ├── agent.py        #   에이전트 .md 조립 — 프론트매터(skills 합류·LOCAL hooks/mcpServers)·호출 계약·출구 + compile_agent
 │   │   ├── wrapped.py      #   랩핑 스킬 산출 — 위임 절차 단락 + 실행 서브에이전트(compile_wrapped_runner/needs_runner_agent/parse_wrapped_source)
 │   │   ├── fork.py         #   fork 스킬 산출(2026-09-13) — resolve_fork_agent_name(타깃별 agent 이름)/fork_frontmatter_lines
-│   │   │                   #   (background: false)/fork_report_section("## Report")/fork_skills_using(몸 에이전트 호출 계약)
+│   │   │                   #   (background: false)/fork_report_section("## Report")/fork_skills_using(fork 에이전트 호출 계약)
 │   │   ├── hooks.py        #   compile_hooks_json/compile_hook_scripts (진행 상태 합성 훅 포함)
 │   │   └── manifest.py     #   compile_plugin_manifest/compile_schemas_json + 경로 변수 확장(expand_root_token)
 │   ├── project_compiler.py # compile_project(project, out_dir=None, files_dir=None, resolved_hooks=None, dry_run=False) → CompileResult
@@ -373,7 +373,7 @@ daedalus/
     │   ├── wrapped_usage.py#   랩핑 용도 전환(WP-WR) — change_wrapped_usage/placement_counts/describe_placements.
     │   │                   #     배치 없으면 SetAttrCmd 하나, 있으면 거부(force면 _canvas_cleanup_commands로 정리 + 전환 1 undo).
     │   │                   #     GUI 버튼과 MCP set_wrapped_usage의 공용 실체
-    │   ├── fork_skill.py   #   fork 스킬(2026-09-13) — fork_agent_choices(몸 후보 세 종류)/validate_fork_agent/skill_kind_of/
+    │   ├── fork_skill.py   #   fork 스킬(2026-09-13) — fork_agent_choices(fork 에이전트 후보 세 종류)/validate_fork_agent/skill_kind_of/
     │   │                   #     convert_skill_kind(절차형 ↔ fork — config·__class__ 교체 1 undo). 피커·캔버스 메뉴·MCP 공용 실체
     │   ├── creation.py     #   생성+배치 — NO_PLACE_KINDS(레지스트리 no_place와 같은 규칙)/create_wrapped_skill(WP-WR —
     │   │                   #     생성+선언+배치 1 undo, WRAPPED_SOURCE_MIME_PREFIX)/

@@ -1,8 +1,8 @@
 # daedalus/model/validation/project_rules/fork.py
-"""fork 스킬의 몸 에이전트 규칙 (사용자 확정 2026-09-13).
+"""fork 스킬이 쓰는 에이전트 규칙 (사용자 확정 2026-09-13).
 
 CC는 fork 스킬의 `agent`를 정확 일치로 찾고, 없으면 **조용히 general-purpose로
-실행한다**(실측, CC 2.1.268). 그래서 몸을 못 찾는 경우는 경고가 아니라 에러다.
+실행한다**(실측, CC 2.1.268). 그래서 fork 에이전트를 못 찾는 경우는 경고가 아니라 에러다.
 
 외부 플러그인 에이전트가 실제로 그 플러그인에 있는지는 보지 않는다 — 카탈로그는
 파일시스템이고 검증기는 파일시스템을 읽지 않는다. 사용 선언 여부까지만 판정한다.
@@ -12,8 +12,8 @@ from __future__ import annotations
 from daedalus.model.validation.severity import ValidationError
 
 
-def fork_body_agent(skill, project):
-    """fork 스킬이 몸으로 쓰는 **프로젝트** 에이전트 (내장·외부·없음이면 None)."""
+def fork_project_agent(skill, project):
+    """fork 스킬이 fork 에이전트로 쓰는 **프로젝트** 에이전트 (내장·외부·없음이면 None)."""
     name = getattr(skill.config, "agent", "")
     return next((a for a in project.agents if a.name == name), None)
 
@@ -49,8 +49,8 @@ class _ForkRules:
             if not isinstance(skill, ForkSkill):
                 continue
             name = skill.config.agent
-            body = fork_body_agent(skill, project)
-            if body is None:
+            target = fork_project_agent(skill, project)
+            if target is None:
                 if name in BUILTIN_FORK_AGENTS:
                     continue
                 plugin, sep, _agent = name.partition(":")
@@ -69,35 +69,35 @@ class _ForkRules:
                     ))
                 continue
 
-            if id(body) in placed_ids:
+            if id(target) in placed_ids:
                 add(skill, rule="fork_agent_placed", message=(
-                    f"fork 스킬 '{skill.name}'의 몸 에이전트 '{body.name}'이(가) 캔버스에 "
-                    f"배치돼 있습니다 — 워크플로 단계와 fork 몸을 겸하면 캔버스에 보이지 "
+                    f"fork 스킬 '{skill.name}'의 fork 에이전트 '{target.name}'이(가) 캔버스에 "
+                    f"배치돼 있습니다 — 워크플로 단계와 fork 에이전트를 겸하면 캔버스에 보이지 "
                     f"않는 연결이 생깁니다. 배치를 지우거나 다른 에이전트를 고르세요."
                 ))
-            skill_cfg, body_cfg = skill.config, body.config
+            skill_cfg, target_cfg = skill.config, target.config
             model_clash = (
                 skill_cfg.model is not ModelType.INHERIT
-                and body_cfg.model is not ModelType.INHERIT
-                and skill_cfg.model != body_cfg.model
+                and target_cfg.model is not ModelType.INHERIT
+                and skill_cfg.model != target_cfg.model
             )
             effort_clash = (
                 skill_cfg.effort is not None
-                and body_cfg.effort is not None
-                and skill_cfg.effort != body_cfg.effort
+                and target_cfg.effort is not None
+                and skill_cfg.effort != target_cfg.effort
             )
             if model_clash or effort_clash:
                 which = " / ".join(
                     w for w, on in (("model", model_clash), ("effort", effort_clash)) if on
                 )
                 add(skill, rule="fork_model_overrides_agent", message=(
-                    f"fork 스킬 '{skill.name}'과 몸 에이전트 '{body.name}'의 {which}가 "
+                    f"fork 스킬 '{skill.name}'과 fork 에이전트 '{target.name}'의 {which}가 "
                     f"다릅니다 — fork에서는 스킬 값이 이기고 에이전트 값은 무시됩니다. "
                     f"에이전트 값을 쓰려면 스킬 쪽을 비우세요."
                 ))
-            if body_cfg.isolation is not AgentIsolation.NONE:
+            if target_cfg.isolation is not AgentIsolation.NONE:
                 add(skill, rule="fork_agent_isolation_ignored", message=(
-                    f"fork 스킬 '{skill.name}'의 몸 에이전트 '{body.name}'에 isolation"
-                    f"({body_cfg.isolation.value})이 있지만 fork 실행에는 적용되지 않습니다."
+                    f"fork 스킬 '{skill.name}'의 fork 에이전트 '{target.name}'에 isolation"
+                    f"({target_cfg.isolation.value})이 있지만 fork 실행에는 적용되지 않습니다."
                 ))
         return errors

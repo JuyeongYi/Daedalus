@@ -66,7 +66,7 @@ class CataloguedSkill:
 
 @dataclass
 class CataloguedAgent:
-    """발견된 외부 에이전트 — fork 스킬의 몸 후보 (2026-09-13).
+    """발견된 외부 에이전트 — fork 에이전트 후보 (2026-09-13).
 
     ``name``은 ``agents/`` 기준 이름이다. 하위 폴더에 두면 폴더가 콜론으로
     이어진다(``review/security.md`` → ``review:security`` — 공식 sub-agents 문서:
@@ -89,7 +89,7 @@ class CataloguedPlugin:
     marketplace: str = ""
     description: str = ""
     skills: list[CataloguedSkill] = field(default_factory=list)
-    #: 플러그인이 동봉한 에이전트(``agents/**/*.md``) — fork 스킬의 몸 후보.
+    #: 플러그인이 동봉한 에이전트(``agents/**/*.md``) — fork 에이전트 후보.
     agents: list[CataloguedAgent] = field(default_factory=list)
     #: 실물 파일을 **어디서 읽었는가** (사용자 확정 2026-09-07 — "설치/미설치
     #: 보다는 그냥 외부 플러그인으로 표시하고, 클론 여부에 따라 아이콘을").
@@ -555,7 +555,7 @@ def used_plugin_mcp_servers(project) -> list[str]:
 def used_plugin_agents(project) -> list[CataloguedAgent]:
     """사용 선언한 외부 플러그인이 동봉한 에이전트 (`agent_type` 순 — 결정적).
 
-    fork 스킬의 몸 후보 중 "외부 플러그인 에이전트"의 단일 진실이다(2026-09-13).
+    fork 에이전트 후보 중 "외부 플러그인 에이전트"의 단일 진실이다(2026-09-13).
     **선언하지 않은 플러그인의 에이전트는 넣지 않는다** — 활성화되지 않은 플러그인의
     에이전트는 런타임에 없고, fork는 못 찾으면 조용히 범용으로 떨어진다(실측).
     `used_plugin_mcp_servers`와 같은 선언 판정을 쓴다. 파일시스템을 읽으므로

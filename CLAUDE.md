@@ -64,7 +64,7 @@ pytest는 `python -m pytest`로 실행한다 (`pytest` 직접 실행 시 command
 | 문서 | 다루는 것 |
 |------|-----------|
 | `architecture.md` | 컴파일러 패턴·경계 계약·요약 모듈 지도 + 파일 단위 상세 지도(각 모듈의 책임·분해 이력·테스트 봉합선) |
-| `plugin-model.md` | 스킬 6종·에이전트 표, fork 스킬(몸 에이전트 세 종류·전환·실측), `SKILL_FIELD_MATRIX`/`FieldRule`, `FieldType`, 진입 의미론 tri-state + 진입점 프리셋(A8), config 계층 |
+| `plugin-model.md` | 스킬 6종·에이전트 표, fork 스킬(fork 에이전트 세 종류·전환·실측), `SKILL_FIELD_MATRIX`/`FieldRule`, `FieldType`, 진입 의미론 tri-state + 진입점 프리셋(A8), config 계층 |
 | `fsm-model.md` | CompositeState/Region/조인, FSM+블랙보드 하이브리드, body·Section·EventDef, 입력 포트 퇴역(WP-IP), `PluginProject.graph`(EntryPoint 격하 WP-EP), CompletionEvent, 전략 패턴, 안정 ID + 직렬화·마이그레이션 |
 | `agents.md` | 에이전트 내부 FSM 퇴역(WP-AF), 출력 포트, 로컬 스킬 승격, 그래프 유도 호출 계약(WP-CT) |
 | `wrapped-skills.md` | 외부 플러그인 스킬 랩핑(WP-WR) — 서브에이전트 강제 산출, 사용 선언 배선, 용도 state/reference, 비활성화, 카탈로그·클론 캐시 |

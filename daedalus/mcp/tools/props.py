@@ -89,7 +89,7 @@ class PropsTools(_BaseTools):
         wrapped(다른 플러그인 스킬의 랩핑 — 본문 없음, WP-WR) /
         fork(본문이 서브에이전트의 작업 지시가 되는 단계 — 2026-09-13).
 
-        fork_agent: kind="fork" 전용 — 몸 에이전트(프론트매터 `agent`). 내장(general-purpose/Explore/Plan),
+        fork_agent: kind="fork" 전용 — fork 에이전트(프론트매터 `agent`). 내장(general-purpose/Explore/Plan),
         사용 선언한 외부 플러그인 에이전트(`플러그인:이름`), 캔버스에 배치되지 않은
         프로젝트 에이전트 중 하나(정확 일치). 생략하면 general-purpose.
         절차형 ↔ fork 전환은 `convert_skill`.
@@ -196,7 +196,7 @@ class PropsTools(_BaseTools):
 
         to: "fork" 또는 "procedural". 이름·본문·설명·포트·전이·배치는 그대로다.
         fork로 갈 때 `allowed_tools`(fork에서 효과 없음)를, 절차형으로 갈 때
-        `agent`를 버리고 `dropped`로 알린다. fork의 몸 에이전트는 기본
+        `agent`를 버리고 `dropped`로 알린다. fork의 fork 에이전트는 기본
         general-purpose이고 `set_component_field(name, "agent", ...)`로 바꾼다.
 
         편집기 "…로 전환" 버튼·캔버스 우클릭과 같은 실체
@@ -655,7 +655,7 @@ class PropsTools(_BaseTools):
             )
 
         if field == "agent":
-            # fork 몸 — 틀린 이름은 CC가 조용히 general-purpose로 돌리므로 여기서 거절한다.
+            # fork 에이전트 — 틀린 이름은 CC가 조용히 general-purpose로 돌리므로 여기서 거절한다.
             from daedalus.view.actions.fork_skill import validate_fork_agent
 
             validate_fork_agent(self._project, value if isinstance(value, str) else "")

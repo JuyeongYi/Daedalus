@@ -105,7 +105,7 @@ def test_discover_plugins_and_skills(tmp_path):
 
 
 def test_discover_plugin_agents(tmp_path):
-    """동봉 에이전트를 fork 몸 후보로 읽는다 (2026-09-13).
+    """동봉 에이전트를 fork 에이전트 후보로 읽는다 (2026-09-13).
 
     CC는 fork의 `agent:`를 정확 일치로 찾고 틀리면 조용히 범용으로 돈다 —
     그래서 `플러그인:이름` 형식을 카탈로그가 만든다. 하위 폴더는 이름에 콜론으로

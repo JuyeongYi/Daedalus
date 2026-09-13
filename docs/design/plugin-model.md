@@ -136,16 +136,16 @@ CC는 **조용히 범용 에이전트로 돌렸다**. 그래서 fork를 **별도
   `serialize.migrate.migrate_skill_context`가 흡수한다 — 절차형 `context: fork` → fork 스킬(agent가 비면
   `general-purpose`, `allowed_tools`는 버리고 경고) / inline 키는 조용히 드롭 / 전이형 fork는 경고 후 드롭.
   format 2 파일에도 적용된다(`needs_skill_context_migration` 게이트).
-- **몸 에이전트 세 종류** (`view/actions/fork_skill.fork_agent_choices` — 편집기 피커와 MCP 검증이 공유):
+- **fork 에이전트 세 종류** (`view/actions/fork_skill.fork_agent_choices` — 편집기 피커와 MCP 검증이 공유):
   ① 내장 `general-purpose`/`Explore`/`Plan`(`config.BUILTIN_FORK_AGENTS`) ② 사용 선언한 외부 플러그인의
   에이전트(`플러그인:이름`, 카탈로그 `used_plugin_agents`) ③ **캔버스에 배치되지 않은** 프로젝트 에이전트.
-  배치된 에이전트는 워크플로 단계라 몸을 겸하면 캔버스에 안 보이는 연결("점프")이 생겨 뺀다.
+  배치된 에이전트는 워크플로 단계라 fork 에이전트를 겸하면 캔버스에 안 보이는 연결("점프")이 생겨 뺀다.
 - **전환:** 절차형 ↔ fork는 명시 액션이다(편집기 버튼 `kind_switch_row`·캔버스 우클릭·MCP `convert_skill`, 실체
   `convert_skill_kind`). 객체를 새로 만들지 않고 `config`와 `__class__`를 바꾸는 `SetAttrCmd` 2개를
   `MacroCommand` **1 undo**로 묶는다 — 그래프 참조·본문 문서·열린 탭이 끊기지 않는다. 버린 값(fork로:
   `allowed_tools`, 절차형으로: `agent`)은 `dropped`로 보고한다. 필드 구성은 탭을 닫았다 열면 바뀐다.
 - **편집기·캔버스:** 구리색 `#c07a3a` 노드(🍴), 레지스트리 🍴 FORK 탭, AGENT 피커(`ForkAgentComboBox` — 후보 밖
-  저장값도 보인다), 안내문 "도구는 몸 에이전트가, 모델·effort는 이 스킬 값이(비우면 몸 에이전트 값)".
+  저장값도 보인다), 안내문 "도구는 fork 에이전트가, 모델·effort는 이 스킬 값이(비우면 fork 에이전트 값)".
 - 산출은 `compiler.md` 20번, 검증은 `validation.md`의 `fork_*` 규칙.
 
 **실측 사실 (CC 2.1.268 — 실행 파일 + `claude -p` 실행 후 기록 파일의 실제 값으로 판정, 2026-09-13)**
@@ -159,6 +159,6 @@ CC는 **조용히 범용 에이전트로 돌렸다**. 그래서 fork를 **별도
 | model·effort | 스킬에 값이 있으면 **스킬이 이긴다**(effort는 값을 뒤바꿔 두 번 확인). 스킬이 비면 **에이전트 값**이 쓰인다 |
 | tools | **에이전트가 이긴다** — 스킬 `allowed-tools`는 도구를 늘리지 못한다 |
 | 전달 구조 | 에이전트 본문 → 시스템 프롬프트, 스킬 본문 → 작업 지시. `$ARGUMENTS`는 치환된다 |
-| 몸 에이전트 설정 | `skills:` 프리로드·`maxTurns`는 **적용**, `isolation: worktree`는 **적용되지 않는다** |
+| fork 에이전트 설정 | `skills:` 프리로드·`maxTurns`는 **적용**, `isolation: worktree`는 **적용되지 않는다** |
 | 내장 이름 | `general-purpose` / `Explore` / `Plan` (`statusline-setup`도 있으나 후보에서 뺀다) |
-| 도구 0개 몸 | 이 환경에 없는 도구만 준 에이전트로는 fork가 아무 일도 하지 못했다 |
+| 도구 0개 에이전트 | 이 환경에 없는 도구만 준 에이전트로는 fork가 아무 일도 하지 못했다 |

@@ -173,15 +173,17 @@
       (`resolve_fork_agent_name`), 내장·외부는 저장된 문자열 그대로다(정확 일치).
     - 배치된 fork는 `background: false` — 기본은 백그라운드라 부른 쪽이 보고를 기다리지 않고, 그러면 보고로
       분기를 고를 수 없다.
-    - **서브에이전트는 다음 단계를 시작하지도, 진행 기록을 쓰지도 않는다** — 몸이 `Explore`/`Plan`이면 상태 파일
+    - **서브에이전트는 다음 단계를 시작하지도, 진행 기록을 쓰지도 않는다** — fork 에이전트가 `Explore`/`Plan`이면 상태 파일
       쓰기가 어색하고, 메인에는 SKILL.md가 보이지 않는다. 대신 **보고가 지시가 된다**: 배치된 fork는
       "## Next Steps"/진행 갱신 규칙/"## Finishing Up" 대신 **"## Report"**(`fork_report_section`)를 낸다 —
       갈래 목록(Next Steps와 같은 줄) + 보고 첫 줄 `EXIT: <branch> / NEXT: /<skill>` + 끝에 메인이 실행할
       `daedalus-bb … progress set …` 명령. 터미널 배치면 `EXIT: done / NEXT: (end)` + `--current done`.
     - "## Resuming Work"는 내지 않는다(서브에이전트는 사용자에게 되묻거나 진행 파일을 쓸 수 없다 — 재개 판단은
       부르는 메인 몫). "## Entry Context"·블랙보드 단락은 그대로다. 미배치 fork는 `background`·Report가 없다.
-    - 몸으로 쓰이는 프로젝트 에이전트 `.md`의 "## Invocation Contract"에 `- Execution base of fork skill \`X\` …`
+    - fork 에이전트로 쓰이는 프로젝트 에이전트 `.md`의 "## Invocation Contract"에 `- Execution base of fork skill \`X\` …`
       줄이 유도된다(`fork_skills_using`) — 캔버스에 선이 없으니 여기서 말하지 않으면 그 쓰임을 모른다.
+      캔버스에 놓이지 않고 fork 에이전트로만 쓰이는 에이전트는 "## Exits"를 내지 않는다 — 분기할 그래프가 없고,
+      보고 첫 줄은 fork 스킬의 `EXIT/NEXT` 양식이 정한다(두 지시가 부딪히면 `EXIT: done`으로 잘못 적는다).
 
 출력은 결정적(같은 모델 → 같은 텍스트), LF 줄바꿈, UTF-8(BOM 없음). 텍스트 생성(`compile_skill`/`compile_agent`)은 파일시스템과 분리되어 문자열 단위 테스트 가능.
 

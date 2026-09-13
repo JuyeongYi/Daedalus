@@ -300,7 +300,7 @@ def _call_contract_section(agent: AgentDefinition, project) -> list[str]:
         return []
     from daedalus.compiler.emit.fork import fork_skills_using
 
-    # fork 스킬의 몸으로 쓰일 때 — 그 스킬 본문이 작업 지시로 오고 이 파일은
+    # fork 에이전트로 쓰일 때 — 그 스킬 본문이 작업 지시로 오고 이 파일은
     # 시스템 프롬프트가 된다(실측). 캔버스에 선이 없으니 여기서 말하지 않으면
     # 이 에이전트를 고치는 사람이 그 쓰임을 모른다(2026-09-13).
     fork_lines = [
@@ -458,7 +458,11 @@ def compile_agent(
     blocks.extend(_describe_agent_fsm(agent))
 
     # 출구 — 출력 포트(transfer_on). 호출자 그래프가 이 이름으로 분기한다.
-    blocks.extend(_agent_outputs_section(agent))
+    # 캔버스에 놓이지 않고 fork 에이전트로만 쓰이면 분기할 그래프가 없고, 보고 첫
+    # 줄은 fork 스킬의 `EXIT: … / NEXT: …` 양식이 정한다 — 출구 단락을 내면 두
+    # 지시가 부딪혀 `EXIT: done`처럼 잘못 적는다(2026-09-13).
+    if not _is_fork_agent_only(agent, project):
+        blocks.extend(_agent_outputs_section(agent))
 
     if project is not None:
         # 링크된 참조 용도 랩핑 스킬은 본문 consult 지시가 아니라 skills
@@ -467,6 +471,16 @@ def compile_agent(
         blocks.extend(_blackboard_section(project, agent))
 
     return _join_blocks(blocks)
+
+
+def _is_fork_agent_only(agent: AgentDefinition, project) -> bool:
+    """fork 스킬의 fork 에이전트로 쓰이고 캔버스에는 놓이지 않았는가."""
+    if project is None:
+        return False
+    from daedalus.compiler.emit.common import _graph_placements
+    from daedalus.compiler.emit.fork import fork_skills_using
+
+    return bool(fork_skills_using(agent, project)) and not _graph_placements(agent, project)
 
 
 def _describe_agent_fsm(agent: AgentDefinition) -> list[str]:

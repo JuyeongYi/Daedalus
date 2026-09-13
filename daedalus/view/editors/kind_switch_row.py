@@ -20,7 +20,7 @@ def build_kind_switch_row(panel, component, kind: str) -> None:
     btn.setToolTip(
         "이름·본문·포트·배치는 그대로 두고 종류만 바꿉니다(Ctrl+Z로 되돌림). "
         + ("fork 스킬은 allowed_tools를 쓰지 않아 버립니다."
-           if target == "fork" else "몸 에이전트 지정을 버립니다.")
+           if target == "fork" else "fork 에이전트 지정을 버립니다.")
     )
     btn.clicked.connect(lambda _=False: _convert(panel, btn, target))
     row = QHBoxLayout()
@@ -30,8 +30,8 @@ def build_kind_switch_row(panel, component, kind: str) -> None:
     panel._kind_switch_btn = btn
     if kind == "fork":
         hint = QLabel(
-            "도구는 몸 에이전트가 정합니다. 모델·effort는 이 스킬 값이 이기고, "
-            "비워 두면 몸 에이전트 값을 씁니다."
+            "도구는 fork 에이전트가 정합니다. 모델·effort는 이 스킬 값이 이기고, "
+            "비워 두면 fork 에이전트 값을 씁니다."
         )
         hint.setWordWrap(True)
         panel._add_span_row(hint)

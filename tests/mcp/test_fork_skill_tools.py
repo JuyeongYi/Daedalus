@@ -1,4 +1,4 @@
-"""fork 스킬 MCP 패리티 (2026-09-13) — 생성·전환·몸 에이전트 검증."""
+"""fork 스킬 MCP 패리티 (2026-09-13) — 생성·전환·fork 에이전트 검증."""
 from __future__ import annotations
 
 import pytest

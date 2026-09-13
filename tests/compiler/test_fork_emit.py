@@ -89,10 +89,19 @@ def test_unplaced_fork_has_no_background_or_report():
     assert "## Report" not in text
 
 
-def test_body_agent_contract_names_fork_skill():
+def test_fork_agent_contract_names_fork_skill():
     helper = make_agent(name="helper")
     fork = _fork(agent="helper")
     project = PluginProject(name="p", skills=[fork], agents=[helper])
     text = compile_agent(helper, project=project)
     assert "## Invocation Contract" in text
     assert "Execution base of fork skill `scout`" in text
+    # 캔버스 밖 fork 에이전트는 출구 단락을 내지 않는다 — fork 보고 양식과 부딪힌다.
+    assert "## Exits" not in text
+
+
+def test_placed_agent_keeps_exits():
+    helper = make_agent(name="helper")
+    project = PluginProject(name="p", agents=[helper])
+    project.graph.states.append(SimpleState(name="helper", skill_ref=helper))
+    assert "## Exits" in compile_agent(helper, project=project)

@@ -1,5 +1,5 @@
 # daedalus/view/actions/fork_skill.py
-"""fork 스킬 — 몸 에이전트 후보 + 절차형 ↔ fork 전환 (사용자 확정 2026-09-13).
+"""fork 스킬 — fork 에이전트 후보 + 절차형 ↔ fork 전환 (사용자 확정 2026-09-13).
 
 편집기 피커·캔버스 우클릭·MCP(`create_skill`/`set_component_field`/`convert_skill`)가
 전부 이 함수들을 부른다 — 표면마다 후보나 전환 규칙이 다르면 안 된다.
@@ -20,7 +20,7 @@ def fork_agent_choices(project) -> list[tuple[str, str]]:
 
     세 종류뿐이다(사용자 확정): 내장, 사용 선언한 외부 플러그인의 에이전트,
     **캔버스에 배치되지 않은** 프로젝트 에이전트. 배치된 에이전트는 워크플로
-    단계라 몸을 겸하면 캔버스에 안 보이는 연결이 생기므로 넣지 않는다.
+    단계라 fork 에이전트를 겸하면 캔버스에 안 보이는 연결이 생기므로 넣지 않는다.
     """
     from daedalus.model.plugin.config import BUILTIN_FORK_AGENTS
 
@@ -51,8 +51,8 @@ def validate_fork_agent(project, value: str) -> None:
         return
     if any(a.name == value for a in getattr(project, "agents", None) or []):
         raise ValueError(
-            f"프로젝트 에이전트 '{value}'는 캔버스에 배치돼 있어 fork 몸으로 쓸 수 "
-            f"없습니다 — 워크플로 단계와 몸을 겸하면 보이지 않는 연결이 생깁니다. "
+            f"프로젝트 에이전트 '{value}'는 캔버스에 배치돼 있어 fork 에이전트로 쓸 수 "
+            f"없습니다 — 워크플로 단계와 fork 에이전트를 겸하면 보이지 않는 연결이 생깁니다. "
             f"배치를 지우거나 다른 에이전트를 고르세요."
         )
     raise ValueError(

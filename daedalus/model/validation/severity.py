@@ -53,7 +53,7 @@ WARNING_RULES: frozenset[str] = frozenset({
     # 약해지는 것뿐이라 판단은 설계자 몫이다. 하드 제약(깊이·모델 티어)은
     # agent_chain_too_deep / agent_calls_higher_model이 에러로 잡는다.
     "no_agent_to_agent",
-    # fork 스킬(2026-09-13) — 둘 다 "설정이 무시된다"는 알림이다. 몸을 못 찾는
+    # fork 스킬(2026-09-13) — 둘 다 "설정이 무시된다"는 알림이다. fork 에이전트를 못 찾는
     # 경우(fork_agent_missing 등)는 조용히 범용으로 돌므로 에러다.
     "fork_model_overrides_agent",
     "fork_agent_isolation_ignored",

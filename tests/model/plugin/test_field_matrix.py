@@ -66,6 +66,8 @@ def test_matrix_fork_context_fixed_agent_required():
     assert rules[SkillField.CONTEXT].fixed_value == "fork"
     assert rules[SkillField.AGENT].visibility == FieldVisibility.REQUIRED
     assert rules[SkillField.AGENT].default_value == "general-purpose"
+    # 편집기는 선언 순서로 그린다 — fork 에이전트가 이름·설명 바로 다음에 보인다.
+    assert list(rules)[:3] == [SkillField.NAME, SkillField.DESCRIPTION, SkillField.AGENT]
 
 
 # kind별 **명시적 부재** 필드 (WP-WR) — 매트릭스 부재 = 그 kind에 비적용.

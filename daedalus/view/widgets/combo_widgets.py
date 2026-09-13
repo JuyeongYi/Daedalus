@@ -41,7 +41,7 @@ class EffortComboBox(QComboBox):
 
 
 class ForkAgentComboBox(QComboBox):
-    """fork 스킬 몸 에이전트 — 내장 / 사용 선언 외부 / 캔버스 미배치 프로젝트 에이전트.
+    """fork 에이전트 — 내장 / 사용 선언 외부 / 캔버스 미배치 프로젝트 에이전트.
 
     후보는 생성 시점에 제공자(`tag_input.get_fork_agent_choices`)에서 읽는다 —
     값 적용이 후보 연결보다 먼저라 생성자에서 채워야 저장된 값이 선택된다.

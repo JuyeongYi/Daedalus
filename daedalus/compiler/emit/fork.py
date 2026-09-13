@@ -31,7 +31,7 @@ def resolve_fork_agent_name(skill, project) -> str:
 
 
 def fork_skills_using(agent, project) -> list[str]:
-    """이 프로젝트 에이전트를 몸으로 쓰는 fork 스킬 이름 (정렬 — 결정적)."""
+    """이 프로젝트 에이전트를 fork 에이전트로 쓰는 fork 스킬 이름 (정렬 — 결정적)."""
     from daedalus.model.plugin.skill import ForkSkill
 
     return sorted(

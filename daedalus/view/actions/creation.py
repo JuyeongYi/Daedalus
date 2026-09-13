@@ -48,7 +48,7 @@ def make_component(
         "procedural": lambda: ProceduralSkill(
             fsm=window._make_fsm(name), name=name, description=description
         ),
-        # agent는 등록 전에 채운다 — undo/redo에 몸 없는 중간 상태가 없다.
+        # agent는 등록 전에 채운다 — undo/redo에 agent가 빈 중간 상태가 없다.
         "fork": lambda: ForkSkill(
             fsm=window._make_fsm(name), name=name, description=description,
             config=ForkSkillConfig(agent=agent or "general-purpose"),

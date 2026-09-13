@@ -69,15 +69,18 @@ _PROCEDURAL: dict[SkillField, FieldRule] = {
 # 출력이고, 실행할 서브에이전트(`agent`)는 반드시 있다(비우면 CC가 조용히
 # general-purpose로 돈다 — 기본값을 명시 배출한다). allowed_tools는 없다: fork에서는
 # 에이전트 도구가 이기고 스킬 쪽은 도구를 늘리지 못한다(실측, CC 2.1.268).
+#
+# 편집기는 스킬 매트릭스를 선언 순서대로 그린다 — AGENT를 설명 바로 아래에 두어
+# "어느 서브에이전트에서 도는 스킬인가"가 먼저 보이게 한다(사용자 요청 2026-09-13).
 _FORK: dict[SkillField, FieldRule] = {
     SkillField.NAME:           FieldRule(R),
     SkillField.DESCRIPTION:    FieldRule(R),
+    SkillField.AGENT:          FieldRule(R, default_value="general-purpose"),
     SkillField.WHEN_TO_USE:    FieldRule(O, emit=FieldEmit.BODY),
     SkillField.ARGUMENT_HINT:  FieldRule(O),
     SkillField.MODEL:          FieldRule(R, default_value=ModelType.INHERIT),
     SkillField.EFFORT:         FieldRule(O),
     SkillField.CONTEXT:        FieldRule(F, fixed_value="fork"),
-    SkillField.AGENT:          FieldRule(R, default_value="general-purpose"),
     SkillField.SHELL:          FieldRule(O),
     SkillField.PATHS:          FieldRule(O),
     SkillField.HOOKS:          FieldRule(O),

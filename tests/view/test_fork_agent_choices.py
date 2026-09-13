@@ -1,4 +1,4 @@
-"""fork 스킬 몸 에이전트 후보 — 세 종류, 배치된 프로젝트 에이전트 제외 (2026-09-13)."""
+"""fork 에이전트 후보 — 세 종류, 배치된 프로젝트 에이전트 제외 (2026-09-13)."""
 from __future__ import annotations
 
 import pytest

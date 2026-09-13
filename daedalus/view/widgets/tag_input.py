@@ -275,7 +275,7 @@ def get_mcp_server_candidates() -> list[str]:
     return []
 
 
-# fork 스킬 몸 에이전트 후보 (2026-09-13) — [(값, 설명)]. app.set_project가
+# fork 에이전트 후보 (2026-09-13) — [(값, 설명)]. app.set_project가
 # `actions/fork_skill.fork_agent_choices`를 등록한다. 위 provider들과 같은 규약.
 _FORK_AGENT_PROVIDER: Callable[[], list[tuple[str, str]]] | None = None
 

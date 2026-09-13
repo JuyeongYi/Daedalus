@@ -154,15 +154,15 @@ class _WorkflowRules:
         """
         from daedalus.model.plugin.enums import MODEL_TIER, ModelType
         from daedalus.model.plugin.skill import ForkSkill
-        from daedalus.model.validation.project_rules.fork import fork_body_agent
+        from daedalus.model.validation.project_rules.fork import fork_project_agent
 
         def effective_model(component):
-            """실제로 도는 모델 — fork 스킬이 비어 있으면 몸 에이전트 값(실측)."""
+            """실제로 도는 모델 — fork 스킬이 비어 있으면 fork 에이전트 값(실측)."""
             model = getattr(getattr(component, "config", None), "model", None)
             if isinstance(component, ForkSkill) and model is ModelType.INHERIT:
-                body = fork_body_agent(component, project)
-                if body is not None:
-                    model = body.config.model
+                target = fork_project_agent(component, project)
+                if target is not None:
+                    model = target.config.model
             return model if isinstance(model, ModelType) else None
 
         def tier(model) -> int | None:

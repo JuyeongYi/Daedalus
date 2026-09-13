@@ -1,4 +1,4 @@
-"""fork 스킬 몸 에이전트 검증 (사용자 확정 2026-09-13)."""
+"""fork 에이전트 검증 (사용자 확정 2026-09-13)."""
 from __future__ import annotations
 
 from daedalus.model.fsm.event import CompletionEvent
@@ -58,7 +58,7 @@ def test_undeclared_plugin_agent_is_error_declared_passes():
     assert "fork_agent_undeclared_plugin" not in _found(project)
 
 
-def test_placed_body_agent_is_error():
+def test_placed_fork_agent_is_error():
     helper = _agent("helper")
     project = PluginProject(name="p", skills=[_fork("helper")], agents=[helper])
     assert "fork_agent_placed" not in _found(project)
