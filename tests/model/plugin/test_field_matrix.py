@@ -34,7 +34,7 @@ def test_field_rule_dataclass():
 
 
 def test_matrix_has_all_skill_kinds():
-    expected = {"procedural", "declarative", "transfer", "reference", "wrapped"}
+    expected = {"procedural", "fork", "declarative", "transfer", "reference", "wrapped"}
     assert set(SKILL_FIELD_MATRIX.keys()) == expected
 
 
@@ -59,9 +59,13 @@ def test_matrix_reference_user_invocable_fixed():
     assert rules[SkillField.USER_INVOCABLE].fixed_value is False
 
 
-def test_matrix_declarative_context_default():
-    rules = SKILL_FIELD_MATRIX["declarative"]
-    assert rules[SkillField.CONTEXT].visibility == FieldVisibility.DEFAULT
+def test_matrix_fork_context_fixed_agent_required():
+    """fork 스킬 — context는 고정 출력, agent는 필수(기본 general-purpose 명시)."""
+    rules = SKILL_FIELD_MATRIX["fork"]
+    assert rules[SkillField.CONTEXT].visibility == FieldVisibility.FIXED
+    assert rules[SkillField.CONTEXT].fixed_value == "fork"
+    assert rules[SkillField.AGENT].visibility == FieldVisibility.REQUIRED
+    assert rules[SkillField.AGENT].default_value == "general-purpose"
 
 
 # kind별 **명시적 부재** 필드 (WP-WR) — 매트릭스 부재 = 그 kind에 비적용.
@@ -70,11 +74,15 @@ def test_matrix_declarative_context_default():
 # HOOKS는 전 스킬 종류에 **있다** (2026-09-13 실측 — SKILL.md 스키마에 "Hooks
 # registered while this skill is active" 필드가 있고 로컬·플러그인 스킬 모두 훅이
 # 돈다). 2026-09-07에 전 종류에서 뺐던 것은 틀린 판단이었다.
+# context·agent는 fork 스킬 전용이다(사용자 확정 2026-09-13 — 나머지 스킬은 fork·
+# agent 지정 불가). fork는 allowed_tools가 없다(에이전트 도구가 이긴다 — 실측).
+_FORK_ONLY = {SkillField.CONTEXT, SkillField.AGENT}
 _KIND_ABSENT_FIELDS = {
-    "procedural": {SkillField.SOURCE},
-    "declarative": {SkillField.SOURCE},
-    "transfer": {SkillField.SOURCE},
-    "reference": {SkillField.SOURCE},
+    "procedural": {SkillField.SOURCE} | _FORK_ONLY,
+    "fork": {SkillField.SOURCE, SkillField.ALLOWED_TOOLS},
+    "declarative": {SkillField.SOURCE} | _FORK_ONLY,
+    "transfer": {SkillField.SOURCE} | _FORK_ONLY,
+    "reference": {SkillField.SOURCE} | _FORK_ONLY,
     # wrapped는 본문을 만들지 않는다 — 본문 실행 방식 필드 3종이 비적용.
     "wrapped": {SkillField.CONTEXT, SkillField.AGENT, SkillField.SHELL},
 }

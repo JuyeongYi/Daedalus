@@ -58,6 +58,8 @@ def _migrate_v1(data: dict, warnings: list[str]) -> dict:
 
     # 1-b) 에이전트 로컬 스킬 → 전역 스킬 승격 (WP-RF-1c).
     _promote_local_skills(data, warnings)
+    # 1-c) 절차형 `context: fork` → fork 스킬 종류 (2026-09-13).
+    migrate_skill_context(data, warnings)
 
     # 2)+3) 컴포넌트 공통 — 본문 평탄화 + 경로 변수 치환 + 퇴역 키 드롭
     def _migrate_component(d: dict) -> None:
@@ -128,6 +130,55 @@ def _migrate_v1(data: dict, warnings: list[str]) -> dict:
         _v1_scrub_number(machine)
     _v1_scrub_number(data.get("blackboard"))
     return data
+
+
+def needs_skill_context_migration(data: dict) -> bool:
+    """스킬 config에 퇴역한 `context` 키가 남아 있는가 (format 2 파일 게이트)."""
+    return any(
+        isinstance(s.get("config"), dict) and "context" in s["config"]
+        for s in data.get("skills", []) or []
+    )
+
+
+def migrate_skill_context(data: dict, warnings: list[str]) -> None:
+    """퇴역한 스킬 `context`/`agent` 키를 흡수한다 (제자리 변형, 2026-09-13).
+
+    fork 실행은 별도 스킬 종류가 됐다(사용자 확정) — 절차형·선언형·전이형은
+    더 이상 context·agent를 갖지 않는다.
+    - 절차형 + `context: fork` → fork 스킬. `agent`가 비었으면 CC가 조용히 쓰던
+      `general-purpose`를 명시한다. fork에서 효과가 없는 `allowed_tools`는
+      버리고 경고한다.
+    - 그 밖(inline 절차형, 전이형의 fork 포함)은 키를 버린다 — 전이형 fork는
+      표현할 곳이 없어 경고한다.
+    """
+    for s in data.get("skills", []) or []:
+        cfg = s.get("config")
+        if not isinstance(cfg, dict):
+            continue
+        context = cfg.pop("context", None)
+        agent = cfg.pop("agent", None)
+        name = s.get("name", "?")
+        if context != "fork":
+            continue
+        if s.get("kind") == "procedural_skill":
+            s["kind"] = "fork_skill"
+            cfg["kind"] = "fork"
+            cfg["agent"] = agent or "general-purpose"
+            dropped = cfg.pop("allowed_tools", None) or []
+            cfg["allowed_tools"] = []
+            note = (
+                f" — fork에서 효과가 없는 allowed_tools({', '.join(dropped)})는 버렸습니다"
+                if dropped else ""
+            )
+            warnings.append(
+                f"스킬 '{name}'(context: fork)을 fork 스킬로 바꿨습니다"
+                f" (agent: {cfg['agent']}){note}."
+            )
+        else:
+            warnings.append(
+                f"스킬 '{name}'의 context: fork는 이 종류에서 퇴역해 버렸습니다 — "
+                f"서브에이전트 실행이 필요하면 fork 스킬을 쓰세요."
+            )
 
 
 def _promote_local_skills(data: dict, warnings: list[str]) -> None:

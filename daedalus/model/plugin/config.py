@@ -11,7 +11,6 @@ from daedalus.model.plugin.enums import (
     MemoryScope,
     ModelType,
     PermissionMode,
-    SkillContext,
     SkillShell,
 )
 
@@ -52,13 +51,35 @@ class ProceduralSkillConfig(SkillConfig):
 # 사용자가 진입점으로 못 박았다는 뜻이라 정상이다).
     disable_model_invocation: bool | None = None
     user_invocable: bool | None = None
-    context: SkillContext = SkillContext.INLINE
-    agent: str | None = None
     shell: SkillShell = SkillShell.BASH
 
     @property
     def kind(self) -> str:
         return "procedural"
+
+
+#: CC 내장 서브에이전트 이름 — fork 스킬의 `agent`로 그대로 적는다. 정확 일치라
+#: 대소문자까지 맞아야 한다(2026-09-13 실측, CC 2.1.268 — 없는 이름은 조용히
+#: general-purpose로 떨어진다).
+BUILTIN_FORK_AGENTS: tuple[str, ...] = ("general-purpose", "Explore", "Plan")
+
+
+@dataclass
+class ForkSkillConfig(ProceduralSkillConfig):
+    """fork 스킬 — 본문을 작업 지시로 삼아 `agent` 서브에이전트에서 실행된다.
+
+    ``agent``는 세 종류 중 하나의 이름이다(사용자 확정 2026-09-13): 내장
+    (`BUILTIN_FORK_AGENTS`), 사용 선언한 외부 플러그인의 에이전트
+    (``플러그인:이름``), 캔버스에 배치되지 않은 프로젝트 에이전트. 산출 이름
+    (마켓 ``플러그인:이름`` / LOCAL ``이름``)은 컴파일러가 정한다.
+    ``allowed_tools``는 필드 매트릭스에 없다 — fork에서는 에이전트 도구가
+    이겨 효과가 없다(실측).
+    """
+    agent: str = "general-purpose"
+
+    @property
+    def kind(self) -> str:
+        return "fork"
 
 
 @dataclass
@@ -130,7 +151,6 @@ class TransferSkillConfig(SkillConfig):
     """전이 엣지 전용 스킬 설정. user_invocable은 항상 False (UI 노출 불필요)."""
     disable_model_invocation: bool = False
     user_invocable: bool = False   # fixed — transfer skills are never user-invocable
-    context: SkillContext = SkillContext.INLINE
     shell: SkillShell = SkillShell.BASH
 
     @property

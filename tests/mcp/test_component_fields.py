@@ -9,7 +9,7 @@ import pytest
 
 from daedalus.model.fsm.machine import StateMachine
 from daedalus.model.fsm.state import SimpleState
-from daedalus.model.plugin.enums import ModelType, PermissionMode, SkillContext
+from daedalus.model.plugin.enums import ModelType, PermissionMode, SkillShell
 from daedalus.model.plugin.skill import DeclarativeSkill, ProceduralSkill
 from daedalus.model.project import PluginProject
 
@@ -120,7 +120,7 @@ def test_set_null_is_undoable(tools):
 def test_set_null_rejected_for_non_optional_field(tools):
     """Optional로 선언되지 않은 필드에 null을 넣으면 타입 계약이 깨진다."""
     with pytest.raises(ValueError, match="null"):
-        tools.set_component_field("init", "context", None)
+        tools.set_component_field("init", "shell", None)
 
 
 def test_set_int_field(tools):
@@ -141,9 +141,9 @@ def test_set_is_undoable(tools):
 
 
 def test_returns_old_and_new(tools):
-    out = tools.set_component_field("init", "context", "fork")
-    assert out["old"] == SkillContext.INLINE.value
-    assert out["new"] == "fork"
+    out = tools.set_component_field("init", "shell", "powershell")
+    assert out["old"] == SkillShell.BASH.value
+    assert out["new"] == "powershell"
 
 
 # --- 거부 ---

@@ -68,7 +68,6 @@ _PRE_SPLIT_ATTRS = [
     "Region",
     "Section",
     "SimpleState",
-    "SkillContext",
     "SkillShell",
     "State",
     "StateMachine",

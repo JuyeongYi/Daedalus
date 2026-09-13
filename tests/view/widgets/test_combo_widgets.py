@@ -25,14 +25,6 @@ def test_effort_combo_has_choices(qapp):
     assert "max" in items
 
 
-def test_context_combo_has_choices(qapp):
-    from daedalus.view.widgets.combo_widgets import ContextComboBox
-    w = ContextComboBox()
-    items = [w.itemText(i) for i in range(w.count())]
-    assert "inline" in items
-    assert "fork" in items
-
-
 def test_shell_combo_has_choices(qapp):
     from daedalus.view.widgets.combo_widgets import ShellComboBox
     w = ShellComboBox()

@@ -21,8 +21,6 @@
         "paths": null,
         "disable_model_invocation": false,
         "user_invocable": true,
-        "context": "inline",
-        "agent": null,
         "shell": "bash"
       },
       "fsm": {

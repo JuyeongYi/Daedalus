@@ -105,6 +105,7 @@ from daedalus.model.plugin.agent import AgentDefinition
 from daedalus.model.plugin.config import (
     AgentConfig,
     DeclarativeSkillConfig,
+    ForkSkillConfig,
     ProceduralSkillConfig,
     ReferenceSkillConfig,
     TransferSkillConfig,
@@ -117,13 +118,13 @@ from daedalus.model.plugin.enums import (
     MemoryScope,
     ModelType,
     PermissionMode,
-    SkillContext,
     SkillShell,
 )
 from daedalus.model.plugin.hook import HookDef, HookEvent
 from daedalus.model.plugin.policy import ExecutionPolicy
 from daedalus.model.plugin.skill import (
     DeclarativeSkill,
+    ForkSkill,
     ProceduralSkill,
     ReferenceSkill,
     TransferSkill,

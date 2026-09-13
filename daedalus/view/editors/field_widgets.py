@@ -5,10 +5,8 @@ field_matrix.py(model)에서 분리된 위젯 선택 책임을 담는다. 위젯
 스킬 kind와 무관함이 확인되어 1차원 dict로 충분하다 — 한 SkillField는
 모든 kind에서 동일한 위젯 타입을 사용한다.
 
-주의(AGENT ↔ TransferSkillConfig 부재 함정):
-    SKILL_FIELD_MATRIX에서 transfer kind는 AGENT 필드가 비노출(D)이라
-    TransferSkillConfig에 `agent` 속성이 없어도 안전하다. 소비부(skill_editor)는
-    attr 접근 시 getattr 기본값/hasattr 가드로 방어한다.
+CONTEXT는 fork 스킬에서만 FIXED로 쓰여 편집기에 나오지 않는다(표 완전성 때문에 등재).
+AGENT는 fork 스킬 전용이다(`ForkSkillConfig.agent`).
 """
 from __future__ import annotations
 
@@ -18,7 +16,6 @@ from daedalus.model.plugin.enums import AgentField, SkillField
 from daedalus.view.widgets.combo_widgets import (
     AgentColorComboBox,
     AgentIsolationComboBox,
-    ContextComboBox,
     EffortComboBox,
     MemoryScopeComboBox,
     ModelComboBox,
@@ -36,7 +33,7 @@ FIELD_WIDGETS: dict[SkillField, type[QWidget]] = {
     SkillField.MODEL:          ModelComboBox,
     SkillField.EFFORT:         EffortComboBox,
     SkillField.ALLOWED_TOOLS:  TagInput,
-    SkillField.CONTEXT:        ContextComboBox,
+    SkillField.CONTEXT:        QLineEdit,  # fork 전용 FIXED — 편집기에 그려지지 않는다
     SkillField.AGENT:          QLineEdit,
     SkillField.SHELL:          ShellComboBox,
     SkillField.PATHS:          TagInput,

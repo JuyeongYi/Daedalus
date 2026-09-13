@@ -185,7 +185,7 @@ class PropsTools(_BaseTools):
         가리키던 skill_ref까지 함께 정리하고, 전부 한 번의 undo로 되돌아온다.
 
         **이름 참조는 정리하지 않는다** — 에이전트 `config.skills`나
-        `ProceduralSkillConfig.agent`에 남은 이름은 그대로 둔다(되돌렸을 때
+        fork 스킬 `agent`에 남은 이름은 그대로 둔다(되돌렸을 때
         참조가 돌아오지 않는 비대칭을 만들지 않기 위해서다). 남은 참조는
         `validate_project`의 `dangling_string_reference` 경고가 짚어 준다 —
         결과의 `still_referenced_by`로 그 목록을 함께 돌려준다.
@@ -195,7 +195,7 @@ class PropsTools(_BaseTools):
         배치는 남아 언제든 되돌릴 수 있다.
         """
         from daedalus.model.plugin.agent import AgentDefinition
-        from daedalus.model.plugin.config import AgentConfig, ProceduralSkillConfig
+        from daedalus.model.plugin.config import AgentConfig, ForkSkillConfig
         from daedalus.model.plugin.skill import Skill
 
         comp = self._find_component(name)
@@ -205,7 +205,7 @@ class PropsTools(_BaseTools):
         if isinstance(comp, AgentDefinition):
             for skill in project.skills:
                 cfg = getattr(skill, "config", None)
-                if isinstance(cfg, ProceduralSkillConfig) and cfg.agent == name:
+                if isinstance(cfg, ForkSkillConfig) and cfg.agent == name:
                     still.append(f"skill:{skill.name}.agent")
         if isinstance(comp, Skill):
             for agent in project.agents:

@@ -18,7 +18,6 @@ from daedalus.model.plugin.config import (
 from daedalus.model.plugin.enums import (
     EffortLevel,
     ModelType,
-    SkillContext,
 )
 from daedalus.model.fsm.state import SimpleState
 from daedalus.view.canvas.node_badges import badges_for, state_access_badges
@@ -118,24 +117,6 @@ def test_disable_model_invocation_default_no_badge():
     skill = _FakeSkill(cfg)
     emojis = _emojis(skill)
     assert "🚫" not in emojis
-
-
-# ---------------------------------------------------------------------------
-# context=FORK → 🍴
-# ---------------------------------------------------------------------------
-
-def test_context_fork_badge():
-    cfg = ProceduralSkillConfig(context=SkillContext.FORK)
-    skill = _FakeSkill(cfg)
-    emojis = _emojis(skill)
-    assert "🍴" in emojis
-
-
-def test_context_inline_no_badge():
-    cfg = ProceduralSkillConfig(context=SkillContext.INLINE)
-    skill = _FakeSkill(cfg)
-    emojis = _emojis(skill)
-    assert "🍴" not in emojis
 
 
 # ---------------------------------------------------------------------------

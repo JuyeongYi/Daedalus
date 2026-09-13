@@ -8,11 +8,11 @@ from daedalus.model.plugin.config import (
     DeclarativeSkillConfig,
     AgentConfig,
     TransferSkillConfig,
+    ForkSkillConfig,
 )
 from daedalus.model.plugin.enums import (
     ModelType,
     EffortLevel,
-    SkillContext,
     SkillShell,
     PermissionMode,
     MemoryScope,
@@ -42,9 +42,10 @@ def test_procedural_skill_config_defaults():
     # tri-state (A8) — 선언 기본값은 **미지정**이다(프론트매터 키 생략).
     assert c.disable_model_invocation is None
     assert c.user_invocable is None
-    assert c.context == SkillContext.INLINE
-    assert c.agent is None
     assert c.shell == SkillShell.BASH
+    # fork 실행은 별도 종류다(2026-09-13) — 절차형은 context/agent를 갖지 않는다.
+    assert not hasattr(c, "context")
+    assert not hasattr(c, "agent")
 
 
 def test_procedural_skill_config_custom():
@@ -53,13 +54,18 @@ def test_procedural_skill_config_custom():
         model=ModelType.SONNET,
         effort=EffortLevel.HIGH,
         disable_model_invocation=True,
-        context=SkillContext.FORK,
-        agent="Explore",
     )
     assert c.allowed_tools == ["Bash", "Read"]
     assert c.model == ModelType.SONNET
-    assert c.context == SkillContext.FORK
-    assert c.agent == "Explore"
+
+
+def test_fork_skill_config_defaults():
+    c = ForkSkillConfig()
+    assert c.kind == "fork"
+    assert c.agent == "general-purpose"
+    assert c.user_invocable is None
+    assert isinstance(c, ProceduralSkillConfig)
+    assert ForkSkillConfig(agent="Explore").agent == "Explore"
 
 
 def test_declarative_skill_config():
@@ -131,7 +137,7 @@ def test_transfer_skill_config_defaults():
     assert cfg.kind == "transfer"
     assert cfg.disable_model_invocation is False
     assert cfg.user_invocable is False
-    assert cfg.context == SkillContext.INLINE
+    assert not hasattr(cfg, "context")
     assert cfg.shell == SkillShell.BASH
 
 

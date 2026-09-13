@@ -446,41 +446,6 @@ def test_invalid_project_name_warns():
 # dangling_string_reference
 # ---------------------------------------------------------------------------
 
-def test_dangling_procedural_config_agent_warns():
-    """ProceduralSkillConfig.agent가 존재하지 않는 에이전트명이면 경고."""
-    project = PluginProject(name="p")
-    s = SimpleState(name="s")
-    fsm = StateMachine(name="f", states=[s], initial_state=s)
-    skill = ProceduralSkill(
-        fsm=fsm,
-        name="my-skill",
-        description="d",
-        config=ProceduralSkillConfig(agent="nonexistent-agent"),
-    )
-    project.skills.append(skill)
-    errors = Validator.validate_project(project)
-    matching = [e for e in errors if e.rule == "dangling_string_reference"]
-    assert len(matching) == 1
-    assert "nonexistent-agent" in matching[0].message
-
-
-def test_valid_procedural_config_agent_passes():
-    project = PluginProject(name="p")
-    agent = _agent_def("my-agent")
-    project.agents.append(agent)
-    s = SimpleState(name="s")
-    fsm = StateMachine(name="f", states=[s], initial_state=s)
-    skill = ProceduralSkill(
-        fsm=fsm,
-        name="my-skill",
-        description="d",
-        config=ProceduralSkillConfig(agent="my-agent"),
-    )
-    project.skills.append(skill)
-    errors = Validator.validate_project(project)
-    assert not any(e.rule == "dangling_string_reference" for e in errors)
-
-
 def test_dangling_agent_config_skills_warns():
     """AgentConfig.skills에 존재하지 않는 스킬명이 있으면 경고."""
     project = PluginProject(name="p")

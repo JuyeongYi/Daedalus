@@ -12,7 +12,6 @@ from daedalus.model.plugin.enums import (
     MemoryScope,
     ModelType,
     PermissionMode,
-    SkillContext,
     SkillShell,
 )
 
@@ -39,15 +38,6 @@ class EffortComboBox(QComboBox):
         super().__init__(parent)
         for e in EffortLevel:
             self.addItem(e.value)
-
-
-class ContextComboBox(QComboBox):
-    """실행 컨텍스트 콤보박스 — inline/fork."""
-
-    def __init__(self, parent=None) -> None:
-        super().__init__(parent)
-        for c in SkillContext:
-            self.addItem(c.value)
 
 
 class ShellComboBox(QComboBox):

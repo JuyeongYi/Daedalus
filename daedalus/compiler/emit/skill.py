@@ -10,6 +10,7 @@ from daedalus.compiler.emit.common import (
     _graph_placements_any,
     _join_blocks,
 )
+from daedalus.compiler.emit.fork import fork_frontmatter_lines, fork_report_section
 from daedalus.compiler.emit.frontmatter import (
     _frontmatter_block,
     _frontmatter_lines_skill,
@@ -32,6 +33,7 @@ from daedalus.model.plugin.variables import ROOT_TOKEN
 from daedalus.model.plugin.agent import AgentDefinition
 from daedalus.model.plugin.skill import (
     DeclarativeSkill,
+    ForkSkill,
     ProceduralSkill,
     WrappedSkill,
     ReferenceSkill,
@@ -349,6 +351,8 @@ def _skill_kind_key(skill: Skill) -> str:
     """Skill 인스턴스 → SKILL_FIELD_MATRIX 키."""
     if isinstance(skill, WrappedSkill):
         return "wrapped"
+    if isinstance(skill, ForkSkill):  # 절차형 하위 종류 — 먼저 검사
+        return "fork"
     if isinstance(skill, ProceduralSkill):
         return "procedural"
     if isinstance(skill, TransferSkill):
@@ -372,6 +376,12 @@ def compile_skill(
     """
     kind_key = _skill_kind_key(skill)
     fm_lines = _frontmatter_lines_skill(skill, kind_key)
+    is_fork = isinstance(skill, ForkSkill)
+    if is_fork:
+        fm_lines = fork_frontmatter_lines(
+            fm_lines, skill, project,
+            placed=project is not None and bool(_graph_placements(skill, project)),
+        )
     # 스킬 훅 — 스킬이 활성인 동안만 걸린다(2026-09-13 실측: 플러그인 스킬도 동작).
     # settings.json과 같은 3단 구조라 한 줄 키-값이 아니라 블록으로 낸다.
     from daedalus.compiler.emit.frontmatter import _yaml_block_lines
@@ -395,7 +405,10 @@ def compile_skill(
     ):
         progress_placements = _graph_placements(skill, project)
     if progress_placements:
-        blocks.extend(_resume_preamble_section(project, skill.name))
+        # fork 서브에이전트는 사용자에게 확인하거나 진행 기록을 쓸 수 없다 —
+        # 재개 판단은 부르는 메인 몫이다.
+        if not is_fork:
+            blocks.extend(_resume_preamble_section(project, skill.name))
         # 진입 맥락(WP-IC) — 작업 재개 프리앰블 뒤·본문 앞. incoming 전이가
         # 없으면 _entry_context_section이 빈 리스트를 반환(단락 생략).
         blocks.extend(_entry_context_section(skill, project))
@@ -458,7 +471,14 @@ def compile_skill(
             for p in progress_placements
             for t in getattr(project.graph, "transitions", [])
         )
-        if next_blocks:
+        if is_fork and progress_placements:
+            # 갈래 목록은 Next Steps와 같은 것을 쓰되, 실행 지시가 아니라 보고 양식이다.
+            blocks.extend(fork_report_section(
+                _progress_cli(project),
+                next_blocks[-1] if next_blocks else "",
+                terminal=not has_outgoing,
+            ))
+        elif next_blocks:
             if progress_placements:
                 next_blocks = list(next_blocks)
                 next_blocks[-1] = (

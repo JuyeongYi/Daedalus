@@ -21,8 +21,6 @@
         "paths": null,
         "disable_model_invocation": false,
         "user_invocable": true,
-        "context": "inline",
-        "agent": null,
         "shell": "bash"
       },
       "fsm": {
@@ -82,8 +80,6 @@
         "paths": null,
         "disable_model_invocation": null,
         "user_invocable": false,
-        "context": "inline",
-        "agent": null,
         "shell": "bash"
       },
       "fsm": {
@@ -149,8 +145,6 @@
         "paths": null,
         "disable_model_invocation": null,
         "user_invocable": false,
-        "context": "inline",
-        "agent": null,
         "shell": "bash"
       },
       "fsm": {
@@ -210,8 +204,6 @@
         "paths": null,
         "disable_model_invocation": null,
         "user_invocable": false,
-        "context": "inline",
-        "agent": null,
         "shell": "bash"
       },
       "fsm": {

@@ -9,6 +9,7 @@ from daedalus.model.plugin.base import PluginComponent, WorkflowComponent
 from daedalus.model.plugin.config import (
     WrappedSkillConfig,
     DeclarativeSkillConfig,
+    ForkSkillConfig,
     ProceduralSkillConfig,
     ReferenceSkillConfig,
     TransferSkillConfig,
@@ -107,6 +108,22 @@ class ProceduralSkill(Skill, WorkflowComponent):
     def output_events(self) -> list[str]:
         """transfer_on에서 파생된 읽기 전용 프로퍼티 (StateNodeItem 호환)."""
         return [e.name for e in self.transfer_on]
+
+
+@dataclass
+class ForkSkill(ProceduralSkill):
+    """fork 스킬 — 본문이 `config.agent` 서브에이전트의 작업 지시가 된다.
+
+    절차형의 하위 종류다: 배치·포트·전이·본문은 절차형과 같고, 실행 장소만
+    서브에이전트다(사용자 확정 2026-09-13 — 에이전트를 소유하지 않는 가벼운
+    종류). 절차형 판정(`isinstance(x, ProceduralSkill)`)을 그대로 통과하므로,
+    fork만 달라야 하는 곳은 이 클래스를 **먼저** 검사한다.
+    """
+    config: ForkSkillConfig = field(default_factory=ForkSkillConfig)  # type: ignore[assignment]
+
+    @property
+    def kind(self) -> str:
+        return "fork_skill"
 
 
 @dataclass

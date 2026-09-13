@@ -32,7 +32,6 @@ from daedalus.model.plugin.enums import (
     MemoryScope,
     ModelType,
     PermissionMode,
-    SkillContext,
     SkillField,
     SkillShell,
 )
@@ -49,7 +48,6 @@ _FIELD_ATTR_MAP: dict[SkillField | AgentField, str] = {
     SkillField.MODEL: "model",
     SkillField.EFFORT: "effort",
     SkillField.ALLOWED_TOOLS: "allowed_tools",
-    SkillField.CONTEXT: "context",
     SkillField.AGENT: "agent",
     SkillField.SHELL: "shell",
     SkillField.PATHS: "paths",
@@ -76,7 +74,6 @@ _FIELD_ATTR_MAP: dict[SkillField | AgentField, str] = {
 _FIELD_ENUM_MAP: dict[SkillField | AgentField, type] = {
     SkillField.MODEL: ModelType,
     SkillField.EFFORT: EffortLevel,
-    SkillField.CONTEXT: SkillContext,
     SkillField.SHELL: SkillShell,
     # AgentField 항목
     AgentField.MODEL: ModelType,

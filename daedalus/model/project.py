@@ -129,7 +129,7 @@ def rename_component(
 
     갱신 대상:
     - component.name 자체
-    - ProceduralSkillConfig.agent (에이전트 이름 참조)
+    - ForkSkillConfig.agent (에이전트 이름 참조)
     - AgentConfig.skills (스킬 이름 리스트)
     - ReferencePlacement.skill_name (project + 각 agent의 reference_placements)
 
@@ -138,11 +138,11 @@ def rename_component(
 
     각 참조는 **참조 대상 타입별로 분리**해 갱신한다 — 동명-다른타입 컴포넌트
     (예: 스킬 "x"와 에이전트 "x")가 공존해도 무관 참조를 오갱신하지 않는다:
-    - ProceduralSkillConfig.agent는 에이전트 이름 참조 → component가 에이전트일 때만
+    - ForkSkillConfig.agent는 에이전트 이름 참조 → component가 에이전트일 때만
     - AgentConfig.skills는 스킬 이름 참조 → component가 스킬일 때만
     - ReferencePlacement.skill_name은 스킬 이름 참조 → component가 스킬일 때만
     """
-    from daedalus.model.plugin.config import AgentConfig, ProceduralSkillConfig
+    from daedalus.model.plugin.config import AgentConfig, ForkSkillConfig
 
     old_name: str = getattr(component, "name", "")
     if old_name == new_name:
@@ -154,11 +154,11 @@ def rename_component(
     # 1) 이름 자체 변경
     component.name = new_name  # type: ignore[union-attr]
 
-    # 2) ProceduralSkillConfig.agent 갱신 — 에이전트 이름 참조
+    # 2) ForkSkillConfig.agent 갱신 — 에이전트 이름 참조
     if is_agent:
         for skill in project.skills:
             cfg = getattr(skill, "config", None)
-            if isinstance(cfg, ProceduralSkillConfig) and cfg.agent == old_name:
+            if isinstance(cfg, ForkSkillConfig) and cfg.agent == old_name:
                 cfg.agent = new_name
 
     # 3) AgentConfig.skills 갱신 — 스킬 이름 참조

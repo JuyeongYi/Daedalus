@@ -30,7 +30,12 @@ from daedalus.model.project import (
     PluginProject,
     _make_project_graph,
 )
-from daedalus.model.serialize.migrate import _migrate_v1, _promote_local_skills
+from daedalus.model.serialize.migrate import (
+    _migrate_v1,
+    _promote_local_skills,
+    migrate_skill_context,
+    needs_skill_context_migration,
+)
 from daedalus.model.serialize.ser import FORMAT_VERSION
 
 # ── 분해된 형제 모듈 재수입 (파사드 경로 보존 — noqa: F401 성격의 의도된 재-export) ──
@@ -102,6 +107,10 @@ def deserialize_project(
         if any(a.get("skills") for a in data.get("agents", []) or []):
             data = copy.deepcopy(data)
             _promote_local_skills(data, reg.warnings)
+        # 스킬 context/agent 퇴역(2026-09-13) 이전에 저장된 format 2 파일.
+        if needs_skill_context_migration(data):
+            data = copy.deepcopy(data)
+            migrate_skill_context(data, reg.warnings)
     else:
         raise ValueError(
             f"지원하지 않는 파일 형식 버전: {fmt!r} "

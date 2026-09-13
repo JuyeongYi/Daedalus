@@ -298,9 +298,17 @@ def _call_contract_section(agent: AgentDefinition, project) -> list[str]:
     """
     if project is None:
         return []
+    from daedalus.compiler.emit.fork import fork_skills_using
+
+    # fork 스킬의 몸으로 쓰일 때 — 그 스킬 본문이 작업 지시로 오고 이 파일은
+    # 시스템 프롬프트가 된다(실측). 캔버스에 선이 없으니 여기서 말하지 않으면
+    # 이 에이전트를 고치는 사람이 그 쓰임을 모른다(2026-09-13).
+    fork_lines = [
+        f"- Execution base of fork skill `{name}` — that skill's instructions "
+        f"arrive as your task; this file sets your role and limits."
+        for name in fork_skills_using(agent, project)
+    ]
     graph = getattr(project, "graph", None)
-    if graph is None:
-        return []
 
     # (caller, port, desc, guard, transfer, transfer_desc) — transfer는 호출
     # 전이에 붙은 TransferSkill(A11). 호출자가 위임 **전에** 그 지침을 수행하므로,
@@ -312,7 +320,7 @@ def _call_contract_section(agent: AgentDefinition, project) -> list[str]:
     # 에이전트는 여기서 말하지 않으면 자기가 받는 입력의 전처리 상태를 영영
     # 알 수 없다 — 호출자에게서 바로 받은 것처럼 서술된다.
     entries: list[tuple[str, str, str, str, str, str]] = []
-    for trans in getattr(graph, "transitions", []) or []:
+    for trans in getattr(graph, "transitions", None) or []:
         tgt_ref = getattr(trans.target, "skill_ref", None)
         if tgt_ref is not agent:
             continue
@@ -332,7 +340,7 @@ def _call_contract_section(agent: AgentDefinition, project) -> list[str]:
         transfer_desc = (getattr(transfer_ref, "description", "") or "").strip()
         entries.append((caller, port, desc, guard, transfer, transfer_desc))
 
-    if not entries:
+    if not entries and not fork_lines:
         return []
     entries.sort(key=lambda e: (e[0], e[1]))
     blocks: list[str] = [
@@ -342,6 +350,7 @@ def _call_contract_section(agent: AgentDefinition, project) -> list[str]:
             "whatever the Shared State (Blackboard) section declares as reads."
         ),
     ]
+    blocks.extend(fork_lines)
     for caller, port, desc, guard, transfer, transfer_desc in entries:
         line = (
             f"- from `{caller}` via port `{port}`" if port else f"- from `{caller}`"

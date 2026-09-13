@@ -47,6 +47,7 @@ from daedalus.model.plugin.config import (
     WrappedSkillConfig,
     AgentConfig,
     DeclarativeSkillConfig,
+    ForkSkillConfig,
     ProceduralSkillConfig,
     ReferenceSkillConfig,
     TransferSkillConfig,
@@ -413,13 +414,14 @@ def _ser_config(c: Any) -> dict:
             user_invocable=c.user_invocable,
         )
     elif isinstance(c, ProceduralSkillConfig):
+        # ForkSkillConfig는 하위 클래스라 같은 분기를 타고 agent만 더한다.
         d.update(
             disable_model_invocation=c.disable_model_invocation,
             user_invocable=c.user_invocable,
-            context=c.context.value,
-            agent=c.agent,
             shell=c.shell.value,
         )
+        if isinstance(c, ForkSkillConfig):
+            d["agent"] = c.agent
     elif isinstance(c, DeclarativeSkillConfig):
         d.update(
             disable_model_invocation=c.disable_model_invocation,
@@ -429,7 +431,6 @@ def _ser_config(c: Any) -> dict:
         d.update(
             disable_model_invocation=c.disable_model_invocation,
             user_invocable=c.user_invocable,
-            context=c.context.value,
             shell=c.shell.value,
         )
     elif isinstance(c, ReferenceSkillConfig):

@@ -3,7 +3,6 @@ from __future__ import annotations
 from daedalus.model.plugin.enums import (
     ModelType,
     EffortLevel,
-    SkillContext,
     SkillShell,
     PermissionMode,
     MemoryScope,
@@ -31,11 +30,6 @@ def test_effort_level_order():
     assert [e.value for e in EffortLevel] == [
         "low", "medium", "high", "xhigh", "max"
     ]
-
-
-def test_skill_context():
-    assert SkillContext.INLINE.value == "inline"
-    assert SkillContext.FORK.value == "fork"
 
 
 def test_skill_shell():

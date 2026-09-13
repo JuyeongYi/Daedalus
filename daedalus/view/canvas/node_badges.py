@@ -127,12 +127,6 @@ def badges_for(component: object) -> list[tuple[str, str]]:
     if diff and val and not (entry_diff and entry_val):
         result.append(("🚫", "모델 자동 호출 금지"))
 
-    # context=FORK (기본 INLINE)
-    from daedalus.model.plugin.enums import SkillContext
-    diff, val = _differs(config, "context")
-    if diff and val is SkillContext.FORK:
-        result.append(("🍴", "포크 컨텍스트"))
-
     # model != INHERIT
     diff, val = _differs(config, "model")
     if diff and isinstance(val, ModelType) and val in _MODEL_EMOJI:

@@ -8,7 +8,7 @@ from daedalus.model.fsm.pseudo import EntryPoint, ExitPoint
 from daedalus.model.fsm.state import SimpleState
 from daedalus.model.fsm.transition import Transition
 from daedalus.model.plugin.agent import AgentDefinition
-from daedalus.model.plugin.config import AgentConfig, ProceduralSkillConfig
+from daedalus.model.plugin.config import AgentConfig, ForkSkillConfig
 from daedalus.model.plugin.skill import DeclarativeSkill, ProceduralSkill, ReferenceSkill
 from daedalus.model.project import PluginProject, ReferencePlacement, remove_component, rename_component
 
@@ -61,7 +61,7 @@ class TestRenameComponent:
         proj.agents.append(agent)
 
         other = _make_proc("caller")
-        other.config = ProceduralSkillConfig(agent="my-agent")
+        other.config = ForkSkillConfig(agent="my-agent")
         proj.skills.append(other)
 
         rename_component(proj, agent, "new-agent")
@@ -76,7 +76,7 @@ class TestRenameComponent:
         proj.agents.append(other_agent)
 
         caller = _make_proc("caller")
-        caller.config = ProceduralSkillConfig(agent="other-agent")
+        caller.config = ForkSkillConfig(agent="other-agent")
         proj.skills.append(caller)
 
         rename_component(proj, agent, "new-agent")
@@ -139,7 +139,7 @@ class TestRenameComponent:
         proj.agents.append(agent_x)
 
         caller = _make_proc("caller")
-        caller.config = ProceduralSkillConfig(agent="x")  # 에이전트 "x" 참조
+        caller.config = ForkSkillConfig(agent="x")  # 에이전트 "x" 참조
         proj.skills.append(caller)
 
         rename_component(proj, skill_x, "skill-renamed")
@@ -173,7 +173,7 @@ class TestRenameComponent:
         agent = _make_agent("ag")
         proj.agents.append(agent)
         caller = _make_proc("caller")
-        caller.config = ProceduralSkillConfig(agent="ag")
+        caller.config = ForkSkillConfig(agent="ag")
         proj.skills.append(caller)
 
         rename_component(proj, agent, "new-ag")

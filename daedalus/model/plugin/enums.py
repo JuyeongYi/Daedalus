@@ -42,11 +42,6 @@ class EffortLevel(Enum):
     MAX = "max"
 
 
-class SkillContext(Enum):
-    INLINE = "inline"
-    FORK = "fork"
-
-
 class SkillShell(Enum):
     BASH = "bash"
     POWERSHELL = "powershell"

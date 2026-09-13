@@ -58,8 +58,26 @@ _PROCEDURAL: dict[SkillField, FieldRule] = {
     SkillField.MODEL:          FieldRule(R, default_value=ModelType.INHERIT),
     SkillField.EFFORT:         FieldRule(O),
     SkillField.ALLOWED_TOOLS:  FieldRule(O),
-    SkillField.CONTEXT:        FieldRule(O),
-    SkillField.AGENT:          FieldRule(O),
+    SkillField.SHELL:          FieldRule(O),
+    SkillField.PATHS:          FieldRule(O),
+    SkillField.HOOKS:          FieldRule(O),
+    SkillField.DISABLE_MODEL:  FieldRule(O),
+    SkillField.USER_INVOCABLE: FieldRule(O),
+}
+
+# fork 스킬 (사용자 확정 2026-09-13) — `context: fork`는 이 종류의 정체라 고정
+# 출력이고, 실행할 서브에이전트(`agent`)는 반드시 있다(비우면 CC가 조용히
+# general-purpose로 돈다 — 기본값을 명시 배출한다). allowed_tools는 없다: fork에서는
+# 에이전트 도구가 이기고 스킬 쪽은 도구를 늘리지 못한다(실측, CC 2.1.268).
+_FORK: dict[SkillField, FieldRule] = {
+    SkillField.NAME:           FieldRule(R),
+    SkillField.DESCRIPTION:    FieldRule(R),
+    SkillField.WHEN_TO_USE:    FieldRule(O, emit=FieldEmit.BODY),
+    SkillField.ARGUMENT_HINT:  FieldRule(O),
+    SkillField.MODEL:          FieldRule(R, default_value=ModelType.INHERIT),
+    SkillField.EFFORT:         FieldRule(O),
+    SkillField.CONTEXT:        FieldRule(F, fixed_value="fork"),
+    SkillField.AGENT:          FieldRule(R, default_value="general-purpose"),
     SkillField.SHELL:          FieldRule(O),
     SkillField.PATHS:          FieldRule(O),
     SkillField.HOOKS:          FieldRule(O),
@@ -68,7 +86,7 @@ _PROCEDURAL: dict[SkillField, FieldRule] = {
 }
 
 # WP-WR 랩핑 스킬 — 본문의 정본은 source가 가리키는 외부 스킬이라, 본문을
-# 만드는 필드(shell/context/agent)는 없다. source는 프론트매터가 아니라 본문
+# 만드는 필드(shell)는 없다. source는 프론트매터가 아니라 본문
 # 지시로 emit된다(SkillField.SOURCE.frontmatter_key == None).
 _WRAPPED: dict[SkillField, FieldRule] = {
     SkillField.NAME:           FieldRule(R),
@@ -93,8 +111,6 @@ _DECLARATIVE: dict[SkillField, FieldRule] = {
     SkillField.MODEL:          FieldRule(R, default_value=ModelType.INHERIT),
     SkillField.EFFORT:         FieldRule(O),
     SkillField.ALLOWED_TOOLS:  FieldRule(O),
-    SkillField.CONTEXT:        FieldRule(D),
-    SkillField.AGENT:          FieldRule(D),
     SkillField.SHELL:          FieldRule(D),
     SkillField.PATHS:          FieldRule(O),
     SkillField.HOOKS:          FieldRule(O),
@@ -110,8 +126,6 @@ _TRANSFER: dict[SkillField, FieldRule] = {
     SkillField.MODEL:          FieldRule(R, default_value=ModelType.INHERIT),
     SkillField.EFFORT:         FieldRule(O),
     SkillField.ALLOWED_TOOLS:  FieldRule(O),
-    SkillField.CONTEXT:        FieldRule(O),
-    SkillField.AGENT:          FieldRule(D),
     SkillField.SHELL:          FieldRule(O),
     SkillField.PATHS:          FieldRule(D),
     SkillField.HOOKS:          FieldRule(O),
@@ -127,8 +141,6 @@ _REFERENCE: dict[SkillField, FieldRule] = {
     SkillField.MODEL:          FieldRule(R, default_value=ModelType.INHERIT),
     SkillField.EFFORT:         FieldRule(O),
     SkillField.ALLOWED_TOOLS:  FieldRule(D),
-    SkillField.CONTEXT:        FieldRule(D),
-    SkillField.AGENT:          FieldRule(D),
     SkillField.SHELL:          FieldRule(D),
     SkillField.PATHS:          FieldRule(D),
     SkillField.HOOKS:          FieldRule(D),
@@ -140,6 +152,7 @@ _REFERENCE: dict[SkillField, FieldRule] = {
 
 SKILL_FIELD_MATRIX: dict[str, dict[SkillField, FieldRule]] = {
     "procedural": _PROCEDURAL,
+    "fork": _FORK,
     "declarative": _DECLARATIVE,
     "wrapped": _WRAPPED,
     "transfer": _TRANSFER,

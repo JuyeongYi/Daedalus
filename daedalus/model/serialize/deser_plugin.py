@@ -20,6 +20,7 @@ from daedalus.model.plugin.config import (
     WrappedSkillConfig,
     AgentConfig,
     DeclarativeSkillConfig,
+    ForkSkillConfig,
     ProceduralSkillConfig,
     ReferenceSkillConfig,
     TransferSkillConfig,
@@ -31,7 +32,6 @@ from daedalus.model.plugin.enums import (
     MemoryScope,
     ModelType,
     PermissionMode,
-    SkillContext,
     SkillShell,
 )
 from daedalus.model.plugin.hook import HookDef, HookEvent
@@ -39,6 +39,7 @@ from daedalus.model.plugin.policy import ExecutionPolicy
 from daedalus.model.plugin.skill import (
     WrappedSkill,
     DeclarativeSkill,
+    ForkSkill,
     ProceduralSkill,
     ReferenceSkill,
     TransferSkill,
@@ -100,9 +101,14 @@ def _deser_config(d: dict) -> Any:
             # 그대로 왕복한다(스크럽 금지 — 사용자가 명시 지정한 값이다).
             disable_model_invocation=d.get("disable_model_invocation"),
             user_invocable=d.get("user_invocable"),
-            context=_to_enum(SkillContext, d.get("context"), SkillContext.INLINE),
-            agent=d.get("agent"),
             shell=_to_enum(SkillShell, d.get("shell"), SkillShell.BASH),
+        )
+    elif kind == "fork":
+        c = ForkSkillConfig(
+            disable_model_invocation=d.get("disable_model_invocation"),  # tri-state (A8)
+            user_invocable=d.get("user_invocable"),
+            shell=_to_enum(SkillShell, d.get("shell"), SkillShell.BASH),
+            agent=d.get("agent") or "general-purpose",
         )
     elif kind == "declarative":
         c = DeclarativeSkillConfig(
@@ -113,7 +119,6 @@ def _deser_config(d: dict) -> Any:
         c = TransferSkillConfig(
             disable_model_invocation=d.get("disable_model_invocation", False),
             user_invocable=d.get("user_invocable", False),
-            context=_to_enum(SkillContext, d.get("context"), SkillContext.INLINE),
             shell=_to_enum(SkillShell, d.get("shell"), SkillShell.BASH),
         )
     elif kind == "reference":
@@ -169,7 +174,16 @@ def _deser_skill(d: dict, reg: _Registry) -> Any:
     body = _deser_body(d)
 
     skill: Any
-    if kind == "procedural_skill":
+    if kind == "fork_skill":
+        fsm = _deser_machine(d["fsm"], reg, parent_bb=None)
+        skill = ForkSkill(
+            fsm=fsm, name=name, description=desc, id=sid,
+            config=config if isinstance(config, ForkSkillConfig) else ForkSkillConfig(),
+            body=body,
+            transfer_on=[_deser_eventdef(e) for e in d.get("transfer_on", [])],
+            call_agents=[_deser_eventdef(e) for e in d.get("call_agents", [])],
+        )
+    elif kind == "procedural_skill":
         fsm = _deser_machine(d["fsm"], reg, parent_bb=None)
         skill = ProceduralSkill(
             fsm=fsm, name=name, description=desc, id=sid,
