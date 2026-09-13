@@ -637,6 +637,42 @@ junction(폴더)·하드링크(파일)는 **무권한이지만 같은 볼륨 전
 - **프로젝트 속성 다이얼로그가 CommandStack을 거치지 않는다** (2026-09-13 발견) — `project_properties.py`가
   `project.build_target` 등을 직접 대입한다. undo가 안 되고 notify가 없어, 빌드 타깃을 바꿔도 LOCAL 전용 탭
   표시·에이전트 편집기 잠금이 다음 갱신 전까지 옛 상태로 남을 수 있다. MCP `set_project_properties`와 같은 커맨드 경로로 합친다.
+- **2026-09-13 전체 점검 결과 — 미처리분** (전이 스킬 호출 불가·YAML 이스케이프는 같은 날 수정됨).
+  서브에이전트 점검 + 주요 항목 직접 재확인. 번호는 우선순위.
+  1. **undo 공백이 넓다 (설계 원칙 3 위반, 직접 확인)** — CommandStack을 거치지 않는 편집:
+     편집기 프론트매터 필드 전부·설명·when_to_use(`frontmatter_panel._write_field`/`_on_optional_toggled`/
+     `_save_desc` — MCP `set_component_field` 등은 SetAttrCmd라 표면마다 undo 여부가 다르다), 훅 패널 전체
+     (`hook_panel.py` hook_library/handlers 직접 append·pop), 출력 포트 카드 추가·삭제(`transfer_on_panel.py:252,257`),
+     작업 폴더 설정(`workspace_settings_panel.py:148`), 규칙 추가·이름·paths·삭제(**GUI `workspace_editor.py`와 MCP
+     `mcp/tools/workspace.py:136-197` 둘 다**). 훅·규칙 CRUD는 GUI와 MCP가 따로 구현돼 원칙 1도 위반 —
+     `view/actions/hooks.py`·`rules.py`로 합치고 명령 경유로.
+  2. **흐름이 조용히 끊기는 그래프 (경고 없음)** — ① 선이 없는 출력 포트로 끝나면 Next Steps에 갈래가 없고 Finishing Up도
+     없어 진행 기록이 멈춘다 ② 중간 스킬에 `disable_model_invocation=True`면 앞 단계가 부를 수 없다
+     (`mid_chain_user_invocable`은 user_invocable만 본다) ③ 가드 없는 한 포트 → 두 타깃(병렬 의미 없음), 전부 가드인데
+     else 없음 ④ 빈 노드(skill_ref 없음)로 가는 선은 지시 없이 끝난다 ⑤ 마지막이 에이전트면 `current done`이 영영 안 남는다
+     ⑥ 에이전트→에이전트→스킬 선은 산출 어디에도 없다.
+  3. **블랙보드 클래스·필드 이름 중복** — GUI는 중복을 막지 않고 검증 규칙도 없다. `compile_schemas_json`이 키로 덮어써
+     스키마 하나가 사라진다(대소문자만 다른 이름은 Windows/macOS 파일 충돌). `duplicate_blackboard_class/field` 에러 필요.
+  4. **에이전트 설정과 산출 지시의 모순** — `background: true` 에이전트는 보고로 분기 불가(fork는 강제 false인데 일반
+     에이전트는 무방비), `Agent` 도구 없는데 호출 포트(위임 지시가 나가지만 혼자 처리), `Bash` 없는데 블랙보드 CLI 지시,
+     `tools: []`(체크만 하고 비움)는 키가 생략돼 **전 도구 상속**, 에이전트 `skills`에 프리로드되지 않는 스킬(전이 스킬·
+     disable-model 선언형·참조 용도/비활성 랩핑)이 들어가도 무경고.
+  5. **빈 컴포넌트 무경고** — 설명·본문·when_to_use가 빈 스킬도 통과·산출되고, 캔버스에 없는 빈 스킬도 설치된다.
+     빈 출력 포트 설명은 Next Steps에 설명 없는 갈래를 만든다.
+  6. **MARKETPLACE 빌드는 MCP 서버 정의를 싣지 않는데 경고가 없다** — `missing_mcp_server_def`는 LOCAL 배선에서만 나온다.
+  7. **Entry Context가 진행 파일을 직접 읽으라고 지시한다** — Resuming Work는 `daedalus-bb progress read`. state/ 접근을
+     막는 훅·permissions와 부딪히므로 CLI로 통일.
+  8. **위생** — 안 쓰는 import 7건(`field_matrix.py` AgentColor·MemoryScope, `scene.py:318` src_ref·`:499` Command,
+     `registry_panel.py:19` AgentDefinition, `edge_item.py:5` Qt, `ref_edge_item.py:5` QRectF — 재-export 파사드
+     `emit/__init__`·`deser.py`·`markdown_editor.py`는 의도적). 문서: `validation.md` 프로젝트 규칙 "25종"(실제 37) +
+     표에 `disabled_wrapped_placed`·`workspace_settings_in_marketplace_build` 누락 + 믹스인 "8종"(실제 9, fork 누락),
+     `architecture.md:277` app.py "~910줄"(실제 1060).
+  9. **dogfood 프로젝트(`project/daedalus_cc_plugin`)** — 빈 fork 스킬 `sdfsdf`·`graph-design` 동봉 쓰레기 파일 2개 삭제
+     확인 대기, `session-wrap` when_to_use·done 설명 빈 값, `tooling-scout` writes 선언 누락(본문은 GraphDraft 기록),
+     `env-configurator`·`tooling-scout` model·maxTurns·MCP 확인 훅 미지정, 오래된 본문(`daedalus-model` 5종·옛 state 경로,
+     `graph-design` 종류 목록, `blackboard-cli` progress 누락·옛 경로, `plugin-compile` settings 파일 고정 설명),
+     `guard-blackboard-schema`가 진행 파일 Read를 막음 vs Entry Context, `permissions.deny state/**`로 CLI 부재 시 대비책
+     불가, `log-tool-usage` 훅 상시 실행 부담. 앱의 plugin-verify fork 전환·verify-analyst 추가는 미저장.
 - **GUI 블랙보드 편집이 undo되지 않는다** (2026-09-13, 블랙보드 안내서 작성 중 확인) — 🗂 블랙보드 탭과 속성 패널의
   reads/writes 입력이 모델에 직접 기록한다(설계 원칙 3 위반. MCP 블랙보드 도구는 CommandStack 경유). 또 GUI 탭의
   클래스 이름 변경과 MCP `set_blackboard_fields`의 필드 이름 변경은 노드 reads/writes 참조를 옛 이름에 남긴다 —

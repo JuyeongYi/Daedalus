@@ -6,6 +6,8 @@
 """
 from __future__ import annotations
 
+import json
+import re
 from typing import Any
 
 from daedalus.compiler.emit.common import _MISSING, _config_default, _enum_value
@@ -27,25 +29,55 @@ _YAML_RESERVED: frozenset[str] = frozenset({
 })
 
 
-def _yaml_scalar(v: Any) -> str:
-    """프론트매터 스칼라 값을 YAML 표기로. bool은 true/false, 나머지는 문자열."""
+# 문자열이 plain으로 쓰이면 YAML이 숫자로 읽는 형태 (정수·실수·지수·16/8진·inf/nan).
+_YAML_NUMBER_RE = re.compile(
+    r"[-+]?(\d[\d_]*(\.\d*)?|\.\d+)([eE][-+]?\d+)?"
+    r"|0x[0-9a-fA-F_]+|0o[0-7_]+|[-+]?\.(inf|Inf|INF)|\.(nan|NaN|NAN)"
+)
+# plain 스칼라의 첫 글자로 올 수 없는 YAML 지시자.
+_YAML_LEADING = frozenset("#-[]{}*&!|>@%`\"',?:")
+
+
+def _yaml_needs_quotes(s: str, *, flow: bool) -> bool:
+    """plain으로 쓰면 뜻이 바뀌거나 파싱이 깨지는가.
+
+    예전 판정은 `": "`와 일부 선두 문자만 봤다 — 설명의 ` #`는 주석으로 잘리고,
+    줄바꿈·앞 따옴표·끝 `:`는 파싱 에러, `123`은 숫자가 됐다(2026-09-13 점검, PyYAML 실측).
+    """
+    if not s or s.lower() in _YAML_RESERVED:
+        return True
+    if s != s.strip() or any(c in s for c in "\n\r\t"):
+        return True
+    if s[0] in _YAML_LEADING:
+        return True
+    if ": " in s or s.endswith(":") or " #" in s:
+        return True
+    if _YAML_NUMBER_RE.fullmatch(s):
+        return True
+    # flow 리스트 안에서는 구분자·괄호가 구조로 읽힌다(`Bash(git add, git commit)` 분할).
+    return flow and any(c in s for c in ",[]{}")
+
+
+def _yaml_scalar(v: Any, *, flow: bool = False) -> str:
+    """프론트매터 스칼라 값을 YAML 표기로. bool은 true/false, 나머지는 문자열.
+
+    따옴표가 필요할 때만 JSON 문자열로 감싼다 — JSON 문자열은 그대로 올바른 YAML
+    큰따옴표 스칼라다(`\\n`·`\\"`·`\\\\` 이스케이프). 필요 없으면 plain 그대로라
+    기존 산출은 바뀌지 않는다.
+    """
     if isinstance(v, bool):
         return "true" if v else "false"
     if isinstance(v, (int, float)):
         return str(v)
     s = str(v)
-    # YAML 예약 스칼라(true/null/yes/…)는 따옴표로 보호 — boolean/null 오파싱 방지.
-    if s.lower() in _YAML_RESERVED:
-        return '"' + s + '"'
-    # 콜론/특수문자 포함 시 따옴표 — 보수적으로 콜론+공백, 선두 특수문자만 감싼다.
-    if (": " in s) or s.startswith(("#", "-", "[", "{", "*", "&", "!", "|", ">", "@")):
-        return '"' + s.replace('"', '\\"') + '"'
+    if _yaml_needs_quotes(s, flow=flow):
+        return json.dumps(s, ensure_ascii=False)
     return s
 
 
 def _yaml_list(values: list[Any]) -> str:
     """flow-style YAML 리스트: [a, b, c]."""
-    items = ", ".join(_yaml_scalar(_enum_value(v)) for v in values)
+    items = ", ".join(_yaml_scalar(_enum_value(v), flow=True) for v in values)
     return f"[{items}]"
 
 

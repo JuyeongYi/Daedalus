@@ -118,7 +118,7 @@ def test_transfer_fixed_values_forced():
     skill = make_transfer()
     fm = _frontmatter(compile_skill(skill))
     # transfer 매트릭스: DISABLE_MODEL FIXED True, USER_INVOCABLE FIXED False
-    assert "disable-model-invocation: true" in fm
+    assert "disable-model-invocation: false" in fm
     assert "user-invocable: false" in fm
 
 

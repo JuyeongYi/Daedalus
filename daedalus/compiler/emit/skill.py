@@ -67,7 +67,7 @@ def _transfer_prefix(transition) -> str:
     name = getattr(ref, "name", "")
     desc = (getattr(ref, "description", "") or "").strip()
     shown = f"`{name}` (`{desc}`)" if desc else f"`{name}`"
-    return f"follow transition skill {shown}, then "
+    return f"invoke transition skill {shown} and follow it, then "
 
 
 def _next_step_invoke_line(transition, sm: StateMachine) -> str | None:

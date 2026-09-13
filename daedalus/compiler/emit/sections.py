@@ -230,7 +230,7 @@ def _fsm_procedure_blocks(sm: StateMachine) -> list[str]:
                 cond_str = f" [{cond}]" if cond else ""
             xfer = ""
             if t.skill_ref is not None:
-                xfer = f" (first follow transition skill `{t.skill_ref.name}`)"
+                xfer = f" (first invoke transition skill `{t.skill_ref.name}`)"
             lines.append(
                 f"    - → **{t.target.name}**{cond_str}{xfer}"
             )

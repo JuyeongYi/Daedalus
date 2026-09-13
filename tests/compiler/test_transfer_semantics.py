@@ -105,7 +105,7 @@ def test_transfer_description_is_carried(scenario):
 def test_delegation_line_also_runs_the_transfer(scenario):
     project, alpha, *_ = scenario
     section = _section(compile_skill(alpha, project=project), "## Next Steps")
-    assert "follow transition skill `handoff`, then delegate to agent `runner`" in section
+    assert "invoke transition skill `handoff` and follow it, then delegate to agent `runner`" in section
 
 
 def test_no_transfer_keeps_the_plain_wording():
@@ -145,7 +145,7 @@ def test_delegation_inline_followup_carries_its_own_transfer():
 
     section = _section(compile_skill(alpha, project=project), "## Next Steps")
     assert "after the agent returns:" in section
-    assert "follow transition skill `after-agent`, then invoke skill `beta`" in section
+    assert "invoke transition skill `after-agent` and follow it, then invoke skill `beta`" in section
 
 
 # --- 2. 에이전트 호출 계약이 transfer를 언급한다 ---
@@ -440,7 +440,7 @@ def test_caller_and_transfer_instructions_agree(scenario):
     """출발 스킬의 "T 수행 후 진행"과 T의 "current는 그대로" 지시가 공존한다."""
     project, alpha, *_ = scenario
     caller = _section(compile_skill(alpha, project=project), "## Next Steps")
-    assert "follow transition skill `validate`" in caller
+    assert "invoke transition skill `validate`" in caller
     # 출발 쪽은 current를 **다음 대상**으로 옮기라고 말한다(T가 아니라).
     assert "--current <next target>" in caller
 

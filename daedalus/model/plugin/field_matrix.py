@@ -132,7 +132,11 @@ _TRANSFER: dict[SkillField, FieldRule] = {
     SkillField.SHELL:          FieldRule(O),
     SkillField.PATHS:          FieldRule(D),
     SkillField.HOOKS:          FieldRule(O),
-    SkillField.DISABLE_MODEL:  FieldRule(F, fixed_value=True),
+    # 전이 스킬은 앞 스킬의 "다음 단계"가 **모델에게 인보크시키는** 단계다. 예전에는
+    # disable-model-invocation을 true로 고정해 사용자(user-invocable false)도 모델도
+    # 부를 수 없었다 — 지시문만 있고 본문은 영영 실리지 않는 죽은 단계(2026-09-13 점검).
+    # 모델 호출은 열고, 슬래시 메뉴 노출만 막는다.
+    SkillField.DISABLE_MODEL:  FieldRule(F, fixed_value=False),
     SkillField.USER_INVOCABLE: FieldRule(F, fixed_value=False),
 }
 

@@ -48,7 +48,7 @@ def test_matrix_procedural_model_required():
 def test_matrix_transfer_fixed_values():
     rules = SKILL_FIELD_MATRIX["transfer"]
     assert rules[SkillField.DISABLE_MODEL].visibility == FieldVisibility.FIXED
-    assert rules[SkillField.DISABLE_MODEL].fixed_value is True
+    assert rules[SkillField.DISABLE_MODEL].fixed_value is False
     assert rules[SkillField.USER_INVOCABLE].visibility == FieldVisibility.FIXED
     assert rules[SkillField.USER_INVOCABLE].fixed_value is False
 
