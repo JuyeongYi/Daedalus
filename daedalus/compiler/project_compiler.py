@@ -777,7 +777,8 @@ def compile_project(
             result.copied_files.append(dst)
             continue
         if item.kind == "skill":
-            text = compile_skill(item.component, project=project)
+            text = compile_skill(item.component, project=project,
+                                 resolved_hooks=resolved_hooks)
         elif item.kind == "agent":
             text = compile_agent(item.component, project=project,
                                  resolved_hooks=resolved_hooks)

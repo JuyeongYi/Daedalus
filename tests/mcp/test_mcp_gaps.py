@@ -301,12 +301,14 @@ def test_set_component_hooks_records_reference(tools):
     assert tools._find_component("worker").config.hooks is None
 
 
-def test_set_component_hooks_rejects_skill(tools):
-    """스킬에 걸면 거부한다 (2026-09-07 규격 확인) — CC가 무시하는 설정을
-    받아 두면 "걸었는데 안 걸린다"가 된다."""
+def test_set_component_hooks_accepts_skill(tools):
+    """스킬에도 건다 (2026-09-13 실측 — 스킬 활성 동안의 훅이 로컬·플러그인 모두
+    돈다). 2026-09-07의 거부는 틀린 판단이었다."""
     tools.create_hook("h", command="x")
-    with pytest.raises(ValueError, match="스킬"):
-        tools.set_component_hooks("init", ["h"])
+    tools.set_component_hooks("init", ["h"])
+    assert tools._find_component("init").config.hooks == {"h": {}}
+    tools.undo()
+    assert tools._find_component("init").config.hooks is None
 
 
 def test_set_component_hooks_rejects_unknown_hook(tools):

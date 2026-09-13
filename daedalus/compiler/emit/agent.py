@@ -43,7 +43,7 @@ from daedalus.model.plugin.enums import (
     ModelType,
 )
 from daedalus.model.plugin.field_matrix import AGENT_FIELD_MATRIX, FieldRule
-from daedalus.model.plugin.hook import HookDef, HookEvent
+from daedalus.model.plugin.hook import HookDef
 
 
 def _frontmatter_lines_agent(agent: AgentDefinition, project=None) -> list[str]:
@@ -215,26 +215,10 @@ def _agent_hook_groups(
     사용이다. 그러므로 `emitted_hooks`로 바꾸지 마라(스크립트 파일 쪽은
     `hooks_needing_scripts`가 이 경로까지 포함해 함께 낸다).
     """
-    referenced = list(getattr(agent.config, "hooks", None) or {})
-    if not referenced or project is None:
-        return {}
-    wanted = set(referenced)
-    # A1 — 전역 훅 2단 스코프. resolved_hooks 생략 시 프로젝트 라이브러리만(하위 호환).
-    from daedalus.compiler.emit.hooks import hook_library
+    # 실체는 스킬 프론트매터와 공용이다(2026-09-13) — 같은 모양을 두 벌 만들지 않는다.
+    from daedalus.compiler.emit.hooks import component_hook_groups
 
-    library = hook_library(project, resolved_hooks)
-
-    buckets: dict[HookEvent, list[HookDef]] = {}
-    for hook in library:  # 라이브러리 선언 순서 = 결정적
-        if hook.name in wanted:
-            buckets.setdefault(hook.event, []).append(hook)
-
-    out: dict[str, Any] = {}
-    for event in HookEvent:  # 선언 순서 = 결정적 이벤트 키 순서
-        groups = [h.to_json() for h in (buckets.get(event) or []) if h.handlers]
-        if groups:
-            out[event.value] = groups
-    return out
+    return component_hook_groups(agent, project, resolved_hooks)
 
 
 def _local_settings_frontmatter_lines(

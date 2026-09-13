@@ -30,6 +30,41 @@ def hook_library(project, resolved_hooks: dict[str, HookDef] | None = None) -> l
     return list(resolved_hooks.values())
 
 
+def component_hook_groups(
+    component, project, resolved_hooks: dict[str, HookDef] | None = None
+) -> dict[str, Any]:
+    """컴포넌트가 `config.hooks`로 참조하는 훅 → CC hooks 스키마(이벤트 → 그룹 목록).
+
+    settings.json의 `hooks`와 같은 모양이다. 쓰는 곳이 둘이다:
+    - **스킬 프론트매터** — 두 빌드 타깃 모두. 스킬이 활성인 동안만 걸린다
+      (2026-09-13 실측: 로컬 스킬과 **플러그인 스킬** 모두 훅이 실제로 돈다).
+    - **에이전트 프론트매터** — LOCAL 빌드만(WP-LA — 플러그인 서브에이전트의
+      hooks는 CC가 보안상 무시한다).
+
+    **`HookDef.enabled`를 보지 않는 것이 의도다**(사용자 확정 2026-09-07): 그
+    스위치는 "플러그인 전역 훅으로 켤지"이고, 여기는 그 컴포넌트가 도는 동안만
+    걸리는 별개 경로다 — 전역으로는 끄고 특정 컴포넌트에서만 쓰는 것이 정상이다.
+    라이브러리에 없는 이름은 조용히 빠진다(`dangling_hook_ref`가 짚는다).
+    이벤트 키 순서 = HookEvent 선언 순서, 같은 이벤트 복수 훅 = 라이브러리 순서.
+    """
+    from daedalus.model.plugin.hook import HookEvent
+
+    referenced = getattr(getattr(component, "config", None), "hooks", None) or {}
+    if not referenced or project is None:
+        return {}
+    wanted = set(referenced)
+    buckets: dict[Any, list[HookDef]] = {}
+    for hook in hook_library(project, resolved_hooks):  # 라이브러리 선언 순서 = 결정적
+        if hook.name in wanted:
+            buckets.setdefault(hook.event, []).append(hook)
+    out: dict[str, Any] = {}
+    for event in HookEvent:  # 선언 순서 = 결정적 이벤트 키 순서
+        groups = [h.to_json() for h in (buckets.get(event) or []) if h.handlers]
+        if groups:
+            out[event.value] = groups
+    return out
+
+
 def emitted_hooks(
     project, resolved_hooks: dict[str, HookDef] | None = None
 ) -> list[HookDef]:
@@ -79,8 +114,18 @@ def hooks_needing_scripts(
     배출되기 때문이다(WP-LA — 마켓 배포 에이전트의 hooks는 CC가 무시한다).
     마켓 빌드에서까지 세면 아무 데서도 쓰이지 않는 스크립트가 산출에 남는다.
     """
+    from daedalus.model.plugin.skill import is_disabled_wrapped, is_reference_usage
+
     library = hook_library(project, resolved_hooks)
     wanted = {h.name for h in emitted_hooks(project, resolved_hooks)}
+    # 스킬 프론트매터 훅은 **두 타깃 모두** 나간다(2026-09-13 실측 — 플러그인 스킬의
+    # 훅도 돈다). SKILL.md를 내지 않는 스킬(참조 용도·비활성 랩퍼)은 세지 않는다.
+    for skill in getattr(project, "skills", []):
+        if is_reference_usage(skill) or is_disabled_wrapped(skill):
+            continue
+        cfg_hooks = getattr(getattr(skill, "config", None), "hooks", None)
+        if isinstance(cfg_hooks, dict):
+            wanted.update(cfg_hooks)
     if _is_local_build(project):
         for agent in getattr(project, "agents", []):
             cfg_hooks = getattr(getattr(agent, "config", None), "hooks", None)

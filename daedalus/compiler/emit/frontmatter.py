@@ -107,6 +107,10 @@ def _frontmatter_lines_skill(
         # (emit/wrapped.py) — SKILL.md는 위임만 하는 메인 스레드 단계다.
         if kind_key == "wrapped" and sfield in (SkillField.MODEL, SkillField.EFFORT):
             continue
+        # hooks는 settings.json 모양의 3단 블록이라 한 줄 키-값으로 낼 수 없다 —
+        # compile_skill이 훅 라이브러리를 보고 블록으로 붙인다(2026-09-13).
+        if sfield is SkillField.HOOKS:
+            continue
         key = sfield.frontmatter_key
         if key is None:  # WHEN_TO_USE — 본문/description 합류
             continue
@@ -150,11 +154,6 @@ def _emit_skill_field(
     # 빈 컬렉션은 생략
     if isinstance(value, (list, dict)) and not value:
         return None
-
-    # hooks(dict[str, Any]) — 프론트매터에는 참조 이름 목록만 표기(flow-list).
-    # 본문 풀이 단락은 두지 않는다 (이름 참조 규약). 라이브러리 실존은 게이트가 검증.
-    if sfield is SkillField.HOOKS and isinstance(value, dict):
-        return _format_kv(key, list(value.keys()))
 
     # REQUIRED 외에는 선언 기본값과 같으면 생략(잡음 제거)
     if rule.visibility is not FieldVisibility.REQUIRED:

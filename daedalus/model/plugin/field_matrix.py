@@ -62,6 +62,7 @@ _PROCEDURAL: dict[SkillField, FieldRule] = {
     SkillField.AGENT:          FieldRule(O),
     SkillField.SHELL:          FieldRule(O),
     SkillField.PATHS:          FieldRule(O),
+    SkillField.HOOKS:          FieldRule(O),
     SkillField.DISABLE_MODEL:  FieldRule(O),
     SkillField.USER_INVOCABLE: FieldRule(O),
 }
@@ -79,6 +80,7 @@ _WRAPPED: dict[SkillField, FieldRule] = {
     SkillField.EFFORT:         FieldRule(O),
     SkillField.ALLOWED_TOOLS:  FieldRule(O),
     SkillField.PATHS:          FieldRule(O),
+    SkillField.HOOKS:          FieldRule(O),
     SkillField.DISABLE_MODEL:  FieldRule(O),
     SkillField.USER_INVOCABLE: FieldRule(O),
 }
@@ -95,6 +97,7 @@ _DECLARATIVE: dict[SkillField, FieldRule] = {
     SkillField.AGENT:          FieldRule(D),
     SkillField.SHELL:          FieldRule(D),
     SkillField.PATHS:          FieldRule(O),
+    SkillField.HOOKS:          FieldRule(O),
     SkillField.DISABLE_MODEL:  FieldRule(O),
     SkillField.USER_INVOCABLE: FieldRule(O),
 }
@@ -111,6 +114,7 @@ _TRANSFER: dict[SkillField, FieldRule] = {
     SkillField.AGENT:          FieldRule(D),
     SkillField.SHELL:          FieldRule(O),
     SkillField.PATHS:          FieldRule(D),
+    SkillField.HOOKS:          FieldRule(O),
     SkillField.DISABLE_MODEL:  FieldRule(F, fixed_value=True),
     SkillField.USER_INVOCABLE: FieldRule(F, fixed_value=False),
 }
@@ -127,6 +131,7 @@ _REFERENCE: dict[SkillField, FieldRule] = {
     SkillField.AGENT:          FieldRule(D),
     SkillField.SHELL:          FieldRule(D),
     SkillField.PATHS:          FieldRule(D),
+    SkillField.HOOKS:          FieldRule(D),
     SkillField.DISABLE_MODEL:  FieldRule(D),
     SkillField.USER_INVOCABLE: FieldRule(F, fixed_value=False),
 }

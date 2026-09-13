@@ -164,17 +164,37 @@ def test_hooks_json_same_event_multiple_hooks_library_order():
 
 # ── 프론트매터 hooks 표기 ──
 
-def test_skill_frontmatter_never_emits_hooks():
-    """스킬 프론트매터에는 hooks가 나가지 않는다 (규격 확인 2026-09-07).
+def test_skill_frontmatter_emits_hooks_block():
+    """스킬 훅은 settings.json과 같은 3단 블록으로 프론트매터에 나간다 (2026-09-13).
 
-    SKILL.md 프론트매터에 hooks 키가 없어 CC가 무시한다 — 내보내면 "설정했는데
-    아무 일도 안 하는" 줄이 된다. 훅은 플러그인 전역(hooks.json/settings)이거나
-    에이전트 프론트매터다. 남은 참조는 `skill_hooks_ignored`가 짚는다.
+    2026-09-07에는 "SKILL.md에 hooks 키가 없다"고 판단해 뺐으나 틀렸다 — 스키마에
+    "Hooks registered while this skill is active"가 있고 로컬·플러그인 스킬 모두
+    훅이 실제로 돈다(실측). 예전의 이름 flow-list(`hooks: [a, b]`)는 규격 모양이
+    아니었으므로 되살리지 않는다.
     """
     skill = make_declarative("kb")
-    skill.config.hooks = {"fmt-on-edit": {}, "notify-stop": {}}
-    text = compile_skill(skill)
-    assert "hooks:" not in text
+    skill.config.hooks = {"fmt-on-edit": {}}
+    proj = PluginProject(name="p", skills=[skill], hook_library=_library())
+    front = compile_skill(skill, project=proj).split("---")[1]
+    assert "hooks:" in front
+    assert "hooks: [" not in front  # 이름 목록이 아니다
+    assert "type: command" in front
+    assert "fmt-on-edit.sh" in front
+
+
+def test_skill_hooks_need_scripts_in_marketplace_build_even_if_disabled():
+    """스킬이 참조한 훅은 전역으로 꺼져 있어도 스크립트 파일이 필요하다 —
+    두 빌드 타깃 모두(에이전트 참조와 달리 마켓 빌드에서도 스킬 훅은 돈다)."""
+    from daedalus.compiler.emit.hooks import compile_hook_scripts
+
+    library = _library()
+    for hook in library:
+        hook.enabled = False
+    skill = make_declarative("kb")
+    skill.config.hooks = {"fmt-on-edit": {}}
+    proj = PluginProject(name="p", skills=[skill], hook_library=library)
+    names = [name for name, _body in compile_hook_scripts(proj)]
+    assert "fmt-on-edit.sh" in names
 
 
 def test_frontmatter_hooks_omitted_when_empty():

@@ -364,6 +364,7 @@ def compile_skill(
     skill: Skill,
     *,
     project=None,
+    resolved_hooks=None,
 ) -> str:
     """단일 스킬 → SKILL.md 텍스트 (LF, BOM 없음, 결정적).
 
@@ -371,6 +372,15 @@ def compile_skill(
     """
     kind_key = _skill_kind_key(skill)
     fm_lines = _frontmatter_lines_skill(skill, kind_key)
+    # 스킬 훅 — 스킬이 활성인 동안만 걸린다(2026-09-13 실측: 플러그인 스킬도 동작).
+    # settings.json과 같은 3단 구조라 한 줄 키-값이 아니라 블록으로 낸다.
+    from daedalus.compiler.emit.frontmatter import _yaml_block_lines
+    from daedalus.compiler.emit.hooks import component_hook_groups
+
+    hook_groups = component_hook_groups(skill, project, resolved_hooks)
+    if hook_groups:
+        fm_lines.append("hooks:")
+        fm_lines.extend(_yaml_block_lines(hook_groups, 2))
 
     blocks: list[str] = [_frontmatter_block(fm_lines)]
 

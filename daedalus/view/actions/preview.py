@@ -23,7 +23,7 @@ def preview_text(component: object, project=None, resolved_hooks: dict | None = 
 
     if isinstance(component, AgentDefinition):
         return compile_agent(component, project=project, resolved_hooks=resolved_hooks)
-    return compile_skill(component, project=project)
+    return compile_skill(component, project=project, resolved_hooks=resolved_hooks)
 
 
 def preview_title(component: object) -> str:

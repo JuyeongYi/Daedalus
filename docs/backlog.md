@@ -12,7 +12,7 @@
 | 〃 | §1-2 A1 평가 루프 | 결정 D1~D9, early access 스펙 |
 | 〃 | §1-3 WP-LK 스토어 빌드 + 링크 | 잔존 의문 U2~U8 |
 | 결정 대기 — 제안 단계 | §2 **fork 스킬**(설계안·실측 완료, 사용자 확정 대기) · reference 랩핑의 스킬 링크 예외 · statusLine 도구 · 외부 에이전트 노드 · `get_project` 축약 기본값 | 사용자 결정 |
-| 규격 정정 | §5 **스킬에도 훅이 걸린다** — `skill_hooks_ignored` 규칙이 틀렸다 | 착수 가능 |
+| 규격 정정 후속 | §5 스킬 훅 — 지운 참조 복구 여부 · 중복 실행 미실측 | 사용자 확인 |
 | 컴파일러 Tier 2 | §3 도구·스크립트 실행 래퍼, 외부 오케스트레이터 | 설계 전 |
 | 보류 | §4 기존 플러그인 임포트 · 블랙보드 단락 rules 이관 · Region 확장 | 개시 미정 |
 | 잔여 · 제약 · 위생 · 테스트 | §5~§8 | — |
@@ -740,16 +740,12 @@ Tier 2다. 출발점은 2026-05 조사(ClaudeManager가 만든 plain 셸 스크�
 
 ## 5. 기능 잔여
 
-- **스킬에도 훅이 걸린다 — 2026-09-07 판단이 틀렸다** (2026-09-13 실측, CC 2.1.268). SKILL.md
-  프론트매터 스키마에 `hooks` 필드가 있다: "Hooks registered while this skill is active. Same shape
-  as settings.json `hooks`." 그런데 우리는 "SKILL.md에는 hooks 키가 없다"는 판단으로
-  `SkillField.HOOKS`를 매트릭스에서 빼고 `skill_hooks_ignored` 경고를 만들었다. 할 일: ① 매트릭스에
-  HOOKS 복구 + 스킬 프론트매터 배출(형식은 에이전트 `hooks`와 같은 3단 블록) ② `skill_hooks_ignored`
-  삭제 ③ MCP `set_component_hooks`의 스킬 거부 해제 ④ `docs/design/hooks.md`·`plugin-model.md`
-  정정. **덧붙여:** 2026-09-13에 이 틀린 경고를 따라 `project/daedalus_cc_plugin`의
-  `graph-orient`(check-daedalus-mcp)·`graph-state`(guard-blackboard-schema, validate-on-save)의
-  훅 참조를 지웠다. 세 훅 모두 라이브러리에서 전역으로 켜져 있어 **지금 동작은 같지만** "그 스킬이
-  도는 동안만"이라는 원래 뜻은 사라졌다 — 복구 시 되돌릴지 사용자 확인.
+- **스킬 훅 정정의 남은 일** (정정 자체는 2026-09-13 완료 — `docs/design/hooks.md` "스킬 훅").
+  ① `project/daedalus_cc_plugin`의 `graph-orient`(check-daedalus-mcp)·`graph-state`
+  (guard-blackboard-schema, validate-on-save) 훅 참조를 틀린 경고에 따라 지웠다. 세 훅 모두 전역으로
+  켜져 있어 지금 동작은 같지만, "그 스킬이 도는 동안만"이라는 뜻을 되살릴지 **사용자 확인**.
+  ② 같은 훅이 전역으로도 켜져 있고 스킬에서도 참조될 때 두 번 실행되는지(중복 제거 여부) **미실측** —
+  되살리기 전에 확인해야 한다.
 - **에이전트 내부 FSM 잔재가 산출에 남는다** (2026-09-13 실측 — `project/daedalus_cc_plugin`의
   `graph-surgeon`). 내부 FSM은 WP-AF로 퇴역해 **GUI 탭도 MCP 도구도 없는데**, 컴파일러는 구버전
   설계 보존을 위해 실질 상태가 있으면 `## Internal Workflow` 단락을 여전히 배출한다. 즉 지울

@@ -12,7 +12,7 @@ CC의 구조는 **3단**이다: 이벤트 → 그룹(matcher + 핸들러 목록)
 - **이벤트 31종**(`HookEvent`) — 스키마 `properties.hooks`의 키 전체. matcher를 받지 않는 8종은 `NO_MATCHER_EVENTS`(스키마 description이 "does not support matchers"라고 명시한 것들), 여집합이 `MATCHER_EVENTS`(구 `TOOL_MATCH_EVENTS` 별칭은 RF-1b에서 삭제). 공식 문서에 없는 2종은 `UNDOCUMENTED_EVENTS`.
 - **핸들러 5종**(`HookHandler` ABC + `CommandHook`/`PromptHook`/`AgentHook`/`HttpHook`/`McpToolHook`) — 공통 속성은 timeout / `condition`(→`if`, 예약어라 필드명이 다르다) / `status_message`(→`statusMessage`). command는 args·shell(`HookShell`)·`run_async`(→`async`)·`async_rewake`, prompt는 model·`continue_on_block`, http는 headers·`allowed_env_vars`, mcp_tool은 server·tool·`tool_input`(→`input`). `kind`가 CC `type` 값이자 다형성 태그이고, `to_json()`이 CC 스키마 객체를 만든다(빈 값 키 생략 — 결정적). `HOOK_HANDLER_TYPES`/`HOOK_HANDLER_LABELS`가 태그↔클래스↔표시문구의 단일 진실.
 - `HookDef.to_json()`은 **matcher를 그 이벤트가 받을 때만** 배출한다 — 무시되는 키를 내보내면 설정한 사람은 걸린 줄 알지만 아무 일도 일어나지 않는다.
-- `ComponentConfig.hooks: dict`는 **이름 참조**다 — 키=hook_library의 HookDef.name, 값=오버라이드(빈 dict면 정의 그대로). 선언 기본값은 `{}`가 아니라 `None`. **이 참조는 훅을 켜는 조건이 아니다**(아래 배출 규칙) — 전역 훅을 이 프로젝트로 끌어오는 선언이고, LOCAL 에이전트 프론트매터(WP-LA)의 대상 선정이다.
+- `ComponentConfig.hooks: dict`는 **이름 참조**다 — 키=hook_library의 HookDef.name, 값=오버라이드(빈 dict면 정의 그대로). 선언 기본값은 `{}`가 아니라 `None`. **이 참조는 훅을 켜는 조건이 아니다**(아래 배출 규칙) — 전역 훅을 이 프로젝트로 끌어오는 선언이고, 스킬 프론트매터(두 타깃)와 LOCAL 에이전트 프론트매터(WP-LA)의 대상 선정이다.
 - `hook_presets.py`의 `BUILTIN_HOOK_PRESETS`는 복사해 출발점으로 쓰는 템플릿이며 `preset_copy`가 **핸들러까지 깊은 복사**한다(얕게 복사하면 한 프로젝트의 수정이 다른 쪽에 샌다). command 외 타입(prompt/agent)의 출발점도 포함한다.
 - **`HookDef.enabled: bool = True`(사용자 확정 2026-09-07)** — 라이브러리에
   모아 둔 훅 중 **무엇을 빌드에 넣을지 고르는 스위치**다. 컴포넌트 참조로는
@@ -38,9 +38,10 @@ CC의 구조는 **3단**이다: 이벤트 → 그룹(matcher + 핸들러 목록)
   `config.hooks`로 참조한 훅이 그 `.md` 프론트매터로 나간다(WP-LA, 컴파일 정책
   16번). **`enabled`를 보지 않는 것이 의도다**(사용자 확정): 그 스위치는 "전역
   훅으로 켤지"이고 여기는 그 에이전트 안에서만 도는 경로라, 전역으로는 끄고
-  특정 에이전트에서만 쓰는 것이 정상이다(`_agent_hook_groups`를 `emitted_hooks`로
-  바꾸지 마라). 스크립트 파일은 `hooks_needing_scripts`가 **두 경로의 합집합**
-  으로 내므로, 꺼둔 훅을 에이전트가 써도 없는 파일을 가리키지 않는다.
+  특정 에이전트에서만 쓰는 것이 정상이다(`component_hook_groups`를 `emitted_hooks`로
+  바꾸지 마라 — 스킬 훅도 같은 함수를 쓴다). 스크립트 파일은 `hooks_needing_scripts`가
+  **전역 배출·스킬 참조·에이전트 참조의 합집합**으로 내므로, 꺼둔 훅을 컴포넌트가 써도
+  없는 파일을 가리키지 않는다.
   에이전트 참조는 LOCAL에서만 센다 — 마켓 빌드는 그 프론트매터를 배출조차
   하지 않아 쓰이지 않는 스크립트만 남는다.
 - **서브에이전트 훅의 이벤트 제한 (공식 sub-agents 확인 2026-09-07)**: 이벤트
@@ -48,18 +49,19 @@ CC의 구조는 **3단**이다: 이벤트 → 그룹(matcher + 핸들러 목록)
   `PostToolUse`/`Stop`이고, **프론트매터의 `Stop`은 런타임에 `SubagentStop`으로
   자동 변환된다** — 설계자가 `SubagentStop`을 직접 걸면 의미가 겹칠 수 있으니
   `Stop`으로 두는 편이 낫다.
-- > ⚠ **아래 판단은 틀렸다(2026-09-13 실측, CC 2.1.268).** SKILL.md 스키마에 "Hooks registered
-  > while this skill is active" 필드가 있다. 이 문단은 **지금 구현된 동작**을 설명할 뿐이고, 정정
-  > 작업은 `docs/backlog.md` §5 "스킬에도 훅이 걸린다"에 있다.
-- **스킬에는 훅을 걸 수 없다**(사용자 확정 2026-09-07, 같은 규격 확인:
-  SKILL.md 프론트매터 스키마에 hooks 키가 없다). `SKILL_FIELD_MATRIX`에서
-  `SkillField.HOOKS`를 **전 종류에서 제거**해 배출·편집 노출을 끊었다
-  (`_KIND_ABSENT_FIELDS`의 `_ABSENT_EVERYWHERE`가 계약으로 고정). MCP
-  `set_component_hooks`는 스킬을 **거부**하고(에이전트 전용), 이미 저장된
-  프로젝트에 남은 스킬 참조는 지우지 않고 `skill_hooks_ignored` 경고로
-  짚는다 — 조용히 지우면 "설정한 게 사라졌다"가 되고 그냥 두면 "걸어 뒀는데
-  안 걸린다"가 된다. 훅을 켜는 길은 둘뿐이다: 라이브러리 훅의 `enabled`
-  (플러그인 전역), 또는 **에이전트** `config.hooks`.
+- **스킬 훅 (2026-09-13 실측으로 정정)** — 스킬도 `config.hooks`로 훅을 참조하고, 그 훅은
+  **스킬이 활성인 동안만** 걸린다(SKILL.md 스키마: "Hooks registered while this skill is active.
+  Same shape as settings.json `hooks`."). 로컬 스킬과 **플러그인 스킬 모두** 실제로 돈다(실측 —
+  플러그인 서브에이전트의 hooks가 무시되는 것과 다르다). 그래서 **두 빌드 타깃 모두** SKILL.md
+  프론트매터에 settings.json 모양의 3단 블록으로 낸다 — 실체는 `emit.hooks.component_hook_groups`로
+  에이전트 프론트매터와 공용이다. `SKILL_FIELD_MATRIX`의 HOOKS는 절차형·랩핑·선언형·전이 O, 참조 D.
+  - **2026-09-07의 "스킬에는 훅을 걸 수 없다"는 틀린 판단이었다.** 그때 만든 `skill_hooks_ignored`
+    경고와 MCP `set_component_hooks`의 스킬 거부는 삭제했다. 당시의 이름 목록 표기(`hooks: [a, b]`)는
+    규격 모양이 아니었으므로 되살리지 않았다.
+  - 스크립트 파일은 `hooks_needing_scripts`가 스킬 참조를 **두 타깃 모두** 포함해 낸다. 참조
+    용도·비활성 랩퍼처럼 SKILL.md를 내지 않는 스킬은 세지 않는다.
+  - **미실측:** 같은 훅이 전역(`enabled`)으로도 켜져 있고 스킬에서도 참조되면 그 스킬이 도는 동안
+    두 번 실행되는지(CC가 같은 명령을 중복 제거하는지).
 - **직렬화**: 핸들러는 `kind` 태그로 다형성 왕복. v1 파일(`handlers` 키 없이 `command`/`timeout`)은 `_migrate_v1`이 `CommandHook` 하나로 감싼다(경고 없음). 미지 `kind`는 건너뛴다 — 미래 버전 파일을 열어도 죽지 않는다.
 - **검증**: `empty_hook_command`는 핸들러 0개 또는 핸들러의 필수 값이 빈 경우다. 무엇이 필수인지는 타입마다 다르므로 `handler.summary()`가 `"("`로 시작하는지로 판정한다 — 타입이 늘어도 규칙이 따라간다. `hook_matcher_without_tool_event`는 이름만 예전 그대로이고 판정은 `MATCHER_EVENTS` 기준이다.
 - **라이프사이클 피커 (A10)**: 이벤트 콤보 옆 "라이프사이클에서 선택…" 버튼이

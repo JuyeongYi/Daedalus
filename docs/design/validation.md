@@ -72,7 +72,6 @@ blackboard/body_variables/build_target/workflow/workspace)을 합성한 오케�
 | `duplicate_hook_name` | `hook_library` 내 동명 HookDef 에러 (이름 참조 모호) |
 | `empty_hook_command` | HookDef.command 빈 값 경고 |
 | `hook_matcher_without_tool_event` | matcher가 있는데 event가 Pre/PostToolUse가 아니면 경고 (matcher는 도구 이벤트 전용) |
-| `skill_hooks_ignored` | 스킬 `config.hooks` 참조 경고 — SKILL.md에는 hooks 키가 없어 CC가 무시한다(2026-09-07). 훅은 라이브러리 `enabled`(전역) 또는 에이전트에 건다 |
 | `dangling_hook_ref` | config.hooks 키가 hook_library에 없으면 경고 (스킬·에이전트 전부 검사) |
 | `hook_matcher_matches_nothing` | MCP matcher가 서버 이름까지만이면 어떤 도구와도 맞지 않으므로 경고 (정규식이 아니라 정확한 문자열 비교 — `server__.*`를 쓰라고 안내, WP-HS) |
 | `dangling_blackboard_ref` | State.reads/writes의 `"Class"`/`"Class.field"` 문자열 참조가 프로젝트 최상위 블랙보드 class_definitions에 없으면 경고 (재귀 — sub_machine/Region + 프로젝트 그래프 포함, 빈 문자열은 스킵) |

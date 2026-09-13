@@ -447,34 +447,23 @@ class HookTools(_BaseTools):
     def set_component_hooks(
         self, name: str, hooks: list[str]
     ) -> dict[str, Any]:
-        """**에이전트**가 참조하는 훅 이름 목록을 통째로 지정한다.
+        """스킬/에이전트가 참조하는 훅 이름 목록을 통째로 지정한다.
 
         라이브러리에 없는 이름은 거부한다 — 오타는 컴파일까지 조용히 흘러가
         `dangling_hook_ref` 경고로만 드러나기 때문이다. 유효 집합은 프로젝트
         `hook_library` **∪ 전역 훅**(`~/.daedalus/hooks/`)이다 (A1).
 
-        **스킬에는 걸 수 없다**(규격 확인 2026-09-07): SKILL.md 프론트매터에
-        hooks 키가 없어 CC가 무시한다. 훅을 켜려면 라이브러리에서
-        `create_hook`/`update_hook`의 `enabled`로 전역 배출을 켜거나(플러그인
-        훅은 전역이다), 그 훅을 쓸 **에이전트**에 건다.
+        참조한 훅은 그 컴포넌트가 도는 동안만 걸린다. **스킬**은 두 빌드 타깃
+        모두 프론트매터로 나가고(2026-09-13 실측 — 플러그인 스킬의 훅도 돈다),
+        **에이전트**는 LOCAL 빌드에서만 나간다(플러그인 서브에이전트의 hooks는
+        CC가 무시한다). 플러그인 전역으로 켜는 것은 별개 스위치(`enabled`)다.
         """
-        from daedalus.model.plugin.agent import AgentDefinition
         from daedalus.view.commands.attr_commands import SetAttrCmd
 
         comp = self._find_component(name)
         config = getattr(comp, "config", None)
         if config is None:
             raise ValueError(f"'{name}'에는 config가 없어 훅을 붙일 수 없습니다.")
-        # 스킬에는 걸 수 없다. 다만 **빈 목록은 받는다** — 이미 저장된
-        # 프로젝트의 스킬 참조를 정리하는 유일한 경로이고, 막아 두면
-        # `skill_hooks_ignored` 경고를 없앨 방법이 사라진다(실측: 라이브
-        # 프로젝트에 그 참조가 남아 있었다).
-        if hooks and not isinstance(comp, AgentDefinition):
-            raise ValueError(
-                f"'{name}'은 스킬입니다 — 스킬 프론트매터에는 hooks 키가 없어 "
-                "CC가 무시합니다. 훅은 라이브러리에서 enabled로 켜거나(플러그인 "
-                "전역) 에이전트에 거세요(빈 목록을 주면 기존 참조를 정리합니다)."
-            )
 
         known = set(self._window.resolved_hooks())
         unknown = [h for h in hooks if h not in known]

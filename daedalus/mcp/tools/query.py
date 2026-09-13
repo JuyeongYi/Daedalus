@@ -424,7 +424,9 @@ class QueryTools(_BaseTools):
                 comp, project=project, resolved_hooks=self._window.resolved_hooks(),
             )
         else:
-            text = compile_skill(comp, project=project)
+            text = compile_skill(
+                comp, project=project, resolved_hooks=self._window.resolved_hooks(),
+            )
         report = TokenReport()
         entry = report.add(comp.name, "agent" if is_agent else "skill", text)
         return {
