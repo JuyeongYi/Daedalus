@@ -20,7 +20,9 @@ NO_PLACE_KINDS: frozenset[str] = frozenset({"declarative", "transfer"})
 #  레지스트리 "+" / 카탈로그 선언 후 드래그 / MCP create_skill이다.)
 
 
-def make_component(window, kind: str, name: str, description: str = ""):
+def make_component(
+    window, kind: str, name: str, description: str = "", agent: str | None = None,
+):
     """모델 객체만 만든다(프로젝트에 넣지 않는다).
 
     FSM 생성은 창의 `_make_fsm`/`_make_agent_fsm`을 쓴다 — 레지스트리 생성
@@ -32,8 +34,10 @@ def make_component(window, kind: str, name: str, description: str = ""):
     """
     from daedalus.model.fsm.section import EventDef
     from daedalus.model.plugin.agent import AgentDefinition
+    from daedalus.model.plugin.config import ForkSkillConfig
     from daedalus.model.plugin.skill import (
         DeclarativeSkill,
+        ForkSkill,
         ProceduralSkill,
         ReferenceSkill,
         TransferSkill,
@@ -43,6 +47,11 @@ def make_component(window, kind: str, name: str, description: str = ""):
     factories = {
         "procedural": lambda: ProceduralSkill(
             fsm=window._make_fsm(name), name=name, description=description
+        ),
+        # agent는 등록 전에 채운다 — undo/redo에 몸 없는 중간 상태가 없다.
+        "fork": lambda: ForkSkill(
+            fsm=window._make_fsm(name), name=name, description=description,
+            config=ForkSkillConfig(agent=agent or "general-purpose"),
         ),
         "declarative": lambda: DeclarativeSkill(name=name, description=description),
         "transfer": lambda: TransferSkill(
@@ -153,7 +162,8 @@ def create_wrapped_skill(
 
 
 def create_and_place(
-    scene, window, kind: str, name: str, x: float, y: float, description: str = ""
+    scene, window, kind: str, name: str, x: float, y: float, description: str = "",
+    agent: str | None = None,
 ) -> object | None:
     """컴포넌트를 만들고 (배치 대상이면) 그 좌표에 놓는다 — 1 undo 단위.
 
@@ -172,7 +182,7 @@ def create_and_place(
     project = window._project
     if project is None:
         return None
-    component = make_component(window, kind, name, description)
+    component = make_component(window, kind, name, description, agent=agent)
     if component is None:
         return None
 

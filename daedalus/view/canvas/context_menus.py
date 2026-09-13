@@ -126,6 +126,16 @@ def main_window(scene):
     views = scene.views()
     return views[0].window() if views else None
 
+def convert_on_canvas(scene, component, target: str) -> None:
+    """캔버스 우클릭 "…로 전환" — 창이 없는 헤드리스 씬에서는 아무것도 하지 않는다."""
+    from daedalus.view.actions.fork_skill import convert_skill_kind
+
+    window = main_window(scene)
+    if window is None or not hasattr(window, "_project_vm"):
+        return
+    convert_skill_kind(window, component, target)
+
+
 def add_component_actions_menu(scene, menu: QMenu, state_vm: StateViewModel) -> dict:
     """스킬/에이전트 placement 공통 항목 — 미리보기·모델/effort·관련 경고.
 
@@ -170,6 +180,18 @@ def add_component_actions_menu(scene, menu: QMenu, state_vm: StateViewModel) -> 
                 dispatch[act] = (
                     lambda c=component, e=effort: me.set_effort(scene._project_vm, c, e)
                 )
+
+    # 절차형 ↔ fork 전환 (2026-09-13) — 실체는 actions/fork_skill.convert_skill_kind.
+    from daedalus.view.actions.fork_skill import skill_kind_of
+
+    kind = skill_kind_of(component)
+    if kind is not None:
+        target = "procedural" if kind == "fork" else "fork"
+        conv_act = menu.addAction(
+            "절차형 스킬로 전환" if target == "procedural" else "fork 스킬로 전환"
+        )
+        if conv_act is not None:
+            dispatch[conv_act] = lambda c=component, t=target: convert_on_canvas(scene, c, t)
 
     warn_act = menu.addAction("관련 경고 보기")
     if warn_act is not None:

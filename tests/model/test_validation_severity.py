@@ -21,6 +21,10 @@ _ERROR_RULES = frozenset({
     # 2026-09-12 — CC 중첩 한계·모델 티어는 설계대로 돌지 않게 만드는 하드 제약
     "agent_chain_too_deep",
     "agent_calls_higher_model",
+    # 2026-09-13 — fork 몸을 못 찾으면 CC가 조용히 general-purpose로 돈다
+    "fork_agent_placed",
+    "fork_agent_missing",
+    "fork_agent_undeclared_plugin",
     "transfer_on_not_empty",
     "transition_endpoint_not_in_states",
     "duplicate_component_name",
@@ -42,6 +46,8 @@ _WARN_RULES = frozenset({
     "invalid_data_map_source",
     "trigger_unknown_event",
     "no_agent_to_agent",  # 2026-09-12 — 중첩 스폰 허용으로 에러 → 경고
+    "fork_model_overrides_agent",  # 2026-09-13 — fork에서 에이전트 값이 무시됨
+    "fork_agent_isolation_ignored",  # 2026-09-13 — fork에 isolation 미적용
     "invalid_blackboard_field_type",
     "choice_completeness_missing_else",
     "parallel_join_count",

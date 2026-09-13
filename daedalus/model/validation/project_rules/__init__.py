@@ -25,7 +25,8 @@ _strip_markdown_code, _ProjectRules`` 같은 기존 임포트가 전부 무수�
   blackboard.py     — 블랙보드 접근 선언·필드 타입
   body_variables.py — 본문 경로·인수 변수(치환되지 않는 토큰)
   build_target.py   — 마켓플레이스에서 무시되는 에이전트 설정
-  workflow.py       — 전이 스킬 재사용·진입점 의미론
+  workflow.py       — 전이 스킬 재사용·진입점 의미론·에이전트 중첩
+  fork.py           — fork 스킬의 몸 에이전트
   workspace.py      — 작업 폴더 문서(.claude/CLAUDE.md·rules/)
 """
 from __future__ import annotations
@@ -34,6 +35,7 @@ from daedalus.model.validation.machine_rules import _MachineRules
 from daedalus.model.validation.project_rules.blackboard import _BlackboardRules
 from daedalus.model.validation.project_rules.body_variables import _BodyVariableRules
 from daedalus.model.validation.project_rules.build_target import _BuildTargetRules
+from daedalus.model.validation.project_rules.fork import _ForkRules
 from daedalus.model.validation.project_rules.hooks import _HookRules
 from daedalus.model.validation.project_rules.naming import _NamingRules
 from daedalus.model.validation.project_rules.scan import graph_has_placements
@@ -59,6 +61,7 @@ class _ProjectRules(
     _BodyVariableRules,
     _BuildTargetRules,
     _WorkflowRules,
+    _ForkRules,
     _WorkspaceDocRules,
 ):
     """프로젝트 수준 규칙 모음 (Validator 믹스인) — 그룹 믹스인 합성 + 오케스트레이터."""
@@ -136,6 +139,8 @@ class _ProjectRules(
         # 에이전트 중첩 호출 — 깊이·모델 티어 (2026-09-12)
         errors.extend(_WorkflowRules._check_agent_chain_depth(project))
         errors.extend(_WorkflowRules._check_agent_calls_higher_model(project))
+        # fork 스킬 몸 에이전트 (2026-09-13)
+        errors.extend(_ForkRules._check_fork_agents(project))
         # 작업 폴더 문서 — WP-WD
         errors.extend(_WorkspaceDocRules._check_workspace_docs(project))
         return errors

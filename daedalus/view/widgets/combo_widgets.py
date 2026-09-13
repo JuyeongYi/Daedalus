@@ -40,6 +40,37 @@ class EffortComboBox(QComboBox):
             self.addItem(e.value)
 
 
+class ForkAgentComboBox(QComboBox):
+    """fork 스킬 몸 에이전트 — 내장 / 사용 선언 외부 / 캔버스 미배치 프로젝트 에이전트.
+
+    후보는 생성 시점에 제공자(`tag_input.get_fork_agent_choices`)에서 읽는다 —
+    값 적용이 후보 연결보다 먼저라 생성자에서 채워야 저장된 값이 선택된다.
+    """
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        from PySide6.QtCore import Qt
+
+        from daedalus.view.widgets.tag_input import get_fork_agent_choices
+
+        for value, note in get_fork_agent_choices():
+            self.addItem(value)
+            self.setItemData(self.count() - 1, note, Qt.ItemDataRole.ToolTipRole)
+
+    def add_unlisted(self, value: str) -> int:
+        """후보에 없는 저장값을 보이게 하고 그 인덱스를 돌려준다 — 안 보이면 무엇이
+        걸려 있는지 모른다."""
+        from PySide6.QtCore import Qt
+
+        self.addItem(value)
+        index = self.count() - 1
+        self.setItemData(
+            index, "고를 수 있는 목록에 없음 — 검증 결과를 확인하세요",
+            Qt.ItemDataRole.ToolTipRole,
+        )
+        return index
+
+
 class ShellComboBox(QComboBox):
     """셸 선택 콤보박스 — bash/powershell."""
 

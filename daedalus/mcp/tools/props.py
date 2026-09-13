@@ -20,7 +20,7 @@ class PropsTools(_BaseTools):
     """컴포넌트 생성 + 속성/프론트매터 편집 + 프로젝트 속성."""
 
     #: create_skill이 받는 종류 (에이전트는 create_agent가 따로 맡는다).
-    _SKILL_KINDS = ("procedural", "declarative", "transfer", "reference", "wrapped")
+    _SKILL_KINDS = ("procedural", "fork", "declarative", "transfer", "reference", "wrapped")
 
     def _create_component(
         self,
@@ -29,6 +29,7 @@ class PropsTools(_BaseTools):
         description: str,
         x: float | None,
         y: float | None,
+        agent: str | None = None,
     ) -> bool:
         """컴포넌트를 만들고(좌표가 있으면) 캔버스에 놓는다. 배치 여부를 돌려준다.
 
@@ -47,7 +48,7 @@ class PropsTools(_BaseTools):
 
         win = self._window
         if x is None and y is None:
-            component = make_component(win, kind, name, description)
+            component = make_component(win, kind, name, description, agent=agent)
             if component is None:  # pragma: no cover - 위에서 종류를 이미 검증한다
                 raise ValueError(f"알 수 없는 종류 '{kind}'.")
             win._register_component(component)
@@ -63,7 +64,8 @@ class PropsTools(_BaseTools):
                 "x/y 없이 만드세요."
             )
         component = create_and_place(
-            self._scene, win, kind, name, float(x), float(y), description
+            self._scene, win, kind, name, float(x), float(y), description,
+            agent=agent,
         )
         if component is None:
             raise RuntimeError(f"'{name}'을(를) 만들지 못했습니다.")
@@ -78,12 +80,19 @@ class PropsTools(_BaseTools):
         y: float | None = None,
         source: str = "",
         usage: str = "",
+        fork_agent: str = "",
     ) -> dict[str, Any]:
         """스킬을 만든다.
 
         kind: procedural(작업 지침·자체 FSM) / declarative(배경 지식) /
         transfer(전이 시 실행되는 보조 지침) / reference(참조 문서) /
-        wrapped(다른 플러그인 스킬의 랩핑 — 본문 없음, WP-WR).
+        wrapped(다른 플러그인 스킬의 랩핑 — 본문 없음, WP-WR) /
+        fork(본문이 서브에이전트의 작업 지시가 되는 단계 — 2026-09-13).
+
+        fork_agent: kind="fork" 전용 — 몸 에이전트(프론트매터 `agent`). 내장(general-purpose/Explore/Plan),
+        사용 선언한 외부 플러그인 에이전트(`플러그인:이름`), 캔버스에 배치되지 않은
+        프로젝트 에이전트 중 하나(정확 일치). 생략하면 general-purpose.
+        절차형 ↔ fork 전환은 `convert_skill`.
         에이전트에게 줄 지식도 전역 스킬로 만든다 — 전역 declarative와 에이전트
         노드에 링크된 reference는 컴파일 시 에이전트 skills 프론트매터에 자동
         합류된다(로컬 스킬은 퇴역, WP-RF-1c).
@@ -114,6 +123,15 @@ class PropsTools(_BaseTools):
             raise ValueError(
                 f"알 수 없는 스킬 종류 '{kind}'. 사용 가능: {', '.join(self._SKILL_KINDS)}"
             )
+        if fork_agent and kind != "fork":
+            raise ValueError(
+                f"fork_agent는 kind='fork' 전용입니다 — '{kind}' 스킬은 서브에이전트를 "
+                "지정하지 않습니다(나머지 스킬은 fork·agent 지정 불가)."
+            )
+        if fork_agent:
+            from daedalus.view.actions.fork_skill import validate_fork_agent
+
+            validate_fork_agent(self._project, fork_agent)
         if source and kind != "wrapped":
             raise ValueError(
                 f"source는 kind='wrapped' 전용입니다 — '{kind}' 스킬에는 감쌀 "
@@ -147,8 +165,13 @@ class PropsTools(_BaseTools):
                 "source": source,
                 "external_plugins": list(self._project.external_plugins),
             }
-        placed = self._create_component(kind, name, description, x, y)
-        return {"created": name, "kind": kind, "placed": placed}
+        placed = self._create_component(
+            kind, name, description, x, y, agent=fork_agent or None
+        )
+        out: dict[str, Any] = {"created": name, "kind": kind, "placed": placed}
+        if kind == "fork":
+            out["fork_agent"] = fork_agent or "general-purpose"
+        return out
 
     def create_agent(
         self,
@@ -167,6 +190,23 @@ class PropsTools(_BaseTools):
         self._reject_duplicate_name(name)
         placed = self._create_component("agent", name, description, x, y)
         return {"created": name, "kind": "agent", "placed": placed}
+
+    def convert_skill(self, name: str, to: str) -> dict[str, Any]:
+        """절차형 ↔ fork 스킬 전환 — **1 undo** (2026-09-13).
+
+        to: "fork" 또는 "procedural". 이름·본문·설명·포트·전이·배치는 그대로다.
+        fork로 갈 때 `allowed_tools`(fork에서 효과 없음)를, 절차형으로 갈 때
+        `agent`를 버리고 `dropped`로 알린다. fork의 몸 에이전트는 기본
+        general-purpose이고 `set_component_field(name, "agent", ...)`로 바꾼다.
+
+        편집기 "…로 전환" 버튼·캔버스 우클릭과 같은 실체
+        (`actions/fork_skill.convert_skill_kind`).
+        """
+        from daedalus.view.actions.fork_skill import convert_skill_kind
+
+        comp = self._find_component(name)
+        result = convert_skill_kind(self._window, comp, to)
+        return {"component": name, **result}
 
     def rename_component(self, name: str, new_name: str) -> dict[str, Any]:
         """컴포넌트 이름을 바꾼다 — 문자열 참조도 함께 갱신된다."""
@@ -614,6 +654,11 @@ class PropsTools(_BaseTools):
                 f"사용 가능: {', '.join(known)}"
             )
 
+        if field == "agent":
+            # fork 몸 — 틀린 이름은 CC가 조용히 general-purpose로 돌리므로 여기서 거절한다.
+            from daedalus.view.actions.fork_skill import validate_fork_agent
+
+            validate_fork_agent(self._project, value if isinstance(value, str) else "")
         hints = self._config_field_types(config)
         coerced = self._coerce_field_value(hints.get(field), value, field)
         old = getattr(config, field)

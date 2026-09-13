@@ -35,6 +35,7 @@ from daedalus.model.plugin.enums import (
     SkillField,
     SkillShell,
 )
+from daedalus.view.editors.kind_switch_row import build_kind_switch_row  # 절차형 ↔ fork
 from daedalus.view.widgets.tag_input import TagInput
 
 
@@ -143,6 +144,8 @@ def _write_combo_box(widget: QComboBox, current: object, rule) -> None:
         val = dv.value if hasattr(dv, "value") else str(dv)
     if val is not None:
         idx = widget.findText(val)
+        if idx < 0 and hasattr(widget, "add_unlisted"):  # 후보 밖 저장값도 보인다
+            idx = widget.add_unlisted(val)
         if idx >= 0:
             widget.setCurrentIndex(idx)
 
@@ -335,6 +338,7 @@ class _FrontmatterPanel(QScrollArea):
 
         # 미리보기 / 관련 경고 (A9-1, A9-3) — 역시 캔버스 메뉴와 같은 함수.
         self._build_component_action_row()
+        build_kind_switch_row(self, component, skill_kind or self._detect_kind(component))
 
         # SKILL_FIELD_MATRIX / AGENT_FIELD_MATRIX 기반 필드 생성
         # 위젯 클래스는 view 측 FIELD_WIDGETS / AGENT_FIELD_WIDGETS에서 조회한다(model→view 의존 역전).

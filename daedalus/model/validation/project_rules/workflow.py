@@ -18,13 +18,16 @@ MAX_AGENT_CHAIN = 3
 
 
 def _agent_call_edges(project) -> list[tuple]:
-    """프로젝트 그래프의 **에이전트 → 에이전트** 전이 목록.
+    """프로젝트 그래프의 **서브에이전트 → 에이전트** 전이 목록.
 
-    반환: [(source_state, target_state, caller_agent, callee_agent, port)] — 선언 순서.
-    스킬 → 에이전트는 대상이 아니다(메인 스레드가 부르므로 중첩이 아니다).
+    반환: [(source_state, target_state, caller, callee_agent, port)] — 선언 순서.
+    caller는 에이전트 또는 **fork 스킬**이다 — fork 스킬은 서브에이전트에서 돌아
+    에이전트 1계층으로 센다(사용자 확정 2026-09-13). 일반 스킬 → 에이전트는
+    대상이 아니다(메인 스레드가 부르므로 중첩이 아니다).
     """
     from daedalus.model.fsm.state import SimpleState
     from daedalus.model.plugin.agent import AgentDefinition
+    from daedalus.model.plugin.skill import ForkSkill
 
     graph = getattr(project, "graph", None)
     if graph is None:
@@ -35,7 +38,9 @@ def _agent_call_edges(project) -> list[tuple]:
         if not isinstance(src, SimpleState) or not isinstance(tgt, SimpleState):
             continue
         caller, callee = src.skill_ref, tgt.skill_ref
-        if not isinstance(caller, AgentDefinition) or not isinstance(callee, AgentDefinition):
+        if not isinstance(caller, (AgentDefinition, ForkSkill)):
+            continue
+        if not isinstance(callee, AgentDefinition):
             continue
         port = getattr(getattr(trans, "trigger", None), "name", "") or ""
         out.append((src, tgt, caller, callee, port))
@@ -148,25 +153,37 @@ class _WorkflowRules:
         성립하지 않는다. 티어 표의 단일 진실은 `model/plugin/enums.MODEL_TIER`.
         """
         from daedalus.model.plugin.enums import MODEL_TIER, ModelType
+        from daedalus.model.plugin.skill import ForkSkill
+        from daedalus.model.validation.project_rules.fork import fork_body_agent
 
-        def tier(component) -> int | None:
+        def effective_model(component):
+            """실제로 도는 모델 — fork 스킬이 비어 있으면 몸 에이전트 값(실측)."""
             model = getattr(getattr(component, "config", None), "model", None)
-            return MODEL_TIER.get(model) if isinstance(model, ModelType) else None
+            if isinstance(component, ForkSkill) and model is ModelType.INHERIT:
+                body = fork_body_agent(component, project)
+                if body is not None:
+                    model = body.config.model
+            return model if isinstance(model, ModelType) else None
+
+        def tier(model) -> int | None:
+            return MODEL_TIER.get(model) if model is not None else None
 
         errors: list[ValidationError] = []
         for src, _tgt, caller, callee, port in _agent_call_edges(project):
-            caller_tier, callee_tier = tier(caller), tier(callee)
+            caller_model, callee_model = effective_model(caller), effective_model(callee)
+            caller_tier, callee_tier = tier(caller_model), tier(callee_model)
             if caller_tier is None or callee_tier is None:
                 continue
             if callee_tier <= caller_tier:
                 continue
             port_note = f"(포트 '{port}') " if port else ""
+            role = "fork 스킬" if isinstance(caller, ForkSkill) else "에이전트"
             errors.append(ValidationError(
                 rule="agent_calls_higher_model",
                 message=(
-                    f"에이전트 '{caller.name}'"
-                    f"({caller.config.model.value})가 {port_note}상위 모델 에이전트 "
-                    f"'{callee.name}'({callee.config.model.value})를 호출합니다. "
+                    f"{role} '{caller.name}'"
+                    f"({caller_model.value})가 {port_note}상위 모델 에이전트 "
+                    f"'{callee.name}'({callee_model.value})를 호출합니다. "
                     f"상위 모델은 메인 스레드가 부르게 하세요 — 호출 포트를 스킬로 "
                     f"옮기거나 두 에이전트의 모델 티어를 맞추세요."
                 ),

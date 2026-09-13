@@ -234,6 +234,7 @@ class RegistryPanel(QWidget):
 
         self._sections: dict[str, _RegistrySection] = {
             "procedural": _RegistrySection("⚙ PROCEDURAL", QColor("#88cc88")),
+            "fork": _RegistrySection("🍴 FORK", QColor("#c07a3a")),
             "declarative": _RegistrySection("📄 DECLARATIVE", QColor("#cccc88"), no_place=True),
             "transfer": _RegistrySection("⚡ TRANSFER", QColor("#88aacc"), no_place=True),
             "reference": _RegistrySection("📖 REFERENCE", QColor("#66aaaa")),
@@ -247,6 +248,7 @@ class RegistryPanel(QWidget):
         self._tabs.setDocumentMode(True)
         tab_labels = {
             "procedural": "⚙",
+            "fork": "🍴",
             "declarative": "📄",
             "transfer": "⚡",
             "reference": "📖",
@@ -304,10 +306,14 @@ class RegistryPanel(QWidget):
             section.clear()
         if self._project is None:
             return
+        from daedalus.model.plugin.skill import ForkSkill
+
         for skill in self._project.skills:
             placed = id(skill) in self._placed_ids
             if isinstance(skill, WrappedSkill):
                 self._sections["wrapped"].add_item(skill, placed)
+            elif isinstance(skill, ForkSkill):  # 절차형 하위 종류 — 먼저 검사
+                self._sections["fork"].add_item(skill, placed)
             elif isinstance(skill, TransferSkill):
                 self._sections["transfer"].add_item(skill, placed=False)
             elif isinstance(skill, ReferenceSkill):

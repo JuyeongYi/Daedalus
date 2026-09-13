@@ -90,10 +90,12 @@ class SkillEditor(QWidget):
         right_widgets.append(SkillFilesPanel(component))
 
         # Determine skill_kind for field matrix
-        from daedalus.model.plugin.skill import WrappedSkill
+        from daedalus.model.plugin.skill import ForkSkill, WrappedSkill
 
         if isinstance(component, WrappedSkill):
             kind = "wrapped"
+        elif isinstance(component, ForkSkill):  # 절차형 하위 종류 — 먼저 검사
+            kind = "fork"
         elif isinstance(component, ProceduralSkill):
             kind = "procedural"
         elif isinstance(component, TransferSkill):

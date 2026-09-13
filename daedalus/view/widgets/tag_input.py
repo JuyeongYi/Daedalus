@@ -273,3 +273,25 @@ def get_mcp_server_candidates() -> list[str]:
     if _MCP_SERVER_PROVIDER is not None:
         return list(_MCP_SERVER_PROVIDER())
     return []
+
+
+# fork 스킬 몸 에이전트 후보 (2026-09-13) — [(값, 설명)]. app.set_project가
+# `actions/fork_skill.fork_agent_choices`를 등록한다. 위 provider들과 같은 규약.
+_FORK_AGENT_PROVIDER: Callable[[], list[tuple[str, str]]] | None = None
+
+
+def set_fork_agent_choice_provider(
+    provider: Callable[[], list[tuple[str, str]]] | None,
+) -> None:
+    """fork 스킬 AGENT 피커가 표시할 [(값, 설명)] 제공자를 등록한다."""
+    global _FORK_AGENT_PROVIDER
+    _FORK_AGENT_PROVIDER = provider
+
+
+def get_fork_agent_choices() -> list[tuple[str, str]]:
+    """등록된 제공자의 후보. 없으면 내장 에이전트만(프로젝트를 모르는 생성 경로)."""
+    if _FORK_AGENT_PROVIDER is not None:
+        return list(_FORK_AGENT_PROVIDER())
+    from daedalus.model.plugin.config import BUILTIN_FORK_AGENTS
+
+    return [(name, "내장 에이전트") for name in BUILTIN_FORK_AGENTS]

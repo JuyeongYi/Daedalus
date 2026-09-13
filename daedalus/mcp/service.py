@@ -60,6 +60,7 @@ TOOL_NAMES = (
     # 편집 — 전부 undo 가능
     "create_skill",
     "create_agent",
+    "convert_skill",
     "add_agent_call",
     "remove_agent_call",
     "rename_component",

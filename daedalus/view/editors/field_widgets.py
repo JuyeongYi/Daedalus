@@ -17,6 +17,7 @@ from daedalus.view.widgets.combo_widgets import (
     AgentColorComboBox,
     AgentIsolationComboBox,
     EffortComboBox,
+    ForkAgentComboBox,
     MemoryScopeComboBox,
     ModelComboBox,
     PermissionModeComboBox,
@@ -34,7 +35,7 @@ FIELD_WIDGETS: dict[SkillField, type[QWidget]] = {
     SkillField.EFFORT:         EffortComboBox,
     SkillField.ALLOWED_TOOLS:  TagInput,
     SkillField.CONTEXT:        QLineEdit,  # fork 전용 FIXED — 편집기에 그려지지 않는다
-    SkillField.AGENT:          QLineEdit,
+    SkillField.AGENT:          ForkAgentComboBox,
     SkillField.SHELL:          ShellComboBox,
     SkillField.PATHS:          TagInput,
     SkillField.SOURCE:         QLineEdit,  # WP-WR — plugin@marketplace:skill

@@ -475,6 +475,11 @@ class MainWindow(QMainWindow):
             return sorted(names)
 
         set_mcp_server_candidate_provider(_mcp_server_candidates)
+        # fork 스킬 몸 에이전트 피커 후보 (2026-09-13) — MCP 검증과 같은 함수.
+        from daedalus.view.actions.fork_skill import fork_agent_choices
+        from daedalus.view.widgets.tag_input import set_fork_agent_choice_provider
+
+        set_fork_agent_choice_provider(lambda p=project: fork_agent_choices(p))
         # 변수 팝업의 빌드 타깃 제공자 — 팝업을 열 때마다 조회하므로 프로젝트
         # 속성에서 타깃을 바꾸면 즉시 반영된다(로컬 빌드는 ${CLAUDE_PLUGIN_ROOT}
         # 사용 불가 — 사용자 확정 매트릭스).
