@@ -77,6 +77,9 @@ pytest는 `python -m pytest`로 실행한다 (`pytest` 직접 실행 시 command
 | `project-files.md` | 시작 템플릿(A7), 폴더=프로젝트·`.ddpj`(WP-PK), 공용 `files/`(WP-FR), 스킬별 `skill-files/`(WP-SF) |
 | `compiler.md` | 산출 구조(MARKETPLACE/LOCAL), 컴파일 정책 1~20번(게이트·다음 단계·작업 재개·진입 맥락·LOCAL 설치·dry-run·토큰 리포트·위임·fork 스킬), 산출 언어 |
 
+`docs/guide/`는 **사용자 안내서**다(번호 = 읽는 순서: 01 컨셉 · 02 레지스트리 · 03 블랙보드 · 04 로컬 vs 마켓 ·
+05 로컬 전용 기능 · 06 MCP). 설계 정본이 아니므로 기능을 바꾸면 해당 안내서도 같은 커밋에서 맞춘다.
+
 `docs/MCP.md`는 같은 MCP 서버를 **쓰는 쪽**(도구 지도·연결·협업 관례) 문서다 — 설계 정본인
 `docs/design/mcp-server.md`와 역할이 다르니 한쪽만 고치지 않는다.
 

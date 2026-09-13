@@ -1,0 +1,305 @@
+# 블랙보드
+
+블랙보드는 **서로 다른 컨텍스트가 같은 데이터를 보도록** 파일로 넘겨 주는 장치입니다.
+이 문서는 블랙보드를 언제 쓰는지, 어떻게 설계하는지, 컴파일하면 무엇이 나오는지,
+실행 중에는 어떻게 읽고 쓰는지를 설명합니다.
+
+함께 보면 좋은 문서:
+
+- [핵심 컨셉](01-concept.md) — FSM과 블랙보드를 왜 나눴는지
+- [레지스트리 항목별 설명](02-registry.md) — 스킬·에이전트 종류
+- [로컬 vs 마켓플레이스 플러그인](04-local-vs-marketplace.md) — 빌드 타깃별 경로 차이
+- [MCP 설명](06-mcp.md) · [MCP 도구 지도](../MCP.md)
+
+---
+
+## 1. 언제 쓰나
+
+Claude는 컨텍스트가 바뀌면 앞에서 한 일을 모릅니다. 이런 경우입니다.
+
+- **에이전트**나 **fork 스킬**에게 일을 맡겼다. 이들은 별도 컨텍스트(서브에이전트)에서 돕니다.
+- 세션이 끊겼다가 **다음 날 다시 시작**했다.
+- 에이전트 여러 개가 **병렬로** 결과를 모은다.
+
+이때 "검증 결과", "설계 목표" 같은 값을 JSON 파일에 적어 두고 다음 단계가 읽게 합니다. 그게 블랙보드입니다.
+
+**쓰지 않아도 되는 경우:** 스킬 A가 끝나고 스킬 B가 **같은 대화 안에서** 이어진다면, B는 A가 한 일을 이미 압니다.
+여기에 블랙보드를 끼우면 파일 읽기·쓰기만 늘어납니다.
+
+## 2. 모델: 클래스와 필드
+
+블랙보드는 프로젝트에 하나입니다. 그 안에 **클래스**를 여러 개 두고, 클래스마다 **필드**를 둡니다.
+클래스 하나가 실행 중에는 JSON 파일 하나가 됩니다.
+
+| 항목 | 설명 |
+|------|------|
+| 클래스 이름 | 파일 이름이 됩니다. 예: `VerifyResult` → `VerifyResult.json` |
+| 클래스 설명 | 컴파일된 스킬 본문의 파일 목록 옆에 붙습니다. "무엇을 담는 파일인지"를 짧게 |
+| 필드 이름 | JSON 키 |
+| 타입 | `string` · `int` · `float` · `bool` 네 가지 |
+| 컬렉션 | `none`(값 하나) · `list`(목록) · `set`(중복 없는 목록) |
+| required | 켜면 이 필드는 항상 채워져 있어야 합니다 |
+| default | 초기값. `daedalus-bb init`이 파일을 처음 만들 때 씁니다 |
+
+"문자열 목록"은 타입 `string` × 컬렉션 `list`로 만듭니다. 목록 자체를 타입으로 고르는 방식은 없습니다.
+
+### GUI에서 편집하기
+
+메인 창의 **🗂 블랙보드** 탭입니다(Project FSM 탭 옆, 항상 열려 있음).
+
+- 왼쪽: 클래스 목록. `＋ 클래스` / `✕ 삭제`, 이름은 더블클릭으로 바꿉니다.
+- 오른쪽: 설명 입력칸과 필드 표(이름 · 타입 · 컬렉션 · required · default). `＋ 필드` / `필드 삭제`.
+
+default 칸은 자유 텍스트라서, 예를 들어 bool 필드에 적어도 문자열로 저장됩니다.
+타입이 맞지 않는 default는 `init`이 무시하고 타입별 빈 값(`false`, `0`, `""`, `[]`)으로 시작합니다.
+
+### MCP로 편집하기
+
+| 도구 | 하는 일 |
+|------|---------|
+| `create_blackboard_class` | 클래스 생성(필드도 함께 줄 수 있음) |
+| `update_blackboard_class` | 이름·설명 변경. **이름을 바꾸면 노드의 reads/writes 참조도 함께 바뀝니다** |
+| `set_blackboard_fields` | 필드 목록을 **통째로 교체**. 빠진 필드는 삭제되고, 그 필드를 가리키던 노드는 결과에 보고됩니다 |
+| `delete_blackboard_class` | 클래스 삭제. 노드의 참조는 지우지 않고 `still_referenced_by`로 알려 줍니다 |
+| `set_state_access` | 노드의 reads/writes 선언 |
+| `get_project` | 조회. `sections=["blackboard"]`로 클래스만, `canvas`로 노드별 reads/writes |
+
+필드 스펙 예: `{"name": "passed", "type": "bool", "required": true, "collection": "none"}`.
+허용되지 않는 타입이나 컬렉션을 주면 거부하고 선택지를 알려 줍니다.
+
+### 되돌리기(undo) — 경로에 따라 다릅니다
+
+코드 기준으로 확인한 사실입니다.
+
+- **MCP 도구**로 한 블랙보드 편집(클래스 생성·이름 변경·필드 교체·삭제, `set_state_access`)은 전부
+  undo 스택에 들어갑니다. `Ctrl+Z`로 되돌릴 수 있고, 이름 변경처럼 참조까지 바꾸는 조작은 한 번에 되돌아갑니다.
+- **GUI 블랙보드 탭**의 편집과, 속성 패널의 **reads/writes 입력칸** 편집은 모델에 바로 기록됩니다.
+  **undo 스택을 거치지 않으므로 `Ctrl+Z`로 되돌아가지 않습니다.** 잘못 고쳤으면 직접 원래대로 고치세요.
+
+## 3. 접근 선언: 누가 읽고 누가 쓰나
+
+노드마다 이 단계가 블랙보드의 무엇을 **읽는지(reads)** 와 **쓰는지(writes)** 를 적을 수 있습니다.
+
+- 캔버스에서 노드를 선택하면 속성 패널에 `reads`, `writes` 입력칸이 있습니다. 자동완성이 클래스와 필드를 제안합니다.
+- 값은 두 가지 형태입니다.
+  - `"VerifyResult"` — 클래스 전체
+  - `"VerifyResult.passed"` — 필드 하나
+- 선언하면 노드에 뱃지가 붙습니다. ✏ = 쓰기, 📖 = 읽기. 마우스를 올리면 목록이 보입니다.
+
+선언은 선택 사항이지만, 해 두면 컴파일 결과가 좋아집니다.
+
+- 스킬 본문의 **Shared State (Blackboard)** 단락이 "이 스킬이 읽는 것 / 쓰는 것"을 적고,
+  파일 목록을 **선언한 클래스만으로 좁힙니다.** 관련 없는 클래스 안내가 빠져 본문이 짧아집니다.
+- 선언이 하나도 없으면 모든 클래스를 나열하는 일반 안내가 나갑니다.
+- 한 컴포넌트의 선언은 캔버스 노드에 적은 것과 그 컴포넌트 내부 FSM 상태에 적은 것을 합쳐서 봅니다.
+
+## 4. 컴파일하면 나오는 것
+
+블랙보드에 클래스가 **하나라도 있어야** 아래가 나옵니다. 클래스가 없으면 스키마 파일도, 본문 단락도 없습니다.
+
+### 스키마 파일 — `schemas/<플러그인>.json`
+
+클래스별 JSON Schema가 한 파일에 담깁니다. 파일 이름이 플러그인 이름이라, 한 작업 폴더에
+Daedalus 플러그인이 여러 개 깔려도 서로 덮어쓰지 않습니다.
+
+```json
+{
+  "VerifyResult": {
+    "type": "object",
+    "description": "검증 단계의 결과",
+    "properties": {
+      "passed":   { "type": "boolean" },
+      "failures": { "type": "array", "items": { "type": "string" } },
+      "attempt":  { "type": "integer", "default": 1 }
+    },
+    "required": ["passed", "attempt"]
+  }
+}
+```
+
+타입 대응: `string`→`string`, `int`→`integer`, `float`→`number`, `bool`→`boolean`.
+`list`는 `array`로 감싸고, `set`은 여기에 `uniqueItems: true`가 붙습니다.
+
+### 상태 파일 위치 — `state/<플러그인>/<클래스>.json`
+
+실행 중 값이 담기는 곳입니다. 컴파일러가 만드는 파일이 아니라 **실행하면서 생깁니다.**
+경로는 **작업 폴더(Claude Code를 연 폴더) 기준**입니다.
+
+### 본문 단락 — `## Shared State (Blackboard)`
+
+다음 컴포넌트의 산출 본문에 들어갑니다: 절차형 스킬(fork 스킬 포함), 랩핑 스킬, 에이전트.
+단락에는 상태 폴더, 파일 목록, `daedalus-bb` 사용법, 읽기-수정-쓰기 규칙이 영어로 적힙니다.
+
+### `${ROOT}` — 빌드 타깃마다 경로가 달라지는 부분
+
+본문의 CLI 명령은 스키마 경로를 `--schemas ${ROOT}/schemas/<플러그인>.json`으로 적습니다.
+`${ROOT}`는 컴파일할 때 빌드 타깃에 맞게 바뀝니다.
+
+| 빌드 타깃 | `${ROOT}` → | 스키마 파일이 있는 곳 |
+|-----------|-------------|----------------------|
+| 마켓플레이스 | `${CLAUDE_PLUGIN_ROOT}` | 플러그인 폴더 안 |
+| 로컬 | `${CLAUDE_PROJECT_DIR}` | 작업 폴더 안 |
+
+`state/`에는 `${ROOT}`가 붙지 않습니다. 두 타깃 모두 상태는 **작업 폴더**에 쌓입니다.
+
+## 5. `daedalus-bb` CLI
+
+컴파일된 스킬·에이전트가 실행 중에 부르는 명령입니다. Daedalus를 설치하면 함께 깔립니다
+(따로 `pip`/`uv`로 설치하라고 시키지 마세요. 같은 이름의 무관한 패키지가 깔릴 수 있습니다).
+
+### 왜 파일을 직접 고치지 않고 CLI를 거치나
+
+- **스키마 검증.** LLM이 JSON을 손으로 만들면 타입을 틀리거나 required 필드를 빠뜨립니다.
+  `write`는 검증을 통과해야만 기록합니다. 실패하면 파일은 그대로입니다.
+- **원자적 쓰기.** 임시 파일에 쓴 뒤 한 번에 교체합니다. 반쯤 쓰인 파일이 남지 않습니다.
+- **동시 쓰기 보호.** 병렬 에이전트가 같은 파일을 고치면 한쪽 갱신이 사라질 수 있습니다.
+  `write`는 쓰기 직전에 파일이 그 사이 바뀌었는지 보고, 바뀌었으면 다시 읽어 같은 수정을 새 내용 위에 적용합니다(최대 3번).
+
+### 명령
+
+전역 옵션은 **명령 앞**에 씁니다.
+
+```
+daedalus-bb --schemas <경로> [--state-dir DIR] <명령>
+```
+
+- `--schemas` — **필수.** 상태 폴더도 여기서 정해집니다: 스키마 파일 이름이 `demo.json`이면 `state/demo/`.
+- `--state-dir` — 상태 폴더를 직접 지정할 때만.
+
+| 명령 | 하는 일 |
+|------|---------|
+| `read <Class> [--field NAME]` | 파일 전체 또는 필드 하나를 JSON으로 출력 |
+| `init <Class> [--force]` | 스키마로 초기 파일 생성(required 필드만 채움). 이미 있으면 거부, `--force`면 다시 만듦 |
+| `write <Class> --set f=v [--append f=v] [--remove f=v]` | 읽기-수정-쓰기. 파일이 없으면 초기 객체에서 시작 |
+| `validate [Class ...]` | 상태 파일 검사. 생략하면 모든 클래스 |
+| `list` | 클래스·필드 목록과 파일 위치 |
+| `progress read` | 이 플러그인의 진행 기록 출력 |
+| `progress set [--current S] [--completed S]... [--note T] [--prev S]` | 진행 기록 갱신 |
+
+`write` 값 규칙:
+
+- `--set`은 스키마 타입으로 변환합니다. bool은 `true/1/yes/y/on`, `false/0/no/n/off`.
+- 목록 필드는 `--append`/`--remove`로 원소 단위로 다룹니다. 통째로 넣으려면 `--set failures='["a","b"]'`.
+- `--remove`는 일치하는 원소를 **모두** 지웁니다. `set` 필드는 중복이 자동으로 빠집니다.
+- 적용 순서는 set → append → remove.
+
+### 종료 코드와 출력
+
+| 코드 | 뜻 |
+|------|-----|
+| 0 | 성공 |
+| 1 | 쓰기가 반영되지 않음 — 검증 실패, 또는 동시 쓰기 재시도 소진 |
+| 2 | 사용법·스키마·IO 오류. 없는 클래스/필드 이름, 타입으로 바꿀 수 없는 값(`--set attempt=abc`)도 여기 |
+| 3 | 대상 파일 없음 — `read`, 클래스를 **지정한** `validate`, 기록 없는 `progress read` |
+
+stdout에는 JSON만, 안내·오류 메시지는 stderr로 나갑니다. 단 **오류일 때 stdout은 비어 있습니다**
+(`validate`만 실패해도 `{"ok": false, "violations": [...]}`를 냅니다). 그러니 종료 코드부터 확인하세요.
+없는 클래스나 필드를 적으면 쓸 수 있는 이름을 stderr에 알려 줍니다.
+
+### CLI가 없을 때
+
+본문 지시는 먼저 `command -v daedalus-bb`로 CLI가 있는지 확인하게 합니다.
+없거나 판단할 수 없으면(POSIX 셸이 아닌 환경 등) 파일을 **직접** 고치되, 세 가지 규칙을 지키게 합니다.
+
+1. 고치기 전에 항상 읽는다(읽기 → 수정 → 쓰기).
+2. 파일이 없으면 스키마를 보고 만든다.
+3. required 필드는 항상 채운다.
+
+### 진행 파일 `state/__progress__.json`
+
+블랙보드 클래스와는 별개인 **약속된 파일**입니다. "워크플로 어디까지 왔나"를 적어 두어,
+세션이 끊겨도 이어서 할 수 있게 합니다. 캔버스에 노드가 하나 이상 배치된 프로젝트에서 쓰입니다.
+
+```json
+{
+  "my-plugin": {
+    "current": "fix",
+    "completed": ["design", "verify"],
+    "note": "failed — 테스트 2개 실패",
+    "prev": "verify",
+    "updated": "2026-09-13T20:11:59+09:00"
+  }
+}
+```
+
+- 파일은 `state/` 바로 아래 **하나**이고, 최상위 키가 플러그인 이름입니다. 여러 플러그인이 한 파일을 나눠 씁니다.
+- 그래서 갱신은 `daedalus-bb progress set`이 맡습니다. 자기 플러그인 키만 고치고 남의 키는 건드리지 않습니다.
+  `--completed`는 중복 없이 쌓이고, `updated`는 자동으로 적힙니다.
+- 컴파일된 스킬은 "다음 단계로 넘기기 전에 `progress set`을 실행하라"는 지시를 받습니다.
+  CLI가 없으면 손으로 고치되 **자기 키만** 고치라고 못 박습니다.
+- 기본적으로 SessionStart 훅이 합성되어, 세션이 시작될 때 이 파일 내용을 Claude에게 보여 줍니다
+  (프로젝트 속성의 "세션 시작 시 진행 상태 자동 주입"으로 끌 수 있습니다).
+- `validate`는 이 파일을 검사하지 않습니다. 스키마 밖 파일이기 때문입니다.
+
+## 6. 검증 경고
+
+셋 다 **경고**입니다. 컴파일을 막지는 않지만, 실행 중 헷갈림의 원인이 되니 정리하세요.
+
+| 경고 | 뜻 | 고치는 법 |
+|------|-----|-----------|
+| `dangling_blackboard_ref` | 노드의 reads/writes가 없는 클래스·필드를 가리킴. 오타, 또는 클래스·필드를 지우거나 이름을 바꾼 뒤 남은 참조 | 참조를 올바른 이름으로 고치거나 지웁니다. MCP의 `update_blackboard_class`로 이름을 바꾸면 참조가 따라가지만, GUI 탭에서 바꾸거나 `set_blackboard_fields`로 필드 이름을 바꾸면 따라가지 않습니다 |
+| `orphan_blackboard_field` | 어떤 노드도 읽거나 쓰지 않는 필드 | 필요 없는 필드면 지우고, 쓰는 노드가 있으면 선언을 추가합니다. 클래스 전체(`"VerifyResult"`)를 선언하면 그 필드 전부를 쓴 것으로 봅니다. 프로젝트에 접근 선언이 **하나도** 없으면 이 경고는 뜨지 않습니다 |
+| `invalid_blackboard_field_type` | 필드 타입이 네 가지 스칼라 밖(예전 파일의 list/json/any 등) | 스칼라 타입 + 컬렉션으로 다시 고릅니다. 예: 옛 `list` → `string` × `list` |
+
+## 7. 예제: 설계 → 검증 → 수정
+
+세 단계 워크플로입니다. `verify`와 `fix`는 fork 스킬이라 각자 다른 컨텍스트에서 돕니다.
+그래서 설계 목표와 검증 결과를 블랙보드로 넘깁니다.
+
+```
+design ──done──▶ verify ──failed──▶ fix ──done──▶ verify
+                    └────passed──▶ (끝)
+```
+
+**① 클래스 만들기** (블랙보드 탭, 또는 MCP)
+
+| 클래스 | 필드 | 타입 × 컬렉션 | required |
+|--------|------|---------------|----------|
+| `DesignGoal` — 이번 작업의 목표 | `summary` | string × none | ✔ |
+| | `acceptance` | string × list | |
+| `VerifyResult` — 검증 단계의 결과 | `passed` | bool × none | ✔ |
+| | `failures` | string × list | |
+| | `attempt` | int × none (default 1) | ✔ |
+
+**② 접근 선언**
+
+| 노드 | reads | writes |
+|------|-------|--------|
+| `design` | | `DesignGoal` |
+| `verify` | `DesignGoal` | `VerifyResult` |
+| `fix` | `DesignGoal`, `VerifyResult.failures` | |
+
+MCP로 하면:
+
+```
+set_state_access(node="verify", reads=["DesignGoal"], writes=["VerifyResult"])
+```
+
+`VerifyResult.attempt`, `VerifyResult.passed`도 `fix`가 안 본다면, `verify`가 클래스 전체를 쓰니 고아 경고는 뜨지 않습니다.
+
+**③ 본문에는 할 일만** — 예: `verify` 본문 "`DesignGoal.acceptance` 항목마다 테스트로 확인하고 실패한 항목을 기록한다."
+파일 경로나 CLI 사용법은 쓰지 않아도 됩니다. 컴파일러가 Shared State 단락에 넣어 줍니다.
+
+**④ 실행 중 실제로 일어나는 일** (플러그인 이름 `demo`, 마켓플레이스 빌드)
+
+```bash
+# verify 단계
+daedalus-bb --schemas ${CLAUDE_PLUGIN_ROOT}/schemas/demo.json read DesignGoal
+daedalus-bb --schemas ${CLAUDE_PLUGIN_ROOT}/schemas/demo.json write VerifyResult \
+  --set passed=false --append failures="로그인 실패 시 메시지 없음"
+
+# fix 단계
+daedalus-bb --schemas ${CLAUDE_PLUGIN_ROOT}/schemas/demo.json read VerifyResult --field failures
+```
+
+작업 폴더에는 `state/demo/DesignGoal.json`, `state/demo/VerifyResult.json`이 생기고,
+단계가 넘어갈 때마다 `state/__progress__.json`의 `demo` 항목이 갱신됩니다.
+세션을 닫았다 열어도 `fix`는 무엇을 고쳐야 하는지 파일에서 다시 읽을 수 있습니다.
+
+---
+
+정리하면:
+
+- 같은 대화 안이면 블랙보드는 필요 없습니다. 다른 컨텍스트로 넘길 때만 씁니다.
+- 노드에 reads/writes를 선언하면 본문이 짧아지고 경고로 실수를 잡을 수 있습니다.
+- 실행 중 읽기·쓰기는 `daedalus-bb`가 검증과 안전한 쓰기를 맡습니다.

@@ -14,7 +14,7 @@ Daedalus는 Claude Code 플러그인 개발을 위한 시각적 편집 환경이
 
 편집 표면은 둘이다 — **GUI**(PySide6 노드 에디터)와 **앱 내장 MCP 서버**. 후자는 조회용 API가 아니라 사람이 GUI에서 작업하는 중에 Claude Code가 같은 프로젝트를 함께 편집하는 통로이고, MCP 편집도 사용자의 undo 스택에 들어간다.
 
-개발 규약과 설계 원칙은 [`CLAUDE.md`](CLAUDE.md), 영역별 설계 정본은 [`docs/design/`](docs/design), 구현되지 않은 항목은 [`docs/backlog.md`](docs/backlog.md)에 있다. 이 문서는 개요만 다룬다.
+처음 쓰는 사람은 [`docs/guide/`](docs/guide)의 안내서를 번호 순서대로 읽으면 된다(01 핵심 컨셉부터). 개발 규약과 설계 원칙은 [`CLAUDE.md`](CLAUDE.md), 영역별 설계 정본은 [`docs/design/`](docs/design), 구현되지 않은 항목은 [`docs/backlog.md`](docs/backlog.md)에 있다. 이 문서는 개요만 다룬다.
 
 ## 설치
 

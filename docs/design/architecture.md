@@ -196,7 +196,8 @@ daedalus/
 │                           #   중간 `[`/`,`는 YAML flow 지시자라 무따옴표면 스칼라가 끊긴다). has_manual_frontmatter(body)는
 │                           #   본문 수기 프론트매터 충돌 판정(rule_body_frontmatter 경고) — 판정만 하고 본문은 손대지 않는다.
 │   ├── wiring.py           # wire_workspace(target, server_entries, hooks_map, dry_run=False) → WireResult (WP-MW) — 작업 폴더의
-│   │                       #   .mcp.json mcpServers + .claude/settings.local.json enabledMcpjsonServers/hooks 병합. 추가/갱신만·멱등·
+│   │                       #   .mcp.json mcpServers + .claude/<settings_name> enabledMcpjsonServers/hooks 병합(settings_name 기본
+│   │                       #   settings.local.json — 앱 메뉴 경로. LOCAL 컴파일은 선택한 settings.json/settings.local.json을 넘긴다). 추가/갱신만·멱등·
 │   │                       #   깨진 JSON 불가침. LOCAL 컴파일과 앱 "Claude Code 실행" 메뉴가 공유하는 단일 진실. 순수 stdlib.
 │   │                       #   dry_run(G3): 읽고 병합을 메모리에서 계산하되 **쓰지 않는다** — written/unmergeable 판정은 동일.
 │   └── token_report.py     # 토큰 비용 리포트(A5-lite) — estimate_tokens(문자수 휴리스틱)/TokenEstimate/TokenReport/

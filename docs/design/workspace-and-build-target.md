@@ -112,9 +112,10 @@ LOCAL 플러그인이 설치 대상 작업 폴더에 남기는 **항상 컨텍�
 `paths`를 함께 돌려준다. `delete_rule`은 **이미 산출된 파일을 지우지 않는다**
 (컴파일은 쓰기만 한다).
 
-## 작업 폴더 설정 (WP-WS) — settings.local.json 베이크
+## 작업 폴더 설정 (WP-WS) — settings.json / settings.local.json 베이크
 
-LOCAL 플러그인이 설치 대상 작업 폴더의 `.claude/settings.local.json`에 베이크하는
+LOCAL 플러그인이 설치 대상 작업 폴더의 설정 파일(`.claude/settings.json` 기본 또는
+`settings.local.json` — 아래 "베이크")에 베이크하는
 설정이다(permissions.deny 등 — 훅 차단보다 강한 선언적 강제의 자리). 보류됐던
 WP-WS를 사용자가 별도 리포로 만든 **QClaudeCodeSettingEditorWidget**(external/
 서브모듈, SchemaStore 스키마 구동 — 전 키 자동 생성)이 UI를 채우며 재개했다.

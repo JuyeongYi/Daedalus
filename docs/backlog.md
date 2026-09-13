@@ -634,6 +634,21 @@ junction(폴더)·하드링크(파일)는 **무권한이지만 같은 볼륨 전
 - **외부 플러그인 에이전트 노드** — (fork 에이전트로 외부 에이전트를 쓸 수 있게 됐다 — 노드가 여전히 필요한지 재검토.) 감쌀 수 없으므로 입력만 있는 노드(에이전트 호출 포트로만 진입, 나가는 전이
   금지). 동기 호출(기본)과 백그라운드 실행 옵션, 카탈로그 `agents/*.md` 탐색, 사용 선언(`external_plugins`) 배선
   재사용. 외부 에이전트는 우리 블랙보드를 모르므로 호출 포트 description이 유일한 입력 통로다.
+- **프로젝트 속성 다이얼로그가 CommandStack을 거치지 않는다** (2026-09-13 발견) — `project_properties.py`가
+  `project.build_target` 등을 직접 대입한다. undo가 안 되고 notify가 없어, 빌드 타깃을 바꿔도 LOCAL 전용 탭
+  표시·에이전트 편집기 잠금이 다음 갱신 전까지 옛 상태로 남을 수 있다. MCP `set_project_properties`와 같은 커맨드 경로로 합친다.
+- **GUI 블랙보드 편집이 undo되지 않는다** (2026-09-13, 블랙보드 안내서 작성 중 확인) — 🗂 블랙보드 탭과 속성 패널의
+  reads/writes 입력이 모델에 직접 기록한다(설계 원칙 3 위반. MCP 블랙보드 도구는 CommandStack 경유). 또 GUI 탭의
+  클래스 이름 변경과 MCP `set_blackboard_fields`의 필드 이름 변경은 노드 reads/writes 참조를 옛 이름에 남긴다 —
+  MCP `update_blackboard_class`의 이름 변경만 참조까지 갱신한다. 판정·갱신을 한 함수로 합친다.
+- **안내 문서 작성 중 발견한 코드 불일치** (2026-09-13, `docs/guide/` 작성 서브에이전트 보고 — 미검증 항목 포함):
+  ① `missing_mcp_server_def` 메시지가 "프로젝트 속성"에서 서버 정의를 추가하라고 하지만 그 GUI 칸이 없다(MCP
+  `set_mcp_server_def`만 있음 — GUI 패리티 공백). ② MCP `set_component_field`/`set_component_hooks`가 마켓플레이스
+  빌드에서 무시되는 에이전트 필드(hooks·mcpServers·permissionMode)를 받는다 — GUI는 잠근다(경고는 있음).
+  ③ `wiring.py`·`project_compiler.py` 머리말·`props.set_mcp_server_def` docstring이 설정 파일을 `settings.local.json`
+  고정으로 설명한다(실제는 컴파일 시 선택, 기본 settings.json). `enums.BuildTarget` docstring의 "설치 스크립트 동봉"은 퇴역.
+  ④ 📖 참조 스킬을 **스킬** 노드에 링크해도 그 SKILL.md에 아무것도 합류하지 않는다(에이전트 노드 링크만 skills에 반영) —
+  제품 공백인지 확인.
 - **MCP `get_project`의 축약 기본값** — 지금은 `sections` 생략 시 전체를 돌려준다. 축약 구획을 기본으로 바꿀지.
 - **"빈 툴 추가"** (사용자 메모 2026-09-13, 원문 그대로 — 뜻을 확인하고 착수한다). 후보 해석
   둘: ① `tool_shelf`에 빈 `UserDefinedTool`을 만드는 편집 표면(지금 도구 선반은 모델에만 있고
