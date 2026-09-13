@@ -65,6 +65,22 @@ class CataloguedSkill:
 
 
 @dataclass
+class CataloguedAgent:
+    """발견된 외부 에이전트 — fork 스킬의 몸 후보 (2026-09-13).
+
+    ``name``은 ``agents/`` 기준 이름이다. 하위 폴더에 두면 폴더가 콜론으로
+    이어진다(``review/security.md`` → ``review:security`` — 공식 sub-agents 문서:
+    "include the subfolder in the scoped name"). ``agent_type``은 CC가 찾는
+    이름 ``플러그인:이름``이다 — fork의 ``agent:``는 정확 일치로 찾고 틀리면 조용히
+    범용으로 돌므로(실측), 사람이 조립하지 않고 여기서 만든 값을 그대로 쓴다.
+    """
+
+    name: str
+    description: str
+    agent_type: str
+
+
+@dataclass
 class CataloguedPlugin:
     """발견된 외부 플러그인."""
 
@@ -73,6 +89,8 @@ class CataloguedPlugin:
     marketplace: str = ""
     description: str = ""
     skills: list[CataloguedSkill] = field(default_factory=list)
+    #: 플러그인이 동봉한 에이전트(``agents/**/*.md``) — fork 스킬의 몸 후보.
+    agents: list[CataloguedAgent] = field(default_factory=list)
     #: 실물 파일을 **어디서 읽었는가** (사용자 확정 2026-09-07 — "설치/미설치
     #: 보다는 그냥 외부 플러그인으로 표시하고, 클론 여부에 따라 아이콘을").
     #:
@@ -341,6 +359,34 @@ def _scan_skills(plugin_dir: Path, plugin_id: str) -> list[CataloguedSkill]:
     return out
 
 
+def _scan_agents(plugin_dir: Path, plugin_name: str) -> list[CataloguedAgent]:
+    """플러그인이 동봉한 에이전트 — ``agents/**/*.md`` (이름순 — 결정적).
+
+    이름은 프론트매터 ``name``이 있으면 그것, 없으면 파일명이다. 하위 폴더는
+    콜론으로 이어 붙인다. ``agent_type``의 플러그인 부분에는 마켓 표기를 붙이지
+    않는다 — 스킬 인보크 토큰(`/플러그인:스킬`)과 같은 규칙이다(@마켓은 설치
+    식별자라 enabledPlugins·dependencies 전용이다).
+    """
+    agents_dir = plugin_dir / "agents"
+    if not agents_dir.is_dir():
+        return []
+    out: list[CataloguedAgent] = []
+    for md in agents_dir.rglob("*.md"):
+        rel = md.relative_to(agents_dir)
+        if not md.is_file() or any(part.startswith(".") for part in rel.parts):
+            continue
+        fm = _frontmatter_fields(md)
+        folders = list(rel.parent.parts)
+        name = ":".join(folders + [fm.get("name") or md.stem])
+        out.append(CataloguedAgent(
+            name=name,
+            description=fm.get("description", ""),
+            agent_type=f"{plugin_name}:{name}",
+        ))
+    out.sort(key=lambda a: a.name)
+    return out
+
+
 def _scan_mcp_servers(plugin_dir: Path, manifest: dict) -> list[str]:
     """플러그인이 제공하는 MCP 서버 이름 — 동봉 `.mcp.json`의 mcpServers 키
     ∪ plugin.json의 `mcpServers` 키 (이름순 정렬)."""
@@ -385,6 +431,7 @@ def discover_plugins(folder: MarketplaceFolder) -> list[CataloguedPlugin]:
                     marketplace=marketplace,
                     description=str(manifest.get("description", "") or ""),
                     skills=_scan_skills(directory, plugin_id),
+                    agents=_scan_agents(directory, name),
                     mcp_servers=_scan_mcp_servers(directory, manifest),
                 ))
             return  # 플러그인 안에 또 플러그인은 없다 — 하위 재귀 중단
@@ -438,6 +485,7 @@ def discover_plugins(folder: MarketplaceFolder) -> list[CataloguedPlugin]:
             # 실물 매니페스트와 어긋나도 사용자가 고른 근거는 선언 쪽이다.
             description=description or str(plugin_manifest.get("description", "") or ""),
             skills=_scan_skills(local, plugin_id) if local is not None else [],
+            agents=_scan_agents(local, name) if local is not None else [],
             mcp_servers=(
                 _scan_mcp_servers(local, plugin_manifest) if local is not None else []
             ),
@@ -502,3 +550,28 @@ def used_plugin_mcp_servers(project) -> list[str]:
             if plugin.plugin_id in declared:
                 names.update(plugin.mcp_servers)
     return sorted(names)
+
+
+def used_plugin_agents(project) -> list[CataloguedAgent]:
+    """사용 선언한 외부 플러그인이 동봉한 에이전트 (`agent_type` 순 — 결정적).
+
+    fork 스킬의 몸 후보 중 "외부 플러그인 에이전트"의 단일 진실이다(2026-09-13).
+    **선언하지 않은 플러그인의 에이전트는 넣지 않는다** — 활성화되지 않은 플러그인의
+    에이전트는 런타임에 없고, fork는 못 찾으면 조용히 범용으로 떨어진다(실측).
+    `used_plugin_mcp_servers`와 같은 선언 판정을 쓴다. 파일시스템을 읽으므로
+    검증기·컴파일러는 부르지 않고 호출 환경이 주입한다(resolved_hooks와 같은 경계).
+    """
+    declared = {
+        str(p).strip()
+        for p in getattr(project, "external_plugins", None) or []
+        if str(p).strip()
+    }
+    if not declared:
+        return []
+    found: dict[str, CataloguedAgent] = {}
+    for _folder, plugins in scan_catalog():
+        for plugin in plugins:
+            if plugin.plugin_id in declared:
+                for agent in plugin.agents:
+                    found.setdefault(agent.agent_type, agent)
+    return [found[key] for key in sorted(found)]

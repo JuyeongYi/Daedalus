@@ -18,6 +18,7 @@ from daedalus.model.plugin.wrap_catalog import (
     remove_marketplace,
     save_marketplaces,
     scan_catalog,
+    used_plugin_agents,
     used_plugin_mcp_servers,
 )
 
@@ -101,6 +102,37 @@ def test_discover_plugins_and_skills(tmp_path):
         ("review", "alpha@my-mkt:review"),
     ]
     assert alpha.skills[1].description == "Does review."
+
+
+def test_discover_plugin_agents(tmp_path):
+    """동봉 에이전트를 fork 몸 후보로 읽는다 (2026-09-13).
+
+    CC는 fork의 `agent:`를 정확 일치로 찾고 틀리면 조용히 범용으로 돈다 —
+    그래서 `플러그인:이름` 형식을 카탈로그가 만든다. 하위 폴더는 이름에 콜론으로
+    이어지고(공식 문서), 플러그인 부분에는 @마켓을 붙이지 않는다.
+    """
+    root = tmp_path / "mkt-repo"
+    plugin_dir = _make_plugin(root / "plugins", "alpha")
+    agents = plugin_dir / "agents"
+    (agents / "sub").mkdir(parents=True)
+    (agents / "reviewer.md").write_text(
+        "---\nname: reviewer\ndescription: Reviews diffs.\n---\n\nBody.\n",
+        encoding="utf-8",
+    )
+    (agents / "sub" / "security.md").write_text("Body only.\n", encoding="utf-8")
+    plugins = discover_plugins(MarketplaceFolder(path=str(root), marketplace="my-mkt"))
+    got = [(a.name, a.agent_type, a.description) for a in plugins[0].agents]
+    assert got == [
+        ("reviewer", "alpha:reviewer", "Reviews diffs."),
+        ("sub:security", "alpha:sub:security", ""),
+    ]
+
+
+def test_plugin_without_agents_dir_has_no_agents(tmp_path):
+    root = tmp_path / "mkt-repo"
+    _make_plugin(root / "plugins", "alpha", skills=["review"])
+    plugins = discover_plugins(MarketplaceFolder(path=str(root), marketplace="m"))
+    assert plugins[0].agents == []
 
 
 def test_marketplace_name_autodetected_from_marketplace_json(tmp_path):
@@ -215,6 +247,24 @@ def test_used_plugin_mcp_servers_filters_by_declaration(tmp_path):
 
 
 # ────────── 마켓이 선언만 하고 실물은 없는 플러그인 (사용자 보고 2026-09-07) ──────────
+
+
+def test_used_plugin_agents_filters_by_declaration(tmp_path):
+    """사용 선언한 플러그인의 에이전트만 — 활성화 안 된 플러그인의 에이전트는
+    런타임에 없어 fork가 조용히 범용으로 떨어지므로 후보에 넣지 않는다."""
+    from types import SimpleNamespace
+
+    root = tmp_path / "mkt-repo"
+    for name in ("alpha", "beta"):
+        plugin_dir = _make_plugin(root / "plugins", name)
+        (plugin_dir / "agents").mkdir()
+        (plugin_dir / "agents" / "worker.md").write_text(
+            "---\nname: worker\ndescription: Works.\n---\n", encoding="utf-8",
+        )
+    add_marketplace(str(root), "m")
+    assert used_plugin_agents(SimpleNamespace(external_plugins=[])) == []
+    project = SimpleNamespace(external_plugins=["beta@m"])
+    assert [a.agent_type for a in used_plugin_agents(project)] == ["beta:worker"]
 
 
 def _make_marketplace(root, name, declared):

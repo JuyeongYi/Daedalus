@@ -55,7 +55,9 @@ class WrapTools(_BaseTools):
         1 undo). `already_wrapped`는 이 프로젝트에 이미 그 source를 감싼 랩핑
         스킬이 있다는 뜻이다(복수 랩퍼는 정상). `mcp_servers`는 그 플러그인이
         `.mcp.json`으로 제공하는 MCP 서버 이름들 — 에이전트 `mcp_servers`
-        필드에 그대로 쓸 수 있다(개별 도구 목록은 지원하지 않는다).
+        필드에 그대로 쓸 수 있다(개별 도구 목록은 지원하지 않는다). `agents`는 그
+        플러그인이 동봉한 에이전트 — `agent_type`(`플러그인:이름`)이 CC가 찾는 이름이다
+        (정확 일치 — 틀리면 조용히 범용 에이전트로 돈다).
         폴더가 없으면 `add_marketplace_folder`로 먼저 등록한다.
         """
         from daedalus.model.plugin import wrap_catalog
@@ -92,6 +94,14 @@ class WrapTools(_BaseTools):
                     "has_files": True,
                     "files_from": p.files_from,
                     "mcp_servers": list(p.mcp_servers),
+                    "agents": [
+                        {
+                            "name": a.name,
+                            "agent_type": a.agent_type,
+                            "description": a.description,
+                        }
+                        for a in p.agents
+                    ],
                     "skills": [
                         {
                             "name": s.name,

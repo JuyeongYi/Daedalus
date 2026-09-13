@@ -113,7 +113,11 @@
   conftest `_isolate_external_marketplaces`가 격리), 발견은 폴더 밑 깊이 4까지
   `.claude-plugin/plugin.json` 탐색 + `skills/*/SKILL.md`(스킬 이름의 단일
   진실은 **디렉토리명**) + 동봉 `.mcp.json`/`plugin.json`의 `mcpServers` 키
-  (`CataloguedPlugin.mcp_servers`). 마켓 이름 해소: 등록 시 명시 > 폴더
+  (`CataloguedPlugin.mcp_servers`) + 동봉 에이전트 `agents/**/*.md`
+  (`CataloguedPlugin.agents`, 2026-09-13 — fork 스킬의 몸 후보. 이름은 프론트매터
+  `name` 또는 파일명이고 하위 폴더는 콜론으로 잇는다. `agent_type`=`플러그인:이름`은
+  CC가 정확 일치로 찾는 이름이라 사람이 조립하지 않고 이 값을 쓴다. 사용 선언분만
+  거르는 단일 진실은 `used_plugin_agents`, MCP는 `list_wrappable_skills`의 `agents`). 마켓 이름 해소: 등록 시 명시 > 폴더
   `.claude-plugin/marketplace.json`의 name > bare. **GUI 창**은 도구 메뉴
   "외부 플러그인 카탈로그..."(`view/editors/wrap_catalog_dialog`) — 폴더→
   플러그인→스킬 트리, **플러그인 체크 = 이 프로젝트에서 사용 선언**
