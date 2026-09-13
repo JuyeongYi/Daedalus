@@ -48,6 +48,9 @@ CC의 구조는 **3단**이다: 이벤트 → 그룹(matcher + 핸들러 목록)
   `PostToolUse`/`Stop`이고, **프론트매터의 `Stop`은 런타임에 `SubagentStop`으로
   자동 변환된다** — 설계자가 `SubagentStop`을 직접 걸면 의미가 겹칠 수 있으니
   `Stop`으로 두는 편이 낫다.
+- > ⚠ **아래 판단은 틀렸다(2026-09-13 실측, CC 2.1.268).** SKILL.md 스키마에 "Hooks registered
+  > while this skill is active" 필드가 있다. 이 문단은 **지금 구현된 동작**을 설명할 뿐이고, 정정
+  > 작업은 `docs/backlog.md` §5 "스킬에도 훅이 걸린다"에 있다.
 - **스킬에는 훅을 걸 수 없다**(사용자 확정 2026-09-07, 같은 규격 확인:
   SKILL.md 프론트매터 스키마에 hooks 키가 없다). `SKILL_FIELD_MATRIX`에서
   `SkillField.HOOKS`를 **전 종류에서 제거**해 배출·편집 노출을 끊었다
