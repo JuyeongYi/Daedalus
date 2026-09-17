@@ -86,12 +86,10 @@ class _RegistrySection(QWidget):
         self,
         label: str,
         color: QColor,
-        no_place: bool = False,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self._color = color
-        self._no_place = no_place
         self.label_text = label  # RegistryPanel이 탭 툴팁으로 재사용
 
         lay = QVBoxLayout(self)
@@ -145,8 +143,8 @@ class _RegistrySection(QWidget):
         icon = _ICON.get(kind, "")
         name = getattr(component, "name", str(component))
         # 캔버스에 놓이는가는 **항목마다** 묻는다(양성 판정 단일 진실) — 섹션
-        # 단위 플래그로 바꾸면 참조 섹션이 드래그 불가가 된다(오늘은 가능).
-        no_place = self._no_place or not is_canvas_placeable(component)
+        # 단위 플래그를 따로 두면 같은 사실의 출처가 둘이 된다(스멜 ②).
+        no_place = not is_canvas_placeable(component)
 
         label = f"{icon} {name}"
         item = QListWidgetItem(label)
@@ -242,8 +240,8 @@ class RegistryPanel(QWidget):
             "procedural": _RegistrySection("⚙ PROCEDURAL", QColor("#88cc88")),
             "sync_fork": _RegistrySection("🍴 SYNC FORK", QColor("#c07a3a")),
             "async_fork": _RegistrySection("🍴⏳ ASYNC FORK", QColor("#8a5a2a")),
-            "declarative": _RegistrySection("📄 DECLARATIVE", QColor("#cccc88"), no_place=True),
-            "transfer": _RegistrySection("⚡ TRANSFER", QColor("#88aacc"), no_place=True),
+            "declarative": _RegistrySection("📄 DECLARATIVE", QColor("#cccc88")),
+            "transfer": _RegistrySection("⚡ TRANSFER", QColor("#88aacc")),
             "reference": _RegistrySection("📖 REFERENCE", QColor("#66aaaa")),
             "wrapped": _RegistrySection("🔗 WRAPPED", QColor("#aa88cc")),
             "agent": _RegistrySection("🤖 AGENTS", QColor("#cc8888")),

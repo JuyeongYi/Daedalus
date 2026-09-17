@@ -11,7 +11,6 @@ from daedalus.compiler.emit.common import (
     _body_block,
     _build_target,
     _config_default,
-    _enum_value,
     _is_local_build,
     _join_blocks,
 )

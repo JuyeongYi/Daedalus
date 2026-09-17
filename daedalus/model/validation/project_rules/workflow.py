@@ -264,7 +264,7 @@ class _WorkflowRules:
         앞 스킬의 "다음 단계" 지시가 여전히 이 스킬을 부른다. 잃는 것은 사람이
         직접 부르는 통로뿐이고, 그것이 정확히 막고 싶은 것이다.
 
-        대상은 **프로젝트 그래프에 배치된 ProceduralSkill 중 incoming 전이가
+        대상은 **프로젝트 그래프에 배치된 StepSkill(절차형·fork 2종) 중 incoming 전이가
         1개 이상**인 것뿐이다:
         - incoming 0개 = 진입점 후보이므로 정상.
         - 배치 안 된 스킬 = 독립 스킬이라 user_invocable true가 정상.
@@ -279,7 +279,7 @@ class _WorkflowRules:
         고쳐야 하는지 알린다. **명시 `False`만 통과한다.**
         """
         from daedalus.model.fsm.state import SimpleState
-        from daedalus.model.plugin.skill import ProceduralSkill
+        from daedalus.model.plugin.skill import StepSkill
 
         graph = getattr(project, "graph", None)
         if graph is None:
@@ -296,7 +296,7 @@ class _WorkflowRules:
             if not isinstance(state, SimpleState):
                 continue
             skill = state.skill_ref
-            if not isinstance(skill, ProceduralSkill):
+            if not isinstance(skill, StepSkill):
                 continue
             if not incoming.get(id(state)):
                 continue  # 진입점 후보

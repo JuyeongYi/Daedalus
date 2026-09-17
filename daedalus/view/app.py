@@ -38,11 +38,11 @@ from PySide6.QtWidgets import (
     QTabWidget,
 )
 
-from daedalus.model.plugin.agent import Agent, AgentDefinition
+from daedalus.model.plugin.agent import Agent
 from daedalus.model.plugin.skill import (
     DeclarativeSkill,
-    ProceduralSkill,
     ReferenceSkill,
+    StepSkill,
     TransferSkill,
     WrappedSkill,
 )
@@ -936,7 +936,12 @@ class MainWindow(QMainWindow):
             idx = self._tabs.addTab(editor, f"{_tab_prefix(component)}{name}")
             self._open_tabs[comp_id] = idx
             self._tabs.setCurrentIndex(idx)
-        elif isinstance(component, (ProceduralSkill, DeclarativeSkill, TransferSkill, ReferenceSkill, WrappedSkill)):
+        elif isinstance(
+            component,
+            # StepSkill = 절차형 + fork 2종 — fork 스킬도 같은 편집기를 쓴다
+            # (ProceduralSkill로 좁히면 fork 스킬 탭이 조용히 안 열린다).
+            (StepSkill, DeclarativeSkill, TransferSkill, ReferenceSkill, WrappedSkill),
+        ):
             editor = SkillEditor(
                 component, on_notify_fn=self._project_vm.notify,
                 project_vm=self._project_vm,

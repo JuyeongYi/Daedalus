@@ -297,7 +297,7 @@ class _MachineRules:
         path: tuple[str, ...] = (),
     ) -> list[ValidationError]:
         from daedalus.model.fsm.state import SimpleState
-        from daedalus.model.plugin.skill import ProceduralSkill
+        from daedalus.model.plugin.skill import StepSkill
         from daedalus.model.plugin.agent import AgentDefinition
         errors: list[ValidationError] = []
         for state in states:
@@ -306,7 +306,8 @@ class _MachineRules:
             ref = state.skill_ref
             if ref is None:
                 continue
-            if isinstance(ref, ProceduralSkill):
+            # StepSkill = 절차형 + fork 2종(갈래를 갖는 워크플로 단계).
+            if isinstance(ref, StepSkill):
                 if not ref.transfer_on:
                     errors.append(ValidationError(
                         rule="transfer_on_not_empty",
@@ -479,7 +480,7 @@ class _MachineRules:
     ) -> list[ValidationError]:
         """trigger_unknown_event — CompletionEvent trigger의 이름이 source 출력 이벤트 집합에 없으면 경고."""
         from daedalus.model.fsm.state import SimpleState
-        from daedalus.model.plugin.skill import ProceduralSkill
+        from daedalus.model.plugin.skill import StepSkill
         from daedalus.model.plugin.agent import AgentDefinition
 
         errors: list[ValidationError] = []
@@ -491,11 +492,12 @@ class _MachineRules:
 
             if isinstance(source, SimpleState) and source.skill_ref is not None:
                 ref = source.skill_ref
-                # ProceduralSkill/AgentDefinition만 출력 이벤트 집합을 정의한다.
+                # StepSkill(절차형·fork 2종)/AgentDefinition만 출력 이벤트
+                # 집합을 정의한다.
                 # DeclarativeSkill 등은 known_events=None → 검사 스킵.
                 # 주의: TransferSkill.output_events는 항상 []이므로 향후 분기에
                 # 추가하면 모든 trigger가 오탐이 된다 — 추가 금지.
-                if isinstance(ref, ProceduralSkill):
+                if isinstance(ref, StepSkill):
                     # transfer_on(output_events) + call_agents — 캔버스는 Agent Call
                     # 포트에서도 전이를 만들므로(trigger=CompletionEvent(이벤트명))
                     # call_agents 이벤트도 합법적 출력 이벤트 집합에 포함한다.

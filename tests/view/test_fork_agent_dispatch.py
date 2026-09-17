@@ -101,3 +101,29 @@ def test_registry_lists_fork_agents_in_their_own_section(window):
     labels = [section._list.item(i).text() for i in range(section._list.count())]
     assert any("helper" in label for label in labels)
     assert panel._sections["agent"]._list.count() == 0
+
+
+def test_fork_agent_has_no_output_ports_in_mcp(tools):
+    """fork 에이전트에 출력 포트를 쓰려 하면 거절한다.
+
+    `SetAttrCmd`는 `getattr(..., None)` 폴백이라 가드가 없으면 없는 필드가
+    인스턴스 속성으로 생기고, 성공 응답이 돌아간 뒤 저장 한 번에 사라진다
+    (원칙 5). 유령 속성은 편집기·MCP의 `hasattr` 게이트도 무력화한다.
+    """
+    tools.create_agent("helper", kind="fork_agent")
+    with pytest.raises(ValueError, match="출력 포트를 갖지 않습니다"):
+        tools.set_transfer_on("helper", [{"name": "done"}])
+    agent = next(a for a in tools._project.agents if a.name == "helper")
+    assert not hasattr(agent, "transfer_on")
+
+
+def test_fork_agent_editor_shows_no_port_panels(window):
+    """편집기의 종류 판정은 클래스다 — hasattr는 유령 속성 하나에 속는다."""
+    from daedalus.view.editors.agent_editor import AgentEditor
+
+    agent = ForkAgent(name="helper", description="d")
+    window._register_component(agent)
+    editor = AgentEditor(agent, project=window._project)
+    assert editor._is_workflow is False
+    assert editor._transfer_on_panel is None
+    assert editor._call_agents_panel is None

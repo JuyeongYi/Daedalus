@@ -115,7 +115,14 @@ def convert_skill_kind(window, component, target: str) -> dict[str, Any]:
     new_cfg_cls = getattr(config_mod, cfg_name)
 
     old_cfg = component.config
-    drop = {"allowed_tools"} if target != "procedural" else set()
+    # 드롭은 **쌍**이 정한다: procedural → fork 전환에서만 allowed_tools가
+    # 빠진다(fork는 서브에이전트가 도구를 정한다). sync ↔ async는 같은
+    # 필드 레이아웃이라 드롭이 없다.
+    drop = (
+        {"allowed_tools"}
+        if current == "procedural" and target != "procedural"
+        else set()
+    )
     common = {
         f.name: copy.deepcopy(getattr(old_cfg, f.name))
         for f in dataclasses.fields(new_cfg_cls)

@@ -446,11 +446,17 @@ def test_add_agent_call_then_connect_derives_contract_at_compile(tools, with_age
 
 
 def test_call_port_cannot_target_non_agent(tools, with_agent):
-    """call_agent 포트는 에이전트로만 나갈 수 있다."""
+    """call_agent 포트는 에이전트로만 나갈 수 있다.
+
+    대상은 **배치 가능한** 비-에이전트여야 한다 — 선언적 스킬은 이제
+    `place_component` 게이트가 먼저 막으므로(배치되지 않는 종류) 이 규칙을
+    시험하지 못한다.
+    """
+    tools.create_skill("probe", description="탐색")
+    tools.place_component("probe", x=400, y=0)
     tools.add_agent_call("init", "delegate")
-    tools.place_component("rules", x=400, y=0)
     with pytest.raises(ValueError, match="에이전트가 아닌"):
-        tools.connect_states("init", "rules", trigger="delegate")
+        tools.connect_states("init", "probe", trigger="delegate")
 
 
 def test_add_agent_call_rejects_component_without_call_ports(tools):

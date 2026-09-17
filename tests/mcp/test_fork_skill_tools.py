@@ -105,6 +105,19 @@ def test_sync_to_async_keeps_agent_and_drops_nothing(tools, window):
     assert skill.config.agent == "Plan"
 
 
+def test_sync_to_async_keeps_allowed_tools(tools, window):
+    """sync ↔ async는 드롭이 없다 — `allowed_tools`는 fork config의 실필드다.
+
+    드롭 집합을 대상 종류만 보고 정하면 빈 기본값에 가려 눈에 띄지 않는 채
+    사용자가 적어 둔 도구 목록이 사라진다.
+    """
+    tools.convert_skill("init", "sync_fork")
+    _skill(window, "init").config.allowed_tools = ["Read", "Grep"]
+    out = tools.convert_skill("init", "async_fork")
+    assert out["dropped"] == {}
+    assert _skill(window, "init").config.allowed_tools == ["Read", "Grep"]
+
+
 def test_convert_back_to_procedural_drops_agent_attribute(tools, window):
     tools.convert_skill("init", "async_fork")
     out = tools.convert_skill("init", "procedural")

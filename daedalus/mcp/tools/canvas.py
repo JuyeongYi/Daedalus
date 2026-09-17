@@ -25,13 +25,32 @@ class CanvasTools(_BaseTools):
     def place_component(
         self, name: str, x: float = 0.0, y: float = 0.0
     ) -> dict[str, Any]:
-        """스킬/에이전트를 캔버스에 배치한다."""
+        """스킬/에이전트를 캔버스에 **상태 노드로** 배치한다.
+
+        배치 가능 판정의 실체는 `model/plugin/placement.is_state_placeable`
+        하나다(캔버스 드롭·레지스트리·"여기에 만들기"와 공용) — 표면마다
+        음성 목록을 따로 들면 MCP만 조용히 엉뚱한 노드를 만든다(원칙 1·5).
+        """
         from daedalus.model.fsm.state import SimpleState
+        from daedalus.model.plugin.placement import is_state_placeable
+        from daedalus.model.plugin.skill import is_reference_usage
         from daedalus.view.commands.state_commands import CreateStateCmd
         from daedalus.view.viewmodel.state_vm import StateViewModel
 
         vm, fsm = self._scope()
         comp = self._find_component(name)
+        if not is_state_placeable(comp):
+            if is_reference_usage(comp):
+                raise ValueError(
+                    f"'{comp.name}'은(는) 참조 용도라 상태 노드가 될 수 "
+                    f"없습니다 — 참조 노드는 place_reference로 놓습니다."
+                )
+            raise ValueError(
+                f"'{comp.name}'({comp.kind})은(는) 캔버스에 배치되지 않는 "
+                f"종류입니다 — 배경 스킬(declarative)·전이 스킬(transfer)은 "
+                f"그래프 노드가 아니고, fork 에이전트는 fork 스킬의 실행 "
+                f"기반이라 노드가 되지 않습니다."
+            )
         state = SimpleState(name=comp.name, skill_ref=comp)
         svm = StateViewModel(model=state, x=float(x), y=float(y))
         vm.execute(CreateStateCmd(vm, svm, fsm=fsm))

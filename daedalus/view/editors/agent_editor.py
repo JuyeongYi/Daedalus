@@ -96,8 +96,11 @@ class AgentEditor(QWidget):
 
         # fork 에이전트에는 포트도 그래프 도착 경로도 없다 — 부르는 것은 fork
         # 스킬이고 결과 분기는 그 스킬의 보고 양식이 정한다. 없는 필드를
-        # 그리려 들면 AttributeError다.
-        self._is_workflow = hasattr(self._agent, "transfer_on")
+        # 그리려 들면 AttributeError다. 판정은 **클래스**로 한다 —
+        # hasattr는 유령 인스턴스 속성 하나에 속는다(원칙 1).
+        from daedalus.model.plugin.agent import AgentDefinition
+
+        self._is_workflow = isinstance(self._agent, AgentDefinition)
         self._transfer_on_panel = None
         self._call_agents_panel = None
         self._callers_panel = None

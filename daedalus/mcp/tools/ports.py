@@ -53,7 +53,10 @@ class PortTools(_BaseTools):
         각 전이의 trigger로 어느 갈래인지 지정할 수 있다.
 
         참조 용도로 고정된 랩핑 스킬은 거절한다(WP-WR) — 참조는 워크플로
-        단계가 아니라 출력 포트가 무의미하다.
+        단계가 아니라 출력 포트가 무의미하다. **fork 에이전트도 거절한다** —
+        `SetAttrCmd`가 `getattr(..., None)` 폴백이라 가드가 없으면 없는 필드가
+        인스턴스 속성으로 생기고 성공 응답이 돌아간 뒤 저장 한 번에 사라진다
+        (원칙 5 — 조용한 실패 금지).
         """
         from daedalus.model.plugin.skill import WrappedSkill, is_reference_usage
         from daedalus.view.commands.attr_commands import SetAttrCmd
@@ -63,6 +66,12 @@ class PortTools(_BaseTools):
             raise ValueError(
                 f"'{name}'은 참조 용도로 고정된 랩핑 스킬입니다 — 참조는 "
                 "워크플로 단계가 아니라 출력 포트를 갖지 않습니다."
+            )
+        if not hasattr(comp, "transfer_on"):
+            raise ValueError(
+                f"'{name}'은(는) 출력 포트를 갖지 않습니다 — fork 에이전트는 "
+                "fork 스킬의 실행 기반이라 갈래가 없습니다(갈래는 그 fork "
+                "스킬의 보고 양식이 정합니다)."
             )
         defs = self._make_event_defs(events)
         self._vm.execute(
@@ -80,16 +89,16 @@ class PortTools(_BaseTools):
     def _require_call_port_owner(comp: Any, name: str) -> Any:
         """에이전트 호출 포트를 가질 수 있는 컴포넌트인지 확인하고 그대로 돌려준다.
 
-        절차형 스킬·state 용도 랩핑 스킬·**에이전트**(2026-09-12 — CC 중첩 스폰
-        허용)가 대상이다. 선언적/참조 스킬과 참조 용도 랩퍼는 워크플로 단계가
-        아니라 호출 포트가 무의미하다.
+        단계 스킬(절차형·fork 2종)·state 용도 랩핑 스킬·**워크플로 에이전트**
+        (2026-09-12 — CC 중첩 스폰 허용)가 대상이다. 선언적/참조 스킬, 참조
+        용도 랩퍼, fork 에이전트는 워크플로 단계가 아니라 호출 포트가 무의미하다.
         """
         from daedalus.model.plugin.skill import is_reference_usage
 
         if not hasattr(comp, "call_agents") or is_reference_usage(comp):
             raise ValueError(
-                f"'{name}'에는 에이전트 호출 포트를 붙일 수 없습니다 — 절차형 스킬, "
-                f"state 용도 랩핑 스킬, 에이전트만 가능합니다."
+                f"'{name}'에는 에이전트 호출 포트를 붙일 수 없습니다 — 단계 스킬"
+                f"(절차형·fork), state 용도 랩핑 스킬, 워크플로 에이전트만 가능합니다."
             )
         return comp
 
