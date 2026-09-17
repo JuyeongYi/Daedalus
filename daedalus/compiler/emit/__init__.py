@@ -17,7 +17,7 @@ WP-RF-3a: 구 단일 모듈 ``compiler/emit.py``를 패키지로 분해했다 (�
   sections.py    — 공용 단락 (가드/트리거·FSM 절차 서술·요구 환경(MCP)·
                    블랙보드·tool_shelf)
   skill.py       — SKILL.md 조립 (다음 단계·작업 재개·진입 맥락 + compile_skill)
-  agent.py       — 에이전트 .md 조립 (출구·호출 계약·skills 합류·호출 파라미터
+  agent.py       — 에이전트 .md 조립 (출구·호출 계약(종류별)·skills 합류
                    + compile_agent)
   hooks.py       — hooks.json·훅 스크립트 (compile_hooks_json/compile_hook_scripts)
   manifest.py    — plugin.json·schemas.json·경로 변수 확장
@@ -156,6 +156,7 @@ from daedalus.compiler.emit.agent import (
     _call_contract_section,
     _describe_agent_fsm,
     _emit_agent_field,
+    _fork_base_contract_section,
     _frontmatter_lines_agent,
     _local_settings_frontmatter_lines,
     _settings_note_agent,

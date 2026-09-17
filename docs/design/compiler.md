@@ -34,10 +34,22 @@
     ④ **진행 기록 정합:** TransferSkill의 "## Progress Record"는 "You are a step on the transition itself, not a position in the workflow: leave `current` … record what happened … in `note`"라고 못 박는다. `current`의 단위는 **플러그인 FSM(프로젝트 그래프 배치)의 위치**인데(WP-RS) T는 배치가 아니라 엣지 위의 단계이므로 `current`를 소유하지 않는다 — 출발 스킬이 "set `current` to the next target"이라 말하는 것과 이 지시가 정확히 짝을 이룬다(T가 자기를 `current`에 쓰면 두 지시가 충돌한다).
 
 6-b. **다음 단계 (project.graph 기반)**: `compile_skill(skill, project=...)`이 `project.graph`에서 그 스킬 placement(skill_ref identity 일치)의 outgoing 전이를 모아 SKILL.md 본문 끝에 **"## 다음 단계"** 단락을 배출한다(버그 2 — 인보크/전이 문구 누락 해소). 형식: 스킬 타깃은 `- [<조건>] → \`<skill>\` 스킬을 인보크하라`, 에이전트 타깃은 `에이전트 \`X\`에게 위임하라` + **그 에이전트 placement의 outgoing을 한 단계 인라인**("위임 완료 후: [조건] → \`C\` 스킬을 인보크하라" — 에이전트는 별도 컨텍스트라 자기 .md에 호출자 지침을 담을 수 없으므로 호출자 스킬 쪽에 후속 지시를 둔다). 조건은 `_transition_condition`(트리거+가드) 재사용, 무가드·무트리거 전이는 "무조건". outgoing 0개면 단락 생략. **에이전트 .md에는 다음 단계 단락 없음**(스킬 + project 인수 있을 때만). EntryPoint outgoing(시작 스킬)은 v1에서 스킬별 단락에 영향 없음.
-7. **에이전트**: `emit==FRONTMATTER`만 프론트매터, INVOCATION(max_turns/background/isolation)은 "호출 파라미터" 본문 단락,
+7. **에이전트**: `emit==FRONTMATTER`만 프론트매터,
    SETTINGS(hooks/mcp_servers)는 **MARKETPLACE 빌드에서만** "요구 환경" 언급으로 나간다. `config.tools`의 `mcp__<server>__` 접두에서
    추출한 서버 이름(WP-TM, 11번 항목과 동일 규칙)도 `mcp_servers` 선언과 합쳐(중복 제거·이름순) 같은 "MCP 서버 연결" 줄에 담는다 — 별도 단락을 추가하지 않는다.
    **LOCAL 빌드는 이 둘을 프론트매터로 실제 배출한다(WP-LA, 16번 항목)** — 그때는 "요구 환경" 단락을 내지 않는다(같은 사실을 두 번 말하는 데다 "설정 파일을 생성하지 않음" 문구가 거짓이 된다).
+   프론트매터 매트릭스는 **종류가 고른다** — `matrix_for(agent)`가 `agent.config.kind`(`"agent"`/`"fork_agent"`)로 `AGENT_FIELD_MATRIX`의 표를 고르고,
+   그 표에 없는 필드는 **부재 = 비적용**으로 건너뛴다(스킬 프론트매터와 같은 규약). fork 에이전트 표에는 `background`·`isolation` 행이 없어 그 두 키가 나오지 않는다.
+
+7-b. **에이전트 종류별 본문 (WP-FK2 C2)**: `compile_agent`는 `is_workflow = isinstance(agent, AgentDefinition)` **하나로 갈린다** —
+   fork 에이전트(`ForkAgent`)에는 fsm도 출력 포트도 배치도 없으므로 그래프 유도 단락을 가드 없이 부르면 없는 필드를 역참조해 죽는다.
+   - **워크플로 에이전트**: 본문 → "## Invocation Contract"(`_call_contract_section` — 그래프 도착 전이) → "## Delegation" → "## Requirements" →
+     "## Internal Workflow"(legacy FSM) → "## Exits" → tool_shelf → 블랙보드. **fork 실행 기반 줄은 나오지 않는다** — 워크플로 에이전트는
+     fork 에이전트가 될 수 없다(검증 `fork_agent_wrong_kind`).
+   - **fork 에이전트**: 본문 → "## Invocation Contract"(`_fork_base_contract_section` — 자기를 실행 기반으로 쓰는 fork 스킬 줄만,
+     `fork_skills_using`) → "## Requirements" → tool_shelf → 블랙보드. Delegation·Internal Workflow·Exits는 없다("## Exits"를 내면
+     fork 스킬의 `EXIT/NEXT` 양식과 부딪힌다). 어느 fork 스킬도 가리키지 않으면 단락 자체가 생략되고 검증 경고 `unused_fork_agent`가 그것을 짚는다.
+   `project=None`으로 불러도 두 종류 모두 예외 없이 컴파일된다(그래프 유도 단락이 전부 생략된다).
 8. **컴파일 게이트**: `Validator.validate_project`의 에러(`is_warning=False`) 1건이라도 있으면 거부(파일 미생성, errors 반환). 경고는 통과(warnings 동봉).
    게이트 강화 3종(파일 쓰기 전 산출 계획 단계): ① 산출 이름이 되는 컴포넌트(스킬·에이전트) **및 프로젝트 이름**의 이름이
    `^[a-z0-9][a-z0-9-]*$` 불일치면 `compile_invalid_component_name` **에러로 승격** 거부 (F7 검증기에서는 경고 등급 유지 — 편집 중에는 경고가 맞다). 프로젝트 이름은 plugin.json의 `name`(플러그인 식별자)이 되므로 동일 규약을 적용한다.
@@ -165,24 +177,45 @@
     받는 쪽 에이전트의 "## Invocation Contract"(13번)는 호출자가 스킬이든 에이전트든 같은
     경로로 유도되므로 별도 처리가 없다.
 
-20. **fork 스킬 (2026-09-13, `emit/fork.py`)**: CC는 fork 스킬 본문을 `agent` 서브에이전트의 작업 지시로
-    쓴다(모델·실측은 `plugin-model.md` "fork 스킬").
-    - 프론트매터에 `context: fork`(매트릭스 FIXED)와 `agent:`를 낸다. 기본값 `general-purpose`도 **명시
-      배출**한다(결정적·읽는 사람에게 분명). 프로젝트 에이전트는 MARKETPLACE `플러그인:이름` / LOCAL `이름`
+20. **fork 스킬 2종 (2026-09-13, 2종 분리 2026-09-17, `emit/fork.py`)**: CC는 fork 스킬 본문을 `agent`
+    서브에이전트의 작업 지시로 쓴다(모델·실측은 `plugin-model.md` "fork 스킬"). 종류는 `SyncForkSkill`(동기)와
+    `AsyncForkSkill`(비동기) 둘이고, **산출을 가르는 것은 클래스가 아니라 매트릭스**다(`config.kind` →
+    `sync_fork`/`async_fork`).
+    - 프론트매터에 `context: fork`·`agent:`·`background:`를 낸다. 셋 다 매트릭스가 정하고(`context`·`background`는
+      FIXED) `fork_frontmatter_lines`는 `agent:` **이름 해소만** 한다. 기본값 `general-purpose`도 **명시 배출**한다
+      (결정적·읽는 사람에게 분명). 프로젝트 에이전트는 MARKETPLACE `플러그인:이름` / LOCAL `이름`
       (`resolve_fork_agent_name`), 내장·외부는 저장된 문자열 그대로다(정확 일치).
-    - 배치된 fork는 `background: false` — 기본은 백그라운드라 부른 쪽이 보고를 기다리지 않고, 그러면 보고로
-      분기를 고를 수 없다.
+    - `background`는 **배치 여부와 무관하게 항상** 나간다 — 동기 fork `false`, 비동기 fork `true`. 키를 빼면
+      CC 기본값(백그라운드)으로 돌아 산출이 침묵한다. 키 순서는 enum 선언 순서라 `context` → `agent` → `background`.
     - **서브에이전트는 다음 단계를 시작하지도, 진행 기록을 쓰지도 않는다** — fork 에이전트가 `Explore`/`Plan`이면 상태 파일
       쓰기가 어색하고, 메인에는 SKILL.md가 보이지 않는다. 대신 **보고가 지시가 된다**: 배치된 fork는
       "## Next Steps"/진행 갱신 규칙/"## Finishing Up" 대신 **"## Report"**(`fork_report_section`)를 낸다 —
       갈래 목록(Next Steps와 같은 줄) + 보고 첫 줄 `EXIT: <branch> / NEXT: /<skill>` + 끝에 메인이 실행할
       `daedalus-bb … progress set …` 명령. 터미널 배치면 `EXIT: done / NEXT: (end)` + `--current done`.
-    - "## Resuming Work"는 내지 않는다(서브에이전트는 사용자에게 되묻거나 진행 파일을 쓸 수 없다 — 재개 판단은
-      부르는 메인 몫). "## Entry Context"·블랙보드 단락은 그대로다. 미배치 fork는 `background`·Report가 없다.
-    - fork 에이전트로 쓰이는 프로젝트 에이전트 `.md`의 "## Invocation Contract"에 `- Execution base of fork skill \`X\` …`
-      줄이 유도된다(`fork_skills_using`) — 캔버스에 선이 없으니 여기서 말하지 않으면 그 쓰임을 모른다.
-      캔버스에 놓이지 않고 fork 에이전트로만 쓰이는 에이전트는 "## Exits"를 내지 않는다 — 분기할 그래프가 없고,
-      보고 첫 줄은 fork 스킬의 `EXIT/NEXT` 양식이 정한다(두 지시가 부딪히면 `EXIT: done`으로 잘못 적는다).
+      갈래 목록·`EXIT/NEXT` 양식·진행 명령은 **두 종류가 같다**. 도입 문구와 선행 조건만 갈린다.
+    - **비동기 fork의 도입 문구는 "메인은 기다리지 않는다"라고 단정하지 않는다**: `background: true`여도
+      비대화 `claude -p`/Agent SDK, `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1`, 같은 스킬이 아직 도는 중의 재호출,
+      스케줄 작업 발화에서는 **강제로 인라인 실행**된다(공식 문서 2026-09-17 확인). 단정하면 인라인으로 돌아온 경우
+      메인이 오지 않을 작업 알림을 기다린다. 그래서 두 경로를 다 말하고("normally … as a task notification (… it is
+      delivered inline instead)") 지시는 하나로 준다("do not start the next step and do not update the progress file").
+    - **비동기 fork가 도는 동안의 `current` 소유 — 3단 규약 (사용자 확정 2026-09-18).** 진행 파일은 플러그인당
+      항목이 하나라 "지금 도는 비동기 단계"를 적을 자리가 없다. ① **호출자**는 비동기 fork로 넘기는 갈래가 있으면
+      "## Next Steps" 진행 명령 뒤에 `--current <that fork> --note "awaiting background fork"` 규약 1줄을 받는다
+      (`_async_fork_handoff_note`). ② **비동기 fork의 "## Report"**는 진행 명령 **앞에** 선행 조건 1줄을 둔다 —
+      `run <cli> read first. Only if \`current\` is still \`<이 스킬>\` …; if it moved on, do not touch the progress
+      file — report this result to the user and stop`(`_async_progress_precondition`). 없으면 뒤늦게 온 보고가 이미
+      앞으로 나간 워크플로의 `current`를 과거로 되돌린다. **진행 파일 스키마는 불변이다**(항목 하나·같은 키).
+      규약의 3단계(재개 규칙 쪽에서 "도는 중인 비동기 fork가 `current`면 사용자 확인 대상이 아니다"라고 말하는 문장)는
+      아직 산출되지 않는다 — `docs/backlog.md` 참조.
+    - **호출자 쪽 표기**: 비동기 fork를 가리키는 갈래 줄에 접미
+      `(background fork — do not block on it; act on its report as soon as you have it, whether it comes back inline
+      in this turn or later as a task notification)`가 붙는다. 비동기 fork **에서** 오는 진입 맥락 항목은
+      `- entered when background fork \`X\` reported …`다(그 fork가 다음 단계를 부른 것이 아니라, 보고를 받은 메인이
+      시작시켰다). 동기 fork는 양쪽 다 문구 변화가 없다.
+    - "## Resuming Work"는 **두 종류 모두** 내지 않는다(서브에이전트는 사용자에게 되묻거나 진행 파일을 쓸 수 없다 —
+      재개 판단은 부르는 메인 몫). "## Entry Context"·절차·tool_shelf·블랙보드 단락은 절차형과 같다. 미배치 fork는
+      `background`는 나가고 "## Report"는 없다(분기할 그래프가 없다).
+    - fork 에이전트 산출은 7-b 항목 참조.
 
 출력은 결정적(같은 모델 → 같은 텍스트), LF 줄바꿈, UTF-8(BOM 없음). 텍스트 생성(`compile_skill`/`compile_agent`)은 파일시스템과 분리되어 문자열 단위 테스트 가능.
 
@@ -198,7 +231,7 @@ description, 블랙보드 클래스·필드 설명 …)은 손대지 않고 그�
 - **주요 헤딩 대응:** `## Next Steps` / `## Resuming Work` / `## Entry Context` /
   `## Shared State (Blackboard)` / `## Invocation Contract` / `## Exits` /
   `## Procedure` / `## Output Events` / `## Requirements` /
-  `## Invocation Parameters` / `## Progress Record` / `## Finishing Up` / `## Report` /
+  `## Progress Record` / `## Finishing Up` / `## Report` /
   `## Internal Workflow` / `## Reference: Tool Shelf`.
 - **제외(한국어 유지):** `ValidationError` 메시지와 컴파일 게이트 경고(설계자가
   읽는 것이지 산출에 나가지 않는다), 내부 예외 메시지, GUI 문자열, 사용자 정의

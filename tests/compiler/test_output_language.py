@@ -30,13 +30,20 @@ from daedalus.model.fsm.section import EventDef
 from daedalus.model.fsm.state import SimpleState
 from daedalus.model.fsm.transition import Transition
 from daedalus.model.fsm.variable import FieldType
-from daedalus.model.plugin.agent import AgentDefinition
+from daedalus.model.plugin.agent import AgentDefinition, ForkAgent
+from daedalus.model.plugin.config import (
+    AsyncForkSkillConfig,
+    SyncForkSkillConfig,
+)
 from daedalus.model.plugin.enums import BuildTarget
 from daedalus.model.plugin.hook import CommandHook, HookDef, HookEvent
 from daedalus.model.plugin.skill import (
+    AsyncForkSkill,
     DeclarativeSkill,
+    ForkSkill,
     ProceduralSkill,
     ReferenceSkill,
+    SyncForkSkill,
     TransferSkill,
 )
 from daedalus.model.plugin.tool import UserDefinedTool
@@ -63,6 +70,24 @@ def _proc(name: str) -> ProceduralSkill:
     )
     skill.when_to_use = "the user asks for a report"
     skill.body = "Gather the facts, then write them down."
+    return skill
+
+
+def _fork(name: str, flavor: str) -> ForkSkill:
+    """fork 2종 픽스처 — 사용자 값은 전부 영어다(남는 한글은 컴파일러 소산)."""
+    cls, cfg = (
+        (AsyncForkSkill, AsyncForkSkillConfig) if flavor == "async"
+        else (SyncForkSkill, SyncForkSkillConfig)
+    )
+    s = SimpleState(name="survey")
+    skill = cls(
+        fsm=StateMachine(name=f"{name}-fsm", initial_state=s, states=[s]),
+        name=name, description="Scout the repository",
+        config=cfg(agent="scout-base"),
+    )
+    skill.when_to_use = "the workflow needs a survey"
+    skill.body = "Look around and write down what you find."
+    skill.transfer_on = [EventDef(name="done", description="survey finished")]
     return skill
 
 
@@ -108,10 +133,17 @@ def english_project() -> PluginProject:
         ),
     ])
 
+    sync_fork = _fork("scout", "sync")
+    async_fork = _fork("probe", "async")
+    fork_base = ForkAgent(
+        name="scout-base", description="Execution base for the survey forks",
+    )
+    fork_base.body = "Survey only; change nothing."
+
     project = PluginProject(
         name="demo", description="A demo plugin", version="1.0.0",
-        skills=[alpha, beta, transfer, knowledge, doc],
-        agents=[agent],
+        skills=[alpha, beta, transfer, knowledge, doc, sync_fork, async_fork],
+        agents=[agent, fork_base],
         blackboard=blackboard,
         tool_shelf=[
             UserDefinedTool(
@@ -129,7 +161,9 @@ def english_project() -> PluginProject:
     na = SimpleState(name="alpha", skill_ref=alpha)
     nb = SimpleState(name="beta", skill_ref=beta)
     ng = SimpleState(name="runner", skill_ref=agent)
-    project.graph.states.extend([na, nb, ng])
+    ns = SimpleState(name="scout", skill_ref=sync_fork)
+    npb = SimpleState(name="probe", skill_ref=async_fork)
+    project.graph.states.extend([na, nb, ng, ns, npb])
     project.graph.transitions.extend([
         Transition(
             source=na, target=nb, trigger=CompletionEvent(name="done"),
@@ -137,6 +171,13 @@ def english_project() -> PluginProject:
         ),
         Transition(source=na, target=ng, trigger=CompletionEvent(name="delegate")),
         Transition(source=ng, target=nb, trigger=CompletionEvent(name="ok")),
+        # fork 2종 — 배치돼야 "## Report"가 나온다. alpha가 둘 다 불러서 호출자
+        # 쪽 접미(비동기 갈래)·`current` 이관 규약도 산출에 실린다. beta는
+        # 터미널로 남긴다(outgoing 0 — "## Finishing Up" 게이트).
+        Transition(source=na, target=ns, trigger=CompletionEvent(name="survey")),
+        Transition(source=na, target=npb, trigger=CompletionEvent(name="probe-it")),
+        Transition(source=ns, target=nb, trigger=CompletionEvent(name="found")),
+        Transition(source=npb, target=nb, trigger=CompletionEvent(name="checked")),
     ])
     return project
 
@@ -175,6 +216,39 @@ def test_terminal_skill_output_is_english(english_project):
     text = compile_skill(beta, project=english_project)
     assert "## Finishing Up" in text
     _assert_english(text, "터미널 배치")
+
+
+@pytest.mark.parametrize(
+    "name,marker",
+    [
+        ("scout", "Do not start the next step"),          # sync fork 도입
+        ("probe", "usually does not wait for you"),        # async fork 도입
+    ],
+)
+def test_fork_skill_outputs_are_english(english_project, name, marker):
+    """fork 2종의 "## Report"는 종류별 도입 문구를 갖는다 — 둘 다 영어여야 한다."""
+    fork = next(s for s in english_project.skills if s.name == name)
+    text = compile_skill(fork, project=english_project)
+    assert "## Report" in text
+    assert marker in text
+    _assert_english(text, f"fork 스킬 '{name}'")
+
+
+def test_fork_agent_output_is_english(english_project):
+    base = next(a for a in english_project.agents if a.name == "scout-base")
+    text = compile_agent(base, project=english_project)
+    assert "Execution base of fork skill `probe`" in text
+    assert "Execution base of fork skill `scout`" in text
+    _assert_english(text, "fork 에이전트 'scout-base'")
+
+
+def test_async_fork_caller_sections_are_english(english_project):
+    """호출자 쪽 비동기 갈래 접미·`current` 이관 문구도 게이트 대상이다."""
+    alpha = next(s for s in english_project.skills if s.name == "alpha")
+    text = compile_skill(alpha, project=english_project)
+    assert "(background fork — do not block on it" in text
+    assert 'Handing off to a background fork (`probe`)' in text
+    _assert_english(text, "비동기 fork 호출자 'alpha'")
 
 
 def test_transfer_skill_output_is_english(english_project):

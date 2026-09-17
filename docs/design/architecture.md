@@ -29,7 +29,8 @@ GUI는 PySide6 노드 에디터(`view/`), 앱 내장 MCP 서버(`mcp/`)가 CC와
 | `model/validation/` | Validator — `machine_rules` + `project_rules/`(그룹 믹스인), 등급은 `severity.WARNING_RULES` |
 | `model/package.py`·`outline.py`·`templates.py` | 폴더=프로젝트/`.ddpj` · 본문 아웃라인 파생 인덱스 · 시작 템플릿 |
 | `compiler/emit/` | 모델 → 텍스트(SKILL.md/agent .md/hooks/manifest/schemas, 랩핑 실행 에이전트 `wrapped.py`). 재-export 파사드 |
-| `compiler/project_compiler.py` | `compile_project` — 검증 게이트 + 산출 계획 + 쓰기 + LOCAL 설치 배선 |
+| `compiler/plan.py` | 산출 계획 — `_plan_outputs`(경로 집합) + 이름 규약·경로 충돌·훅 스크립트 이름 게이트 |
+| `compiler/project_compiler.py` | `compile_project` — 검증 게이트 + (plan.py 계획) + 쓰기 + LOCAL 설치 배선. 계획 쪽 이름 재-export |
 | `compiler/workspace.py`·`wiring.py`·`token_report.py` | CLAUDE.md 구역 병합·rules 렌더 · `.mcp.json`/settings 병합 · 토큰 리포트(표시 전용) |
 | `mcp/` | 앱 내장 MCP 서버 — `tools/`(도메인 믹스인), `service.py`(HTTP 수명주기), `invoker.py`(메인 스레드 마샬링) |
 | `cli/` | `daedalus-bb` — 블랙보드 read/init/write/validate/list + progress |
@@ -181,8 +182,12 @@ daedalus/
 │   │   │                   #   (background: false)/fork_report_section("## Report")/fork_skills_using(fork 에이전트 호출 계약)
 │   │   ├── hooks.py        #   compile_hooks_json/compile_hook_scripts (진행 상태 합성 훅 포함)
 │   │   └── manifest.py     #   compile_plugin_manifest/compile_schemas_json + 경로 변수 확장(expand_root_token)
+│   ├── plan.py             # 산출 계획(WP-FK2 C0 분해, 이동만) — _PlannedOutput/_plan_outputs/_hook_script_name_conflicts/
+│   │                       #   _iter_tree_files/_is_link_like/_skill_dir_name/SKILL_FILES_DIRNAME/_OUTPUT_NAME_RE.
+│   │                       #   "무엇이 어디로 나가는가"와 계획 단계 게이트(이름 규약·경로 충돌·훅 스크립트 이름)만 담는다.
+│   │                       #   project_compiler가 전부 재-export한다(기존 임포트 경로 불변 — tests/compiler/test_plan_facade.py가 고정).
 │   ├── project_compiler.py # compile_project(project, out_dir=None, files_dir=None, resolved_hooks=None, dry_run=False) → CompileResult
-│   │                       #   (검증 게이트 + 파일 쓰기)
+│   │                       #   (검증 게이트 + 파일 쓰기. 계획은 plan.py)
 │   │                       # files_dir(WP-FR, 선택): 실존 디렉토리면 <out>/files/ 정렬 순회 복사(_copy_files_tree, 심볼릭 링크 미추종) +
 │   │                       #   dangling_file_ref 스캔(_scan_dangling_file_refs). 생략 시 기존 산출 완전 불변(하위 호환).
 │   │                       # LOCAL 빌드는 컴파일이 곧 설치(WP-MW) — .claude/ 반입 + _wire_local_install(컴파일 정책 15번 참조).

@@ -1,6 +1,13 @@
 # daedalus/compiler/emit/agent.py
 """에이전트 .md 조립 — 프론트매터(skills 합류·LOCAL hooks/mcpServers)·호출
-계약(그래프 유도)·내부 워크플로(legacy)·출구(transfer_on) + `compile_agent`.
+계약·내부 워크플로(legacy)·출구(transfer_on) + `compile_agent`.
+
+호출 계약은 에이전트 종류마다 다른 단락이다(WP-FK2 C2): 워크플로 에이전트
+(`AgentDefinition`)는 프로젝트 그래프의 도착 전이에서 유도하고
+(`_call_contract_section`), fork 에이전트(`ForkAgent`)는 자기를 실행 기반으로 쓰는
+fork 스킬 목록만 낸다(`_fork_base_contract_section`). 그래프 유도 단락 전부는
+`compile_agent`의 `is_workflow` 가드 뒤에 있다 — fork 에이전트에는 fsm도 포트도
+배치도 없어 가드 없이 부르면 AttributeError로 죽는다.
 """
 from __future__ import annotations
 
@@ -252,6 +259,39 @@ def _settings_note_agent(agent: AgentDefinition, project=None) -> list[str]:
     return blocks
 
 
+def _fork_base_contract_section(agent, project) -> list[str]:
+    """fork 에이전트의 "## Invocation Contract" — fork 스킬 실행 기반 줄만.
+
+    fork 에이전트는 캔버스에 놓이지 않으므로 도착 전이가 없다(그래프 유도 항목이
+    구조적으로 0건이다). 그 대신 **누가 자기를 실행 기반으로 쓰는지**를 말한다 —
+    fork 스킬 본문이 작업 지시로 오고 이 파일은 시스템 프롬프트가 된다(실측
+    2026-09-13). 캔버스에 선이 없으니 여기서 말하지 않으면 이 에이전트를 고치는
+    사람이 그 쓰임을 모른다.
+
+    어떤 fork 스킬도 가리키지 않으면 단락 생략 — 그 상태는 검증 경고
+    `unused_fork_agent`가 따로 짚는다(산출은 침묵한다).
+    """
+    if project is None:
+        return []
+    from daedalus.compiler.emit.fork import fork_skills_using
+
+    lines = [
+        f"- Execution base of fork skill `{name}` — that skill's instructions "
+        f"arrive as your task; this file sets your role and limits."
+        for name in fork_skills_using(agent, project)
+    ]
+    if not lines:
+        return []
+    return [
+        "## Invocation Contract",
+        (
+            "This agent is invoked through the paths below. What you receive is "
+            "whatever the Shared State (Blackboard) section declares as reads."
+        ),
+        *lines,
+    ]
+
+
 def _call_contract_section(agent: AgentDefinition, project) -> list[str]:
     """"## Invocation Contract" — 그래프에서 유도한다 (WP-CT, 수동 계약 카드 퇴역).
 
@@ -264,19 +304,13 @@ def _call_contract_section(agent: AgentDefinition, project) -> list[str]:
 
     수동 계약 카드는 v2에서 삭제됐다(v1 파일의 카드는 로드 시 드롭) — 같은
     사실의 소스가 둘이면 반드시 어긋난다.
+
+    **워크플로 에이전트 전용이다.** fork 실행 기반 줄은 여기서 나오지 않는다 —
+    워크플로 에이전트는 fork 에이전트가 될 수 없고(`fork_agent_wrong_kind`),
+    fork 에이전트 쪽은 `_fork_base_contract_section`이 담당한다(WP-FK2 C2).
     """
     if project is None:
         return []
-    from daedalus.compiler.emit.fork import fork_skills_using
-
-    # fork 에이전트로 쓰일 때 — 그 스킬 본문이 작업 지시로 오고 이 파일은
-    # 시스템 프롬프트가 된다(실측). 캔버스에 선이 없으니 여기서 말하지 않으면
-    # 이 에이전트를 고치는 사람이 그 쓰임을 모른다(2026-09-13).
-    fork_lines = [
-        f"- Execution base of fork skill `{name}` — that skill's instructions "
-        f"arrive as your task; this file sets your role and limits."
-        for name in fork_skills_using(agent, project)
-    ]
     graph = getattr(project, "graph", None)
 
     # (caller, port, desc, guard, transfer, transfer_desc) — transfer는 호출
@@ -309,7 +343,7 @@ def _call_contract_section(agent: AgentDefinition, project) -> list[str]:
         transfer_desc = (getattr(transfer_ref, "description", "") or "").strip()
         entries.append((caller, port, desc, guard, transfer, transfer_desc))
 
-    if not entries and not fork_lines:
+    if not entries:
         return []
     entries.sort(key=lambda e: (e[0], e[1]))
     blocks: list[str] = [
@@ -319,7 +353,6 @@ def _call_contract_section(agent: AgentDefinition, project) -> list[str]:
             "whatever the Shared State (Blackboard) section declares as reads."
         ),
     ]
-    blocks.extend(fork_lines)
     for caller, port, desc, guard, transfer, transfer_desc in entries:
         line = (
             f"- from `{caller}` via port `{port}`" if port else f"- from `{caller}`"
@@ -419,12 +452,14 @@ def compile_agent(
     if body_block is not None:
         blocks.append(body_block)
 
-    # 호출 계약(WP-CT) — fork 스킬 실행 기반 줄 + 그래프 유도 도착 경로.
-    # fork 에이전트에는 도착 경로가 없어 실행 기반 줄만 남는다.
-    blocks.extend(_call_contract_section(agent, project))
+    # 호출 계약(WP-CT) — 두 역할이 다른 단락이다: 워크플로 에이전트는 그래프
+    # 도착 경로, fork 에이전트는 자기를 실행 기반으로 쓰는 fork 스킬 목록.
     if is_workflow:
+        blocks.extend(_call_contract_section(agent, project))
         # 이 에이전트가 부르는 다른 에이전트 (2026-09-12 — CC 중첩 스폰)
         blocks.extend(_agent_delegation_section(agent, project))
+    else:
+        blocks.extend(_fork_base_contract_section(agent, project))
 
     # 요구 환경(SETTINGS 언급) — LOCAL 빌드는 프론트매터가 대신하므로 생략된다
     blocks.extend(_settings_note_agent(agent, project))
@@ -434,11 +469,11 @@ def compile_agent(
         blocks.extend(_describe_agent_fsm(agent))
 
         # 출구 — 출력 포트(transfer_on). 호출자 그래프가 이 이름으로 분기한다.
-        # 캔버스에 놓이지 않고 fork 에이전트로만 쓰이면 분기할 그래프가 없고, 보고 첫
-        # 줄은 fork 스킬의 `EXIT: … / NEXT: …` 양식이 정한다 — 출구 단락을 내면 두
-        # 지시가 부딪혀 `EXIT: done`처럼 잘못 적는다(2026-09-13).
-        if not _is_fork_agent_only(agent, project):
-            blocks.extend(_agent_outputs_section(agent))
+        # fork 에이전트에는 아예 없다(포트가 없다) — 보고 첫 줄은 fork 스킬의
+        # `EXIT: … / NEXT: …` 양식이 정하므로 두 지시가 부딪힐 자리가 없어졌다
+        # (WP-FK2: 종류가 갈리기 전에는 `_is_fork_agent_only` 휴리스틱이 이 일을
+        # 했다 — project=None이면 보호가 되지 않던 판정이다).
+        blocks.extend(_agent_outputs_section(agent))
 
     if project is not None:
         # 링크된 참조 용도 랩핑 스킬은 본문 consult 지시가 아니라 skills
@@ -447,16 +482,6 @@ def compile_agent(
         blocks.extend(_blackboard_section(project, agent))
 
     return _join_blocks(blocks)
-
-
-def _is_fork_agent_only(agent: AgentDefinition, project) -> bool:
-    """fork 스킬의 fork 에이전트로 쓰이고 캔버스에는 놓이지 않았는가."""
-    if project is None:
-        return False
-    from daedalus.compiler.emit.common import _graph_placements
-    from daedalus.compiler.emit.fork import fork_skills_using
-
-    return bool(fork_skills_using(agent, project)) and not _graph_placements(agent, project)
 
 
 def _describe_agent_fsm(agent: AgentDefinition) -> list[str]:

@@ -19,7 +19,9 @@ plugin.json·hooks/hooks.json·설치 스크립트는 만들지 않는다 — �
 ``${CLAUDE_PROJECT_DIR}``로 확장된다(본문 저장 정본은 불변).
 
 compile_project는 파일 쓰기 전에 전체 산출 경로 집합을 계산하고, 중복이 있으면
-컴파일을 거부한다(조용한 덮어쓰기 방지).
+컴파일을 거부한다(조용한 덮어쓰기 방지). **그 계산은 ``compiler/plan.py``가 한다**
+(WP-FK2 C0 분해, 이동만) — 이 모듈은 쓰기·복사·JSON 병합·LOCAL 설치 배선을 맡고,
+계획 쪽 이름은 전부 재-export한다.
 
 컴파일 게이트(정책 8 + 강화 2종):
   - Validator.validate_project의 에러(is_warning=False) 1건 이상 → 거부.
@@ -44,10 +46,9 @@ import os
 import re
 import shutil
 from dataclasses import dataclass, field
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 
 from daedalus.compiler.emit import (
-    _collect_referenced_hook_names,
     _is_local_build,
     compile_agent,
     compile_hook_scripts,
@@ -56,24 +57,30 @@ from daedalus.compiler.emit import (
     compile_schemas_json,
     compile_skill,
     expand_root_token,
-    hook_library,
     referenced_mcp_servers,
 )
 from daedalus.compiler.emit.manifest import external_plugin_ids
-from daedalus.compiler.emit.wrapped import compile_wrapped_runner, needs_runner_agent
+from daedalus.compiler.emit.wrapped import compile_wrapped_runner
+# 산출 계획은 compiler/plan.py로 분해했다(WP-FK2 C0, 이동만). 여기서 재-export해
+# 기존 임포트 경로(`from ...project_compiler import SKILL_FILES_DIRNAME` 등)를 지킨다.
+from daedalus.compiler.plan import (  # noqa: F401 — 재-export 파사드
+    SKILL_FILES_DIRNAME,
+    _OUTPUT_NAME_RE,
+    _hook_script_name_conflicts,
+    _is_link_like,
+    _iter_tree_files,
+    _plan_outputs,
+    _PlannedOutput,
+    _skill_dir_name,
+)
 from daedalus.compiler.token_report import TokenReport
 from daedalus.compiler.workspace import (
-    has_manual_frontmatter,
     merge_claude_md,
     render_rule,
 )
-from daedalus.model.plugin.hook import HOOK_SCRIPT_DIR
-from daedalus.model.plugin.skill import Skill, is_disabled_wrapped
+from daedalus.model.plugin.skill import Skill
 from daedalus.model.validation import ValidationError, Validator
 
-# CC 플러그인 산출물 이름 규약 — Validator._COMPONENT_NAME_RE와 동일 패턴.
-# 검증기에서는 경고(편집 중)지만 컴파일 게이트에서는 에러로 승격한다.
-_OUTPUT_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 
 # 스킬/에이전트 body에서 파일 참조 토큰을 스캔하는 패턴 — MarkdownEditor의
 # 드롭 삽입(view/widgets/markdown/providers.py `_file_ref_token`)이 만드는 형식과
@@ -100,12 +107,6 @@ COMPILER_ERROR_RULES: frozenset[str] = frozenset({
     "duplicate_hook_script",
 })
 
-# 스킬별 동봉 파일 소스 디렉토리명 (WP-SF) — <프로젝트 폴더>/skill-files/<스킬 산출
-# 디렉토리명>/… 이 그 스킬의 SKILL.md **옆으로** 복사된다. 공용 files/와 분리한
-# 이유: files/는 통째로 <out>/files/로 가는 규칙이라, 섞으면 스킬 파일이 양쪽에
-# 이중 산출된다. 참조 토큰은 `${CLAUDE_SKILL_DIR}/<상대경로>` — CC 공식 변수로
-# 마켓플레이스/로컬 동일 동작이라 ${ROOT} 같은 타깃 중립화가 필요 없다.
-SKILL_FILES_DIRNAME = "skill-files"
 
 # 본문의 스킬 파일 참조 토큰 스캔 패턴 — _FILE_REF_*와 동일한 두 형태.
 _SKILL_FILE_REF_ANGLE_RE = re.compile(r"<\$\{CLAUDE_SKILL_DIR\}/([^>]+)>")
@@ -143,20 +144,6 @@ class CompileResult:
         return not self.errors
 
 
-def _skill_dir_name(skill_name: str) -> str:
-    return skill_name
-
-
-@dataclass
-class _PlannedOutput:
-    """쓰기 전 계획된 산출물 1건."""
-    rel_path: PurePosixPath          # out_dir 기준 상대 경로 (충돌 키)
-    label: str                       # 사람이 읽는 원인 컴포넌트 표지
-    subject: object                  # 노드 점프용 모델 객체
-    kind: str                        # "skill" | "agent" | "hook_script" | …
-    component: object                # 컴파일 대상 (skill/agent)
-    script_name: str = ""            # hook_script일 때 파일명 (WP-HS)
-    src_path: Path | None = None     # skill_file일 때 복사 원본 (WP-SF)
 
 
 def _hook_script_bodies(project, resolved_hooks=None) -> dict[str, str]:
@@ -164,329 +151,10 @@ def _hook_script_bodies(project, resolved_hooks=None) -> dict[str, str]:
     return dict(compile_hook_scripts(project, resolved_hooks))
 
 
-def _hook_script_name_conflicts(project, resolved_hooks=None) -> list[ValidationError]:
-    """서로 다른 훅이 같은 스크립트 파일명으로 슬러그되면 에러 (duplicate_hook_script).
-
-    훅 이름은 사용자가 자유롭게 쓰지만 파일명은 ``_slug``를 거친다 — '`run tests`'와
-    '`run-tests`'는 이름이 다른데 파일명이 `run-tests.sh` 하나로 겹친다.
-    ``compile_hook_scripts``는 먼저 선언된 훅을 남기고 뒤의 것을 조용히 버리므로,
-    게이트가 없으면 **훅 하나가 아무 말 없이 사라진 산출물**이 나간다.
-
-    산출 경로 충돌(``compile_output_path_conflict``)이 잡지 못하는 이유가 그것이다 —
-    드롭이 계획 이전에 일어나 계획에는 경로가 하나만 올라온다. 그래서 계획을 세우기
-    전에 라이브러리 쪽에서 판정한다.
-
-    같은 훅 안의 파일명 중복은 대상이 아니다(``script_files``가 번호로 유일화한다).
-    """
-    library = hook_library(project, resolved_hooks)
-    referenced = set(_collect_referenced_hook_names(project))
-
-    owners: dict[str, str] = {}          # 파일명 → 먼저 점유한 훅 이름
-    conflicts: dict[str, list[str]] = {}  # 파일명 → 충돌한 훅 이름들(선언 순서)
-    for hook in library:
-        if hook.name not in referenced:
-            continue
-        for filename, _body in hook.script_files():
-            first = owners.get(filename)
-            if first is None:
-                owners[filename] = hook.name
-            elif first != hook.name:
-                conflicts.setdefault(filename, [first]).append(hook.name)
-
-    return [
-        ValidationError(
-            rule="duplicate_hook_script",
-            message=(
-                f"훅 스크립트 파일명 '{filename}'이 충돌합니다: "
-                f"{', '.join(repr(n) for n in names)}. 훅 이름이 파일명으로 바뀔 때 "
-                f"같은 이름이 되어, 그대로 진행하면 먼저 선언된 훅의 스크립트만 "
-                f"남고 나머지는 조용히 사라집니다 — 훅 이름을 조정하거나 핸들러에 "
-                f"script_name을 지정하세요."
-            ),
-            source=filename,
-            subject=project,
-        )
-        for filename, names in conflicts.items()
-    ]
 
 
-def _plan_outputs(
-    project, skill_files_dir: Path | None = None, resolved_hooks=None,
-) -> tuple[list[_PlannedOutput], list[ValidationError], list[ValidationError]]:
-    """파일 쓰기 전에 전체 산출 경로 집합을 계산하고 게이트 에러를 수집한다.
-
-    에러 3종:
-      compile_invalid_component_name — 산출 이름 규약 불일치 (게이트에서 에러 승격)
-      compile_output_path_conflict   — 동일 산출 경로 중복 (조용한 덮어쓰기 방지)
-      duplicate_hook_script          — 서로 다른 훅이 같은 스크립트 파일명으로
-                                       슬러그됨 (조용한 드롭 방지, WP-HS)
-
-    skill_files_dir(WP-SF, 선택): 스킬별 동봉 파일 트리. 하위 폴더 이름이 스킬
-    산출 디렉토리명과 일치하면 그 파일들이 SKILL.md 옆으로 가는 복사 계획으로
-    합류한다 — 계획 집합에 넣기 때문에 SKILL.md를 덮는 파일이 있으면 기존
-    `compile_output_path_conflict` 게이트가 잡는다. 일치하는 스킬이 없는 하위
-    폴더는 `unknown_skill_files_dir` 경고(세 번째 반환값).
-    """
-    plan: list[_PlannedOutput] = []
-    errors: list[ValidationError] = []
-    warnings: list[ValidationError] = []
-    is_local = _is_local_build(project)
-    # LOCAL은 컴파일이 곧 설치 — 스킬/에이전트가 CC가 실제로 읽는 <작업 폴더>/.claude/
-    # 밑으로 바로 나간다. files/·schemas/·hooks/scripts/는 루트 그대로다(본문의
-    # ${CLAUDE_PROJECT_DIR}/… 참조가 그 위치를 가리킨다).
-    cc_prefix = PurePosixPath(".claude") if is_local else PurePosixPath(".")
-
-    def check_name(name: str, label: str, subject: object) -> None:
-        if not _OUTPUT_NAME_RE.match(name or ""):
-            errors.append(ValidationError(
-                rule="compile_invalid_component_name",
-                message=(
-                    f"{label}의 이름 '{name}'이 규약 '^[a-z0-9][a-z0-9-]*$'에 맞지 "
-                    f"않습니다. 컴파일 시에는 이름 규약이 필수입니다 — 산출 "
-                    f"파일/디렉토리 이름이 되므로 CC 플러그인 로더가 받지 않는 "
-                    f"산출물이 생깁니다."
-                ),
-                source=name,
-                subject=subject,
-            ))
-
-    # 프로젝트 이름 — 마켓플레이스 빌드에서 plugin.json의 name(플러그인 식별자)이
-    # 되므로 컴포넌트와 동일 규약을 컴파일 게이트에서 에러로 강제한다. 로컬 빌드도
-    # 같은 규약을 적용한다(타깃을 오가며 새 에러가 튀지 않도록 — 산출 이름·문서
-    # 제목에 그대로 쓰인다).
-    if not _OUTPUT_NAME_RE.match(project.name or ""):
-        errors.append(ValidationError(
-            rule="compile_invalid_component_name",
-            message=(
-                f"프로젝트 '{project.name}'의 이름이 규약 '^[a-z0-9][a-z0-9-]*$'에 "
-                f"맞지 않습니다. 컴파일 시에는 이름 규약이 필수입니다 — 마켓플레이스 "
-                f"빌드에서는 plugin.json의 name(플러그인 식별자)이 되어 CC 플러그인 "
-                f"로더가 받지 않는 산출물이 생깁니다. 파일 → 프로젝트 속성…에서 "
-                f"이름을 변경하세요."
-            ),
-            source=project.name,
-            subject=project,
-        ))
-
-    # 스킬 산출 디렉토리명 → 컴포넌트 (WP-SF skill-files 매칭용)
-    skill_dirs: dict[str, object] = {}
-
-    # 전역 스킬
-    for skill in project.skills:
-        if not isinstance(skill, Skill):
-            continue
-        # 참조 용도 wrapped(WP-WR, 사용자 확정 2026-09-07)는 **산출 파일이
-        # 없다** — 링크된 노드의 산출에 consult 지시만 합류한다(emit
-        # _background_references_section). SKILL.md를 내면 존재 이유(파일 생성
-        # 불필요)가 사라진다.
-        if (getattr(skill, "kind", "") == "wrapped_skill"
-                and getattr(getattr(skill, "config", None), "usage", "") == "reference"):
-            continue
-        # 비활성 랩핑 스킬(WP-WR, 사용자 확정 2026-09-07 — 삭제 대신 비활성화)도
-        # 산출하지 않는다. 끈 것을 그대로 내보내면 "껐는데 플러그인에는 들어
-        # 있다"가 된다.
-        if is_disabled_wrapped(skill):
-            continue
-        label = f"스킬 '{skill.name}'"
-        check_name(skill.name, label, skill)
-        skill_dirs[_skill_dir_name(skill.name)] = skill
-        plan.append(_PlannedOutput(
-            rel_path=cc_prefix / "skills" / _skill_dir_name(skill.name) / "SKILL.md",
-            label=label,
-            subject=skill,
-            kind="skill",
-            component=skill,
-        ))
-        # state 용도 랩핑 스킬의 실행 서브에이전트 (WP-WR, 사용자 확정
-        # 2026-09-12 — 외부 플러그인 스킬은 서브에이전트에서만 쓴다). 이름이
-        # 랩퍼와 같아 사용자 에이전트와는 duplicate_component_name이 이미 막는다.
-        if needs_runner_agent(skill):
-            plan.append(_PlannedOutput(
-                rel_path=cc_prefix / "agents" / f"{skill.name}.md",
-                label=f"랩핑 스킬 '{skill.name}'의 실행 서브에이전트",
-                subject=skill,
-                kind="wrapped_runner",
-                component=skill,
-            ))
-
-    # 에이전트
-    for agent in project.agents:
-        label = f"에이전트 '{agent.name}'"
-        check_name(agent.name, label, agent)
-        plan.append(_PlannedOutput(
-            rel_path=cc_prefix / "agents" / f"{agent.name}.md",
-            label=label,
-            subject=agent,
-            kind="agent",
-            component=agent,
-        ))
-
-    # 스킬별 동봉 파일 (WP-SF) — 하위 폴더명이 스킬 산출 디렉토리명과 일치할 때만
-    # SKILL.md 옆으로 가는 복사 계획에 합류한다. 계획 집합 합류가 곧 충돌 방어다 —
-    # 'SKILL.md'라는 이름의 동봉 파일은 아래 경로 충돌 검사가 에러로 거부한다.
-    if skill_files_dir is not None and skill_files_dir.is_dir():
-        for sub in sorted(skill_files_dir.iterdir(), key=lambda p: p.name):
-            if _is_link_like(sub):
-                continue
-            if not sub.is_dir():
-                warnings.append(ValidationError(
-                    rule="unknown_skill_files_dir",
-                    message=(
-                        f"{SKILL_FILES_DIRNAME}/ 바로 밑의 파일 '{sub.name}'은 어느 "
-                        f"스킬 소속인지 알 수 없어 복사하지 않았습니다 — "
-                        f"{SKILL_FILES_DIRNAME}/<스킬 이름>/ 하위에 두세요."
-                    ),
-                    source=sub.name,
-                    subject=project,
-                ))
-                continue
-            component = skill_dirs.get(sub.name)
-            if component is None:
-                warnings.append(ValidationError(
-                    rule="unknown_skill_files_dir",
-                    message=(
-                        f"{SKILL_FILES_DIRNAME}/{sub.name}/과 이름이 일치하는 스킬이 "
-                        f"없어 복사하지 않았습니다 — 폴더 이름은 스킬 이름과 같아야 "
-                        f"합니다(스킬 이름 변경 뒤에 남은 옛 폴더일 수 있습니다)."
-                    ),
-                    source=sub.name,
-                    subject=project,
-                ))
-                continue
-            for src in _iter_tree_files(sub):
-                rel_parts = src.relative_to(sub).parts
-                plan.append(_PlannedOutput(
-                    rel_path=cc_prefix / "skills" / sub.name / PurePosixPath(*rel_parts),
-                    label=f"스킬 파일 '{sub.name}/{'/'.join(rel_parts)}'",
-                    subject=component,
-                    kind="skill_file",
-                    component=component,
-                    src_path=src,
-                ))
-
-    # hooks.json (SETTINGS) — 프로젝트가 참조하는 훅이 있을 때만 계획에 합류.
-    # LOCAL은 hooks/hooks.json 파일을 만들지 않는다 — 컴파일이 곧 설치이므로 훅은
-    # <out>/.claude/settings.local.json의 hooks 섹션에 병합된다(compile_project의
-    # 병합 단계, WP-MW). 훅 스크립트 파일은 양쪽 타깃 모두 hooks/scripts/로 나간다
-    # (LOCAL의 커맨드가 ${CLAUDE_PROJECT_DIR}/hooks/scripts/…를 가리킨다).
-    hooks_text = compile_hooks_json(project, resolved_hooks)
-    if hooks_text is not None:
-        if not is_local:
-            plan.append(_PlannedOutput(
-                rel_path=PurePosixPath("hooks") / "hooks.json",
-                label="hooks.json (lifecycle hooks)",
-                subject=project,
-                kind="hooks_json",
-                component=project,
-            ))
-        errors.extend(_hook_script_name_conflicts(project, resolved_hooks))
-        # 훅 스크립트 — 커맨드는 아무리 짧아도 파일로 나가고 hooks.json에는
-        # 루트 기반 경로만 남는다 (WP-HS).
-        for filename, _body in compile_hook_scripts(project, resolved_hooks):
-            plan.append(_PlannedOutput(
-                rel_path=PurePosixPath(HOOK_SCRIPT_DIR) / filename,
-                label=f"훅 스크립트 {filename}",
-                subject=project,
-                kind="hook_script",
-                component=project,
-                script_name=filename,
-            ))
-
-    # 블랙보드 스키마 — 정의가 있을 때만 계획에 합류. 파일 이름이 **프로젝트
-    # 이름**인 이유는 WP-NS다: 이전의 고정 경로 'schemas/schemas.json'은 한 작업
-    # 폴더에 ddls 플러그인이 둘 깔리면 나중 것이 앞의 것을 조용히 덮어썼다(경로
-    # 충돌 게이트는 한 번의 컴파일 안에서만 도므로 잡지 못한다). 이름은 컴파일
-    # 게이트가 '^[a-z0-9][a-z0-9-]*$'를 강제하므로 파일명으로 안전하다.
-    # 작업 폴더 문서 — LOCAL 전용(WP-WD). 마켓플레이스 플러그인은 설치 대상 작업
-    # 폴더의 .claude/에 쓸 수 없으므로 계획에 넣지 않는다(경고는 Validator 소관).
-    # 규칙 이름은 파일명이 되므로 컴포넌트와 같은 이름 게이트를 통과해야 한다.
-    if is_local:
-        for doc in getattr(project, "rules", None) or []:
-            if not doc.has_content():
-                continue  # 배출할 내용이 없으면 빈 파일을 만들지 않는다
-            check_name(doc.name, f"규칙 문서 '{doc.name}'", doc)
-            # paths 필드와 본문 수기 프론트매터가 겹치면 `---` 블록이 둘 나간다.
-            # 본문은 건드리지 않는다 — 합치려면 사용자의 키를 해석해야 하고,
-            # 조용한 변형은 "내가 쓴 게 사라졌다"로 돌아온다(A13).
-            if doc.paths and has_manual_frontmatter(doc.body or ""):
-                warnings.append(ValidationError(
-                    rule="rule_body_frontmatter",
-                    message=(
-                        f"규칙 '{doc.name}'의 본문이 '---'로 시작하는데 paths 필드도 "
-                        f"설정돼 있습니다 — 프론트매터가 두 번 배출되어 뒤의 것이 "
-                        f"본문으로 읽힙니다. 본문의 프론트매터를 지우고 그 내용을 "
-                        f"paths 필드로 옮기세요."
-                    ),
-                    source=f"rules/{doc.name}.md",
-                    subject=doc,
-                ))
-            plan.append(_PlannedOutput(
-                rel_path=cc_prefix / "rules" / f"{doc.name}.md",
-                label=f"rules/{doc.name}.md (workspace rule)",
-                subject=doc,
-                kind="workspace_rule",
-                component=doc,
-            ))
-
-    schemas_text = compile_schemas_json(project)
-    if schemas_text is not None:
-        plan.append(_PlannedOutput(
-            rel_path=PurePosixPath("schemas") / f"{project.name}.json",
-            label=f"schemas/{project.name}.json (blackboard class definitions)",
-            subject=project,
-            kind="schemas_json",
-            component=project,
-        ))
-
-    # plugin.json (플러그인 매니페스트) — MARKETPLACE 빌드에서만 생성한다
-    # (매니페스트 없이는 산출 디렉토리를 CC 플러그인으로 설치할 수 없다).
-    # LOCAL 빌드는 컴파일이 곧 설치라 매니페스트도 설치 스크립트도 없다 (WP-MW —
-    # 이전의 INSTALL.md/install.ps1/install.sh 동봉은 폐기됐다).
-    if not is_local:
-        plan.append(_PlannedOutput(
-            rel_path=PurePosixPath(".claude-plugin") / "plugin.json",
-            label="plugin.json (플러그인 매니페스트)",
-            subject=project,
-            kind="plugin_manifest",
-            component=project,
-        ))
-
-    # 산출 경로 충돌 검사 — 첫 점유자와 이후 충돌자를 모두 보고
-    seen: dict[PurePosixPath, _PlannedOutput] = {}
-    for item in plan:
-        first = seen.get(item.rel_path)
-        if first is not None:
-            errors.append(ValidationError(
-                rule="compile_output_path_conflict",
-                message=(
-                    f"산출 경로 '{item.rel_path}'가 충돌합니다: {first.label} ↔ "
-                    f"{item.label}. 그대로 진행하면 뒤의 쓰기가 앞의 산출물을 "
-                    f"조용히 덮어씁니다 — 컴포넌트 이름을 조정하세요."
-                ),
-                source=str(item.rel_path),
-                subject=item.subject,
-            ))
-        else:
-            seen[item.rel_path] = item
-
-    return plan, errors, warnings
 
 
-def _iter_tree_files(root: Path) -> list[Path]:
-    """root 트리의 파일을 정렬 순회로 열거한다 (WP-SF — 복사 계획용).
-
-    ``_copy_files_tree``와 같은 규칙: 심볼릭 링크/정션은 디렉토리든 파일이든
-    제외한다(따라가면 트리 밖 내용이 산출물로 샌다).
-    """
-    files: list[Path] = []
-    for walk_root, dirnames, filenames in os.walk(root, followlinks=False):
-        root_path = Path(walk_root)
-        dirnames[:] = sorted(d for d in dirnames if not _is_link_like(root_path / d))
-        for filename in sorted(filenames):
-            src = root_path / filename
-            if not _is_link_like(src):
-                files.append(src)
-    return files
 
 
 def _copy_files_tree(
@@ -540,12 +208,6 @@ def _copy_files_tree(
     return copied
 
 
-def _is_link_like(path: Path) -> bool:
-    """심볼릭 링크 또는 Windows 정션이면 True — files/ 복사에서 제외 대상."""
-    if path.is_symlink():
-        return True
-    isjunction = getattr(os.path, "isjunction", None)
-    return bool(isjunction and isjunction(path))
 
 
 #: 본문이 토큰의 **형식을 설명할 때** 쓰는 자리표시자 — 실제 파일 이름이 아니다.

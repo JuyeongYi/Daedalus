@@ -32,6 +32,7 @@ from daedalus.model.fsm.machine import StateMachine
 from daedalus.model.plugin.variables import ROOT_TOKEN
 from daedalus.model.plugin.agent import AgentDefinition
 from daedalus.model.plugin.skill import (
+    AsyncForkSkill,
     DeclarativeSkill,
     ForkSkill,
     StepSkill,
@@ -107,9 +108,27 @@ def _next_step_invoke_line(transition, sm: StateMachine) -> str | None:
     return f"{prefix}{_invoke_phrase(ref, name)}"
 
 
+#: 비동기 fork 갈래에 붙는 접미 (WP-FK2 C1).
+#:
+#: `background: true` 스킬은 **보통** 서브에이전트가 따로 돌고 보고가 나중에 작업
+#: 알림으로 온다. 다만 항상 그렇지는 않다 — 비대화 `claude -p`/Agent SDK,
+#: `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1`, 재진입 호출, 스케줄 작업 발화에서는
+#: 강제로 인라인 실행된다(공식 문서 2026-09-17 확인). 그래서 "기다리지 말라"가
+#: 아니라 "막고 기다리지 말고, 보고가 어떤 경로로 오든 받는 대로 처리하라"고
+#: 말한다 — 단정하면 인라인으로 돌아온 경우 오지 않을 알림을 기다린다.
+_ASYNC_FORK_BRANCH_SUFFIX = (
+    " (background fork — do not block on it; act on its report as soon as you "
+    "have it, whether it comes back inline in this turn or later as a task "
+    "notification)"
+)
+
+
 def _invoke_phrase(ref, name: str) -> str:
     """skill_ref 종류별 인보크 지시 문구."""
-    return f"invoke skill `{name}`"
+    phrase = f"invoke skill `{name}`"
+    if isinstance(ref, AsyncForkSkill):
+        phrase += _ASYNC_FORK_BRANCH_SUFFIX
+    return phrase
 
 
 def _next_steps_section(component, project) -> list[str]:
@@ -193,6 +212,45 @@ def _progress_update_note(project) -> str:
     )
 
 
+def _async_fork_targets(component, project) -> list[str]:
+    """component placement의 outgoing 전이가 가리키는 비동기 fork 스킬 이름 (이름순).
+
+    호출자 산출에만 쓴다 — 넘길 때 `current`를 누가 갖는지 말해야 하기 때문이다.
+    """
+    graph = getattr(project, "graph", None)
+    if graph is None:
+        return []
+    placements = _graph_placements(component, project)
+    if not placements:
+        return []
+    placement_ids = {id(p) for p in placements}
+    names = {
+        getattr(ref, "name", "")
+        for t in getattr(graph, "transitions", None) or []
+        if id(t.source) in placement_ids
+        for ref in (getattr(t.target, "skill_ref", None),)
+        if isinstance(ref, AsyncForkSkill)
+    }
+    return sorted(names - {""})
+
+
+def _async_fork_handoff_note(cli: str, names: list[str]) -> str:
+    """비동기 fork로 넘기는 갈래의 진행 기록 규약 (사용자 확정 2026-09-18, 1단계).
+
+    진행 파일은 플러그인당 항목이 하나뿐이라 "지금 도는 비동기 단계"를 적을 자리가
+    없다. 그래서 넘기는 순간 `current`를 그 fork에게 주고 `note`로 기다리는 중임을
+    밝힌다 — 그래야 ① 중간에 끊겨도 재개 판단이 가능하고 ② 보고가 돌아왔을 때
+    fork의 선행 조건(`current`가 아직 자기인가)이 판정할 대상이 생긴다.
+    """
+    shown = ", ".join(f"`{n}`" for n in names)
+    return (
+        f"Handing off to a background fork ({shown}) is still a handoff: record it "
+        f"as `{cli} set --completed <this skill> --current <that fork> --prev "
+        '<this skill> --note "awaiting background fork"`, then do not block on it — '
+        "that fork's report says what to record next."
+    )
+
+
 def _transfer_progress_note(project) -> str:
     cli = _progress_cli(project)
     return (
@@ -264,6 +322,10 @@ def _entry_item_line(t, project) -> str:
     위임을 시작한 스킬 이름을 병기한다 — 규약상 `prev`에는 에이전트가 아니라
     위임 스킬 이름이 남으므로, 병기 없이는 prev로 이 항목을 특정할 수 없다
     (리뷰 지적 f).
+
+    출처가 **비동기 fork**면 "background fork `X` reported"로 말한다(WP-FK2) —
+    그 fork는 스스로 다음 단계를 부르지 않았고, 이 스킬은 fork의 보고를 받은
+    메인이 시작시킨 것이다. 동기 fork는 문구가 다르지 않다(호출 흐름이 같다).
     """
     ref = getattr(t.source, "skill_ref", None)
     name = getattr(ref, "name", "") or t.source.name
@@ -279,6 +341,8 @@ def _entry_item_line(t, project) -> str:
         if delegators:
             names = ", ".join(f"`{d}`" for d in delegators)
             line += f" (`prev` holds the delegating skill here — {names})"
+    elif isinstance(ref, AsyncForkSkill):
+        line = f"- entered when background fork `{name}` reported{cond_str}"
     else:
         line = f"- entered from `{name}`{cond_str}"
     # 출처가 그 출력 포트에 적어 둔 설명 — "무엇을 넘기는가"는 호출자가 말한다
@@ -468,13 +532,21 @@ def compile_skill(
                 _progress_cli(project),
                 next_blocks[-1] if next_blocks else "",
                 terminal=not has_outgoing,
+                background=isinstance(skill, AsyncForkSkill),
+                skill_name=skill.name,
             ))
         elif next_blocks:
             if progress_placements:
                 next_blocks = list(next_blocks)
-                next_blocks[-1] = (
-                    next_blocks[-1] + "\n\n" + _progress_update_note(project)
-                )
+                note = _progress_update_note(project)
+                # 비동기 fork로 넘기는 갈래가 있으면 `current` 소유 규약을 덧붙인다
+                # (사용자 확정 2026-09-18 — fork 쪽 선행 조건과 짝을 이룬다).
+                bg_targets = _async_fork_targets(skill, project)
+                if bg_targets:
+                    note += "\n" + _async_fork_handoff_note(
+                        _progress_cli(project), bg_targets,
+                    )
+                next_blocks[-1] = next_blocks[-1] + "\n\n" + note
             blocks.extend(next_blocks)
         elif progress_placements and not has_outgoing:
             blocks.extend(_progress_terminal_section(project))
