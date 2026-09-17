@@ -19,6 +19,8 @@ WP-RF-3a: 구 단일 모듈 ``compiler/emit.py``를 패키지로 분해했다 (�
   skill.py       — SKILL.md 조립 (다음 단계·작업 재개·진입 맥락 + compile_skill)
   agent.py       — 에이전트 .md 조립 (출구·호출 계약(종류별)·skills 합류
                    + compile_agent)
+  guides.py      — 공통 안내 파일 (guides/<플러그인>/workflow.md·blackboard.md
+                   + 컴포넌트 산출의 포인터 1줄)
   hooks.py       — hooks.json·훅 스크립트 (compile_hooks_json/compile_hook_scripts)
   manifest.py    — plugin.json·schemas.json·경로 변수 확장
 
@@ -130,8 +132,20 @@ from daedalus.compiler.emit.sections import (
     _transition_condition,
     referenced_mcp_servers,
 )
-from daedalus.compiler.emit.skill import (
+from daedalus.compiler.emit.guides import (
     _PROGRESS_MANUAL_FALLBACK,
+    _insert_guide_pointer,
+    blackboard_guide_referenced,
+    blackboard_pointer_wanted,
+    compile_blackboard_guide,
+    compile_guide,
+    compile_workflow_guide,
+    guide_pointer_line,
+    guide_rel_path,
+    workflow_guide_referenced,
+    workflow_pointer_kind,
+)
+from daedalus.compiler.emit.skill import (
     _entry_context_section,
     _entry_incoming_transitions,
     _entry_item_line,

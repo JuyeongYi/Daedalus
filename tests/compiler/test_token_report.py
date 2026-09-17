@@ -149,6 +149,59 @@ def test_token_rules_are_not_registered_as_validation_rules():
         assert name not in WARNING_RULES
 
 
+# ─────────────────── 공통 안내 파일 (WP-FK2 C3) ───────────────────
+
+
+def test_guide_kinds_are_context_kinds():
+    """가이드도 모델이 Read로 읽는 산문이다 — 임계 판정 대상이다."""
+    from daedalus.compiler.token_report import CONTEXT_KINDS
+
+    assert {"guide_workflow", "guide_blackboard"} <= CONTEXT_KINDS
+
+
+def test_report_lists_each_guide_as_its_own_entry(tmp_path):
+    """가이드 둘은 kind가 다른 **별도 항목**으로 리포트에 실린다."""
+    from daedalus.model.fsm.blackboard import Blackboard, DynamicClass, DynamicField
+    from daedalus.model.fsm.event import CompletionEvent
+    from daedalus.model.fsm.state import SimpleState
+    from daedalus.model.fsm.transition import Transition
+    from daedalus.model.fsm.variable import FieldType
+
+    a, b = make_procedural("a"), make_procedural("b")
+    project = PluginProject(
+        name="p", skills=[a, b],
+        blackboard=Blackboard(class_definitions=[DynamicClass(
+            name="Task", description="d",
+            fields=[DynamicField(name="step", field_type=FieldType.INT)],
+        )]),
+    )
+    sa, sb = SimpleState(name="a", skill_ref=a), SimpleState(name="b", skill_ref=b)
+    project.graph.states += [sa, sb]
+    project.graph.transitions.append(
+        Transition(source=sa, target=sb, trigger=CompletionEvent(name="done"))
+    )
+
+    result = compile_project(project, tmp_path)
+    assert result.ok, [e.message for e in result.errors]
+    by_path = {e.path: e for e in result.token_report.entries}
+    assert by_path["guides/p/workflow.md"].kind == "guide_workflow"
+    assert by_path["guides/p/blackboard.md"].kind == "guide_blackboard"
+    assert by_path["guides/p/workflow.md"].tokens > 0
+
+
+def test_notice_adds_a_line_about_the_shared_guides():
+    """가이드 토큰은 포인터를 받은 컴포넌트가 실행될 때마다 **추가로** 실린다."""
+    big = "a" * (DEFAULT_FILE_TOKEN_THRESHOLD * 4 + 400)
+    report = TokenReport()
+    report.add("skills/fat/SKILL.md", "skill", big)
+    assert "공통 안내 파일" not in report.notice()
+
+    report.add("guides/p/workflow.md", "guide_workflow", "b" * 400)
+    notice = report.notice()
+    assert "공통 안내 파일 ≈100토큰" in notice
+    assert "실행될 때마다 추가로 실립니다" in notice
+
+
 def test_gate_rejected_compile_has_empty_report(tmp_path):
     """게이트에 막히면 쓴 파일이 없으므로 리포트도 비어 있다."""
     project = PluginProject(name="Bad Name", skills=[make_procedural("demo-skill")])

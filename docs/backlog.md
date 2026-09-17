@@ -685,6 +685,14 @@ junction(폴더)·하드링크(파일)는 **무권한이지만 같은 볼륨 전
   고정으로 설명한다(실제는 컴파일 시 선택, 기본 settings.json). `enums.BuildTarget` docstring의 "설치 스크립트 동봉"은 퇴역.
   ④ 📖 참조 스킬을 **스킬** 노드에 링크해도 그 SKILL.md에 아무것도 합류하지 않는다(에이전트 노드 링크만 skills에 반영) —
   제품 공백인지 확인.
+- **컴포넌트 도입문 2차 호이스트 (WP-FK2 C3 후속)** — 공통 안내 파일(`guides/<플러그인>/workflow.md`·
+  `blackboard.md`)로 옮긴 것은 워크플로 개념·진행 기록·재개 규칙·진입 맥락 읽는 법·fork 보고 양식·블랙보드
+  CLI·규칙이다. **남은 도입문 J~S는 이번 범위 밖**으로 뒀다 — 각 1~2문장이고 컴포넌트 고유 정보(포트 이름·
+  호출자 목록·외부 스킬 이름)와 한 문장 안에서 엮여 있어, 떼려면 문장을 쪼개야 한다. 후보:
+  `## Invocation Contract`·`## Delegation`·`## Exits`·`## Output Events`·`## Next Steps`·
+  `## Reference: Tool Shelf`·`## Background Skills`·랩핑 실행 에이전트 본문(`emit/wrapped.py`).
+  착수 전제: 토큰 리포트로 실측 절감폭을 재고(지금 가이드 둘은 ≈1,800토큰 — workflow 1,400 / blackboard 400), 고유 정보와 일반형이 한 문장에
+  섞이지 않게 문구를 먼저 다시 쓴다.
 - **MCP `get_project`의 축약 기본값** — 지금은 `sections` 생략 시 전체를 돌려준다. 축약 구획을 기본으로 바꿀지.
 - **"빈 툴 추가"** (사용자 메모 2026-09-13, 원문 그대로 — 뜻을 확인하고 착수한다). 후보 해석
   둘: ① `tool_shelf`에 빈 `UserDefinedTool`을 만드는 편집 표면(지금 도구 선반은 모델에만 있고

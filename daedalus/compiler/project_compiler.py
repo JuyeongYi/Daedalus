@@ -59,6 +59,7 @@ from daedalus.compiler.emit import (
     expand_root_token,
     referenced_mcp_servers,
 )
+from daedalus.compiler.emit.guides import GUIDE_KINDS, compile_guide
 from daedalus.compiler.emit.manifest import external_plugin_ids
 from daedalus.compiler.emit.wrapped import compile_wrapped_runner
 # 산출 계획은 compiler/plan.py로 분해했다(WP-FK2 C0, 이동만). 여기서 재-export해
@@ -454,6 +455,8 @@ def compile_project(
             # 본문 그대로 + paths 프론트매터(A13). paths가 비면 프론트매터가
             # 아예 나가지 않아 필드 도입 전과 산출이 바이트 단위로 같다.
             text = render_rule(item.component)
+        elif item.kind in GUIDE_KINDS:
+            text = compile_guide(project, item.kind) or ""
         elif item.kind == "schemas_json":
             text = compile_schemas_json(project) or ""
         elif item.kind == "plugin_manifest":
@@ -463,7 +466,7 @@ def compile_project(
 
         # 타깃 중립 토큰 ${ROOT}를 빌드 타깃에 맞는 CC 변수로 확장한다(WP-RT).
         # 본문 정본은 어느 타깃에도 기울지 않고, 여기서만 갈라진다.
-        if item.kind in ("skill", "agent", "wrapped_runner"):
+        if item.kind in ("skill", "agent", "wrapped_runner", *GUIDE_KINDS):
             text = expand_root_token(text, project)
 
         path = _out(item.rel_path)

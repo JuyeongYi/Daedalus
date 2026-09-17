@@ -29,6 +29,13 @@ from daedalus.compiler.emit import (
     compile_schemas_json,
     hook_library,
 )
+from daedalus.compiler.emit.guides import (
+    BLACKBOARD_GUIDE_KIND,
+    WORKFLOW_GUIDE_KIND,
+    blackboard_guide_referenced,
+    guide_rel_path,
+    workflow_guide_referenced,
+)
 from daedalus.compiler.emit.wrapped import needs_runner_agent
 from daedalus.compiler.workspace import has_manual_frontmatter
 from daedalus.model.plugin.hook import HOOK_SCRIPT_DIR
@@ -327,6 +334,28 @@ def _plan_outputs(
                 kind="workspace_rule",
                 component=doc,
             ))
+
+    # 공통 안내 파일 (WP-FK2 C3) — 루트 직하 guides/<플러그인>/. **포인터가 하나도
+    # 나가지 않으면 계획에 넣지 않는다**: 아무도 읽지 않는 파일이 산출에 남으면
+    # "이건 뭐냐"가 되고, 토큰 리포트도 쓰이지 않는 비용을 센다.
+    for kind, what in (
+        (WORKFLOW_GUIDE_KIND, "shared workflow guide"),
+        (BLACKBOARD_GUIDE_KIND, "shared blackboard guide"),
+    ):
+        referenced = (
+            workflow_guide_referenced if kind == WORKFLOW_GUIDE_KIND
+            else blackboard_guide_referenced
+        )
+        if not referenced(project):
+            continue
+        rel = guide_rel_path(project, kind)
+        plan.append(_PlannedOutput(
+            rel_path=PurePosixPath(rel),
+            label=f"{rel} ({what})",
+            subject=project,
+            kind=kind,
+            component=project,
+        ))
 
     schemas_text = compile_schemas_json(project)
     if schemas_text is not None:

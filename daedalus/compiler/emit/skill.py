@@ -15,6 +15,7 @@ from daedalus.compiler.emit.frontmatter import (
     _frontmatter_block,
     _frontmatter_lines_skill,
 )
+from daedalus.compiler.emit.guides import _insert_guide_pointer
 from daedalus.compiler.emit.sections import (
     _background_references_section,
     _blackboard_section,
@@ -188,27 +189,20 @@ def _progress_cli(project) -> str:
     return f"daedalus-bb --schemas {ROOT_TOKEN}/schemas/{plugin}.json progress"
 
 
-#: CLI를 못 쓸 때의 폴백. 없앨 수는 없지만(대안이 없다) 위험한 지점을 못 박는다.
-_PROGRESS_MANUAL_FALLBACK = (
-    "If `daedalus-bb` is unavailable, edit `state/__progress__.json` by hand — but "
-    "change only this plugin's top-level key and leave every other key untouched; "
-    "the file is shared with any other Daedalus plugin installed here."
-)
-
-
 def _progress_update_note(project) -> str:
+    """"## Next Steps" 끝의 진행 기록 잔여 — 명령 1줄 + 위임 갈래의 단서 1줄.
+
+    양식 설명·`note`에 갈래를 적는 이유·수동 폴백은 워크플로 가이드가 말한다
+    (WP-FK2 C3). 다만 **에이전트 위임 갈래의 2회 갱신**은 여기 남긴다 — 갈래 줄
+    바로 아래의 단일 템플릿이 그대로 실행될 공산이 커서, 규칙을 통째로 가이드로
+    보내면 위임 갈래에서 조용히 한 번만 갱신된다.
+    """
     cli = _progress_cli(project)
     return (
         "Before handing off, record progress:\n"
         f"- `{cli} set --completed <this skill> --current <next target> "
         '--prev <this skill> --note "<branch you took> — <one-line handoff>"`\n'
-        "Name the branch (the output event) in `note`: the receiving skill works out "
-        "which path it came in on from (`prev`, the branch in `note`), and without "
-        "the branch it cannot tell apart two different outcomes from the same source. "
-        "When delegating to an agent, run it twice — `--current <agent name>` just "
-        "before delegating, then `--current <follow-up skill>` once the agent returns "
-        "(keep `--prev` as this skill both times).\n"
-        + _PROGRESS_MANUAL_FALLBACK
+        "If the branch delegates to an agent, run this twice — see the workflow guide."
     )
 
 
@@ -252,36 +246,28 @@ def _async_fork_handoff_note(cli: str, names: list[str]) -> str:
 
 
 def _transfer_progress_note(project) -> str:
+    """전이 스킬의 "## Progress Record" 잔여 — 명령 1줄.
+
+    "`current`를 소유하지 않는다"는 규약은 워크플로 가이드 2절이 말한다.
+    """
     cli = _progress_cli(project)
-    return (
-        "You are a step on the transition itself, not a position in the workflow: "
-        "leave `current` as the caller set it and only record what happened during "
-        f'this transition — `{cli} set --note "<what happened>"`.'
-    )
+    return f'- `{cli} set --note "<what happened>"`'
 
 
 def _resume_preamble_section(project, skill_name: str) -> list[str]:
     """WP-RS Part A-1: 재개 프리앰블 — 프론트매터 직후, 본문 앞에 배출된다.
 
-    프로젝트 그래프에 배치된 전역 ProceduralSkill에만 배출된다(게이트는 호출부).
-    WP-IC: JSON 예시에 `prev`(직전 출처 스킬 이름) 필드를 포함한다.
+    재개 규칙의 일반형은 워크플로 가이드 3절이 말한다(WP-FK2 C3). 여기에는 이
+    스킬의 **이름이 들어가는 줄**만 남는다. exit 3의 조건절은 잔여에 남긴다 —
+    조건을 떼고 명령만 남기면 가이드의 일반형("항목이 없으면 지금 불린 스킬이
+    시작점이다")과 워크플로 중간 스킬의 `--current <나>` 기록이 충돌한다.
     """
     cli = _progress_cli(project)
-    body = "\n".join([
-        f"Run `{cli} read` before you start.",
-        (
-            f"- If `current` is this skill (`{skill_name}`), resume from where it "
-            "stopped, using `note` for context."
-        ),
-        (
-            "- If `current` is a different skill, the workflow is somewhere else — "
-            "stop and confirm with the user before continuing."
-        ),
-        (
-            "- Exit code 3 means this plugin has no progress entry yet. Start from "
-            f'the beginning and record it: `{cli} set --current {skill_name}`.'
-        ),
-    ])
+    body = (
+        f"Run `{cli} read` first; this skill is `{skill_name}`. Follow the resume "
+        f"rules in the workflow guide. If it exits 3 (no entry for this plugin "
+        f"yet), this invocation is the start: `{cli} set --current {skill_name}`."
+    )
     return ["## Resuming Work", body]
 
 
@@ -379,13 +365,9 @@ def _entry_context_section(component, project) -> list[str]:
         return []
     blocks: list[str] = [
         "## Entry Context",
-        (
-            "Read `prev` (the previous skill) and `note` (the branch taken) from "
-            "`state/__progress__.json`, then follow the matching source entry "
-            "below. When one source has several entries, the branch name recorded "
-            "in `note` picks the right one. After returning from an agent "
-            "delegation, `prev` holds the delegating skill, not the agent."
-        ),
+        # 읽는 법(어디서 읽는가·여러 갈래를 어떻게 가르는가·에이전트 위임 뒤의
+        # prev)은 워크플로 가이드 4절이 말한다 — 여기는 지목 한 문장만.
+        "Check `prev` and the branch in `note`, then follow the matching entry below.",
     ]
     ordered = sorted(incoming, key=_entry_source_ref_name)
     blocks.append("\n".join(_entry_item_line(t, project) for t in ordered))
@@ -393,16 +375,17 @@ def _entry_context_section(component, project) -> list[str]:
 
 
 def _progress_terminal_section(project) -> list[str]:
-    """WP-RS Part A-3: 터미널 배치(outgoing 0개) — "다음 단계" 대신 배출된다."""
+    """WP-RS Part A-3: 터미널 배치(outgoing 0개) — "다음 단계" 대신 배출된다.
+
+    잔여는 명령 1줄이다(수동 폴백은 워크플로 가이드 2절).
+    """
     cli = _progress_cli(project)
     return [
         "## Finishing Up",
         (
-            "This skill is the last step of the workflow. When it is done, record "
-            "that the workflow finished:\n"
+            "This skill is the last step of the workflow:\n"
             f'- `{cli} set --completed <this skill> --current done '
-            '--note "<result summary>"`\n'
-            + _PROGRESS_MANUAL_FALLBACK
+            '--note "<result summary>"`'
         ),
     ]
 
@@ -551,4 +534,5 @@ def compile_skill(
         elif progress_placements and not has_outgoing:
             blocks.extend(_progress_terminal_section(project))
 
+    _insert_guide_pointer(blocks, skill, project)
     return _join_blocks(blocks)

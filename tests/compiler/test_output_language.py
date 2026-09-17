@@ -276,6 +276,28 @@ def test_local_build_compile_is_english(english_project, tmp_path):
         _assert_english(path.read_text(encoding="utf-8"), str(path.name))
 
 
+def test_guide_outputs_are_english(english_project):
+    """공통 안내 파일(WP-FK2 C3)도 컴파일러가 만드는 텍스트다 — 전부 영어."""
+    from daedalus.compiler.emit import compile_blackboard_guide, compile_workflow_guide
+
+    workflow = compile_workflow_guide(english_project)
+    blackboard = compile_blackboard_guide(english_project)
+    assert workflow and blackboard
+    _assert_english(workflow, "guides/demo/workflow.md")
+    _assert_english(blackboard, "guides/demo/blackboard.md")
+
+
+def test_guide_pointer_lines_are_english(english_project):
+    """포인터 1줄은 모든 대상 컴포넌트에 실린다 — 한 종류라도 새면 전부에 샌다."""
+    from daedalus.compiler.emit import guide_pointer_line
+
+    for comp in (*english_project.skills, *english_project.agents):
+        line = guide_pointer_line(comp, english_project)
+        if line is None:
+            continue
+        _assert_english(line, f"'{comp.name}' 포인터")
+
+
 def test_side_outputs_are_english(english_project):
     _assert_english(compile_plugin_manifest(english_project), "plugin.json")
     _assert_english(compile_schemas_json(english_project) or "", "schemas.json")

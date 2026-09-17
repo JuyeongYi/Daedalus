@@ -52,11 +52,22 @@ def _placed_terminal():
 
 
 def test_placed_skill_has_resume_preamble_with_name():
+    """잔여는 이름이 들어가는 줄 + exit 3 조건절 — 일반형은 워크플로 가이드(WP-FK2 C3)."""
     project, a, _ = _placed_pair()
     text = compile_skill(a, project=project)
     assert "## Resuming Work" in text
-    assert "this skill (`a`)" in text
-    assert "state/__progress__.json" in text
+    assert "this skill is `a`" in text
+    assert "Follow the resume rules in the workflow guide." in text
+    # exit 3의 조건절은 잔여에 남는다 — 떼면 "여기서 시작하고 기록하라"가
+    # 가이드의 일반형과 충돌한다.
+    assert (
+        "If it exits 3 (no entry for this plugin yet), this invocation is the "
+        "start: `daedalus-bb --schemas ${ROOT}/schemas/p.json progress set "
+        "--current a`." in text
+    )
+    # 일반 재개 규칙·수동 폴백은 더 이상 스킬마다 반복되지 않는다.
+    assert "stop and confirm with the user" not in text
+    assert "state/__progress__.json" not in text
 
 
 def test_resume_preamble_before_body():
@@ -122,15 +133,19 @@ def test_agent_md_has_no_resume_sections_even_if_placed():
 
 def test_transfer_skill_has_progress_note():
     # 진행 파일을 만드는 배치 스킬이 있는 프로젝트에서만 note 배출 (고아 지시 방지)
+    from daedalus.compiler.emit import compile_workflow_guide
+
     project, _, _ = _placed_pair()
     edge = make_transfer("edge-skill")
     text = compile_skill(edge, project=project)
     assert "## Progress Record" in text
     assert "progress set --note" in text
     # transfer는 전이 위의 중간 상태지 워크플로 위치가 아니다 — `current`를
-    # 건드리지 말라는 지시가 출발 스킬의 "current를 다음 대상으로"와 짝이다.
-    assert "leave `current`" in text
-    assert "not a position in the workflow" in text
+    # 건드리지 말라는 규약은 워크플로 가이드 2절이 말한다(WP-FK2 C3).
+    assert "not a position in the workflow" not in text
+    guide = compile_workflow_guide(project)
+    assert "A transition skill does not own `current`" in guide
+    assert "leaves `current` as the caller set it" in guide
 
 
 def test_transfer_skill_note_requires_placements():
@@ -146,7 +161,7 @@ def test_transfer_skill_note_after_body():
     edge = make_transfer("edge-skill")
     text = compile_skill(edge, project=project)
     body_idx = text.index("Run on edge.")
-    note_idx = text.index("not a position in the workflow")
+    note_idx = text.index("## Progress Record")
     assert body_idx < note_idx
 
 
@@ -305,7 +320,9 @@ def test_update_rule_mentions_two_phase_agent_update():
     """에이전트 경유 전이의 2단 갱신(위임 직전/완료 후) 문구 (리뷰 지적 ③)."""
     project, a, _ = _placed_pair()
     text = compile_skill(a, project=project)
-    assert "run it twice" in text
+    # 잔여에 남는 이유: 갈래 줄 바로 아래의 단일 템플릿이 그대로 실행될 공산이
+    # 크다 — 규칙을 통째로 가이드로 보내면 위임 갈래에서 한 번만 갱신된다.
+    assert "If the branch delegates to an agent, run this twice" in text
 
 
 def test_terminal_section_adds_self_to_completed():

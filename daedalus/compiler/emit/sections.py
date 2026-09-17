@@ -28,7 +28,6 @@ from daedalus.model.fsm.strategy import (
 from daedalus.model.fsm.walk import iter_states
 from daedalus.model.plugin.agent import Agent, AgentDefinition
 from daedalus.model.plugin.skill import ProceduralSkill, Skill
-from daedalus.model.plugin.variables import ROOT_TOKEN
 
 
 # ─────────────────────────── 가드/트리거 서술 ───────────────────────────
@@ -398,105 +397,54 @@ def _background_references_section(component, project) -> list[str]:
 
 
 def _blackboard_section(project, component=None) -> list[str]:
-    """프로젝트 최상위 블랙보드 class_definitions → '## Shared State (Blackboard)' 블록.
+    """이 컴포넌트의 블랙보드 접근 선언 → '## Shared State (Blackboard)' 블록.
 
-    정의가 없으면 빈 리스트 (단락 생략).
+    **총론·CLI 사용법·규칙은 여기 없다** — 스킬마다 글자 하나 다르지 않게
+    반복되던 문장이라 `guides/<플러그인>/blackboard.md`로 뺐다(WP-FK2 C3).
+    여기 남는 것은 이 컴포넌트에만 해당하는 사실, 즉 "무엇을 읽고 쓰는가"와
+    그에 해당하는 상태 파일 목록뿐이다.
 
-    component가 주어지고 그 접근 선언(자체 FSM 재귀 + 그래프 placement) 합집합이
-    비어 있지 않으면, "이 스킬/에이전트가 읽는 것/쓰는 것"을 명시하고 파일
-    목록을 관련 클래스만으로 좁힌다. component가 없거나 합집합이 비면 기존
-    동작(전 클래스 일반 안내) 그대로 — 하위 호환, 기존 산출 문자열 불변.
+    그래서 접근 선언(자체 FSM 재귀 + 그래프 placement) 합집합이 비면 **단락
+    자체를 생략한다** — 가이드가 이미 전부 말하고 있어 덧붙일 고유 정보가 없다.
     """
     bb = getattr(project, "blackboard", None)
     classes = getattr(bb, "class_definitions", None) or []
-    if not classes:
+    if not classes or component is None:
         return []
 
-    reads: set[str] = set()
-    writes: set[str] = set()
-    if component is not None:
-        reads, writes = _component_access_union(component, project)
+    reads, writes = _component_access_union(component, project)
     union = reads | writes
+    if not union:
+        return []
 
     # 플러그인 이름이 곧 네임스페이스다 (WP-NS) — 한 작업 폴더에 여러 ddls
     # 플러그인이 깔려도 스키마와 상태가 서로를 덮지 않게 이름으로 가른다.
-    # 스키마 경로는 타깃 중립 토큰으로 넘긴다(WP-RT). ${ROOT}는 컴파일 시
-    # MARKETPLACE→${CLAUDE_PLUGIN_ROOT} / LOCAL→${CLAUDE_PROJECT_DIR}로 확장되고,
-    # schemas/<플러그인>.json은 양쪽 타깃 모두 그 루트 밑에 산출되므로 토큰
-    # 하나로 둘 다 맞는다.
     plugin = getattr(project, "name", "") or "plugin"
     state_dir = f"state/{plugin}"
-    schemas_ref = ROOT_TOKEN + f"/schemas/{plugin}.json"
-    intro = (
-        "State shared across contexts in this workflow lives as JSON files in the\n"
-        f"`{state_dir}/` directory of the working folder. Each file follows the\n"
-        f"schema defined in the plugin's `schemas/{plugin}.json`."
-    )
-    cli_lines = (
-        "Run `command -v daedalus-bb` to check whether the CLI is available (this\n"
-        "assumes a POSIX shell; if you cannot tell, assume it is missing and edit\n"
-        "the files directly per the rules below). If it is available, do not edit\n"
-        "the state files by hand — read and write them through the CLI, which\n"
-        "validates against the schema before writing:\n"
-        f"- `daedalus-bb --schemas {schemas_ref} read <Class>`\n"
-        f"- `daedalus-bb --schemas {schemas_ref} write <Class> --set <field>=<value>`\n"
-        "  (use `--append` / `--remove` for collection fields)\n"
-        f"- `daedalus-bb --schemas {schemas_ref} validate`\n"
-        "`--schemas` is required, and it also decides where state goes: the CLI\n"
-        "derives the state directory from the schema filename, so it writes under\n"
-        f"`{state_dir}/`.\n"
-        "`daedalus-bb` ships with Daedalus — do not install any package to obtain it."
-    )
 
-    rule_lines = (
-        "Rules:\n"
-        "- Always read a state file before changing it (read, modify, write).\n"
-        "- If the file does not exist, create it from the schema.\n"
-        "- Always fill every field the schema marks as required."
-    )
+    relevant_names = {ref.split(".", 1)[0] for ref in union}
+    lines = [
+        f"- `{cls.name}` → `{state_dir}/{cls.name}.json`"
+        + (f" — {cls.description}" if cls.description else "")
+        for cls in classes if cls.name in relevant_names
+    ]
 
-    if union:
-        relevant_names = {ref.split(".", 1)[0] for ref in union}
-        relevant_classes = [c for c in classes if c.name in relevant_names]
-        lines: list[str] = []
-        for cls in relevant_classes:
-            desc = f" — {cls.description}" if cls.description else ""
-            lines.append(f"- `{cls.name}` → `{state_dir}/{cls.name}.json`{desc}")
-
-        # "이 컴포넌트를 무엇이라 부르는가" — 에이전트 두 종류 모두 "agent"다.
-        subject = "agent" if isinstance(component, Agent) else "skill"
-        intro_lines: list[str] = []
-        if reads:
-            intro_lines.append(
-                f"This {subject} reads: " + ", ".join(f"`{r}`" for r in sorted(reads))
-            )
-        if writes:
-            intro_lines.append(
-                f"This {subject} writes: " + ", ".join(f"`{w}`" for w in sorted(writes))
-            )
-
-        # 총론(디렉토리·스키마 설명)은 선언 유무와 무관하게 유지 — 선언은
-        # "덧붙이는" 정보이지 총론을 대체하지 않는다 (리뷰 지적 1).
-        return [
-            "## Shared State (Blackboard)",
-            intro,
-            "\n".join(intro_lines),
-            "\n".join(lines),
-            cli_lines,
-            rule_lines,
-        ]
-
-    lines = []
-    for cls in classes:
-        desc = f" — {cls.description}" if cls.description else ""
-        lines.append(f"- `{cls.name}` → `{state_dir}/{cls.name}.json`{desc}")
+    # "이 컴포넌트를 무엇이라 부르는가" — 에이전트 두 종류 모두 "agent"다.
+    subject = "agent" if isinstance(component, Agent) else "skill"
+    intro_lines: list[str] = []
+    if reads:
+        intro_lines.append(
+            f"This {subject} reads: " + ", ".join(f"`{r}`" for r in sorted(reads))
+        )
+    if writes:
+        intro_lines.append(
+            f"This {subject} writes: " + ", ".join(f"`{w}`" for w in sorted(writes))
+        )
 
     return [
         "## Shared State (Blackboard)",
-        intro,
+        "\n".join(intro_lines),
         "\n".join(lines),
-        cli_lines,
-        rule_lines,
     ]
 
 

@@ -425,15 +425,21 @@ def test_transfer_progress_note_does_not_own_current(scenario):
     """transfer는 전이 위의 중간 상태지 워크플로 위치가 아니다.
 
     출발 스킬은 "T를 수행한 뒤 B로"라고 말하고 `current`를 B(또는 에이전트)로
-    옮긴다 — T가 자기를 `current`에 쓰면 두 지시가 충돌한다. transfer 자신의
-    진행 기록 단락이 그것을 명시적으로 막는지 고정한다.
+    옮긴다 — T가 자기를 `current`에 쓰면 두 지시가 충돌한다. 잔여 단락은 명령
+    1줄이고(WP-FK2 C3), `current`를 건드리지 말라는 규약은 워크플로 가이드가
+    말한다 — 둘이 같은 사실을 말하는지 함께 고정한다.
     """
+    from daedalus.compiler.emit import compile_workflow_guide
+
     project, _alpha, _beta, _agent, validate, _handoff = scenario
     text = compile_skill(validate, project=project)
     section = _section(text, "## Progress Record")
-    assert "not a position in the workflow" in section
-    assert "leave `current`" in section
     assert "progress set --note" in section
+    # 잔여는 명령 1줄이다 — `--current`를 쓰라는 지시가 섞이지 않는다.
+    assert "--current" not in section
+    guide = compile_workflow_guide(project)
+    assert "not at a position in the workflow" in guide
+    assert "leaves `current` as the caller set it" in guide
 
 
 def test_caller_and_transfer_instructions_agree(scenario):

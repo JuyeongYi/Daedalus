@@ -28,6 +28,7 @@ from daedalus.compiler.emit.frontmatter import (
     _yaml_block_lines,
     _yaml_scalar,
 )
+from daedalus.compiler.emit.guides import _insert_guide_pointer
 from daedalus.compiler.emit.sections import (
     _blackboard_section,
     _describe_access,
@@ -285,8 +286,9 @@ def _fork_base_contract_section(agent, project) -> list[str]:
     return [
         "## Invocation Contract",
         (
-            "This agent is invoked through the paths below. What you receive is "
-            "whatever the Shared State (Blackboard) section declares as reads."
+            "This agent is invoked through the paths below. If this file has a "
+            "Shared State (Blackboard) section, what it declares as reads is "
+            "what you receive; otherwise the task text is all you get."
         ),
         *lines,
     ]
@@ -349,8 +351,9 @@ def _call_contract_section(agent: AgentDefinition, project) -> list[str]:
     blocks: list[str] = [
         "## Invocation Contract",
         (
-            "This agent is invoked through the paths below. What you receive is "
-            "whatever the Shared State (Blackboard) section declares as reads."
+            "This agent is invoked through the paths below. If this file has a "
+            "Shared State (Blackboard) section, what it declares as reads is "
+            "what you receive; otherwise the task text is all you get."
         ),
     ]
     for caller, port, desc, guard, transfer, transfer_desc in entries:
@@ -481,6 +484,7 @@ def compile_agent(
         blocks.extend(_tool_shelf_section(project))
         blocks.extend(_blackboard_section(project, agent))
 
+    _insert_guide_pointer(blocks, agent, project)
     return _join_blocks(blocks)
 
 

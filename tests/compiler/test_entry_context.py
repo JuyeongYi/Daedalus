@@ -42,7 +42,11 @@ def test_entry_context_section_basic_default_port():
     )
     text = compile_skill(b, project=project)
     assert "## Entry Context" in text
-    assert "Read `prev` (the previous skill)" in text
+    # 도입은 한 문장이다 — 읽는 법의 일반형은 워크플로 가이드 4절이 말한다(WP-FK2 C3).
+    assert (
+        "Check `prev` and the branch in `note`, then follow the matching entry "
+        "below." in text
+    )
     # WP-IP — 포트 그룹 헤딩은 퇴역, 출처 항목만 나열된다
     assert "### 기본 경로" not in text
     assert "- entered from `a` [completion event `done`]" in text
@@ -284,5 +288,10 @@ def test_agent_origin_mentions_delegator_for_prev_matching():
     ])
 
     text = compile_skill(beta, project=project)
-    assert "After returning from an agent delegation" in text
+    # 항목에 위임 스킬을 병기하는 것은 이 스킬 고유 정보라 잔여에 남는다.
     assert "delegating skill here — `beta`" in text
+    # 일반형("에이전트에서 돌아오면 prev는 위임 스킬이다")은 가이드가 말한다.
+    from daedalus.compiler.emit import compile_workflow_guide
+
+    assert "After returning from an agent delegation" not in text
+    assert "After returning from an agent delegation" in compile_workflow_guide(project)

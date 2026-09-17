@@ -41,9 +41,19 @@ DEFAULT_FILE_TOKEN_THRESHOLD = 5000
 # 임계 판정 대상 kind — 모델 컨텍스트에 산문으로 실리는 산출물만 본다.
 # hooks.json/schemas.json/plugin.json은 CC가 설정으로 읽을 뿐 대화 컨텍스트에
 # 실리지 않으므로 총합에는 넣되 임계로 재지 않는다.
+# 공통 안내 파일(guides/<플러그인>/…)도 모델이 Read로 읽는 산문이므로 같은
+# 기준의 파일이다 — 포인터를 받은 컴포넌트가 실행될 때마다 추가로 실린다.
 CONTEXT_KINDS: frozenset[str] = frozenset(
-    {"skill", "agent", "wrapped_runner", "workspace_rule", "claude_md"}
+    {
+        "skill", "agent", "wrapped_runner", "workspace_rule", "claude_md",
+        "guide_workflow", "guide_blackboard",
+    }
 )
+
+#: 가이드 kind — notice()가 "포인터를 받은 컴포넌트마다 추가로 실린다"를 덧붙일
+#: 때 쓴다. 문자열의 단일 진실은 `compiler/emit/guides.py`이고 여기는 임계 판정
+#: 전용 사본이라 임포트 방향(token_report → emit)을 만들지 않는다.
+_GUIDE_KINDS: frozenset[str] = frozenset({"guide_workflow", "guide_blackboard"})
 
 _ASCII_CHARS_PER_TOKEN = 4.0
 _WIDE_CHARS_PER_TOKEN = 1.5
@@ -117,12 +127,19 @@ class TokenReport:
             return None
         head = ", ".join(f"{e.path} ≈{e.tokens:,}" for e in hits[:3])
         more = f" 외 {len(hits) - 3}건" if len(hits) > 3 else ""
-        return (
+        text = (
             f"토큰 비용: 산출 {len(hits)}건이 파일당 임계 {self.threshold:,}토큰을 "
             f"넘습니다 ({head}{more}). 스킬 본문은 걸릴 때마다 통째로 컨텍스트에 "
             f"실립니다 — 큰 절을 skill-files/로 내려 필요할 때만 읽게 하는 것을 "
             f"검토하세요."
         )
+        guides = sum(e.tokens for e in self.entries if e.kind in _GUIDE_KINDS)
+        if guides:
+            text += (
+                f"\n공통 안내 파일 ≈{guides:,}토큰은 포인터를 받은 컴포넌트가 "
+                f"실행될 때마다 추가로 실립니다."
+            )
+        return text
 
     def summary(self) -> str:
         """상태바 한 조각용 요약."""
