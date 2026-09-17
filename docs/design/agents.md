@@ -41,10 +41,14 @@
   결과가 메인 컨텍스트에 남지 않는 것이다(진행 기록·재개가 약해진다 — `no_agent_to_agent`
   경고). 하드 제약 둘은 에러다: `agent_chain_too_deep`(깊이 3), `agent_calls_higher_model`
   (자기보다 상위 모델 호출 금지 — 사용자 확정).
-- **fork 에이전트 (2026-09-13):** 캔버스에 배치되지 않은 프로젝트 에이전트는 fork 에이전트가 될 수 있다 —
-  그 에이전트 본문이 시스템 프롬프트, fork 스킬 본문이 작업 지시다(실측). `.md`의 "## Invocation Contract"에
-  "Execution base of fork skill X"가 유도된다. `skills` 프리로드·`maxTurns`는 적용되고 `isolation`은 적용되지
-  않는다(`fork_agent_isolation_ignored`). 상세는 `plugin-model.md` "fork 스킬".
+- **fork 에이전트 (2026-09-13, 종류 분리 WP-FK2):** fork 스킬의 실행 기반은 **`ForkAgent`**(kind
+  `fork_agent`)라는 별도 종류다 — 캔버스에 배치되지 않고 fsm·포트가 없다. 그 에이전트 본문이 시스템
+  프롬프트, fork 스킬 본문이 작업 지시다(실측). `.md`의 "## Invocation Contract"에 "Execution base of
+  fork skill X"가 유도된다. `skills` 프리로드·`maxTurns`는 적용되고 `isolation`은 적용되지 않으므로
+  `ForkAgentConfig`에 그 필드가 아예 없다(실측 재확인 2026-09-18, CC 2.1.274 — 경고
+  `fork_agent_isolation_ignored`는 그래서 퇴역했다). 워크플로 에이전트(`AgentDefinition`)를 fork
+  스킬의 `agent`로 지목하면 에러 `fork_agent_wrong_kind`, 아무 fork 스킬도 부르지 않는 `ForkAgent`는
+  경고 `unused_fork_agent`다. 상세는 `plugin-model.md` "fork 스킬".
 - **에이전트 편집기:** AgentEditor = ComponentEditor + 출력 포트 패널 + **에이전트 호출 포트
   패널**(스킬 에디터와 같은 `_TransferOnPanel` 위젯) — 스킬 편집기와
   같은 레벨(그래프/컨텐츠 탭 구조 제거, 별도 그래프 VM 없음 — undo는 프로젝트 스택).

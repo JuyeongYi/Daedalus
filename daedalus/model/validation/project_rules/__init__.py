@@ -144,6 +144,7 @@ class _ProjectRules(
         errors.extend(_WorkflowRules._check_agent_calls_higher_model(project))
         # fork 에이전트 (2026-09-13)
         errors.extend(_ForkRules._check_fork_agents(project))
+        errors.extend(_ForkRules._check_unused_fork_agents(project))
         # 작업 폴더 문서 — WP-WD
         errors.extend(_WorkspaceDocRules._check_workspace_docs(project))
         return errors

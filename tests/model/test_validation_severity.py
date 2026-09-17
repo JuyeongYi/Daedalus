@@ -22,7 +22,8 @@ _ERROR_RULES = frozenset({
     "agent_chain_too_deep",
     "agent_calls_higher_model",
     # 2026-09-13 — fork 에이전트를 못 찾으면 CC가 조용히 general-purpose로 돈다
-    "fork_agent_placed",
+    # WP-FK2 — fork_agent_placed 퇴역, 종류 불일치(fork_agent_wrong_kind)로 대체
+    "fork_agent_wrong_kind",
     "fork_agent_missing",
     "fork_agent_undeclared_plugin",
     "transfer_on_not_empty",
@@ -47,7 +48,7 @@ _WARN_RULES = frozenset({
     "trigger_unknown_event",
     "no_agent_to_agent",  # 2026-09-12 — 중첩 스폰 허용으로 에러 → 경고
     "fork_model_overrides_agent",  # 2026-09-13 — fork에서 에이전트 값이 무시됨
-    "fork_agent_isolation_ignored",  # 2026-09-13 — fork에 isolation 미적용
+    "unused_fork_agent",  # WP-FK2 — 아무 fork 스킬도 부르지 않는 fork 에이전트
     "invalid_blackboard_field_type",
     "choice_completeness_missing_else",
     "parallel_join_count",

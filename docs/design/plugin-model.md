@@ -159,6 +159,6 @@ CC는 **조용히 범용 에이전트로 돌렸다**. 그래서 fork를 **별도
 | model·effort | 스킬에 값이 있으면 **스킬이 이긴다**(effort는 값을 뒤바꿔 두 번 확인). 스킬이 비면 **에이전트 값**이 쓰인다 |
 | tools | **에이전트가 이긴다** — 스킬 `allowed-tools`는 도구를 늘리지 못한다 |
 | 전달 구조 | 에이전트 본문 → 시스템 프롬프트, 스킬 본문 → 작업 지시. `$ARGUMENTS`는 치환된다 |
-| fork 에이전트 설정 | `skills:` 프리로드·`maxTurns`는 **적용**, `isolation: worktree`는 **적용되지 않는다** |
+| fork 에이전트 설정 | `skills:` 프리로드·`maxTurns`는 **적용**, `isolation: worktree`는 **적용되지 않는다** (CC 2.1.268 실측 2026-09-13 → **CC 2.1.274 `claude -p` 재실측 2026-09-18에서 동일**. 공식 문서 뒷받침이 없는 항목이라 되돌리기 비싼 결정(매트릭스 행 삭제) 전에 다시 쟀다. 그래서 `ForkAgentConfig`에 `isolation` 필드가 없고 경고 `fork_agent_isolation_ignored`는 퇴역했다) |
 | 내장 이름 | `general-purpose` / `Explore` / `Plan` (`statusline-setup`도 있으나 후보에서 뺀다) |
 | 도구 0개 에이전트 | 이 환경에 없는 도구만 준 에이전트로는 fork가 아무 일도 하지 못했다 |

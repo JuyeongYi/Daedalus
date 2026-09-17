@@ -57,7 +57,7 @@ blackboard/body_variables/build_target/workflow/workspace)을 합성한 오케�
 
 **프로젝트 그래프 검증:** `validate_project`는 `project.graph`도 머신 규칙으로 검증하며 root path는 `("project",)`다. 단 그래프에 placement(EntryPoint 외 노드)가 0개면 검증을 스킵(`_graph_has_placements`) — 빈 캔버스 경고 폭주 방지. `transfer_on_not_empty` 같은 컴포넌트 수준 규칙은 머신 검증에 없으므로 무관. **`unreachable_state`는 `skip_rules={"unreachable_state"}`로 스킵된다(WP-EP)** — CC 플러그인 의미론상 프로젝트 그래프의 모든 배치는 user_invocable 스킬 등으로 독립 시작 가능해 "EntryPoint에서 도달 불가"가 성립하지 않는다. skip_rules는 재귀에 전파되지 않으므로 에이전트 sub_machine 내부의 `unreachable_state`는 기존대로 검사된다.
 
-### 프로젝트 수준 (25종)
+### 프로젝트 수준 (38종)
 
 `Validator.validate_project(project)` — 전체 FSM 검증 후 추가:
 
@@ -65,7 +65,7 @@ blackboard/body_variables/build_target/workflow/workspace)을 합성한 오케�
 |------|------|
 | `duplicate_component_name` | skills/agents 전체에서 동명 컴포넌트 에러 (컴파일 디렉토리 충돌) |
 | `invalid_component_name` | 이름이 `^[a-z0-9][a-z0-9-]*$` 불일치 시 경고, 빈 이름은 에러 |
-| `dangling_string_reference` | `AgentConfig.skills`, `reference_placements.skill_name`의 문자열 참조 실존 검사 (스킬 이름은 전역 skills 기준). fork 스킬 `agent`는 내장·외부도 가리킬 수 있어 여기서 보지 않는다 — `fork_agent_missing`이 맡는다 |
+| `dangling_string_reference` | `AgentConfigBase.skills`(에이전트 두 종류 모두), `reference_placements.skill_name`의 문자열 참조 실존 검사 (스킬 이름은 전역 skills 기준). fork 스킬 `agent`는 내장·외부도 가리킬 수 있어 여기서 보지 않는다 — `fork_agent_missing`이 맡는다 |
 | `duplicate_tool_name` | `tool_shelf` 내 동명 Tool 에러 (이름 참조 모호) |
 | `empty_tool_definition` | UserDefinedTool 본문(body) 빈 값 / MCPTool server·tool_name 빈 값 경고 |
 | `dangling_tool_ref` | FSM의 ToolEvaluation/ToolExecution.tool이 `tool_shelf ∪ CC_BUILTIN_TOOLS`에 없으면 경고 (빈 문자열은 스킵). 참조 수집은 상태 훅·custom_events·전이 가드/액션 체인 + Composite 중첩 + sub_machine/Region 재귀 |
@@ -95,10 +95,12 @@ blackboard/body_variables/build_target/workflow/workspace)을 합성한 오케�
 | `agent_calls_higher_model` | 에이전트가 **자기보다 상위 모델**의 에이전트를 호출하면 **에러** (사용자 확정 2026-09-12). 티어 표의 단일 진실은 `model/plugin/enums.MODEL_TIER`(haiku<sonnet<opus<fable). 어느 한쪽이 `INHERIT`면 물려받는 값이라 상위/하위가 성립하지 않아 건너뛴다. 스킬 → 상위 모델 에이전트는 대상이 아니다(메인 스레드가 부르는 것이라 중첩이 아니다). 단 **fork 스킬은 호출자로 본다** — 티어는 실효 모델(스킬이 `INHERIT`면 fork 에이전트로 쓰는 프로젝트 에이전트 값) |
 | `fork_agent_missing` | fork 스킬 `agent`가 내장도, `플러그인:이름` 형식도, 프로젝트 에이전트도 아니면 **에러** (2026-09-13) — CC는 못 찾은 에이전트를 조용히 general-purpose로 돌린다. 정확 일치(대소문자 포함) |
 | `fork_agent_undeclared_plugin` | `플러그인:이름`의 플러그인이 `external_plugins`에 없으면 **에러** — 플러그인이 켜지지 않아 역시 조용히 범용으로 돈다(랩핑의 `undeclared_external_plugin`은 경고지만 fork는 에러). 그 에이전트가 플러그인에 실제로 있는지는 파일시스템이라 검증기가 보지 않는다(피커·MCP는 카탈로그로 거른다) |
-| `fork_agent_placed` | fork 에이전트로 쓰는 프로젝트 에이전트가 캔버스에 배치돼 있으면 **에러** — 워크플로 단계와 fork 에이전트를 겸하면 보이지 않는 연결이 생긴다. 드롭 자체는 막지 않는다(조작 거절은 이유가 안 보인다) |
+| `fork_agent_wrong_kind` | fork 스킬 `agent`가 **워크플로 에이전트**(`AgentDefinition`)를 가리키면 **에러** (WP-FK2) — 워크플로 에이전트는 캔버스 노드로 불리는 종류라 fork 에이전트가 될 수 없다. 배치 여부와 무관하다(퇴역한 `fork_agent_placed`는 배치를 봤다). 메시지가 대안(fork 에이전트 종류로 만들기 / 다른 에이전트 고르기)을 말한다 |
 | `fork_model_overrides_agent` | 스킬과 fork 에이전트로 쓰는 프로젝트 에이전트 **양쪽에 model(또는 effort)이 있고 다르면** 경고 — fork에서는 스킬 값이 이긴다(실측). 스킬이 비면 에이전트 값이 쓰이므로 정상 |
-| `fork_agent_isolation_ignored` | fork 에이전트로 쓰는 프로젝트 에이전트에 `isolation`이 있으면 경고 — fork 실행에는 적용되지 않는다(실측) |
-| `mid_chain_user_invocable` | 프로젝트 그래프에 배치된 ProceduralSkill 중 **incoming 전이가 1개 이상**인데 `config.user_invocable`의 **실효값**이 true면 경고 (A3 + A8 tri-state — `None`(미지정)은 CC 기본 true이므로 경고 대상이고 메시지에 병기, **명시 `False`만 통과**) — user-invocable은 진입점으로 기능할 노드만 true여야 한다(중간 노드로 사용자가 맥락 없이 진입하는 사고 방지. false여도 모델 인보크는 되므로 체인은 안 끊긴다). incoming 0개(진입점 후보)·미배치 스킬(독립 스킬)은 대상 아님. **EntryPoint 출발 전이는 incoming으로 세지 않는다** — 그것이 곧 "여기서 시작한다"는 선언이다(WP-EP로 캔버스에 그리지 않을 뿐 구버전 파일의 시작 전이는 모델에 남아 있다) |
+| `unused_fork_agent` | 어떤 fork 스킬도 부르지 않는 `ForkAgent` 경고 (WP-FK2) — `agents/<이름>.md`로 산출은 되지만 아무도 실행하지 않는다(조용한 무동작 방지). 역참조 판정은 `model/plugin/placement.fork_skills_using` 한 곳이다(편집기 패널·삭제 확인·MCP `still_referenced_by`와 같은 실체). 워크플로 에이전트는 대상이 아니다 |
+| `disabled_wrapped_placed` | 비활성 랩핑 스킬이 캔버스에 남아 있으면 경고 (WP-WR — 상세는 `wrapped-skills.md`) |
+| `workspace_settings_in_marketplace_build` | 작업 폴더 설정(WP-WS)이 있는데 빌드 타깃이 MARKETPLACE면 경고 — 베이크 불가 (상세는 `workspace-and-build-target.md`) |
+| `mid_chain_user_invocable` | 프로젝트 그래프에 배치된 StepSkill(절차형·fork 2종) 중 **incoming 전이가 1개 이상**인데 `config.user_invocable`의 **실효값**이 true면 경고 (A3 + A8 tri-state — `None`(미지정)은 CC 기본 true이므로 경고 대상이고 메시지에 병기, **명시 `False`만 통과**) — user-invocable은 진입점으로 기능할 노드만 true여야 한다(중간 노드로 사용자가 맥락 없이 진입하는 사고 방지. false여도 모델 인보크는 되므로 체인은 안 끊긴다). incoming 0개(진입점 후보)·미배치 스킬(독립 스킬)은 대상 아님. **EntryPoint 출발 전이는 incoming으로 세지 않는다** — 그것이 곧 "여기서 시작한다"는 선언이다(WP-EP로 캔버스에 그리지 않을 뿐 구버전 파일의 시작 전이는 모델에 남아 있다) |
 
 도구 모델(`tool.py`): `Tool(PluginComponent, ABC)` 단일 진실 + `BuiltinTool`/`MCPTool`/`UserDefinedTool`. shelf = 프로젝트(`PluginProject.tool_shelf`) 소유, FSM은 `Tool.name` 문자열로 참조(fsm/는 plugin 무관 — 객체 참조 금지, Validator가 실존 검증). `CC_BUILTIN_TOOLS`는 `validation/project_rules/tools.py` 모듈 frozenset이다(파사드 재-export로 `daedalus.model.validation`에서도 임포트 가능 — Read/Write/Edit/Bash/Glob/Grep/WebFetch/WebSearch/Agent/Task/TodoWrite/NotebookEdit/SlashCommand/PowerShell).
 

@@ -53,10 +53,14 @@ WARNING_RULES: frozenset[str] = frozenset({
     # 약해지는 것뿐이라 판단은 설계자 몫이다. 하드 제약(깊이·모델 티어)은
     # agent_chain_too_deep / agent_calls_higher_model이 에러로 잡는다.
     "no_agent_to_agent",
-    # fork 스킬(2026-09-13) — 둘 다 "설정이 무시된다"는 알림이다. fork 에이전트를 못 찾는
-    # 경우(fork_agent_missing 등)는 조용히 범용으로 돌므로 에러다.
+    # fork 스킬(2026-09-13) — "설정이 무시된다"는 알림이다. fork 에이전트를 못 찾는
+    # 경우(fork_agent_missing 등)나 종류가 틀린 경우(fork_agent_wrong_kind)는
+    # 조용히 범용으로 돌거나 산출이 어긋나므로 에러다.
+    # fork_agent_isolation_ignored는 퇴역했다(WP-FK2) — ForkAgentConfig에 isolation
+    # 필드가 아예 없다(실측 재확인 2026-09-18, CC 2.1.274).
     "fork_model_overrides_agent",
-    "fork_agent_isolation_ignored",
+    # WP-FK2 — 아무 fork 스킬도 부르지 않는 fork 에이전트(산출되지만 미실행).
+    "unused_fork_agent",
     # WP-M FSM 의미론 경고
     "choice_completeness_missing_else",
     "parallel_join_count",
