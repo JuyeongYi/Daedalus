@@ -20,7 +20,12 @@ class PropsTools(_BaseTools):
     """컴포넌트 생성 + 속성/프론트매터 편집 + 프로젝트 속성."""
 
     #: create_skill이 받는 종류 (에이전트는 create_agent가 따로 맡는다).
-    _SKILL_KINDS = ("procedural", "fork", "declarative", "transfer", "reference", "wrapped")
+    _SKILL_KINDS = (
+        "procedural", "sync_fork", "async_fork", "declarative", "transfer",
+        "reference", "wrapped",
+    )
+    #: create_agent가 받는 종류 — 워크플로 에이전트 / fork 스킬의 실행 기반.
+    _AGENT_KINDS = ("agent", "fork_agent")
 
     def _create_component(
         self,
@@ -60,8 +65,8 @@ class PropsTools(_BaseTools):
         if kind in NO_PLACE_KINDS:
             raise ValueError(
                 f"'{kind}' 종류는 캔버스에 노드로 배치되지 않습니다 "
-                "(declarative는 배경 지식, transfer는 전이 위의 단계입니다) — "
-                "x/y 없이 만드세요."
+                "(declarative는 배경 지식, transfer는 전이 위의 단계, "
+                "fork_agent는 fork 스킬의 실행 기반입니다) — x/y 없이 만드세요."
             )
         component = create_and_place(
             self._scene, win, kind, name, float(x), float(y), description,
@@ -87,12 +92,14 @@ class PropsTools(_BaseTools):
         kind: procedural(작업 지침·자체 FSM) / declarative(배경 지식) /
         transfer(전이 시 실행되는 보조 지침) / reference(참조 문서) /
         wrapped(다른 플러그인 스킬의 랩핑 — 본문 없음, WP-WR) /
-        fork(본문이 서브에이전트의 작업 지시가 되는 단계 — 2026-09-13).
+        sync_fork/async_fork(본문이 서브에이전트의 작업 지시가 되는 단계 —
+        sync는 `background: false`로 부른 쪽이 보고를 기다리고, async는
+        `background: true`로 보고가 작업 알림으로 온다. 2026-09-17).
 
-        fork_agent: kind="fork" 전용 — fork 에이전트(프론트매터 `agent`). 내장(general-purpose/Explore/Plan),
-        사용 선언한 외부 플러그인 에이전트(`플러그인:이름`), 캔버스에 배치되지 않은
-        프로젝트 에이전트 중 하나(정확 일치). 생략하면 general-purpose.
-        절차형 ↔ fork 전환은 `convert_skill`.
+        fork_agent: kind="sync_fork"/"async_fork" 전용 — fork 에이전트(프론트매터 `agent`).
+        내장(general-purpose/Explore/Plan), 사용 선언한 외부 플러그인 에이전트
+        (`플러그인:이름`), 프로젝트의 **fork 에이전트** 중 하나(정확 일치).
+        생략하면 general-purpose. 절차형 ↔ fork 2종 전환은 `convert_skill`.
         에이전트에게 줄 지식도 전역 스킬로 만든다 — 전역 declarative와 에이전트
         노드에 링크된 reference는 컴파일 시 에이전트 skills 프론트매터에 자동
         합류된다(로컬 스킬은 퇴역, WP-RF-1c).
@@ -123,10 +130,10 @@ class PropsTools(_BaseTools):
             raise ValueError(
                 f"알 수 없는 스킬 종류 '{kind}'. 사용 가능: {', '.join(self._SKILL_KINDS)}"
             )
-        if fork_agent and kind != "fork":
+        if fork_agent and kind not in ("sync_fork", "async_fork"):
             raise ValueError(
-                f"fork_agent는 kind='fork' 전용입니다 — '{kind}' 스킬은 서브에이전트를 "
-                "지정하지 않습니다(나머지 스킬은 fork·agent 지정 불가)."
+                f"fork_agent는 kind='sync_fork'/'async_fork' 전용입니다 — '{kind}' 스킬은 "
+                "서브에이전트를 지정하지 않습니다(나머지 스킬은 fork·agent 지정 불가)."
             )
         if fork_agent:
             from daedalus.view.actions.fork_skill import validate_fork_agent
@@ -169,7 +176,7 @@ class PropsTools(_BaseTools):
             kind, name, description, x, y, agent=fork_agent or None
         )
         out: dict[str, Any] = {"created": name, "kind": kind, "placed": placed}
-        if kind == "fork":
+        if kind in ("sync_fork", "async_fork"):
             out["fork_agent"] = fork_agent or "general-purpose"
         return out
 
@@ -179,24 +186,37 @@ class PropsTools(_BaseTools):
         description: str = "",
         x: float | None = None,
         y: float | None = None,
+        kind: str = "agent",
     ) -> dict[str, Any]:
         """에이전트를 만든다 — 별도 컨텍스트의 작업자.
 
+        kind: "agent"(워크플로 에이전트 — 캔버스 노드) / "fork_agent"(fork
+        스킬의 실행 기반 — fsm·포트·배치 없음). fork 에이전트는 캔버스에
+        놓이지 않으므로 x/y를 주면 거절한다.
+
         절차는 본문(set_component_body)에, 결과 분기는 출력 포트
-        (set_transfer_on)에 서술한다. 기본 출력 포트 'done' 하나로 시작한다.
+        (set_transfer_on)에 서술한다. 워크플로 에이전트는 기본 출력 포트
+        'done' 하나로 시작한다(fork 에이전트는 포트가 없다 — 결과 분기는
+        그를 부르는 fork 스킬의 보고 양식이 정한다).
 
         x/y(G14): 함께 주면 만들자마자 그 좌표에 배치한다(1 undo 단위).
         """
+        if kind not in self._AGENT_KINDS:
+            raise ValueError(
+                f"알 수 없는 에이전트 종류 '{kind}'. "
+                f"사용 가능: {', '.join(self._AGENT_KINDS)}"
+            )
         self._reject_duplicate_name(name)
-        placed = self._create_component("agent", name, description, x, y)
-        return {"created": name, "kind": "agent", "placed": placed}
+        placed = self._create_component(kind, name, description, x, y)
+        return {"created": name, "kind": kind, "placed": placed}
 
     def convert_skill(self, name: str, to: str) -> dict[str, Any]:
-        """절차형 ↔ fork 스킬 전환 — **1 undo** (2026-09-13).
+        """절차형 ↔ 동기/비동기 fork 스킬 전환 — **1 undo** (2026-09-17).
 
-        to: "fork" 또는 "procedural". 이름·본문·설명·포트·전이·배치는 그대로다.
-        fork로 갈 때 `allowed_tools`(fork에서 효과 없음)를, 절차형으로 갈 때
-        `agent`를 버리고 `dropped`로 알린다. fork의 fork 에이전트는 기본
+        to: "procedural" / "sync_fork" / "async_fork". 이름·본문·설명·포트·전이·
+        배치는 그대로다. fork로 갈 때 `allowed_tools`(fork에서 효과 없음)를,
+        절차형으로 갈 때 `agent`를 버리고 `dropped`로 알린다. sync ↔ async는
+        버리는 것이 없다(`agent` 보존). fork의 fork 에이전트는 기본
         general-purpose이고 `set_component_field(name, "agent", ...)`로 바꾼다.
 
         편집기 "…로 전환" 버튼·캔버스 우클릭과 같은 실체
@@ -234,23 +254,26 @@ class PropsTools(_BaseTools):
         `set_wrapped_enabled(name, false)`로 끄면 산출·배선에서 빠지고 소스와
         배치는 남아 언제든 되돌릴 수 있다.
         """
-        from daedalus.model.plugin.agent import AgentDefinition
-        from daedalus.model.plugin.config import AgentConfig, ForkSkillConfig
+        from daedalus.model.plugin.agent import Agent
+        from daedalus.model.plugin.config import AgentConfigBase
+        from daedalus.model.plugin.placement import fork_skills_using
         from daedalus.model.plugin.skill import Skill
 
         comp = self._find_component(name)
         project = self._project
 
         still: list[str] = []
-        if isinstance(comp, AgentDefinition):
-            for skill in project.skills:
-                cfg = getattr(skill, "config", None)
-                if isinstance(cfg, ForkSkillConfig) and cfg.agent == name:
-                    still.append(f"skill:{skill.name}.agent")
+        if isinstance(comp, Agent):
+            # 역참조 목록의 실체는 model의 `fork_skills_using` 하나다 —
+            # 화면(삭제 확인·"사용하는 fork 스킬")·산출과 같은 목록을 말한다.
+            still.extend(
+                f"skill:{skill_name}.agent"
+                for skill_name in fork_skills_using(comp, project)
+            )
         if isinstance(comp, Skill):
             for agent in project.agents:
                 cfg = getattr(agent, "config", None)
-                if isinstance(cfg, AgentConfig) and name in (cfg.skills or []):
+                if isinstance(cfg, AgentConfigBase) and name in (cfg.skills or []):
                     still.append(f"agent:{agent.name}.skills")
 
         kind = getattr(comp, "kind", type(comp).__name__)
@@ -571,21 +594,16 @@ class PropsTools(_BaseTools):
         import enum
         from typing import get_args
 
-        from daedalus.model.plugin.agent import AgentDefinition
-        from daedalus.model.plugin.field_matrix import (
-            AGENT_FIELD_MATRIX,
-            SKILL_FIELD_MATRIX,
-        )
+        from daedalus.model.plugin.field_matrix import matrix_for
 
         comp = self._find_component(name)
         config = getattr(comp, "config", None)
         if config is None:
             raise ValueError(f"'{name}'에는 config가 없습니다.")
 
-        if isinstance(comp, AgentDefinition):
-            matrix = AGENT_FIELD_MATRIX
-        else:
-            matrix = SKILL_FIELD_MATRIX.get(self._skill_matrix_key(comp), {})
+        # 표를 고르는 규칙의 실체는 model의 `matrix_for` 하나다 — 조용한
+        # 빈 dict 폴백(예전 버그)도, 이유를 못 말하는 맨 첨자도 쓰지 않는다.
+        matrix = matrix_for(comp)
 
         hints = self._config_field_types(config)
         out: list[dict[str, Any]] = []
@@ -608,11 +626,6 @@ class PropsTools(_BaseTools):
                 entry["choices"] = [str(m.value) for m in base]
             out.append(entry)
         return {"component": comp.name, "kind": self._component_kind(comp), "fields": out}
-
-    @staticmethod
-    def _skill_matrix_key(comp: Any) -> str:
-        """SKILL_FIELD_MATRIX의 키."""
-        return str(getattr(comp, "kind", "")).replace("_skill", "")
 
     def set_component_field(
         self, name: str, field: str, value: Any

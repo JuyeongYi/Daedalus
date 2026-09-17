@@ -23,7 +23,13 @@ from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QHBoxLayout, QWidget
 
 from daedalus.model.plugin.agent import AgentDefinition
-from daedalus.model.plugin.skill import DeclarativeSkill, ProceduralSkill, ReferenceSkill, TransferSkill
+from daedalus.model.plugin.skill import (
+    DeclarativeSkill,
+    ProceduralSkill,
+    ReferenceSkill,
+    StepSkill,
+    TransferSkill,
+)
 
 # --- 재-export 파사드 (분해 전 이름 그대로) -------------------------------
 from daedalus.view.editors.frontmatter_panel import (  # noqa: F401
@@ -74,7 +80,7 @@ class SkillEditor(QWidget):
         # 이 분기에서 빠져 있어 GUI에서 출력 추가가 불가능했다 — 사용자 보고).
         # 단, **참조 용도로 고정된 wrapped는 제외** — 참조는 워크플로 단계가
         # 아니라 포트가 무의미하다(사용자 확정 2026-09-07).
-        if (isinstance(component, (ProceduralSkill, WrappedSkill))
+        if (isinstance(component, (StepSkill, WrappedSkill))
                 and not is_reference_usage(component)):
             right_widgets.append(_TransferOnPanel(component.transfer_on, title="⇄ Transfer On"))
             right_widgets.append(
@@ -89,23 +95,9 @@ class SkillEditor(QWidget):
         # 전용 파일을 본문으로 바로 드래그할 수 있다.
         right_widgets.append(SkillFilesPanel(component))
 
-        # Determine skill_kind for field matrix
-        from daedalus.model.plugin.skill import ForkSkill, WrappedSkill
-
-        if isinstance(component, WrappedSkill):
-            kind = "wrapped"
-        elif isinstance(component, ForkSkill):  # 절차형 하위 종류 — 먼저 검사
-            kind = "fork"
-        elif isinstance(component, ProceduralSkill):
-            kind = "procedural"
-        elif isinstance(component, TransferSkill):
-            kind = "transfer"
-        elif isinstance(component, DeclarativeSkill):
-            kind = "declarative"
-        elif isinstance(component, ReferenceSkill):
-            kind = "reference"
-        else:
-            kind = None
+        # 프론트매터 표 키 — **config.kind가 단일 진실**이다(컴파일러·MCP와 동일).
+        config = getattr(component, "config", None)
+        kind = getattr(config, "kind", None)
 
         self._editor = ComponentEditor(
             component,

@@ -217,11 +217,11 @@ def test_create_skill_rejects_unknown_kind(tools):
 
 def test_rename_component_updates_references_and_undoes(tools, window):
     """문자열 참조까지 대칭으로 되돌아와야 한다."""
-    from daedalus.model.plugin.config import ForkSkillConfig
+    from daedalus.model.plugin.config import SyncForkSkillConfig
 
     agent_skill = next(s for s in window._project.skills if s.name == "init")
-    tools.create_agent("helper")
-    agent_skill.config = ForkSkillConfig(agent="helper")
+    tools.create_agent("helper", kind="fork_agent")
+    agent_skill.config = SyncForkSkillConfig(agent="helper")
 
     tools.rename_component("helper", "assistant")
     assert agent_skill.config.agent == "assistant"

@@ -101,13 +101,18 @@ from daedalus.model.fsm.variable import (
     Variable,
     VariableScope,
 )
-from daedalus.model.plugin.agent import AgentDefinition
+from daedalus.model.plugin.agent import Agent, AgentDefinition, ForkAgent
 from daedalus.model.plugin.config import (
     AgentConfig,
+    AgentConfigBase,
+    AsyncForkSkillConfig,
     DeclarativeSkillConfig,
+    ForkAgentConfig,
     ForkSkillConfig,
     ProceduralSkillConfig,
     ReferenceSkillConfig,
+    StepSkillConfig,
+    SyncForkSkillConfig,
     TransferSkillConfig,
 )
 from daedalus.model.plugin.enums import (
@@ -123,10 +128,13 @@ from daedalus.model.plugin.enums import (
 from daedalus.model.plugin.hook import HookDef, HookEvent
 from daedalus.model.plugin.policy import ExecutionPolicy
 from daedalus.model.plugin.skill import (
+    AsyncForkSkill,
     DeclarativeSkill,
     ForkSkill,
     ProceduralSkill,
     ReferenceSkill,
+    StepSkill,
+    SyncForkSkill,
     TransferSkill,
 )
 from daedalus.model.plugin.tool import (
@@ -180,6 +188,8 @@ from daedalus.model.serialize.migrate import (
     _promote_local_skills,
     _v1_all_machines,
     _v1_scrub_number,
+    migrate_fork_split,
+    needs_fork_split_migration,
 )
 from daedalus.model.serialize.deser import (
     _EVAL_BUILDERS,
@@ -191,6 +201,7 @@ from daedalus.model.serialize.deser import (
     _deser_agent,
     _deser_blackboard,
     _deser_body,
+    _coerce_config,
     _deser_config,
     _deser_dynamic_class,
     _deser_dynamic_field,

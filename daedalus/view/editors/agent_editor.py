@@ -94,32 +94,42 @@ class AgentEditor(QWidget):
         from daedalus.view.editors.component_editor import ComponentEditor
         from daedalus.view.editors.skill_editor import _TransferOnPanel
 
-        # 출력 포트 — 프로젝트 그래프가 이 이름으로 분기한다 (스킬과 동일 패턴).
-        self._transfer_on_panel = _TransferOnPanel(
-            self._agent.transfer_on, title="→ 출력 포트",
-        )
-        self._transfer_on_panel.transfer_on_changed.connect(self._on_model_changed)
+        # fork 에이전트에는 포트도 그래프 도착 경로도 없다 — 부르는 것은 fork
+        # 스킬이고 결과 분기는 그 스킬의 보고 양식이 정한다. 없는 필드를
+        # 그리려 들면 AttributeError다.
+        self._is_workflow = hasattr(self._agent, "transfer_on")
+        self._transfer_on_panel = None
+        self._call_agents_panel = None
+        self._callers_panel = None
+        right_widgets: list[QWidget] = []
+        if self._is_workflow:
+            # 출력 포트 — 프로젝트 그래프가 이 이름으로 분기한다 (스킬과 동일 패턴).
+            self._transfer_on_panel = _TransferOnPanel(
+                self._agent.transfer_on, title="→ 출력 포트",
+            )
+            self._transfer_on_panel.transfer_on_changed.connect(self._on_model_changed)
 
-        # 에이전트 호출 포트 — 스킬 에디터와 **같은 위젯·같은 규약**(2026-09-12).
-        # 이 포트에서 나가는 전이만 에이전트 노드로 갈 수 있다.
-        self._call_agents_panel = _TransferOnPanel(
-            self._agent.call_agents, title="🤖 Agent Call",
-            default_color="#8a4a4a", multiline_desc=True,
-        )
-        self._call_agents_panel.transfer_on_changed.connect(self._on_model_changed)
+            # 에이전트 호출 포트 — 스킬 에디터와 **같은 위젯·같은 규약**(2026-09-12).
+            # 이 포트에서 나가는 전이만 에이전트 노드로 갈 수 있다.
+            self._call_agents_panel = _TransferOnPanel(
+                self._agent.call_agents, title="🤖 Agent Call",
+                default_color="#8a4a4a", multiline_desc=True,
+            )
+            self._call_agents_panel.transfer_on_changed.connect(self._on_model_changed)
 
-        # 호출자 목록 (A9-4) — **읽기 전용**이다. 누가 이 에이전트를 부르는지는
-        # 모델에 적혀 있지 않고 프로젝트 그래프에서 유도할 뿐이라(WP-CT), 여기서
-        # 편집하게 하면 같은 사실의 소스가 둘이 된다. 편집은 호출자 쪽 call_agents
-        # 포트와 캔버스 전이에서 한다.
-        self._callers_panel = _CallersPanel(self._agent, self._project)
+            # 호출자 목록 (A9-4) — **읽기 전용**이다. 누가 이 에이전트를 부르는지는
+            # 모델에 적혀 있지 않고 프로젝트 그래프에서 유도할 뿐이라(WP-CT), 여기서
+            # 편집하게 하면 같은 사실의 소스가 둘이 된다. 편집은 호출자 쪽 call_agents
+            # 포트와 캔버스 전이에서 한다.
+            self._callers_panel = _CallersPanel(self._agent, self._project)
+            right_widgets = [
+                self._transfer_on_panel, self._call_agents_panel, self._callers_panel,
+            ]
 
         # WP-IP — 입력 경로 패널은 퇴역했다(출력 포트만 남는다).
         self._component_editor = ComponentEditor(
             self._agent,
-            right_widgets=[
-                self._transfer_on_panel, self._call_agents_panel, self._callers_panel,
-            ],
+            right_widgets=right_widgets,
             on_notify_fn=self._on_model_changed,
             # 빌드 타깃이 지원하지 않는 필드를 잠그기 위해 전달 (WP-EL)
             build_target=getattr(self._project, "build_target", None),

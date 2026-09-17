@@ -109,6 +109,10 @@ class SkillField(Enum):
     ALLOWED_TOOLS = "allowed_tools"
     CONTEXT = "context"
     AGENT = "agent"
+    # fork 2종을 가르는 값 (사용자 확정 2026-09-17): false = 동기 fork, true =
+    # 비동기 fork. AGENT 바로 뒤에 선언한다 — 프론트매터 출력 순서가 enum 선언
+    # 순서라 `context` · `agent` · `background`가 붙어 나온다.
+    BACKGROUND = "background"
     SHELL = "shell"
     PATHS = "paths"
     HOOKS = "hooks"

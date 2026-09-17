@@ -26,7 +26,7 @@ from daedalus.model.fsm.strategy import (
     ToolEvaluation,
 )
 from daedalus.model.fsm.walk import iter_states
-from daedalus.model.plugin.agent import AgentDefinition
+from daedalus.model.plugin.agent import Agent, AgentDefinition
 from daedalus.model.plugin.skill import ProceduralSkill, Skill
 from daedalus.model.plugin.variables import ROOT_TOKEN
 
@@ -463,7 +463,8 @@ def _blackboard_section(project, component=None) -> list[str]:
             desc = f" — {cls.description}" if cls.description else ""
             lines.append(f"- `{cls.name}` → `{state_dir}/{cls.name}.json`{desc}")
 
-        subject = "agent" if isinstance(component, AgentDefinition) else "skill"
+        # "이 컴포넌트를 무엇이라 부르는가" — 에이전트 두 종류 모두 "agent"다.
+        subject = "agent" if isinstance(component, Agent) else "skill"
         intro_lines: list[str] = []
         if reads:
             intro_lines.append(

@@ -42,19 +42,24 @@ from daedalus.model.fsm.strategy import (
 )
 from daedalus.model.fsm.transition import Transition
 from daedalus.model.fsm.variable import Variable
-from daedalus.model.plugin.agent import AgentDefinition
+from daedalus.model.plugin.agent import Agent, AgentDefinition
 from daedalus.model.plugin.config import (
     WrappedSkillConfig,
     AgentConfig,
+    AgentConfigBase,
     DeclarativeSkillConfig,
     ForkSkillConfig,
-    ProceduralSkillConfig,
     ReferenceSkillConfig,
+    StepSkillConfig,
     TransferSkillConfig,
 )
 from daedalus.model.plugin.hook import HookDef
 from daedalus.model.plugin.policy import ExecutionPolicy
-from daedalus.model.plugin.skill import ProceduralSkill, TransferSkill, WrappedSkill
+from daedalus.model.plugin.skill import (
+    StepSkill,
+    TransferSkill,
+    WrappedSkill,
+)
 from daedalus.model.plugin.tool import BuiltinTool, MCPTool, Tool, UserDefinedTool
 from daedalus.model.project import PluginProject, ReferencePlacement
 
@@ -413,8 +418,8 @@ def _ser_config(c: Any) -> dict:
             disable_model_invocation=c.disable_model_invocation,
             user_invocable=c.user_invocable,
         )
-    elif isinstance(c, ProceduralSkillConfig):
-        # ForkSkillConfig는 하위 클래스라 같은 분기를 타고 agent만 더한다.
+    elif isinstance(c, StepSkillConfig):
+        # ForkSkillConfig는 형제가 아니라 하위 클래스라 같은 분기를 타고 agent만 더한다.
         d.update(
             disable_model_invocation=c.disable_model_invocation,
             user_invocable=c.user_invocable,
@@ -435,7 +440,7 @@ def _ser_config(c: Any) -> dict:
         )
     elif isinstance(c, ReferenceSkillConfig):
         d["user_invocable"] = c.user_invocable
-    elif isinstance(c, AgentConfig):
+    elif isinstance(c, AgentConfigBase):
         d.update(
             tools=c.tools,
             disallowed_tools=c.disallowed_tools,
@@ -444,10 +449,12 @@ def _ser_config(c: Any) -> dict:
             skills=list(c.skills),
             mcp_servers=c.mcp_servers,
             memory=_enum_opt(c.memory),
-            background=c.background,
-            isolation=c.isolation.value,
             color=_enum_opt(c.color),
         )
+        # background/isolation은 워크플로 에이전트에만 있다 — fork 에이전트는
+        # 스킬 종류가 백그라운드를 정하고 isolation은 적용되지 않는다.
+        if isinstance(c, AgentConfig):
+            d.update(background=c.background, isolation=c.isolation.value)
     return d
 
 
@@ -472,37 +479,44 @@ def _ser_skill(s: Any) -> dict:
         "body": s.body,
         "config": _ser_config(s.config),
     }
-    if isinstance(s, (ProceduralSkill, TransferSkill, WrappedSkill)):
+    if isinstance(s, (StepSkill, TransferSkill, WrappedSkill)):
         d["fsm"] = _ser_machine(s.fsm)
-    if isinstance(s, (ProceduralSkill, WrappedSkill)):
+    if isinstance(s, (StepSkill, WrappedSkill)):
         d["transfer_on"] = [_ser_eventdef(e) for e in s.transfer_on]
         d["call_agents"] = [_ser_eventdef(e) for e in s.call_agents]
     return d
 
 
-def _ser_agent(a: AgentDefinition) -> dict:
-    return {
+def _ser_agent(a: Agent) -> dict:
+    """에이전트 → dict. 그래프 유도 필드는 **워크플로 에이전트에만** 쓴다 —
+    fork 에이전트에는 fsm·포트·배치가 아예 없다(퇴역 개념의 잔재를 남기지 않는다).
+    """
+    d: dict[str, Any] = {
         "kind": a.kind,
         "id": a.id,
         "name": a.name,
         "description": a.description,
-        "fsm": _ser_machine(a.fsm),
         "config": _ser_config(a.config),
-        "execution_policy": _ser_policy(a.execution_policy),
         "body": a.body,
-        "reference_placements": [
-            _ser_ref_placement(r) for r in a.reference_placements
-        ],
-        "graph_layout": {k: list(v) for k, v in a.graph_layout.items()},
-        # WP-ER — 전이 엣지 경유점(waypoint). 키는 Transition.id.
-        "edge_layout": {
-            k: [list(pt) for pt in v] for k, v in a.edge_layout.items()
-        },
-        # WP-AF — 출력 포트. v1 파일의 ExitPoint는 _migrate_v1이 승계한다.
-        "transfer_on": [_ser_eventdef(e) for e in a.transfer_on],
-        # 에이전트 호출 포트(2026-09-12) — 키 부재인 구버전 파일은 빈 목록으로 로드된다.
-        "call_agents": [_ser_eventdef(e) for e in a.call_agents],
     }
+    if isinstance(a, AgentDefinition):
+        d.update({
+            "fsm": _ser_machine(a.fsm),
+            "execution_policy": _ser_policy(a.execution_policy),
+            "reference_placements": [
+                _ser_ref_placement(r) for r in a.reference_placements
+            ],
+            "graph_layout": {k: list(v) for k, v in a.graph_layout.items()},
+            # WP-ER — 전이 엣지 경유점(waypoint). 키는 Transition.id.
+            "edge_layout": {
+                k: [list(pt) for pt in v] for k, v in a.edge_layout.items()
+            },
+            # WP-AF — 출력 포트. v1 파일의 ExitPoint는 _migrate_v1이 승계한다.
+            "transfer_on": [_ser_eventdef(e) for e in a.transfer_on],
+            # 에이전트 호출 포트(2026-09-12) — 키 부재인 구버전 파일은 빈 목록으로 로드된다.
+            "call_agents": [_ser_eventdef(e) for e in a.call_agents],
+        })
+    return d
 
 
 def _ser_ref_placement(r: ReferencePlacement) -> dict:

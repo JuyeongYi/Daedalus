@@ -18,7 +18,14 @@ def test_skill_field_values():
     assert SkillField.DISABLE_MODEL.value == "disable_model_invocation"
     assert SkillField.USER_INVOCABLE.value == "user_invocable"
     assert SkillField.SOURCE.value == "source"  # WP-WR
-    assert len(SkillField) == 15
+    assert SkillField.BACKGROUND.value == "background"  # fork 2종 FIXED
+    assert len(SkillField) == 16
+    # 프론트매터 출력 순서는 enum 선언 순서다 — fork는 context·agent·background가
+    # 붙어 나와야 읽힌다.
+    order = [f.name for f in SkillField]
+    assert order[order.index("CONTEXT"):order.index("CONTEXT") + 3] == [
+        "CONTEXT", "AGENT", "BACKGROUND",
+    ]
 
 
 from daedalus.model.plugin.field_matrix import FieldRule, SKILL_FIELD_MATRIX
@@ -34,7 +41,10 @@ def test_field_rule_dataclass():
 
 
 def test_matrix_has_all_skill_kinds():
-    expected = {"procedural", "fork", "declarative", "transfer", "reference", "wrapped"}
+    expected = {
+        "procedural", "sync_fork", "async_fork", "declarative", "transfer",
+        "reference", "wrapped",
+    }
     assert set(SKILL_FIELD_MATRIX.keys()) == expected
 
 
@@ -60,14 +70,38 @@ def test_matrix_reference_user_invocable_fixed():
 
 
 def test_matrix_fork_context_fixed_agent_required():
-    """fork 스킬 — context는 고정 출력, agent는 필수(기본 general-purpose 명시)."""
-    rules = SKILL_FIELD_MATRIX["fork"]
-    assert rules[SkillField.CONTEXT].visibility == FieldVisibility.FIXED
-    assert rules[SkillField.CONTEXT].fixed_value == "fork"
-    assert rules[SkillField.AGENT].visibility == FieldVisibility.REQUIRED
-    assert rules[SkillField.AGENT].default_value == "general-purpose"
-    # 편집기는 선언 순서로 그린다 — fork 에이전트가 이름·설명 바로 다음에 보인다.
-    assert list(rules)[:3] == [SkillField.NAME, SkillField.DESCRIPTION, SkillField.AGENT]
+    """fork 2종 — context는 고정 출력, agent는 필수(기본 general-purpose 명시)."""
+    for kind in ("sync_fork", "async_fork"):
+        rules = SKILL_FIELD_MATRIX[kind]
+        assert rules[SkillField.CONTEXT].visibility == FieldVisibility.FIXED
+        assert rules[SkillField.CONTEXT].fixed_value == "fork"
+        assert rules[SkillField.AGENT].visibility == FieldVisibility.REQUIRED
+        assert rules[SkillField.AGENT].default_value == "general-purpose"
+        # 편집기는 선언 순서로 그린다 — fork 에이전트가 이름·설명 바로 다음에 보인다.
+        assert list(rules)[:3] == [
+            SkillField.NAME, SkillField.DESCRIPTION, SkillField.AGENT,
+        ]
+
+
+def test_matrix_background_fixed_splits_the_two_forks():
+    """background가 두 fork 종류를 가른다 — 동기 false / 비동기 true, 둘 다 FIXED.
+
+    FIXED라 편집기에 나오지 않고 config에도 없다(종류가 곧 값이다).
+    """
+    sync_rule = SKILL_FIELD_MATRIX["sync_fork"][SkillField.BACKGROUND]
+    async_rule = SKILL_FIELD_MATRIX["async_fork"][SkillField.BACKGROUND]
+    assert sync_rule.visibility == FieldVisibility.FIXED
+    assert sync_rule.fixed_value is False
+    assert async_rule.visibility == FieldVisibility.FIXED
+    assert async_rule.fixed_value is True
+    # 두 표는 background 말고 완전히 같다.
+    def without_background(kind):
+        return {
+            k: v for k, v in SKILL_FIELD_MATRIX[kind].items()
+            if k is not SkillField.BACKGROUND
+        }
+
+    assert without_background("sync_fork") == without_background("async_fork")
 
 
 # kind별 **명시적 부재** 필드 (WP-WR) — 매트릭스 부재 = 그 kind에 비적용.
@@ -78,15 +112,16 @@ def test_matrix_fork_context_fixed_agent_required():
 # 돈다). 2026-09-07에 전 종류에서 뺐던 것은 틀린 판단이었다.
 # context·agent는 fork 스킬 전용이다(사용자 확정 2026-09-13 — 나머지 스킬은 fork·
 # agent 지정 불가). fork는 allowed_tools가 없다(에이전트 도구가 이긴다 — 실측).
-_FORK_ONLY = {SkillField.CONTEXT, SkillField.AGENT}
+_FORK_ONLY = {SkillField.CONTEXT, SkillField.AGENT, SkillField.BACKGROUND}
 _KIND_ABSENT_FIELDS = {
     "procedural": {SkillField.SOURCE} | _FORK_ONLY,
-    "fork": {SkillField.SOURCE, SkillField.ALLOWED_TOOLS},
+    "sync_fork": {SkillField.SOURCE, SkillField.ALLOWED_TOOLS},
+    "async_fork": {SkillField.SOURCE, SkillField.ALLOWED_TOOLS},
     "declarative": {SkillField.SOURCE} | _FORK_ONLY,
     "transfer": {SkillField.SOURCE} | _FORK_ONLY,
     "reference": {SkillField.SOURCE} | _FORK_ONLY,
-    # wrapped는 본문을 만들지 않는다 — 본문 실행 방식 필드 3종이 비적용.
-    "wrapped": {SkillField.CONTEXT, SkillField.AGENT, SkillField.SHELL},
+    # wrapped는 본문을 만들지 않는다 — 본문 실행 방식 필드 4종이 비적용.
+    "wrapped": _FORK_ONLY | {SkillField.SHELL},
 }
 
 
@@ -177,10 +212,23 @@ def test_field_matrix_is_pyqt_free():
 # ---------------------------------------------------------------------------
 
 def test_agent_field_matrix_completeness():
-    """AGENT_FIELD_MATRIX에 AgentField 전 멤버가 키로 존재해야 한다."""
+    """워크플로 에이전트 표에 AgentField 전 멤버가 키로 존재해야 한다."""
     from daedalus.model.plugin.field_matrix import AGENT_FIELD_MATRIX
     for af in AgentField:
-        assert af in AGENT_FIELD_MATRIX, f"AGENT_FIELD_MATRIX에 {af} 누락"
+        assert af in AGENT_FIELD_MATRIX["agent"], f"agent 표에 {af} 누락"
+
+
+def test_fork_agent_matrix_drops_background_and_isolation():
+    """fork 에이전트 표 = 워크플로 표 − {background, isolation}.
+
+    백그라운드 여부는 fork 스킬 종류가 정하고, isolation은 fork 실행에 적용되지
+    않는다(실측 2026-09-13) — 없는 필드를 두면 걸어 둔 제약이 조용히 사라진다.
+    """
+    from daedalus.model.plugin.field_matrix import AGENT_FIELD_MATRIX
+    assert set(AGENT_FIELD_MATRIX) == {"agent", "fork_agent"}
+    assert set(AGENT_FIELD_MATRIX["fork_agent"]) == set(
+        AGENT_FIELD_MATRIX["agent"]
+    ) - {AgentField.BACKGROUND, AgentField.ISOLATION}
 
 
 def test_max_turns_background_isolation_are_frontmatter():
@@ -190,9 +238,10 @@ def test_max_turns_background_isolation_are_frontmatter():
     아니라 프론트매터로 나가야 CC 런타임이 직접 강제한다.
     """
     from daedalus.model.plugin.field_matrix import AGENT_FIELD_MATRIX
+    rules = AGENT_FIELD_MATRIX["agent"]
     for af in (AgentField.MAX_TURNS, AgentField.BACKGROUND, AgentField.ISOLATION):
-        assert AGENT_FIELD_MATRIX[af].emit == FieldEmit.FRONTMATTER, (
-            f"{af} emit이 FRONTMATTER가 아님: {AGENT_FIELD_MATRIX[af].emit!r}"
+        assert rules[af].emit == FieldEmit.FRONTMATTER, (
+            f"{af} emit이 FRONTMATTER가 아님: {rules[af].emit!r}"
         )
 
 
@@ -203,18 +252,23 @@ def test_no_agent_field_uses_invocation_emit():
     지원하지 않는지 — 확인하고 이 테스트를 갱신하라.
     """
     from daedalus.model.plugin.field_matrix import AGENT_FIELD_MATRIX
-    using = [af for af, rule in AGENT_FIELD_MATRIX.items()
-             if rule.emit is FieldEmit.INVOCATION]
+    using = [
+        (kind, af)
+        for kind, rules in AGENT_FIELD_MATRIX.items()
+        for af, rule in rules.items()
+        if rule.emit is FieldEmit.INVOCATION
+    ]
     assert using == [], f"INVOCATION emit 잔존: {using}"
 
 
 def test_agent_field_matrix_emit_settings():
     """HOOKS/MCP_SERVERS의 emit은 SETTINGS이어야 한다."""
     from daedalus.model.plugin.field_matrix import AGENT_FIELD_MATRIX
-    for af in (AgentField.HOOKS, AgentField.MCP_SERVERS):
-        assert AGENT_FIELD_MATRIX[af].emit == FieldEmit.SETTINGS, (
-            f"{af} emit이 SETTINGS이 아님: {AGENT_FIELD_MATRIX[af].emit!r}"
-        )
+    for kind, rules in AGENT_FIELD_MATRIX.items():
+        for af in (AgentField.HOOKS, AgentField.MCP_SERVERS):
+            assert rules[af].emit == FieldEmit.SETTINGS, (
+                f"{kind}/{af} emit이 SETTINGS이 아님: {rules[af].emit!r}"
+            )
 
 
 def test_agent_field_matrix_emit_frontmatter():
@@ -224,16 +278,17 @@ def test_agent_field_matrix_emit_frontmatter():
         AgentField.HOOKS, AgentField.MCP_SERVERS,
         AgentField.MAX_TURNS, AgentField.BACKGROUND, AgentField.ISOLATION,
     }
-    for af, rule in AGENT_FIELD_MATRIX.items():
-        if af in non_frontmatter:
-            continue
-        assert rule.emit == FieldEmit.FRONTMATTER, (
-            f"{af} emit이 FRONTMATTER이 아님: {rule.emit!r}"
-        )
+    for kind, rules in AGENT_FIELD_MATRIX.items():
+        for af, rule in rules.items():
+            if af in non_frontmatter:
+                continue
+            assert rule.emit == FieldEmit.FRONTMATTER, (
+                f"{kind}/{af} emit이 FRONTMATTER이 아님: {rule.emit!r}"
+            )
 
 
 def test_skill_matrix_when_to_use_emit_body():
-    """6개 스킬 매트릭스 전부에서 WHEN_TO_USE.emit == BODY이어야 한다."""
+    """모든 스킬 매트릭스에서 WHEN_TO_USE.emit == BODY이어야 한다."""
     from daedalus.model.plugin.field_matrix import SKILL_FIELD_MATRIX
     for kind, rules in SKILL_FIELD_MATRIX.items():
         rule = rules[SkillField.WHEN_TO_USE]

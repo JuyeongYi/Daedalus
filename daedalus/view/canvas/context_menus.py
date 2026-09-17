@@ -181,17 +181,22 @@ def add_component_actions_menu(scene, menu: QMenu, state_vm: StateViewModel) -> 
                     lambda c=component, e=effort: me.set_effort(scene._project_vm, c, e)
                 )
 
-    # 절차형 ↔ fork 전환 (2026-09-13) — 실체는 actions/fork_skill.convert_skill_kind.
-    from daedalus.view.actions.fork_skill import skill_kind_of
+    # 절차형 ↔ 동기/비동기 fork 전환 (3-way) — 실체는
+    # actions/fork_skill.convert_skill_kind. 편집기 버튼과 같은 라벨을 쓴다.
+    from daedalus.view.actions.fork_skill import KINDS, skill_kind_of
+    from daedalus.view.editors.kind_switch_row import KIND_LABELS
 
     kind = skill_kind_of(component)
     if kind is not None:
-        target = "procedural" if kind == "fork" else "fork"
-        conv_act = menu.addAction(
-            "절차형 스킬로 전환" if target == "procedural" else "fork 스킬로 전환"
-        )
-        if conv_act is not None:
-            dispatch[conv_act] = lambda c=component, t=target: convert_on_canvas(scene, c, t)
+        sub = menu.addMenu("종류 전환")
+        for target in KINDS:
+            if target == kind or sub is None:
+                continue
+            conv_act = sub.addAction(KIND_LABELS[target])
+            if conv_act is not None:
+                dispatch[conv_act] = (
+                    lambda c=component, t=target: convert_on_canvas(scene, c, t)
+                )
 
     warn_act = menu.addAction("관련 경고 보기")
     if warn_act is not None:

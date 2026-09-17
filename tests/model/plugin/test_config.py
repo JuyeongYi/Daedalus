@@ -59,13 +59,31 @@ def test_procedural_skill_config_custom():
     assert c.model == ModelType.SONNET
 
 
-def test_fork_skill_config_defaults():
-    c = ForkSkillConfig()
-    assert c.kind == "fork"
-    assert c.agent == "general-purpose"
-    assert c.user_invocable is None
-    assert isinstance(c, ProceduralSkillConfig)
-    assert ForkSkillConfig(agent="Explore").agent == "Explore"
+def test_fork_skill_config_is_abstract():
+    """`ForkSkillConfig`는 추상이다 — background 값(= 종류)을 말하지 않는 fork는 없다."""
+    import pytest
+
+    with pytest.raises(TypeError):
+        ForkSkillConfig()
+
+
+def test_sync_and_async_fork_config_defaults():
+    from daedalus.model.plugin.config import (
+        AsyncForkSkillConfig,
+        StepSkillConfig,
+        SyncForkSkillConfig,
+    )
+
+    for cls, kind in ((SyncForkSkillConfig, "sync_fork"), (AsyncForkSkillConfig, "async_fork")):
+        c = cls()
+        assert c.kind == kind
+        assert c.agent == "general-purpose"
+        assert c.user_invocable is None
+        assert isinstance(c, ForkSkillConfig)
+        assert isinstance(c, StepSkillConfig)
+        # fork config는 절차형 config의 하위가 아니다 — 형제다(계층 분리).
+        assert not isinstance(c, ProceduralSkillConfig)
+        assert cls(agent="Explore").agent == "Explore"
 
 
 def test_declarative_skill_config():

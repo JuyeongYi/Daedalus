@@ -260,22 +260,22 @@ class _NamingRules:
 
     @staticmethod
     def _check_dangling_string_references(project) -> list[ValidationError]:
-        """dangling_string_reference — AgentConfig.skills /
+        """dangling_string_reference — AgentConfigBase.skills /
         reference_placements.skill_name의 문자열 참조 실존 검사.
 
         fork 스킬의 `agent`는 여기서 보지 않는다 — 내장·외부 에이전트도 가리킬 수
         있어 프로젝트 이름만으로 판정할 수 없다(`fork_agent_missing`이 맡는다)."""
-        from daedalus.model.plugin.config import AgentConfig
+        from daedalus.model.plugin.config import AgentConfigBase
 
         errors: list[ValidationError] = []
 
         # 전역 이름 맵
         global_skill_names = {s.name for s in project.skills}
 
-        # AgentConfig.skills 검사 (전역 스킬 이름)
+        # AgentConfigBase.skills 검사 (전역 스킬 이름) — 에이전트 두 종류 모두.
         for agent in project.agents:
             cfg = agent.config
-            if not isinstance(cfg, AgentConfig):
+            if not isinstance(cfg, AgentConfigBase):
                 continue
             for skill_name in cfg.skills:
                 if skill_name not in global_skill_names:

@@ -49,7 +49,6 @@ _PRE_SPLIT_CLASS_MEMBERS = [
     "_reject_duplicate_name",
     "_scene",
     "_scope",
-    "_skill_matrix_key",
     "_status_text",
     "_transition_summary",
     "_vm",

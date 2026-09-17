@@ -157,7 +157,6 @@ from daedalus.compiler.emit.agent import (
     _describe_agent_fsm,
     _emit_agent_field,
     _frontmatter_lines_agent,
-    _invocation_section_agent,
     _local_settings_frontmatter_lines,
     _settings_note_agent,
     compile_agent,

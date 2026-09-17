@@ -3,11 +3,13 @@ from __future__ import annotations
 
 import pytest
 from daedalus.model.fsm.state import SimpleState
-from daedalus.model.plugin.agent import AgentDefinition
+from daedalus.model.plugin.agent import AgentDefinition, ForkAgent
 from daedalus.model.plugin.skill import (
+    AsyncForkSkill,
     DeclarativeSkill,
     ProceduralSkill,
     ReferenceSkill,
+    SyncForkSkill,
 )
 from daedalus.model.project import PluginProject
 from daedalus.view.actions.creation import (
@@ -40,9 +42,12 @@ def _placements(window) -> list[str]:
     "kind,cls",
     [
         ("procedural", ProceduralSkill),
+        ("sync_fork", SyncForkSkill),
+        ("async_fork", AsyncForkSkill),
         ("declarative", DeclarativeSkill),
         ("reference", ReferenceSkill),
         ("agent", AgentDefinition),
+        ("fork_agent", ForkAgent),
     ],
 )
 def test_make_component_types(window, kind, cls):
@@ -87,13 +92,32 @@ def test_creates_reference_as_reference_node(window):
 
 @pytest.mark.parametrize("kind", sorted(NO_PLACE_KINDS))
 def test_no_place_kinds_are_created_only(window, kind):
-    """declarative/transfer는 워크플로 노드가 아니다 — 레지스트리와 같은 규칙."""
+    """declarative/transfer/fork_agent는 캔버스 노드가 아니다 — 만들기만 한다.
+
+    버킷은 종류가 정한다: fork_agent는 에이전트라 `project.agents`에 들어간다.
+    """
+    from daedalus.model.plugin.agent import Agent
+
     scene = window._fsm_scene
     comp = create_and_place(scene, window, kind, "k", 0.0, 0.0)
 
-    assert comp in window._project.skills
+    bucket = (
+        window._project.agents if isinstance(comp, Agent) else window._project.skills
+    )
+    assert comp in bucket
     assert _placements(window) == []
     assert window._project_vm.reference_vms == []
+
+
+def test_no_place_kinds_match_canvas_placeable(window):
+    """음성 목록 상수와 양성 판정이 어긋나지 않는다(원칙 1)."""
+    from daedalus.model.plugin.placement import is_canvas_placeable
+
+    assert NO_PLACE_KINDS == frozenset({"declarative", "transfer", "fork_agent"})
+    for kind in NO_PLACE_KINDS:
+        comp = make_component(window, kind, f"probe-{kind}")
+        assert comp is not None
+        assert not is_canvas_placeable(comp)
 
 
 def test_creation_is_one_undo_unit(window):

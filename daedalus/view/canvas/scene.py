@@ -429,8 +429,13 @@ class FsmScene(QGraphicsScene):
                 return
             self._place_wrapped_fixing_usage(skill, usage, scene_pos)
             return
-        # DeclarativeSkill / TransferSkill은 FSM 노드로 배치 불가 (edge-only)
-        if isinstance(skill, (DeclarativeSkill, TransferSkill)):
+        # 상태 노드로 놓을 수 있는 종류인가 — 판정의 실체는 model의
+        # `is_state_placeable` 하나다(레지스트리·"여기에 만들기"·MCP와 공용).
+        # **위치를 옮기지 않는다**: 참조 조기 반환과 용도 미정 wrapped 처리보다
+        # 반드시 뒤여야 그 두 경로가 살아 있다.
+        from daedalus.model.plugin.placement import is_state_placeable
+
+        if not is_state_placeable(skill):
             return
         for svm in self._project_vm.state_vms:
             if hasattr(svm.model, "skill_ref") and svm.model.skill_ref is skill:  # type: ignore[union-attr]

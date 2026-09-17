@@ -65,28 +65,38 @@ _PROCEDURAL: dict[SkillField, FieldRule] = {
     SkillField.USER_INVOCABLE: FieldRule(O),
 }
 
-# fork 스킬 (사용자 확정 2026-09-13) — `context: fork`는 이 종류의 정체라 고정
-# 출력이고, 실행할 서브에이전트(`agent`)는 반드시 있다(비우면 CC가 조용히
-# general-purpose로 돈다 — 기본값을 명시 배출한다). allowed_tools는 없다: fork에서는
-# 에이전트 도구가 이기고 스킬 쪽은 도구를 늘리지 못한다(실측, CC 2.1.268).
+# fork 스킬 (사용자 확정 2026-09-13/2026-09-17) — `context: fork`는 이 계열의
+# 정체라 고정 출력이고, 실행할 서브에이전트(`agent`)는 반드시 있다(비우면 CC가
+# 조용히 general-purpose로 돈다 — 기본값을 명시 배출한다). allowed_tools는 없다:
+# fork에서는 에이전트 도구가 이기고 스킬 쪽은 도구를 늘리지 못한다(실측, CC 2.1.268).
+#
+# `background`는 동기/비동기를 가르는 **FIXED** 필드다 — 종류가 곧 값이라 편집기에
+# 노출하지 않고 config에도 두지 않는다(컴파일러가 강제 배출).
+# `CONTEXT`/`AGENT`/`BACKGROUND` 세 행은 이 두 표에만 있다(사용자 확정).
 #
 # 편집기는 스킬 매트릭스를 선언 순서대로 그린다 — AGENT를 설명 바로 아래에 두어
 # "어느 서브에이전트에서 도는 스킬인가"가 먼저 보이게 한다(사용자 요청 2026-09-13).
-_FORK: dict[SkillField, FieldRule] = {
-    SkillField.NAME:           FieldRule(R),
-    SkillField.DESCRIPTION:    FieldRule(R),
-    SkillField.AGENT:          FieldRule(R, default_value="general-purpose"),
-    SkillField.WHEN_TO_USE:    FieldRule(O, emit=FieldEmit.BODY),
-    SkillField.ARGUMENT_HINT:  FieldRule(O),
-    SkillField.MODEL:          FieldRule(R, default_value=ModelType.INHERIT),
-    SkillField.EFFORT:         FieldRule(O),
-    SkillField.CONTEXT:        FieldRule(F, fixed_value="fork"),
-    SkillField.SHELL:          FieldRule(O),
-    SkillField.PATHS:          FieldRule(O),
-    SkillField.HOOKS:          FieldRule(O),
-    SkillField.DISABLE_MODEL:  FieldRule(O),
-    SkillField.USER_INVOCABLE: FieldRule(O),
-}
+def _fork_matrix(*, background: bool) -> dict[SkillField, FieldRule]:
+    return {
+        SkillField.NAME:           FieldRule(R),
+        SkillField.DESCRIPTION:    FieldRule(R),
+        SkillField.AGENT:          FieldRule(R, default_value="general-purpose"),
+        SkillField.WHEN_TO_USE:    FieldRule(O, emit=FieldEmit.BODY),
+        SkillField.ARGUMENT_HINT:  FieldRule(O),
+        SkillField.MODEL:          FieldRule(R, default_value=ModelType.INHERIT),
+        SkillField.EFFORT:         FieldRule(O),
+        SkillField.CONTEXT:        FieldRule(F, fixed_value="fork"),
+        SkillField.BACKGROUND:     FieldRule(F, fixed_value=background),
+        SkillField.SHELL:          FieldRule(O),
+        SkillField.PATHS:          FieldRule(O),
+        SkillField.HOOKS:          FieldRule(O),
+        SkillField.DISABLE_MODEL:  FieldRule(O),
+        SkillField.USER_INVOCABLE: FieldRule(O),
+    }
+
+
+_SYNC_FORK: dict[SkillField, FieldRule] = _fork_matrix(background=False)
+_ASYNC_FORK: dict[SkillField, FieldRule] = _fork_matrix(background=True)
 
 # WP-WR 랩핑 스킬 — 본문의 정본은 source가 가리키는 외부 스킬이라, 본문을
 # 만드는 필드(shell)는 없다. source는 프론트매터가 아니라 본문
@@ -159,7 +169,8 @@ _REFERENCE: dict[SkillField, FieldRule] = {
 
 SKILL_FIELD_MATRIX: dict[str, dict[SkillField, FieldRule]] = {
     "procedural": _PROCEDURAL,
-    "fork": _FORK,
+    "sync_fork": _SYNC_FORK,
+    "async_fork": _ASYNC_FORK,
     "declarative": _DECLARATIVE,
     "wrapped": _WRAPPED,
     "transfer": _TRANSFER,
@@ -167,7 +178,7 @@ SKILL_FIELD_MATRIX: dict[str, dict[SkillField, FieldRule]] = {
 }
 
 # fmt: off
-AGENT_FIELD_MATRIX: dict[AgentField, FieldRule] = {
+_AGENT: dict[AgentField, FieldRule] = {
     AgentField.NAME:             FieldRule(R),
     AgentField.DESCRIPTION:      FieldRule(R),
     AgentField.MODEL:            FieldRule(R, default_value=ModelType.INHERIT),
@@ -188,7 +199,50 @@ AGENT_FIELD_MATRIX: dict[AgentField, FieldRule] = {
     AgentField.ISOLATION:        FieldRule(O, default_value=AgentIsolation.NONE),
     AgentField.MCP_SERVERS:      FieldRule(O, emit=FieldEmit.SETTINGS),
 }
+
+# fork 에이전트 — background·isolation이 없다(ForkAgentConfig와 같은 사실):
+# 백그라운드 여부는 fork 스킬 종류가 정하고, isolation은 fork 실행에 적용되지
+# 않는다(실측 2026-09-13). 나머지 행은 워크플로 에이전트와 같다.
+_FORK_AGENT: dict[AgentField, FieldRule] = {
+    afield: rule for afield, rule in _AGENT.items()
+    if afield not in (AgentField.BACKGROUND, AgentField.ISOLATION)
+}
 # fmt: on
+
+AGENT_FIELD_MATRIX: dict[str, dict[AgentField, FieldRule]] = {
+    "agent": _AGENT,
+    "fork_agent": _FORK_AGENT,
+}
+
+
+def matrix_for(component: object) -> dict[Any, FieldRule]:
+    """이 컴포넌트가 따르는 프론트매터 표 — **표를 고르는 규칙의 실체는 여기 하나다**.
+
+    키는 `component.config.kind`다(단일 진실). 컴파일러·MCP·편집기가 전부 이
+    함수를 부른다 — 세 곳이 각자 맨 첨자/`.get(kind, {})`를 쓰면 한쪽은 앱을
+    죽이고 다른 쪽은 조용한 빈 폼이 된다.
+
+    Raises:
+        ValueError: config가 없거나 그 kind가 어느 표에도 없을 때. 어느 종류가
+            어느 표에 없는지 말한다(조용한 폴백 금지 — 원칙 5).
+    """
+    config = getattr(component, "config", None)
+    kind = getattr(config, "kind", None)
+    if kind is None:
+        raise ValueError(
+            f"'{getattr(component, 'name', '?')}'"
+            f"({type(component).__name__})에는 config.kind가 없어 프론트매터 표를 "
+            f"고를 수 없습니다."
+        )
+    if kind in AGENT_FIELD_MATRIX:
+        return dict(AGENT_FIELD_MATRIX[kind])
+    if kind in SKILL_FIELD_MATRIX:
+        return dict(SKILL_FIELD_MATRIX[kind])
+    raise ValueError(
+        f"config 종류 '{kind}'에 해당하는 프론트매터 표가 없습니다 — "
+        f"스킬 표: {', '.join(sorted(SKILL_FIELD_MATRIX))} / "
+        f"에이전트 표: {', '.join(sorted(AGENT_FIELD_MATRIX))}."
+    )
 
 
 # CC는 **보안상 플러그인 서브에이전트의 이 필드들을 무시한다**(공식 sub-agents

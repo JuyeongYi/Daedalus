@@ -8,9 +8,9 @@ from daedalus.model.fsm.section import EventDef
 from daedalus.model.fsm.state import SimpleState
 from daedalus.model.fsm.transition import Transition
 from daedalus.model.plugin.agent import AgentDefinition
-from daedalus.model.plugin.config import AgentConfig, ForkSkillConfig
+from daedalus.model.plugin.config import AgentConfig, SyncForkSkillConfig
 from daedalus.model.plugin.enums import AgentIsolation, EffortLevel, ModelType
-from daedalus.model.plugin.skill import ForkSkill
+from daedalus.model.plugin.skill import ForkSkill, SyncForkSkill
 from daedalus.model.project import PluginProject
 from daedalus.model.validation import Validator
 
@@ -28,10 +28,10 @@ def _agent(name: str, model=ModelType.INHERIT, calls=(), **cfg) -> AgentDefiniti
 
 def _fork(agent: str, model=ModelType.INHERIT, calls=(), effort=None) -> ForkSkill:
     entry = EntryPoint(name="s")
-    return ForkSkill(
+    return SyncForkSkill(
         fsm=StateMachine(name="f", states=[entry], initial_state=entry),
         name="scout", description="scout.",
-        config=ForkSkillConfig(agent=agent, model=model, effort=effort),
+        config=SyncForkSkillConfig(agent=agent, model=model, effort=effort),
         call_agents=[EventDef(name=c) for c in calls],
     )
 

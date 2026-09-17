@@ -16,7 +16,6 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from daedalus.model.plugin.agent import AgentDefinition
 from daedalus.model.plugin.skill import (
     DeclarativeSkill,
     ProceduralSkill,
@@ -38,11 +37,14 @@ _COLOR_CANDIDATE = QColor("#7f8f9f")
 
 _ICON = {
     "procedural_skill": "⚙",
+    "sync_fork_skill": "🍴",
+    "async_fork_skill": "🍴⏳",
     "declarative_skill": "📄",
     "transfer_skill": "⚡",
     "wrapped_skill": "🔗",
     "reference_skill": "📖",
     "agent": "🤖",
+    "fork_agent": "🧩",
 }
 
 
@@ -137,10 +139,14 @@ class _RegistrySection(QWidget):
         self._list.addItem(item)
 
     def add_item(self, component: object, placed: bool) -> None:
+        from daedalus.model.plugin.placement import is_canvas_placeable
+
         kind = getattr(component, "kind", "")
         icon = _ICON.get(kind, "")
         name = getattr(component, "name", str(component))
-        no_place = self._no_place
+        # 캔버스에 놓이는가는 **항목마다** 묻는다(양성 판정 단일 진실) — 섹션
+        # 단위 플래그로 바꾸면 참조 섹션이 드래그 불가가 된다(오늘은 가능).
+        no_place = self._no_place or not is_canvas_placeable(component)
 
         label = f"{icon} {name}"
         item = QListWidgetItem(label)
@@ -234,12 +240,14 @@ class RegistryPanel(QWidget):
 
         self._sections: dict[str, _RegistrySection] = {
             "procedural": _RegistrySection("⚙ PROCEDURAL", QColor("#88cc88")),
-            "fork": _RegistrySection("🍴 FORK", QColor("#c07a3a")),
+            "sync_fork": _RegistrySection("🍴 SYNC FORK", QColor("#c07a3a")),
+            "async_fork": _RegistrySection("🍴⏳ ASYNC FORK", QColor("#8a5a2a")),
             "declarative": _RegistrySection("📄 DECLARATIVE", QColor("#cccc88"), no_place=True),
             "transfer": _RegistrySection("⚡ TRANSFER", QColor("#88aacc"), no_place=True),
             "reference": _RegistrySection("📖 REFERENCE", QColor("#66aaaa")),
             "wrapped": _RegistrySection("🔗 WRAPPED", QColor("#aa88cc")),
             "agent": _RegistrySection("🤖 AGENTS", QColor("#cc8888")),
+            "fork_agent": _RegistrySection("🧩 FORK AGENTS", QColor("#cc8888")),
         }
         # 종류별 세로 스택 대신 **탭**으로 담는다 (사용자 확정 — 좌측 열을
         # 컴팩트하게 만들어 파일 독을 아래에 두고 에디터가 공간을 가져간다).
@@ -248,12 +256,14 @@ class RegistryPanel(QWidget):
         self._tabs.setDocumentMode(True)
         tab_labels = {
             "procedural": "⚙",
-            "fork": "🍴",
+            "sync_fork": "🍴",
+            "async_fork": "🍴⏳",
             "declarative": "📄",
             "transfer": "⚡",
             "reference": "📖",
             "wrapped": "🔗",
             "agent": "🤖",
+            "fork_agent": "🧩",
         }
         for kind, section in self._sections.items():
             section.add_requested.connect(lambda k=kind: self.new_component_requested.emit(k))
@@ -306,14 +316,17 @@ class RegistryPanel(QWidget):
             section.clear()
         if self._project is None:
             return
-        from daedalus.model.plugin.skill import ForkSkill
+        from daedalus.model.plugin.agent import ForkAgent
+        from daedalus.model.plugin.skill import AsyncForkSkill, SyncForkSkill
 
         for skill in self._project.skills:
             placed = id(skill) in self._placed_ids
             if isinstance(skill, WrappedSkill):
                 self._sections["wrapped"].add_item(skill, placed)
-            elif isinstance(skill, ForkSkill):  # 절차형 하위 종류 — 먼저 검사
-                self._sections["fork"].add_item(skill, placed)
+            elif isinstance(skill, AsyncForkSkill):
+                self._sections["async_fork"].add_item(skill, placed)
+            elif isinstance(skill, SyncForkSkill):
+                self._sections["sync_fork"].add_item(skill, placed)
             elif isinstance(skill, TransferSkill):
                 self._sections["transfer"].add_item(skill, placed=False)
             elif isinstance(skill, ReferenceSkill):
@@ -324,7 +337,8 @@ class RegistryPanel(QWidget):
                 self._sections["declarative"].add_item(skill, placed=False)
         for agent in self._project.agents:
             placed = id(agent) in self._placed_ids
-            self._sections["agent"].add_item(agent, placed)
+            key = "fork_agent" if isinstance(agent, ForkAgent) else "agent"
+            self._sections[key].add_item(agent, placed)
         # 외부 스킬 후보 (WP-WR) — 사용 선언된 플러그인의 스킬 중 아직 이
         # 프로젝트가 랩핑하지 않은 것. 드래그해 배치하면 그 시점에
         # WrappedSkill이 생성된다(체크만 하면 목록에 자동으로 나타난다 —

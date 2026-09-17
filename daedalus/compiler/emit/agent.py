@@ -35,14 +35,14 @@ from daedalus.compiler.emit.sections import (
 )
 from daedalus.model.fsm.pseudo import ChoiceState, ExitPoint
 from daedalus.model.fsm.state import CompositeState, SimpleState
-from daedalus.model.plugin.agent import AgentDefinition
+from daedalus.model.plugin.agent import Agent, AgentDefinition
 from daedalus.model.plugin.enums import (
     AgentField,
     FieldEmit,
     FieldVisibility,
     ModelType,
 )
-from daedalus.model.plugin.field_matrix import AGENT_FIELD_MATRIX, FieldRule
+from daedalus.model.plugin.field_matrix import FieldRule, matrix_for
 from daedalus.model.plugin.hook import HookDef
 
 
@@ -57,9 +57,14 @@ def _frontmatter_lines_agent(agent: AgentDefinition, project=None) -> list[str]:
 
     build_target = _build_target(project)
     config = agent.config
+    # 스킬 쪽과 같은 규약: **매트릭스 부재 = 비적용**. fork 에이전트 표에는
+    # background·isolation 행이 없다(맨 첨자면 KeyError로 컴파일이 죽는다).
+    matrix = matrix_for(agent)
     lines: list[str] = []
     for afield in AgentField:
-        rule = AGENT_FIELD_MATRIX[afield]
+        rule = matrix.get(afield)
+        if rule is None:
+            continue
         if rule.emit is not FieldEmit.FRONTMATTER:
             continue
         if not agent_field_supported(afield, build_target):
@@ -151,41 +156,6 @@ def _emit_agent_field(
         if default is not _MISSING and value == default:
             return None
     return _format_kv(key, value)
-
-
-def _invocation_section_agent(agent: AgentDefinition) -> list[str]:
-    """INVOCATION emit 필드를 호출 파라미터 안내 단락으로.
-
-    WP-FF 이후 이 emit을 쓰는 에이전트 필드는 없다 — max_turns/background/
-    isolation이 프론트매터로 올라갔기 때문이다(본문 안내문은 부르는 쪽이 읽고
-    따라야 적용되지만, 프론트매터는 CC 런타임이 직접 강제한다).
-
-    함수는 남겨 둔다: 호출 시점에만 의미가 있는 필드가 나중에 생기면 여기가
-    자리다. 지금은 항상 빈 목록이라 단락이 배출되지 않는다.
-    """
-    config = agent.config
-    rows: list[str] = []
-    for afield in AgentField:
-        rule = AGENT_FIELD_MATRIX[afield]
-        if rule.emit is not FieldEmit.INVOCATION:
-            continue
-        attr = afield.value
-        value = getattr(config, attr, _MISSING)
-        if value is _MISSING or value is None:
-            continue
-        # 기본값과 같으면 생략
-        default = _config_default(config, attr)
-        if default is not _MISSING and value == default:
-            continue
-        rows.append(f"- `{afield.frontmatter_key}`: {_enum_value(value)}")
-    if not rows:
-        return []
-    blocks = [
-        "## Invocation Parameters",
-        "Use these parameters when invoking this agent with the Agent/Task tool:",
-        "\n".join(rows),
-    ]
-    return blocks
 
 
 def _agent_mcp_server_names(agent: AgentDefinition) -> list[str]:
@@ -430,10 +400,16 @@ def _agent_delegation_section(agent: AgentDefinition, project=None) -> list[str]
 
 
 def compile_agent(
-    agent: AgentDefinition, project=None,
+    agent: Agent, project=None,
     resolved_hooks: dict[str, HookDef] | None = None,
 ) -> str:
-    """에이전트 → agent .md 텍스트 (LF, BOM 없음, 결정적)."""
+    """에이전트 → agent .md 텍스트 (LF, BOM 없음, 결정적).
+
+    **그래프 유도 단락은 워크플로 에이전트에만 낸다.** fork 에이전트에는 fsm도
+    포트도 배치도 없으므로, 가드 없이 부르면 없는 필드를 역참조해 AttributeError로
+    죽는다. 판정은 하나(`is_workflow`)다.
+    """
+    is_workflow = isinstance(agent, AgentDefinition)
     fm_lines = _frontmatter_lines_agent(agent, project)
     # LOCAL 빌드에서만 hooks/mcpServers가 프론트매터로 나간다 (WP-LA)
     fm_lines.extend(_local_settings_frontmatter_lines(agent, project, resolved_hooks))
@@ -444,25 +420,26 @@ def compile_agent(
     if body_block is not None:
         blocks.append(body_block)
 
-    # 호출 계약(WP-CT) — 그래프에서 유도. 수동 계약 카드는 퇴역했다.
+    # 호출 계약(WP-CT) — fork 스킬 실행 기반 줄 + 그래프 유도 도착 경로.
+    # fork 에이전트에는 도착 경로가 없어 실행 기반 줄만 남는다.
     blocks.extend(_call_contract_section(agent, project))
-    # 이 에이전트가 부르는 다른 에이전트 (2026-09-12 — CC 중첩 스폰)
-    blocks.extend(_agent_delegation_section(agent, project))
+    if is_workflow:
+        # 이 에이전트가 부르는 다른 에이전트 (2026-09-12 — CC 중첩 스폰)
+        blocks.extend(_agent_delegation_section(agent, project))
 
-    # 호출 파라미터(INVOCATION)
-    blocks.extend(_invocation_section_agent(agent))
     # 요구 환경(SETTINGS 언급) — LOCAL 빌드는 프론트매터가 대신하므로 생략된다
     blocks.extend(_settings_note_agent(agent, project))
 
-    # 내부 워크플로 — legacy FSM에 실질 상태가 있을 때만 (WP-AF)
-    blocks.extend(_describe_agent_fsm(agent))
+    if is_workflow:
+        # 내부 워크플로 — legacy FSM에 실질 상태가 있을 때만 (WP-AF)
+        blocks.extend(_describe_agent_fsm(agent))
 
-    # 출구 — 출력 포트(transfer_on). 호출자 그래프가 이 이름으로 분기한다.
-    # 캔버스에 놓이지 않고 fork 에이전트로만 쓰이면 분기할 그래프가 없고, 보고 첫
-    # 줄은 fork 스킬의 `EXIT: … / NEXT: …` 양식이 정한다 — 출구 단락을 내면 두
-    # 지시가 부딪혀 `EXIT: done`처럼 잘못 적는다(2026-09-13).
-    if not _is_fork_agent_only(agent, project):
-        blocks.extend(_agent_outputs_section(agent))
+        # 출구 — 출력 포트(transfer_on). 호출자 그래프가 이 이름으로 분기한다.
+        # 캔버스에 놓이지 않고 fork 에이전트로만 쓰이면 분기할 그래프가 없고, 보고 첫
+        # 줄은 fork 스킬의 `EXIT: … / NEXT: …` 양식이 정한다 — 출구 단락을 내면 두
+        # 지시가 부딪혀 `EXIT: done`처럼 잘못 적는다(2026-09-13).
+        if not _is_fork_agent_only(agent, project):
+            blocks.extend(_agent_outputs_section(agent))
 
     if project is not None:
         # 링크된 참조 용도 랩핑 스킬은 본문 consult 지시가 아니라 skills

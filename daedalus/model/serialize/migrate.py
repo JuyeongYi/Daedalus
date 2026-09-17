@@ -59,7 +59,11 @@ def _migrate_v1(data: dict, warnings: list[str]) -> dict:
     # 1-b) 에이전트 로컬 스킬 → 전역 스킬 승격 (WP-RF-1c).
     _promote_local_skills(data, warnings)
     # 1-c) 절차형 `context: fork` → fork 스킬 종류 (2026-09-13).
-    migrate_skill_context(data, warnings)
+    converted = migrate_skill_context(data, warnings)
+    # 1-d) fork 스킬 1종 → sync/async 2종 + fork 에이전트 종류 (2026-09-17).
+    # 반드시 1-c **뒤**다 — 1-c가 만든 fork 스킬도 대상이고, 그 스킬에는
+    # "이전 산출" 이력이 없어 미배치 경고를 내지 않는다.
+    migrate_fork_split(data, warnings, skip_warning_for=converted)
 
     # 2)+3) 컴포넌트 공통 — 본문 평탄화 + 경로 변수 치환 + 퇴역 키 드롭
     def _migrate_component(d: dict) -> None:
@@ -140,7 +144,7 @@ def needs_skill_context_migration(data: dict) -> bool:
     )
 
 
-def migrate_skill_context(data: dict, warnings: list[str]) -> None:
+def migrate_skill_context(data: dict, warnings: list[str]) -> set[str]:
     """퇴역한 스킬 `context`/`agent` 키를 흡수한다 (제자리 변형, 2026-09-13).
 
     fork 실행은 별도 스킬 종류가 됐다(사용자 확정) — 절차형·선언형·전이형은
@@ -150,10 +154,18 @@ def migrate_skill_context(data: dict, warnings: list[str]) -> None:
       버리고 경고한다.
     - 그 밖(inline 절차형, 전이형의 fork 포함)은 키를 버린다 — 전이형 fork는
       표현할 곳이 없어 경고한다.
+
+    Returns: 이 호출이 fork 스킬로 바꾼 스킬 이름 집합. `migrate_fork_split`이
+    그 집합을 **경고에서만** 제외한다(v1 파일에는 대응 산출 이력이 없다).
     """
+    converted: set[str] = set()
     for s in data.get("skills", []) or []:
         cfg = s.get("config")
         if not isinstance(cfg, dict):
+            continue
+        if s.get("kind") in _FORK_SKILL_KINDS:
+            # 이미 fork 스킬인 것은 건드리지 않는다 — 여기서 `agent`를 팝하면
+            # 퇴역 키가 아니라 **살아 있는 필드**를 지운다.
             continue
         context = cfg.pop("context", None)
         agent = cfg.pop("agent", None)
@@ -170,6 +182,7 @@ def migrate_skill_context(data: dict, warnings: list[str]) -> None:
                 f" — fork에서 효과가 없는 allowed_tools({', '.join(dropped)})는 버렸습니다"
                 if dropped else ""
             )
+            converted.add(name)
             warnings.append(
                 f"스킬 '{name}'(context: fork)을 fork 스킬로 바꿨습니다"
                 f" (agent: {cfg['agent']}){note}."
@@ -179,6 +192,103 @@ def migrate_skill_context(data: dict, warnings: list[str]) -> None:
                 f"스킬 '{name}'의 context: fork는 이 종류에서 퇴역해 버렸습니다 — "
                 f"서브에이전트 실행이 필요하면 fork 스킬을 쓰세요."
             )
+    return converted
+
+
+#: 마이그레이션이 인식하는 fork 스킬 kind — 구 단일 종류 + 새 2종.
+_FORK_SKILL_KINDS: tuple[str, ...] = (
+    "fork_skill", "sync_fork_skill", "async_fork_skill",
+)
+
+
+def needs_fork_split_migration(data: dict) -> bool:
+    """구 단일 fork 종류(`fork_skill`) 또는 미분류 fork 에이전트가 남아 있는가.
+
+    format 2 파일 게이트다 — fork 2종 분리(2026-09-17) 이전에 저장된 파일은
+    format이 같아도 내용이 다르므로 내용으로 스니핑한다
+    (`needs_skill_context_migration` 선례).
+    """
+    if any(
+        s.get("kind") == "fork_skill" for s in data.get("skills", []) or []
+    ):
+        return True
+    return bool(_fork_agent_names(data))
+
+
+def _fork_agent_names(data: dict) -> set[str]:
+    """fork 에이전트로 재분류할 프로젝트 에이전트 이름 — 미배치 + fork 스킬이 참조.
+
+    **모든 접근이 방어적이다**: pseudo 상태에는 `skill_ref` 키가 아예 없고
+    (`ser.py`의 SimpleState 분기만 그 키를 쓴다), `graph`·`config` 키 부재는
+    구버전 파일의 정상 입력이다.
+    """
+    placed = {
+        st.get("skill_ref")
+        for st in ((data.get("graph") or {}).get("states") or [])
+    } - {None}
+    fork_targets = {
+        (s.get("config") or {}).get("agent")
+        for s in data.get("skills", []) or []
+        if s.get("kind") in _FORK_SKILL_KINDS
+    } - {None, ""}
+    return {
+        a.get("name")
+        for a in data.get("agents", []) or []
+        if a.get("id") not in placed
+        and a.get("name") in fork_targets
+        and a.get("kind") != "fork_agent"
+    } - {None}
+
+
+def migrate_fork_split(
+    data: dict, warnings: list[str], *, skip_warning_for: set[str] | None = None
+) -> None:
+    """fork 스킬 1종 → sync/async 2종 + 에이전트 재분류 (제자리 변형, 2026-09-17).
+
+    1. `fork_skill` → `sync_fork_skill`(`config.kind` `fork` → `sync_fork`).
+       오늘 산출이 배치된 fork에 `background: false`를 냈으므로 **배치된 fork는
+       동기가 곧 종전 동작**이라 경고가 없다. **미배치 fork**는 background 키가
+       아예 없어 CC 기본값(백그라운드)으로 돌았으므로 동작이 바뀐다 — 경고 1건.
+    2. 미배치 + fork 스킬이 참조하는 프로젝트 에이전트 → `fork_agent` 종류로.
+       fsm·포트·배치·background·isolation 키를 드롭한다(없는 개념의 잔재 금지).
+       배치 + 참조는 건드리지 않는다(검증이 짚는다).
+    """
+    skip = skip_warning_for or set()
+    placed_ids = {
+        st.get("skill_ref")
+        for st in ((data.get("graph") or {}).get("states") or [])
+    } - {None}
+    rename = _fork_agent_names(data)
+
+    for s in data.get("skills", []) or []:
+        if s.get("kind") != "fork_skill":
+            continue
+        s["kind"] = "sync_fork_skill"
+        cfg = s.get("config")
+        if isinstance(cfg, dict) and cfg.get("kind") == "fork":
+            cfg["kind"] = "sync_fork"
+        name = s.get("name", "?")
+        if s.get("id") in placed_ids or name in skip:
+            continue
+        warnings.append(
+            f"미배치 fork 스킬 '{name}'을(를) 동기 fork로 이관했습니다 — 이전 "
+            f"산출은 background 키가 없어 CC 기본값(백그라운드)으로 돌았습니다. "
+            f"비동기가 필요하면 종류를 비동기 fork로 바꾸세요."
+        )
+
+    for a in data.get("agents", []) or []:
+        if a.get("name") not in rename:
+            continue
+        a["kind"] = "fork_agent"
+        a.setdefault("config", {})["kind"] = "fork_agent"
+        for k in ("fsm", "transfer_on", "call_agents", "execution_policy",
+                  "reference_placements", "graph_layout", "edge_layout"):
+            a.pop(k, None)
+        a["config"].pop("background", None)
+        a["config"].pop("isolation", None)
+        warnings.append(
+            f"에이전트 '{a.get('name', '?')}'을(를) fork 에이전트 종류로 이관했습니다."
+        )
 
 
 def _promote_local_skills(data: dict, warnings: list[str]) -> None:

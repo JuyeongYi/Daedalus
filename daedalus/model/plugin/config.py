@@ -41,7 +41,12 @@ class SkillConfig(ComponentConfig, ABC):
 
 
 @dataclass
-class ProceduralSkillConfig(SkillConfig):
+class StepSkillConfig(SkillConfig, ABC):
+    """워크플로 **단계** 스킬의 공통 설정 — 절차형·fork 2종의 부모.
+
+    `kind`를 정의하지 않으므로 추상이다(인스턴스화 금지) — 종류를 말하지 않는
+    단계 설정은 존재하지 않는다.
+    """
 # 진입 의미론 두 필드는 **tri-state**다 (A8): None = 미지정(프론트매터 키 생략 →
 # CC 기본값에 위임) / True·False = 명시 지정. 순수 bool이면 "기본값을 쓴다"와
 # "기본값과 같은 값을 못 박았다"가 구분되지 않아, 캔버스 프리셋의 "일반 상태로"
@@ -53,6 +58,9 @@ class ProceduralSkillConfig(SkillConfig):
     user_invocable: bool | None = None
     shell: SkillShell = SkillShell.BASH
 
+
+@dataclass
+class ProceduralSkillConfig(StepSkillConfig):
     @property
     def kind(self) -> str:
         return "procedural"
@@ -65,21 +73,39 @@ BUILTIN_FORK_AGENTS: tuple[str, ...] = ("general-purpose", "Explore", "Plan")
 
 
 @dataclass
-class ForkSkillConfig(ProceduralSkillConfig):
-    """fork 스킬 — 본문을 작업 지시로 삼아 `agent` 서브에이전트에서 실행된다.
+class ForkSkillConfig(StepSkillConfig, ABC):
+    """fork 스킬 공통 — 본문을 작업 지시로 삼아 `agent` 서브에이전트에서 실행된다.
 
     ``agent``는 세 종류 중 하나의 이름이다(사용자 확정 2026-09-13): 내장
     (`BUILTIN_FORK_AGENTS`), 사용 선언한 외부 플러그인의 에이전트
-    (``플러그인:이름``), 캔버스에 배치되지 않은 프로젝트 에이전트. 산출 이름
+    (``플러그인:이름``), 프로젝트의 **fork 에이전트**. 산출 이름
     (마켓 ``플러그인:이름`` / LOCAL ``이름``)은 컴파일러가 정한다.
     ``allowed_tools``는 필드 매트릭스에 없다 — fork에서는 에이전트 도구가
     이겨 효과가 없다(실측).
+
+    **추상이다** — `background` 값이 동기/비동기를 가르고(사용자 확정
+    2026-09-17) 그 값은 매트릭스 전용 FIXED 필드라 config에 두지 않는다.
+    즉 "어느 fork인가"는 구체 클래스(= `kind`)만이 답한다.
     """
     agent: str = "general-purpose"
 
+
+@dataclass
+class SyncForkSkillConfig(ForkSkillConfig):
+    """동기 fork — `background: false`. 부른 쪽이 보고를 기다린다."""
+
     @property
     def kind(self) -> str:
-        return "fork"
+        return "sync_fork"
+
+
+@dataclass
+class AsyncForkSkillConfig(ForkSkillConfig):
+    """비동기 fork — `background: true`. 보고는 작업 알림으로 뒤늦게 온다."""
+
+    @property
+    def kind(self) -> str:
+        return "async_fork"
 
 
 @dataclass
@@ -129,7 +155,13 @@ class DeclarativeSkillConfig(SkillConfig):
 
 
 @dataclass
-class AgentConfig(ComponentConfig):
+class AgentConfigBase(ComponentConfig, ABC):
+    """에이전트 두 종류(워크플로/fork)의 공통 설정.
+
+    `color`는 **여기 두지 않는다** — 두 구체 클래스가 각자 마지막에 선언해야
+    `AgentConfig`의 필드 순서가 종전(`… memory, background, isolation, color`)과
+    같아진다(2026-09-17 실측).
+    """
     tools: list[str] | None = None
     disallowed_tools: list[str] | None = None
     permission_mode: PermissionMode = PermissionMode.DEFAULT
@@ -137,6 +169,11 @@ class AgentConfig(ComponentConfig):
     skills: list[str] = field(default_factory=list)
     mcp_servers: list[str] | None = None  # MCP 서버 이름 참조 목록 — 서버 정의 자체는 .mcp.json 등 외부 소유, 모델은 이름만 참조
     memory: MemoryScope | None = None
+
+
+@dataclass
+class AgentConfig(AgentConfigBase):
+    """워크플로 에이전트(캔버스 노드) 설정."""
     background: bool = False
     isolation: AgentIsolation = AgentIsolation.NONE
     color: AgentColor | None = None
@@ -144,6 +181,21 @@ class AgentConfig(ComponentConfig):
     @property
     def kind(self) -> str:
         return "agent"
+
+
+@dataclass
+class ForkAgentConfig(AgentConfigBase):
+    """fork 에이전트 설정 — fork 스킬의 실행 기반.
+
+    `background`·`isolation`이 없다: 백그라운드 여부는 **스킬 종류**가 정하고
+    (sync/async fork), isolation은 fork 실행에 적용되지 않는다(실측 2026-09-13,
+    CC 2.1.268). 없는 필드를 두면 걸어 둔 제약이 조용히 사라진다(원칙 5).
+    """
+    color: AgentColor | None = None
+
+    @property
+    def kind(self) -> str:
+        return "fork_agent"
 
 
 @dataclass

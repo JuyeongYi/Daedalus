@@ -95,7 +95,7 @@ class _ForkRules:
                     f"다릅니다 — fork에서는 스킬 값이 이기고 에이전트 값은 무시됩니다. "
                     f"에이전트 값을 쓰려면 스킬 쪽을 비우세요."
                 ))
-            if target_cfg.isolation is not AgentIsolation.NONE:
+            if getattr(target_cfg, "isolation", AgentIsolation.NONE) is not AgentIsolation.NONE:
                 add(skill, rule="fork_agent_isolation_ignored", message=(
                     f"fork 스킬 '{skill.name}'의 fork 에이전트 '{target.name}'에 isolation"
                     f"({target_cfg.isolation.value})이 있지만 fork 실행에는 적용되지 않습니다."

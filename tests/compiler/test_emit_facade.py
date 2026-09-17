@@ -98,7 +98,6 @@ _PRE_SPLIT_ATTRS = [
     "_fsm_procedure_blocks",
     "_graph_placements",
     "_graph_placements_any",
-    "_invocation_section_agent",
     "_invoke_phrase",
     "_is_local_build",
     "_join_blocks",

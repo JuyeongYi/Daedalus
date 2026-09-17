@@ -412,11 +412,13 @@ class QueryTools(_BaseTools):
         """
         from daedalus.compiler.emit import compile_agent, compile_skill
         from daedalus.compiler.token_report import TokenReport
-        from daedalus.model.plugin.agent import AgentDefinition
+        from daedalus.model.plugin.agent import Agent
 
         comp = self._find_component(name)
         project = self._project
-        is_agent = isinstance(comp, AgentDefinition)
+        # 에이전트 두 종류 모두 에이전트 컴파일러로 — fork 에이전트를 스킬
+        # 경로로 보내면 `_skill_kind_key`에서 예외가 난다(이유도 못 말한다).
+        is_agent = isinstance(comp, Agent)
         if is_agent:
             # 전역 훅(A1)까지 해소해 넘긴다 — LOCAL 빌드의 에이전트
             # 프론트매터 hooks가 실제 컴파일과 같은 내용이어야 미리보기다.

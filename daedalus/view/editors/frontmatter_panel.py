@@ -342,20 +342,19 @@ class _FrontmatterPanel(QScrollArea):
 
         # SKILL_FIELD_MATRIX / AGENT_FIELD_MATRIX 기반 필드 생성
         # 위젯 클래스는 view 측 FIELD_WIDGETS / AGENT_FIELD_WIDGETS에서 조회한다(model→view 의존 역전).
-        from daedalus.model.plugin.field_matrix import AGENT_FIELD_MATRIX, SKILL_FIELD_MATRIX
+        from daedalus.model.plugin.agent import Agent
+        from daedalus.model.plugin.field_matrix import matrix_for
         from daedalus.model.plugin.enums import FieldEmit, FieldVisibility
         from daedalus.view.editors.field_widgets import AGENT_FIELD_WIDGETS, FIELD_WIDGETS
 
         kind = skill_kind or self._detect_kind(component)
         config = getattr(component, "config", None)
 
-        is_agent = kind == "agent"
-        if is_agent:
-            rules = AGENT_FIELD_MATRIX  # type: ignore[assignment]
-            widget_map = AGENT_FIELD_WIDGETS  # type: ignore[assignment]
-        else:
-            rules = SKILL_FIELD_MATRIX.get(kind, {})  # type: ignore[assignment]
-            widget_map = FIELD_WIDGETS  # type: ignore[assignment]
+        # 표를 고르는 규칙의 실체는 model의 `matrix_for` 하나다(컴파일러·MCP와 공용).
+        # 여기는 위젯 표만 덧붙이는 얇은 어댑터다.
+        is_agent = isinstance(component, Agent)
+        rules = matrix_for(component)  # type: ignore[assignment]
+        widget_map = AGENT_FIELD_WIDGETS if is_agent else FIELD_WIDGETS  # type: ignore[assignment]
 
         self._loading = True
         try:

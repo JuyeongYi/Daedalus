@@ -89,9 +89,12 @@ class _ProjectRules(
                     fsm, path=(f"skill:{skill.name}",),
                 ))
         for agent in project.agents:
-            errors.extend(_MachineRules._validate_machine(
-                agent.fsm, path=(f"agent:{agent.name}",),
-            ))
+            # fork 에이전트에는 fsm이 없다 — 스킬 쪽과 같은 가드로 통일한다.
+            fsm = getattr(agent, "fsm", None)
+            if fsm is not None:
+                errors.extend(_MachineRules._validate_machine(
+                    fsm, path=(f"agent:{agent.name}",),
+                ))
         # 프로젝트 워크플로 그래프 — placement가 하나라도 있을 때만 머신 규칙 적용.
         # 빈 캔버스(EntryPoint 하나뿐)는 검증 스킵 (경고 폭주 방지).
         # unreachable_state는 스킵한다(WP-EP): CC 플러그인 의미론상 프로젝트

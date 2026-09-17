@@ -15,14 +15,16 @@ from typing import Any
 
 from daedalus.model.fsm.join import JoinStrategy
 from daedalus.model.fsm.section import EventDef
-from daedalus.model.plugin.agent import AgentDefinition
+from daedalus.model.plugin.agent import Agent, AgentDefinition, ForkAgent
 from daedalus.model.plugin.config import (
     WrappedSkillConfig,
     AgentConfig,
+    AsyncForkSkillConfig,
     DeclarativeSkillConfig,
-    ForkSkillConfig,
+    ForkAgentConfig,
     ProceduralSkillConfig,
     ReferenceSkillConfig,
+    SyncForkSkillConfig,
     TransferSkillConfig,
 )
 from daedalus.model.plugin.enums import (
@@ -38,10 +40,11 @@ from daedalus.model.plugin.hook import HookDef, HookEvent
 from daedalus.model.plugin.policy import ExecutionPolicy
 from daedalus.model.plugin.skill import (
     WrappedSkill,
+    AsyncForkSkill,
     DeclarativeSkill,
-    ForkSkill,
     ProceduralSkill,
     ReferenceSkill,
+    SyncForkSkill,
     TransferSkill,
 )
 from daedalus.model.plugin.tool import (
@@ -78,8 +81,24 @@ def _deser_eventdef(d: dict) -> EventDef:
 
 # ── config / policy ──
 
+#: config `kind` → 생성자. 미지 kind는 **ValueError**다(조용한 강등 금지 — 원칙 5).
+#: 키 자체가 없으면 "미지"가 아니라 "미기재"라 None을 돌려주고 호출자가 자기
+#: 분기의 기본 config를 쓴다(구버전·손편집 파일).
+_CONFIG_KINDS: tuple[str, ...] = (
+    "wrapped", "procedural", "sync_fork", "async_fork", "declarative",
+    "transfer", "reference", "agent", "fork_agent",
+)
+
+
 def _deser_config(d: dict) -> Any:
     kind = d.get("kind")
+    if kind is None:
+        return None
+    if kind not in _CONFIG_KINDS:
+        raise ValueError(
+            f"알 수 없는 config 종류: {kind!r} "
+            f"(사용 가능: {', '.join(_CONFIG_KINDS)})"
+        )
     model = d.get("model")
     model_v = _to_enum(ModelType, model, model)  # ModelType | str — enum 실패 시 문자열 보존
     effort = _to_enum(EffortLevel, d.get("effort"))
@@ -103,8 +122,9 @@ def _deser_config(d: dict) -> Any:
             user_invocable=d.get("user_invocable"),
             shell=_to_enum(SkillShell, d.get("shell"), SkillShell.BASH),
         )
-    elif kind == "fork":
-        c = ForkSkillConfig(
+    elif kind in ("sync_fork", "async_fork"):
+        fork_cls = SyncForkSkillConfig if kind == "sync_fork" else AsyncForkSkillConfig
+        c = fork_cls(
             disable_model_invocation=d.get("disable_model_invocation"),  # tri-state (A8)
             user_invocable=d.get("user_invocable"),
             shell=_to_enum(SkillShell, d.get("shell"), SkillShell.BASH),
@@ -123,8 +143,8 @@ def _deser_config(d: dict) -> Any:
         )
     elif kind == "reference":
         c = ReferenceSkillConfig(user_invocable=d.get("user_invocable", False))
-    elif kind == "agent":
-        c = AgentConfig(
+    elif kind in ("agent", "fork_agent"):
+        common = dict(
             tools=d.get("tools"),
             disallowed_tools=d.get("disallowed_tools"),
             permission_mode=_to_enum(
@@ -134,12 +154,22 @@ def _deser_config(d: dict) -> Any:
             skills=list(d.get("skills", [])),
             mcp_servers=d.get("mcp_servers"),
             memory=_to_enum(MemoryScope, d.get("memory")),
-            background=d.get("background", False),
-            isolation=_to_enum(AgentIsolation, d.get("isolation"), AgentIsolation.NONE),
             color=_to_enum(AgentColor, d.get("color")),
         )
-    else:
-        c = ProceduralSkillConfig()
+        if kind == "fork_agent":
+            # background·isolation은 fork 에이전트에 없다 — 파일에 남아 있어도
+            # 흡수하지 않는다(퇴역 개념의 잔재 금지).
+            c = ForkAgentConfig(**common)
+        else:
+            c = AgentConfig(
+                **common,
+                background=d.get("background", False),
+                isolation=_to_enum(
+                    AgentIsolation, d.get("isolation"), AgentIsolation.NONE
+                ),
+            )
+    else:  # pragma: no cover — _CONFIG_KINDS 게이트가 앞에서 걸러낸다
+        raise ValueError(f"알 수 없는 config 종류: {kind!r}")
 
     c.model = model_v
     c.effort = effort
@@ -165,6 +195,25 @@ def _deser_policy(d: dict | None) -> ExecutionPolicy:
 
 # ── skill / agent ──
 
+def _coerce_config(config, expected_cls, *, kind: str, name: str, reg: _Registry):
+    """config가 이 종류의 config 클래스인지 강제한다 (역직렬화 계약).
+
+    `config.kind`가 매트릭스 키가 된 뒤로 클래스는 더 이상 유일 심판이 아니다 —
+    어긋난 조합(`procedural_skill` + `sync_fork` config)이 파일에서 들어오면
+    프론트매터는 `context: fork`를, 본문 조립은 "fork 아님"을 말해 **산출이 두
+    가지 사실을 말한다**. 그래서 여기서 기본 config로 강등하고 경고 1건을 낸다
+    (조용히 버리지 않는다 — 원칙 5).
+    """
+    if isinstance(config, expected_cls):
+        return config
+    if config is not None:
+        reg.warnings.append(
+            f"'{name}'의 config 종류('{getattr(config, 'kind', '?')}')가 "
+            f"종류('{kind}')와 달라 기본 config로 대체했습니다."
+        )
+    return expected_cls()
+
+
 def _deser_skill(d: dict, reg: _Registry) -> Any:
     kind = d.get("kind")
     sid = d.get("id") or _new_id()
@@ -173,31 +222,22 @@ def _deser_skill(d: dict, reg: _Registry) -> Any:
     config = _deser_config(d["config"]) if d.get("config") else None
     body = _deser_body(d)
 
+    #: 스킬 kind → (클래스, config 클래스). 미지 kind는 ValueError다 —
+    #: 조용한 DeclarativeSkill 강등은 스킬 종류·본문을 통째로 바꿔 놓는다.
+    step_kinds = {
+        "procedural_skill": (ProceduralSkill, ProceduralSkillConfig),
+        "sync_fork_skill": (SyncForkSkill, SyncForkSkillConfig),
+        "async_fork_skill": (AsyncForkSkill, AsyncForkSkillConfig),
+        "wrapped_skill": (WrappedSkill, WrappedSkillConfig),
+    }
+
     skill: Any
-    if kind == "fork_skill":
+    if kind in step_kinds:
+        cls, cfg_cls = step_kinds[kind]
         fsm = _deser_machine(d["fsm"], reg, parent_bb=None)
-        skill = ForkSkill(
+        skill = cls(
             fsm=fsm, name=name, description=desc, id=sid,
-            config=config if isinstance(config, ForkSkillConfig) else ForkSkillConfig(),
-            body=body,
-            transfer_on=[_deser_eventdef(e) for e in d.get("transfer_on", [])],
-            call_agents=[_deser_eventdef(e) for e in d.get("call_agents", [])],
-        )
-    elif kind == "procedural_skill":
-        fsm = _deser_machine(d["fsm"], reg, parent_bb=None)
-        skill = ProceduralSkill(
-            fsm=fsm, name=name, description=desc, id=sid,
-            config=config or ProceduralSkillConfig(),
-            body=body,
-            transfer_on=[_deser_eventdef(e) for e in d.get("transfer_on", [])],
-            call_agents=[_deser_eventdef(e) for e in d.get("call_agents", [])],
-        )
-    elif kind == "wrapped_skill":
-        # WP-WR — body는 구조상 왕복하되 정본은 config.source의 외부 스킬이다.
-        fsm = _deser_machine(d["fsm"], reg, parent_bb=None)
-        skill = WrappedSkill(
-            fsm=fsm, name=name, description=desc, id=sid,
-            config=config or WrappedSkillConfig(),
+            config=_coerce_config(config, cfg_cls, kind=kind, name=name, reg=reg),
             body=body,
             transfer_on=[_deser_eventdef(e) for e in d.get("transfer_on", [])],
             call_agents=[_deser_eventdef(e) for e in d.get("call_agents", [])],
@@ -206,53 +246,91 @@ def _deser_skill(d: dict, reg: _Registry) -> Any:
         fsm = _deser_machine(d["fsm"], reg, parent_bb=None)
         skill = TransferSkill(
             fsm=fsm, name=name, description=desc, id=sid,
-            config=config or TransferSkillConfig(),
+            config=_coerce_config(
+                config, TransferSkillConfig, kind=kind, name=name, reg=reg
+            ),
             body=body,
         )
     elif kind == "declarative_skill":
         skill = DeclarativeSkill(
             name=name, description=desc, id=sid,
-            config=config or DeclarativeSkillConfig(),
+            config=_coerce_config(
+                config, DeclarativeSkillConfig, kind=kind, name=name, reg=reg
+            ),
             body=body,
         )
     elif kind == "reference_skill":
         skill = ReferenceSkill(
             name=name, description=desc, id=sid,
-            config=config or ReferenceSkillConfig(),
+            config=_coerce_config(
+                config, ReferenceSkillConfig, kind=kind, name=name, reg=reg
+            ),
             body=body,
         )
     else:
-        skill = DeclarativeSkill(name=name, description=desc, id=sid)
+        known = ", ".join([
+            *step_kinds, "transfer_skill", "declarative_skill", "reference_skill",
+        ])
+        raise ValueError(
+            f"알 수 없는 스킬 종류: {kind!r} (스킬 '{name}'). 사용 가능: {known}"
+        )
 
     skill.when_to_use = d.get("when_to_use", "")
     reg.components[sid] = skill
     return skill
 
 
-def _deser_agent(d: dict, reg: _Registry) -> AgentDefinition:
+def _deser_agent(d: dict, reg: _Registry) -> Agent:
+    """에이전트 역직렬화 — `kind`가 종류를 가른다.
+
+    키 부재·``"agent"`` → 워크플로 에이전트(AgentDefinition),
+    ``"fork_agent"`` → fork 에이전트(fsm·포트·배치 없음). 미지 kind는 ValueError다.
+    """
     sid = d.get("id") or _new_id()
-    fsm = _deser_machine(d["fsm"], reg, parent_bb=None)
-    agent = AgentDefinition(
-        fsm=fsm,
-        name=d.get("name", ""),
-        description=d.get("description", ""),
-        id=sid,
-        config=_deser_config(d["config"]) if d.get("config") else AgentConfig(),
-        execution_policy=_deser_policy(d.get("execution_policy")),
-        body=_deser_body(d),
-        reference_placements=[
-            _deser_ref_placement(r) for r in d.get("reference_placements", [])
-        ],
-        graph_layout={k: list(v) for k, v in d.get("graph_layout", {}).items()},
-        # WP-ER — 구버전 키 부재 → 빈 dict (경고 없음).
-        edge_layout={
-            k: [list(pt) for pt in v] for k, v in d.get("edge_layout", {}).items()
-        },
-        # WP-AF — 출력 포트가 단일 진실. v1의 ExitPoint 승계는 _migrate_v1 소관.
-        transfer_on=[_deser_eventdef(e) for e in d.get("transfer_on", [])],
-        # 에이전트 호출 포트(2026-09-12) — 키 부재(구버전) → 빈 목록, 경고 없음.
-        call_agents=[_deser_eventdef(e) for e in d.get("call_agents", [])],
-    )
+    name = d.get("name", "")
+    kind = d.get("kind") or "agent"
+    config = _deser_config(d["config"]) if d.get("config") else None
+
+    agent: Agent
+    if kind == "fork_agent":
+        agent = ForkAgent(
+            name=name,
+            description=d.get("description", ""),
+            id=sid,
+            config=_coerce_config(
+                config, ForkAgentConfig, kind=kind, name=name, reg=reg
+            ),
+            body=_deser_body(d),
+        )
+    elif kind == "agent":
+        agent = AgentDefinition(
+            fsm=_deser_machine(d["fsm"], reg, parent_bb=None),
+            name=name,
+            description=d.get("description", ""),
+            id=sid,
+            config=_coerce_config(
+                config, AgentConfig, kind=kind, name=name, reg=reg
+            ),
+            execution_policy=_deser_policy(d.get("execution_policy")),
+            body=_deser_body(d),
+            reference_placements=[
+                _deser_ref_placement(r) for r in d.get("reference_placements", [])
+            ],
+            graph_layout={k: list(v) for k, v in d.get("graph_layout", {}).items()},
+            # WP-ER — 구버전 키 부재 → 빈 dict (경고 없음).
+            edge_layout={
+                k: [list(pt) for pt in v] for k, v in d.get("edge_layout", {}).items()
+            },
+            # WP-AF — 출력 포트가 단일 진실. v1의 ExitPoint 승계는 _migrate_v1 소관.
+            transfer_on=[_deser_eventdef(e) for e in d.get("transfer_on", [])],
+            # 에이전트 호출 포트(2026-09-12) — 키 부재(구버전) → 빈 목록, 경고 없음.
+            call_agents=[_deser_eventdef(e) for e in d.get("call_agents", [])],
+        )
+    else:
+        raise ValueError(
+            f"알 수 없는 에이전트 종류: {kind!r} (에이전트 '{name}'). "
+            f"사용 가능: agent, fork_agent"
+        )
     reg.components[sid] = agent
     return agent
 

@@ -77,7 +77,6 @@ def _legacy_compile_agent(agent: AgentDefinition, sections: list[Section]) -> st
     fm_lines = _emit._frontmatter_lines_agent(agent)
     blocks: list[str] = [_emit._frontmatter_block(fm_lines)]
     blocks.extend(_legacy_render_sections(sections, depth=1))
-    blocks.extend(_emit._invocation_section_agent(agent))
     blocks.extend(_emit._settings_note_agent(agent))
     blocks.extend(_emit._describe_agent_fsm(agent))
     # WP-AF — 출구 단락은 transfer_on 기반으로 분리됐다. original은 transfer_on이

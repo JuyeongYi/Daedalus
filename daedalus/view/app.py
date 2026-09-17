@@ -38,7 +38,7 @@ from PySide6.QtWidgets import (
     QTabWidget,
 )
 
-from daedalus.model.plugin.agent import AgentDefinition
+from daedalus.model.plugin.agent import Agent, AgentDefinition
 from daedalus.model.plugin.skill import (
     DeclarativeSkill,
     ProceduralSkill,
@@ -89,6 +89,22 @@ _LOCAL_ONLY_TAB_INDEXES = (
 # ~0.8s 동기 구축 멈춤(실측)을 사용자가 클릭하기 전 유휴 시점으로 옮긴다.
 _SETTINGS_PREWARM_MS = 800
 _LAST_FIXED_TAB_INDEX = max(_FIXED_TAB_INDEXES)
+
+
+def _tab_prefix(component: object) -> str:
+    """컴포넌트 편집 탭의 아이콘 접두 — 종류가 한눈에 보이게.
+
+    스킬은 접두가 없고(대다수), 워크플로 에이전트 🤖 / fork 에이전트 🧩다.
+    탭 텍스트 동기화(`_sync_tab_titles`)와 탭 생성이 **같은 함수**를 써야
+    이름 변경 때 접두가 사라지지 않는다.
+    """
+    from daedalus.model.plugin.agent import Agent, ForkAgent
+
+    if isinstance(component, ForkAgent):
+        return "🧩 "
+    if isinstance(component, Agent):
+        return "🤖 "
+    return ""
 
 
 class MainWindow(QMainWindow):
@@ -871,10 +887,7 @@ class MainWindow(QMainWindow):
                 continue
             # 아이콘 프리픽스 포함 여부에 따라 현재 탭 텍스트를 비교
             current_text = self._tabs.tabText(tab_idx)
-            if isinstance(comp, AgentDefinition):
-                expected = f"🤖 {name}"
-            else:
-                expected = name
+            expected = f"{_tab_prefix(comp)}{name}"
             if current_text != expected:
                 self._tabs.setTabText(tab_idx, expected)
 
@@ -910,7 +923,7 @@ class MainWindow(QMainWindow):
             self._tabs.setCurrentIndex(self._open_tabs[comp_id])
             return
 
-        if isinstance(component, AgentDefinition):
+        if isinstance(component, Agent):
             from daedalus.view.editors.agent_editor import AgentEditor
             editor = AgentEditor(
                 component, on_notify_fn=self._project_vm.notify, project=self._project,
@@ -920,7 +933,7 @@ class MainWindow(QMainWindow):
             fm = getattr(getattr(editor, "_component_editor", None), "_fm", None)
             if fm is not None and hasattr(fm, "renamed"):
                 fm.renamed.connect(self._on_component_renamed)
-            idx = self._tabs.addTab(editor, f"🤖 {name}")
+            idx = self._tabs.addTab(editor, f"{_tab_prefix(component)}{name}")
             self._open_tabs[comp_id] = idx
             self._tabs.setCurrentIndex(idx)
         elif isinstance(component, (ProceduralSkill, DeclarativeSkill, TransferSkill, ReferenceSkill, WrappedSkill)):

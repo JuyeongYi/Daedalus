@@ -8,10 +8,13 @@ from daedalus.model.fsm.section import EventDef
 from daedalus.model.plugin.base import PluginComponent, WorkflowComponent
 from daedalus.model.plugin.config import (
     WrappedSkillConfig,
+    AsyncForkSkillConfig,
     DeclarativeSkillConfig,
     ForkSkillConfig,
     ProceduralSkillConfig,
     ReferenceSkillConfig,
+    StepSkillConfig,
+    SyncForkSkillConfig,
     TransferSkillConfig,
 )
 
@@ -85,24 +88,32 @@ def is_disabled_wrapped(component: object) -> bool:
 
 
 @dataclass
-class ProceduralSkill(Skill, WorkflowComponent):
-    """절차형 = Skill + FSM.
+class StepSkill(Skill, WorkflowComponent, ABC):
+    """워크플로 **단계** 스킬 공통 = Skill + FSM + 포트 (추상).
+
+    절차형과 fork 2종의 부모다. 예전에는 `ForkSkill ⊂ ProceduralSkill` 상속이
+    "워크플로 단계인가"를 지탱했는데, fork가 두 종류로 갈라지면서 그 판정의
+    이름을 여기로 옮겼다 — `isinstance(x, StepSkill)`가 "단계(fork 포함)"이고
+    `isinstance(x, ProceduralSkill)`는 "절차형만"이다.
+
+    `kind`를 정의하지 않으므로 추상이다(인스턴스화 금지).
 
     필드 순서 (dataclass MRO):
       fsm (required, WorkflowComponent)
       name, description (required, PluginComponent)
-      config, body, transfer_on, call_agents (default)
+      when_to_use (Skill), config, body, transfer_on, call_agents (default)
+
+    `config`를 여기서 선언하는 이유: 구체 클래스에만 두면 순서가
+    `…, when_to_use, body, transfer_on, call_agents, config`로 바뀐다(실측
+    2026-09-17). 기본 팩토리는 추상 클래스지만 세 구체 클래스가 전부
+    override하므로 한 번도 호출되지 않는다.
     """
-    config: ProceduralSkillConfig = field(default_factory=ProceduralSkillConfig)
+    config: StepSkillConfig = field(default_factory=StepSkillConfig)  # type: ignore[type-abstract]
     body: str = ""
     transfer_on: list[EventDef] = field(
         default_factory=lambda: [EventDef("done")]
     )
     call_agents: list[EventDef] = field(default_factory=list)
-
-    @property
-    def kind(self) -> str:
-        return "procedural_skill"
 
     @property
     def output_events(self) -> list[str]:
@@ -111,19 +122,44 @@ class ProceduralSkill(Skill, WorkflowComponent):
 
 
 @dataclass
-class ForkSkill(ProceduralSkill):
-    """fork 스킬 — 본문이 `config.agent` 서브에이전트의 작업 지시가 된다.
-
-    절차형의 하위 종류다: 배치·포트·전이·본문은 절차형과 같고, 실행 장소만
-    서브에이전트다(사용자 확정 2026-09-13 — 에이전트를 소유하지 않는 가벼운
-    종류). 절차형 판정(`isinstance(x, ProceduralSkill)`)을 그대로 통과하므로,
-    fork만 달라야 하는 곳은 이 클래스를 **먼저** 검사한다.
-    """
-    config: ForkSkillConfig = field(default_factory=ForkSkillConfig)  # type: ignore[assignment]
+class ProceduralSkill(StepSkill):
+    """절차형 = 메인 대화에서 그대로 도는 단계."""
+    config: ProceduralSkillConfig = field(default_factory=ProceduralSkillConfig)
 
     @property
     def kind(self) -> str:
-        return "fork_skill"
+        return "procedural_skill"
+
+
+@dataclass
+class ForkSkill(StepSkill, ABC):
+    """fork 스킬 공통 — 본문이 `config.agent` 서브에이전트의 작업 지시가 된다.
+
+    배치·포트·전이·본문은 절차형과 같고 실행 장소만 서브에이전트다. 동기/비동기
+    두 종류로 갈린다(사용자 확정 2026-09-17) — 이 클래스는 **추상**이고,
+    "fork인가" 판정은 그대로 `isinstance(x, ForkSkill)`다.
+    """
+    config: ForkSkillConfig = field(default_factory=ForkSkillConfig)  # type: ignore[type-abstract,assignment]
+
+
+@dataclass
+class SyncForkSkill(ForkSkill):
+    """동기 fork — `background: false`. 부른 쪽이 보고를 기다려 갈래를 고른다."""
+    config: SyncForkSkillConfig = field(default_factory=SyncForkSkillConfig)  # type: ignore[assignment]
+
+    @property
+    def kind(self) -> str:
+        return "sync_fork_skill"
+
+
+@dataclass
+class AsyncForkSkill(ForkSkill):
+    """비동기 fork — `background: true`. 보고는 작업 알림으로 뒤늦게 온다."""
+    config: AsyncForkSkillConfig = field(default_factory=AsyncForkSkillConfig)  # type: ignore[assignment]
+
+    @property
+    def kind(self) -> str:
+        return "async_fork_skill"
 
 
 @dataclass

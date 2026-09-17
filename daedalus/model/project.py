@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from daedalus.model.fsm.blackboard import Blackboard
 from daedalus.model.fsm.machine import StateMachine
 from daedalus.model.fsm.pseudo import EntryPoint
-from daedalus.model.plugin.agent import AgentDefinition
+from daedalus.model.plugin.agent import Agent
 from daedalus.model.plugin.enums import BuildTarget
 from daedalus.model.plugin.hook import HookDef
 from daedalus.model.plugin.skill import Skill
@@ -45,7 +45,9 @@ class PluginProject:
     description: str = ""      # 플러그인 설명 — plugin.json description (빈 값이면 키 생략)
     version: str = "0.1.0"     # 플러그인 버전 — plugin.json version (semver 문자열)
     skills: list[Skill] = field(default_factory=list)
-    agents: list[AgentDefinition] = field(default_factory=list)
+    # 워크플로 에이전트와 fork 에이전트가 **같은 리스트**에 산다 — 이름 유일성·
+    # 산출 경로(agents/<name>.md)·참조 해소가 종류와 무관하기 때문이다.
+    agents: list[Agent] = field(default_factory=list)
     reference_placements: list[ReferencePlacement] = field(default_factory=list)
     # 도구 선반 — BuiltinTool/MCPTool/UserDefinedTool의 단일 진실 (결정 Z: shelf).
     # FSM 전략의 ToolEvaluation/ToolExecution.tool은 여기 Tool.name을 이름으로 참조한다.
@@ -129,8 +131,8 @@ def rename_component(
 
     갱신 대상:
     - component.name 자체
-    - ForkSkillConfig.agent (에이전트 이름 참조)
-    - AgentConfig.skills (스킬 이름 리스트)
+    - ForkSkillConfig.agent (에이전트 이름 참조 — 두 에이전트 종류 모두)
+    - AgentConfigBase.skills (스킬 이름 리스트 — 두 에이전트 종류 모두)
     - ReferencePlacement.skill_name (project + 각 agent의 reference_placements)
 
     ComponentConfig.hooks 키는 hook_library의 HookDef.name 참조로 컴포넌트 이름과
@@ -139,16 +141,20 @@ def rename_component(
     각 참조는 **참조 대상 타입별로 분리**해 갱신한다 — 동명-다른타입 컴포넌트
     (예: 스킬 "x"와 에이전트 "x")가 공존해도 무관 참조를 오갱신하지 않는다:
     - ForkSkillConfig.agent는 에이전트 이름 참조 → component가 에이전트일 때만
-    - AgentConfig.skills는 스킬 이름 참조 → component가 스킬일 때만
+    - AgentConfigBase.skills는 스킬 이름 참조 → component가 스킬일 때만
     - ReferencePlacement.skill_name은 스킬 이름 참조 → component가 스킬일 때만
     """
-    from daedalus.model.plugin.config import AgentConfig, ForkSkillConfig
+    from daedalus.model.plugin.config import AgentConfigBase, ForkSkillConfig
 
     old_name: str = getattr(component, "name", "")
     if old_name == new_name:
         return
 
-    is_agent = isinstance(component, AgentDefinition)
+    # 에이전트 **두 종류 모두**가 대상이다 — 이 플래그가 ForkSkillConfig.agent
+    # 치환을 켜는 스위치이고, fork 스킬이 가리키는 주 대상이 바로 fork
+    # 에이전트다. 워크플로 에이전트로 좁히면 fork 에이전트 개명 때 참조가
+    # 조용히 끊긴다(원칙 5).
+    is_agent = isinstance(component, Agent)
     is_skill = isinstance(component, Skill)
 
     # 1) 이름 자체 변경
@@ -161,11 +167,11 @@ def rename_component(
             if isinstance(cfg, ForkSkillConfig) and cfg.agent == old_name:
                 cfg.agent = new_name
 
-    # 3) AgentConfig.skills 갱신 — 스킬 이름 참조
+    # 3) AgentConfigBase.skills 갱신 — 스킬 이름 참조
     if is_skill:
         for agent in project.agents:
             cfg = getattr(agent, "config", None)
-            if isinstance(cfg, AgentConfig) and isinstance(cfg.skills, list):
+            if isinstance(cfg, AgentConfigBase) and isinstance(cfg.skills, list):
                 cfg.skills = [new_name if s == old_name else s for s in cfg.skills]
 
     # 4) ReferencePlacement.skill_name 갱신 — 스킬 이름 참조 (project + 각 agent)

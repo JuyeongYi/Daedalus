@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from daedalus.model.plugin.agent import AgentDefinition
+from daedalus.model.plugin.agent import Agent, AgentDefinition
 from daedalus.model.plugin.skill import (
     DeclarativeSkill,
     ProceduralSkill,
@@ -57,7 +57,7 @@ class ComponentEditor(QWidget):
 
         # 변수 팝업 컨텍스트 — 스킬은 풀 지원, 에이전트 .md는 루트 변수만
         # 인식한다(사용자 확정 매트릭스, variable_loader.variables_for).
-        var_context = "agent" if isinstance(component, AgentDefinition) else "skill"
+        var_context = "agent" if isinstance(component, Agent) else "skill"
 
         root_lay = QHBoxLayout(self)
         root_lay.setContentsMargins(0, 0, 0, 0)

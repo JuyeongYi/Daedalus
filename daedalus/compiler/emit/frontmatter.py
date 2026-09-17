@@ -19,7 +19,7 @@ from daedalus.model.plugin.enums import (
     ModelType,
     SkillField,
 )
-from daedalus.model.plugin.field_matrix import SKILL_FIELD_MATRIX, FieldRule
+from daedalus.model.plugin.field_matrix import FieldRule, matrix_for
 from daedalus.model.plugin.skill import Skill
 
 # YAML이 boolean/null로 오파싱할 수 있는 예약 스칼라 (YAML 1.1 포함 보수적 집합).
@@ -122,7 +122,8 @@ def _frontmatter_lines_skill(
     name/description은 항상 출력(REQUIRED). when_to_use는 description에 합류하므로
     여기서는 직출하지 않는다. 나머지는 매트릭스 emit==FRONTMATTER + visibility 규칙.
     """
-    matrix = SKILL_FIELD_MATRIX[kind_key]
+    # 표를 고르는 규칙의 실체는 model의 `matrix_for` 하나다(config.kind가 키).
+    matrix = matrix_for(skill)
     config = getattr(skill, "config", None)
     lines: list[str] = []
 

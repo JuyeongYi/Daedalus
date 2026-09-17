@@ -5,8 +5,8 @@ field_matrix.py(model)에서 분리된 위젯 선택 책임을 담는다. 위젯
 스킬 kind와 무관함이 확인되어 1차원 dict로 충분하다 — 한 SkillField는
 모든 kind에서 동일한 위젯 타입을 사용한다.
 
-CONTEXT는 fork 스킬에서만 FIXED로 쓰여 편집기에 나오지 않는다(표 완전성 때문에 등재).
-AGENT는 fork 스킬 전용이다(`ForkSkillConfig.agent`).
+CONTEXT·BACKGROUND는 fork 스킬에서만 FIXED로 쓰여 편집기에 나오지 않는다
+(표 완전성 때문에 등재). AGENT는 fork 스킬 전용이다(`ForkSkillConfig.agent`).
 """
 from __future__ import annotations
 
@@ -36,6 +36,7 @@ FIELD_WIDGETS: dict[SkillField, type[QWidget]] = {
     SkillField.ALLOWED_TOOLS:  TagInput,
     SkillField.CONTEXT:        QLineEdit,  # fork 전용 FIXED — 편집기에 그려지지 않는다
     SkillField.AGENT:          ForkAgentComboBox,
+    SkillField.BACKGROUND:     QCheckBox,  # fork 2종 FIXED — 종류가 값이라 그려지지 않는다
     SkillField.SHELL:          ShellComboBox,
     SkillField.PATHS:          TagInput,
     SkillField.SOURCE:         QLineEdit,  # WP-WR — plugin@marketplace:skill

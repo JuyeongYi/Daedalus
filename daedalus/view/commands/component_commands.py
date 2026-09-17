@@ -29,10 +29,15 @@ if TYPE_CHECKING:
 
 
 def _bucket(project: PluginProject, component: object) -> list:
-    """컴포넌트가 들어갈 프로젝트 리스트를 고른다."""
-    from daedalus.model.plugin.agent import AgentDefinition
+    """컴포넌트가 들어갈 프로젝트 리스트를 고른다.
 
-    if isinstance(component, AgentDefinition):
+    **에이전트 두 종류를 `project.agents`로 보내는 단 하나의 판정**이다 —
+    워크플로 에이전트로 좁히면 fork 에이전트가 `project.skills`에 들어가
+    저장·레지스트리·검증·산출 계획이 전부 어긋난다.
+    """
+    from daedalus.model.plugin.agent import Agent
+
+    if isinstance(component, Agent):
         return project.agents
     return project.skills
 
@@ -179,14 +184,9 @@ class _DetachComponentCmd(Command):
         return found
 
     def execute(self) -> None:
-        from daedalus.model.plugin.agent import AgentDefinition
         from daedalus.model.project import remove_component
 
-        bucket = (
-            self._project.agents
-            if isinstance(self._component, AgentDefinition)
-            else self._project.skills
-        )
+        bucket = _bucket(self._project, self._component)
         self._bucket_index = next(
             (i for i, item in enumerate(bucket) if item is self._component), -1
         )
@@ -198,13 +198,7 @@ class _DetachComponentCmd(Command):
         remove_component(self._project, self._component)
 
     def undo(self) -> None:
-        from daedalus.model.plugin.agent import AgentDefinition
-
-        bucket = (
-            self._project.agents
-            if isinstance(self._component, AgentDefinition)
-            else self._project.skills
-        )
+        bucket = _bucket(self._project, self._component)
         if not any(item is self._component for item in bucket):
             if 0 <= self._bucket_index <= len(bucket):
                 bucket.insert(self._bucket_index, self._component)

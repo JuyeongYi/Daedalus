@@ -11,9 +11,12 @@
 """
 from __future__ import annotations
 
-#: 캔버스에 **노드로 배치되지 않는** 종류 (레지스트리의 `no_place`와 같은 규칙).
-#: declarative/transfer는 워크플로 노드가 아니다 — 만들기만 하고 배치는 없다.
-NO_PLACE_KINDS: frozenset[str] = frozenset({"declarative", "transfer"})
+#: 캔버스에 **아무 노드로도 놓이지 않는** 종류. 판정의 실체는
+#: `model.plugin.placement.is_canvas_placeable`이고 이 상수는 그 음성 목록의
+#: 문자열 표현이다(생성 다이얼로그가 kind 문자열만 들고 있는 자리 전용) —
+#: 어긋나지 않음을 테스트가 고정한다. reference는 여기 없다: 상태 노드는
+#: 못 되지만 **참조 노드로는 놓인다**.
+NO_PLACE_KINDS: frozenset[str] = frozenset({"declarative", "transfer", "fork_agent"})
 
 # (CREATABLE_KINDS는 "여기에 만들기" 빈 캔버스 메뉴(A9-9)와 함께 퇴역 —
 #  이름을 정확히 타이핑해야 해서 쓰기 어려웠다(사용자 확정). 생성 표면은
@@ -33,13 +36,17 @@ def make_component(
     환원했다). GUI 경로는 이름만 주고 설명은 편집기에서 채운다.
     """
     from daedalus.model.fsm.section import EventDef
-    from daedalus.model.plugin.agent import AgentDefinition
-    from daedalus.model.plugin.config import ForkSkillConfig
+    from daedalus.model.plugin.agent import AgentDefinition, ForkAgent
+    from daedalus.model.plugin.config import (
+        AsyncForkSkillConfig,
+        SyncForkSkillConfig,
+    )
     from daedalus.model.plugin.skill import (
+        AsyncForkSkill,
         DeclarativeSkill,
-        ForkSkill,
         ProceduralSkill,
         ReferenceSkill,
+        SyncForkSkill,
         TransferSkill,
         WrappedSkill,
     )
@@ -49,9 +56,13 @@ def make_component(
             fsm=window._make_fsm(name), name=name, description=description
         ),
         # agent는 등록 전에 채운다 — undo/redo에 agent가 빈 중간 상태가 없다.
-        "fork": lambda: ForkSkill(
+        "sync_fork": lambda: SyncForkSkill(
             fsm=window._make_fsm(name), name=name, description=description,
-            config=ForkSkillConfig(agent=agent or "general-purpose"),
+            config=SyncForkSkillConfig(agent=agent or "general-purpose"),
+        ),
+        "async_fork": lambda: AsyncForkSkill(
+            fsm=window._make_fsm(name), name=name, description=description,
+            config=AsyncForkSkillConfig(agent=agent or "general-purpose"),
         ),
         "declarative": lambda: DeclarativeSkill(name=name, description=description),
         "transfer": lambda: TransferSkill(
@@ -65,6 +76,9 @@ def make_component(
             fsm=window._make_agent_fsm(name), name=name, description=description,
             transfer_on=[EventDef(name="done")],
         ),
+        # fork 에이전트 — fsm도 포트도 없다(fork 스킬이 부르고, 결과 분기는
+        # 그 스킬의 보고 양식이 정한다).
+        "fork_agent": lambda: ForkAgent(name=name, description=description),
     }
     factory = factories.get(kind)
     return factory() if factory is not None else None
@@ -189,7 +203,9 @@ def create_and_place(
     project_vm = scene._project_vm
     children: list[Command] = [CreateComponentCmd(project, component)]
 
-    if kind not in NO_PLACE_KINDS:
+    from daedalus.model.plugin.placement import is_canvas_placeable
+
+    if is_canvas_placeable(component):
         if isinstance(component, ReferenceSkill):
             rvm = ReferenceViewModel(model=component, x=x, y=y)
             children.append(CreateRefCmd(

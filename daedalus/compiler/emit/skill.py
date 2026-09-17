@@ -34,9 +34,8 @@ from daedalus.model.plugin.agent import AgentDefinition
 from daedalus.model.plugin.skill import (
     DeclarativeSkill,
     ForkSkill,
-    ProceduralSkill,
+    StepSkill,
     WrappedSkill,
-    ReferenceSkill,
     Skill,
     TransferSkill,
 )
@@ -348,20 +347,15 @@ def _progress_terminal_section(project) -> list[str]:
 
 
 def _skill_kind_key(skill: Skill) -> str:
-    """Skill 인스턴스 → SKILL_FIELD_MATRIX 키."""
-    if isinstance(skill, WrappedSkill):
-        return "wrapped"
-    if isinstance(skill, ForkSkill):  # 절차형 하위 종류 — 먼저 검사
-        return "fork"
-    if isinstance(skill, ProceduralSkill):
-        return "procedural"
-    if isinstance(skill, TransferSkill):
-        return "transfer"
-    if isinstance(skill, DeclarativeSkill):
-        return "declarative"
-    if isinstance(skill, ReferenceSkill):
-        return "reference"
-    raise TypeError(f"알 수 없는 스킬 타입: {type(skill).__name__}")
+    """Skill 인스턴스 → SKILL_FIELD_MATRIX 키 — **`config.kind`가 단일 진실**이다.
+
+    isinstance 사슬로 문자열을 다시 만들면 클래스와 config가 어긋난 날 두 사실이
+    나온다. 표에 없는 kind면 `matrix_for`가 이유를 말하는 ValueError를 낸다.
+    """
+    from daedalus.model.plugin.field_matrix import matrix_for
+
+    matrix_for(skill)  # 표가 없으면 여기서 이유를 말하고 멈춘다
+    return str(skill.config.kind)
 
 
 def compile_skill(
@@ -378,10 +372,7 @@ def compile_skill(
     fm_lines = _frontmatter_lines_skill(skill, kind_key)
     is_fork = isinstance(skill, ForkSkill)
     if is_fork:
-        fm_lines = fork_frontmatter_lines(
-            fm_lines, skill, project,
-            placed=project is not None and bool(_graph_placements(skill, project)),
-        )
+        fm_lines = fork_frontmatter_lines(fm_lines, skill, project)
     # 스킬 훅 — 스킬이 활성인 동안만 걸린다(2026-09-13 실측: 플러그인 스킬도 동작).
     # settings.json과 같은 3단 구조라 한 줄 키-값이 아니라 블록으로 낸다.
     from daedalus.compiler.emit.frontmatter import _yaml_block_lines
@@ -401,7 +392,7 @@ def compile_skill(
     progress_placements: list = []
     if (
         project is not None
-        and isinstance(skill, (ProceduralSkill, DeclarativeSkill, WrappedSkill))
+        and isinstance(skill, (StepSkill, DeclarativeSkill, WrappedSkill))
     ):
         progress_placements = _graph_placements(skill, project)
     if progress_placements:
@@ -438,8 +429,8 @@ def compile_skill(
         if project is not None:
             blocks.extend(_blackboard_section(project, skill))
 
-    # ProceduralSkill — FSM 절차 + tool_shelf
-    if isinstance(skill, ProceduralSkill):
+    # 단계 스킬(절차형·fork 2종) — FSM 절차 + tool_shelf
+    if isinstance(skill, StepSkill):
         blocks.extend(_describe_fsm(skill.fsm, skill))
         if project is not None:
             blocks.extend(_tool_shelf_section(project))

@@ -33,7 +33,9 @@ from daedalus.model.project import (
 from daedalus.model.serialize.migrate import (
     _migrate_v1,
     _promote_local_skills,
+    migrate_fork_split,
     migrate_skill_context,
+    needs_fork_split_migration,
     needs_skill_context_migration,
 )
 from daedalus.model.serialize.ser import FORMAT_VERSION
@@ -62,6 +64,7 @@ from daedalus.model.serialize.deser_fsm import (
     _to_enum,
 )
 from daedalus.model.serialize.deser_plugin import (
+    _coerce_config,
     _deser_agent,
     _deser_body,
     _deser_config,
@@ -108,9 +111,16 @@ def deserialize_project(
             data = copy.deepcopy(data)
             _promote_local_skills(data, reg.warnings)
         # 스킬 context/agent 퇴역(2026-09-13) 이전에 저장된 format 2 파일.
+        converted: set[str] = set()
         if needs_skill_context_migration(data):
             data = copy.deepcopy(data)
-            migrate_skill_context(data, reg.warnings)
+            converted = migrate_skill_context(data, reg.warnings)
+        # fork 2종 분리(2026-09-17) 이전에 저장된 format 2 파일 — 내용 스니핑.
+        # 방금 migrate_skill_context가 fork로 바꾼 스킬은 경고에서 제외한다
+        # (v1 파일에는 "이전 산출" 자체가 없다).
+        if needs_fork_split_migration(data):
+            data = copy.deepcopy(data)
+            migrate_fork_split(data, reg.warnings, skip_warning_for=converted)
     else:
         raise ValueError(
             f"지원하지 않는 파일 형식 버전: {fmt!r} "
@@ -183,8 +193,10 @@ def deserialize_project(
         if fsm is not None and fsm.blackboard.parent is None:
             fsm.blackboard.parent = project.blackboard
     for agent in project.agents:
-        if agent.fsm.blackboard.parent is None:
-            agent.fsm.blackboard.parent = project.blackboard
+        # fork 에이전트에는 fsm이 아예 없다 — getattr 가드가 종류 분기를 대신한다.
+        fsm = getattr(agent, "fsm", None)
+        if fsm is not None and fsm.blackboard.parent is None:
+            fsm.blackboard.parent = project.blackboard
 
     # ── 경고 전달 ──
     if collect_warnings is not None:

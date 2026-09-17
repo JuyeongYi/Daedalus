@@ -12,7 +12,7 @@ from daedalus.model.fsm.variable import Variable
 if TYPE_CHECKING:
     from daedalus.model.fsm.machine import StateMachine
     from daedalus.model.plugin.agent import AgentDefinition
-    from daedalus.model.plugin.skill import DeclarativeSkill, ProceduralSkill
+    from daedalus.model.plugin.skill import DeclarativeSkill, StepSkill
 
 
 @dataclass(eq=False)
@@ -44,7 +44,9 @@ class State(ABC):
 @dataclass(eq=False)
 class SimpleState(State):
     """리프 상태. 하위 상태 없음."""
-    skill_ref: ProceduralSkill | DeclarativeSkill | AgentDefinition | None = None
+    # 배치될 수 있는 것만 온다(model.plugin.placement.is_state_placeable) —
+    # fork 에이전트는 그래프 노드가 될 수 없어 여기 오지 않는다.
+    skill_ref: StepSkill | DeclarativeSkill | AgentDefinition | None = None
 
     @property
     def kind(self) -> str:

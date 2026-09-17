@@ -78,7 +78,9 @@ class _BlackboardRules:
             if fsm is not None:
                 scan_state_access(fsm, _make_checker((f"skill:{skill.name}",)))
         for agent in project.agents:
-            scan_state_access(agent.fsm, _make_checker((f"agent:{agent.name}",)))
+            fsm = getattr(agent, "fsm", None)  # fork 에이전트에는 fsm이 없다
+            if fsm is not None:
+                scan_state_access(fsm, _make_checker((f"agent:{agent.name}",)))
         graph = getattr(project, "graph", None)
         if graph is not None:
             scan_state_access(graph, _make_checker(("project",)))
@@ -106,7 +108,9 @@ class _BlackboardRules:
             if fsm is not None:
                 scan_state_access(fsm, _collect)
         for agent in project.agents:
-            scan_state_access(agent.fsm, _collect)
+            fsm = getattr(agent, "fsm", None)  # fork 에이전트에는 fsm이 없다
+            if fsm is not None:
+                scan_state_access(fsm, _collect)
         graph = getattr(project, "graph", None)
         if graph is not None:
             scan_state_access(graph, _collect)

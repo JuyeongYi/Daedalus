@@ -29,7 +29,9 @@ def project_machines(project):
         if fsm is not None:
             yield (f"skill:{skill.name}", fsm)
     for agent in project.agents:
-        yield (f"agent:{agent.name}", agent.fsm)
+        fsm = getattr(agent, "fsm", None)  # fork 에이전트에는 fsm이 없다
+        if fsm is not None:
+            yield (f"agent:{agent.name}", fsm)
 
 
 def scan_state_access(sm: StateMachine, visit) -> None:

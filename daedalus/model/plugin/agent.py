@@ -1,18 +1,41 @@
 from __future__ import annotations
 
+from abc import ABC
 from dataclasses import dataclass, field
 from uuid import uuid4
 
 from daedalus.model.fsm.section import EventDef
 
 from daedalus.model.plugin.base import PluginComponent, WorkflowComponent
-from daedalus.model.plugin.config import AgentConfig
+from daedalus.model.plugin.config import (
+    AgentConfig,
+    AgentConfigBase,
+    ForkAgentConfig,
+)
 from daedalus.model.plugin.policy import ExecutionPolicy
 
 
 @dataclass
-class AgentDefinition(PluginComponent, WorkflowComponent):
-    """에이전트 = PluginComponent + FSM.
+class Agent(PluginComponent, ABC):
+    """에이전트 베이스 (추상) — 두 종류의 공통은 `config`와 안정 id뿐이다.
+
+    "에이전트 컴포넌트 전반"을 묻는 판정(어느 리스트에 담는가 / 어느 컴파일러로
+    보내는가 / 어느 매트릭스·에디터를 쓰는가)은 전부 이 클래스를 본다. "그래프에
+    배치된 노드가 에이전트인가"(위임·호출 계약·연결 규칙)는 `AgentDefinition`을
+    그대로 본다 — ForkAgent는 배치될 수 없어 자연 제외된다.
+
+    `body`는 **여기서 선언하지 않는다** — 넣으면 `fields(AgentDefinition)`에서
+    body가 execution_policy 앞으로 올라가 종전 필드 순서가 깨진다(실측
+    2026-09-17). 두 구체 클래스가 각자 선언한다.
+    """
+    config: AgentConfigBase = field(default_factory=AgentConfigBase)  # type: ignore[type-abstract]
+    # 안정 식별자 — 값 동등성 비교에서는 제외(compare=False).
+    id: str = field(default_factory=lambda: uuid4().hex, compare=False, kw_only=True)
+
+
+@dataclass
+class AgentDefinition(Agent, WorkflowComponent):
+    """워크플로 에이전트 = Agent + FSM. 캔버스 노드로 배치되는 종류다.
 
     로컬 스킬(skills 필드)은 퇴역했다(WP-RF-1c) — v1 파일의 로컬 스킬은 로드 시
     전역 스킬로 승격된다(serialize._migrate_v1). 에이전트에게 줄 지식은 전역
@@ -21,9 +44,9 @@ class AgentDefinition(PluginComponent, WorkflowComponent):
     필드 순서 (dataclass MRO):
       fsm (required, WorkflowComponent)
       name, description (required, PluginComponent)
-      config, execution_policy, body (default)
+      config (Agent), execution_policy, body (default)
     """
-    config: AgentConfig = field(default_factory=AgentConfig)
+    config: AgentConfig = field(default_factory=AgentConfig)  # type: ignore[assignment]
     execution_policy: ExecutionPolicy = field(default_factory=ExecutionPolicy)
     body: str = ""
     reference_placements: list = field(default_factory=list)  # list[ReferencePlacement]
@@ -41,8 +64,6 @@ class AgentDefinition(PluginComponent, WorkflowComponent):
     # 노드로 갈 수 있다(캔버스 규칙과 동일). 깊이·모델 티어 제약은 프로젝트
     # 검증(agent_chain_too_deep / agent_calls_higher_model)이 짚는다.
     call_agents: list[EventDef] = field(default_factory=list)
-    # 안정 식별자 — 값 동등성 비교에서는 제외(compare=False).
-    id: str = field(default_factory=lambda: uuid4().hex, compare=False, kw_only=True)
 
     @property
     def kind(self) -> str:
@@ -57,3 +78,19 @@ class AgentDefinition(PluginComponent, WorkflowComponent):
     def output_event_defs(self) -> list[EventDef]:
         """노드 포트 렌더링용 EventDef 목록 — output_events와 같은 소스."""
         return list(self.transfer_on)
+
+
+@dataclass
+class ForkAgent(Agent):
+    """fork 에이전트 — fork 스킬의 실행 기반 (사용자 확정 2026-09-17).
+
+    FSM도 포트도 없고 캔버스에 배치되지 않는다: 부르는 것은 그래프가 아니라
+    fork 스킬이고, 결과 분기는 그 스킬의 보고 양식(`EXIT: … / NEXT: …`)이
+    정한다. 산출은 워크플로 에이전트와 같은 `agents/<name>.md`다.
+    """
+    config: ForkAgentConfig = field(default_factory=ForkAgentConfig)  # type: ignore[assignment]
+    body: str = ""
+
+    @property
+    def kind(self) -> str:
+        return "fork_agent"

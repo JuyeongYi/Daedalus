@@ -33,12 +33,14 @@ class ComponentActions:
     #: 종류 → 이름 입력 다이얼로그 제목 (알 수 없는 종류 방어에도 쓰인다).
     _COMPONENT_TITLES = {
         "procedural": "새 Procedural Skill",
-        "fork": "새 Fork Skill",
+        "sync_fork": "새 Sync Fork Skill",
+        "async_fork": "새 Async Fork Skill",
         "declarative": "새 Declarative Skill",
         "transfer": "새 Transfer Skill",
         "reference": "새 Reference Skill",
         "wrapped": "새 Wrapped Skill",
         "agent": "새 Agent",
+        "fork_agent": "새 Fork Agent",
     }
 
     def __init__(self, window: MainWindow) -> None:
