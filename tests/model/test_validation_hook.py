@@ -167,3 +167,36 @@ def test_no_hooks_no_dangling():
 
 def test_dangling_hook_ref_is_warning():
     assert "dangling_hook_ref" in WARNING_RULES
+
+
+# ── 깨진 사용자 파일 내성 (WP-2b 리뷰 1) ──
+
+def test_corrupted_hooks_value_survives_round_trip_and_validation():
+    """손상된 `.daedalus.json`의 non-dict `hooks`는 **경고 없이 건너뛴다**.
+
+    역직렬화(`deser_plugin`)는 `hooks`를 날것으로 싣는다 — 강제 변환이 없어
+    목록·문자열이 그대로 모델에 들어온다. 참조 수집(`hook_refs()`)이 여기서
+    터지면 `validate_project`가 통째로 죽고 검증 패널과 MCP `compile_check`가
+    같이 죽는다. 깨진 사용자 파일은 건드리지 않고 조용히 지나가는 것이
+    종전 동작이다(원칙 5).
+    """
+    from daedalus.model.serialize import deserialize_project, serialize_project
+
+    cfg = DeclarativeSkillConfig()
+    cfg.hooks = {"fmt": {}}
+    proj = PluginProject(
+        name="p",
+        skills=[DeclarativeSkill(name="sk", description="d", config=cfg)],
+        agents=[_agent(hooks={"fmt": {}})],
+    )
+    data = serialize_project(proj)
+    data["skills"][0]["config"]["hooks"] = ["oops"]
+    data["agents"][0]["config"]["hooks"] = "oops"
+
+    loaded = deserialize_project(data)
+    assert loaded.skills[0].config.hooks == ["oops"], (
+        "역직렬화가 hooks를 강제 변환하면 이 테스트의 전제가 사라진다"
+    )
+
+    errors = Validator.validate_project(loaded)  # 터지지 않는 것이 단언이다
+    assert "dangling_hook_ref" not in _rules(errors)

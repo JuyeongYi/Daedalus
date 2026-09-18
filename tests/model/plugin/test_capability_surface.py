@@ -431,6 +431,19 @@ def test_hook_refs_preserve_insertion_order():
     assert sk.hook_refs() == []
 
 
+def test_hook_refs_tolerates_corrupted_hooks_value():
+    """dict가 아닌 `hooks`는 "참조 없음" — 깨진 사용자 파일에 터지지 않는다.
+
+    역직렬화는 `hooks`를 날것으로 싣기 때문에 손상된 `.daedalus.json`이 목록·
+    문자열을 들고 들어올 수 있다. 여기서 AttributeError가 나면 검증 패널과
+    MCP `compile_check`가 통째로 죽는다(원칙 5).
+    """
+    sk = ProceduralSkill(fsm=_fsm(), name="p", description="")
+    for broken in (["oops"], "oops", 7, object()):
+        sk.config.hooks = broken  # type: ignore[assignment]
+        assert sk.hook_refs() == [], f"깨진 hooks 값 {broken!r}에서 참조가 새어 나왔다"
+
+
 # ── 4. config의 이름 참조 계약 (Q14) ─────────────────────────────────────
 
 def test_config_name_refs_are_namespaced():

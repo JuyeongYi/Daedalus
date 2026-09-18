@@ -169,14 +169,20 @@ no-op가 된다. 그래서 `PluginComponent`가 **선언(ClassVar) + 인스턴�
 > `serialize/ser.py`의 직렬화 사다리(WP-4가 철거)와 `skill.has_external_body`
 > (WP-2c가 `BODY_SOURCE`로 치환) 둘뿐이다.
 >
-> compiler·view·MCP 호출자는 아직 옛 판정을 쓴다 — 배선은 WP-2c(compiler)·
-> WP-2d(view/MCP)가 잇는다. 그때까지 소비자 없는 메서드는
-> `tests/test_dead_code.py`의 allowlist에 **배선 예정 WP와 함께** 등재돼 있고,
-> 배선되는 순간 `test_allowlist_entries_are_still_dead`가 삭제를 강제한다.
+> **능력 표면에는 소비자 없는 메서드가 없다.** WP-2a가 표면을 선언하면서
+> `tests/test_dead_code.py`의 allowlist에 배선 예정 WP와 함께 얹어 두었던 항목은
+> WP-2b가 model 계층을 배선하면서 전부 빠졌다 — 오늘 allowlist에는 능력 표면 항목이
+> 하나도 없다(남은 4건은 계약 레지스트리·테스트 봉합선이라 성격이 다르다).
+>
+> compiler·view·MCP 호출자는 아직 옛 파사드를 부른다 — `is_reference_usage`·
+> `is_disabled_wrapped`는 WP-2b가 이미 **능력 호출 한 줄**로 줄였고(호출자 무수정),
+> `emits_output_file`(`compiler/emit/common.py`)과 `has_external_body`는 아직
+> `isinstance` 본문이다. 앞의 것은 WP-2c가 `emits_output()`으로, 뒤의 것은
+> `BODY_SOURCE`로 치환하며, view/MCP 호출자 정리는 WP-2d가 맡는다.
 >
 > **랩핑 전용으로 남은 좁힘**은 소스에 `# WRAPPED-ONLY` 태그가 붙는다 — 능력 선언으로는
-> 표현되지 않지만 오늘의 집합을 정확히 보존해야 하는 자리이고(예: `_agent_call_edges`의
-> caller, 용도 스위치 보유 판정), WrappedSkill 퇴역(WP-10)이 태그를 따라 전수 삭제한다.
+> 표현되지 않지만 오늘의 집합을 정확히 보존해야 하는 자리이고(전수 목록과 개수는
+> `validation.md`), WrappedSkill 퇴역(WP-10)이 태그를 따라 전수 삭제한다.
 
 ### 배치 가능 판정 (`model/plugin/placement.py`)
 

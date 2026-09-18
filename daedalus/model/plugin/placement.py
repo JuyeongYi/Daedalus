@@ -17,7 +17,7 @@
 """
 from __future__ import annotations
 
-from daedalus.model.plugin.roles import PlacementRole
+from daedalus.model.plugin.roles import Bucket, PlacementRole
 
 
 def placement_role_of(component: object) -> PlacementRole:
@@ -66,11 +66,18 @@ def fork_skills_using(agent, project) -> list[str]:
     말해야 하므로 실체는 여기 하나다. 컴파일러는 뷰를 임포트할 수 없으므로
     (import 계약) 실체가 모델에 있어야 한다.
 
-    "이 스킬이 누구에게 본문을 맡기는가"는 `delegated_agent_name()`이 답한다
-    (Q33). 랩핑 스킬은 **자기 이름의 러너**를 답하므로 프로젝트 에이전트
-    이름과 겹치지 않는 한 자연히 빠진다 — 종전 `isinstance(s, ForkSkill)`
-    필터와 같은 집합이고, 동명 랩퍼가 생기면 그것은 이름 중복 규칙
-    (`duplicate_component_name`)이 먼저 짚는다.
+    술어는 **"설정이 AGENTS 네임스페이스의 이 이름을 참조하는가"**다(Q14 —
+    `config.name_refs`). `ForkSkillConfig.name_refs(AGENTS)`만 `[agent]`를
+    내놓고 나머지 스킬 설정은 기저의 빈 목록을 물려받으므로 종전
+    `isinstance(s, ForkSkill) and s.config.agent == name`과 **정확히 같은
+    집합**이다.
+
+    `delegated_agent_name()`(Q33)을 쓰지 않는 이유: 랩핑 스킬은 **자기 이름의
+    러너**를 답하므로 에이전트와 동명인 랩퍼가 fork 스킬 참조자로 섞여 든다.
+    이름 중복은 `duplicate_component_name`이 짚지만 그것은 검증 에러일 뿐
+    게이트가 아니고, 삭제 확인·MCP `delete_component`/`get_component`는
+    검증 상태와 무관하게 이 목록을 읽는다 — 편집 도중의 이름 충돌이 틀린
+    참조자 목록으로 새 나가면 안 된다.
     """
     name = getattr(agent, "name", None)
     if not name:
@@ -78,5 +85,5 @@ def fork_skills_using(agent, project) -> list[str]:
     return sorted(
         s.name
         for s in getattr(project, "skills", None) or []
-        if s.delegated_agent_name() == name
+        if name in s.config.name_refs(Bucket.AGENTS)
     )

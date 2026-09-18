@@ -183,8 +183,15 @@ class PluginComponent(ABC):
         정렬하지 않는다: `dangling_hook_ref` 경고가 "첫 등장 순서"로 나가는
         것이 오늘의 결정성 계약이다(`compiler/emit/hooks.py`). 정렬이 필요한
         호출자가 `sorted(...)`를 쓴다.
+
+        **dict가 아닌 `hooks`는 "참조 없음"으로 답한다**(원칙 5). 역직렬화는
+        `hooks`를 날것으로 싣기 때문에(`deser_plugin`은 강제 변환하지 않는다)
+        손상된 `.daedalus.json`이 목록·문자열을 들고 들어올 수 있다. 여기서
+        터지면 검증 패널과 MCP `compile_check`가 통째로 죽는다 — 깨진 사용자
+        파일은 건드리지 않고 조용히 건너뛰는 것이 종전 동작이다.
         """
-        return list((self.config.hooks or {}).keys())
+        hooks = self.config.hooks
+        return list(hooks) if isinstance(hooks, dict) else []
 
     # ── 생성 ──────────────────────────────────────────────────────────────
 
