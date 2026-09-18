@@ -201,3 +201,52 @@ def test_cli_imports_only_stdlib():
         "daedalus/cli/**는 stdlib만 임포트한다 (순수 stdlib 제약):\n"
         + "\n".join(offenders)
     )
+
+
+# ───────────────────────── model 추가 계약 (WP-0 안전망) ─────────────────────────
+
+# daedalus/model/**는 컴파일러(daedalus.compiler)와 MCP 어댑터(daedalus.mcp)를
+# 임포트할 수 없다. 컴파일러 패턴의 방향이 **model → compiler**이기 때문이다 —
+# 모델은 "무엇인가"를 말하고, 컴파일러가 "그것을 어떤 파일로 내는가"를 말한다.
+# 역방향 간선이 생기면 모델이 CC 플러그인 레이아웃(`skills/<n>/SKILL.md`)이나
+# 산출 절 구조 같은 컴파일러 어휘를 알게 되고, 그 순간 "판정의 실체가 한 곳"
+# (원칙 1)이 무너진다.
+#
+# 오늘 위반은 0건이지만 **테스트가 없었다.** 종류 레지스트리·능력 표면 리팩토링이
+# 모델에 선언을 모으는 동안, 컴파일러 어휘가 딸려 들어오는 것을 막는 게이트다.
+# (`daedalus.view`는 이미 BANNED에 있으므로 여기서는 추가하지 않는다.)
+MODEL_EXTRA_BANNED = ("daedalus.compiler", "daedalus.mcp")
+
+
+def _model_source_files() -> list[Path]:
+    root = DAEDALUS_ROOT / "model"
+    return sorted(root.rglob("*.py")) if root.is_dir() else []
+
+
+def test_model_scope_covers_the_plugin_layer():
+    """model 스캔 대상 고정 — 파일이 빠지면 계약이 조용히 무력화된다."""
+    names = {f.relative_to(DAEDALUS_ROOT.parent).as_posix() for f in _model_source_files()}
+    assert "daedalus/model/project.py" in names
+    assert "daedalus/model/plugin/skill.py" in names
+    assert "daedalus/model/serialize/ser.py" in names
+    assert len(names) > 30, f"model 스캔 대상이 비정상적으로 적다: {len(names)}"
+
+
+def test_model_does_not_import_compiler_or_mcp():
+    """model은 컴파일러·MCP를 임포트하지 않는다 (컴파일러 패턴 방향 고정)."""
+    violations: list[str] = []
+    for file in _model_source_files():
+        violations.extend(_scan_file(file, MODEL_EXTRA_BANNED))
+    assert not violations, (
+        "daedalus/model/**는 daedalus.compiler·daedalus.mcp를 임포트할 수 없다 "
+        "— 방향은 model → compiler 단방향이다:\n" + "\n".join(violations)
+    )
+
+
+def test_model_extra_banned_matching_is_dot_boundary():
+    """접두 매칭 경계 — `daedalus.compiler`와 무관한 이름을 잡지 않는다."""
+    assert _is_banned("daedalus.compiler", MODEL_EXTRA_BANNED) == "daedalus.compiler"
+    assert _is_banned("daedalus.compiler.emit.skill", MODEL_EXTRA_BANNED) == "daedalus.compiler"
+    assert _is_banned("daedalus.mcp.tools.props", MODEL_EXTRA_BANNED) == "daedalus.mcp"
+    assert _is_banned("daedalus.model.plugin.skill", MODEL_EXTRA_BANNED) is None
+    assert _is_banned("daedalus.compilerish", MODEL_EXTRA_BANNED) is None

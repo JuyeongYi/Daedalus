@@ -15,6 +15,12 @@ GUI는 PySide6 노드 에디터(`view/`), 앱 내장 MCP 서버(`mcp/`)가 CC와
   (함수 안 지연 임포트도 금지 — 접두 매칭은 점 단위라 `daedalus.mcp` ≠ SDK `mcp`).
 - `cli/`는 추가로 `daedalus.model`도 임포트할 수 없다 — 검증 정본이 컴파일 산출
   `schemas/<플러그인>.json` 파일 자체다(순수 stdlib).
+- `model/`은 추가로 `daedalus.compiler`·`daedalus.mcp`도 임포트할 수 없다 — 컴파일러 패턴의
+  방향은 **model → compiler 단방향**이고, 모델은 "무엇인가"를, 컴파일러가 "그것을 어떤 파일로
+  내는가"를 말한다. 역방향 간선이 생기면 모델이 CC 플러그인 레이아웃(`skills/<n>/SKILL.md`)이나
+  산출 절 구조 같은 컴파일러 어휘를 알게 되고 그 순간 원칙 1이 무너진다. 오늘 위반은 0건이지만
+  테스트가 없었다 — 종류 레지스트리·능력 표면 리팩토링이 모델에 선언을 모으는 동안 컴파일러
+  어휘가 딸려 들어오는 것을 막는 게이트다.
 - `mcp/tools/`는 core가 아니라 **GUI 어댑터**(MainWindow·VM·커맨드 스택 결합). `mcp/invoker.py`의
   Qt 의존, `mcp/service.py`의 SDK/uvicorn 의존은 의도된 설계. view→compiler 임포트는 정상.
 
@@ -124,6 +130,14 @@ python -m tests.data.golden.regen --refresh-dogfood   # 동결 사본 자체를 
 파일 포맷의 쓰기 반쪽, 네 테스트 모듈의 fixture 작성기) ·
 `BodyDocumentRegistry.sync_from_model`(`editor.md:80`이 지정한 유일한 인가 경로).
 목록은 **줄어들기만 한다** — 살아난 심볼을 붙잡고 있으면 테스트가 제거를 강제한다.
+
+### 그 밖의 계약 테스트
+
+| 테스트 | 고정하는 것 |
+|--------|-------------|
+| `tests/compiler/test_emit_import_acyclic.py` | `compiler/emit/*` 모듈 간 임포트 방향. **모듈 레벨 간선은 비순환**(오늘 통과)이고 `common`은 리프다. 함수 안 지연 임포트까지 포함한 최종 계약은 **오늘 통과하지 않는다** — `sections ↔ wrapped`, `agent → sections → wrapped → agent` 순환이 지연 임포트로 살아 있다(`sections.py:350`·`wrapped.py:118,169`). 단언을 느슨하게 하는 대신 `xfail(strict=True)`로 기록했다: WP-6이 방향을 정리하면 그 표식이 실패해 제거를 강제한다 |
+| `tests/model/test_component_missing_keys.py` | **부재 의미론** — `transfer_on` 키가 없는 스킬 dict는 `[]`로 로드된다. dataclass 기본값은 `[EventDef("done")]`이라 선언형 엔진이 기본값으로 떨어지면 키 없는 파일에 출력 포트가 **발명**되고 `transfer_on_not_empty`가 에러에서 조용한 통과로 뒤집힌다. JSON 골든은 *키가 있는* 파일만 지키므로 이 차이는 따로 잡아야 한다 |
+| `tests/model/plugin/test_component_hierarchy.py` | 9종 구체 컴포넌트의 생성자 필드 순서. 2026-09-19 실측 정정: "위치 인수로 만드는 코드가 있다"는 옛 주석은 **거짓**이다(위치 인수 호출은 `daedalus/` 0건, `tests/` 0건). 진짜 이유는 다중 상속 dataclass의 필드 순서 제약이고, 이 단언이 "필드를 한 개도 기저로 올리지 않는다" 규약의 게이트다 |
 
 ## 파일 단위 모듈 지도 (원문)
 

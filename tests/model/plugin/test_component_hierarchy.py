@@ -142,7 +142,16 @@ def test_fork_agent_is_agent_but_not_workflow_agent():
 # ── 필드 순서 (계층을 갈라도 생성자 시그니처가 바뀌지 않는다) ────────────
 
 def test_dataclass_field_order_is_unchanged():
-    """계층 분리 전과 **같은** 생성자 순서 — 위치 인수로 만드는 코드가 있다."""
+    """계층 분리 전과 **같은** 생성자 순서.
+
+    2026-09-19 실측 정정: "위치 인수로 만드는 코드가 있다"는 앞선 주석은 거짓
+    이었다 — 9종 구체 컴포넌트의 위치 인수 생성자 호출은 `daedalus/` 0건,
+    `tests/` 0건이다(전부 키워드). 순서를 고정하는 진짜 이유는 다중 상속
+    dataclass의 **필드 순서 제약**이다(CLAUDE.md "dataclass 다중 상속 필드
+    순서"): 부모의 required 필드 앞에 default 필드가 오면 클래스 정의 자체가
+    TypeError이고, 기저에 필드를 올리는 리팩토링은 이 순서를 조용히 바꾼다.
+    그래서 "필드를 한 개도 기저로 올리지 않는다"는 규약의 게이트가 이 단언이다.
+    """
     step_order = [
         "fsm", "name", "description", "when_to_use", "config", "body",
         "transfer_on", "call_agents", "id",
