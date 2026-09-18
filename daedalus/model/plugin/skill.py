@@ -2,10 +2,18 @@ from __future__ import annotations
 
 from abc import ABC
 from dataclasses import dataclass, field
+from typing import Any, ClassVar
 from uuid import uuid4
 
+from daedalus.model.fsm.machine import StateMachine
 from daedalus.model.fsm.section import EventDef
 from daedalus.model.plugin.base import PluginComponent, WorkflowComponent
+from daedalus.model.plugin.roles import (
+    BodySource,
+    Bucket,
+    OutputLocation,
+    PlacementRole,
+)
 from daedalus.model.plugin.config import (
     WrappedSkillConfig,
     AsyncForkSkillConfig,
@@ -25,7 +33,14 @@ class Skill(PluginComponent, ABC):
 
     본문의 단일 진실 공급원은 ``body`` 필드(마크다운 문자열)다 (WP-SB).
     새 컴포넌트의 기본값은 빈 문자열 — 구조 없는 자유 텍스트로 편집한다.
+
+    스킬 7종의 공통 능력 선언: `project.skills`에 담기고(`BUCKET`)
+    `skills/<이름>/SKILL.md`를 낸다(`OUTPUT_LOCATION`).
     """
+
+    BUCKET: ClassVar[Bucket] = Bucket.SKILLS
+    OUTPUT_LOCATION: ClassVar[OutputLocation] = OutputLocation.SKILL_DIR
+
     when_to_use: str = ""
     # 안정 식별자 — 값 동등성 비교에서는 제외(compare=False).
     id: str = field(default_factory=lambda: uuid4().hex, compare=False, kw_only=True)
@@ -40,7 +55,18 @@ class WrappedSkill(Skill, WorkflowComponent):
     구조상 남지만 **항상 빈 값**이어야 한다 — 편집 UI가 잠그고 컴파일이
     무시한다. 배치 규칙은 procedural과 동일(단일 배치 — no_duplicate_skill_ref).
     같은 source를 여러 랩퍼가 감싸는 것은 정상이다(재사용은 랩퍼 복수로).
+
+    **능력 표면의 유일한 오버라이드 덩어리**다 — 용도(`usage`)·켜짐(`enabled`)
+    두 인스턴스 스위치를 가진 종류가 이것뿐이라서다. WP-10에서 이 클래스가
+    퇴역하면 인스턴스 훅 오버라이드는 전 컴포넌트에서 0이 된다.
     """
+
+    KIND: ClassVar[str] = "wrapped_skill"
+    CONFIG_CLS: ClassVar[type[WrappedSkillConfig]] = WrappedSkillConfig
+    PLACEMENT: ClassVar[PlacementRole] = PlacementRole.STATE
+    BODY_SOURCE: ClassVar[BodySource] = BodySource.EXTERNAL
+    RUNS_IN_SUBAGENT: ClassVar[bool] = True
+
     config: WrappedSkillConfig = field(default_factory=WrappedSkillConfig)
     body: str = ""
     transfer_on: list[EventDef] = field(
@@ -50,11 +76,67 @@ class WrappedSkill(Skill, WorkflowComponent):
 
     @property
     def kind(self) -> str:
-        return "wrapped_skill"
+        return self.KIND
 
     @property
     def output_events(self) -> list[str]:
-        return [e.name for e in self.transfer_on]
+        return [e.name for e in self.output_ports()]
+
+    # -- 인스턴스 훅 --
+    def effective_placement(self) -> PlacementRole:
+        """용도가 reference로 고정된 랩퍼는 참조 노드다(사용자 확정 2026-09-07).
+
+        미정("")은 state로 친다 — 최초 배치가 용도를 고정한다.
+        """
+        if self.config.usage == WrappedSkillConfig.USAGE_REFERENCE:
+            return PlacementRole.REFERENCE
+        return PlacementRole.STATE
+
+    def is_active(self) -> bool:
+        return bool(self.config.enabled)
+
+    def emits_output(self) -> bool:
+        """참조 용도는 파일을 내지 않는다 — 링크된 노드의 산출에 consult 지시로만 합류."""
+        return (
+            super().emits_output()
+            and self.effective_placement() is not PlacementRole.REFERENCE
+        )
+
+    def can_delete(self) -> tuple[bool, str | None]:
+        return (False, "랩핑 스킬은 지울 수 없습니다 — 비활성화로 끕니다.")
+
+    # -- 형상 조회 --
+    def state_machines(self) -> list[StateMachine]:
+        return [self.fsm]
+
+    def output_ports(self) -> list[EventDef]:
+        return list(self.transfer_on)
+
+    def call_ports(self) -> list[EventDef]:
+        return list(self.call_agents)
+
+    # -- 참조 --
+    def external_plugin_refs(self) -> list[str]:
+        """꺼 둔 랩퍼는 참조로 치지 않는다 — 배선도 필요 없고 쓰는 것도 아니다.
+
+        형식이 깨진 source는 source 형식 검사 규칙의 소관이라 여기서 중복으로
+        짚지 않는다(오늘 `naming._check_external_plugins`와 같은 제외 규칙).
+        """
+        if not self.is_active():
+            return []
+        plugin_id, _, skill_name = (self.config.source or "").partition(":")
+        plugin_id = plugin_id.strip()
+        if not plugin_id or not skill_name.strip():
+            return []
+        return [plugin_id]
+
+    @property
+    def external_source(self) -> str | None:
+        return self.config.source
+
+    def delegated_agent_name(self) -> str | None:
+        """랩퍼 본문은 **자기 이름의 러너 서브에이전트**가 실행한다(WP-WR)."""
+        return self.name
 
 
 def is_reference_usage(component: object) -> bool:
@@ -121,6 +203,11 @@ class StepSkill(Skill, WorkflowComponent, ABC):
     2026-09-17). 기본 팩토리는 추상 클래스지만 세 구체 클래스가 전부
     override하므로 한 번도 호출되지 않는다.
     """
+
+    PLACEMENT: ClassVar[PlacementRole] = PlacementRole.STATE
+    CONVERT_FAMILY: ClassVar[str | None] = "step"
+    REQUIRES_OUTPUT_PORTS: ClassVar[bool] = True
+
     config: StepSkillConfig = field(default_factory=StepSkillConfig)  # type: ignore[type-abstract]
     body: str = ""
     transfer_on: list[EventDef] = field(
@@ -130,18 +217,38 @@ class StepSkill(Skill, WorkflowComponent, ABC):
 
     @property
     def output_events(self) -> list[str]:
-        """transfer_on에서 파생된 읽기 전용 프로퍼티 (StateNodeItem 호환)."""
-        return [e.name for e in self.transfer_on]
+        """출력 포트 이름 목록 (StateNodeItem 호환) — `output_ports()`의 파사드."""
+        return [e.name for e in self.output_ports()]
+
+    def state_machines(self) -> list[StateMachine]:
+        return [self.fsm]
+
+    def output_ports(self) -> list[EventDef]:
+        return list(self.transfer_on)
+
+    def call_ports(self) -> list[EventDef]:
+        return list(self.call_agents)
+
+    def known_outgoing_events(self) -> frozenset[str]:
+        """출력 포트 + 호출 포트 — 캔버스가 Agent Call 포트에서도 전이를 만든다."""
+        return frozenset(
+            [e.name for e in self.output_ports()]
+            + [e.name for e in self.call_ports()]
+        )
 
 
 @dataclass
 class ProceduralSkill(StepSkill):
     """절차형 = 메인 대화에서 그대로 도는 단계."""
+
+    KIND: ClassVar[str] = "procedural_skill"
+    CONFIG_CLS: ClassVar[type[ProceduralSkillConfig]] = ProceduralSkillConfig
+
     config: ProceduralSkillConfig = field(default_factory=ProceduralSkillConfig)
 
     @property
     def kind(self) -> str:
-        return "procedural_skill"
+        return self.KIND
 
 
 @dataclass
@@ -152,53 +259,94 @@ class ForkSkill(StepSkill, ABC):
     두 종류로 갈린다(사용자 확정 2026-09-17) — 이 클래스는 **추상**이고,
     "fork인가" 판정은 그대로 `isinstance(x, ForkSkill)`다.
     """
+
+    RUNS_IN_SUBAGENT: ClassVar[bool] = True
+
     config: ForkSkillConfig = field(default_factory=ForkSkillConfig)  # type: ignore[type-abstract,assignment]
+
+    def delegated_agent_name(self) -> str | None:
+        return self.config.agent
+
+    @classmethod
+    def creation_defaults(cls, *, name: str, agent: str | None) -> dict[str, Any]:
+        """새 fork 스킬은 실행 기반을 **등록 전에** 채운다.
+
+        undo/redo에 `agent`가 빈 중간 상태를 만들지 않기 위해서다
+        (`view/actions/creation.make_component`의 종전 주석).
+        """
+        return {"config": cls.CONFIG_CLS(agent=agent or "general-purpose")}
 
 
 @dataclass
 class SyncForkSkill(ForkSkill):
     """동기 fork — `background: false`. 부른 쪽이 보고를 기다려 갈래를 고른다."""
+
+    KIND: ClassVar[str] = "sync_fork_skill"
+    CONFIG_CLS: ClassVar[type[SyncForkSkillConfig]] = SyncForkSkillConfig
+
     config: SyncForkSkillConfig = field(default_factory=SyncForkSkillConfig)  # type: ignore[assignment]
 
     @property
     def kind(self) -> str:
-        return "sync_fork_skill"
+        return self.KIND
 
 
 @dataclass
 class AsyncForkSkill(ForkSkill):
     """비동기 fork — `background: true`. 보고는 작업 알림으로 뒤늦게 온다."""
+
+    KIND: ClassVar[str] = "async_fork_skill"
+    CONFIG_CLS: ClassVar[type[AsyncForkSkillConfig]] = AsyncForkSkillConfig
+    REPORTS_OUT_OF_BAND: ClassVar[bool] = True
+
     config: AsyncForkSkillConfig = field(default_factory=AsyncForkSkillConfig)  # type: ignore[assignment]
 
     @property
     def kind(self) -> str:
-        return "async_fork_skill"
+        return self.KIND
 
 
 @dataclass
 class DeclarativeSkill(Skill):
-    """선언형 = Skill only. FSM 없음, transfer_on 없음."""
+    """선언형 = Skill only. FSM 없음, transfer_on 없음.
+
+    캔버스에 놓이지 않는다(`PLACEMENT`는 기저 기본값 NONE) — 모델이 알아서
+    집어 쓰는 지식 스킬이다.
+    """
+
+    KIND: ClassVar[str] = "declarative_skill"
+    CONFIG_CLS: ClassVar[type[DeclarativeSkillConfig]] = DeclarativeSkillConfig
+
     body: str = ""
     config: DeclarativeSkillConfig = field(default_factory=DeclarativeSkillConfig)
 
     @property
     def kind(self) -> str:
-        return "declarative_skill"
+        return self.KIND
 
 
 @dataclass
 class TransferSkill(Skill, WorkflowComponent):
     """엣지 전용 스킬 — 입출력 1개 고정, transfer_on 없음."""
+
+    KIND: ClassVar[str] = "transfer_skill"
+    CONFIG_CLS: ClassVar[type[TransferSkillConfig]] = TransferSkillConfig
+    PLACEMENT: ClassVar[PlacementRole] = PlacementRole.EDGE
+
     config: TransferSkillConfig = field(default_factory=TransferSkillConfig)
     body: str = ""
 
     @property
     def kind(self) -> str:
-        return "transfer_skill"
+        return self.KIND
 
     @property
     def output_events(self) -> list[str]:
-        return []
+        """항상 빈 목록 — 전이 스킬은 포트를 갖지 않는다(`output_ports()` 기본값)."""
+        return [e.name for e in self.output_ports()]
+
+    def state_machines(self) -> list[StateMachine]:
+        return [self.fsm]
 
 
 @dataclass
@@ -208,9 +356,14 @@ class ReferenceSkill(Skill):
     전역 정의이며 에이전트 로컬에서도 사용 가능.
     상하 방향 연결로 워크플로우 노드에 부착됨.
     """
+
+    KIND: ClassVar[str] = "reference_skill"
+    CONFIG_CLS: ClassVar[type[ReferenceSkillConfig]] = ReferenceSkillConfig
+    PLACEMENT: ClassVar[PlacementRole] = PlacementRole.REFERENCE
+
     body: str = ""
     config: ReferenceSkillConfig = field(default_factory=ReferenceSkillConfig)
 
     @property
     def kind(self) -> str:
-        return "reference_skill"
+        return self.KIND

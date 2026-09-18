@@ -212,6 +212,43 @@ _COMPONENT_BASES: frozenset[str] = frozenset({
 })
 
 
+def _kind_declarations(klass: ast.ClassDef) -> list[tuple[int, str, str]]:
+    """클래스 한 개의 **종류 선언** 목록 — (줄, 형태, 리터럴).
+
+    선언은 두 형태다(§8): ``KIND = "…"`` 클래스 속성과, `kind` property의
+    ``return "…"``. WP-2a에서 정본이 전자로 옮겨 갔고 property는
+    ``return self.KIND`` 파사드가 됐다 — 두 형태를 다 봐야 스캐너가 이사
+    중에도 조용해지지 않는다.
+    """
+    found: list[tuple[int, str, str]] = []
+    for node in klass.body:
+        target = None
+        if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            target = node.target.id
+        elif (
+            isinstance(node, ast.Assign)
+            and len(node.targets) == 1
+            and isinstance(node.targets[0], ast.Name)
+        ):
+            target = node.targets[0].id
+        if target != "KIND":
+            continue
+        value = node.value
+        if isinstance(value, ast.Constant) and value.value in COMPONENT_KIND_LITERALS:
+            found.append((node.lineno, "KIND", value.value))
+    for node in ast.walk(klass):
+        if not isinstance(node, ast.FunctionDef) or node.name != "kind":
+            continue
+        for inner in ast.walk(node):
+            if (
+                isinstance(inner, ast.Return)
+                and isinstance(inner.value, ast.Constant)
+                and inner.value.value in COMPONENT_KIND_LITERALS
+            ):
+                found.append((inner.lineno, "kind", inner.value.value))
+    return found
+
+
 def test_kind_strings_are_declared_only_in_the_model_modules():
     """컴포넌트·설정 클래스의 `kind` 선언은 모델 3모듈에만 산다.
 
@@ -234,19 +271,10 @@ def test_kind_strings_are_declared_only_in_the_model_modules():
             }
             if not bases & _COMPONENT_BASES:
                 continue
-            for node in ast.walk(klass):
-                if not isinstance(node, ast.FunctionDef) or node.name != "kind":
-                    continue
-                for inner in ast.walk(node):
-                    if (
-                        isinstance(inner, ast.Return)
-                        and isinstance(inner.value, ast.Constant)
-                        and inner.value.value in COMPONENT_KIND_LITERALS
-                    ):
-                        offenders.append(
-                            f"{module}:{inner.lineno} "
-                            f"{klass.name}.kind → {inner.value.value!r}"
-                        )
+            for lineno, form, literal in _kind_declarations(klass):
+                offenders.append(
+                    f"{module}:{lineno} {klass.name}.{form} → {literal!r}"
+                )
     assert not offenders, (
         "컴포넌트 종류 문자열 선언은 model/plugin/{skill,agent,config}.py에만 "
         "둔다:\n" + "\n".join(offenders)
@@ -268,15 +296,8 @@ def test_declaration_scan_actually_sees_the_model_modules():
             }
             if not bases & _COMPONENT_BASES:
                 continue
-            for node in ast.walk(klass):
-                if isinstance(node, ast.FunctionDef) and node.name == "kind":
-                    for inner in ast.walk(node):
-                        if (
-                            isinstance(inner, ast.Return)
-                            and isinstance(inner.value, ast.Constant)
-                            and inner.value.value in COMPONENT_KIND_LITERALS
-                        ):
-                            found.append(f"{klass.name}:{inner.value.value}")
+            for _lineno, _form, literal in _kind_declarations(klass):
+                found.append(f"{klass.name}:{literal}")
     # 컴포넌트 9종 + config 9종 = 18개의 선언이 있어야 한다.
     assert len(found) == 18, found
 

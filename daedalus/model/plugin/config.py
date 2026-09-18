@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, ClassVar
 
+from daedalus.model.plugin.roles import Bucket
 from daedalus.model.plugin.enums import (
     AgentColor,
     AgentIsolation,
@@ -17,7 +18,24 @@ from daedalus.model.plugin.enums import (
 
 @dataclass
 class ComponentConfig(ABC):
-    """플러그인 컴포넌트 공통 설정."""
+    """플러그인 컴포넌트 공통 설정 + **이름 참조 계약** (REFACTOR_SPEC §2-c).
+
+    `KIND`는 config 종류 어휘("procedural")이고 컴포넌트의 `KIND`
+    ("procedural_skill")와 **다른 벌**이다 — 저장 파일 포맷이 두 벌을 쓰기
+    때문이고, 통일은 사용자 확정 대상이다(backlog). 여기서도 기본값을 주지
+    않아 추상 config에서 읽으면 `AttributeError`가 난다(원칙 5).
+
+    `name_refs`/`rename_ref`는 "이 설정이 **어느 네임스페이스의** 이름을
+    가리키는가"를 설정 자신이 답하게 한다 (Q14). 오늘 `project.rename_component`
+    는 `isinstance(cfg, ForkSkillConfig)` / `isinstance(cfg, AgentConfigBase)`
+    두 분기로 같은 일을 하고, 새 설정 종류가 이름 참조를 가지면 그 함수를
+    고쳐야 한다는 사실을 아무도 알려 주지 않는다. 네임스페이스를 인수로 받는
+    이유는 **동명-다른타입**(스킬 "x"와 에이전트 "x")이 공존할 수 있어서다 —
+    네임스페이스를 안 보면 무관한 참조를 오갱신한다.
+    """
+
+    KIND: ClassVar[str]
+
     model: ModelType | str = ModelType.INHERIT
     effort: EffortLevel | None = None
     # hooks: 키 = PluginProject.hook_library의 HookDef.name 참조,
@@ -29,7 +47,15 @@ class ComponentConfig(ABC):
     @property
     @abstractmethod
     def kind(self) -> str:
-        """설정 종류 식별자."""
+        """설정 종류 식별자 — 구체 클래스는 ``return self.KIND``."""
+
+    def name_refs(self, namespace: Bucket) -> list[str]:
+        """이 설정이 가리키는 ``namespace`` 컴포넌트 이름 목록 (기본 없음)."""
+        return []
+
+    def rename_ref(self, namespace: Bucket, old: str, new: str) -> None:
+        """``namespace``의 이름 ``old``를 ``new``로 **제자리** 치환 (기본 무동작)."""
+        return None
 
 
 @dataclass
@@ -61,9 +87,11 @@ class StepSkillConfig(SkillConfig, ABC):
 
 @dataclass
 class ProceduralSkillConfig(StepSkillConfig):
+    KIND: ClassVar[str] = "procedural"
+
     @property
     def kind(self) -> str:
-        return "procedural"
+        return self.KIND
 
 
 #: CC 내장 서브에이전트 이름 — fork 스킬의 `agent`로 그대로 적는다. 정확 일치라
@@ -87,25 +115,40 @@ class ForkSkillConfig(StepSkillConfig, ABC):
     2026-09-17) 그 값은 매트릭스 전용 FIXED 필드라 config에 두지 않는다.
     즉 "어느 fork인가"는 구체 클래스(= `kind`)만이 답한다.
     """
+
     agent: str = "general-purpose"
+
+    def name_refs(self, namespace: Bucket) -> list[str]:
+        """``agent``는 **에이전트** 이름 참조다 — 내장 이름·외부 플러그인 이름 포함."""
+        if namespace is Bucket.AGENTS:
+            return [self.agent]
+        return []
+
+    def rename_ref(self, namespace: Bucket, old: str, new: str) -> None:
+        if namespace is Bucket.AGENTS and self.agent == old:
+            self.agent = new
 
 
 @dataclass
 class SyncForkSkillConfig(ForkSkillConfig):
     """동기 fork — `background: false`. 부른 쪽이 보고를 기다린다."""
 
+    KIND: ClassVar[str] = "sync_fork"
+
     @property
     def kind(self) -> str:
-        return "sync_fork"
+        return self.KIND
 
 
 @dataclass
 class AsyncForkSkillConfig(ForkSkillConfig):
     """비동기 fork — `background: true`. 보고는 작업 알림으로 뒤늦게 온다."""
 
+    KIND: ClassVar[str] = "async_fork"
+
     @property
     def kind(self) -> str:
-        return "async_fork"
+        return self.KIND
 
 
 @dataclass
@@ -132,6 +175,11 @@ class WrappedSkillConfig(SkillConfig):
     판정에서도 참조로 치지 않는다 — 꺼둔 것은 쓰지 않는 것이다. 구버전
     파일(키 부재)은 True.
     """
+    KIND: ClassVar[str] = "wrapped"
+    #: ``usage``의 "참조 용도" 값. 판정하는 쪽이 리터럴을 복제하면 값이 바뀔 때
+    #: 한쪽만 고쳐져 조용히 어긋난다 — 선언은 값을 가진 클래스에 둔다.
+    USAGE_REFERENCE: ClassVar[str] = "reference"
+
     source: str = ""
     usage: str = ""
     enabled: bool = True
@@ -140,18 +188,20 @@ class WrappedSkillConfig(SkillConfig):
 
     @property
     def kind(self) -> str:
-        return "wrapped"
+        return self.KIND
 
 
 @dataclass
 class DeclarativeSkillConfig(SkillConfig):
+    KIND: ClassVar[str] = "declarative"
+
     # tri-state — ProceduralSkillConfig의 같은 필드 주석 참조 (A8).
     disable_model_invocation: bool | None = None
     user_invocable: bool | None = None
 
     @property
     def kind(self) -> str:
-        return "declarative"
+        return self.KIND
 
 
 @dataclass
@@ -170,17 +220,30 @@ class AgentConfigBase(ComponentConfig, ABC):
     mcp_servers: list[str] | None = None  # MCP 서버 이름 참조 목록 — 서버 정의 자체는 .mcp.json 등 외부 소유, 모델은 이름만 참조
     memory: MemoryScope | None = None
 
+    def name_refs(self, namespace: Bucket) -> list[str]:
+        """``skills``는 **스킬** 이름 참조 목록이다."""
+        if namespace is Bucket.SKILLS and isinstance(self.skills, list):
+            return list(self.skills)
+        return []
+
+    def rename_ref(self, namespace: Bucket, old: str, new: str) -> None:
+        if namespace is Bucket.SKILLS and isinstance(self.skills, list):
+            self.skills = [new if s == old else s for s in self.skills]
+
 
 @dataclass
 class AgentConfig(AgentConfigBase):
     """워크플로 에이전트(캔버스 노드) 설정."""
+
+    KIND: ClassVar[str] = "agent"
+
     background: bool = False
     isolation: AgentIsolation = AgentIsolation.NONE
     color: AgentColor | None = None
 
     @property
     def kind(self) -> str:
-        return "agent"
+        return self.KIND
 
 
 @dataclass
@@ -191,32 +254,41 @@ class ForkAgentConfig(AgentConfigBase):
     (sync/async fork), isolation은 fork 실행에 적용되지 않는다(실측 2026-09-13,
     CC 2.1.268). 없는 필드를 두면 걸어 둔 제약이 조용히 사라진다(원칙 5).
     """
+
+    KIND: ClassVar[str] = "fork_agent"
+
     color: AgentColor | None = None
 
     @property
     def kind(self) -> str:
-        return "fork_agent"
+        return self.KIND
 
 
 @dataclass
 class TransferSkillConfig(SkillConfig):
     """전이 엣지 전용 스킬 설정. user_invocable은 항상 False (UI 노출 불필요)."""
+
+    KIND: ClassVar[str] = "transfer"
+
     disable_model_invocation: bool = False
     user_invocable: bool = False   # fixed — transfer skills are never user-invocable
     shell: SkillShell = SkillShell.BASH
 
     @property
     def kind(self) -> str:
-        return "transfer"
+        return self.KIND
 
 
 @dataclass
 class ReferenceSkillConfig(SkillConfig):
     """참조 스킬 설정. 워크플로우에 참여하지 않는 참고용 노드."""
+
+    KIND: ClassVar[str] = "reference"
+
     user_invocable: bool = False
 
     @property
     def kind(self) -> str:
-        return "reference"
+        return self.KIND
 
 

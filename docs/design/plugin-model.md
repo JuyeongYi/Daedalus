@@ -53,6 +53,119 @@ PluginComponent(ABC)                      base.py  (name, description, abstract 
   동명 필드다. 구버전 파일의 키는 `serialize.migrate._migrate_v1`이 단방향으로 떨군다
   (`_AGENT_GRAPH_OWNERSHIP_KEYS` — fork 에이전트 이관 경로와 같은 목록).
 
+### 능력 표면 — 종류가 아니라 **성질**을 선언한다 (WP-2a, 2026-09-19)
+
+종류별 분기의 대부분은 "이 객체가 무슨 클래스인가"를 물으면서 실제로는 **성질**을
+알고 싶어 한다(그래프에 놓이는가 / 산출 파일을 내는가 / 본문 정본이 어디인가).
+성질을 클래스로 물으면 새 종류마다 모든 호출자를 고쳐야 하고 빠뜨린 자리는 조용한
+no-op가 된다. 그래서 `PluginComponent`가 **선언(ClassVar) + 인스턴스 훅(메서드)**
+표면을 갖고, 각 종류가 자기 값을 고른다.
+
+**세 가지 기계적 규약 — 어기면 조용히 깨진다.**
+
+1. **컴포넌트·config 클래스에 dataclass 필드를 추가하지 않는다.** 능력은
+   ① `ClassVar` ② **주석 없는** 클래스 속성(`body = ""`) ③ 기본 구현이 있는
+   메서드로만 선언한다. 기저에 필드를 올리면 다중 상속 dataclass의 필드 순서가
+   바뀐다(CLAUDE.md "dataclass 다중 상속 필드 순서") —
+   `test_component_hierarchy.test_dataclass_field_order_is_unchanged`가 게이트다.
+2. **기존 클래스에 `@dataclass`를 재선언하지 않는다.** ClassVar·메서드 추가에는
+   필요 없고, 재선언하면 `eq=False` 정책 클래스가 `__eq__`를 다시 만들며
+   unhashable로 되돌아간다.
+3. **`from typing import ClassVar`를 이름으로 임포트한다.** `from __future__ import
+   annotations` 아래에서 dataclass는 문자열 주석 `"ClassVar[...]"`를 모듈에 그
+   이름이 있을 때만 ClassVar로 인식한다 — 없으면 **조용히 필드가 된다**.
+   `test_capability_surface.test_classvars_never_became_dataclass_fields`가 게이트다.
+
+`WorkflowComponent`는 **필드 홀더로 남는다 — 메서드를 두지 않는다.**
+`StepSkill(Skill, WorkflowComponent)`의 MRO는
+`StepSkill → Skill → PluginComponent → WorkflowComponent`라 믹스인에 둔
+`state_machines()`는 `PluginComponent`의 기본 구현에 **가려진다**(실패가 아니라 조용한
+무시). 형상 조회는 그 필드를 실제로 가진 구체/중간 클래스에서 오버라이드한다.
+
+**종류 선언 (ClassVar 13개, `model/plugin/roles.py`의 enum 어휘).** 세 개
+(`KIND`/`CONFIG_CLS`/`BUCKET`)는 기본값이 없다 — 추상 기저에서 읽으면
+`AttributeError`이고 그것이 "추상을 종류처럼 썼다"의 시끄러운 실패다(원칙 5).
+
+| 선언 | 타입 | 기본값 | 답하는 질문 |
+|------|------|--------|-------------|
+| `KIND` | `str` | (없음) | 저장 파일의 `kind` 값. `kind` property는 `return self.KIND` 파사드다 |
+| `CONFIG_CLS` | `type[ComponentConfig]` | (없음) | 이 종류의 설정 클래스 — `kind` ↔ `config.kind` 짝의 선언 쪽 절반 |
+| `BUCKET` | `Bucket` | (없음) | `project.skills` / `project.agents` — 진짜 이분법 |
+| `PLACEMENT` | `PlacementRole` | `NONE` | 선언상의 배치 역할(STATE/REFERENCE/EDGE/NONE). **인스턴스 판정은 `effective_placement()`** |
+| `OUTPUT_LOCATION` | `OutputLocation` | `NONE` | 산출 파일의 자리 종류(SKILL_DIR/AGENT_FILE/NONE). 경로 조립은 컴파일러 몫 |
+| `BODY_SOURCE` | `BodySource` | `OWNED` | 본문 정본이 우리 것인가 외부인가 — EXTERNAL이면 편집 잠금 |
+| `CONVERT_FAMILY` | `str \| None` | `None` | 같은 값끼리 `__class__` 전환 가능(오늘 `"step"` 하나) |
+| `DELEGATION_TARGET` | `bool` | `False` | 이 노드로 가는 전이가 "위임"인가 |
+| `RUNS_IN_SUBAGENT` | `bool` | `False` | 본문이 서브에이전트 컨텍스트에서 도는가 |
+| `REPORTS_OUT_OF_BAND` | `bool` | `False` | 결과가 작업 알림으로 뒤늦게 오는가(비동기 fork) |
+| `IS_FORK_BASE` | `bool` | `False` | fork 스킬의 실행 기반이 될 수 있는가 |
+| `REQUIRES_OUTPUT_PORTS` | `bool` | `False` | 포트가 비면 검증 에러인가(`transfer_on_not_empty`) |
+| `HAS_INTERNAL_FSM` | `bool` | `False` | legacy 내부 FSM 절의 대상인가(오늘 `AgentDefinition`만) |
+
+**종류별 값 (전수).** 표의 정본은 코드이고
+`tests/model/plugin/test_capability_surface.py::EXPECTED_DECLARATIONS`가 9종 × 13칸을
+통째로 고정한다 — 표만 고치거나 클래스만 고치는 편집이 조용히 지나가지 않는다.
+
+| 클래스 | 선언 (기본값과 다른 것만) |
+|--------|---------------------------|
+| `Skill` | `BUCKET=SKILLS`, `OUTPUT_LOCATION=SKILL_DIR` |
+| `StepSkill` | `PLACEMENT=STATE`, `CONVERT_FAMILY="step"`, `REQUIRES_OUTPUT_PORTS=True` |
+| `ProceduralSkill` | `KIND`, `CONFIG_CLS` |
+| `ForkSkill` | `RUNS_IN_SUBAGENT=True` |
+| `SyncForkSkill` / `AsyncForkSkill` | `KIND`, `CONFIG_CLS` (+ async는 `REPORTS_OUT_OF_BAND=True`) |
+| `DeclarativeSkill` | `KIND`, `CONFIG_CLS` (PLACEMENT은 기본 NONE) |
+| `TransferSkill` | `KIND`, `CONFIG_CLS`, `PLACEMENT=EDGE` |
+| `ReferenceSkill` | `KIND`, `CONFIG_CLS`, `PLACEMENT=REFERENCE` |
+| `WrappedSkill` | `KIND`, `CONFIG_CLS`, `PLACEMENT=STATE`, `BODY_SOURCE=EXTERNAL`, `RUNS_IN_SUBAGENT=True` |
+| `Agent` | `BUCKET=AGENTS`, `OUTPUT_LOCATION=AGENT_FILE`, `DELEGATION_TARGET=True`, `RUNS_IN_SUBAGENT=True` |
+| `AgentDefinition` | `KIND`, `CONFIG_CLS`, `PLACEMENT=STATE`, `REQUIRES_OUTPUT_PORTS=True`, `HAS_INTERNAL_FSM=True` |
+| `ForkAgent` | `KIND`, `CONFIG_CLS`, `IS_FORK_BASE=True` |
+
+**인스턴스 훅 (종류 선언이 아니라 상태가 답한다).** `effective_placement()` ·
+`is_active()` · `emits_output()` · `can_delete()`. 오늘 오버라이드하는 클래스는
+`WrappedSkill` 하나다 — 용도(`usage`)·켜짐(`enabled`) 스위치를 가진 종류가 그것뿐이고,
+그래서 WP-10에서 이 클래스가 퇴역하면 오버라이드가 0이 된다.
+
+**형상 조회.** `state_machines()` · `output_ports()` · `call_ports()` ·
+`known_outgoing_events()`. 기본은 전부 "없음"이고(`known_outgoing_events()`는 `None` =
+"이 종류는 집합을 정의하지 않는다" — 빈 집합과 다르다) 필드를 가진 클래스만 덮는다.
+`output_events`/`output_event_defs`는 `output_ports()`의 **한 줄 파사드**다.
+`StepSkill`은 호출 포트도 합법 이벤트 집합에 넣고 `AgentDefinition`은 넣지 않는
+비대칭이 남아 있다 — 오늘 `machine_rules`가 그렇게 동작하고, 넓히면 경고가 사라지는
+동작 변경이라 `docs/backlog.md`(D9)다.
+
+**참조.** `external_plugin_refs()`(배선을 요구하는 외부 플러그인 설치 id, 꺼 둔 것은
+제외) · `external_source`(`플러그인:이름` 원문) · `delegated_agent_name()`(본문을 실제로
+실행하는 서브에이전트) · `hook_refs()`(**삽입 순서 그대로** — `dangling_hook_ref` 경고의
+"첫 등장 순서"가 결정성 계약이라 정렬하지 않는다).
+
+**생성 — `new()` / `creation_defaults()`.** 레지스트리 팔레트·MCP `create_*`·캔버스
+드롭이 공유할 단일 생성 경로다. required 필드 `fsm`은 dataclass 반영으로 알아내
+`fsm_factory(name)`으로 채운다(믹스인에 훅을 둘 수 없어 반영을 쓰되 **여기 한 곳**으로
+제한한다). `creation_defaults()`는 **생성 시드**이고 dataclass 기본값과 다른 값만 담는다 —
+둘은 다른 질문에 답한다:
+
+- dataclass 기본값 = "저장 파일에 키가 없으면 무엇인가". 새 포트를 **발명하면 안 된다**.
+- 생성 시드 = "사용자가 새로 만들 때 무엇으로 시작하는가". 새 에이전트는 출력 포트
+  `done` 하나로 태어나야 한다(없으면 배치 즉시 `transfer_on_not_empty`).
+
+오버라이드는 둘이다: `ForkSkill`(config의 `agent` 시드) · `AgentDefinition`(`transfer_on`).
+`test_capability_surface`가 `new()`와 `view/actions/creation.make_component`의 결과를
+9종 × 필드 단위로 비교한다 — WP-3이 그 표를 지워도 만들어지는 물건이 달라지지 않는다는
+게이트다.
+
+**config 쪽 절반 (`ComponentConfig`).** `KIND` ClassVar(구체만) + 이름 참조 계약
+`name_refs(namespace)` / `rename_ref(namespace, old, new)`. 네임스페이스를 인수로 받는
+이유는 **동명-다른타입**(스킬 "x"와 에이전트 "x")이 공존할 수 있어서다 — 보지 않으면
+무관한 참조를 오갱신한다. 오버라이드는 `ForkSkillConfig`(`agent` → AGENTS)와
+`AgentConfigBase`(`skills` → SKILLS) 둘뿐이고, 그 사실 자체를 테스트가 양방향으로 고정한다.
+
+> **오늘의 상태(WP-2a).** 표면은 **선언만** 돼 있고 호출자는 아직 옛 판정을 쓴다 —
+> 선언과 100여 사이트 치환을 한 커밋에 섞으면 되돌릴 지점이 사라지기 때문이다.
+> 소비자 배선은 WP-2b(model)·WP-2c(compiler)·WP-2d(view/MCP)가 하고, 그때까지
+> 소비자 없는 메서드는 `tests/test_dead_code.py`의 allowlist에 **배선 예정 WP와 함께**
+> 등재돼 있다(배선되는 순간 `test_allowlist_entries_are_still_dead`가 삭제를 강제한다).
+
 ### 배치 가능 판정 (`model/plugin/placement.py`)
 
 **두 판정이다** — 하나로 합치면 참조 스킬 경로가 죽는다.

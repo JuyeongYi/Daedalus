@@ -158,6 +158,7 @@ WP-1 D9에서 삭제해 목록에서 빠졌다.
 |--------|-------------|
 | `tests/compiler/test_emit_import_acyclic.py` | `compiler/emit/*` 모듈 간 임포트 방향. **모듈 레벨 간선은 비순환**(오늘 통과)이고 `common`은 리프다. 함수 안 지연 임포트까지 포함한 최종 계약은 **오늘 통과하지 않는다** — `sections ↔ wrapped`, `agent → sections → wrapped → agent` 순환이 지연 임포트로 살아 있다(`sections.py:350`·`wrapped.py:118,169`). 단언을 느슨하게 하는 대신 `xfail(strict=True)`로 기록했다: WP-6이 방향을 정리하면 그 표식이 실패해 제거를 강제한다 |
 | `tests/model/test_component_missing_keys.py` | **부재 의미론** — `transfer_on` 키가 없는 스킬 dict는 `[]`로 로드된다. dataclass 기본값은 `[EventDef("done")]`이라 선언형 엔진이 기본값으로 떨어지면 키 없는 파일에 출력 포트가 **발명**되고 `transfer_on_not_empty`가 에러에서 조용한 통과로 뒤집힌다. JSON 골든은 *키가 있는* 파일만 지키므로 이 차이는 따로 잡아야 한다 |
+| `tests/model/plugin/test_capability_surface.py` | **능력 표면**(WP-2a) — 구체 9종 × ClassVar 13칸 전수, `fields()`에 ClassVar가 새지 않음(R5), `WorkflowComponent`에 메서드 없음(R2), 능력 메서드가 오늘의 판정(`emits_output_file`/`is_reference_usage`/`placement.*`/`has_external_body`)과 **같은 답**을 냄, `new()` ↔ `make_component` 9종 필드 단위 등가. 호출자 치환 WP(2b~2d)의 동작 불변을 미리 고정하는 게이트다 |
 | `tests/model/plugin/test_component_hierarchy.py` | 9종 구체 컴포넌트의 생성자 필드 순서. 2026-09-19 실측 정정: "위치 인수로 만드는 코드가 있다"는 옛 주석은 **거짓**이다(위치 인수 호출은 `daedalus/` 0건, `tests/` 0건). 진짜 이유는 다중 상속 dataclass의 필드 순서 제약이고, 이 단언이 "필드를 한 개도 기저로 올리지 않는다" 규약의 게이트다 |
 
 ## 파일 단위 모듈 지도 (원문)
@@ -209,9 +210,14 @@ daedalus/
 │   │   │                   #   ForkSkillConfig(ABC, +BUILTIN_FORK_AGENTS) → SyncForkSkillConfig·AsyncForkSkillConfig,
 │   │   │                   #   WrappedSkillConfig, DeclarativeSkillConfig, TransferSkillConfig, ReferenceSkillConfig,
 │   │   │                   #   AgentConfigBase(ABC) → AgentConfig(+background·isolation)·ForkAgentConfig
-│   │   ├── base.py         # PluginComponent(ABC), WorkflowComponent(ABC)
+│   │   ├── roles.py        # 능력 표면의 어휘 — Bucket/PlacementRole/BodySource/OutputLocation (순수 enum, 아무것도 임포트하지 않는다).
+│   │   │                   #   plugin 패키지 임포트 방향의 뿌리: roles ← base ← config ← skill/agent
+│   │   ├── base.py         # PluginComponent(ABC) — name/description + **능력 표면**(종류 ClassVar 13개·형상 기본값·
+│   │   │                   #   인스턴스 훅 effective_placement/is_active/emits_output/can_delete·형상 조회·참조·new()/creation_defaults()),
+│   │   │                   #   WorkflowComponent(ABC) — fsm **필드 홀더. 메서드 금지**(MRO에서 PluginComponent 기본 구현에 가려진다)
 │   │   ├── skill.py        # Skill(ABC) → StepSkill(ABC) → ProceduralSkill / ForkSkill(ABC) → SyncForkSkill·AsyncForkSkill(2026-09-17),
 │   │   │                   #   WrappedSkill, DeclarativeSkill, TransferSkill, ReferenceSkill + is_reference_usage/is_disabled_wrapped
+│   │   │                   #   + 종류별 능력 선언(KIND/CONFIG_CLS/PLACEMENT/…)과 오버라이드. 인스턴스 훅을 덮는 유일한 클래스가 WrappedSkill이다
 │   │   ├── agent.py        # Agent(ABC) → AgentDefinition(워크플로 — 캔버스 노드) / ForkAgent(fork 스킬 실행 기반, WP-FK2)
 │   │   ├── placement.py    # 배치 가능 판정 **두 개**(is_state_placeable/is_canvas_placeable) + fork 역참조 fork_skills_using.
 │   │   │                   #   캔버스 드롭·레지스트리 드래그·creation·MCP place_component·에이전트 편집기·삭제 확인·
@@ -225,6 +231,7 @@ daedalus/
 │   │   │                   #   + SKILL_ONLY_VARIABLES(A6 — 스킬 본문에서만 치환되는 토큰 3종. skill_only_variable_in_body의 단일 진실)
 │   │   ├── field_matrix.py # FieldRule(emit 포함), SKILL_FIELD_MATRIX(7종), AGENT_FIELD_MATRIX(agent/fork_agent)
 │   │   │                   #   + **matrix_for(component)** — 표 선택의 단일 진실(키 = config.kind. 미지 kind는 ValueError)
+│   │   │                   #   (config.py에도 KIND ClassVar + 이름 참조 계약 name_refs/rename_ref가 있다 — plugin-model.md "능력 표면")
 │   │   └── workspace_doc.py# WorkspaceDoc(name, body, paths, id) — .claude/CLAUDE.md 구역과 .claude/rules/<name>.md의 편집 단위(WP-WD).
 │   │                       #   값 동등성이고 id는 비교 제외 — 본문 undo 스택이 이름이 아니라 안정 식별자로 문서를 잡는다.
 │   │                       #   paths(A13)는 규칙 전용 `paths:` 프론트매터 glob 목록 — 비면 프론트매터를 내지 않는다(항상 로드).
