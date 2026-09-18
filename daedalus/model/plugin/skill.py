@@ -122,10 +122,13 @@ class WrappedSkill(Skill, WorkflowComponent):
 
         형식이 깨진 source는 source 형식 검사 규칙의 소관이라 여기서 중복으로
         짚지 않는다(오늘 `naming._check_external_plugins`와 같은 제외 규칙).
+
+        원문은 `external_source`로 읽는다 — 손상된 저장 파일의 non-str `source`
+        를 견디는 자리가 두 벌이면 한쪽만 터진다(원칙 1).
         """
         if not self.is_active():
             return []
-        plugin_id, _, skill_name = (self.config.source or "").partition(":")
+        plugin_id, _, skill_name = (self.external_source or "").partition(":")
         plugin_id = plugin_id.strip()
         if not plugin_id or not skill_name.strip():
             return []
@@ -133,7 +136,16 @@ class WrappedSkill(Skill, WorkflowComponent):
 
     @property
     def external_source(self) -> str | None:
-        return self.config.source
+        """랩핑 스킬은 **항상** 외부 정본을 선언한다 — 값이 비었거나 손상돼도
+        `None`(= 이 종류엔 외부 정본이 없다)이 아니라 빈 문자열로 답한다.
+
+        `None`을 돌려주면 `_check_external_sources`가 "외부 정본이 없는 종류"로
+        보고 건너뛰어 `external_source_missing` 경고가 조용히 사라진다(원칙 5).
+        역직렬화는 `source`를 날것으로 싣는다(`deser_plugin._deser_config` —
+        `d.get("source", "")`라 저장 파일의 명시적 `null`이 그대로 들어온다).
+        """
+        source = self.config.source
+        return source if isinstance(source, str) else ""
 
     def delegated_agent_name(self) -> str | None:
         """랩퍼 본문은 **자기 이름의 러너 서브에이전트**가 실행한다(WP-WR)."""

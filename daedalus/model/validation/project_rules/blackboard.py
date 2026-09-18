@@ -2,7 +2,10 @@
 """블랙보드(blackboard) 규칙 3종 (이동만 — 동작 불변) — WP-BB Part E / WP-BT."""
 from __future__ import annotations
 
-from daedalus.model.validation.project_rules.scan import scan_state_access
+from daedalus.model.validation.project_rules.scan import (
+    project_machines,
+    scan_state_access,
+)
 from daedalus.model.validation.severity import ValidationError
 
 
@@ -73,12 +76,10 @@ class _BlackboardRules:
                         ))
             return _visit
 
-        for skill in project.skills:
-            for sm in skill.state_machines():  # Q2 — FSM 보유는 컴포넌트가 답한다
-                scan_state_access(sm, _make_checker((f"skill:{skill.name}",)))
-        for agent in project.agents:
-            for sm in agent.state_machines():
-                scan_state_access(sm, _make_checker((f"agent:{agent.name}",)))
+        # 순회의 단일 진실은 `scan.project_machines`다(Q2 — FSM 보유는
+        # 컴포넌트가 답한다). 라벨 조립을 규칙마다 적으면 한쪽만 고쳐진다.
+        for label, sm in project_machines(project):
+            scan_state_access(sm, _make_checker((label,)))
         graph = getattr(project, "graph", None)
         if graph is not None:
             scan_state_access(graph, _make_checker(("project",)))
@@ -101,12 +102,8 @@ class _BlackboardRules:
             declared.update(getattr(state, "reads", None) or [])
             declared.update(getattr(state, "writes", None) or [])
 
-        for skill in project.skills:
-            for sm in skill.state_machines():  # Q2
-                scan_state_access(sm, _collect)
-        for agent in project.agents:
-            for sm in agent.state_machines():
-                scan_state_access(sm, _collect)
+        for _label, sm in project_machines(project):  # Q2
+            scan_state_access(sm, _collect)
         graph = getattr(project, "graph", None)
         if graph is not None:
             scan_state_access(graph, _collect)

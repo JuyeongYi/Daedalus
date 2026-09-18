@@ -38,7 +38,10 @@ from daedalus.model.validation.project_rules.build_target import _BuildTargetRul
 from daedalus.model.validation.project_rules.fork import _ForkRules
 from daedalus.model.validation.project_rules.hooks import _HookRules
 from daedalus.model.validation.project_rules.naming import _NamingRules
-from daedalus.model.validation.project_rules.scan import graph_has_placements
+from daedalus.model.validation.project_rules.scan import (
+    graph_has_placements,
+    project_machines,
+)
 from daedalus.model.validation.project_rules.text import (
     _CODE_FENCE_RE,
     _INLINE_CODE_RE,
@@ -84,16 +87,10 @@ class _ProjectRules(
         errors: list[ValidationError] = []
         # FSM 보유는 컴포넌트가 답한다(`state_machines()` — Q2). FSM이 없는
         # 종류(선언형·참조 스킬·fork 에이전트)는 빈 목록이라 자연 제외된다.
-        for skill in project.skills:
-            for sm in skill.state_machines():
-                errors.extend(_MachineRules._validate_machine(
-                    sm, path=(f"skill:{skill.name}",),
-                ))
-        for agent in project.agents:
-            for sm in agent.state_machines():
-                errors.extend(_MachineRules._validate_machine(
-                    sm, path=(f"agent:{agent.name}",),
-                ))
+        # 순회·라벨 조립의 단일 진실은 `scan.project_machines`다(스킬 먼저,
+        # 그다음 에이전트 — 선언 순서).
+        for label, sm in project_machines(project):
+            errors.extend(_MachineRules._validate_machine(sm, path=(label,)))
         # 프로젝트 워크플로 그래프 — placement가 하나라도 있을 때만 머신 규칙 적용.
         # 빈 캔버스(EntryPoint 하나뿐)는 검증 스킵 (경고 폭주 방지).
         # unreachable_state는 스킵한다(WP-EP): CC 플러그인 의미론상 프로젝트

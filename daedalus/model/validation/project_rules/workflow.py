@@ -32,6 +32,8 @@ def _agent_call_edges(project) -> list[tuple]:
       규칙의 집합에는 들어 있지 않았고, 넓히면 `agent_chain_too_deep` 깊이와
       `agent_calls_higher_model`이 조용히 달라진다 — 위 docstring이 제외를
       의도로 말하므로 `BODY_SOURCE is OWNED`로 종전 집합을 보존한다.
+      `ForkAgent`도 이 술어를 통과하지만 캔버스 노드가 될 수 없어
+      (`PLACEMENT=NONE`) `skill_ref`로 오지 않는다 — callee 쪽과 같은 논거다.
     - callee = **이쪽으로 가는 전이가 위임인 노드**(`DELEGATION_TARGET`).
       `ForkAgent`도 True지만 캔버스 노드가 될 수 없어(`PLACEMENT=NONE`)
       `skill_ref`로 오지 않는다.

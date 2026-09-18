@@ -222,7 +222,7 @@ daedalus/
 │   │   │                   #   + 종류별 능력 선언(KIND/CONFIG_CLS/PLACEMENT/…)과 오버라이드. 인스턴스 훅을 덮는 유일한 클래스가 WrappedSkill이다
 │   │   ├── agent.py        # Agent(ABC) → AgentDefinition(워크플로 — 캔버스 노드) / ForkAgent(fork 스킬 실행 기반, WP-FK2)
 │   │   ├── placement.py    # 배치 가능 판정 **두 개**(is_state_placeable/is_canvas_placeable — 실체는 effective_placement()) +
-│   │   │                   #   placement_role_of(비-컴포넌트 관용의 단일 진실) + fork 역참조 fork_skills_using(delegated_agent_name 기반).
+│   │   │                   #   placement_role_of(비-컴포넌트 관용의 단일 진실) + fork 역참조 fork_skills_using(config.name_refs(AGENTS) 기반).
 │   │   │                   #   캔버스 드롭·레지스트리 드래그·creation·MCP place_component·에이전트 편집기·삭제 확인·
 │   │   │                   #   MCP still_referenced_by/used_by_fork_skills·컴파일러 fork 계약이 전부 여기를 부른다(원칙 1)
 │   │   ├── tool.py         # Tool(ABC) + BuiltinTool/MCPTool/UserDefinedTool (tool_shelf 도구 단일 진실)

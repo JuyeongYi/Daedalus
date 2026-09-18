@@ -201,7 +201,9 @@ no-op가 된다. 그래서 `PluginComponent`가 **선언(ClassVar) + 인스턴�
 캔버스 드롭(`scene.py`)·레지스트리 드래그·"여기에 만들기"(`creation.NO_PLACE_KINDS`)·MCP `place_component`가
 전부 이것을 부른다(음성 목록 3벌 → 양성 판정 2개, 원칙 1). `DeclarativeSkill`·`TransferSkill`·`ForkAgent`는 False다.
 같은 모듈의 `fork_skills_using(agent, project)`는 **fork 역참조의 단일 진실**이다 —
-필터는 `s.delegated_agent_name() == agent.name`(Q33)이라 종류 이름을 묻지 않는다 — 에이전트 편집기의
+필터는 `name in s.config.name_refs(Bucket.AGENTS)`(Q14)라 종류 이름을 묻지 않는다 —
+`delegated_agent_name()`(Q33)을 쓰면 랩핑 스킬이 **자기 이름의 러너**를 답해 에이전트와 동명인 랩퍼가
+fork 스킬 참조자로 섞여 든다 — 에이전트 편집기의
 "🍴 사용하는 fork 스킬" 패널·삭제 확인 다이얼로그·MCP `delete_component`의 `still_referenced_by`·`get_component`의
 `used_by_fork_skills`·컴파일러의 fork 에이전트 "## Invocation Contract"가 전부 같은 목록을 말한다
 (컴파일러는 뷰를 임포트할 수 없으므로 실체가 모델에 있어야 한다).
