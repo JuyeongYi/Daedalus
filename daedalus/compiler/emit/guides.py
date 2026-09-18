@@ -189,9 +189,9 @@ def guide_pointer_line(
         )
     elif wf == "fork":
         line = (
-            f'Read `{wf_ref}` section "Fork reports" for the report format. The '
-            f"progress record and resume rules in that guide belong to the main "
-            f"conversation, not to you."
+            f'Read `{wf_ref}` section "Fork reports" for the report format. '
+            f"Updating the progress record and the resume rules in that guide "
+            f"belong to the main conversation, not to you."
         )
         if bb:
             line += f" Also read {bb_clause}."
@@ -250,10 +250,16 @@ def compile_workflow_guide(project) -> str | None:
             "external skills linked to a step for consultation when their subject "
             "comes up."
         ),
+        # 금지는 **쓰기**에만 건다. fork 산출에도 "## Entry Context"가 나가고
+        # (emit/skill.py), 그 지시("`prev`와 `note`의 갈래를 확인하라")를
+        # 이행할 유일한 수단이 2절의 `progress read`다 — 읽기까지 금지하면 한
+        # 산출이 서로 모순되는 두 지시를 동시에 낸다(원칙 5).
         (
             "Sections 2-3 are for the main conversation only. If you are running "
-            "inside a forked subagent, do not run any progress command and do not "
-            "ask the user anything — report instead (section 5)."
+            "inside a forked subagent, do not update the progress record and do "
+            "not ask the user anything — you may read the record for your entry "
+            "context (section 4), and your outcome goes into your report "
+            "(section 5) instead of into the record."
         ),
         "## 2. The progress record",
         (
@@ -416,7 +422,14 @@ def compile_guide(project, kind: str) -> str | None:
 
 # ─────────────────────────── 포인터 삽입 ───────────────────────────
 
-_SCHEMAS_REF_PREFIX = f"{ROOT_TOKEN}/schemas/"
+#: 판정 질문은 "스키마 경로가 산출 어딘가에 보이는가"가 아니라 **"`--schemas
+#: <경로>` 형태의 명령이 남아 있는가"**다. 경로만 보고 판정하면 사용자 body가
+#: 그 경로를 언급하기만 해도 `State CLI:` 줄이 조용히 사라지고, 가이드의
+#: `<SCHEMAS>` 자리표시자를 채울 명령이 그 파일에 하나도 없게 된다(원칙 5).
+#: 컴파일러가 `--schemas <경로>`를 배출하는 자리는 `emit/skill.py`의
+#: `_progress_cli`와 이 모듈의 `State CLI:` 줄뿐이라 접두를 좁혀도 참 판정이
+#: 줄지 않는다.
+_SCHEMAS_REF_PREFIX = f"--schemas {ROOT_TOKEN}/schemas/"
 
 
 def _insert_guide_pointer(blocks: list[str], component, project) -> None:

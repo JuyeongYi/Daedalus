@@ -733,12 +733,15 @@ Tier 2다. 출발점은 2026-05 조사(ClaudeManager가 만든 plain 셸 스크�
 
 ## 5. 기능 잔여
 
-- **비동기 fork `current` 소유 규약의 3단계** (WP-FK2 C1, 사용자 확정 2026-09-18 — 1·2단계는 완료).
-  ① 호출자가 `--current <fork> --note "awaiting background fork"`로 넘기고 ② 비동기 fork의 "## Report"가
-  진행 명령 앞에서 `current`가 아직 자기인지 확인시키는 두 단계는 산출된다(`docs/design/compiler.md` 정책 20).
-  남은 ③은 **재개 규칙 쪽 문장** — "도는 중인 비동기 fork가 `current`면 사용자 확인 대상이 아니다; 그 fork의
-  보고를 기다리는 중이라고 알리고 진행 파일은 건드리지 않는다". 재개 규칙 일반형을 담을 공통 안내 파일
-  (`guides/<plugin>/workflow.md`)이 생길 때 그 안에 넣는다.
+- **WP-G 문서 갱신 체크리스트 (WP-FK2 C3 이후 남은 문서-코드 불일치, 스멜 ⑤)** — 코드가 정본이므로 문서를
+  고친다. 빠뜨리기 쉬운 지점을 명시한다:
+  ① `docs/design/compiler.md` 정책 10의 "합집합이 비면 기존 전 클래스 일반 안내 그대로 — 하위 호환" →
+  지금은 **단락 자체를 생략**한다(`emit/sections.py`). ② 같은 정책의 "CLI 우선 지시가 3줄 규칙 앞에
+  합류한다" → CLI 문장은 컴포넌트 산출에서 전부 빠지고 `guides/<플러그인>/blackboard.md`로 갔다.
+  ③ "명령·옵션 이름은 `tests/compiler/test_blackboard_section.py`가 고정한다" → 고정은
+  `tests/compiler/test_guides.py`로 옮겼다. ④ "`_blackboard_section`은 return이 둘" → 셋이다
+  (클래스 0개 / reads·writes 합집합 0개 / 본문). ⑤ 산출 구조 절에 `guides/<플러그인>/`이 없다.
+  ⑥ `docs/design/architecture.md` 모듈 지도에 `compiler/emit/guides.py`가 없다(`plan.py`만 등재).
 - **스킬 훅 정정의 남은 일** (정정 자체는 2026-09-13 완료 — `docs/design/hooks.md` "스킬 훅").
   ① `project/daedalus_cc_plugin`의 `graph-orient`(check-daedalus-mcp)·`graph-state`
   (guard-blackboard-schema, validate-on-save) 훅 참조를 틀린 경고에 따라 지웠다. 세 훅 모두 전역으로

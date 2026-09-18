@@ -204,11 +204,39 @@ def test_fork_skill_gets_the_report_only_pointer():
     text = compile_skill(fork, project=project)
     assert workflow_pointer_kind(fork, project) == "fork"
     assert (
-        f'Read `{_WF}` section "Fork reports" for the report format. The progress '
-        f"record and resume rules in that guide belong to the main conversation, "
-        f"not to you." in text
+        f'Read `{_WF}` section "Fork reports" for the report format. Updating the '
+        f"progress record and the resume rules in that guide belong to the main "
+        f"conversation, not to you." in text
     )
     assert "Before you start, read" not in text
+
+
+def test_fork_output_never_forbids_what_its_entry_context_demands():
+    """배치 fork는 "## Entry Context"에서 `prev`/`note`를 확인하라는 지시를 받는다.
+
+    그 지시를 이행할 유일한 수단이 가이드 2절의 `progress read`이므로, 같은
+    산출(포인터 + 가이드)이 "진행 명령을 일절 쓰지 말라"고 말하면 안 된다 —
+    금지는 **갱신**에만 걸린다(원칙 5: 서로 모순되는 두 지시를 내지 않는다).
+    """
+    fork = _fork()
+    project, a, _ = _placed_pair()
+    project.skills.append(fork)
+    sf = SimpleState(name="scout", skill_ref=fork)
+    project.graph.states.append(sf)
+    project.graph.transitions.append(
+        Transition(
+            source=project.graph.states[-2], target=sf,
+            trigger=CompletionEvent(name="survey"),
+        )
+    )
+    text = compile_skill(fork, project=project)
+    guide = compile_workflow_guide(project)
+    assert "Check `prev` and the branch in `note`" in text
+    for forbidden in ("do not run any progress command", "do not read"):
+        assert forbidden not in text
+        assert forbidden not in guide
+    assert "do not update the progress record" in guide
+    assert "you may read the record for your entry context" in guide
 
 
 def test_fork_agent_gets_only_the_blackboard_pointer():
@@ -310,6 +338,23 @@ def test_state_cli_line_is_emitted_without_a_blackboard_too():
     assert (
         "State CLI: `daedalus-bb --schemas ${ROOT}/schemas/p.json "
         "progress <read|set> ...`" in text
+    )
+
+
+def test_body_that_merely_names_the_schema_path_still_gets_a_state_cli_line():
+    """판정은 "경로가 보이는가"가 아니라 "`--schemas <경로>` 명령이 남아 있는가"다.
+
+    사용자 body가 스키마 경로를 언급하기만 해도 줄이 사라지면, 가이드의
+    `<SCHEMAS>` 자리표시자를 채울 명령이 그 파일에 하나도 없게 된다.
+    """
+    project, _, _ = _placed_pair(blackboard=_blackboard())
+    worker = make_agent("worker")
+    worker.body = "See the schema at ${ROOT}/schemas/p.json for field names."
+    project.agents.append(worker)
+    text = compile_agent(worker, project=project)
+    assert (
+        "State CLI: `daedalus-bb --schemas ${ROOT}/schemas/p.json "
+        "<read|write|validate> ...`" in text
     )
 
 
@@ -450,8 +495,10 @@ def test_workflow_guide_warns_forked_subagents_off_sections_2_and_3():
     text = compile_workflow_guide(project)
     sentence = (
         "Sections 2-3 are for the main conversation only. If you are running "
-        "inside a forked subagent, do not run any progress command and do not ask "
-        "the user anything — report instead (section 5)."
+        "inside a forked subagent, do not update the progress record and do not "
+        "ask the user anything — you may read the record for your entry context "
+        "(section 4), and your outcome goes into your report (section 5) instead "
+        "of into the record."
     )
     assert sentence in text
     assert text.index(sentence) < text.index("## 2. The progress record")
