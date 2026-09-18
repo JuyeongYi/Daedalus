@@ -1,5 +1,5 @@
 # tests/compiler/test_agent.py
-"""에이전트 .md 컴파일 — INVOCATION 안내, SETTINGS 언급, FSM 출구."""
+"""에이전트 .md 컴파일 — 프론트매터 배출, SETTINGS 언급, FSM 출구."""
 from __future__ import annotations
 
 from daedalus.compiler.emit import compile_agent

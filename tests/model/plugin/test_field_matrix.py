@@ -319,22 +319,6 @@ def test_max_turns_background_isolation_are_frontmatter():
         )
 
 
-def test_no_agent_field_uses_invocation_emit():
-    """WP-FF 이후 INVOCATION emit을 쓰는 에이전트 필드는 없다.
-
-    다시 생기면 그 필드가 정말 호출 시점에만 의미가 있는지 — 프론트매터가
-    지원하지 않는지 — 확인하고 이 테스트를 갱신하라.
-    """
-    from daedalus.model.plugin.field_matrix import AGENT_FIELD_MATRIX
-    using = [
-        (kind, af)
-        for kind, rules in AGENT_FIELD_MATRIX.items()
-        for af, rule in rules.items()
-        if rule.emit is FieldEmit.INVOCATION
-    ]
-    assert using == [], f"INVOCATION emit 잔존: {using}"
-
-
 def test_agent_field_matrix_emit_settings():
     """HOOKS/MCP_SERVERS의 emit은 SETTINGS이어야 한다."""
     from daedalus.model.plugin.field_matrix import AGENT_FIELD_MATRIX

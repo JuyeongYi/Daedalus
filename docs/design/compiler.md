@@ -46,8 +46,9 @@
    **LOCAL 빌드는 이 둘을 프론트매터로 실제 배출한다(WP-LA, 16번 항목)** — 그때는 `## Requirements` 단락을 내지 않는다(같은 사실을 두 번 말하는 데다 "설정 파일을 생성하지 않음" 문구가 거짓이 된다).
    프론트매터 매트릭스는 **종류가 고른다** — `matrix_for(agent)`가 `agent.config.kind`(`"agent"`/`"fork_agent"`)로 `AGENT_FIELD_MATRIX`의 표를 고르고,
    그 표에 없는 필드는 **부재 = 비적용**으로 건너뛴다(스킬 프론트매터와 같은 규약). fork 에이전트 표에는 `background`·`isolation` 행이 없어 그 두 키가 나오지 않는다.
-   **`FieldEmit.INVOCATION`을 쓰는 필드는 하나도 없다** — WP-FF에서 `max_turns`/`background`/`isolation`이 프론트매터로 올라가면서
-   "호출 파라미터" 본문 단락과 그것을 만들던 `_invocation_section_agent`(항상 빈 목록을 돌려주던 죽은 코드)는 **삭제됐다**.
+   **`FieldEmit`은 FRONTMATTER/BODY/SETTINGS 세 목적지뿐이다** — WP-FF에서 `max_turns`/`background`/`isolation`이 프론트매터로 올라가면서
+   "호출 파라미터" 본문 단락과 그것을 만들던 `_invocation_section_agent`(항상 빈 목록을 돌려주던 죽은 코드)는 **삭제됐고**,
+   남아 있던 `FieldEmit.INVOCATION` 멤버도 퇴역했다(WP-0c).
 
 7-b. **에이전트 종류별 본문 (WP-FK2 C2)**: `compile_agent`는 `is_workflow = isinstance(agent, AgentDefinition)` **하나로 갈린다** —
    fork 에이전트(`ForkAgent`)에는 fsm도 출력 포트도 배치도 없으므로 그래프 유도 단락을 가드 없이 부르면 없는 필드를 역참조해 죽는다.

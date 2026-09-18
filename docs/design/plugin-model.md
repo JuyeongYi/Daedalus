@@ -90,12 +90,12 @@ class FieldRule:
     visibility: FieldVisibility   # REQUIRED / OPTIONAL / DEFAULT / FIXED
     fixed_value: Any = None       # FIXED일 때 컴파일러가 강제할 출력값 (enum)
     default_value: Any = None     # 위젯 초기 표시용 (단일 진실은 config 선언 기본값)
-    emit: FieldEmit = FieldEmit.FRONTMATTER  # 컴파일러 배출 위치 (FRONTMATTER/BODY/INVOCATION/SETTINGS)
+    emit: FieldEmit = FieldEmit.FRONTMATTER  # 컴파일러 배출 위치 (FRONTMATTER/BODY/SETTINGS)
 ```
 
-`FieldEmit.INVOCATION`은 **어느 표도 쓰지 않는다** — WP-FF에서 `max_turns`/`background`/`isolation`이 프론트매터로
-올라가면서 "호출 파라미터" 본문 단락과 그 emit 함수(`_invocation_section_agent`)가 삭제됐다. enum 멤버와
-`frontmatter_panel`의 그룹 분기만 남아 있다(쓰는 필드가 생기면 그대로 동작한다).
+`FieldEmit`의 목적지는 **FRONTMATTER/BODY/SETTINGS 셋뿐이다**. WP-FF에서 `max_turns`/`background`/`isolation`이
+프론트매터로 올라가면서 "호출 파라미터" 본문 단락과 그 emit 함수(`_invocation_section_agent`)가 삭제됐고,
+소비자 없이 남아 있던 `INVOCATION` 멤버와 `frontmatter_panel`의 그룹 분기도 퇴역했다(WP-0c — 원칙 7).
 
 `field_matrix.py`는 순수 모델(Qt 무관)이다. 편집 위젯 매핑은 view 측 `daedalus/view/editors/field_widgets.py`의 `FIELD_WIDGETS: dict[SkillField, type[QWidget]]`(1차원, kind 무관)과 `AGENT_FIELD_WIDGETS: dict[AgentField, type[QWidget]]`로 분리되어 있다. 프론트매터 키는 `SkillField.frontmatter_key` property가 제공한다 (kebab-case, `WHEN_TO_USE`는 None — description/본문 합류는 컴파일러 정책). `AgentField.frontmatter_key`는 **camelCase**(`permissionMode`/`disallowedTools`/`maxTurns`/`mcpServers`, WP-LA에서 확정) — 스킬 프론트매터의 kebab-case와 **규약이 다르므로 한쪽을 보고 다른 쪽을 유추하면 안 된다**. 이전에는 케이싱 미확정이라 kebab-case를 잠정값으로 썼는데, 그 키들은 CC가 인식하지 못해 조용히 무시된다(CC 공식 sub-agents 문서 필드 표 기준, 2026-08 확인). FIXED 필드는 편집기 비노출이며 `fixed_value`는 컴파일러 출력 시 강제(config에 미기록). `AGENT_FIELD_MATRIX`는 에이전트 종류별 표 2개(`agent`/`fork_agent`)다.
 

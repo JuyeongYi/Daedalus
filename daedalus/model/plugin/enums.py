@@ -4,10 +4,9 @@ from enum import Enum
 
 
 class FieldEmit(Enum):
-    """컴파일러가 필드를 배출할 위치 — 프론트매터 직출 / 본문 합류 / 호출 시점 파라미터(Agent tool 인수) / 설정 파일(.mcp.json, settings 등)."""
+    """컴파일러가 필드를 배출할 위치 — 프론트매터 직출 / 본문 합류 / 설정 파일(.mcp.json, settings 등)."""
     FRONTMATTER = "frontmatter"
     BODY = "body"
-    INVOCATION = "invocation"
     SETTINGS = "settings"
 
 

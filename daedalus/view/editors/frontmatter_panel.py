@@ -279,15 +279,14 @@ class _FrontmatterPanel(QScrollArea):
             if is_agent:
                 skip = {AgentField.NAME, AgentField.DESCRIPTION}  # type: ignore[assignment]
 
-            # 에이전트는 emit 그룹 순서(FRONTMATTER → INVOCATION → SETTINGS)로
+            # 에이전트는 emit 그룹 순서(FRONTMATTER/BODY → SETTINGS)로
             # 정렬해 렌더링한다. 매트릭스 선언 순서에 의존하면 그룹 라벨과
-            # 필드가 어긋날 수 있다 (예: SETTINGS 필드가 Invocation 라벨 아래 표시).
+            # 필드가 어긋날 수 있다 (예: SETTINGS 필드가 라벨 위에 표시).
             items = list(rules.items())
             if is_agent:
                 group_order = {
                     FieldEmit.FRONTMATTER: 0,
                     FieldEmit.BODY: 0,
-                    FieldEmit.INVOCATION: 1,
                     FieldEmit.SETTINGS: 2,
                 }
                 items.sort(key=lambda kv: group_order[kv[1].emit])  # stable — 그룹 내 선언 순서 유지
@@ -304,11 +303,10 @@ class _FrontmatterPanel(QScrollArea):
                 # emit 그룹 전환 시 구분 라벨 (에이전트 전용)
                 if (
                     is_agent
-                    and rule.emit in (FieldEmit.INVOCATION, FieldEmit.SETTINGS)
+                    and rule.emit is FieldEmit.SETTINGS
                     and rule.emit is not current_group
                 ):
-                    title = "Invocation" if rule.emit is FieldEmit.INVOCATION else "Settings"
-                    self._add_span_row(QLabel(f"— {title} —"))
+                    self._add_span_row(QLabel("— Settings —"))
                     current_group = rule.emit
 
                 widget = widget_map[fld]()
