@@ -117,9 +117,16 @@ _KIND_ABSENT_FIELDS = {
     "procedural": {SkillField.SOURCE} | _FORK_ONLY,
     "sync_fork": {SkillField.SOURCE, SkillField.ALLOWED_TOOLS},
     "async_fork": {SkillField.SOURCE, SkillField.ALLOWED_TOOLS},
-    "declarative": {SkillField.SOURCE} | _FORK_ONLY,
+    # declarative/reference에는 SHELL이 없다 — 두 config가 `shell`을 선언하지
+    # 않고 직렬화도 그 키를 쓰지 않는다(2026-09-18 리뷰: 표에만 있던 시절에는
+    # 편집기가 콤보박스를 그려 주고 그 값이 저장 한 번에 사라졌다).
+    "declarative": {SkillField.SOURCE, SkillField.SHELL} | _FORK_ONLY,
     "transfer": {SkillField.SOURCE} | _FORK_ONLY,
-    "reference": {SkillField.SOURCE} | _FORK_ONLY,
+    # reference는 DISABLE_MODEL도 없다 — ReferenceSkillConfig는 user_invocable만
+    # 선언한다.
+    "reference": {
+        SkillField.SOURCE, SkillField.SHELL, SkillField.DISABLE_MODEL,
+    } | _FORK_ONLY,
     # wrapped는 본문을 만들지 않는다 — 본문 실행 방식 필드 4종이 비적용.
     "wrapped": _FORK_ONLY | {SkillField.SHELL},
 }
@@ -130,6 +137,73 @@ def test_matrix_all_kinds_have_all_fields():
     for kind, rules in SKILL_FIELD_MATRIX.items():
         absent = _KIND_ABSENT_FIELDS[kind]
         assert set(rules) == set(SkillField) - absent, f"{kind} 필드 집합 불일치"
+
+
+# ---------------------------------------------------------------------------
+# 표 ↔ config 일치 (2026-09-18 리뷰) — 표에 있는 편집 가능 필드는 config에 있다
+# ---------------------------------------------------------------------------
+
+#: 컴포넌트 본체가 가진 필드 — config가 아니라 name/description/when_to_use다.
+_COMPONENT_LEVEL_FIELDS = frozenset({
+    SkillField.NAME, SkillField.DESCRIPTION, SkillField.WHEN_TO_USE,
+    AgentField.NAME, AgentField.DESCRIPTION,
+})
+
+
+def _configs_by_kind() -> dict:
+    """구체 config 클래스 전부를 `kind` → 인스턴스로. 손으로 적은 표가 아니다."""
+    from daedalus.model.plugin.config import ComponentConfig
+
+    out: dict = {}
+    stack = [ComponentConfig]
+    while stack:
+        cls = stack.pop()
+        stack.extend(cls.__subclasses__())
+        if getattr(cls, "__abstractmethods__", None):
+            continue  # 추상 — 인스턴스화 금지
+        cfg = cls()
+        out[cfg.kind] = cfg
+    return out
+
+
+def test_every_editable_matrix_field_exists_on_the_config():
+    """표에 있는 **비-FIXED** 필드는 그 종류의 config에 실제로 있다.
+
+    없으면 편집기가 위젯을 그려 주고 그 편집이 아무 데도 남지 않는다 —
+    write-back은 유령 인스턴스 속성을 만들거나(저장 한 번에 소멸) 가드에
+    삼켜진다. MCP `list_component_fields`는 `hasattr`로 건너뛰므로 같은 종류에
+    대해 GUI와 MCP가 **다른 필드 목록**을 말하게 된다(원칙 1·2·5).
+
+    2026-09-18 실측으로 걸린 세 행: declarative/reference의 `shell`,
+    reference의 `disable_model_invocation`.
+    """
+    from daedalus.model.plugin.field_matrix import AGENT_FIELD_MATRIX
+
+    configs = _configs_by_kind()
+    for table in (SKILL_FIELD_MATRIX, AGENT_FIELD_MATRIX):
+        for kind, rules in table.items():
+            assert kind in configs, f"매트릭스 종류 '{kind}'에 대응하는 config 클래스가 없다"
+            cfg = configs[kind]
+            for fld, rule in rules.items():
+                if fld in _COMPONENT_LEVEL_FIELDS:
+                    continue
+                if rule.visibility is FieldVisibility.FIXED:
+                    continue  # FIXED는 컴파일러 지시라 config에 두지 않는다
+                assert hasattr(cfg, fld.value), (
+                    f"{kind} 표의 {fld.name}에 대응하는 "
+                    f"{type(cfg).__name__}.{fld.value} 필드가 없다"
+                )
+
+
+def test_declarative_and_reference_have_no_shell_row():
+    """부재를 명시로 고정한다 — 되돌리려면 config·직렬화를 같이 고쳐야 한다."""
+    assert SkillField.SHELL not in SKILL_FIELD_MATRIX["declarative"]
+    assert SkillField.SHELL not in SKILL_FIELD_MATRIX["reference"]
+    assert SkillField.DISABLE_MODEL not in SKILL_FIELD_MATRIX["reference"]
+    # 형제 종류에는 그대로 있다(전면 삭제가 아니다).
+    assert SkillField.SHELL in SKILL_FIELD_MATRIX["procedural"]
+    assert SkillField.SHELL in SKILL_FIELD_MATRIX["transfer"]
+    assert SkillField.DISABLE_MODEL in SKILL_FIELD_MATRIX["declarative"]
 
 
 # ---------------------------------------------------------------------------

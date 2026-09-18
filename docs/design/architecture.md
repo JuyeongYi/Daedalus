@@ -428,7 +428,11 @@ daedalus/
     │                       #     캔버스 정리는 기존 DeleteRef/DeleteTransition/DeleteStateCmd 조립, 모델 잔여분만 _DetachComponentCmd),
     │                       #   attr — SetAttrCmd/AppendToListCmd/RemoveFromListCmd(WP-CE 범용 폼 편집. 편집마다 클래스를 만들지 않고
     │                       #     "속성 하나 바꾸기"+"리스트 넣고 빼기" 둘로 환원한다. SetAttrCmd는 최초 execute에서만 old를 잡는다 —
-    │                       #     redo가 old를 덮으면 undo가 깨진다. 값은 복사하지 않으므로 호출자가 새 객체를 넘겨야 한다))
+    │                       #     redo가 old를 덮으면 undo가 깨진다. 값은 복사하지 않으므로 호출자가 새 객체를 넘겨야 한다),
+    │                       #   surface — ResyncSurfacesCmd/resync_bracket: 모델을 바꾸지 않고 열린 편집 탭의 프론트매터 폼과
+    │                       #     레지스트리만 현재 종류로 다시 그린다. 종류 전환(convert_skill_kind)의 재동기를 액션 함수에 두면
+    │                       #     undo에 걸리지 않아 되돌린 뒤에도 스테일 폼이 남는다 — MacroCommand의 **양 끝**에 한 쌍을 두어
+    │                       #     execute/undo 어느 방향이든 마지막 한 번이 확정된 상태를 본다(MacroCommand.undo는 역순이다))
     ├── editors/            # 속성 편집기 (skill + 그 분해 패널 3종(frontmatter_panel/transfer_on_panel/reference_link_panel),
     │                       #   agent, hook, body, body_documents, component, variable_loader, catalogue_loader, field_widgets,
     │                       #   project_properties, blackboard_editor, workspace_editor)

@@ -21,7 +21,7 @@ from daedalus.model.fsm.machine import StateMachine
 from daedalus.model.fsm.state import SimpleState
 from daedalus.model.fsm.transition import Transition
 from daedalus.model.plugin.agent import AgentDefinition
-from daedalus.model.plugin.skill import DeclarativeSkill, TransferSkill
+from daedalus.model.plugin.skill import TransferSkill
 from daedalus.view.canvas.draggable import DraggableItemMixin
 from daedalus.view.canvas.edge_item import TransitionEdgeItem, WaypointHandleItem
 from daedalus.view.canvas import context_menus
@@ -315,7 +315,6 @@ class FsmScene(QGraphicsScene):
                 src_vm = self._connect_source.state_vm
                 tgt_vm = target.state_vm
                 event_name = self._connect_event or "done"
-                src_ref = getattr(src_vm.model, "skill_ref", None)
                 tgt_ref = getattr(tgt_vm.model, "skill_ref", None)
                 is_agent_call = self._connect_is_agent_call
                 tgt_is_agent = isinstance(tgt_ref, AgentDefinition)
@@ -508,7 +507,11 @@ class FsmScene(QGraphicsScene):
         project_vm = self._project_vm
         # 용도 고정 커맨드의 실체는 공용 액션이다 — MCP `place_component`가
         # 용도 미정 wrapped를 받을 때도 같은 커맨드를 자기 배치와 묶는다.
-        children: list[Command] = [usage_fix_command(skill, usage)]
+        # 고칠 것이 없으면 None이 온다(이미 고정됐거나 wrapped가 아님) —
+        # 호출자 가드에 기대지 않는다. 이 헬퍼는 MCP `place_component`도
+        # 부르게 될 공용 경로다.
+        fix = usage_fix_command(skill, usage)
+        children: list[Command] = [fix] if fix is not None else []
         if usage == "reference":
             rvm = ReferenceViewModel(model=skill, x=scene_pos.x(), y=scene_pos.y())
             children.append(CreateRefCmd(

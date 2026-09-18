@@ -185,3 +185,105 @@ def test_stale_optional_clear_creates_no_ghost_attribute(window):
     stale._on_optional_toggled(SkillField.AGENT, False)
 
     assert not hasattr(skill.config, "agent")
+
+
+# --- 전환 undo (2026-09-18 리뷰) ---
+
+
+def _fm_fields(window, component) -> set:
+    return set(_editor_of_open_tab(window, component)._fm._field_widgets)
+
+
+def test_undoing_a_conversion_rebuilds_the_form_too(window):
+    """되돌리면 폼도 되돌아온다 — 버튼이 "Ctrl+Z로 되돌림"이라고 말한다.
+
+    재동기를 액션 함수에 두면 전환에만 걸리고 undo에는 걸리지 않아, 되돌린
+    뒤에도 전환 후의 표로 그려진 폼이 남는다. 그 폼의 write-back은 스테일
+    가드가 조용히 버리므로 "편집이 먹지 않는 탭"이 된다(원칙 5).
+    """
+    from daedalus.view.actions.fork_skill import convert_skill_kind
+
+    skill = _skill(window)
+    window._open_component(skill)
+    before = _fm_fields(window, skill)
+    assert SkillField.ALLOWED_TOOLS in before and SkillField.AGENT not in before
+
+    convert_skill_kind(window, skill, "sync_fork")
+    assert SkillField.AGENT in _fm_fields(window, skill)
+
+    window._project_vm.command_stack.undo()
+
+    assert skill.config.kind == "procedural"
+    # 폼이 다시 모델의 표를 말한다 — 위젯이 그려진 필드 집합이 표의 부분집합이고
+    # 전환 전과 같다.
+    assert _fm_fields(window, skill) == before
+    assert set(model_matrix_for(skill)) >= _fm_fields(window, skill)
+
+
+def test_undone_form_writes_back_again(window):
+    """되돌린 뒤의 폼은 **쓸 수 있다** — 가드가 삼키던 자리다."""
+    from daedalus.view.actions.fork_skill import convert_skill_kind
+
+    skill = _skill(window)
+    window._open_component(skill)
+    convert_skill_kind(window, skill, "sync_fork")
+    window._project_vm.command_stack.undo()
+
+    fm = _editor_of_open_tab(window, skill)._fm
+    fm._write_field(SkillField.ALLOWED_TOOLS, ["Read"])
+    assert skill.config.allowed_tools == ["Read"]
+
+
+def test_undoing_a_conversion_resyncs_the_registry(window):
+    """레지스트리도 같은 커맨드로 돌아온다 — 화면 하나만 되돌아가면 안 된다."""
+    from daedalus.view.actions.fork_skill import convert_skill_kind
+
+    skill = _skill(window)
+    panel = window._registry_panel
+    convert_skill_kind(window, skill, "sync_fork")
+    assert panel._sections["sync_fork"]._list.count() == 1
+    assert panel._sections["procedural"]._list.count() == 0
+
+    window._project_vm.command_stack.undo()
+
+    assert panel._sections["sync_fork"]._list.count() == 0
+    assert panel._sections["procedural"]._list.count() == 1
+
+
+def test_redo_puts_the_form_back_on_the_new_kind(window):
+    from daedalus.view.actions.fork_skill import convert_skill_kind
+
+    skill = _skill(window)
+    window._open_component(skill)
+    convert_skill_kind(window, skill, "async_fork")
+    window._project_vm.command_stack.undo()
+    window._project_vm.command_stack.redo()
+
+    assert skill.config.kind == "async_fork"
+    assert SkillField.AGENT in _fm_fields(window, skill)
+
+
+# --- 가드는 두 부재를 가른다 ---
+
+
+def test_matrix_config_mismatch_says_why(window, monkeypatch):
+    """표에는 있는데 config에 없는 필드 = 모델 버그 → 이유를 말하고 죽는다.
+
+    스테일 위젯(이 종류의 표에 **없는** 필드)과 같은 취급을 하면, 표가 선언한
+    편집 가능 행이 조용히 먹통이 된다(원칙 5).
+    """
+    from daedalus.model.plugin.enums import FieldVisibility
+    from daedalus.model.plugin.field_matrix import SKILL_FIELD_MATRIX, FieldRule
+    from daedalus.view.editors.skill_editor import _FrontmatterPanel
+
+    skill = _skill(window)
+    panel = _FrontmatterPanel(skill, project_vm=window._project_vm)
+    monkeypatch.setitem(
+        SKILL_FIELD_MATRIX["procedural"],
+        SkillField.AGENT,
+        FieldRule(FieldVisibility.OPTIONAL),
+    )
+
+    with pytest.raises(AttributeError, match="agent"):
+        panel._write_field(SkillField.AGENT, "Explore")
+    assert not hasattr(skill.config, "agent")

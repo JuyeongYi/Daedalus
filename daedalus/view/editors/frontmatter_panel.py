@@ -22,12 +22,14 @@ from PySide6.QtWidgets import (
 )
 
 from daedalus.model.plugin.agent import Agent
+from daedalus.model.plugin.field_matrix import FieldRule
 from daedalus.model.plugin.skill import Skill
 from daedalus.model.plugin.enums import (
     AgentColor,
     AgentField,
     AgentIsolation,
     EffortLevel,
+    FieldVisibility,
     MemoryScope,
     ModelType,
     PermissionMode,
@@ -498,22 +500,54 @@ class _FrontmatterPanel(QScrollArea):
             existing = existing if isinstance(existing, dict) else {}
             value = {name: existing.get(name, {}) for name in value}
 
-        if not self._writable(config, attr):
+        if not self._writable(config, fld, attr):
             return
         setattr(config, attr, value)
         self.changed.emit()
 
-    @staticmethod
-    def _writable(config: object, attr: str) -> bool:
-        """이 config에 실제로 있는 필드인가 — **없으면 쓰지 않는다**.
+    def _writable(
+        self, config: object, fld: SkillField | AgentField, attr: str,
+    ) -> bool:
+        """이 config에 써도 되는 필드인가 — **두 종류의 부재를 가른다**(원칙 5).
 
-        종류 전환(`convert_skill_kind`)은 config 객체를 통째로 바꾸므로, 전환
-        전에 만들어진 스테일 위젯이 뒤늦게 write-back하면 없는 필드가 유령
-        인스턴스 속성으로 생긴다. 유령이 생기면 "config에 없으면 자동 비수정"을
-        기대는 설계(MCP `set_component_field`의 `hasattr` 게이트, FIXED 필드
-        비노출)가 통째로 무력해지고, 저장 한 번에 조용히 사라진다(원칙 5).
+        ① **이 종류의 표에 없는 필드** = 스테일 위젯이다. 종류 전환
+           (`convert_skill_kind`)은 `__class__`와 config를 통째로 바꾸므로,
+           전환 전에 만들어진 폼이 뒤늦게 write-back할 수 있다. 조용히 버린다 —
+           유령 인스턴스 속성이 생기면 "config에 없으면 자동 비수정"을 기대는
+           설계(MCP `set_component_field`의 `hasattr` 게이트, FIXED 필드
+           비노출)가 무력해지고 저장 한 번에 조용히 사라진다.
+        ② **표에는 있는데 config에 없는 필드** = 모델 버그다. 표와 config가
+           서로 다른 사실을 말하는 것이라, 삼키면 "편집은 되는데 아무 일도
+           일어나지 않는 행"이 화면에 남는다. 이유를 말하고 죽는다 —
+           `tests/model/plugin/test_field_matrix.py`의 커버리지 테스트가 이
+           경우를 애초에 막으므로 실행 중에는 닿지 않는 길이다.
         """
-        return config is not None and hasattr(config, attr)
+        if config is None:
+            return False
+        if hasattr(config, attr):
+            return True
+        rule = self._rule_for(fld)
+        if rule is None or rule.visibility is FieldVisibility.FIXED:
+            return False  # ① 스테일 위젯 — 이 종류의 표에 없는 필드
+        raise AttributeError(  # ② 표와 config의 불일치
+            f"'{getattr(self._component, 'name', '?')}'"
+            f"({getattr(getattr(self._component, 'config', None), 'kind', '?')})의 "
+            f"프론트매터 표에는 {fld.value}가 있는데 config에는 '{attr}' 필드가 "
+            f"없습니다 — 표와 config가 다른 사실을 말합니다."
+        )
+
+    def _rule_for(self, fld: SkillField | AgentField) -> FieldRule | None:
+        """이 컴포넌트의 **현재** 표에서 이 필드의 규칙. 표가 없으면 None.
+
+        표를 고르는 규칙의 실체는 model의 `matrix_for` 하나다 — 여기서 따로
+        판정하지 않는다.
+        """
+        from daedalus.model.plugin.field_matrix import matrix_for
+
+        try:
+            return matrix_for(self._component).get(fld)
+        except ValueError:
+            return None
 
     def _build_component_action_row(self) -> None:
         """"미리보기" / "관련 경고" 버튼 행 (A9-1, A9-3).
@@ -703,7 +737,7 @@ class _FrontmatterPanel(QScrollArea):
         if attr is None or config is None:
             return
 
-        if not self._writable(config, attr):
+        if not self._writable(config, fld, attr):
             return
         setattr(config, attr, self._declared_default(config, attr, fld))
         self.changed.emit()

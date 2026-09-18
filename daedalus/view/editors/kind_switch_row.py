@@ -16,6 +16,13 @@ KIND_LABELS: dict[str, str] = {
     "async_fork": "비동기 fork 스킬로 전환",
 }
 
+#: 종류 → 명사형("동기 fork 스킬"). 라벨에서 **유도**한다 — 상태 문구와 버튼이
+#: 다른 어휘를 쓰면(예: 버튼은 "동기 fork 스킬로 전환", 상태는 "sync_fork로
+#: 전환됨") 같은 것을 가리키는지 사용자가 알 수 없다.
+KIND_NOUNS: dict[str, str] = {
+    kind: label.removesuffix("로 전환") for kind, label in KIND_LABELS.items()
+}
+
 _KIND_TOOLTIPS: dict[str, str] = {
     "procedural": "fork 에이전트 지정을 버립니다.",
     "sync_fork": "fork 스킬은 allowed_tools를 쓰지 않아 버립니다. 부른 쪽이 보고를 기다립니다.",
@@ -66,7 +73,7 @@ def _convert(panel, btn: QPushButton, target: str) -> None:
     result = convert_skill_kind(window, panel._component, target)
     dropped = ", ".join(result["dropped"])
     message = (
-        f"'{getattr(panel._component, 'name', '?')}' {target}로 전환됨"
+        f"'{getattr(panel._component, 'name', '?')}' {KIND_NOUNS[target]}로 전환됨"
         f"{f' ({dropped} 버림)' if dropped else ''} — 필드 구성이 갱신됐습니다 "
         f"(Ctrl+Z로 되돌릴 수 있습니다)"
     )

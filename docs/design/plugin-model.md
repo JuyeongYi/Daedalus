@@ -30,6 +30,8 @@ class FieldRule:
 
 `field_matrix.py`는 순수 모델(Qt 무관)이다. 편집 위젯 매핑은 view 측 `daedalus/view/editors/field_widgets.py`의 `FIELD_WIDGETS: dict[SkillField, type[QWidget]]`(1차원, kind 무관)과 `AGENT_FIELD_WIDGETS: dict[AgentField, type[QWidget]]`로 분리되어 있다. 프론트매터 키는 `SkillField.frontmatter_key` property가 제공한다 (kebab-case, `WHEN_TO_USE`는 None — description/본문 합류는 컴파일러 정책). `AgentField.frontmatter_key`는 **camelCase**(`permissionMode`/`disallowedTools`/`maxTurns`/`mcpServers`, WP-LA에서 확정) — 스킬 프론트매터의 kebab-case와 **규약이 다르므로 한쪽을 보고 다른 쪽을 유추하면 안 된다**. 이전에는 케이싱 미확정이라 kebab-case를 잠정값으로 썼는데, 그 키들은 CC가 인식하지 못해 조용히 무시된다(CC 공식 sub-agents 문서 필드 표 기준, 2026-08 확인). FIXED 필드는 편집기 비노출이며 `fixed_value`는 컴파일러 출력 시 강제(config에 미기록). `AGENT_FIELD_MATRIX`는 에이전트 전용 1차원 매트릭스.
 
+**표와 config는 같은 사실을 말한다 (2026-09-18).** 표에 있는 **비-FIXED** 필드는 그 종류의 config 클래스에 실제로 선언돼 있어야 한다 — 없으면 편집기가 위젯을 그려 주고 그 편집이 아무 데도 남지 않는 반면(유령 인스턴스 속성 → 저장 한 번에 소멸), MCP `list_component_fields`는 `hasattr`로 건너뛰어 **같은 종류에 대해 GUI와 MCP가 다른 필드 목록**을 말한다(원칙 1·2·5). `tests/model/plugin/test_field_matrix.py::test_every_editable_matrix_field_exists_on_the_config`가 전 종류를 전수 고정한다. 이 규칙으로 걸린 세 행(`declarative`/`reference`의 `shell`, `reference`의 `disable_model_invocation`)은 표에서 **삭제**했다 — 두 config는 그 필드를 선언한 적이 없고 직렬화도 그 키를 왕복하지 않는다(`ser.py`의 declarative/reference 분기).
+
 ## FieldType (통합 타입)
 
 ```python
@@ -143,7 +145,10 @@ CC는 **조용히 범용 에이전트로 돌렸다**. 그래서 fork를 **별도
 - **전환:** 절차형 ↔ fork는 명시 액션이다(편집기 버튼 `kind_switch_row`·캔버스 우클릭·MCP `convert_skill`, 실체
   `convert_skill_kind`). 객체를 새로 만들지 않고 `config`와 `__class__`를 바꾸는 `SetAttrCmd` 2개를
   `MacroCommand` **1 undo**로 묶는다 — 그래프 참조·본문 문서·열린 탭이 끊기지 않는다. 버린 값(fork로:
-  `allowed_tools`, 절차형으로: `agent`)은 `dropped`로 보고한다. 필드 구성은 탭을 닫았다 열면 바뀐다.
+  `allowed_tools`, 절차형으로: `agent`)은 `dropped`로 보고한다. 열려 있던 편집 탭의 프론트매터 폼과
+  레지스트리는 **같은 매크로 안에서** 다시 그린다(`view/commands/surface_commands.resync_bracket` 한 쌍을
+  매크로 양 끝에) — 재동기가 액션 함수에 있으면 undo에 걸리지 않아, 되돌린 뒤에도 전환 후의 표로 그려진
+  폼이 남고 그 편집을 스테일 가드가 조용히 버린다(2026-09-18).
 - **편집기·캔버스:** 구리색 `#c07a3a` 노드(🍴), 레지스트리 🍴 FORK 탭, AGENT 피커(`ForkAgentComboBox` — 후보 밖
   저장값도 보인다), 안내문 "도구는 fork 에이전트가, 모델·effort는 이 스킬 값이(비우면 fork 에이전트 값)".
 - 산출은 `compiler.md` 20번, 검증은 `validation.md`의 `fork_*` 규칙.

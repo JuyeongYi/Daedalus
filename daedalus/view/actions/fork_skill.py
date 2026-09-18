@@ -98,6 +98,7 @@ def convert_skill_kind(window, component, target: str) -> dict[str, Any]:
     from daedalus.model.plugin import skill as skill_mod
     from daedalus.view.commands.attr_commands import SetAttrCmd
     from daedalus.view.commands.base import MacroCommand
+    from daedalus.view.commands.surface_commands import resync_bracket
 
     current = skill_kind_of(component)
     if current is None:
@@ -140,17 +141,15 @@ def convert_skill_kind(window, component, target: str) -> dict[str, Any]:
             dropped[f.name] = list(value) if isinstance(value, list) else value
 
     name = component.name
+    # 열려 있던 편집 탭의 프론트매터 폼과 레지스트리는 **다른 종류의 표**로
+    # 그려진 스테일 위젯이다. 재동기를 액션에 두면 undo에는 걸리지 않으므로
+    # (되돌려도 전환 후의 폼이 남는다) 매크로 안에 넣는다 — 전환도 undo도
+    # 마지막에 확정된 상태를 다시 그린다.
+    head, tail = resync_bracket(window, component)
     window._project_vm.execute(MacroCommand([
+        head,
         SetAttrCmd(component, "config", new_cfg, label=f"'{name}' 설정 교체"),
         SetAttrCmd(component, "__class__", new_cls, label=f"'{name}' 종류 교체"),
+        tail,
     ], f"'{name}' {current} → {target} 전환"))
-    panel = getattr(window, "_registry_panel", None)
-    if panel is not None and getattr(window, "_project", None) is not None:
-        panel.set_project(window._project)
-    # 열려 있던 편집 탭의 프론트매터 폼은 **다른 종류의 표**로 그려진 스테일
-    # 위젯이다 — 종류마다 필드 구성이 다르다. 여기서 다시 만든다(버튼·캔버스
-    # 메뉴·MCP 어느 경로로 전환해도 같다).
-    rebuild = getattr(window, "rebuild_component_frontmatter", None)
-    if callable(rebuild):
-        rebuild(component)
     return {"changed": True, "old": current, "new": target, "dropped": dropped}

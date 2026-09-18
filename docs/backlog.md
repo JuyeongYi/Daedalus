@@ -772,14 +772,20 @@ Tier 2다. 출발점은 2026-05 조사(ClaudeManager가 만든 plain 셸 스크�
 
 ## 7. 코드 위생 — 800줄 초과 (1,200 상한은 테스트가 강제)
 
-| 파일 | 줄 |
+| 파일 | 줄 (2026-09-18 실측) |
 |------|-----|
-| `view/app.py` | 1,055 |
-| `compiler/project_compiler.py` | 1,010 |
-| `view/canvas/scene.py` | 986 |
+| `view/app.py` | 1,102 |
+| `view/canvas/scene.py` | 992 |
 | `view/widgets/markdown/editor.py` | 928 |
 | `view/editors/hook_panel.py` | 859 |
 | `cli/blackboard.py` | 851 |
+
+- **`view/app.py` 분해 후보 (2026-09-18 리뷰)** — WP-FK2에서 `rebuild_component_frontmatter`가
+  붙어 1,102줄이 됐다(1,200 상한까지 98줄). 봉합선은 **탭·편집기 수명주기**다 —
+  `_open_component` · `_close_tab` · `_sync_tab_titles` · `rebuild_component_frontmatter` ·
+  `open_component_ports`를 `view/tabs.py`(가칭)로 옮기면 한 덩어리로 빠진다(이동만·동작 불변,
+  WP-RF 관례). WP-F/WP-G에서 `app.py`에 더 넣기 전에 먼저 쪼갠다.
+  `compiler/project_compiler.py`는 WP-C의 `plan.py` 분해로 676줄이 되어 목록에서 빠졌다.
 
 ## 8. 테스트
 

@@ -16,13 +16,11 @@ from dataclasses import dataclass
 from typing import Any
 
 from daedalus.model.plugin.enums import (
-    AgentColor,
     AgentField,
     AgentIsolation,
     BuildTarget,
     FieldEmit,
     FieldVisibility,
-    MemoryScope,
     ModelType,
     PermissionMode,
     SkillField,
@@ -124,7 +122,10 @@ _DECLARATIVE: dict[SkillField, FieldRule] = {
     SkillField.MODEL:          FieldRule(R, default_value=ModelType.INHERIT),
     SkillField.EFFORT:         FieldRule(O),
     SkillField.ALLOWED_TOOLS:  FieldRule(O),
-    SkillField.SHELL:          FieldRule(D),
+    # SHELL은 없다 — `DeclarativeSkillConfig`에 `shell` 필드가 없고 직렬화도
+    # 그 키를 쓰지 않는다(ser.py의 declarative 분기). 표에만 있던 시절에는
+    # 편집기가 콤보박스를 그려 주고 그 값이 저장 한 번에 사라졌다(2026-09-18
+    # 리뷰). **표와 config는 같은 사실을 말한다** — 커버리지 테스트가 고정한다.
     SkillField.PATHS:          FieldRule(O),
     SkillField.HOOKS:          FieldRule(O),
     SkillField.DISABLE_MODEL:  FieldRule(O),
@@ -158,10 +159,12 @@ _REFERENCE: dict[SkillField, FieldRule] = {
     SkillField.MODEL:          FieldRule(R, default_value=ModelType.INHERIT),
     SkillField.EFFORT:         FieldRule(O),
     SkillField.ALLOWED_TOOLS:  FieldRule(D),
-    SkillField.SHELL:          FieldRule(D),
+    # SHELL·DISABLE_MODEL은 없다 — `ReferenceSkillConfig`는 둘 다 선언하지
+    # 않고(config.py) 직렬화도 `user_invocable`만 왕복한다(ser.py의 reference
+    # 분기). 표에만 있던 시절에는 편집기가 두 행을 그려 주고 그 편집이 저장
+    # 한 번에 사라졌다(2026-09-18 리뷰).
     SkillField.PATHS:          FieldRule(D),
     SkillField.HOOKS:          FieldRule(D),
-    SkillField.DISABLE_MODEL:  FieldRule(D),
     SkillField.USER_INVOCABLE: FieldRule(F, fixed_value=False),
 }
 
