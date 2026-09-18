@@ -7,8 +7,8 @@
 
 **모듈 배치(WP-RF-3d):** `model/validation/`은 패키지다 — `severity.py`(ValidationError·WARNING_RULES) /
 `machine_rules.py`(`_MachineRules` 믹스인 — 머신 수준 규칙 + `validate`/`_validate_machine` + SKIPPABLE_RULES) /
-`project_rules/`(**A6에서 다시 패키지로 분해** — `_ProjectRules`는 그룹 믹스인 8종(naming/tools/hooks/
-blackboard/body_variables/build_target/workflow/workspace)을 합성한 오케스트레이터이고, 공용 순회
+`project_rules/`(**A6에서 다시 패키지로 분해** — `_ProjectRules`는 그룹 믹스인 9종(naming/tools/hooks/
+blackboard/body_variables/build_target/workflow/fork/workspace)을 합성한 오케스트레이터이고, 공용 순회
 헬퍼는 `scan.py`의 **모듈 함수**가 실체다(그룹끼리 `_ProjectRules.<헬퍼>`로 부르면 파사드와 순환).
 파사드가 CC_BUILTIN_TOOLS·`_strip_markdown_code`·`_ProjectRules`를 그대로 재-export한다).
 `Validator`는 `__init__.py`가 두 믹스인을 상속해 합성한 클래스이며, `__init__`이 재-export 파사드라

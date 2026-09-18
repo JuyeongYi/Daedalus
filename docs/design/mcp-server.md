@@ -259,7 +259,7 @@
   만들기"와 공용이다. 거부는 **갈 곳을 말한다** — 참조 용도는 `place_reference`, declarative·
   transfer·fork_agent는 "배치되지 않는 종류". 용도 미정 랩핑 스킬은 **거부하지 않고** GUI와 같게
   usage를 `"state"`로 고정하고(캔버스는 물어서 고정한다) 고정+배치를 `MacroCommand` **1 undo**로
-  묶은 뒤 응답에 `usage_fixed: "state"`를 싣는다(사용자 확정 2026-09-18 — 오늘 되던 배치를 이유
+  묶은 뒤 응답에 `usage_fixed: "state"`를 싣는다(오케스트레이터 확정 2026-09-18 — 오늘 되던 배치를 이유
   없이 깨지 않는다).
 - **`connect_states`는 이 판정을 쓰지 않는다.** 도착이 에이전트인가는 `AgentDefinition`(워크플로
   에이전트)으로 판정한다 — 배치 판정으로 갈아끼우면 스킬 대상에도 True가 되어 **모든 스킬 간

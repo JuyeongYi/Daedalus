@@ -48,7 +48,7 @@ Daedalus 프로젝트는 빌드 타깃이 둘입니다. **마켓플레이스 플
 - `hooks`는 settings.json의 `hooks`와 같은 3단 구조(이벤트 → matcher 그룹 → 명령)로 나갑니다.
 - `mcpServers`는 서버 이름 목록입니다. `mcp_servers`에 적은 이름과 `tools`의 `mcp__<서버>__…`에서
   뽑은 이름을 합칩니다.
-- 마켓플레이스 빌드에서 에이전트 본문에 붙던 "요구 환경" 안내 단락은 로컬에서는 나오지 않습니다.
+- 마켓플레이스 빌드에서 에이전트 본문에 붙던 `## Requirements` 안내 단락은 로컬에서는 나오지 않습니다.
   프론트매터가 대신 말하기 때문입니다.
 
 **주의점.**
@@ -237,6 +237,8 @@ paths: ["src/**/*.ts", "lib/**"]
 │  ├─ rules/<규칙>.md
 │  ├─ CLAUDE.md                   ← 플러그인 구역만
 │  └─ settings.json (또는 settings.local.json)
+├─ guides/<플러그인>/workflow.md   ← 공통 안내 파일 (`.claude/` 밖입니다)
+├─ guides/<플러그인>/blackboard.md
 ├─ files/                         ← 공용 동봉 파일
 ├─ schemas/                       ← 블랙보드 스키마
 └─ hooks/scripts/                 ← 훅 스크립트

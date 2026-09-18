@@ -229,7 +229,7 @@ def _async_fork_targets(component, project) -> list[str]:
 
 
 def _async_fork_handoff_note(cli: str, names: list[str]) -> str:
-    """비동기 fork로 넘기는 갈래의 진행 기록 규약 (사용자 확정 2026-09-18, 1단계).
+    """비동기 fork로 넘기는 갈래의 진행 기록 규약 — 오케스트레이터 확정 (2026-09-18), 1단계.
 
     진행 파일은 플러그인당 항목이 하나뿐이라 "지금 도는 비동기 단계"를 적을 자리가
     없다. 그래서 넘기는 순간 `current`를 그 fork에게 주고 `note`로 기다리는 중임을
@@ -523,7 +523,7 @@ def compile_skill(
                 next_blocks = list(next_blocks)
                 note = _progress_update_note(project)
                 # 비동기 fork로 넘기는 갈래가 있으면 `current` 소유 규약을 덧붙인다
-                # (사용자 확정 2026-09-18 — fork 쪽 선행 조건과 짝을 이룬다).
+                # (오케스트레이터 확정 2026-09-18 — fork 쪽 선행 조건과 짝을 이룬다).
                 bg_targets = _async_fork_targets(skill, project)
                 if bg_targets:
                     note += "\n" + _async_fork_handoff_note(

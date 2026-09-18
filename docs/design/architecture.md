@@ -292,7 +292,7 @@ daedalus/
     ├── recent.py           # 최근 프로젝트 목록(WP-RP) — ~/.daedalus/recent.json 읽기/쓰기 (Qt 무관 순수 stdlib).
     │                       #   load/save/push/remove/clear + MAX_RECENT. 기록 실패는 삼킨다(endpoint.py와 같은 정책).
     │                       #   실존 검사는 하지 않는다 — 메뉴를 열 때마다 stat을 때리면 네트워크 드라이브에서 UI가 멈춘다.
-    ├── app.py              # 메인 윈도우 **골격** (WP-RF-3e 분해 후 ~910줄) — 탭·독·메뉴 배선 + 컴포넌트 편집 진입.
+    ├── app.py              # 메인 윈도우 **골격** (WP-RF-3e 분해 후 — 줄 수는 `docs/backlog.md` §7 표가 단일 진실) — 탭·독·메뉴 배선 + 컴포넌트 편집 진입.
     │                       #   나머지는 협력 객체 6종에 위임(Mixin 아님 — 상속으로 섞으면 이름 충돌과 self의 정체가 흐려진다):
     │                       #   session_io.py / compile_actions.py / launch_actions.py / validation_actions.py /
     │                       #   graph_io.py / component_actions.py (아래 각 항목).

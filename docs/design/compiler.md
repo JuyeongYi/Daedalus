@@ -18,7 +18,7 @@
 - `<out>/agents/<agent-name>.md` — 에이전트 **두 종류 모두**(워크플로 에이전트·fork 에이전트, `project.agents` 순회)
 - `<out>/guides/<플러그인>/workflow.md`·`blackboard.md` — **공통 안내 파일**(WP-FK2 C3, 정책 21번). 루트 직하·플러그인 네임스페이스·`files/` 밖. 포인터가 1개 이상 나갈 때만 산출한다(고아 파일 없음)
 
-**`build_target == LOCAL`(WP-TG/WP-MW)일 때 — 컴파일이 곧 설치:** out_dir는 스테이징이 아니라 대상 **작업 폴더**다. `<out>/.claude/skills/`·`<out>/.claude/agents/`(CC가 실제로 읽는 위치), `<out>/files/`·`<out>/schemas/`·`<out>/hooks/scripts/`(본문의 `${CLAUDE_PROJECT_DIR}/…` 참조 대상), `<out>/.mcp.json`·`<out>/.claude/settings.json` 또는 `settings.local.json`(컴파일 시 선택, 기본 `settings.json` — 생성/병합), `<out>/.claude/rules/<이름>.md`와 `<out>/.claude/CLAUDE.md`의 플러그인 구역(WP-WD). `plugin.json`·`hooks/hooks.json`·설치 스크립트는 만들지 않는다. 상세는 컴파일 정책 15번 항목 참조.
+**`build_target == LOCAL`(WP-TG/WP-MW)일 때 — 컴파일이 곧 설치:** out_dir는 스테이징이 아니라 대상 **작업 폴더**다. `<out>/.claude/skills/`·`<out>/.claude/agents/`(CC가 실제로 읽는 위치), `<out>/files/`·`<out>/schemas/`·`<out>/hooks/scripts/`(본문의 `${CLAUDE_PROJECT_DIR}/…` 참조 대상), `<out>/.mcp.json`·`<out>/.claude/settings.json` 또는 `settings.local.json`(컴파일 시 선택, 기본 `settings.json` — 생성/병합), `<out>/.claude/rules/<이름>.md`와 `<out>/.claude/CLAUDE.md`의 플러그인 구역(WP-WD), `<out>/guides/<플러그인>/workflow.md`·`blackboard.md`(공통 안내 파일 — 두 빌드 타깃 공통, 정책 21번). `plugin.json`·`hooks/hooks.json`·설치 스크립트는 만들지 않는다. 상세는 컴파일 정책 15번 항목 참조.
 
 **컴파일 정책 (확정):**
 1. **프론트매터**: 해당 kind 매트릭스에서 `emit==FRONTMATTER`인 필드만. 표를 고르는 것은 `matrix_for(component)`(`component.config.kind` — 모델의 단일 진실). 키는 `frontmatter_key`(kebab-case).
@@ -39,11 +39,11 @@
     ③ **`transfer_skill_reused`는 특별 규칙이 아니다** — 하나의 상태가 두 자리에 동시에 있을 수 없다는 점에서 `no_duplicate_skill_ref`와 **같은 논리**다. 규칙 메시지가 그 논리와 대안(같은 지침이 여러 전이에 필요하면 Declarative 스킬로 만들어 각 전이 스킬이 참조)을 함께 담는다.
     ④ **진행 기록 정합:** TransferSkill의 "## Progress Record"는 "You are a step on the transition itself, not a position in the workflow: leave `current` … record what happened … in `note`"라고 못 박는다. `current`의 단위는 **플러그인 FSM(프로젝트 그래프 배치)의 위치**인데(WP-RS) T는 배치가 아니라 엣지 위의 단계이므로 `current`를 소유하지 않는다 — 출발 스킬이 "set `current` to the next target"이라 말하는 것과 이 지시가 정확히 짝을 이룬다(T가 자기를 `current`에 쓰면 두 지시가 충돌한다).
 
-6-b. **다음 단계 (project.graph 기반)**: `compile_skill(skill, project=...)`이 `project.graph`에서 그 스킬 placement(skill_ref identity 일치)의 outgoing 전이를 모아 SKILL.md 본문 끝에 **"## 다음 단계"** 단락을 배출한다(버그 2 — 인보크/전이 문구 누락 해소). 형식: 스킬 타깃은 `- [<조건>] → \`<skill>\` 스킬을 인보크하라`, 에이전트 타깃은 `에이전트 \`X\`에게 위임하라` + **그 에이전트 placement의 outgoing을 한 단계 인라인**("위임 완료 후: [조건] → \`C\` 스킬을 인보크하라" — 에이전트는 별도 컨텍스트라 자기 .md에 호출자 지침을 담을 수 없으므로 호출자 스킬 쪽에 후속 지시를 둔다). 조건은 `_transition_condition`(트리거+가드) 재사용, 무가드·무트리거 전이는 "무조건". outgoing 0개면 단락 생략. **에이전트 .md에는 다음 단계 단락 없음**(스킬 + project 인수 있을 때만). EntryPoint outgoing(시작 스킬)은 v1에서 스킬별 단락에 영향 없음.
+6-b. **다음 단계 (project.graph 기반)**: `compile_skill(skill, project=...)`이 `project.graph`에서 그 스킬 placement(skill_ref identity 일치)의 outgoing 전이를 모아 SKILL.md 본문 끝에 **`## Next Steps`** 단락을 배출한다(버그 2 — 인보크/전이 문구 누락 해소). 형식(산출은 영어 — A12): 스킬 타깃은 ``- [<조건>] → invoke skill `<skill>` ``, 에이전트 타깃은 ``delegate to agent `X` `` + **그 에이전트 placement의 outgoing을 한 단계 인라인**(``after the agent returns: [<조건>] → invoke skill `C` `` — 에이전트는 별도 컨텍스트라 자기 .md에 호출자 지침을 담을 수 없으므로 호출자 스킬 쪽에 후속 지시를 둔다). 조건은 `_transition_condition`(트리거+가드) 재사용, 무가드·무트리거 전이는 `always`. outgoing 0개면 단락 생략. **에이전트 .md에는 다음 단계 단락 없음**(스킬 + project 인수 있을 때만). EntryPoint outgoing(시작 스킬)은 v1에서 스킬별 단락에 영향 없음.
 7. **에이전트**: `emit==FRONTMATTER`만 프론트매터,
-   SETTINGS(hooks/mcp_servers)는 **MARKETPLACE 빌드에서만** "요구 환경" 언급으로 나간다. `config.tools`의 `mcp__<server>__` 접두에서
-   추출한 서버 이름(WP-TM, 11번 항목과 동일 규칙)도 `mcp_servers` 선언과 합쳐(중복 제거·이름순) 같은 "MCP 서버 연결" 줄에 담는다 — 별도 단락을 추가하지 않는다.
-   **LOCAL 빌드는 이 둘을 프론트매터로 실제 배출한다(WP-LA, 16번 항목)** — 그때는 "요구 환경" 단락을 내지 않는다(같은 사실을 두 번 말하는 데다 "설정 파일을 생성하지 않음" 문구가 거짓이 된다).
+   SETTINGS(hooks/mcp_servers)는 **MARKETPLACE 빌드에서만** `## Requirements` 언급으로 나간다. `config.tools`의 `mcp__<server>__` 접두에서
+   추출한 서버 이름(WP-TM, 11번 항목과 동일 규칙)도 `mcp_servers` 선언과 합쳐(중복 제거·이름순) 같은 `MCP servers connected: …` 줄에 담는다 — 별도 단락을 추가하지 않는다.
+   **LOCAL 빌드는 이 둘을 프론트매터로 실제 배출한다(WP-LA, 16번 항목)** — 그때는 `## Requirements` 단락을 내지 않는다(같은 사실을 두 번 말하는 데다 "설정 파일을 생성하지 않음" 문구가 거짓이 된다).
    프론트매터 매트릭스는 **종류가 고른다** — `matrix_for(agent)`가 `agent.config.kind`(`"agent"`/`"fork_agent"`)로 `AGENT_FIELD_MATRIX`의 표를 고르고,
    그 표에 없는 필드는 **부재 = 비적용**으로 건너뛴다(스킬 프론트매터와 같은 규약). fork 에이전트 표에는 `background`·`isolation` 행이 없어 그 두 키가 나오지 않는다.
    **`FieldEmit.INVOCATION`을 쓰는 필드는 하나도 없다** — WP-FF에서 `max_turns`/`background`/`isolation`이 프론트매터로 올라가면서
@@ -73,7 +73,7 @@
     **return이 셋이다** — ① 블랙보드 `class_definitions`가 0개 ② 접근 선언(자체 FSM 재귀 + 그래프 placement의 reads/writes) 합집합이 비었다 → **둘 다 단락 자체를 생략**한다(가이드가 이미 전부 말하고 있어 덧붙일 고유 정보가 없다) ③ 본문. 예전의 "합집합이 비면 전 클래스 일반 안내" 폴백은 없어졌다.
     `component`는 **필수 위치 인자**다 — 기본값 None을 남기면 "컴포넌트를 빠뜨린 호출 = 단락이 통째로 사라짐"이 아무 말 없이 성립한다(원칙 5).
     CLI 명령·옵션 이름이 `daedalus/cli/blackboard.py`의 실제 파서와 일치하는지는 이제 `tests/compiler/test_guides.py`가 문자열 일치로 고정한다(cli는 model/emit을 임포트할 수 없어 상수 공유 대신 테스트로 드리프트를 막는다).
-11. **요구 환경 자동 언급 (WP-TM)**: `_mcp_servers_from_tools(tools)`가 도구 문자열 목록에서 `mcp__<server>__` 접두의 서버 이름 집합을 추출한다(이름순 정렬 — 결정적). 스킬은 `skill.config.allowed_tools`를 스캔해 서버가 있으면(local 여부·project 인수 여부와 무관) "다음 단계" 단락 앞에 신규 "## 요구 환경" 단락(`_mcp_requirement_section_skill`)을 배출한다(없으면 단락 생략). 에이전트는 `config.tools`에서 추출한 서버를 기존 SETTINGS "요구 환경" 단락(`_settings_note_agent`, 7번 항목)의 `mcp_servers` 선언과 합쳐 하나의 "MCP 서버 연결" 줄로 병합한다(중복 없음).
+11. **`## Requirements` 자동 언급 (WP-TM)**: `_mcp_servers_from_tools(tools)`가 도구 문자열 목록에서 `mcp__<server>__` 접두의 서버 이름 집합을 추출한다(이름순 정렬 — 결정적). 스킬은 `skill.config.allowed_tools`를 스캔해 서버가 있으면(local 여부·project 인수 여부와 무관) `## Next Steps` 단락 앞에 신규 `## Requirements` 단락(`_mcp_requirement_section_skill`)을 배출한다(없으면 단락 생략). 에이전트는 `config.tools`에서 추출한 서버를 기존 SETTINGS `## Requirements` 단락(`_settings_note_agent`, 7번 항목)의 `mcp_servers` 선언과 합쳐 하나의 `MCP servers connected: …` 줄로 병합한다(중복 없음).
 12. **작업 재개 (WP-RS / WP-FK2 C3)** — 저장 단위는 **플러그인 FSM(프로젝트 그래프 배치)의 위치**다(스킬 내부 FSM 상태는 다루지 않음 — 사용자 확정 설계). 규약 파일 `state/__progress__.json` — **최상위 키가 플러그인 이름**이고 그 아래에 항목(`current`/`completed`/`note`/`prev`/`updated`)이 온다(WP-NS/D13. `prev`는 WP-IC에서 추가된 직전 출처 스킬 이름). 파일은 `state/` 루트에 **하나로 남는다** — 블랙보드가 `state/<플러그인>/`로 갈라지는 것과 다른 이유는, 워크스페이스 전체를 한눈에 보는 것이 이 파일의 목적이고 스키마 밖 규약 파일이라 클래스 순회 대상도 아니기 때문이다. **갱신은 `daedalus-bb progress` 서브커맨드가 전담한다** — 공유 파일의 병합을 산문으로 시키면 모델이 한 번만 놓쳐도 남의 진행 기록이 통째로 사라진다.
     **규약의 산문(파일 구조·옵션 전부·exit 3의 뜻·수동 폴백·`note`에 갈래를 적는 이유·전이 스킬이 `current`를 소유하지 않는다는 규칙)은 워크플로 가이드 2절로 갔다**(정책 21번). 컴포넌트 산출에 남는 것은 **그 컴포넌트의 이름이 들어가는 줄**뿐이다.
     - **재개 프리앰블**: 프로젝트 그래프에 배치된 `ProceduralSkill`·`DeclarativeSkill`·state 용도 `WrappedSkill`(미배치·에이전트 .md 제외, **fork 2종 제외** — 서브에이전트는 재개 판단을 하지 않는다, 정책 20번)에 한해 `_resume_preamble_section`이 프론트매터·포인터 직후·본문 앞에 "## Resuming Work"를 배출한다. 잔여는 두 문장이다: `Run <cli> read first; this skill is <name>. Follow the resume rules in the workflow guide.` + `If it exits 3 (no entry for this plugin yet), this invocation is the start: <cli> set --current <name>.` **exit 3의 조건절을 잔여에 남긴다** — 조건을 떼고 명령만 남기면 가이드 3절의 일반형("항목이 없으면 지금 불린 스킬이 시작점이다")과 워크플로 중간 스킬의 `--current <나>` 기록이 충돌한다. placement 판정은 "Next Steps"(6-b번)와 같은 `_graph_placements`(skill_ref identity)를 공유한다.
@@ -102,7 +102,7 @@
       라이브러리에 없는 이름은 조용히 빠진다(`dangling_hook_ref`가 따로 짚는다). flow-style로는 표현할 수 없어
       `_yaml_block_lines`(제한된 블록 YAML 렌더러 — dict/list/스칼라만, 스칼라 표기는 `_yaml_scalar` 재사용)를 쓴다.
     - `mcpServers`는 **이름 참조 리스트**다(`- github`). 목록은 `_agent_mcp_server_names` = `config.mcp_servers`
-      선언 ∪ `config.tools`의 `mcp__<server>__` 추출(이름순) — "요구 환경" 단락과 같은 합집합 규칙이라 본문과
+      선언 ∪ `config.tools`의 `mcp__<server>__` 추출(이름순) — `## Requirements` 단락과 같은 합집합 규칙이라 본문과
       프론트매터가 서로 다른 목록을 말하지 않는다. 인라인 서버 정의는 모델에 서버 설정 자체가 없어 범위 밖.
     - `permissionMode`는 매트릭스가 이미 프론트매터로 내보내므로 별도 처리하지 않는다. 대신 마켓플레이스에서
       무시된다는 사실은 `unsupported_agent_field_in_marketplace_build` 경고가 알린다(MCP는
@@ -188,7 +188,7 @@
       스케줄 작업 발화에서는 **강제로 인라인 실행**된다(공식 문서 2026-09-17 확인). 단정하면 인라인으로 돌아온 경우
       메인이 오지 않을 작업 알림을 기다린다. 그래서 두 경로를 다 말하고("normally … as a task notification (… it is
       delivered inline instead)") 지시는 하나로 준다("do not start the next step and do not update the progress file").
-    - **비동기 fork가 도는 동안의 `current` 소유 — 3단 규약 (사용자 확정 2026-09-18).** 진행 파일은 플러그인당
+    - **비동기 fork가 도는 동안의 `current` 소유 — 3단 규약 — 오케스트레이터 확정 (2026-09-18).** 진행 파일은 플러그인당
       항목이 하나라 "지금 도는 비동기 단계"를 적을 자리가 없다. ① **호출자**는 비동기 fork로 넘기는 갈래가 있으면
       "## Next Steps" 진행 명령 뒤에 `--current <that fork> --note "awaiting background fork"` 규약 1줄을 받는다
       (`_async_fork_handoff_note`). ② **비동기 fork의 "## Report"**는 진행 명령 **앞에** 선행 조건 1줄을 둔다 —
