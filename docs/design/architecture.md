@@ -73,6 +73,58 @@ python -m tests.data.golden.regen --refresh-dogfood   # 동결 사본 자체를 
 경로·정렬은 전부 정규화돼 있어(out_dir 기준 상대 POSIX 문자열, 키 정렬) 실행·플랫폼
 간 결정적이다.
 
+### 래칫 — 숫자는 내려가기만 한다
+
+세 테스트가 소스 AST를 훑어 "종류 분기가 몇 군데인가"를 센다. **기준선은 이
+저장소에서 실측한 값**이고(명세의 숫자를 베끼지 않았다) 각 리팩토링 WP는 그 수를
+**내리기만** 한다 — 올리는 커밋은 리뷰가 거부한다. 기준선이 실측보다 크게 남아
+있어도 실패한다(래칫은 조여야 의미가 있다).
+
+| 테스트 · 표 | 세는 것 | 2026-09-19 실측 |
+|---|---|---|
+| `tests/test_polymorphism_ratchet.py` `RATCHET` ① | 컴포넌트/설정 클래스 29종을 두 번째 인자로 갖는 `isinstance` | **111 사이트 / 34 파일** |
+| 〃 ② | 컴포넌트 형상 속성 12종(`config`/`body`/`fsm`/`transfer_on`/`call_agents`/`when_to_use`/`usage`/`enabled`/`reference_placements`/`source`/`output_events`/`output_event_defs`)을 문자열로 묻는 `getattr`/`hasattr`. 첫 인자가 `project`/`cfg`/`config`/`doc`이면 제외(컴포넌트 형상이 아니다) | **123 사이트 / 41 파일** |
+| `tests/test_kind_literals.py` `RATCHET` ① | 컴포넌트 kind 16종이 `Compare` 피연산자·`dict` 키·`set`/`tuple`/`list` 원소로 쓰인 자리. 허용 파일 `model/serialize/migrate.py`(구버전 파일 문자열 해석이 정본)는 세지 않는다 | **157 사이트 / 26 파일** |
+| 〃 ② plan kind | plan kind 14종. `agent`/`skill`이 컴포넌트 어휘와 겹치므로 `compiler/**`·`mcp/tools/query.py`에서만 센다. 최종 소유자는 WP-5가 신설할 `compiler/plan_kinds.py` 하나 | **22 사이트 / 3 파일** |
+
+측정의 정직성: 짧은 kind 이름은 다른 어휘와 충돌한다 — `"agent"`는 훅 핸들러
+종류·변수 컨텍스트·plan kind이기도 하고 `"reference"`는 랩핑 스킬의 `usage` 값
+이기도 하다. 기준선에는 그런 자리도 섞여 있다. 래칫은 내려가기만 하면 되므로
+섞임이 계약을 약하게 할 뿐 틀리게 하지는 않는다 — 숫자를 줄이는 WP가 실제 자리를
+보고 판단한다. 면제는 줄 번호가 아니라 **`module::qualname`**으로 적는다(위아래
+편집만으로 면제가 엉뚱한 자리로 미끄러지지 않도록). 오늘 면제는 0건이고, 사라진
+자리를 면제가 붙잡고 있으면 테스트가 제거를 강제한다.
+
+### 죽은 코드 게이트 (`tests/test_dead_code.py`)
+
+`test_code_hygiene.py`(파일 크기 상한)·`test_import_contracts.py`(경계 계약)와
+같은 결의 AST 소스 스캔이다. 앱을 임포트하지 않는다(헤드리스 안전).
+
+- **규칙 A** — `daedalus/` 안 모든 최상위 `def`/`class`/모듈 레벨 상수와, 외부
+  프레임워크를 상속하지 **않는** 클래스의 공개 메서드는 소비자가 있어야 한다.
+- **규칙 B** — WP-RF 분해 파사드가 재-export하는 이름 중 **핀 목록(분해 시점
+  스냅샷)에 없으면서** 소비자도 0인 것이 있으면 실패. 스냅샷은 기록이지 늘어나는
+  레지스트리가 아니다.
+
+참조로 치는 것: `ast.Name` · `ast.Attribute.attr` · import 별칭 · **문자열 상수**.
+마지막이 중요하다 — MCP 도구 76종은 `mcp/service.py`의 `TOOL_NAMES` 문자열
+튜플에서 `getattr`로 디스패치되고, `tests/compiler/test_purity.py`는 소스 문자열
+안에서 임포트한다. 문자열을 참조로 세지 않으면 이 전부가 오탐이 된다.
+
+자동 면제: dunder, 그리고 **외부 기저 클래스를 (간접적으로도) 상속한 클래스의
+메서드** — Qt override(`paint`/`*Event`/`sizeHint`)가 여기 해당한다. 기저가 같은
+이름을 정의하는지 알려면 PySide6를 임포트해야 하고 그건 헤드리스 계약을 깨므로,
+기저를 소스에서 열거할 수 없는 클래스의 메서드는 전부 면제한다(보수적이지만
+조용한 오탐보다 낫다).
+
+`ALLOWLIST`는 `{심볼: (범주, 사유)}`이고 사유가 비면 실패한다. 범주 5종:
+`framework-hook` · `entry-point` · `test-seam` · `contract-registry` ·
+`facade-snapshot`. 오늘 등재는 셋뿐이다 — `COMPILER_ERROR_RULES`(게이트 rule
+등급의 단일 진실, `test_gate.py`가 등가성을 양방향 강제) · `hook_to_json`(전역 훅
+파일 포맷의 쓰기 반쪽, 네 테스트 모듈의 fixture 작성기) ·
+`BodyDocumentRegistry.sync_from_model`(`editor.md:80`이 지정한 유일한 인가 경로).
+목록은 **줄어들기만 한다** — 살아난 심볼을 붙잡고 있으면 테스트가 제거를 강제한다.
+
 ## 파일 단위 모듈 지도 (원문)
 
 **컴파일러 패턴:** 순수 모델(model/) → 컴파일러(compiler/) → 플러그인 파일

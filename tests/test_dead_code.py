@@ -1,0 +1,354 @@
+# tests/test_dead_code.py
+"""죽은 코드 재발 방지 (DEADCODE.md §5.1 — 규칙 A·B).
+
+`tests/test_code_hygiene.py`(파일 크기 상한)·`tests/test_import_contracts.py`
+(경계 계약)와 같은 결의 **AST 기반 소스 스캔**이다. 파일시스템만 읽고 앱을
+임포트하지 않는다 — 헤드리스 안전이고, 함수 안 지연 임포트도 놓치지 않는다.
+
+**규칙 A — 소비자 없는 심볼은 없다.**
+  `daedalus/` 안 모든 최상위 `def`/`class`/모듈 레벨 상수(언더스코어 포함)와,
+  **외부 프레임워크를 상속하지 않는** 클래스의 공개 메서드는 `daedalus/`
+  어딘가에서 이름으로 참조되거나 allowlist에 **사유와 함께** 등재돼야 한다.
+
+**규칙 B — 파사드 핀 목록은 소비자 0인 이름을 새로 담지 않는다.**
+  WP-RF 분해 파사드가 재-export하는 이름 중 **분해 시점 스냅샷(핀 목록)에
+  없으면서** `daedalus/` 안 소비자도 0인 것이 있으면 실패한다. 스냅샷은 분해
+  시점의 기록이지 늘어나는 레지스트리가 아니다 — 분해 이후 추가된 이름은
+  실소비자가 생길 때만 파사드에 오른다.
+
+**참조로 치는 것**(정적 트레이스의 알려진 구멍을 메운다):
+  `ast.Name` · `ast.Attribute.attr` · import 별칭 · **문자열 상수**.
+  마지막 항목이 중요하다 — MCP 도구 76종은 `mcp/service.py`의 `TOOL_NAMES`
+  문자열 튜플에서 `getattr`로 디스패치되고, `test_purity.py`는 소스 문자열
+  안에서 임포트한다(DEADCODE §2.10이 짚은 오탐의 원인).
+
+**자동 면제**(allowlist를 짧게 유지한다):
+  - dunder(`__init__` 등)
+  - 외부 기저 클래스를 (간접적으로도) 상속한 클래스의 메서드 — Qt override
+    (`paint`/`*Event`/`sizeHint`)가 여기 해당한다. 기저가 같은 이름을
+    정의하는지 알려면 PySide6를 임포트해야 하는데, 그건 이 테스트의 헤드리스
+    계약을 깬다. 그래서 **기저를 열거할 수 없는 클래스의 메서드는 전부 면제**
+    한다(보수적이지만 조용한 오탐보다 낫다).
+
+allowlist는 `{심볼: (범주, 사유)}`이고 사유가 비면 실패한다. 범주 5종은
+DEADCODE.md §5.1이 정한 것이다.
+"""
+from __future__ import annotations
+
+import ast
+from pathlib import Path
+
+_REPO = Path(__file__).resolve().parent.parent
+_SRC = _REPO / "daedalus"
+_TESTS = _REPO / "tests"
+
+#: allowlist 범주 (DEADCODE.md §5.1).
+CATEGORIES: frozenset[str] = frozenset({
+    "framework-hook",     # 프레임워크가 디스패치한다 (Qt override 등)
+    "entry-point",        # 프로세스/CLI 진입점
+    "test-seam",          # 선언된 테스트 봉합선
+    "contract-registry",  # 테스트가 등가성을 강제하는 선언 레지스트리
+    "facade-snapshot",    # WP-RF 분해 스냅샷의 재-export
+})
+
+#: 심볼 → (범주, 사유). **줄어들기만 한다** — 지우면 그 심볼이 되살아난다.
+ALLOWLIST: dict[str, tuple[str, str]] = {
+    "compiler.project_compiler::COMPILER_ERROR_RULES": (
+        "contract-registry",
+        "컴파일 게이트 rule 등급의 단일 진실. tests/compiler/test_gate.py가 "
+        "'발급 rule == 이 집합' + 'WARNING_RULES와 교집합 없음'을 양방향으로 "
+        "강제한다 — 새 게이트 규칙이 경고 등급으로 조용히 실리는 것을 막는 "
+        "유일한 장치라 프로덕션 소비자가 없어도 살아 있다.",
+    ),
+    "model.plugin.hook_store::hook_to_json": (
+        "test-seam",
+        "전역 훅 파일 포맷의 **쓰기 반쪽**. 세 기능의 온디스크 fixture 작성기다"
+        "(test_hook_store / test_mcp_gaps / test_hook_panel_global). 지우면 "
+        "네 곳이 _ser_hook 모양을 손으로 재현해 포맷 지식이 흩어진다(원칙 1). "
+        "전역 훅을 저장하는 GUI·MCP 표면 자체가 없는 것이 진짜 공백이고, "
+        "그건 docs/backlog.md 항목이다.",
+    ),
+    "view.editors.body_documents::BodyDocumentRegistry.sync_from_model": (
+        "test-seam",
+        "editor.md:80이 지정한 **유일한 인가 경로** — 모델 body가 에디터 밖에서 "
+        "바뀐 경우의 갱신 수단. 오늘은 모든 쓰기가 QTextDocument를 통과해 "
+        "staleness가 없어 호출자도 없다. 지우면 첫 외부 변경 경로에서 조용한 "
+        "staleness 버그가 난다(DEADCODE §2.7). backlog에 배선 조건과 함께 등재.",
+    ),
+}
+
+#: 파사드 → 핀 목록이 사는 테스트 파일과 변수 이름 (규칙 B).
+FACADE_PINS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
+    ("compiler/emit/__init__.py", "compiler/test_emit_facade.py", ("_PRE_SPLIT_ATTRS",)),
+    ("model/serialize/__init__.py", "model/test_serialize_facade.py", ("_PRE_SPLIT_ATTRS",)),
+    ("model/validation/__init__.py", "model/test_validation_facade.py", ("_PRE_SPLIT_ATTRS",)),
+    ("mcp/tools/__init__.py", "mcp/test_tools_facade.py", ("_PRE_SPLIT_MODULE_ATTRS",)),
+    ("view/widgets/markdown_editor.py", "view/widgets/test_markdown_package.py",
+     ("_FACADE_NAMES",)),
+)
+
+
+# ─────────────────────────── 소스 인덱스 ───────────────────────────
+
+def _module_name(path: Path) -> str:
+    return path.relative_to(_SRC).with_suffix("").as_posix().replace("/", ".")
+
+
+def _source_files() -> list[Path]:
+    return sorted(_SRC.rglob("*.py"))
+
+
+def _module_level_target_ids(tree: ast.Module) -> set[int]:
+    """모듈 레벨 대입의 **좌변** Name 노드 — 정의는 참조가 아니다."""
+    out: set[int] = set()
+    for node in tree.body:
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name):
+                    out.add(id(target))
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            out.add(id(node.target))
+    return out
+
+
+def _referenced_names(
+    trees: dict[Path, ast.Module], *, ignore_imports_in: Path | None = None
+) -> set[str]:
+    """이름 참조 집합.
+
+    ``ignore_imports_in``: 그 파일의 **import 별칭만** 참조로 치지 않는다
+    (규칙 B — 파사드의 재-export 줄 자신이 그 이름을 살려 주면 안 된다).
+    같은 파일의 다른 사용(예: `DaedalusTools`의 기저 클래스 자리)은 그대로
+    참조로 센다.
+    """
+    names: set[str] = set()
+    for path, tree in trees.items():
+        skip = _module_level_target_ids(tree)
+        skip_imports = ignore_imports_in is not None and path == ignore_imports_in
+        for node in ast.walk(tree):
+            if skip_imports and isinstance(node, (ast.Import, ast.ImportFrom)):
+                continue
+            if isinstance(node, ast.Name):
+                if id(node) not in skip:
+                    names.add(node.id)
+            elif isinstance(node, ast.Attribute):
+                names.add(node.attr)
+            elif isinstance(node, ast.ImportFrom):
+                for alias in node.names:
+                    names.add(alias.name)
+                    if alias.asname:
+                        names.add(alias.asname)
+            elif isinstance(node, ast.Import):
+                for alias in node.names:
+                    names.add(alias.name.rsplit(".", 1)[-1])
+                    if alias.asname:
+                        names.add(alias.asname)
+            elif isinstance(node, ast.Constant) and isinstance(node.value, str):
+                names.add(node.value)
+    return names
+
+
+def _class_index(trees: dict[Path, ast.Module]) -> dict[str, list[ast.ClassDef]]:
+    index: dict[str, list[ast.ClassDef]] = {}
+    for tree in trees.values():
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ClassDef):
+                index.setdefault(node.name, []).append(node)
+    return index
+
+
+_PURE_BASES = frozenset({"ABC", "object", "Protocol", "Generic"})
+
+
+def _base_names(klass: ast.ClassDef) -> list[str]:
+    out: list[str] = []
+    for base in klass.bases:
+        if isinstance(base, ast.Name):
+            out.append(base.id)
+        elif isinstance(base, ast.Attribute):
+            out.append(base.attr)
+    return out
+
+
+def _has_external_base(
+    klass: ast.ClassDef, index: dict[str, list[ast.ClassDef]], seen: set[int] | None = None
+) -> bool:
+    """기저를 소스에서 열거할 수 없으면 True — 그 클래스의 메서드는 면제 대상."""
+    seen = seen if seen is not None else set()
+    if id(klass) in seen:
+        return False
+    seen.add(id(klass))
+    for name in _base_names(klass):
+        if name in _PURE_BASES:
+            continue
+        if name not in index:
+            return True
+        for base in index[name]:
+            if _has_external_base(base, index, seen):
+                return True
+    return False
+
+
+def _parse_all() -> dict[Path, ast.Module]:
+    return {
+        path: ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for path in _source_files()
+    }
+
+
+def scan_unreferenced() -> list[str]:
+    """`<모듈>::<심볼>` 형식의 소비자 0 심볼 목록 (allowlist 적용 전)."""
+    trees = _parse_all()
+    referenced = _referenced_names(trees)
+    index = _class_index(trees)
+    dead: list[str] = []
+    for path, tree in trees.items():
+        module = _module_name(path)
+        for node in tree.body:
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                if node.name not in referenced:
+                    dead.append(f"{module}::{node.name}")
+            elif isinstance(node, ast.Assign):
+                for target in node.targets:
+                    if (
+                        isinstance(target, ast.Name)
+                        and not target.id.startswith("__")
+                        and target.id not in referenced
+                    ):
+                        dead.append(f"{module}::{target.id}")
+            elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+                if not node.target.id.startswith("__") and node.target.id not in referenced:
+                    dead.append(f"{module}::{node.target.id}")
+        for klass in ast.walk(tree):
+            if not isinstance(klass, ast.ClassDef):
+                continue
+            if _has_external_base(klass, index):
+                continue  # 자동 면제 — 기저(Qt 등)가 같은 이름을 정의할 수 있다
+            for member in klass.body:
+                if not isinstance(member, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    continue
+                if member.name.startswith("__"):
+                    continue
+                if member.name not in referenced:
+                    dead.append(f"{module}::{klass.name}.{member.name}")
+    return sorted(dead)
+
+
+# ─────────────────────────── 규칙 A ───────────────────────────
+
+def test_rule_a_every_symbol_has_a_consumer():
+    offenders = [s for s in scan_unreferenced() if s not in ALLOWLIST]
+    assert not offenders, (
+        "소비자 없음 — 지우거나 ALLOWLIST에 범주와 사유를 적어 등재하라:\n"
+        + "\n".join(f"  {s}" for s in offenders)
+    )
+
+
+def test_allowlist_entries_are_still_dead():
+    """살아난 심볼을 allowlist가 붙잡고 있지 않은지 — 목록은 줄어들기만 한다."""
+    dead = set(scan_unreferenced())
+    stale = sorted(set(ALLOWLIST) - dead)
+    assert not stale, (
+        "allowlist가 이미 소비자를 가진 심볼을 붙잡고 있다 — 목록에서 빼라:\n"
+        + "\n".join(f"  {s}" for s in stale)
+    )
+
+
+def test_allowlist_entries_carry_a_category_and_reason():
+    for symbol, entry in ALLOWLIST.items():
+        category, reason = entry
+        assert category in CATEGORIES, f"{symbol}: 알 수 없는 범주 {category!r}"
+        assert reason.strip(), f"{symbol}: 사유가 비었다"
+        assert len(reason.strip()) >= 20, f"{symbol}: 사유가 너무 짧다 — 왜 남는지 적어라"
+
+
+def test_scanner_finds_the_known_survivors():
+    """스캐너가 조용히 0을 세지 않는지 — 오늘 알려진 생존자를 실제로 짚는다."""
+    dead = set(scan_unreferenced())
+    assert "compiler.project_compiler::COMPILER_ERROR_RULES" in dead
+    assert "model.plugin.hook_store::hook_to_json" in dead
+
+
+def test_string_constants_count_as_references():
+    """문자열 디스패치를 참조로 세는지 — 안 세면 MCP 도구 76종이 전부 오탐이 된다."""
+    dead = set(scan_unreferenced())
+    assert "mcp.tools.canvas::CanvasTools.place_component" not in dead
+    assert "mcp.tools.query::QueryTools.compile_check" not in dead
+
+
+def test_qt_override_auto_exemption_is_active():
+    """외부 기저 상속 클래스의 메서드가 자동 면제되는지 (Qt override)."""
+    dead = set(scan_unreferenced())
+    assert not [s for s in dead if s.endswith(".paint")], sorted(
+        s for s in dead if s.endswith(".paint")
+    )
+    trees = _parse_all()
+    index = _class_index(trees)
+    externals = [
+        klass.name
+        for tree in trees.values()
+        for klass in ast.walk(tree)
+        if isinstance(klass, ast.ClassDef) and _has_external_base(klass, index)
+    ]
+    assert externals, "외부 기저 판정이 하나도 걸리지 않는다 — 규칙이 죽었다"
+
+
+# ─────────────────────────── 규칙 B ───────────────────────────
+
+def _pin_snapshot(test_rel: str, variables: tuple[str, ...]) -> set[str]:
+    path = _TESTS / test_rel
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    wanted = set(variables)
+    names: set[str] = set()
+    for node in tree.body:
+        if not isinstance(node, ast.Assign):
+            continue
+        for target in node.targets:
+            if isinstance(target, ast.Name) and target.id in wanted:
+                for element in getattr(node.value, "elts", []):
+                    if isinstance(element, ast.Constant) and isinstance(element.value, str):
+                        names.add(element.value)
+    return names
+
+
+def _facade_reexports(facade_rel: str) -> set[str]:
+    path = _SRC / facade_rel
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    names: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom):
+            for alias in node.names:
+                if alias.name == "*":
+                    continue
+                names.add(alias.asname or alias.name)
+    return names
+
+
+def test_pin_lists_are_readable():
+    """핀 목록을 실제로 읽어 오는지 — 못 읽으면 규칙 B가 조용히 통과한다."""
+    for _facade, test_rel, variables in FACADE_PINS:
+        snapshot = _pin_snapshot(test_rel, variables)
+        assert len(snapshot) > 2, f"{test_rel}: 핀 목록을 읽지 못했다 ({variables})"
+
+
+def test_rule_b_facades_do_not_pin_unconsumed_new_names():
+    """분해 스냅샷 밖의 재-export는 실소비자가 있어야 한다.
+
+    분해 이후 파사드에 얹힌 이름은 "누군가 임포트 경로를 지키려고" 올린 것이
+    아니라 그냥 남은 줄이다 — 소비자가 없으면 지운다(DEADCODE §3.2 규칙 1·2).
+    """
+    trees = _parse_all()
+    offenders: list[str] = []
+    for facade_rel, test_rel, variables in FACADE_PINS:
+        snapshot = _pin_snapshot(test_rel, variables)
+        exported = _facade_reexports(facade_rel)
+        # 파사드의 **재-export 줄 자신**은 참조로 치지 않는다. 같은 파일의
+        # 다른 사용(합성 클래스의 기저 자리 등)은 정당한 소비자다.
+        referenced = _referenced_names(trees, ignore_imports_in=_SRC / facade_rel)
+        for name in sorted(exported - snapshot):
+            if name not in referenced:
+                offenders.append(f"  {facade_rel}: {name}")
+    assert not offenders, (
+        "파사드가 스냅샷 밖의 소비자 0 이름을 재-export한다 — 줄을 지워라 "
+        "(스냅샷은 늘어나지 않는다):\n" + "\n".join(offenders)
+    )
