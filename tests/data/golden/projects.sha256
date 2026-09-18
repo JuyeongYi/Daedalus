@@ -80,6 +80,7 @@ a208440a7dbf1f70afdf012f0a088db09327624681b04a0a797e3a1c055126da  synthetic-plac
 020d99cef3946574f3dd71977dcd08a099bb35376c6c30f567a972b9fcce0edf  synthetic-placed-bb/local/hooks/scripts/fmt-on-edit.sh
 526ab5a61ea459b03a67977f6634dfb108e590e95135bd6a9151dfe3b9fb8cb4  synthetic-placed-bb/local/hooks/scripts/guard-bash.sh
 07db12bd6452675efab5ceaae40421f72e29b25826a35575fc9182ffa8f981f3  synthetic-placed-bb/local/hooks/scripts/notify-stop.sh
+c5fdcdaa0b020675d22c58590252f623be1903fafa82899fa363a2a6a927ac34  synthetic-placed-bb/local/hooks/scripts/ref-only.sh
 f8789be9052b34a913f6c89e50cd7b5fa43c3ccd90cd77d8917bdfa6a31582c9  synthetic-placed-bb/local/schemas/golden.json
 37bc51a5d6fed5c8f3b83f43bfa757e7508247664a7c3fb6b654013e31a93fbb  synthetic-placed-bb/marketplace/.claude-plugin/plugin.json
 55cb7dc8f27f4d72e62cfe92c77d575934a03c853d7dd2f631434307a4210728  synthetic-placed-bb/marketplace/agents/fork-base.md
@@ -93,6 +94,7 @@ a208440a7dbf1f70afdf012f0a088db09327624681b04a0a797e3a1c055126da  synthetic-plac
 020d99cef3946574f3dd71977dcd08a099bb35376c6c30f567a972b9fcce0edf  synthetic-placed-bb/marketplace/hooks/scripts/fmt-on-edit.sh
 526ab5a61ea459b03a67977f6634dfb108e590e95135bd6a9151dfe3b9fb8cb4  synthetic-placed-bb/marketplace/hooks/scripts/guard-bash.sh
 07db12bd6452675efab5ceaae40421f72e29b25826a35575fc9182ffa8f981f3  synthetic-placed-bb/marketplace/hooks/scripts/notify-stop.sh
+c5fdcdaa0b020675d22c58590252f623be1903fafa82899fa363a2a6a927ac34  synthetic-placed-bb/marketplace/hooks/scripts/ref-only.sh
 f8789be9052b34a913f6c89e50cd7b5fa43c3ccd90cd77d8917bdfa6a31582c9  synthetic-placed-bb/marketplace/schemas/golden.json
 1bdd002a13f27f92b0966e7548b315705e54833bc32e51abee7202834b69668f  synthetic-placed-bb/marketplace/skills/async-fork/SKILL.md
 a9d0f2409ec9d79707db68f8074a2b64088fd6edc5f6af63bcfa54b3f17894fd  synthetic-placed-bb/marketplace/skills/edge-helper/SKILL.md
@@ -125,6 +127,7 @@ a208440a7dbf1f70afdf012f0a088db09327624681b04a0a797e3a1c055126da  synthetic-plac
 020d99cef3946574f3dd71977dcd08a099bb35376c6c30f567a972b9fcce0edf  synthetic-placed-nobb/local/hooks/scripts/fmt-on-edit.sh
 526ab5a61ea459b03a67977f6634dfb108e590e95135bd6a9151dfe3b9fb8cb4  synthetic-placed-nobb/local/hooks/scripts/guard-bash.sh
 07db12bd6452675efab5ceaae40421f72e29b25826a35575fc9182ffa8f981f3  synthetic-placed-nobb/local/hooks/scripts/notify-stop.sh
+c5fdcdaa0b020675d22c58590252f623be1903fafa82899fa363a2a6a927ac34  synthetic-placed-nobb/local/hooks/scripts/ref-only.sh
 37bc51a5d6fed5c8f3b83f43bfa757e7508247664a7c3fb6b654013e31a93fbb  synthetic-placed-nobb/marketplace/.claude-plugin/plugin.json
 84c1e781207e2ee4b49335a9d27d8269b97b75417db5e7e85c0964fab5997983  synthetic-placed-nobb/marketplace/agents/fork-base.md
 aeccf89a3fcd8734769019435206ecf771ab3acfb8486e7fa90df80fa6231154  synthetic-placed-nobb/marketplace/agents/worker.md
@@ -136,6 +139,7 @@ a208440a7dbf1f70afdf012f0a088db09327624681b04a0a797e3a1c055126da  synthetic-plac
 020d99cef3946574f3dd71977dcd08a099bb35376c6c30f567a972b9fcce0edf  synthetic-placed-nobb/marketplace/hooks/scripts/fmt-on-edit.sh
 526ab5a61ea459b03a67977f6634dfb108e590e95135bd6a9151dfe3b9fb8cb4  synthetic-placed-nobb/marketplace/hooks/scripts/guard-bash.sh
 07db12bd6452675efab5ceaae40421f72e29b25826a35575fc9182ffa8f981f3  synthetic-placed-nobb/marketplace/hooks/scripts/notify-stop.sh
+c5fdcdaa0b020675d22c58590252f623be1903fafa82899fa363a2a6a927ac34  synthetic-placed-nobb/marketplace/hooks/scripts/ref-only.sh
 bea3c4fd2c6e6641f6d8871815ee1f9c2e43963ba2b4af06600e319c50baf550  synthetic-placed-nobb/marketplace/skills/async-fork/SKILL.md
 a9d0f2409ec9d79707db68f8074a2b64088fd6edc5f6af63bcfa54b3f17894fd  synthetic-placed-nobb/marketplace/skills/edge-helper/SKILL.md
 ee00ccdd65aea39b22e39a165043556b243584a6c09d974696bfd37f686c5d90  synthetic-placed-nobb/marketplace/skills/knowledge/SKILL.md
@@ -166,6 +170,7 @@ fc3046111c4bd1d1b77560e5dd2253cf43e391b750f5382f5f035ca80d55ef17  synthetic-unpl
 020d99cef3946574f3dd71977dcd08a099bb35376c6c30f567a972b9fcce0edf  synthetic-unplaced-bb/local/hooks/scripts/fmt-on-edit.sh
 526ab5a61ea459b03a67977f6634dfb108e590e95135bd6a9151dfe3b9fb8cb4  synthetic-unplaced-bb/local/hooks/scripts/guard-bash.sh
 07db12bd6452675efab5ceaae40421f72e29b25826a35575fc9182ffa8f981f3  synthetic-unplaced-bb/local/hooks/scripts/notify-stop.sh
+c5fdcdaa0b020675d22c58590252f623be1903fafa82899fa363a2a6a927ac34  synthetic-unplaced-bb/local/hooks/scripts/ref-only.sh
 f8789be9052b34a913f6c89e50cd7b5fa43c3ccd90cd77d8917bdfa6a31582c9  synthetic-unplaced-bb/local/schemas/golden.json
 37bc51a5d6fed5c8f3b83f43bfa757e7508247664a7c3fb6b654013e31a93fbb  synthetic-unplaced-bb/marketplace/.claude-plugin/plugin.json
 55cb7dc8f27f4d72e62cfe92c77d575934a03c853d7dd2f631434307a4210728  synthetic-unplaced-bb/marketplace/agents/fork-base.md
@@ -177,6 +182,7 @@ fc3046111c4bd1d1b77560e5dd2253cf43e391b750f5382f5f035ca80d55ef17  synthetic-unpl
 020d99cef3946574f3dd71977dcd08a099bb35376c6c30f567a972b9fcce0edf  synthetic-unplaced-bb/marketplace/hooks/scripts/fmt-on-edit.sh
 526ab5a61ea459b03a67977f6634dfb108e590e95135bd6a9151dfe3b9fb8cb4  synthetic-unplaced-bb/marketplace/hooks/scripts/guard-bash.sh
 07db12bd6452675efab5ceaae40421f72e29b25826a35575fc9182ffa8f981f3  synthetic-unplaced-bb/marketplace/hooks/scripts/notify-stop.sh
+c5fdcdaa0b020675d22c58590252f623be1903fafa82899fa363a2a6a927ac34  synthetic-unplaced-bb/marketplace/hooks/scripts/ref-only.sh
 f8789be9052b34a913f6c89e50cd7b5fa43c3ccd90cd77d8917bdfa6a31582c9  synthetic-unplaced-bb/marketplace/schemas/golden.json
 27feb6ad8aa3427d2498ec3c149714b0b762b0a27f9acddbd1b563959a10f43f  synthetic-unplaced-bb/marketplace/skills/async-fork/SKILL.md
 8d42bbdc7307c9a0f7e1d4474e359a55fcec9287301d9cb36b86da22e3322db1  synthetic-unplaced-bb/marketplace/skills/edge-helper/SKILL.md
@@ -207,6 +213,7 @@ c310c4be83772db2f947dbc8fa2e52206c96ccd6404742b7b70c7f09aeb17ceb  synthetic-unpl
 020d99cef3946574f3dd71977dcd08a099bb35376c6c30f567a972b9fcce0edf  synthetic-unplaced-nobb/local/hooks/scripts/fmt-on-edit.sh
 526ab5a61ea459b03a67977f6634dfb108e590e95135bd6a9151dfe3b9fb8cb4  synthetic-unplaced-nobb/local/hooks/scripts/guard-bash.sh
 07db12bd6452675efab5ceaae40421f72e29b25826a35575fc9182ffa8f981f3  synthetic-unplaced-nobb/local/hooks/scripts/notify-stop.sh
+c5fdcdaa0b020675d22c58590252f623be1903fafa82899fa363a2a6a927ac34  synthetic-unplaced-nobb/local/hooks/scripts/ref-only.sh
 37bc51a5d6fed5c8f3b83f43bfa757e7508247664a7c3fb6b654013e31a93fbb  synthetic-unplaced-nobb/marketplace/.claude-plugin/plugin.json
 84c1e781207e2ee4b49335a9d27d8269b97b75417db5e7e85c0964fab5997983  synthetic-unplaced-nobb/marketplace/agents/fork-base.md
 6ec14b0ed43a064df6dc55b44d44060d6111f1482728894a2781d01b68cdd867  synthetic-unplaced-nobb/marketplace/agents/worker.md
@@ -216,6 +223,7 @@ c310c4be83772db2f947dbc8fa2e52206c96ccd6404742b7b70c7f09aeb17ceb  synthetic-unpl
 020d99cef3946574f3dd71977dcd08a099bb35376c6c30f567a972b9fcce0edf  synthetic-unplaced-nobb/marketplace/hooks/scripts/fmt-on-edit.sh
 526ab5a61ea459b03a67977f6634dfb108e590e95135bd6a9151dfe3b9fb8cb4  synthetic-unplaced-nobb/marketplace/hooks/scripts/guard-bash.sh
 07db12bd6452675efab5ceaae40421f72e29b25826a35575fc9182ffa8f981f3  synthetic-unplaced-nobb/marketplace/hooks/scripts/notify-stop.sh
+c5fdcdaa0b020675d22c58590252f623be1903fafa82899fa363a2a6a927ac34  synthetic-unplaced-nobb/marketplace/hooks/scripts/ref-only.sh
 2298ac9290b7500cc90c08eda3bb01eb01c86528c45023b70797a420846feb2f  synthetic-unplaced-nobb/marketplace/skills/async-fork/SKILL.md
 8d42bbdc7307c9a0f7e1d4474e359a55fcec9287301d9cb36b86da22e3322db1  synthetic-unplaced-nobb/marketplace/skills/edge-helper/SKILL.md
 3680bf4453bce6ba329cc2a1d79d7e68b4a5479f7d20aeca4a8fcfbe1e8e79f7  synthetic-unplaced-nobb/marketplace/skills/knowledge/SKILL.md

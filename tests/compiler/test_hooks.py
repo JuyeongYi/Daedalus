@@ -197,6 +197,56 @@ def test_skill_hooks_need_scripts_in_marketplace_build_even_if_disabled():
     assert "fmt-on-edit.sh" in names
 
 
+def test_reference_skill_hooks_need_scripts(monkeypatch):
+    """SKILL.md를 내는 스킬은 **전부** 자기 훅 스크립트를 끌어온다 (D6).
+
+    참조 스킬은 `skills/<이름>/SKILL.md`를 내고 그 프론트매터에 `hooks:`
+    블록이 실린다(`component_hook_groups`) — 그런데 스크립트 배출 루프는
+    `is_reference_usage`로 참조 스킬을 통째로 건너뛰어, **존재하지 않는
+    스크립트를 가리키는 훅**이 산출됐다. 산출 판정의 실체는
+    `emit.common.emits_output_file` 하나여야 한다(원칙 1).
+    """
+    from daedalus.compiler.emit.hooks import compile_hook_scripts
+    from tests.compiler.builders import make_reference
+
+    library = _library()
+    for hook in library:
+        hook.enabled = False  # 전역 배출 경로를 닫아 스킬 루프만 남긴다
+    ref = make_reference("ref-doc")
+    ref.config.hooks = {"guard-bash": {}}
+    proj = PluginProject(name="p", skills=[ref], hook_library=library)
+
+    text = compile_skill(ref, project=proj)
+    assert "hooks:" in text  # 프론트매터에는 이미 실린다
+    names = [name for name, _body in compile_hook_scripts(proj)]
+    assert "guard-bash.sh" in names
+
+
+def test_reference_usage_wrapped_hooks_still_skipped():
+    """산출 파일을 내지 않는 스킬은 여전히 세지 않는다 (D6의 반대편).
+
+    참조 용도 랩핑 스킬은 SKILL.md를 만들지 않으므로 그 훅은 어디서도 돌지
+    않는다 — 스크립트를 내면 아무도 쓰지 않는 파일이 산출에 남는다.
+    """
+    from daedalus.compiler.emit.hooks import compile_hook_scripts
+    from daedalus.model.plugin.skill import WrappedSkill
+
+    from tests.compiler.builders import make_linear_fsm
+
+    library = _library()
+    for hook in library:
+        hook.enabled = False
+    wrapped = WrappedSkill(
+        fsm=make_linear_fsm("wrapped-ref"), name="wrapped-ref", description="d",
+    )
+    wrapped.config.source = "alpha@mkt:review"
+    wrapped.config.usage = "reference"
+    wrapped.config.hooks = {"guard-bash": {}}
+    proj = PluginProject(name="p", skills=[wrapped], hook_library=library)
+
+    assert compile_hook_scripts(proj) == []
+
+
 def test_frontmatter_hooks_omitted_when_empty():
     skill = make_declarative("kb")
     skill.config.hooks = None

@@ -76,6 +76,11 @@
       "훅 스크립트 notify-stop.sh"
     ],
     [
+      "hooks/scripts/ref-only.sh",
+      "hook_script",
+      "훅 스크립트 ref-only.sh"
+    ],
+    [
       ".claude/rules/golden-rule.md",
       "workspace_rule",
       "rules/golden-rule.md (workspace rule)"
@@ -95,6 +100,7 @@
     "hooks/scripts/guard-bash.sh",
     "hooks/scripts/fmt-on-edit.sh",
     "hooks/scripts/notify-stop.sh",
+    "hooks/scripts/ref-only.sh",
     ".claude/rules/golden-rule.md",
     ".mcp.json",
     ".claude/settings.json",

@@ -81,6 +81,11 @@
       "훅 스크립트 notify-stop.sh"
     ],
     [
+      "hooks/scripts/ref-only.sh",
+      "hook_script",
+      "훅 스크립트 ref-only.sh"
+    ],
+    [
       "hooks/scripts/__progress__.sh",
       "hook_script",
       "훅 스크립트 __progress__.sh"
@@ -121,6 +126,7 @@
     "hooks/scripts/guard-bash.sh",
     "hooks/scripts/fmt-on-edit.sh",
     "hooks/scripts/notify-stop.sh",
+    "hooks/scripts/ref-only.sh",
     "hooks/scripts/__progress__.sh",
     "guides/golden/workflow.md",
     "guides/golden/blackboard.md",

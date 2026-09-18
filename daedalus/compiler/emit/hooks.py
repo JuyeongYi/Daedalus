@@ -103,7 +103,11 @@ def hooks_needing_scripts(
 ) -> list[HookDef]:
     """스크립트 파일을 배출해야 할 훅 (라이브러리 선언 순서 — 결정적).
 
-    ``emitted_hooks``(전역 등록 대상) **∪ 에이전트 프론트매터가 참조하는 훅**이다.
+    ``emitted_hooks``(전역 등록 대상) **∪ 산출 파일을 내는 컴포넌트의 프론트매터가
+    참조하는 훅**이다. 후자의 집합은 `emits_output_file` 하나가 정한다 — 파일을
+    내지 않으면(참조 용도·비활성 랩핑 스킬) 그 프론트매터도 없으니 훅도 돌지
+    않고, 반대로 파일을 내는 스킬은 종류를 가리지 않고 자기 훅 스크립트를
+    끌어와야 한다(참조 스킬도 `hooks:` 블록을 싣는다 — D6).
     후자는 ``enabled=False``여도 포함된다(사용자 확정 2026-09-07): `enabled`는
     "플러그인 전역 훅으로 켤지"의 스위치이고, 에이전트 프론트매터 훅은 **그
     에이전트 안에서만 도는 별개 경로**라 전역으로는 끄고 특정 에이전트에서만
@@ -114,23 +118,24 @@ def hooks_needing_scripts(
     배출되기 때문이다(WP-LA — 마켓 배포 에이전트의 hooks는 CC가 무시한다).
     마켓 빌드에서까지 세면 아무 데서도 쓰이지 않는 스크립트가 산출에 남는다.
     """
-    from daedalus.model.plugin.skill import is_disabled_wrapped, is_reference_usage
+    from daedalus.compiler.emit.common import emits_output_file
 
     library = hook_library(project, resolved_hooks)
     wanted = {h.name for h in emitted_hooks(project, resolved_hooks)}
-    # 스킬 프론트매터 훅은 **두 타깃 모두** 나간다(2026-09-13 실측 — 플러그인 스킬의
-    # 훅도 돈다). SKILL.md를 내지 않는 스킬(참조 용도·비활성 랩퍼)은 세지 않는다.
-    for skill in getattr(project, "skills", []):
-        if is_reference_usage(skill) or is_disabled_wrapped(skill):
+    # 프론트매터 훅을 세는 집합은 **산출 파일을 내는 컴포넌트** 하나로 정해진다
+    # (원칙 1 — 판정의 실체는 `emits_output_file`). 파일을 내지 않으면 그
+    # 프론트매터도 없으니 훅도 돌지 않는다. 에이전트는 LOCAL 빌드에서만 센다
+    # (마켓 배포 에이전트의 hooks는 CC가 무시한다 — WP-LA).
+    referencing = [
+        *(getattr(project, "skills", None) or []),
+        *((getattr(project, "agents", None) or []) if _is_local_build(project) else []),
+    ]
+    for component in referencing:
+        if not emits_output_file(component):
             continue
-        cfg_hooks = getattr(getattr(skill, "config", None), "hooks", None)
+        cfg_hooks = getattr(getattr(component, "config", None), "hooks", None)
         if isinstance(cfg_hooks, dict):
             wanted.update(cfg_hooks)
-    if _is_local_build(project):
-        for agent in getattr(project, "agents", []):
-            cfg_hooks = getattr(getattr(agent, "config", None), "hooks", None)
-            if isinstance(cfg_hooks, dict):
-                wanted.update(cfg_hooks)
     return [h for h in library if h.name in wanted]
 
 

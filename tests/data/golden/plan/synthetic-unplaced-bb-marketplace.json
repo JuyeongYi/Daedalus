@@ -81,6 +81,11 @@
       "훅 스크립트 notify-stop.sh"
     ],
     [
+      "hooks/scripts/ref-only.sh",
+      "hook_script",
+      "훅 스크립트 ref-only.sh"
+    ],
+    [
       "guides/golden/blackboard.md",
       "guide_blackboard",
       "guides/golden/blackboard.md (shared blackboard guide)"
@@ -111,6 +116,7 @@
     "hooks/scripts/guard-bash.sh",
     "hooks/scripts/fmt-on-edit.sh",
     "hooks/scripts/notify-stop.sh",
+    "hooks/scripts/ref-only.sh",
     "guides/golden/blackboard.md",
     "schemas/golden.json",
     ".claude-plugin/plugin.json"
