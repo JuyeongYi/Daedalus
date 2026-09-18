@@ -30,10 +30,17 @@ class CanvasTools(_BaseTools):
         배치 가능 판정의 실체는 `model/plugin/placement.is_state_placeable`
         하나다(캔버스 드롭·레지스트리·"여기에 만들기"와 공용) — 표면마다
         음성 목록을 따로 들면 MCP만 조용히 엉뚱한 노드를 만든다(원칙 1·5).
+
+        **용도 미정 랩핑 스킬**(WP-WR)을 받으면 GUI와 같게 용도를 `"state"`로
+        고정하고(캔버스는 물어서 고정한다) 고정+배치를 **1 undo**로 묶는다 —
+        응답의 `usage_fixed`가 그 사실을 말한다. 거부하지 않는다(사용자 확정
+        2026-09-18).
         """
         from daedalus.model.fsm.state import SimpleState
         from daedalus.model.plugin.placement import is_state_placeable
         from daedalus.model.plugin.skill import is_reference_usage
+        from daedalus.view.actions.wrapped_usage import usage_fix_command
+        from daedalus.view.commands.base import Command, MacroCommand
         from daedalus.view.commands.state_commands import CreateStateCmd
         from daedalus.view.viewmodel.state_vm import StateViewModel
 
@@ -51,15 +58,29 @@ class CanvasTools(_BaseTools):
                 f"그래프 노드가 아니고, fork 에이전트는 fork 스킬의 실행 "
                 f"기반이라 노드가 되지 않습니다."
             )
+        # 용도 미정 wrapped — 고정 커맨드의 실체는 캔버스와 같은 공용 액션이다.
+        fix = usage_fix_command(comp, "state")
         state = SimpleState(name=comp.name, skill_ref=comp)
         svm = StateViewModel(model=state, x=float(x), y=float(y))
-        vm.execute(CreateStateCmd(vm, svm, fsm=fsm))
-        return {
+        place: Command = CreateStateCmd(vm, svm, fsm=fsm)
+        if fix is None:
+            vm.execute(place)
+        else:
+            vm.execute(
+                MacroCommand(
+                    [fix, place],
+                    f"wrapped '{comp.name}' 용도 고정 + 배치",
+                )
+            )
+        out: dict[str, Any] = {
             "placed": comp.name,
             "node": state.name,
             "x": float(x),
             "y": float(y),
         }
+        if fix is not None:
+            out["usage_fixed"] = "state"
+        return out
 
     def create_state(
         self, name: str, x: float = 0.0, y: float = 0.0
@@ -131,6 +152,12 @@ class CanvasTools(_BaseTools):
         출발은 호출 포트를 가질 수 있는 컴포넌트면 된다 — 절차형 스킬, state 용도
         랩핑 스킬, 그리고 **에이전트**(2026-09-12 — CC 중첩 스폰 허용). 깊이·모델
         티어 제약은 검증이 짚는다(agent_chain_too_deep/agent_calls_higher_model).
+
+        도착이 에이전트인가는 **`AgentDefinition`**(워크플로 에이전트)으로
+        판정한다 — 배치 가능 판정(`is_state_placeable`)이 아니다. 그것으로
+        갈아끼우면 스킬 대상에도 True가 되어 **모든 스킬 간 전이가 호출 포트를
+        요구**하게 된다. fork 에이전트는 애초에 노드가 될 수 없어
+        `_find_state_vm`에서 "그런 노드가 없다"로 걸린다.
         """
         from daedalus.model.fsm.transition import Transition
         from daedalus.model.plugin.agent import AgentDefinition

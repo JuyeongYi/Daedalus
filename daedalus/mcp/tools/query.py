@@ -143,8 +143,16 @@ class QueryTools(_BaseTools):
                     }
                     for s in project.skills
                 ],
+                # 에이전트도 종류를 싣는다 — 워크플로 에이전트(캔버스 노드)와
+                # fork 에이전트(fork 스킬의 실행 기반)는 배치·포트·프론트매터
+                # 표가 다르므로 목록에서 구분되지 않으면 잘못 배선된다.
                 "agents": [
-                    {"name": a.name, "description": a.description} for a in project.agents
+                    {
+                        "name": a.name,
+                        "kind": self._component_kind(a),
+                        "description": a.description,
+                    }
+                    for a in project.agents
                 ],
             },
             "canvas": {
@@ -281,7 +289,16 @@ class QueryTools(_BaseTools):
         `config`에는 **비기본값 필드만** 실린다 — 미지정(None)·선언 기본값과
         같은 값은 생략된다(빈 dict = 전부 기본값). 전체 필드 목록·현재값·
         선택지는 `list_component_fields`로 조회하라.
+
+        **fork 에이전트**에는 `used_by_fork_skills`(이 에이전트를 실행 기반으로
+        쓰는 fork 스킬 이름)가 함께 실린다 — 편집기의 "사용하는 fork 스킬"
+        패널과 같은 목록이다(패리티: 쓸 수 있는 값은 읽을 수도 있어야 한다).
+        `delete_component`의 `still_referenced_by`는 지워야만 보이므로 조회의
+        대체가 되지 않는다.
         """
+        from daedalus.model.plugin.agent import ForkAgent
+        from daedalus.model.plugin.placement import fork_skills_using
+
         comp = self._find_component(name)
         config = getattr(comp, "config", None)
         body = str(getattr(comp, "body", "") or "")
@@ -306,6 +323,10 @@ class QueryTools(_BaseTools):
                 for e in (getattr(comp, "call_agents", []) or [])
             ],
         }
+        if isinstance(comp, ForkAgent):
+            # 역참조 조회 — 목록의 실체는 model의 `fork_skills_using` 하나다
+            # (편집기 패널·삭제 확인·산출 "## Invocation Contract"와 공용).
+            info["used_by_fork_skills"] = fork_skills_using(comp, self._project)
         if config is not None:
             # 비기본값만 싣는다(Q3) — 선언 기본값과 같은 필드(대개 None 미지정)는
             # list_component_fields가 이미 전체 상세(선택지·emit 위치 포함)를

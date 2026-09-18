@@ -167,8 +167,11 @@
   **새 dict**를 넘겨 undo 가능(제자리 수정이면 undo가 같은 객체를 가리킨다). LOCAL 컴파일의
   설치 배선(`missing_mcp_server_def` 경고 해소)에 쓰인다. `get_project`가 `mcp_server_defs`를 포함.
 - **프론트매터 필드:** `list_component_fields`(필드 목록 + 현재값 + enum 선택지 + emit 위치)와
-  `set_component_field`(SetAttrCmd 경유 — undo 가능). 대상 필드 집합은 `SKILL_FIELD_MATRIX`/
-  `AGENT_FIELD_MATRIX`에서 뽑으므로 매트릭스가 늘면 도구가 따라간다. 타입 강제는
+  `set_component_field`(SetAttrCmd 경유 — undo 가능). 대상 필드 집합은
+  `model/plugin/field_matrix.matrix_for(component)`가 고른다(WP-FK2) — 키는 `component.config.kind`
+  이고, 컴파일러·편집기가 부르는 것과 **같은 함수**다. 맨 첨자는 kind가 표와 어긋나는 날 앱을
+  죽이고 `.get(kind, {})`는 조용한 빈 폼을 내므로, 어느 종류가 어느 표에 없는지 말하는
+  `ValueError`만 남겼다. 매트릭스가 늘면 도구가 따라간다. 타입 강제는
   `_config_field_types`(`get_type_hints` — `from __future__ import annotations` 탓에 dataclass의
   `f.type`이 문자열이라 그대로 쓸 수 없다) + `_coerce_field_value`가 맡고, 잘못된 enum 값은
   선택지를 나열하며 **거부**한다(조용히 문자열이 들어가면 컴파일 산출이 이상해질 때까지 안 드러난다).
@@ -201,8 +204,8 @@
   "여기에 만들기"와 같은 경로). 좌표를 생략하면 만들기만 한다. 같은 배치에서 props의 자체 팩토리
   dict 2벌을 `creation.make_component` 호출로 환원했다 — 기본 출력 포트 `done`이 양쪽에
   하드코딩돼 있어 한쪽만 고치면 어디서 만들었느냐에 따라 다른 에이전트가 됐다.
-  `declarative`/`transfer`는 캔버스 노드가 아니므로 좌표를 주면 **거절**한다(조용히 무시하면
-  "설정했는데 아무 일도 일어나지 않는" 상태가 된다).
+  `declarative`/`transfer`/`fork_agent`는 캔버스 노드가 아니므로 좌표를 주면 **거절**한다(조용히
+  무시하면 "설정했는데 아무 일도 일어나지 않는" 상태가 된다).
 - **transfer 스킬 생성+할당도 1 undo다 (G15).** `set_transition(create_transfer="이름")`이
   캔버스 엣지 메뉴의 "새 Transfer Skill 생성..."과 **같은 두 커맨드**
   (`AddSkillToProjectCmd` → `SetTransitionSkillRefCmd`)를 조립한다 — 씬 메서드는 이름을 모달로
@@ -228,3 +231,51 @@
   남은 참조는 `dangling_string_reference` 경고가 짚는다. 미노출 편집은 이제 없다.
 - **연결 방법:** 도구 메뉴 → "MCP 서버 정보..."가 접속 주소와 `.mcp.json` 스니펫
   (`{"mcpServers": {"daedalus": {"type": "http", "url": "http://127.0.0.1:8787/mcp"}}}`)을 보여준다.
+
+### fork 2종·fork 에이전트 (WP-FK2, 2026-09-18)
+
+컴포넌트 **종류 어휘**가 도구의 계약이다 — 표면마다 다른 말을 쓰면 같은 프로젝트를 두 가지로
+본다.
+
+| 도구 | 파라미터 | 받는 값 |
+|------|----------|---------|
+| `create_skill` | `kind` | `procedural` · `sync_fork` · `async_fork` · `declarative` · `transfer` · `reference` · `wrapped` |
+| `create_skill` | `fork_agent` | `sync_fork`/`async_fork` **전용** — 내장 fork 에이전트, `플러그인:이름`, 또는 프로젝트의 fork 에이전트 이름(정확 일치). 생략하면 `general-purpose` |
+| `create_agent` | `kind` | `agent`(워크플로 에이전트 — 캔버스 노드) · `fork_agent`(fork 스킬의 실행 기반 — fsm·포트·배치 없음) |
+| `convert_skill` | `to` | `procedural` · `sync_fork` · `async_fork` (3-way) |
+
+- **`create_agent(kind="fork_agent", x=, y=)`는 거절한다.** fork 에이전트는 그래프 노드가 아니다
+  (`NO_PLACE_KINDS`). 좌표를 조용히 무시하면 "배치했는데 아무 데도 없는" 상태가 된다.
+- **`convert_skill`은 3-way다.** sync↔async는 같은 fork라 `agent`를 보존하고 버리는 것이 없다
+  (복사는 **대상 config 클래스의 필드 기준** — 부모 클래스 기준으로 복사하면 `ForkSkillConfig`에만
+  있는 `agent`가 `dropped`에도 안 잡힌 채 기본값으로 리셋된다). procedural→fork는 `allowed_tools`,
+  fork→procedural은 `agent`를 `dropped`로 보고한다. 실체는 GUI 종류 전환 버튼과 같은
+  `view/actions/fork_skill.convert_skill_kind`다.
+- **`background`는 노출되지 않는다.** fork 두 종류를 가르는 값이지만 매트릭스 전용 FIXED 필드라
+  config에 기록되지 않는다 — `hasattr(config, field)` 게이트가 `list_component_fields`에서
+  자동으로 빼고 `set_component_field`에서 자동으로 거절한다(`context`·`agent`와 같은 규약).
+- **`place_component`는 배치 게이트를 가진다(A4).** 판정의 실체는
+  `model/plugin/placement.is_state_placeable` 하나이고 캔버스 드롭·레지스트리 드래그·"여기에
+  만들기"와 공용이다. 거부는 **갈 곳을 말한다** — 참조 용도는 `place_reference`, declarative·
+  transfer·fork_agent는 "배치되지 않는 종류". 용도 미정 랩핑 스킬은 **거부하지 않고** GUI와 같게
+  usage를 `"state"`로 고정하고(캔버스는 물어서 고정한다) 고정+배치를 `MacroCommand` **1 undo**로
+  묶은 뒤 응답에 `usage_fixed: "state"`를 싣는다(사용자 확정 2026-09-18 — 오늘 되던 배치를 이유
+  없이 깨지 않는다).
+- **`connect_states`는 이 판정을 쓰지 않는다.** 도착이 에이전트인가는 `AgentDefinition`(워크플로
+  에이전트)으로 판정한다 — 배치 판정으로 갈아끼우면 스킬 대상에도 True가 되어 **모든 스킬 간
+  전이가 호출 포트를 요구**하게 된다. fork 에이전트는 노드가 될 수 없어 `_find_state_vm`에서
+  이미 걸린다.
+- **`set_transfer_on`은 fork 에이전트를 명시 거부한다.** `SetAttrCmd`가 `getattr(..., None)`
+  폴백이라 가드가 없으면 없는 필드가 인스턴스 속성으로 생기고 성공 응답이 돌아간 뒤 저장 한 번에
+  사라진다(원칙 5). 갈래는 그 fork 에이전트를 부르는 fork 스킬의 보고 양식이 정한다.
+  `_require_call_port_owner`도 같은 이유로 **워크플로** 에이전트만 받는다.
+- **역참조는 조회로도 보인다(패리티).** `get_component`가 fork 에이전트일 때
+  `used_by_fork_skills`(이 에이전트를 실행 기반으로 쓰는 fork 스킬 이름)를 함께 싣는다 —
+  편집기의 "사용하는 fork 스킬" 패널과 같은 목록이고, `delete_component`의
+  `still_referenced_by`는 지워야만 보이므로 조회의 대체가 되지 않는다. 목록·삭제 보고·산출
+  ("## Invocation Contract")의 실체는 `model/plugin/placement.fork_skills_using` 하나다(원칙 1 —
+  컴파일러는 뷰를 임포트할 수 없으므로 실체가 모델에 있어야 한다).
+- **`get_project`의 에이전트 행에 `kind`가 실린다.** 두 종류는 배치·포트·프론트매터 표가 달라
+  목록에서 구분되지 않으면 호출자가 잘못 배선한다. `compile_preview`도 두 종류 모두 에이전트
+  컴파일러로 보낸다(`isinstance(comp, Agent)`) — 스킬 경로로 새면 이유도 못 말하는 `TypeError`가
+  난다.

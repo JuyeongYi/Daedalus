@@ -74,3 +74,38 @@ def test_rejected_placement_leaves_no_node_and_no_undo_entry(tools, window):
         tools.place_component("bg", x=0, y=0)
     assert window._project_vm.state_vms == []
     assert len(stack.history) == before
+
+
+# ---------------------------------------------------------------------------
+# 용도 미정 랩핑 스킬 — GUI와 같게 "state"로 고정하고 1 undo로 묶는다
+# (사용자 확정 2026-09-18: 거부하지 않는다. 오늘 되던 배치를 깨지 않는다.)
+# ---------------------------------------------------------------------------
+
+def test_undecided_wrapped_placement_fixes_usage_to_state(tools, window):
+    tools.create_skill("w", kind="wrapped")
+    comp = next(s for s in window._project.skills if s.name == "w")
+    assert comp.config.usage == ""
+
+    out = tools.place_component("w", x=5, y=6)
+    assert out["usage_fixed"] == "state"
+    assert comp.config.usage == "state"
+
+
+def test_usage_fix_and_placement_are_one_undo(tools, window):
+    """따로 되돌리면 용도만 고정된 반쪽 상태가 남는다 — 캔버스 드롭과 같은 묶음."""
+    tools.create_skill("w", kind="wrapped")
+    comp = next(s for s in window._project.skills if s.name == "w")
+    tools.place_component("w", x=5, y=6)
+
+    tools.undo()
+    assert window._project_vm.state_vms == []
+    assert comp.config.usage == ""
+
+
+def test_already_fixed_wrapped_placement_says_nothing_about_usage(tools, window):
+    """이미 고정된 용도는 배치가 건드리지 않는다 — 응답에도 키가 없다."""
+    tools.create_skill("w", kind="wrapped", source="other@mkt:x", usage="state")
+    out = tools.place_component("w", x=0, y=0)
+    assert "usage_fixed" not in out
+    comp = next(s for s in window._project.skills if s.name == "w")
+    assert comp.config.usage == "state"

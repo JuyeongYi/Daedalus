@@ -63,6 +63,29 @@ def test_lists_skill_fields_differently(tools):
     assert "permission_mode" not in skill_fields
 
 
+def test_agent_kinds_get_different_field_tables(tools):
+    """표를 고르는 규칙은 `config.kind`다 — fork 에이전트 표에는 두 행이 없다.
+
+    `AGENT_FIELD_MATRIX`를 맨 첨자로 읽던 시절에는 fork 에이전트에서 KeyError가,
+    `.get(kind, {})`로 읽던 시절에는 조용한 빈 폼이 났다. 지금은 `matrix_for`
+    하나가 답한다.
+    """
+    tools.create_agent("helper", kind="fork_agent")
+    workflow = {f["field"] for f in tools.list_component_fields("worker")["fields"]}
+    fork = {f["field"] for f in tools.list_component_fields("helper")["fields"]}
+    assert "background" in workflow and "isolation" in workflow
+    assert workflow - fork == {"background", "isolation"}
+    assert fork - workflow == set()
+
+
+def test_fork_agent_rejects_a_field_its_kind_does_not_have(tools):
+    """config에 없는 필드는 자동 비수정이다(유령 속성이 생기면 안 된다 — 원칙 5)."""
+    tools.create_agent("helper", kind="fork_agent")
+    with pytest.raises(ValueError, match="없습니다"):
+        tools.set_component_field("helper", "background", True)
+    assert not hasattr(_config(tools, "helper"), "background")
+
+
 def test_declarative_has_no_shell_field(tools):
     """스킬 종류마다 받는 필드가 다르다."""
     fields = {f["field"] for f in tools.list_component_fields("kb")["fields"]}
