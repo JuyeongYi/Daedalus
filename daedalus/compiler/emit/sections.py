@@ -27,7 +27,7 @@ from daedalus.model.fsm.strategy import (
 )
 from daedalus.model.fsm.walk import iter_states
 from daedalus.model.plugin.agent import Agent, AgentDefinition
-from daedalus.model.plugin.skill import ProceduralSkill, Skill
+from daedalus.model.plugin.skill import Skill, StepSkill
 
 
 # ─────────────────────────── 가드/트리거 서술 ───────────────────────────
@@ -143,8 +143,8 @@ def _ordered_states(sm: StateMachine) -> list[State]:
     return order
 
 
-def _describe_fsm(sm: StateMachine, skill: ProceduralSkill) -> list[str]:
-    """ProceduralSkill FSM을 사람이 읽는 절차 단락 블록 목록으로 변환.
+def _describe_fsm(sm: StateMachine, skill: StepSkill) -> list[str]:
+    """StepSkill(절차형·fork 2종) FSM을 사람이 읽는 절차 단락 블록 목록으로 변환.
 
     형식: 번호 매긴 상태 진행 목록 + 각 상태의 작업·출구 전이 조건.
     결정적: _ordered_states로 고정된 순서.
