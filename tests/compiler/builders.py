@@ -36,6 +36,21 @@ def make_linear_fsm(name: str = "m") -> StateMachine:
     return sm
 
 
+def make_agent_fsm(name: str = "m") -> StateMachine:
+    """entry → work → done(exit) 에이전트 잔존 FSM (WP-AF 이전 형상)."""
+    entry = EntryPoint(name="entry")
+    work = SimpleState(name="work")
+    done = ExitPoint(name="done")
+    sm = StateMachine(
+        name=name, initial_state=entry, states=[entry, work, done], final_states=[done],
+    )
+    sm.transitions.append(Transition(source=entry, target=work))
+    sm.transitions.append(
+        Transition(source=work, target=done, trigger=CompletionEvent(name="done"))
+    )
+    return sm
+
+
 def make_procedural(
     name: str = "my-skill",
     *,
@@ -88,21 +103,8 @@ def make_reference(name: str = "ref-doc") -> ReferenceSkill:
 
 
 def make_agent(name: str = "worker") -> AgentDefinition:
-    entry = EntryPoint(name="entry")
-    work = SimpleState(name="work")
-    done = ExitPoint(name="done")
-    sm = StateMachine(
-        name=f"{name}_fsm",
-        initial_state=entry,
-        states=[entry, work, done],
-        final_states=[done],
-    )
-    sm.transitions.append(Transition(source=entry, target=work))
-    sm.transitions.append(
-        Transition(source=work, target=done, trigger=CompletionEvent(name="done"))
-    )
     return AgentDefinition(
-        fsm=sm,
+        fsm=make_agent_fsm(f"{name}_fsm"),
         name=name,
         description="A worker agent",
         config=AgentConfig(model=ModelType.SONNET),

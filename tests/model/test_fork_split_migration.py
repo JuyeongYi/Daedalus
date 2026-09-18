@@ -10,9 +10,6 @@ from __future__ import annotations
 
 import copy
 import json
-from pathlib import Path
-
-import pytest
 
 from daedalus.model.plugin.agent import AgentDefinition, ForkAgent
 from daedalus.model.plugin.config import (
@@ -28,10 +25,14 @@ from daedalus.model.serialize import (
     needs_fork_split_migration,
     serialize_project,
 )
+from tests.data.golden.corpus import DOGFOOD_JSON
 
 #: 저장소가 스스로를 만드는 프로젝트(dogfood) — 구버전 파일의 실물 표본이다.
-#: **읽기 전용**으로만 쓴다(사용자의 작업 사본이다).
-DOGFOOD = Path(__file__).resolve().parents[2] / "project" / "daedalus_cc_plugin" / ".daedalus.json"
+#: 살아 있는 작업 사본(`project/daedalus_cc_plugin/.daedalus.json`)이 **아니라**
+#: WP-0이 커밋한 **동결 사본**을 읽는다: 그 파일은 사용자의 작업 사본이라 편집·
+#: 커밋 여부에 따라 내용이 바뀌고, 깨끗한 체크아웃에서는 아래 두 단언이 기대하는
+#: 구버전 내용을 담고 있지 않다(스위트가 작업 트리 상태에 의존하면 안 된다).
+DOGFOOD = DOGFOOD_JSON
 
 
 def _legacy_fork_project() -> dict:
@@ -176,9 +177,8 @@ def test_v1_context_fork_skill_gets_no_double_warning():
     assert not any("미배치 fork" in w for w in warnings)
 
 
-# ── 실물 표본: dogfood 프로젝트 (읽기 전용) ─────────────────────────────
+# ── 실물 표본: dogfood 동결 사본 (tests/data/golden) ────────────────────
 
-@pytest.mark.skipif(not DOGFOOD.exists(), reason="dogfood 프로젝트 파일 없음")
 def test_dogfood_project_migrates_only_the_referenced_unplaced_agent():
     data = json.loads(DOGFOOD.read_text(encoding="utf-8"))
     warnings: list[str] = []
@@ -198,7 +198,6 @@ def test_dogfood_project_migrates_only_the_referenced_unplaced_agent():
     assert {"plugin-verify", "sdfsdf"} <= fork_names
 
 
-@pytest.mark.skipif(not DOGFOOD.exists(), reason="dogfood 프로젝트 파일 없음")
 def test_dogfood_project_roundtrips_after_migration():
     """이관된 프로젝트는 저장 → 로드가 왕복한다(자기가 쓴 파일을 자기가 읽는다)."""
     data = json.loads(DOGFOOD.read_text(encoding="utf-8"))

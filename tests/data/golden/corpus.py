@@ -24,6 +24,17 @@
    enabled=False) × async fork × fork 에이전트 × **훅을 가진 ReferenceSkill**
    (D6 수정이 산출을 바꾸는 자리 — 골든 diff로 보이게 한다).
 
+**`tests/compiler/builders.py`와의 관계.** FSM 형상은 builders가 **정본**이다 —
+`_skill_fsm`/`_agent_fsm`은 `make_linear_fsm`/`make_agent_fsm`에 위임하므로
+builders를 고치면 골든이 따라 움직인다(사본을 두면 그 연결이 끊긴다).
+컴포넌트 **조립**은 위임하지 않는다: builders의 팩토리 5종
+(`make_procedural`/`make_declarative`/`make_transfer`/`make_reference`/`make_agent`)은
+9종 중 5종만 덮고, 각자 고정된 config·body·포트를 갖는다. 이 코퍼스가 요구하는
+축(배치/미배치 · 블랙보드 유/무 · 랩핑 3상태 · async fork · fork 에이전트 ·
+훅을 가진 ReferenceSkill)은 그 고정값을 전부 덮어써야 해서, 위임하면 인자만
+늘고 읽기는 나빠진다. 그래서 여기서 직접 조립한다 — REFACTOR_SPEC §8의
+"builders.py로 조립한다"는 문장은 이 범위로 좁혀 읽는다.
+
 **결정성 규약.** dataclass의 `id`는 uuid4 기본값이라 실행마다 다르다. 산출
 텍스트에는 나가지 않지만, 한 번이라도 새면 골든이 무작위로 깨진다 — 그래서
 조립이 끝난 프로젝트를 `_stamp_ids`가 선언 순서대로 훑어 결정적 id로 덮는다.
@@ -37,7 +48,6 @@ from typing import Callable, Iterator
 from daedalus.model.fsm.blackboard import Blackboard, DynamicClass, DynamicField
 from daedalus.model.fsm.event import CompletionEvent
 from daedalus.model.fsm.machine import StateMachine
-from daedalus.model.fsm.pseudo import EntryPoint, ExitPoint
 from daedalus.model.fsm.section import EventDef
 from daedalus.model.fsm.state import SimpleState
 from daedalus.model.fsm.transition import Transition
@@ -74,6 +84,7 @@ from daedalus.model.plugin.skill import (
 from daedalus.model.plugin.workspace_doc import WorkspaceDoc
 from daedalus.model.project import PluginProject, ReferencePlacement
 from daedalus.model.serialize import deserialize_project
+from tests.compiler.builders import make_agent_fsm, make_linear_fsm
 
 GOLDEN_DIR = Path(__file__).resolve().parent
 
@@ -150,31 +161,13 @@ def _blackboard() -> Blackboard:
 
 
 def _skill_fsm(name: str) -> StateMachine:
-    first = SimpleState(name="analyze")
-    second = SimpleState(name="report")
-    machine = StateMachine(
-        name=f"{name}_fsm", initial_state=first, states=[first, second],
-        final_states=[second],
-    )
-    machine.transitions.append(
-        Transition(source=first, target=second, trigger=CompletionEvent(name="done"))
-    )
-    return machine
+    """스킬 FSM — `builders.make_linear_fsm`이 정본이다(형상 사본을 두지 않는다)."""
+    return make_linear_fsm(f"{name}_fsm")
 
 
 def _agent_fsm(name: str) -> StateMachine:
-    entry = EntryPoint(name="entry")
-    work = SimpleState(name="work")
-    done = ExitPoint(name="done")
-    machine = StateMachine(
-        name=f"{name}_fsm", initial_state=entry, states=[entry, work, done],
-        final_states=[done],
-    )
-    machine.transitions.append(Transition(source=entry, target=work))
-    machine.transitions.append(
-        Transition(source=work, target=done, trigger=CompletionEvent(name="done"))
-    )
-    return machine
+    """에이전트 잔존 FSM — `builders.make_agent_fsm`이 정본이다."""
+    return make_agent_fsm(f"{name}_fsm")
 
 
 def _hook_library() -> list[HookDef]:

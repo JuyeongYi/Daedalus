@@ -7,8 +7,9 @@
 
 **규칙 A — 소비자 없는 심볼은 없다.**
   `daedalus/` 안 모든 최상위 `def`/`class`/모듈 레벨 상수(언더스코어 포함)와,
-  **외부 프레임워크를 상속하지 않는** 클래스의 공개 메서드는 `daedalus/`
-  어딘가에서 이름으로 참조되거나 allowlist에 **사유와 함께** 등재돼야 한다.
+  **외부 프레임워크를 상속하지 않는** 클래스의 **dunder를 제외한 모든 메서드
+  (`_private` 포함)**는 `daedalus/` 어딘가에서 이름으로 참조되거나 allowlist에
+  **사유와 함께** 등재돼야 한다.
 
 **규칙 B — 파사드 핀 목록은 소비자 0인 이름을 새로 담지 않는다.**
   WP-RF 분해 파사드가 재-export하는 이름 중 **분해 시점 스냅샷(핀 목록)에
@@ -32,6 +33,14 @@
     정의하는지 알려면 PySide6를 임포트해야 하는데, 그건 이 테스트의 헤드리스
     계약을 깬다. 그래서 **기저를 열거할 수 없는 클래스의 메서드는 전부 면제**
     한다(보수적이지만 조용한 오탐보다 낫다).
+
+**면제의 맹점과 그 래칫.** 위 면제는 이름 단위가 아니라 **클래스 단위**다 —
+`daedalus/` 클래스 261개 중 92개(35%), 비-dunder 메서드 1040개 중 560개(53%)가
+여기 걸린다. 즉 규칙 A는 뷰 계층 대부분에서 잠든다. 그래서 면제되면서 소비자도
+없는 메서드를 **버리지 않고 세어**(`scan_external_base_hidden`)
+`EXTERNAL_BASE_HIDDEN_BASELINE`에 동결한다. 목록에 없는 새 항목이 생기면
+실패하고 이름을 찍는다 — 진짜 Qt override면 목록에 넣고, 아니면 배선하거나
+지운다. 목록은 다른 래칫과 같이 **줄어들기만 한다**.
 
 allowlist는 `{심볼: (범주, 사유)}`이고 사유가 비면 실패한다. 범주 5종은
 DEADCODE.md §5.1이 정한 것이다.
@@ -89,6 +98,49 @@ ALLOWLIST: dict[str, tuple[str, str]] = {
         "배선 조건(component.body를 document_for 없이 쓰는 첫 경로)과 함께 등재.",
     ),
 }
+
+#: **자동 면제의 맹점 기준선** — 외부 기저 상속 클래스라서 규칙 A가 건너뛰지만
+#: `daedalus/` 안 소비자가 0인 메서드. 2026-09-19 이 저장소에서 실측했다
+#: (명세의 숫자를 베끼지 않았다). 대부분은 진짜 Qt override지만 전부는 아니며,
+#: 아닌 것들은 귀속 WP를 적어 둔다. **줄어들기만 한다.**
+EXTERNAL_BASE_HIDDEN_BASELINE: frozenset[str] = frozenset({
+    # ── 프레임워크가 디스패치하는 진짜 override ──
+    "view.canvas.canvas_view::FsmCanvasView.wheelEvent",
+    "view.canvas.canvas_view::_MiniMap.drawForeground",
+    "view.canvas.edge_item::TransitionEdgeItem.paint",
+    "view.canvas.edge_item::TransitionEdgeItem.shape",
+    "view.canvas.node_item::StateNodeItem.paint",
+    "view.canvas.ref_edge_item::ReferenceEdgeItem.paint",
+    "view.canvas.ref_edge_item::ReferenceEdgeItem.shape",
+    "view.canvas.ref_node_item::ReferenceNodeItem.paint",
+    "view.canvas.scene::FsmScene.contextMenuEvent",
+    "view.panels.registry_panel::_DraggableList.startDrag",
+    "view.widgets.lifecycle_picker::_EventBoxItem.hoverEnterEvent",
+    "view.widgets.lifecycle_picker::_EventBoxItem.hoverLeaveEvent",
+    "view.widgets.lifecycle_picker::_EventBoxItem.paint",
+    "view.widgets.markdown.highlighter::MarkdownHighlighter.highlightBlock",
+    # ── override가 아니다 — DEADCODE.md가 분류한 테스트 봉합선 8종(§2.9) ──
+    "view.editors.body_editor::SectionContentPanel.current_component",
+    "view.editors.frontmatter_panel::_OptionalRow.is_checked",
+    "view.editors.workspace_editor::_WorkspaceDocPanelBase.content_panel",
+    "view.editors.workspace_settings_panel::WorkspaceSettingsPanel.current_settings",
+    "view.launch_actions::McpInfoDialog.selectable_labels",
+    "view.launch_actions::McpInfoDialog.snippet_view",
+    "view.widgets.lifecycle_picker::HookLifecycleScene.item_for",
+    "view.widgets.tag_input::TagInput.get_candidates",
+    # ── override가 아니다 — 문자열 `getattr` 동적 호출(디스패치 표 밖) ──
+    # surface_commands.py:52 `getattr(window, "rebuild_component_frontmatter")`
+    "view.app::MainWindow.rebuild_component_frontmatter",
+    # app.py:948 `getattr(editor, "rebuild_frontmatter")`
+    "view.editors.component_editor::ComponentEditor.rebuild_frontmatter",
+    # ── override도 동적 호출도 아니다 — 귀속 WP가 정해진 잔재 ──
+    # REFACTOR_SPEC §11: 사용자 확정 대상(결정 9) → 확정되면 WP-0b에 합류
+    "view.canvas.scene::FsmScene.handle_node_moved",
+    "view.canvas.scene::FsmScene.handle_waypoint_moved",
+    # REFACTOR_SPEC §11: WP-7 — 삭제가 아니라 context_menus 배선 일관화
+    "view.canvas.scene::FsmScene._add_agent_actions_menu",
+    "view.canvas.scene::FsmScene._show_component_findings",
+})
 
 #: 문자열로 심볼을 디스패치하는 모듈 (`_SRC` 기준 상대 POSIX 경로).
 #: 이 파일들의 문자열 상수만 참조로 센다 — 범위를 넓히면 무관한 리터럴이
@@ -221,14 +273,34 @@ def _parse_all() -> dict[Path, ast.Module]:
     }
 
 
-def scan_unreferenced() -> list[str]:
-    """`<모듈>::<심볼>` 형식의 소비자 0 심볼 목록 (allowlist 적용 전)."""
+def _scan(*, hidden: bool) -> list[str]:
+    """규칙 A 스캔.
+
+    ``hidden=False``: 규칙 A가 **실제로 강제하는** 소비자 0 심볼 목록.
+    ``hidden=True``: 외부 기저 자동 면제에 **가려진** 소비자 0 메서드 목록 —
+    같은 한 번의 스캔에서 나오는 두 갈래라 두 결과가 어긋날 수 없다.
+    """
     trees = _parse_all()
     referenced = _referenced_names(trees)
     index = _class_index(trees)
     dead: list[str] = []
     for path, tree in trees.items():
         module = _module_name(path)
+        for klass in ast.walk(tree):
+            if not isinstance(klass, ast.ClassDef):
+                continue
+            # 자동 면제 — 기저(Qt 등)가 같은 이름을 정의할 수 있다.
+            if _has_external_base(klass, index) is not hidden:
+                continue
+            for member in klass.body:
+                if not isinstance(member, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    continue
+                if member.name.startswith("__"):
+                    continue
+                if member.name not in referenced:
+                    dead.append(f"{module}::{klass.name}.{member.name}")
+        if hidden:
+            continue
         for node in tree.body:
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
                 if node.name not in referenced:
@@ -244,19 +316,21 @@ def scan_unreferenced() -> list[str]:
             elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
                 if not node.target.id.startswith("__") and node.target.id not in referenced:
                     dead.append(f"{module}::{node.target.id}")
-        for klass in ast.walk(tree):
-            if not isinstance(klass, ast.ClassDef):
-                continue
-            if _has_external_base(klass, index):
-                continue  # 자동 면제 — 기저(Qt 등)가 같은 이름을 정의할 수 있다
-            for member in klass.body:
-                if not isinstance(member, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                    continue
-                if member.name.startswith("__"):
-                    continue
-                if member.name not in referenced:
-                    dead.append(f"{module}::{klass.name}.{member.name}")
     return sorted(dead)
+
+
+def scan_unreferenced() -> list[str]:
+    """`<모듈>::<심볼>` 형식의 소비자 0 심볼 목록 (allowlist 적용 전)."""
+    return _scan(hidden=False)
+
+
+def scan_external_base_hidden() -> list[str]:
+    """외부 기저 자동 면제가 **가린** 소비자 0 메서드 목록 (규칙 A 맹점).
+
+    규칙 A가 뷰 계층에서 조용해지는 크기를 눈에 보이게 만든다 — 이 목록이
+    늘어나면 `test_external_base_hidden_does_not_grow`가 이름을 찍고 실패한다.
+    """
+    return _scan(hidden=True)
 
 
 # ─────────────────────────── 규칙 A ───────────────────────────
@@ -351,6 +425,72 @@ def test_qt_override_auto_exemption_is_active():
         if isinstance(klass, ast.ClassDef) and _has_external_base(klass, index)
     ]
     assert externals, "외부 기저 판정이 하나도 걸리지 않는다 — 규칙이 죽었다"
+
+
+def test_external_base_auto_exemption_is_class_wide_not_name_wide():
+    """면제가 **클래스 단위**임을 숫자로 못박는다 (맹점의 크기).
+
+    `paint`/`wheelEvent` 같은 이름만 면제하는 게 아니라 그 클래스의 메서드
+    전부를 면제한다. 그 대가가 얼마나 큰지 세어 두지 않으면 아래 래칫의
+    존재 이유가 보이지 않는다. 2026-09-19 실측: 클래스 92/261, 메서드 560/1040.
+    """
+    trees = _parse_all()
+    index = _class_index(trees)
+    exempt_classes = exempt_methods = 0
+    for tree in trees.values():
+        for klass in ast.walk(tree):
+            if not isinstance(klass, ast.ClassDef) or not _has_external_base(klass, index):
+                continue
+            exempt_classes += 1
+            exempt_methods += sum(
+                1
+                for member in klass.body
+                if isinstance(member, (ast.FunctionDef, ast.AsyncFunctionDef))
+                and not member.name.startswith("__")
+            )
+    assert exempt_classes > 50 and exempt_methods > 300, (
+        f"면제 규모가 실측({exempt_classes} 클래스 / {exempt_methods} 메서드)과 "
+        "크게 다르다 — 면제 규칙이 바뀌었으면 기준선 문장도 같이 고쳐라"
+    )
+
+
+def test_external_base_hidden_does_not_grow():
+    """자동 면제가 가리는 소비자 0 메서드가 **늘지 않는지**.
+
+    규칙 A는 외부 기저 상속 클래스에서 잠든다. 그 맹점에 새 죽은 메서드가
+    조용히 들어앉는 것을 막는 유일한 장치다 — 새 항목이 진짜 Qt override면
+    기준선에 적고, 아니면 배선하거나 지운다.
+    """
+    hidden = set(scan_external_base_hidden())
+    fresh = sorted(hidden - EXTERNAL_BASE_HIDDEN_BASELINE)
+    assert not fresh, (
+        "자동 면제(외부 기저 상속)에 가려진 소비자 0 메서드가 새로 생겼다 — "
+        "프레임워크 override면 EXTERNAL_BASE_HIDDEN_BASELINE에 사유 주석과 함께 "
+        "등재하고, 아니면 배선하거나 지워라:\n" + "\n".join(f"  {s}" for s in fresh)
+    )
+    assert len(hidden) <= len(EXTERNAL_BASE_HIDDEN_BASELINE), (
+        f"가려진 메서드 {len(hidden)}개 (기준선 "
+        f"{len(EXTERNAL_BASE_HIDDEN_BASELINE)}). 래칫은 내려가기만 한다."
+    )
+
+
+def test_external_base_hidden_baseline_is_not_stale():
+    """되살아난 심볼을 기준선이 붙잡고 있지 않은지 — 목록은 줄어들기만 한다."""
+    hidden = set(scan_external_base_hidden())
+    stale = sorted(EXTERNAL_BASE_HIDDEN_BASELINE - hidden)
+    assert not stale, (
+        "기준선이 이미 소비자를 가졌거나 사라진 메서드를 붙잡고 있다 — 빼라:\n"
+        + "\n".join(f"  {s}" for s in stale)
+    )
+
+
+def test_hidden_scan_and_rule_a_scan_are_disjoint():
+    """두 갈래가 겹치거나 새지 않는지 — 한 메서드는 한쪽에만 속한다."""
+    assert not (set(scan_external_base_hidden()) & set(scan_unreferenced()))
+    assert "view.canvas.scene::FsmScene.handle_node_moved" in scan_external_base_hidden(), (
+        "DEADCODE §2.5가 죽었다고 분류한 메서드가 맹점 목록에 없다 — 스캔이 "
+        "면제 분기를 실제로 태우지 않고 있다"
+    )
 
 
 # ─────────────────────────── 규칙 B ───────────────────────────

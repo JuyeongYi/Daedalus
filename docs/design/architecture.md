@@ -54,7 +54,7 @@ GUI는 PySide6 노드 에디터(`view/`), 앱 내장 MCP 서버(`mcp/`)가 CC와
 
 | 파일 | 무엇 |
 |------|------|
-| `corpus.py` | **코퍼스 2벌.** ① `dogfood.daedalus.json` — 실사용 프로젝트 `project/daedalus_cc_plugin/`의 **동결 사본**(살아 있는 작업 사본은 테스트가 읽지 않는다 — 사용자가 편집하면 골든이 무작위로 깨진다) ② 합성 프로젝트 — 9종 전부 × 배치/미배치 × 블랙보드 유/무 × 랩핑 스킬 3상태(state/reference/`enabled=False`) × async fork × fork 에이전트 × **훅을 가진 ReferenceSkill**. 실사용 코퍼스만으로는 `compile_wrapped_runner`·state 용도 랩핑 스킬·async fork가 0줄 커버라 두 벌이다. `_stamp_ids`가 uuid4 기본값을 결정적 id로 덮는다 |
+| `corpus.py` | **코퍼스 2벌.** ① `dogfood.daedalus.json` — 실사용 프로젝트 `project/daedalus_cc_plugin/`의 **동결 사본**(살아 있는 작업 사본은 테스트가 읽지 않는다 — 사용자가 편집하면 골든이 무작위로 깨진다) ② 합성 프로젝트 — 9종 전부 × 배치/미배치 × 블랙보드 유/무 × 랩핑 스킬 3상태(state/reference/`enabled=False`) × async fork × fork 에이전트 × **훅을 가진 ReferenceSkill**. 실사용 코퍼스만으로는 `compile_wrapped_runner`·state 용도 랩핑 스킬·async fork가 0줄 커버라 두 벌이다. `_stamp_ids`가 uuid4 기본값을 결정적 id로 덮는다. FSM 형상은 `tests/compiler/builders.py`(`make_linear_fsm`/`make_agent_fsm`)에 위임한다 — 컴포넌트 **조립**은 위임하지 않는다(builders의 팩토리 5종은 9종 중 5종만 덮고 config·body·포트가 고정이라, 이 코퍼스의 축을 태우려면 전부 덮어써야 한다) |
 | `trees/` | 복사 계획(`files_tree`/`skill_file`)을 태우는 **ASCII 전용** 픽스처. `.gitattributes`의 `-text`로 줄바꿈 정규화를 막는다 — 복사 바이트가 그대로 sha256에 들어간다 |
 | `render.py` | 계산 쪽 **한 곳** — 테스트가 보는 것과 regen이 쓰는 것이 어긋날 수 없다(원칙 1) |
 | `store.py` | 저장 형식 — `*.sha256`(`sha256sum` 형식, 키 정렬) · `plan/<코퍼스>-<타깃>.json` · `dogfood.project.json` |
@@ -65,6 +65,7 @@ GUI는 PySide6 노드 에디터(`view/`), 앱 내장 MCP 서버(`mcp/`)가 CC와
 | `tests/compiler/test_golden_outputs.py` | 공개 파사드 9종(`compile_skill`/`compile_agent`/`compile_wrapped_runner`/`compile_hooks_json`/`compile_hook_scripts`/`compile_schemas_json`/`compile_plugin_manifest`/`compile_guide`/`render_rule`)과 `compile_project`가 쓴 **모든 파일**의 sha256. 파사드 9종이 전부 최소 1건의 산출을 냈는지도 함께 본다 |
 | `tests/compiler/test_plan_order_golden.py` | 계획·쓰기 **순서** — `plan` / `written` / `copied_files` / `errors+warnings(rule, source)` / 게이트 실패 시 `skipped`. 기존 스위트는 순서를 거의 `set`으로만 비교해 "내용은 같은데 순서가 달라졌다"가 조용히 통과한다 |
 | `tests/model/test_golden_project_json.py` | 동결 사본의 로드→저장 바이트 + 왕복 안정성(두 번째 저장도 같다) |
+| `tests/model/test_fork_split_migration.py` | fork 2종 분리 마이그레이션의 **실물 표본**도 같은 동결 사본을 읽는다 — 살아 있는 작업 사본을 읽으면 깨끗한 체크아웃에서 스위트가 깨진다(구버전 내용이 없다) |
 
 **골든 재생성 — 산출이 *의도적으로* 바뀐 커밋에서만:**
 
@@ -107,15 +108,21 @@ python -m tests.data.golden.regen --refresh-dogfood   # 동결 사본 자체를 
 같은 결의 AST 소스 스캔이다. 앱을 임포트하지 않는다(헤드리스 안전).
 
 - **규칙 A** — `daedalus/` 안 모든 최상위 `def`/`class`/모듈 레벨 상수와, 외부
-  프레임워크를 상속하지 **않는** 클래스의 공개 메서드는 소비자가 있어야 한다.
+  프레임워크를 상속하지 **않는** 클래스의 **dunder를 제외한 모든 메서드
+  (`_private` 포함)**는 소비자가 있어야 한다. 스캐너가 거르는 것은
+  `startswith("__")` 하나뿐이다 — "공개 메서드만"이 아니다.
 - **규칙 B** — WP-RF 분해 파사드가 재-export하는 이름 중 **핀 목록(분해 시점
   스냅샷)에 없으면서** 소비자도 0인 것이 있으면 실패. 스냅샷은 기록이지 늘어나는
   레지스트리가 아니다.
 
-참조로 치는 것: `ast.Name` · `ast.Attribute.attr` · import 별칭 · **문자열 상수**.
-마지막이 중요하다 — MCP 도구 76종은 `mcp/service.py`의 `TOOL_NAMES` 문자열
-튜플에서 `getattr`로 디스패치되고, `tests/compiler/test_purity.py`는 소스 문자열
-안에서 임포트한다. 문자열을 참조로 세지 않으면 이 전부가 오탐이 된다.
+참조로 치는 것: `ast.Name` · `ast.Attribute.attr` · import 별칭 · **`STRING_DISPATCH_SOURCES`에
+등재된 모듈 안의 문자열 상수**. 오늘 그 목록은 `mcp/service.py` 하나다 — MCP 도구
+76종이 그 모듈의 `TOOL_NAMES` 튜플에서 `getattr`로 디스패치되기 때문이다. 범위를
+`daedalus/` 전체로 넓히지 **않는** 것이 핵심이다: 이름이 우연히 겹치는 무관한
+리터럴이 고아 심볼을 조용히 살려 낸다. 실제 사례가 `_MachineRules.validate`로,
+`cli/blackboard.py`의 `add_parser("validate")`와 `__main__.py`의
+`SimpleState(name="validate")` 때문에 게이트를 통과하고 있었다. 새 디스패치 표가
+생기면 그 모듈을 **명시로** 등재한다.
 
 자동 면제: dunder, 그리고 **외부 기저 클래스를 (간접적으로도) 상속한 클래스의
 메서드** — Qt override(`paint`/`*Event`/`sizeHint`)가 여기 해당한다. 기저가 같은
@@ -123,11 +130,24 @@ python -m tests.data.golden.regen --refresh-dogfood   # 동결 사본 자체를 
 기저를 소스에서 열거할 수 없는 클래스의 메서드는 전부 면제한다(보수적이지만
 조용한 오탐보다 낫다).
 
+이 면제는 **이름 단위가 아니라 클래스 단위**라 대가가 크다 — 실측(2026-09-19)
+클래스 92/261(35%), 비-dunder 메서드 560/1040(53%)이 면제되고, 그중 소비자가 0인
+메서드가 28개다. 즉 규칙 A는 뷰 계층에서 대체로 잠든다. 그래서 그 28개를
+`EXTERNAL_BASE_HIDDEN_BASELINE`에 동결해 **맹점 자체를 래칫으로** 만든다: 면제에
+가려진 소비자 0 메서드가 새로 생기면 이름을 찍고 실패하고(진짜 override면 등재,
+아니면 배선하거나 삭제), 목록은 다른 래칫과 같이 줄어들기만 한다. 28개 중
+14개만 진짜 Qt override이고, 나머지는 `getattr` 동적 호출 2종
+(`rebuild_component_frontmatter`/`rebuild_frontmatter`) · DEADCODE §2.9의 테스트
+봉합선 8종 · 귀속 WP가 정해진 잔재 4종(`handle_node_moved`/`handle_waypoint_moved`
+= 사용자 확정 대기, `_add_agent_actions_menu`/`_show_component_findings` = WP-7)이다.
+
 `ALLOWLIST`는 `{심볼: (범주, 사유)}`이고 사유가 비면 실패한다. 범주 5종:
 `framework-hook` · `entry-point` · `test-seam` · `contract-registry` ·
-`facade-snapshot`. 오늘 등재는 셋뿐이다 — `COMPILER_ERROR_RULES`(게이트 rule
+`facade-snapshot`. 오늘 등재는 넷뿐이다 — `COMPILER_ERROR_RULES`(게이트 rule
 등급의 단일 진실, `test_gate.py`가 등가성을 양방향 강제) · `hook_to_json`(전역 훅
 파일 포맷의 쓰기 반쪽, 네 테스트 모듈의 fixture 작성기) ·
+`_MachineRules.validate`(머신 수준 검증의 공개 진입점 — 규칙별 커버리지는
+`tests/model/test_validation.py`가 진다. 문자열 구제 범위를 좁히자 드러났다) ·
 `BodyDocumentRegistry.sync_from_model`(`editor.md:80`이 지정한 유일한 인가 경로).
 목록은 **줄어들기만 한다** — 살아난 심볼을 붙잡고 있으면 테스트가 제거를 강제한다.
 
