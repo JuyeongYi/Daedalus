@@ -521,6 +521,25 @@ def resolve_skill_file(source: str) -> Path | None:
     return None
 
 
+def project_wrapped_sources(project) -> set[str]:
+    """이 프로젝트가 이미 랩핑한 source 집합.
+
+    "어떤 외부 스킬이 이미 감싸져 있는가"는 **모델 질문**이다 — 카탈로그 창의
+    ✔ 표시와 MCP `list_wrappable_skills`의 `already_wrapped`가 같은 답을
+    말해야 한다(원칙 1·2). 예전에는 카탈로그 **창 모듈**이 실체를 들고 있어
+    MCP가 QDialog가 든 파일을 임포트해 모델 질문을 답했다(D7).
+
+    `used_plugin_*`과 달리 파일시스템을 읽지 않는다 — 프로젝트만 본다.
+    """
+    out: set[str] = set()
+    for skill in getattr(project, "skills", None) or []:
+        if getattr(skill, "kind", "") == "wrapped_skill":
+            source = getattr(getattr(skill, "config", None), "source", "") or ""
+            if source:
+                out.add(source)
+    return out
+
+
 def used_plugin_mcp_servers(project) -> list[str]:
     """사용 선언된 외부 플러그인이 제공하는 MCP 서버 이름 합집합 (이름순).
 

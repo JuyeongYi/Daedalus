@@ -123,7 +123,10 @@
   `name` 또는 파일명이고 하위 폴더는 콜론으로 잇는다. `agent_type`=`플러그인:이름`은
   CC가 정확 일치로 찾는 이름이라 사람이 조립하지 않고 이 값을 쓴다. 사용 선언분만
   거르는 단일 진실은 `used_plugin_agents`, MCP는 `list_wrappable_skills`의 `agents`). 마켓 이름 해소: 등록 시 명시 > 폴더
-  `.claude-plugin/marketplace.json`의 name > bare. **GUI 창**은 도구 메뉴
+  `.claude-plugin/marketplace.json`의 name > bare. "이 프로젝트가 이미 감싼
+  source"는 `wrap_catalog.project_wrapped_sources`가 단일 진실이다 — 창의 ✔와
+  MCP `list_wrappable_skills`의 `already_wrapped`가 같은 함수를 부른다(원칙 1·2).
+  **GUI 창**은 도구 메뉴
   "외부 플러그인 카탈로그..."(`view/editors/wrap_catalog_dialog`) — 폴더→
   플러그인→스킬 트리, **플러그인 체크 = 이 프로젝트에서 사용 선언**
   (`external_plugins`에 SetAttrCmd — undo·저장 왕복), ✔=이미 랩핑됨. 체크

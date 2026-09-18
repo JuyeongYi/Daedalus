@@ -393,6 +393,9 @@ daedalus/
 │   │   │                   #     add_marketplace_folder/remove_marketplace_folder(홈 파일 — undo 비대상)/
 │   │   │                   #     set_external_plugins(프로젝트 사용 선언 — undo). 실체는 model/plugin/wrap_catalog +
 │   │   │                   #     actions/creation.create_wrapped_skill(GUI 카탈로그 창과 공유)
+│   │   │                   #     **GUI 다이얼로그 모듈은 임포트하지 않는다**(D7) — 이미 랩핑된 source 판정은
+│   │   │                   #     wrap_catalog.project_wrapped_sources(카탈로그 창과 같은 함수).
+│   │   │                   #     게이트: test_import_contracts::test_mcp_does_not_import_gui_dialog_modules
 │   │   └── workspace.py    #   작업 폴더 문서(WP-WD) — list_workspace_docs/get_workspace_doc/set_claude_md/create_rule/
 │   │                       #     set_rule_body/set_rule_paths(A13)/rename_rule/delete_rule. 본문은 BodyTools와 같은
 │   │                       #     QTextDocument 경로(WP-BU), 구조 편집은 GUI 패널과 같은 모델 직접 기록.

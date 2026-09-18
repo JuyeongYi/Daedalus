@@ -250,3 +250,55 @@ def test_model_extra_banned_matching_is_dot_boundary():
     assert _is_banned("daedalus.mcp.tools.props", MODEL_EXTRA_BANNED) == "daedalus.mcp"
     assert _is_banned("daedalus.model.plugin.skill", MODEL_EXTRA_BANNED) is None
     assert _is_banned("daedalus.compilerish", MODEL_EXTRA_BANNED) is None
+
+
+# ── MCP 도구 ↛ GUI 다이얼로그 (WP-1 D7) ────────────────────────────
+#
+# MCP 도구는 **GUI 어댑터**라 `daedalus.view`를 임포트할 수 있다 — 편집은
+# `view/actions/*`·`view/commands/*` 공유 액션을 거쳐야 undo가 듣고(원칙 3),
+# 본문은 `view/editors/body_documents`의 문서 레지스트리를 거쳐야 에디터와
+# 같은 undo 스택에 오른다(WP-BU). 그것은 **의도된 공유 실체**다.
+#
+# 금지는 다이얼로그(`*_dialog`)다: 창 클래스가 든 모듈에서 함수를 빌려 오면
+# ① 모델·모델-인접 질문의 실체가 창 파일에 눌러앉고(원칙 1) ② 헤드리스
+# MCP 경로가 QDialog 정의를 임포트하게 된다. 실체는 모델(또는 actions)에 두고
+# 창이 그것을 부른다.
+MCP_TOOLS_BANNED_MODULE_SUFFIX = "_dialog"
+
+
+def _mcp_tool_source_files() -> list[Path]:
+    root = DAEDALUS_ROOT / "mcp"
+    return sorted(root.rglob("*.py")) if root.is_dir() else []
+
+
+def test_mcp_tool_scope_covers_the_tool_modules():
+    """스캔 대상 고정 — 파일이 빠지면 계약이 조용히 무력화된다."""
+    names = {f.relative_to(DAEDALUS_ROOT.parent).as_posix() for f in _mcp_tool_source_files()}
+    assert "daedalus/mcp/tools/wrap.py" in names
+    assert "daedalus/mcp/tools/props.py" in names
+    assert len(names) > 10, f"mcp 스캔 대상이 비정상적으로 적다: {len(names)}"
+
+
+def test_mcp_does_not_import_gui_dialog_modules():
+    """MCP 도구는 GUI 다이얼로그 모듈에서 답을 빌려 오지 않는다 (D7)."""
+    violations: list[str] = []
+    for file in _mcp_tool_source_files():
+        tree = ast.parse(file.read_text(encoding="utf-8"), filename=str(file))
+        rel_path = file.relative_to(DAEDALUS_ROOT.parent)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                modules = [alias.name for alias in node.names]
+            elif isinstance(node, ast.ImportFrom):
+                base = _resolve_relative(file, node) if node.level > 0 else (node.module or "")
+                modules = [base, *(f"{base}.{a.name}" if base else a.name for a in node.names)]
+            else:
+                continue
+            for module in modules:
+                if any(part.endswith(MCP_TOOLS_BANNED_MODULE_SUFFIX)
+                       for part in module.split(".")):
+                    violations.append(f"{rel_path}:{node.lineno}: {module}")
+    assert not violations, (
+        "MCP 도구가 GUI 다이얼로그 모듈을 임포트한다 — 답의 실체를 모델(또는 "
+        "view/actions)로 옮기고 창이 그것을 부르게 하라(원칙 1):\n"
+        + "\n".join(violations)
+    )

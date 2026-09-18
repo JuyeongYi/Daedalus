@@ -61,10 +61,9 @@ class WrapTools(_BaseTools):
         폴더가 없으면 `add_marketplace_folder`로 먼저 등록한다.
         """
         from daedalus.model.plugin import wrap_catalog
-        from daedalus.view.editors.wrap_catalog_dialog import project_wrapped_sources
 
         project = self._project
-        wrapped = project_wrapped_sources(project)
+        wrapped = wrap_catalog.project_wrapped_sources(project)
         declared = set(getattr(project, "external_plugins", None) or [])
         folders_out: list[dict[str, Any]] = []
         unfetched_total = 0

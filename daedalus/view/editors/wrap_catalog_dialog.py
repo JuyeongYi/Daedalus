@@ -51,15 +51,10 @@ _COLOR_WRAPPED = QColor("#448844")
 _COLOR_MUTED = QColor("#888888")
 
 
-def project_wrapped_sources(project) -> set[str]:
-    """프로젝트가 이미 랩핑한 source 집합 (트리의 ✔ 표시 판정)."""
-    out: set[str] = set()
-    for skill in getattr(project, "skills", None) or []:
-        if getattr(skill, "kind", "") == "wrapped_skill":
-            source = getattr(getattr(skill, "config", None), "source", "") or ""
-            if source:
-                out.add(source)
-    return out
+#: 트리의 ✔ 표시 판정 — 실체는 모델(`wrap_catalog.project_wrapped_sources`)이고
+#: MCP `list_wrappable_skills`가 **같은 함수**를 부른다(원칙 1·2). 이 이름은
+#: 창 안 호출부와 기존 임포트를 위한 별칭으로만 남는다.
+project_wrapped_sources = wrap_catalog.project_wrapped_sources
 
 
 class WrapCatalogDialog(QDialog):
