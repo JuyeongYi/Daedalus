@@ -295,7 +295,7 @@ class _WrappedSourcePanel(QWidget):
             return False
         usage = getattr(self._component.config, "usage", "") or ""
         target = "state" if usage == "reference" else "reference"
-        counts = placement_counts(project, window._project_vm, self._component)
+        counts = placement_counts(project, self._component)
         if any(counts.values()):
             answer = QMessageBox.question(
                 self,

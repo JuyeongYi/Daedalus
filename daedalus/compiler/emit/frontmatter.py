@@ -155,7 +155,7 @@ def _frontmatter_lines_skill(
             lines.append(f"{key}: {_yaml_scalar(_compose_description(skill))}")
             continue
 
-        emitted = _emit_skill_field(sfield, rule, skill, config, key)
+        emitted = _emit_skill_field(sfield, rule, config, key)
         if emitted is not None:
             lines.append(emitted)
     return lines
@@ -164,7 +164,6 @@ def _frontmatter_lines_skill(
 def _emit_skill_field(
     sfield: SkillField,
     rule: FieldRule,
-    skill: Skill,
     config: ComponentConfig | None,
     key: str,
 ) -> str | None:

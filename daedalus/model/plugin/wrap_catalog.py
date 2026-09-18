@@ -307,12 +307,6 @@ def _read_marketplace_manifest(folder_dir: Path) -> dict | None:
     return _read_json(path) if path.is_file() else None
 
 
-def _marketplace_name(folder_dir: Path) -> str:
-    """폴더가 마켓플레이스 저장소면 그 이름 (``.claude-plugin/marketplace.json``)."""
-    mkt = _read_marketplace_manifest(folder_dir)
-    return str(mkt.get("name", "") or "") if mkt else ""
-
-
 def _declared_plugins(manifest: dict | None) -> list[tuple[str, str, object | None]]:
     """마켓플레이스가 **선언**한 플러그인 — [(이름, 설명, source)] (선언 순서).
 

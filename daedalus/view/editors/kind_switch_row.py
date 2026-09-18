@@ -54,7 +54,6 @@ def build_kind_switch_row(panel, component, kind: str) -> None:
         first = first or btn
     row.addStretch()
     panel._add_span_layout(row)
-    panel._kind_switch_btn = first
     if kind in ("sync_fork", "async_fork"):
         hint = QLabel(
             "도구는 fork 에이전트가 정합니다. 모델·effort는 이 스킬 값이 이기고, "

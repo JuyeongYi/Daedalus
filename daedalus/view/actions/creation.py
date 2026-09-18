@@ -183,6 +183,9 @@ def create_and_place(
 
     참조 스킬은 상태 노드가 아니라 **참조 노드**로 놓인다(캔버스 드롭과 같은
     커맨드). `NO_PLACE_KINDS`는 만들기만 한다.
+
+    캔버스 "여기에 만들기" 메뉴가 퇴역한 뒤로도 이 경로는 살아 있다 — MCP
+    `create_skill(x, y)`가 좌표를 주면 여기로 온다.
     """
     from daedalus.model.fsm.state import SimpleState
     from daedalus.model.plugin.skill import ReferenceSkill

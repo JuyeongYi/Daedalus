@@ -73,7 +73,6 @@ class StateNodeItem(DraggableItemMixin, QGraphicsItem):
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable)
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemSendsGeometryChanges)
         self._dragging_connection = False
-        self._drag_event_name: str | None = None
         self._sync_height()
 
     @property
@@ -127,7 +126,10 @@ class StateNodeItem(DraggableItemMixin, QGraphicsItem):
         return any(e.name == event_name for e in self._call_agent_defs())
 
     def _output_events(self) -> list[str]:
-        """하위 호환용 — 이벤트 이름 목록만 반환."""
+        """출력 포트(transfer_on) 이름 목록 — 높이 계산·포트 라벨 렌더가 쓴다.
+
+        EventDef가 필요하면 `_event_defs()`를 쓴다.
+        """
         model = self._state_vm.model
         if not hasattr(model, "skill_ref"):
             return []
@@ -380,7 +382,6 @@ class StateNodeItem(DraggableItemMixin, QGraphicsItem):
             if hit is not None:
                 event_name, is_agent_call = hit
                 self._dragging_connection = True
-                self._drag_event_name = event_name
                 sc: Any = self.scene()
                 if sc is not None and hasattr(sc, "begin_transition_drag"):
                     sc.begin_transition_drag(self, event_name, is_agent_call)
@@ -414,7 +415,6 @@ class StateNodeItem(DraggableItemMixin, QGraphicsItem):
         sc: Any = self.scene()
         if self._dragging_connection:
             self._dragging_connection = False
-            self._drag_event_name = None
             if sc is not None and hasattr(sc, "end_transition_drag"):
                 sc.end_transition_drag(self.mapToScene(event.pos()))
             event.accept()

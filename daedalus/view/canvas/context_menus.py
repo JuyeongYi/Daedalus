@@ -25,7 +25,7 @@ HIGHLIGHT_MS = 2000
 
 # --- 진입점 프리셋 (A8) — 실체는 view/actions/entrypoint.py ---
 
-def add_entry_preset_menu(scene, menu: QMenu, state_vm: StateViewModel) -> dict:
+def add_entry_preset_menu(menu: QMenu, state_vm: StateViewModel) -> dict:
     """"진입점 설정" 서브메뉴를 붙이고 {QAction: EntryPreset}을 돌려준다.
 
     프리셋을 지원하지 않는 노드(에이전트·빈 상태·FIXED 종류 스킬)에는
@@ -67,9 +67,6 @@ def apply_entry_preset_to_node(scene, state_vm: StateViewModel, preset) -> None:
         apply_entry_preset(scene._project_vm, component, preset)
 
 # --- 컴포넌트 공통 액션 (A9-1/2/3) — 실체는 view/actions/ ---
-# ("여기에 만들기" 빈 캔버스 서브메뉴(A9-9)는 퇴역 — 이름을 정확히 타이핑해야
-# 해서 쓰기 어려웠다(사용자 확정). 생성+배치 실체 create_and_place는 MCP
-# create_skill(x, y)가 계속 쓴다.)
 
 
 def add_trigger_menu(menu: QMenu, transition_vm) -> dict:

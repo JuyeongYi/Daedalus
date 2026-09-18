@@ -106,7 +106,7 @@ def _wire_two_nodes(window):
 def test_rejection_message_lists_what_blocks(window):
     """무엇을 지워야 하는지 말해야 한다 — 전이까지 포함."""
     comp = _wire_two_nodes(window)
-    counts = placement_counts(window._project, window._project_vm, comp)
+    counts = placement_counts(window._project, comp)
     assert counts == {"states": 1, "transitions": 1, "references": 0}
 
     with pytest.raises(ValueError) as exc:

@@ -348,8 +348,6 @@ class FsmScene(QGraphicsScene):
                     tvm = TransitionViewModel(
                         model=model, source_vm=src_vm, target_vm=tgt_vm
                     )
-                    # WP-CT — 계약 카드 자동 생성은 퇴역했다. 호출 계약은
-                    # 컴파일러가 그래프(호출 포트 + 전이)에서 유도한다.
                     self._project_vm.execute(
                         CreateTransitionCmd(self._project_vm, tvm, fsm=self._target_fsm)
                     )
@@ -500,7 +498,7 @@ class FsmScene(QGraphicsScene):
         MacroCommand로 묶는다.
         """
         from daedalus.view.actions.wrapped_usage import usage_fix_command
-        from daedalus.view.commands.base import Command, MacroCommand
+        from daedalus.view.commands.base import MacroCommand
         from daedalus.view.commands.reference_commands import CreateRefCmd
         from daedalus.view.commands.state_commands import CreateStateCmd
 
@@ -579,9 +577,6 @@ class FsmScene(QGraphicsScene):
         elif isinstance(item, WaypointHandleItem):
             self._handle_waypoint_handle_menu(menu, item, event.screenPos())
         else:
-            # 빈 캔버스 — "여기에 만들기" 서브메뉴(A9-9)는 퇴역했다(사용자
-            # 확정: 이름을 정확히 타이핑해야 해서 쓰기 어려웠다). 생성은
-            # 레지스트리 "+" / 카탈로그 선언 후 드래그 / MCP가 맡는다.
             dispatch: dict = {}
             add_act = menu.addAction("빈 상태 추가")
             dispatch[add_act] = lambda p=pos: self._create_state(p)
@@ -594,14 +589,12 @@ class FsmScene(QGraphicsScene):
     # --- 컨텍스트 메뉴 위임 (실체는 canvas/context_menus.py) ---
     #
     # 메뉴 항목이 늘면서 씬이 코드 위생 상한(1,200줄)을 넘어 떼어 냈다. 여기에는
-    # 같은 이름의 한 줄 위임만 남는다 — 테스트와 다른 호출부가 씬의 메서드를
-    # 직접 부르기 때문이다(WP-RF-3e가 MainWindow 협력 객체에서 쓴 관례와 같다).
-
-    def main_window(self):
-        return context_menus.main_window(self)
+    # 씬 자신·테스트·다른 패널이 **실제로 부르는** 이름만 같은 이름의 한 줄
+    # 위임으로 남는다(WP-RF-3e가 MainWindow 협력 객체에서 쓴 관례와 같다) —
+    # 소비자가 없어진 위임은 남기지 않는다.
 
     def _add_entry_preset_menu(self, menu: QMenu, state_vm: StateViewModel) -> dict:
-        return context_menus.add_entry_preset_menu(self, menu, state_vm)
+        return context_menus.add_entry_preset_menu(menu, state_vm)
 
     def _apply_entry_preset(self, state_vm: StateViewModel, preset) -> None:
         context_menus.apply_entry_preset_to_node(self, state_vm, preset)
@@ -617,9 +610,6 @@ class FsmScene(QGraphicsScene):
 
     def highlight_reference_links(self, ref_vm) -> list:
         return context_menus.highlight_reference_links(self, ref_vm)
-
-    def add_reference_link(self, ref_vm, state_vm) -> None:
-        context_menus.add_reference_link_on(self, ref_vm, state_vm)
 
     def _show_preview(self, component: object) -> None:
         context_menus.show_preview(self, component)
@@ -738,7 +728,6 @@ class FsmScene(QGraphicsScene):
             return
         transitions = self._project_vm.get_transitions_for(state_vm)
         children: list[Command] = []
-        # WP-CT — 계약 카드 정리는 퇴역했다(카드 자체가 없다). 전이만 함께 지운다.
         for t in transitions:
             children.append(DeleteTransitionCmd(self._project_vm, t, fsm=self._target_fsm))
         children.append(DeleteStateCmd(self._project_vm, state_vm, fsm=self._target_fsm))

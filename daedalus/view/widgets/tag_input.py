@@ -94,7 +94,6 @@ class TagInput(QWidget):
         super().__init__(parent)
         self._tags: list[str] = []
         self._candidates: list[str] = []
-        self._completer: QCompleter | None = None
         lay = QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(2)
@@ -120,7 +119,6 @@ class TagInput(QWidget):
         self._candidates = list(candidates)
         completer = _make_completer(self._candidates, self)
         self._input.setCompleter(completer)
-        self._completer = completer
         self._rebuild()
 
     def get_candidates(self) -> list[str]:

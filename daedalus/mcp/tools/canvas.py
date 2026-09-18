@@ -223,8 +223,6 @@ class CanvasTools(_BaseTools):
             trans.guard = self._make_guard(guard)
         tvm = TransitionViewModel(model=trans, source_vm=src, target_vm=tgt)
 
-        # WP-CT — 계약 카드 자동 생성은 퇴역했다(캔버스와 동일). 호출 계약은
-        # 컴파일러가 그래프(호출 포트 + 전이)에서 유도한다.
         vm.execute(CreateTransitionCmd(vm, tvm, fsm=fsm))
         return {
             "connected": [source, target],

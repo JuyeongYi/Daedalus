@@ -215,10 +215,6 @@ class _EventBoxItem(QGraphicsItem):
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setToolTip(event_tooltip(event))
 
-    @property
-    def event_value(self) -> HookEvent:
-        return self._event
-
     def boundingRect(self) -> QRectF:  # noqa: N802 (Qt override)
         return QRectF(0, 0, self._box.w, self._box.h)
 
@@ -423,7 +419,6 @@ class HookLifecycleDialog(QDialog):
         view.setRenderHints(view.renderHints())
         view.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         lay.addWidget(view, 1)
-        self._view = view
 
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Cancel)
         buttons.rejected.connect(self.reject)

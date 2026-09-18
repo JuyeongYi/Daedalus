@@ -201,7 +201,6 @@ from daedalus.model.serialize.deser import (
     _deser_agent,
     _deser_blackboard,
     _deser_body,
-    _coerce_config,
     _deser_config,
     _deser_dynamic_class,
     _deser_dynamic_field,

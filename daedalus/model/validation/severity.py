@@ -56,8 +56,6 @@ WARNING_RULES: frozenset[str] = frozenset({
     # fork 스킬(2026-09-13) — "설정이 무시된다"는 알림이다. fork 에이전트를 못 찾는
     # 경우(fork_agent_missing 등)나 종류가 틀린 경우(fork_agent_wrong_kind)는
     # 조용히 범용으로 돌거나 산출이 어긋나므로 에러다.
-    # fork_agent_isolation_ignored는 퇴역했다(WP-FK2) — ForkAgentConfig에 isolation
-    # 필드가 아예 없다(실측 재확인 2026-09-18, CC 2.1.274).
     "fork_model_overrides_agent",
     # WP-FK2 — 아무 fork 스킬도 부르지 않는 fork 에이전트(산출되지만 미실행).
     "unused_fork_agent",

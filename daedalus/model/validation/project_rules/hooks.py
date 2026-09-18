@@ -121,19 +121,6 @@ class _HookRules:
                 ))
         return errors
 
-    # (`skill_hooks_ignored`는 퇴역했다 — 전제가 틀렸다. 2026-09-07에 "SKILL.md에는
-    #  hooks 키가 없다"고 판단했으나 2026-09-13 실측(CC 2.1.268)으로 스킬 스키마에
-    #  "Hooks registered while this skill is active" 필드가 있고, 로컬·플러그인
-    #  스킬 모두 훅이 실제로 도는 것을 확인했다.)
-
-    # (`orphan_hook`은 퇴역했다 — 전제가 틀렸다. 플러그인 훅은 **전역**이라
-    #  플러그인이 활성화되면 자동으로 동작하고, 컴포넌트가 `config.hooks`로
-    #  참조해야 켜지는 것이 아니다(공식 plugins-reference 확인 2026-09-07).
-    #  이제 프로젝트 훅 라이브러리는 참조 여부와 무관하게 배출되므로
-    #  "부착하지 않으면 산출에 실리지 않는다"는 안내 자체가 거짓이었다.
-    #  전역 훅을 이 프로젝트로 끌어오는 참조 역할은 `config.hooks`에 남아
-    #  있고, 없는 이름을 가리키는 것은 `dangling_hook_ref`가 계속 짚는다.)
-
     @staticmethod
     def _check_dangling_hook_refs(
         project, known_hook_names: frozenset[str] | None = None

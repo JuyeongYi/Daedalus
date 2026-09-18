@@ -138,14 +138,12 @@ from daedalus.compiler.emit.guides import (
     _PROGRESS_MANUAL_FALLBACK,
     _insert_guide_pointer,
     blackboard_guide_referenced,
-    blackboard_pointer_wanted,
     compile_blackboard_guide,
     compile_guide,
     compile_workflow_guide,
     guide_pointer_line,
     guide_rel_path,
     workflow_guide_referenced,
-    workflow_pointer_kind,
 )
 from daedalus.compiler.emit.skill import (
     _entry_context_section,
@@ -172,7 +170,6 @@ from daedalus.compiler.emit.agent import (
     _call_contract_section,
     _describe_agent_fsm,
     _emit_agent_field,
-    _fork_base_contract_section,
     _frontmatter_lines_agent,
     _local_settings_frontmatter_lines,
     _settings_note_agent,

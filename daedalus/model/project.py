@@ -76,7 +76,7 @@ class PluginProject:
     edge_layout: dict[str, list[list[float]]] = field(default_factory=dict)
     # WP-RS Part B — 세션 시작 시 진행 상태(state/__progress__.json) 자동 주입 SessionStart
     # 훅을 컴파일 시점에 합성 배출할지 여부. 기본 True. hook_library를 오염시키지
-    # 않는다(compiler/emit.py의 compile_hooks_json이 컴파일 시점에 합성).
+    # 않는다(compiler/emit/hooks.py의 compile_hooks_json이 컴파일 시점에 합성).
     # 구버전 프로젝트 파일(키 부재)은 True로 취급(deserialize_project).
     emit_progress_hook: bool = True
     # WP-TG — 빌드 타깃: 마켓플레이스 플러그인(기본) / 로컬 플러그인(.claude/ 반입형).

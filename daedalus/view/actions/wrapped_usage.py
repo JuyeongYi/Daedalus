@@ -24,7 +24,7 @@ from typing import Any
 USAGES: tuple[str, ...] = ("state", "reference")
 
 
-def placement_counts(project, project_vm, component) -> dict[str, int]:
+def placement_counts(project, component) -> dict[str, int]:
     """이 컴포넌트가 지금 캔버스에서 차지한 것의 개수.
 
     states/transitions는 그래프 배치와 그에 닿는 전이, references는 참조 노드
@@ -97,7 +97,7 @@ def change_wrapped_usage(
         return {"changed": False, "old": old, "new": new_usage,
                 "removed": {"states": 0, "transitions": 0, "references": 0}}
 
-    counts = placement_counts(project, project_vm, component)
+    counts = placement_counts(project, component)
     placed = any(counts.values())
     if placed and not force:
         raise ValueError(
@@ -147,7 +147,7 @@ def set_wrapped_enabled(window, component, enabled: bool) -> dict[str, Any]:
             f"'{getattr(component, 'name', '?')}'은 랩핑 스킬이 아닙니다 — "
             "비활성화는 랩핑 스킬 전용입니다(다른 컴포넌트는 삭제할 수 있습니다)."
         )
-    counts = placement_counts(window._project, window._project_vm, component)
+    counts = placement_counts(window._project, component)
     if bool(getattr(component.config, "enabled", True)) == bool(enabled):
         return {"changed": False, "enabled": bool(enabled), "placed": counts}
 

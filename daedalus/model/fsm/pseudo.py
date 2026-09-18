@@ -36,7 +36,7 @@ class TerminateState(State):
 
 @dataclass(eq=False)
 class EntryPoint(State):
-    """CompositeState의 특정 하위 상태로 직접 진입."""
+    """프로젝트 그래프의 시작 표지 / 에이전트 잔존 FSM의 루트 자리표(WP-EP/WP-AF)."""
 
     @property
     def kind(self) -> str:
@@ -45,7 +45,7 @@ class EntryPoint(State):
 
 @dataclass(eq=False)
 class ExitPoint(State):
-    """CompositeState에서 특정 경로로 탈출."""
+    """v1 에이전트 출력 포트의 잔존 표지 — 현행은 `AgentDefinition.transfer_on`."""
     color: str = "#cc6666"
 
     @property
