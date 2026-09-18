@@ -1,0 +1,62 @@
+{
+  "plan": [
+    [
+      ".claude/skills/Bad Name/SKILL.md",
+      "skill",
+      "스킬 'Bad Name'"
+    ],
+    [
+      ".claude/skills/dupe/SKILL.md",
+      "skill",
+      "스킬 'dupe'"
+    ],
+    [
+      ".claude/skills/dupe/SKILL.md",
+      "skill",
+      "스킬 'dupe'"
+    ],
+    [
+      ".claude/agents/aide.md",
+      "agent",
+      "에이전트 'aide'"
+    ]
+  ],
+  "written": [],
+  "copied_files": [],
+  "findings": [
+    [
+      "duplicate_component_name",
+      "dupe"
+    ],
+    [
+      "compile_invalid_component_name",
+      "Bad Name"
+    ],
+    [
+      "compile_output_path_conflict",
+      ".claude/skills/dupe/SKILL.md"
+    ],
+    [
+      "invalid_component_name",
+      "Bad Name"
+    ]
+  ],
+  "skipped": [
+    [
+      "compile_gate_error",
+      "스킬 'Bad Name'"
+    ],
+    [
+      "compile_gate_error",
+      "스킬 'dupe'"
+    ],
+    [
+      "compile_gate_error",
+      "스킬 'dupe'"
+    ],
+    [
+      "compile_gate_error",
+      "에이전트 'aide'"
+    ]
+  ]
+}

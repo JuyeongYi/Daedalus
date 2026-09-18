@@ -1,0 +1,184 @@
+{
+  "plan": [
+    [
+      ".claude/skills/graph-orient/SKILL.md",
+      "skill",
+      "스킬 'graph-orient'"
+    ],
+    [
+      ".claude/skills/graph-design/SKILL.md",
+      "skill",
+      "스킬 'graph-design'"
+    ],
+    [
+      ".claude/skills/graph-wire/SKILL.md",
+      "skill",
+      "스킬 'graph-wire'"
+    ],
+    [
+      ".claude/skills/graph-state/SKILL.md",
+      "skill",
+      "스킬 'graph-state'"
+    ],
+    [
+      ".claude/skills/plugin-verify/SKILL.md",
+      "skill",
+      "스킬 'plugin-verify'"
+    ],
+    [
+      ".claude/skills/plugin-compile/SKILL.md",
+      "skill",
+      "스킬 'plugin-compile'"
+    ],
+    [
+      ".claude/skills/daedalus-model/SKILL.md",
+      "skill",
+      "스킬 'daedalus-model'"
+    ],
+    [
+      ".claude/skills/cc-plugin-spec/SKILL.md",
+      "skill",
+      "스킬 'cc-plugin-spec'"
+    ],
+    [
+      ".claude/skills/graph-author/SKILL.md",
+      "skill",
+      "스킬 'graph-author'"
+    ],
+    [
+      ".claude/skills/blackboard-cli/SKILL.md",
+      "skill",
+      "스킬 'blackboard-cli'"
+    ],
+    [
+      ".claude/skills/workspace-docs/SKILL.md",
+      "skill",
+      "스킬 'workspace-docs'"
+    ],
+    [
+      ".claude/skills/session-wrap/SKILL.md",
+      "skill",
+      "스킬 'session-wrap'"
+    ],
+    [
+      ".claude/skills/scope-freeze/SKILL.md",
+      "skill",
+      "스킬 'scope-freeze'"
+    ],
+    [
+      ".claude/skills/sdfsdf/SKILL.md",
+      "skill",
+      "스킬 'sdfsdf'"
+    ],
+    [
+      ".claude/agents/graph-surgeon.md",
+      "agent",
+      "에이전트 'graph-surgeon'"
+    ],
+    [
+      ".claude/agents/body-writer.md",
+      "agent",
+      "에이전트 'body-writer'"
+    ],
+    [
+      ".claude/agents/env-configurator.md",
+      "agent",
+      "에이전트 'env-configurator'"
+    ],
+    [
+      ".claude/agents/tooling-scout.md",
+      "agent",
+      "에이전트 'tooling-scout'"
+    ],
+    [
+      ".claude/agents/verify-analyst.md",
+      "agent",
+      "에이전트 'verify-analyst'"
+    ],
+    [
+      "hooks/scripts/check-daedalus-mcp.sh",
+      "hook_script",
+      "훅 스크립트 check-daedalus-mcp.sh"
+    ],
+    [
+      "hooks/scripts/guard-blackboard-schema.sh",
+      "hook_script",
+      "훅 스크립트 guard-blackboard-schema.sh"
+    ],
+    [
+      "hooks/scripts/validate-on-save.sh",
+      "hook_script",
+      "훅 스크립트 validate-on-save.sh"
+    ],
+    [
+      "hooks/scripts/log-tool-usage.sh",
+      "hook_script",
+      "훅 스크립트 log-tool-usage.sh"
+    ],
+    [
+      "hooks/scripts/__progress__.sh",
+      "hook_script",
+      "훅 스크립트 __progress__.sh"
+    ],
+    [
+      ".claude/rules/blackboard-state.md",
+      "workspace_rule",
+      "rules/blackboard-state.md (workspace rule)"
+    ],
+    [
+      "guides/daedalus/workflow.md",
+      "guide_workflow",
+      "guides/daedalus/workflow.md (shared workflow guide)"
+    ],
+    [
+      "guides/daedalus/blackboard.md",
+      "guide_blackboard",
+      "guides/daedalus/blackboard.md (shared blackboard guide)"
+    ],
+    [
+      "schemas/daedalus.json",
+      "schemas_json",
+      "schemas/daedalus.json (blackboard class definitions)"
+    ]
+  ],
+  "written": [
+    ".claude/skills/graph-orient/SKILL.md",
+    ".claude/skills/graph-design/SKILL.md",
+    ".claude/skills/graph-wire/SKILL.md",
+    ".claude/skills/graph-state/SKILL.md",
+    ".claude/skills/plugin-verify/SKILL.md",
+    ".claude/skills/plugin-compile/SKILL.md",
+    ".claude/skills/daedalus-model/SKILL.md",
+    ".claude/skills/cc-plugin-spec/SKILL.md",
+    ".claude/skills/graph-author/SKILL.md",
+    ".claude/skills/blackboard-cli/SKILL.md",
+    ".claude/skills/workspace-docs/SKILL.md",
+    ".claude/skills/session-wrap/SKILL.md",
+    ".claude/skills/scope-freeze/SKILL.md",
+    ".claude/skills/sdfsdf/SKILL.md",
+    ".claude/agents/graph-surgeon.md",
+    ".claude/agents/body-writer.md",
+    ".claude/agents/env-configurator.md",
+    ".claude/agents/tooling-scout.md",
+    ".claude/agents/verify-analyst.md",
+    "hooks/scripts/check-daedalus-mcp.sh",
+    "hooks/scripts/guard-blackboard-schema.sh",
+    "hooks/scripts/validate-on-save.sh",
+    "hooks/scripts/log-tool-usage.sh",
+    "hooks/scripts/__progress__.sh",
+    ".claude/rules/blackboard-state.md",
+    "guides/daedalus/workflow.md",
+    "guides/daedalus/blackboard.md",
+    "schemas/daedalus.json",
+    ".claude/settings.json",
+    ".claude/CLAUDE.md"
+  ],
+  "copied_files": [],
+  "findings": [
+    [
+      "missing_mcp_server_def",
+      "daedalus"
+    ]
+  ],
+  "skipped": []
+}

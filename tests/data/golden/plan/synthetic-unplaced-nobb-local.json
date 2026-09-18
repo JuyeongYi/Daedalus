@@ -1,0 +1,119 @@
+{
+  "plan": [
+    [
+      ".claude/skills/placed-procedural/SKILL.md",
+      "skill",
+      "스킬 'placed-procedural'"
+    ],
+    [
+      ".claude/skills/sync-fork/SKILL.md",
+      "skill",
+      "스킬 'sync-fork'"
+    ],
+    [
+      ".claude/skills/async-fork/SKILL.md",
+      "skill",
+      "스킬 'async-fork'"
+    ],
+    [
+      ".claude/skills/knowledge/SKILL.md",
+      "skill",
+      "스킬 'knowledge'"
+    ],
+    [
+      ".claude/skills/edge-helper/SKILL.md",
+      "skill",
+      "스킬 'edge-helper'"
+    ],
+    [
+      ".claude/skills/ref-with-hooks/SKILL.md",
+      "skill",
+      "스킬 'ref-with-hooks'"
+    ],
+    [
+      ".claude/skills/wrapped-state/SKILL.md",
+      "skill",
+      "스킬 'wrapped-state'"
+    ],
+    [
+      ".claude/agents/wrapped-state.md",
+      "wrapped_runner",
+      "랩핑 스킬 'wrapped-state'의 실행 서브에이전트"
+    ],
+    [
+      ".claude/agents/worker.md",
+      "agent",
+      "에이전트 'worker'"
+    ],
+    [
+      ".claude/agents/fork-base.md",
+      "agent",
+      "에이전트 'fork-base'"
+    ],
+    [
+      ".claude/skills/placed-procedural/readme.txt",
+      "skill_file",
+      "스킬 파일 'placed-procedural/readme.txt'"
+    ],
+    [
+      ".claude/skills/placed-procedural/assets/notes.txt",
+      "skill_file",
+      "스킬 파일 'placed-procedural/assets/notes.txt'"
+    ],
+    [
+      "hooks/scripts/guard-bash.sh",
+      "hook_script",
+      "훅 스크립트 guard-bash.sh"
+    ],
+    [
+      "hooks/scripts/fmt-on-edit.sh",
+      "hook_script",
+      "훅 스크립트 fmt-on-edit.sh"
+    ],
+    [
+      "hooks/scripts/notify-stop.sh",
+      "hook_script",
+      "훅 스크립트 notify-stop.sh"
+    ],
+    [
+      ".claude/rules/golden-rule.md",
+      "workspace_rule",
+      "rules/golden-rule.md (workspace rule)"
+    ]
+  ],
+  "written": [
+    ".claude/skills/placed-procedural/SKILL.md",
+    ".claude/skills/sync-fork/SKILL.md",
+    ".claude/skills/async-fork/SKILL.md",
+    ".claude/skills/knowledge/SKILL.md",
+    ".claude/skills/edge-helper/SKILL.md",
+    ".claude/skills/ref-with-hooks/SKILL.md",
+    ".claude/skills/wrapped-state/SKILL.md",
+    ".claude/agents/wrapped-state.md",
+    ".claude/agents/worker.md",
+    ".claude/agents/fork-base.md",
+    "hooks/scripts/guard-bash.sh",
+    "hooks/scripts/fmt-on-edit.sh",
+    "hooks/scripts/notify-stop.sh",
+    ".claude/rules/golden-rule.md",
+    ".mcp.json",
+    ".claude/settings.json",
+    ".claude/CLAUDE.md"
+  ],
+  "copied_files": [
+    ".claude/skills/placed-procedural/readme.txt",
+    ".claude/skills/placed-procedural/assets/notes.txt",
+    "files/docs/reference.md"
+  ],
+  "findings": [
+    [
+      "unused_external_plugin",
+      "spare-pack@golden-market"
+    ],
+    [
+      "external_plugin_no_marketplace",
+      "ext-pack"
+    ]
+  ],
+  "skipped": []
+}

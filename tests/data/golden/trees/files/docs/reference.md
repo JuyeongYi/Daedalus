@@ -1,0 +1,1 @@
+Shared reference file for golden corpus.

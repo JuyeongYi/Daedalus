@@ -1,0 +1,224 @@
+{
+  "plan": [
+    [
+      "skills/graph-orient/SKILL.md",
+      "skill",
+      "스킬 'graph-orient'"
+    ],
+    [
+      "skills/graph-design/SKILL.md",
+      "skill",
+      "스킬 'graph-design'"
+    ],
+    [
+      "skills/graph-wire/SKILL.md",
+      "skill",
+      "스킬 'graph-wire'"
+    ],
+    [
+      "skills/graph-state/SKILL.md",
+      "skill",
+      "스킬 'graph-state'"
+    ],
+    [
+      "skills/plugin-verify/SKILL.md",
+      "skill",
+      "스킬 'plugin-verify'"
+    ],
+    [
+      "skills/plugin-compile/SKILL.md",
+      "skill",
+      "스킬 'plugin-compile'"
+    ],
+    [
+      "skills/daedalus-model/SKILL.md",
+      "skill",
+      "스킬 'daedalus-model'"
+    ],
+    [
+      "skills/cc-plugin-spec/SKILL.md",
+      "skill",
+      "스킬 'cc-plugin-spec'"
+    ],
+    [
+      "skills/graph-author/SKILL.md",
+      "skill",
+      "스킬 'graph-author'"
+    ],
+    [
+      "skills/blackboard-cli/SKILL.md",
+      "skill",
+      "스킬 'blackboard-cli'"
+    ],
+    [
+      "skills/workspace-docs/SKILL.md",
+      "skill",
+      "스킬 'workspace-docs'"
+    ],
+    [
+      "skills/session-wrap/SKILL.md",
+      "skill",
+      "스킬 'session-wrap'"
+    ],
+    [
+      "skills/scope-freeze/SKILL.md",
+      "skill",
+      "스킬 'scope-freeze'"
+    ],
+    [
+      "skills/sdfsdf/SKILL.md",
+      "skill",
+      "스킬 'sdfsdf'"
+    ],
+    [
+      "agents/graph-surgeon.md",
+      "agent",
+      "에이전트 'graph-surgeon'"
+    ],
+    [
+      "agents/body-writer.md",
+      "agent",
+      "에이전트 'body-writer'"
+    ],
+    [
+      "agents/env-configurator.md",
+      "agent",
+      "에이전트 'env-configurator'"
+    ],
+    [
+      "agents/tooling-scout.md",
+      "agent",
+      "에이전트 'tooling-scout'"
+    ],
+    [
+      "agents/verify-analyst.md",
+      "agent",
+      "에이전트 'verify-analyst'"
+    ],
+    [
+      "hooks/hooks.json",
+      "hooks_json",
+      "hooks.json (lifecycle hooks)"
+    ],
+    [
+      "hooks/scripts/check-daedalus-mcp.sh",
+      "hook_script",
+      "훅 스크립트 check-daedalus-mcp.sh"
+    ],
+    [
+      "hooks/scripts/guard-blackboard-schema.sh",
+      "hook_script",
+      "훅 스크립트 guard-blackboard-schema.sh"
+    ],
+    [
+      "hooks/scripts/validate-on-save.sh",
+      "hook_script",
+      "훅 스크립트 validate-on-save.sh"
+    ],
+    [
+      "hooks/scripts/log-tool-usage.sh",
+      "hook_script",
+      "훅 스크립트 log-tool-usage.sh"
+    ],
+    [
+      "hooks/scripts/__progress__.sh",
+      "hook_script",
+      "훅 스크립트 __progress__.sh"
+    ],
+    [
+      "guides/daedalus/workflow.md",
+      "guide_workflow",
+      "guides/daedalus/workflow.md (shared workflow guide)"
+    ],
+    [
+      "guides/daedalus/blackboard.md",
+      "guide_blackboard",
+      "guides/daedalus/blackboard.md (shared blackboard guide)"
+    ],
+    [
+      "schemas/daedalus.json",
+      "schemas_json",
+      "schemas/daedalus.json (blackboard class definitions)"
+    ],
+    [
+      ".claude-plugin/plugin.json",
+      "plugin_manifest",
+      "plugin.json (플러그인 매니페스트)"
+    ]
+  ],
+  "written": [
+    "skills/graph-orient/SKILL.md",
+    "skills/graph-design/SKILL.md",
+    "skills/graph-wire/SKILL.md",
+    "skills/graph-state/SKILL.md",
+    "skills/plugin-verify/SKILL.md",
+    "skills/plugin-compile/SKILL.md",
+    "skills/daedalus-model/SKILL.md",
+    "skills/cc-plugin-spec/SKILL.md",
+    "skills/graph-author/SKILL.md",
+    "skills/blackboard-cli/SKILL.md",
+    "skills/workspace-docs/SKILL.md",
+    "skills/session-wrap/SKILL.md",
+    "skills/scope-freeze/SKILL.md",
+    "skills/sdfsdf/SKILL.md",
+    "agents/graph-surgeon.md",
+    "agents/body-writer.md",
+    "agents/env-configurator.md",
+    "agents/tooling-scout.md",
+    "agents/verify-analyst.md",
+    "hooks/hooks.json",
+    "hooks/scripts/check-daedalus-mcp.sh",
+    "hooks/scripts/guard-blackboard-schema.sh",
+    "hooks/scripts/validate-on-save.sh",
+    "hooks/scripts/log-tool-usage.sh",
+    "hooks/scripts/__progress__.sh",
+    "guides/daedalus/workflow.md",
+    "guides/daedalus/blackboard.md",
+    "schemas/daedalus.json",
+    ".claude-plugin/plugin.json"
+  ],
+  "copied_files": [],
+  "findings": [
+    [
+      "mcp_agent_in_marketplace_build",
+      "graph-surgeon"
+    ],
+    [
+      "mcp_agent_in_marketplace_build",
+      "body-writer"
+    ],
+    [
+      "mcp_agent_in_marketplace_build",
+      "env-configurator"
+    ],
+    [
+      "mcp_agent_in_marketplace_build",
+      "tooling-scout"
+    ],
+    [
+      "mcp_agent_in_marketplace_build",
+      "verify-analyst"
+    ],
+    [
+      "unsupported_agent_field_in_marketplace_build",
+      "graph-surgeon"
+    ],
+    [
+      "unsupported_agent_field_in_marketplace_build",
+      "body-writer"
+    ],
+    [
+      "unsupported_agent_field_in_marketplace_build",
+      "verify-analyst"
+    ],
+    [
+      "workspace_doc_in_marketplace_build",
+      "daedalus"
+    ],
+    [
+      "workspace_settings_in_marketplace_build",
+      "daedalus"
+    ]
+  ],
+  "skipped": []
+}

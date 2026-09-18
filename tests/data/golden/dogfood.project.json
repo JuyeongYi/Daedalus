@@ -1,0 +1,3116 @@
+{
+  "format": 2,
+  "name": "daedalus",
+  "description": "Daedalus GUI를 MCP로 함께 조작해 FSM 기반 Claude Code 플러그인을 설계한다.",
+  "version": "0.1.0",
+  "skills": [
+    {
+      "kind": "procedural_skill",
+      "id": "c001763402534697a03d67a118df67cc",
+      "name": "graph-orient",
+      "description": "Daedalus 편집 세션의 진입점 — 지금 무엇이 열려 있고 사용자가 무엇을 보고 있는지 파악한다.",
+      "when_to_use": "Daedalus MCP로 플러그인 설계 세션을 시작할 때 — 어떤 작업이든 현황 파악이 첫 단계다.",
+      "body": "# 지금 무엇이 열려 있는지부터 본다\n\nDaedalus MCP는 **사람이 GUI에서 작업하는 중에 같은 프로젝트를 함께 만지는 통로**다.\n조회용 API가 아니다. 그래서 첫 동작은 항상 현황 파악이다.\n\n## 1. 연결과 현황\n\n`get_project`로 프로젝트 이름·빌드 타깃·컴포넌트·배치·전이·블랙보드를 한 번에 받는다.\n\n도구 호출이 전부 실패하면 서버가 안 떠 있는 것이다. Daedalus GUI가 실행 중인지\n확인하고, 여러 인스턴스를 띄웠다면 `--mcp-port`로 어느 쪽에 붙는지 확인하라.\n\n## 2. 사용자가 무엇을 보고 있는가\n\n`get_selection`을 부른다. 사용자가 \"이거 고쳐줘\"라고 할 때 그 \"이거\"가 여기 있다.\n선택이 비어 있으면 무엇을 대상으로 하는지 먼저 물어라 — 짐작해서 엉뚱한 노드를\n고치면 사용자가 되돌려야 한다.\n\n`get_history`는 사용자가 방금 한 편집을 보여준다. 대화가 중간부터 시작됐을 때\n맥락을 따라잡는 데 쓴다.\n\n## 3. 목표를 받아 적는다\n\n`DesignSession`에 이번 작업이 무엇인지 기록한다.\n\n- `goal` — 무엇을 자동화하려는 플러그인인가. 한 문장.\n- `target_project` — 이 플러그인을 어디에 설치할 것인가.\n- `build_target` — `local`(프로젝트 설치) 또는 `marketplace`.\n\n**빌드 타깃은 여기서 정한다.** 에이전트에 `hooks`/`mcpServers`/`permissionMode`가\n하나라도 필요하면 `local`이어야 한다. 마켓플레이스는 그 셋을 무시하기 때문이다.\n나중에 바꾸려면 `set_project_properties(build_target=...)`로 바꿀 수 있지만,\n설계를 다 해 놓고 바꾸면 쓸 수 없는 필드를 걷어내야 한다.\n\n## 4. 갈림길\n\n- 캔버스가 비어 있거나 사용자가 새 워크플로를 원한다 → **new**\n- 이미 배치된 그래프가 있다 → **existing**. 손대기 전에 현황부터 검증한다.\n  기존 그래프에는 대개 미완성 배선이 남아 있고, 그걸 모르고 새로 그리면 충돌한다.\n\n**재개 판단:** 설치된 작업 폴더에서 이 세션이 시작됐다면\n`state/__progress__.json`의 이 플러그인 항목을 먼저 본다 — `current`가\n`\"done\"`이 아니면 지난 세션이 중간에 멈춘 것이다. `prev`와 `note`로 어느\n단계의 어느 갈래까지 왔는지 파악하고, 검증(existing)을 거쳐 그 단계의 지시를\n따른다. 진행 기록을 무시하고 처음부터 다시 그리면 지난 세션의 결정이 덮인다.\n\n## 편집 원칙\n\n여기서 하는 모든 편집은 **사용자의 undo 스택에 들어간다**. 사용자가 Ctrl+Z로\n되돌릴 수 있고, 스크립트 리스너에 사람 편집과 같은 형식으로 남는다. 되돌릴 수\n있다고 해서 함부로 해도 된다는 뜻은 아니다 — 사용자가 작업 중인 캔버스를 말없이\n크게 바꾸지 마라.\n\n## ultracode 사용 원칙\n\n대규모 작업(컴포넌트 10개+ 생성, 기존 그래프 전면 재구성, 본문 일괄 작성)에는\n**ultracode**를 써서 다중 에이전트로 병렬 처리하라. 이때 반드시:\n\n- **모델을 상속하지 마라** — 작업 성격에 따라 fable/opus/sonnet/haiku를 에이전트\n  호출마다 명시한다:\n  - 설계 결정·적대적 검증·미묘한 판단 → fable 또는 opus\n  - 명세가 완성된 구현·대규모 기계적 작업 → opus 또는 sonnet\n  - 단순 기계적 작업(일괄 치환·집계) → sonnet 또는 haiku\n- **effort도 작업별로 지정한다** — 전부 high로 두지 마라. 조회·집계는 low,\n  구현은 medium, 판단이 필요한 단계만 high/xhigh.\n",
+      "config": {
+        "kind": "procedural",
+        "model": "sonnet",
+        "effort": "low",
+        "hooks": {},
+        "argument_hint": null,
+        "allowed_tools": [
+          "mcp__daedalus__get_project",
+          "mcp__daedalus__get_selection",
+          "mcp__daedalus__get_history",
+          "mcp__daedalus__list_recent_projects",
+          "mcp__daedalus__open_project",
+          "mcp__daedalus__validate_project"
+        ],
+        "paths": null,
+        "disable_model_invocation": false,
+        "user_invocable": true,
+        "shell": "bash"
+      },
+      "fsm": {
+        "id": "b38fc909f0d94317a7cd44b5df19290f",
+        "name": "graph-orient_fsm",
+        "states": [
+          {
+            "kind": "simple",
+            "id": "aa99830c054c418db97f93141e77f664",
+            "name": "start",
+            "on_entry_start": [],
+            "on_entry": [],
+            "on_entry_end": [],
+            "on_exit_start": [],
+            "on_exit": [],
+            "on_exit_end": [],
+            "on_active": [],
+            "custom_events": {},
+            "inputs": [],
+            "outputs": [],
+            "reads": [],
+            "writes": [],
+            "skill_ref": null
+          }
+        ],
+        "transitions": [],
+        "initial_state": "aa99830c054c418db97f93141e77f664",
+        "final_states": [],
+        "blackboard": {
+          "class_definitions": [],
+          "variables": {}
+        }
+      },
+      "transfer_on": [
+        {
+          "name": "new",
+          "color": "#4488ff",
+          "description": "빈 캔버스이거나 사용자가 새 워크플로를 만들려 한다"
+        },
+        {
+          "name": "existing",
+          "color": "#ffaa44",
+          "description": "이미 배치된 그래프가 있고 그것을 고치려 한다"
+        }
+      ],
+      "call_agents": []
+    },
+    {
+      "kind": "procedural_skill",
+      "id": "36540c762a1943d7a90751f441818311",
+      "name": "graph-design",
+      "description": "컴포넌트를 만들고 캔버스에 배치해 워크플로의 뼈대를 세운다.",
+      "when_to_use": "설계 목표는 정해졌는데 캔버스에 컴포넌트가 없거나, 기존 워크플로에 새 단계를 추가해야 할 때.",
+      "body": "# 뼈대 — 컴포넌트를 만들고 캔버스에 놓는다\n\n구조가 먼저다. 본문·분기·공유 상태는 다음 단계들이 채운다 — 여기서는 **무엇이\n있고 어디에 놓이는가**만 결정한다.\n\n## 1. 단계를 컴포넌트로 나눈다\n\n`DesignSession.goal`을 읽고 워크플로를 단계로 쪼갠 뒤, 단계마다 맞는 종류를\n고른다(판단 기준은 daedalus-model 참조):\n\n- 절차가 있는 단계 → **procedural_skill**\n- 여러 단계가 공유하는 배경 지식 → **declarative_skill**\n- 여러 노드가 참조하는 문서 → **reference_skill** (참조 노드로 복수 배치 가능)\n- 별도 컨텍스트가 필요한 작업(대량 반복, 독립 판단, 격리 권한) → **agent**.\n  에이전트는 내부 FSM이 없다 — 절차는 본문에 적고, 결과 분기는 출력 포트\n  (transfer_on)로 낸다.\n\n**과하게 쪼개지 마라.** 한 컨텍스트에서 자연스럽게 이어지는 일은 한 스킬이다.\n컨텍스트 경계(다른 시점, 다른 권한, 위임)가 있을 때만 나눈다 — 나눌수록\n블랙보드로 넘겨야 할 상태가 늘어난다.\n\n## 2. 만들고 배치한다\n\n`create_skill`/`create_agent`로 만들고 `place_component`로 캔버스에 놓는다.\n\n- 이름은 `^[a-z0-9][a-z0-9-]*$` — 어기면 컴파일 게이트가 거부한다.\n- **description은 만들 때 바로 채워라.** 모델이 이 스킬을 고르는 근거다.\n  빈 채로 두면 나중 단계에서 누락되기 쉽다.\n- 같은 컴포넌트를 두 번 배치할 수 없다(no_duplicate_skill_ref 에러). 여러 곳에서\n  같은 문서가 필요하면 reference_skill을 만들어 참조 노드로 놓는 것이 맞다.\n\n## 3. 배치 지형\n\n왼쪽→오른쪽이 시간 순서로 읽히게 놓는다. 검증→수정 같은 루프백은 아래쪽으로\n돌린다. 노드가 겹치면 다음 단계에서 배선이 읽히지 않는다.\n\n## 완료 갈림길\n\n- 노드가 **10개 이상**이거나 기존 그래프 대규모 재구성이면 **ultracode** 키워드를\n  써서 병렬 배치를 요청하라 — 한 컨텍스트에서 20개 노드를 순차로 만들면 맥락을\n  놓친다.\n- 노드가 많아 재배선을 한 컨텍스트에서 감당하기 어렵다 → **bulk-rewire**로\n  graph-surgeon에 위임한다.\n- 컴포넌트와 배치가 끝났다 → **done**. 아직 선에는 의미가 없다 — 다음 단계가\n  포트와 트리거를 물린다.\n",
+      "config": {
+        "kind": "procedural",
+        "model": "sonnet",
+        "effort": "medium",
+        "hooks": null,
+        "argument_hint": null,
+        "allowed_tools": [
+          "mcp__daedalus__get_project",
+          "mcp__daedalus__get_component",
+          "mcp__daedalus__create_skill",
+          "mcp__daedalus__create_agent",
+          "mcp__daedalus__place_component",
+          "mcp__daedalus__create_state",
+          "mcp__daedalus__move_state",
+          "mcp__daedalus__rename_state",
+          "mcp__daedalus__rename_component",
+          "mcp__daedalus__set_component_description",
+          "mcp__daedalus__set_component_when_to_use",
+          "mcp__daedalus__set_component_field",
+          "mcp__daedalus__set_component_body",
+          "mcp__daedalus__list_component_fields",
+          "mcp__daedalus__undo"
+        ],
+        "paths": null,
+        "disable_model_invocation": false,
+        "user_invocable": false,
+        "shell": "bash"
+      },
+      "fsm": {
+        "id": "2f5ae7c45e544d4ebf5bfee025948721",
+        "name": "graph-design_fsm",
+        "states": [
+          {
+            "kind": "simple",
+            "id": "ec97d19b4716441f95e69806873871bf",
+            "name": "start",
+            "on_entry_start": [],
+            "on_entry": [],
+            "on_entry_end": [],
+            "on_exit_start": [],
+            "on_exit": [],
+            "on_exit_end": [],
+            "on_active": [],
+            "custom_events": {},
+            "inputs": [],
+            "outputs": [],
+            "reads": [],
+            "writes": [],
+            "skill_ref": null
+          }
+        ],
+        "transitions": [],
+        "initial_state": "ec97d19b4716441f95e69806873871bf",
+        "final_states": [],
+        "blackboard": {
+          "class_definitions": [],
+          "variables": {}
+        }
+      },
+      "transfer_on": [
+        {
+          "name": "done",
+          "color": "#4488ff",
+          "description": "컴포넌트와 배치가 끝났다 — 아직 의미론은 비어 있다"
+        }
+      ],
+      "call_agents": [
+        {
+          "name": "bulk-rewire",
+          "color": "#4488ff",
+          "description": "노드가 많아 한 컨텍스트에서 재배선하면 흐름을 놓칠 때 위임한다."
+        }
+      ]
+    },
+    {
+      "kind": "procedural_skill",
+      "id": "81e81814a3d24c55bf208d225bc9010b",
+      "name": "graph-wire",
+      "description": "포트를 선언하고 전이에 트리거·가드를 물려 분기 의미론을 완성한다.",
+      "when_to_use": "노드와 선은 있는데 갈래 선언(transfer_on)·트리거가 비어 분기 의미가 없을 때, 또는 검증이 배선 문제를 짚어 되돌아왔을 때.",
+      "body": "# 배선 — 갈래에 의미를 물린다\n\n노드와 선만으로는 분기가 표현되지 않는다. 갈래마다 이름과 설명이 있어야 컴파일\n산출에 \"언제 어디로\"가 실리고, 도착한 쪽이 자기가 왜 왔는지 안다.\n\n## 1. 출력 포트 선언이 먼저다\n\n`set_transfer_on(컴포넌트, 갈래 목록)`으로 갈래를 선언한다.\n\n**description을 반드시 채워라.** 인터페이스 선언은 값을 만드는 쪽에만 있다 —\n이 description이 출발 스킬의 \"다음 단계\"와 도착 스킬의 \"진입 맥락\"에 그대로\n실린다. 도착 노드에는 입력 포트가 없다: (출처, 트리거) 쌍이 경로를 특정하므로,\n경로별 대응이 필요하면 그 내용은 도착 스킬 **본문**에 쓴다.\n\n- 갈래가 하나여도 `done` 하나는 선언한다(transfer_on_not_empty 에러).\n- 에이전트로 가는 전이는 일반 포트가 아니라 `add_agent_call`로 만든 **호출\n  포트**에서만 나간다. 호출 포트 description에는 **호출자가 무엇을 넘기는지**\n  적는다 — 에이전트 .md의 \"호출 계약\" 단락이 여기서 유도된다.\n\n## 2. 전이에 트리거를 물린다\n\n`connect_states(출발, 도착, trigger=갈래이름)`. 기존 전이는 `set_transition`으로\n고친다(None=유지, \"\"=지움).\n\n- 트리거는 출발 노드 transfer_on의 이름과 일치해야 한다 — 어긋나면\n  trigger_unknown_event 경고(포트 rename 후 고아 전이가 전형).\n- 조건 세분이 필요하면 guard를 쓰되, 같은 트리거를 가드로 가르는 것보다 갈래\n  이름을 나누는 편이 산출이 읽기 쉽다.\n\n## 3. 전이에 지침이 필요하면 — TransferSkill\n\n전이 **도중에만** 필요한 지침(인계 형식, 넘어가기 전 정리 절차)이 있으면\nTransferSkill을 만들어 전이에 붙인다:\n\n1. `create_skill(이름, kind=\"transfer\")` + 본문 작성\n2. `set_transition(출발, 도착, transfer=이름)` — `\"\"`로 해제\n\n붙이면 컴파일 시 도착 스킬의 \"진입 맥락\"에 \"전이 스킬 지침을 수행하고\n진입하라\" 문구가 합류한다. **양쪽 스킬 본문에 넣어도 되는 내용이면 만들지\n마라** — transfer는 \"그 전이에서만\" 유효한 지침일 때 가치가 있다.\n\n## 4. 검증 루프에서 돌아왔다면\n\n`VerifyResult.blocking`에 재진입 사유가 있다. **그 항목만 고치고** 다시 검증으로\n보내라 — 배선 전체를 다시 훑으면 이미 맞는 배선을 건드리게 된다.\n\n## 완료\n\n모든 다분기 노드에 갈래가 선언되고 모든 전이에 트리거가 물렸으면 **done**.\n",
+      "config": {
+        "kind": "procedural",
+        "model": "sonnet",
+        "effort": "medium",
+        "hooks": null,
+        "argument_hint": null,
+        "allowed_tools": [
+          "mcp__daedalus__get_project",
+          "mcp__daedalus__get_component",
+          "mcp__daedalus__connect_states",
+          "mcp__daedalus__disconnect_states",
+          "mcp__daedalus__set_transition",
+          "mcp__daedalus__set_transfer_on",
+          "mcp__daedalus__add_agent_call",
+          "mcp__daedalus__remove_agent_call",
+          "mcp__daedalus__validate_project",
+          "mcp__daedalus__undo"
+        ],
+        "paths": null,
+        "disable_model_invocation": false,
+        "user_invocable": false,
+        "shell": "bash"
+      },
+      "fsm": {
+        "id": "c8e236b3c1be4bc69be84878073b2d02",
+        "name": "graph-wire_fsm",
+        "states": [
+          {
+            "kind": "simple",
+            "id": "9142806210f947debba78f48a2131742",
+            "name": "start",
+            "on_entry_start": [],
+            "on_entry": [],
+            "on_entry_end": [],
+            "on_exit_start": [],
+            "on_exit": [],
+            "on_exit_end": [],
+            "on_active": [],
+            "custom_events": {},
+            "inputs": [],
+            "outputs": [],
+            "reads": [],
+            "writes": [],
+            "skill_ref": null
+          }
+        ],
+        "transitions": [],
+        "initial_state": "9142806210f947debba78f48a2131742",
+        "final_states": [],
+        "blackboard": {
+          "class_definitions": [],
+          "variables": {}
+        }
+      },
+      "transfer_on": [
+        {
+          "name": "done",
+          "color": "#4488ff",
+          "description": "모든 분기에 포트와 트리거가 물렸다"
+        }
+      ],
+      "call_agents": []
+    },
+    {
+      "kind": "procedural_skill",
+      "id": "7e757d90f0214999b9d913caecd72848",
+      "name": "graph-state",
+      "description": "컨텍스트를 넘나드는 공유 상태를 블랙보드로 설계하고 노드별 읽기·쓰기를 선언한다.",
+      "when_to_use": "여러 컨텍스트가 공유해야 할 값이 있는데 블랙보드 클래스나 노드별 reads/writes 선언이 아직 없을 때.",
+      "body": "# 공유 상태 — 컨텍스트 경계를 넘는 데이터만 블랙보드로\n\n블랙보드는 서로 다른 컨텍스트(스킬 인보크 사이, 에이전트 위임 전후)가 맥락을\n공유하는 장치다. 같은 컨텍스트 안에서는 쓰지 마라 — 이미 같은 맥락을 보고\n있으므로 파일을 거치는 것은 낭비일 뿐이다.\n\n## 1. 무엇이 경계를 넘는가\n\n그래프를 훑으며 전이마다 \"이 값을 다음 단계가 아는가?\"를 묻는다. 경계를 넘는\n값만 클래스로 만든다. 전형적인 세 종류:\n\n- 모두가 읽는 세션 목표·설정 → 선언 클래스 하나\n- 단계별 진행 산출물 → 진행 클래스\n- 루프백으로 되넘기는 결과(검증 결과 등) → 결과 클래스\n\n`create_blackboard_class(이름, 필드들)`. 필드 타입은 **스칼라 4종**(string/int/\nfloat/bool) × collection(none/list/set)뿐이다. 복잡한 구조가 필요하면 JSON을\n문자열에 욱여넣지 말고 클래스를 나눠라 — 런타임에 읽는 것은 LLM이고, 스키마가\n쪼개져 있을수록 읽기-수정-쓰기가 안전하다.\n\n## 2. 노드별 접근 선언\n\n`set_state_access(노드, reads=[...], writes=[...])`. 값은 `\"Class\"` 또는\n`\"Class.field\"`.\n\n- **읽지 않는 것을 선언하지 마라.** 선언은 컴파일 시 그 스킬 본문의 블랙보드\n  단락을 관련 클래스로 좁히는 데 쓰인다 — 넓게 선언하면 안내도 넓어져 잡음이\n  된다.\n- 필드 수준(`Class.field`)이 클래스 전체(`Class`)보다 낫다. 어느 필드를 만지는지\n  산출에 그대로 실린다.\n\n## 3. 검증\n\n`validate_project`로 두 가지를 확인한다:\n\n- **dangling_blackboard_ref** — 선언 오타이거나 클래스/필드 삭제 잔재. 고쳐라.\n- **orphan_blackboard_field** — 아무도 안 쓰는 필드. 진짜 고아면 지우고, 쓸\n  노드가 아직 안 만들어진 것이면 그 노드의 선언을 먼저 채워라.\n\n## 완료\n\n클래스 정의와 노드별 접근 선언이 끝났으면 **done**.\n",
+      "config": {
+        "kind": "procedural",
+        "model": "fable",
+        "effort": "high",
+        "hooks": {},
+        "argument_hint": null,
+        "allowed_tools": [
+          "mcp__daedalus__get_project",
+          "mcp__daedalus__create_blackboard_class",
+          "mcp__daedalus__set_state_access",
+          "mcp__daedalus__validate_project"
+        ],
+        "paths": null,
+        "disable_model_invocation": false,
+        "user_invocable": false,
+        "shell": "bash"
+      },
+      "fsm": {
+        "id": "7425d8178d8541f995a673a0321ef43d",
+        "name": "graph-state_fsm",
+        "states": [
+          {
+            "kind": "simple",
+            "id": "d8442890ab6648f5a0a941142ed7dd68",
+            "name": "start",
+            "on_entry_start": [],
+            "on_entry": [],
+            "on_entry_end": [],
+            "on_exit_start": [],
+            "on_exit": [],
+            "on_exit_end": [],
+            "on_active": [],
+            "custom_events": {},
+            "inputs": [],
+            "outputs": [],
+            "reads": [],
+            "writes": [],
+            "skill_ref": null
+          }
+        ],
+        "transitions": [],
+        "initial_state": "d8442890ab6648f5a0a941142ed7dd68",
+        "final_states": [],
+        "blackboard": {
+          "class_definitions": [],
+          "variables": {}
+        }
+      },
+      "transfer_on": [
+        {
+          "name": "done",
+          "color": "#4488ff",
+          "description": "블랙보드 설계와 노드별 접근 선언이 끝났다"
+        }
+      ],
+      "call_agents": [
+        {
+          "name": "scout-tools",
+          "color": "#8a4a4a",
+          "description": "각 단계가 무엇으로 일할지(내장 도구·기존 MCP·외부 플러그인·동봉 CLI·신규 제작) 조사를 tooling-scout에 위임한다 — 카탈로그 훑기와 비교가 길어 본 흐름에서 하면 맥락을 잃는다."
+        }
+      ]
+    },
+    {
+      "kind": "sync_fork_skill",
+      "id": "d9bebaaac3cd42bdbbea9dcde7ebc559",
+      "name": "plugin-verify",
+      "description": "프로젝트를 검증하고 경고를 원인별로 해석해 무엇을 고쳐야 하는지 정한다.",
+      "when_to_use": "그래프 편집이 일단락되어 컴파일 가능 여부를 판정하고 경고를 해석해야 할 때.",
+      "body": "# 검증 — 에러는 막고 경고는 해석한다\n\n컴파일 게이트는 에러 1건이면 파일을 하나도 만들지 않는다. 경고는 통과하지만,\n통과한다고 무시해도 된다는 뜻이 아니다 — 경고마다 \"왜 나왔고 무엇을 의미하는가\"를\n해석하고 나서 넘어간다.\n\n## 1. `validate_project`\n\n에러와 경고가 구분되어 온다. 에러부터 처리한다.\n\n## 2. 에러 — 무조건 고친다\n\n빈번한 것들:\n\n- **transfer_on_not_empty** — 출력 포트 미선언. 배선 단계로 되돌린다.\n- **duplicate_component_name** — 컴파일 디렉토리가 충돌한다. 이름을 바꾼다.\n- **no_duplicate_skill_ref** — 같은 컴포넌트 중복 배치. 참조 스킬로 바꿀 일이다.\n- **choice_completeness** — 선택 노드의 갈래 불완전.\n\n## 3. 경고 — 원인별 해석\n\n- **dangling_\\*** 계열(hook/tool/blackboard/string) — 참조 오타이거나 삭제\n  잔재다. 거의 항상 고쳐야 한다.\n- **trigger_unknown_event** — 포트 rename 뒤 남은 고아 전이. 배선 단계 소관.\n- **orphan_blackboard_field** — 진짜 고아면 필드를 지우고, 쓸 노드의 선언이\n  빠진 것이면 선언을 채운다.\n- **invalid_component_name**(불일치) — 검증에서는 경고지만 **컴파일 게이트에서\n  에러로 승격**된다. 지금 고쳐라.\n- **mcp_agent_in_marketplace_build** — 빌드 타깃과 설계가 어긋났다. 타깃을\n  local로 바꿀지 에이전트에서 MCP를 뺄지는 설계 결정이다 — 네가 정하지 마라.\n  **fix-content**로 나가며 보고에 \"설계 결정 필요: <무엇과 무엇 중 선택>\"을\n  적는다(이 스킬은 서브에이전트에서 돌아 사용자에게 직접 물을 수 없다 — 보고를\n  받은 메인이 묻는다).\n- **missing_mcp_server_def** — 컴파일 시점 경고다. `set_mcp_server_def`로 서버\n  정의를 등록하면 해소된다(graph-tools 소관).\n\n\n## 4. 산출 미리보기\n\n에러 0건이면 `compile_preview`로 실제 산출 텍스트를 확인한다. **빈 본문과 빈\nwhen_to_use는 검증기가 잡지 않는다** — 산출을 읽고 껍데기 스킬이 없는지, 다음\n단계·진입 맥락 단락이 의도대로 실렸는지 본다.\n\n## 완료 갈림길\n\n- 에러 0건 + 경고 해석 완료 → **pass**\n- 고칠 것이 남았으면 **경고의 계열에 맞는 갈래**로 넘긴다.\n  `VerifyResult.blocking`에 **무엇을 왜 고쳐야 하는지** 기록하고 넘긴다 —\n  받은 쪽은 그 목록만 고치고 전체를 다시 훑지 않는다.\n\n| 갈래 | 계열 | 대표 규칙 |\n|---|---|---|\n| **fix-wiring** | 포트·전이·트리거 | transfer_on_not_empty, trigger_unknown_event, choice_completeness, no_duplicate_skill_ref |\n| **fix-content** | 본문·프론트매터 | invalid_component_name, dangling_hook_ref, dangling_tool_ref, dangling_string_reference |\n| **fix-state** | 블랙보드 | dangling_blackboard_ref, orphan_blackboard_field, invalid_blackboard_field_type |\n| **fix-docs** | 작업 폴더 문서 | invalid_rule_name, duplicate_rule_name, rule_body_frontmatter |\n\n여러 계열이 섞였으면 **에러가 속한 계열 우선**, 에러가 없으면 건수가 많은\n계열로 간다 — 그 단계의 재검증(done → 이 스킬)이 나머지 계열을 다시 짚는다.",
+      "config": {
+        "kind": "sync_fork",
+        "model": "sonnet",
+        "effort": "medium",
+        "hooks": null,
+        "argument_hint": null,
+        "allowed_tools": [],
+        "paths": null,
+        "disable_model_invocation": false,
+        "user_invocable": false,
+        "shell": "bash",
+        "agent": "verify-analyst"
+      },
+      "fsm": {
+        "id": "c5cb075f4f2541e4a377887a98e82462",
+        "name": "plugin-verify_fsm",
+        "states": [
+          {
+            "kind": "simple",
+            "id": "aafeabe1ba964c47bef73300e5048eac",
+            "name": "start",
+            "on_entry_start": [],
+            "on_entry": [],
+            "on_entry_end": [],
+            "on_exit_start": [],
+            "on_exit": [],
+            "on_exit_end": [],
+            "on_active": [],
+            "custom_events": {},
+            "inputs": [],
+            "outputs": [],
+            "reads": [],
+            "writes": [],
+            "skill_ref": null
+          }
+        ],
+        "transitions": [],
+        "initial_state": "aafeabe1ba964c47bef73300e5048eac",
+        "final_states": [],
+        "blackboard": {
+          "class_definitions": [],
+          "variables": {}
+        }
+      },
+      "transfer_on": [
+        {
+          "name": "pass",
+          "color": "#4488ff",
+          "description": "에러 0건 — 컴파일 가능"
+        },
+        {
+          "name": "fix-wiring",
+          "color": "#ff8844",
+          "description": "배선 계열 — 포트·전이·트리거 문제(transfer_on_not_empty·trigger_unknown_event·choice_completeness 등)"
+        },
+        {
+          "name": "fix-content",
+          "color": "#ffcc44",
+          "description": "본문·프론트매터 계열 — 이름 규약·빈 본문·필드 값 문제(invalid_component_name·dangling_hook_ref 등)"
+        },
+        {
+          "name": "fix-state",
+          "color": "#66aaff",
+          "description": "블랙보드 계열 — 접근 선언·필드 문제(dangling_blackboard_ref·orphan_blackboard_field 등)"
+        },
+        {
+          "name": "fix-docs",
+          "color": "#bb88dd",
+          "description": "작업 폴더 문서 계열 — 규칙 이름·프론트매터 충돌(invalid_rule_name·rule_body_frontmatter 등)"
+        }
+      ],
+      "call_agents": []
+    },
+    {
+      "kind": "procedural_skill",
+      "id": "2e4bb8795b2a451d963c012bf3aefb4a",
+      "name": "plugin-compile",
+      "description": "빌드 타깃을 확인하고 플러그인 파일을 산출한다.",
+      "when_to_use": "검증을 통과한 프로젝트를 실제 플러그인 파일로 산출할 때 — local 타깃이면 산출이 곧 설치다.",
+      "body": "# 산출 — 타깃에 따라 컴파일의 의미가 다르다\n\n## 1. 빌드 타깃 확인\n\n`get_project`의 `build_target`을 본다.\n\n- **local** — **컴파일이 곧 설치다.** 출력 폴더가 스테이징이 아니라 대상 작업\n  폴더이고, 스킬/에이전트는 그 안의 `.claude/` 밑으로 들어가며 `.mcp.json`과\n  `.claude/settings.local.json`이 병합된다(추가/갱신만, 재컴파일 멱등). 어느\n  작업 폴더에 설치할지 `DesignSession.target_project`를 확인하고, 없으면\n  사용자에게 물어라.\n- **marketplace** — 출력 폴더가 플러그인 루트가 된다(`.claude-plugin/plugin.json`\n  포함). 에이전트의 hooks/mcpServers/permissionMode는 이 타깃에서 무시된다는\n  점을 기억하라.\n\n## 2. 마지막 게이트\n\n`validate_project`로 에러 0건을 재확인한다. 검증 통과 후에 편집이 있었다면\n결과가 달라졌을 수 있다 — 에러가 있으면 컴파일은 파일을 하나도 만들지 않는다.\n\n## 3. 저장 후 컴파일\n\n`save_project`로 먼저 저장한다. `files/` 동봉 복사는 저장 경로 기준이라\n미저장 프로젝트는 files/가 통째로 빠진다.\n\n실제 컴파일은 MCP에 없다 — **사용자가 GUI에서 Ctrl+B를 눌러야 한다.** 타깃에\n맞는 폴더(local이면 설치 대상 작업 폴더, marketplace면 산출 폴더)를 고르도록\n안내하고 결과를 기다려라.\n\n## 4. 산출 확인\n\n- **local**: 대상 폴더의 `.claude/skills/`·`.claude/agents/`·`.mcp.json`·\n  `.claude/settings.local.json`이 생겼는지 확인한다. `missing_mcp_server_def`\n  경고가 나왔다면 `set_mcp_server_def`로 정의를 등록하고 다시 컴파일한다\n  (멱등이라 안전하다).\n- **marketplace**: `.claude-plugin/plugin.json` + `skills/` + `agents/` 구조를\n  확인한다.\n\n경고 목록은 컴파일 결과에 동봉된다 — 남은 경고를 사용자에게 요약해 보고한다.\n\n## 완료 갈림길\n\n- 산출이 확인되면 **done** — 워크플로 종료.\n- 산출 확인에서 문제가 나왔다(경고 다수, 파일 누락, 내용 오류) →\n  **issues-found**로 검증 단계에 되넘긴다. `VerifyResult.blocking`에 발견한\n  문제를 기록하라 — 받은 쪽이 그 목록으로 원인을 해석한다.\n",
+      "config": {
+        "kind": "procedural",
+        "model": "sonnet",
+        "effort": "low",
+        "hooks": null,
+        "argument_hint": null,
+        "allowed_tools": [
+          "mcp__daedalus__validate_project",
+          "mcp__daedalus__compile_preview",
+          "mcp__daedalus__save_project",
+          "mcp__daedalus__get_project",
+          "mcp__daedalus__set_mcp_server_def"
+        ],
+        "paths": null,
+        "disable_model_invocation": false,
+        "user_invocable": false,
+        "shell": "bash"
+      },
+      "fsm": {
+        "id": "6da6e35641094bb69749ccb4e3dc8773",
+        "name": "plugin-compile_fsm",
+        "states": [
+          {
+            "kind": "simple",
+            "id": "b8f652dbb70a4cde9a8f88ade2f5861f",
+            "name": "start",
+            "on_entry_start": [],
+            "on_entry": [],
+            "on_entry_end": [],
+            "on_exit_start": [],
+            "on_exit": [],
+            "on_exit_end": [],
+            "on_active": [],
+            "custom_events": {},
+            "inputs": [],
+            "outputs": [],
+            "reads": [],
+            "writes": [],
+            "skill_ref": null
+          }
+        ],
+        "transitions": [],
+        "initial_state": "b8f652dbb70a4cde9a8f88ade2f5861f",
+        "final_states": [],
+        "blackboard": {
+          "class_definitions": [],
+          "variables": {}
+        }
+      },
+      "transfer_on": [
+        {
+          "name": "done",
+          "color": "#4488ff",
+          "description": "산출(local이면 설치까지) 확인 완료 — 워크플로 종료"
+        },
+        {
+          "name": "issues-found",
+          "color": "#4488ff",
+          "description": "산출 확인에서 문제 발견(경고 다수·누락·내용 오류) — 해석·수정 필요"
+        }
+      ],
+      "call_agents": []
+    },
+    {
+      "kind": "reference_skill",
+      "id": "d1fc9f25a5fd4b688adc6773eceea2bf",
+      "name": "daedalus-model",
+      "description": "Daedalus의 설계 모델 — 컴포넌트 5종, FSM+블랙보드 하이브리드, 포트 2종(출력·에이전트 호출)의 의미론.",
+      "when_to_use": "",
+      "body": "# Daedalus 설계 모델\n\nDaedalus는 플러그인을 **FSM + 블랙보드**로 설계하고 컴파일러가 플러그인 파일을\n찍어내는 도구다. 캔버스에서 그린 것이 곧 컴파일 산출의 소스다.\n\n## 컴포넌트 5종\n\n| 종류 | 본질 | 구조 |\n|------|------|-----|\n| ProceduralSkill | 작업 지침 | 본문 + 출력 포트, 자체 FSM 가능 |\n| DeclarativeSkill | 배경 지식 | 본문만 |\n| TransferSkill | 전이 중 실행되는 보조 지침 | 본문만 |\n| ReferenceSkill | 참조 문서 | 본문만, 참조 노드로 복수 배치 |\n| AgentDefinition | 별도 컨텍스트의 작업자 | **본문 + 출력 포트** (내부 FSM 없음 — 절차는 본문 산문으로) |\n\n**무엇을 무엇으로 만들 것인가**가 첫 판단이다:\n\n- 컨텍스트를 오염시키는 작업(대량 검색, 로그 훑기) → **에이전트**. 별도 창에서 하고\n  결과만 돌려준다. 절차는 본문에 적고, 결과 분기는 출력 포트(transfer_on)로 낸다 —\n  내부 FSM은 없다(런타임 엔진이 없어 형식화해도 텍스트가 될 뿐이다).\n- 매번 같은 배경 지식이 필요 → **declarative**. 본문이 필요할 때만 로드된다.\n  전역 declarative는 컴파일 시 모든 에이전트의 skills 프론트매터에 자동 합류된다.\n- 순서가 있는 절차 → **procedural**. 워크플로 그래프에 배치해 전이로 잇는다.\n- 전이 도중에만 필요한 지침 → **transfer**.\n- 여러 단계가 공유하는 문서 → **reference**. 참조 노드로 배치해 어느 단계가\n  읽는지 캔버스에 드러낸다. 에이전트 노드에 링크하면 그 에이전트의 skills\n  프론트매터에도 합류된다.\n\n## 포트 2종 — 인터페이스 선언은 값을 만드는 쪽에만\n\n구조(노드와 선)만 만들면 분기가 표현되지 않는다. 포트가 의미론을 담는다.\n\n| 포트 | 필드 | 뜻 |\n|------|------|-----|\n| 출력 | `transfer_on` | 이 노드가 **어떤 결과로 끝나는가** (분기 갈래) |\n| 에이전트 호출 | `call_agents` | 여기서 에이전트에게 위임한다 |\n\n**입력 포트는 없다.** (출처, 트리거) 쌍이 진입 경로를 특정하므로 도착 노드가\n입력을 선언할 이유가 없다 — 갈래의 의미는 **출발 노드의 transfer_on\ndescription**에 적고, 경로별 대응이 필요하면 도착 노드 본문에 쓴다. 컴파일된\n\"진입 맥락\" 단락이 그래프에서 출처 목록을 자동 유도한다.\n\n- 전이의 `trigger`가 출발 노드의 출력 포트 이름을 가리킨다. 이게 없으면 캔버스에서\n  포트가 갈라지지 않고, 컴파일된 \"다음 단계\" 단락도 조건 없이 뭉뚱그려진다.\n- **transfer_on description을 반드시 채워라** — 그 문장이 출발 스킬의 \"다음 단계\"와\n  도착 스킬의 \"진입 맥락\" 양쪽에 그대로 실린다.\n- **에이전트로 가는 전이는 반드시 `call_agents` 포트에서 나가야 한다.** 캔버스가\n  강제하는 규칙이고 MCP 경로도 같다. 호출 포트 description에는 **호출자가 무엇을\n  넘기는지** 적는다 — 에이전트 .md의 \"호출 계약\" 단락이 그래프에서 자동 유도된다\n  (에이전트 쪽에 따로 입력할 것이 없다).\n\n## 블랙보드 — 컨텍스트 사이의 통로\n\n같은 컨텍스트 안에서는 필요 없다. 이미 맥락을 공유하기 때문이다. **서로 다른\n컨텍스트**(스킬 → 에이전트, 세션 → 다음 세션)로 값을 넘길 때 쓴다.\n\n- 필드 타입은 스칼라 4종(`string`/`int`/`float`/`bool`)뿐이다. 컨테이너 형상은\n  `collection`(none/list/set)이 전담한다 — \"문자열 목록\"은 `string × list`.\n- 클래스 하나가 런타임에 `state/<ClassName>.json` 파일 하나가 된다.\n- 각 노드가 `reads`/`writes`로 접근을 선언한다. 선언하면 캔버스에 뱃지가 붙고,\n  컴파일된 본문의 블랙보드 단락이 그 클래스로 좁혀진다. 선언이 없으면 전 클래스를\n  나열하는 일반 안내만 나간다.\n\n## 진행 상태 — 세션을 넘기는 규약\n\n프로젝트 그래프에 배치된 스킬은 `state/__progress__.json`으로 자기 위치를 남긴다\n(`current` / `completed` / `prev` / `note`). 컴파일러가 \"작업 재개\" 단락과 \"다음 단계\"\n단락을 자동으로 붙이므로, 설계자는 그래프만 제대로 그리면 된다.\n\n`prev`에는 직전 **스킬** 이름이 남는다 — 에이전트에 위임했다가 돌아온 경우에도\n에이전트 이름이 아니라 위임한 스킬 이름이다.\n\n## 검증과 컴파일 게이트\n\nF7 검증은 에러와 경고를 나눈다. **에러가 1건이라도 있으면 컴파일이 거부**되고 파일이\n하나도 생기지 않는다. 경고는 통과하지만 대부분 실제 결함이다.\n\n컴파일 시점에만 에러로 승격되는 것이 둘 있다: 이름 규약 위반, 산출 경로 충돌.\n편집 중에는 경고지만 파일을 쓰기 직전에는 막는다.\n",
+      "config": {
+        "kind": "reference",
+        "model": "inherit",
+        "effort": null,
+        "hooks": null,
+        "argument_hint": null,
+        "allowed_tools": [],
+        "paths": null,
+        "user_invocable": false
+      }
+    },
+    {
+      "kind": "reference_skill",
+      "id": "48fa1ed9763c476f95bd428b82c133ae",
+      "name": "cc-plugin-spec",
+      "description": "Claude Code 플러그인 규격 — 프론트매터 키 케이싱, 빌드 타깃별 제약, 경로 변수, 훅 스키마.",
+      "when_to_use": "",
+      "body": "# Claude Code 플러그인 규격\n\n공식 문서에 흩어져 있거나 아예 없는 사실들을 모았다. 규격 정본은 SchemaStore의\n`claude-code-settings.json`과 code.claude.com 문서다.\n\n## 프론트매터 키 케이싱 — 스킬과 에이전트가 다르다\n\n이걸 유추하면 틀린다. 둘은 서로 다른 규약을 쓴다.\n\n| 대상 | 규약 | 예시 |\n|------|------|------|\n| 스킬 `SKILL.md` | **kebab-case** | `allowed-tools`, `disable-model-invocation`, `argument-hint` |\n| 에이전트 `.md` | **camelCase** | `permissionMode`, `disallowedTools`, `maxTurns`, `mcpServers` |\n\n에이전트에 `permission-mode`라고 쓰면 CC가 인식하지 못하고 **조용히 무시한다**.\n값은 파일에 있는데 아무 일도 일어나지 않는다.\n\n## 플러그인 서브에이전트가 무시하는 필드 3종\n\n> For security reasons, plugin subagents don't support the `hooks`, `mcpServers`,\n> or `permissionMode` frontmatter fields.\n\n이것이 빌드 타깃을 나누는 이유 전부다. 마켓플레이스 플러그인으로 배포하면 이 셋이\n무시되므로, 설계자가 걸어 둔 제약이 사라진다. 셋 중 하나라도 필요하면\n**프로젝트 설치(LOCAL) 빌드**를 골라야 한다.\n\n프로젝트 설치 빌드는 CC 관점에서 플러그인이 아니다 — 서브에이전트 스코프로 치면\n`plugin`이 아니라 `project`다. 정확히 그래서 제약이 풀린다.\n\n## 경로 변수 — 치환 조건이 변수마다 다르다\n\n| 변수 | 치환되는 곳 |\n|------|-------------|\n| `${CLAUDE_PLUGIN_ROOT}` | **플러그인 스킬에서만** |\n| `${CLAUDE_PLUGIN_DATA}` | **플러그인 스킬에서만** |\n| `${CLAUDE_PROJECT_DIR}` | 어디서나 (v2.1.196+) |\n| `${CLAUDE_SKILL_DIR}` | **스킬에서만** — 에이전트 .md에서는 치환되지 않는다 |\n\n프로젝트 설치 빌드에서 `${CLAUDE_PLUGIN_ROOT}`를 쓰면 리터럴 문자열로 남는다.\n에이전트 본문에 `${CLAUDE_SKILL_DIR}`를 쓰면 마찬가지로 리터럴로 남는다 —\n에이전트는 단일 .md라 자기 디렉토리가 없다. 에이전트에 파일을 주려면 스킬에\n동봉해 skills 프론트매터로 전달하거나 공용 files/를 쓴다.\n\n**Daedalus에서는 본문에 타깃 중립 토큰 `${ROOT}`를 쓴다.** 컴파일 시점에 빌드\n타깃에 맞는 변수로 확장된다 — 마켓플레이스는 `${CLAUDE_PLUGIN_ROOT}`, 프로젝트\n설치는 `${CLAUDE_PROJECT_DIR}`. 본문에 CC 원시 변수를 직접 쓰면 한쪽 타깃에\n묶이므로 쓰지 않는다. 스킬 전용 동봉 파일은 `${CLAUDE_SKILL_DIR}/<상대경로>`를\n그대로 쓴다(양쪽 타깃 동일 동작이라 중립화 불필요).\n\n## 훅 — 이벤트 31종 × 핸들러 5종\n\n구조는 3단이다: 이벤트 → 그룹(matcher + 핸들러 목록) → 핸들러.\n\n```yaml\nhooks:\n  PreToolUse:\n    - matcher: \"Bash\"\n      hooks:\n        - type: command\n          command: \"${ROOT}/hooks/scripts/guard.sh\"\n```\n\n핸들러 타입은 `command` / `prompt`(빠른 모델이 판단) / `agent`(검증 서브에이전트) /\n`http` / `mcp_tool`. 한 그룹에 **여러 개를 순서대로** 넣을 수 있고 타입이 섞여도 된다.\n공통 속성은 `timeout` / `if`(permission-rule 문법 필터) / `statusMessage`.\n\n### matcher를 받지 않는 이벤트 8종\n\n`TeammateIdle`, `TaskCompleted`, `InstructionsLoaded`, `CwdChanged`,\n`WorktreeCreate`, `WorktreeRemove`, `PostToolBatch`, `TaskCreated`.\n여기에 matcher를 주면 무시된다.\n\n### MCP 도구 매칭의 함정\n\nmatcher로 MCP 도구를 잡을 때 `mcp__<서버>__<도구>` 형태를 쓴다. 서버 전체를\n잡으려면 **`.*`가 필수**다.\n\n- `mcp__memory__.*` — 그 서버의 모든 도구\n- `mcp__memory` — **아무것도 매칭하지 않는다**. 정규식이 아니라 정확한 문자열로\n  비교되기 때문이다. 조용히 아무 훅도 실행되지 않는다.\n\n## 이름 규약\n\n산출 이름이 되는 것(플러그인 이름, 스킬 이름, 에이전트 이름)은\n`^[a-z0-9][a-z0-9-]*$`를 지켜야 컴파일 게이트를 통과한다. 편집 중에는 경고 등급이지만\n컴파일 시점에는 에러로 승격된다.\n\n에이전트 이름에 `:`는 쓸 수 없다 — 플러그인 스코프 식별자(`my-plugin:reviewer`)에\n예약돼 있다.\n",
+      "config": {
+        "kind": "reference",
+        "model": "inherit",
+        "effort": null,
+        "hooks": null,
+        "argument_hint": null,
+        "allowed_tools": [],
+        "paths": null,
+        "user_invocable": false
+      }
+    },
+    {
+      "kind": "procedural_skill",
+      "id": "0399f18731044306823ff76faa0ba9d3",
+      "name": "graph-author",
+      "description": "배치된 컴포넌트의 본문과 프론트매터를 채운다 — 구조 다음은 내용이다.",
+      "when_to_use": "그래프 구조(배치·배선·블랙보드)는 끝났는데 컴포넌트 본문이 비었거나 프론트매터(tools/model/permission 등)가 기본값일 때.",
+      "body": "# 본문과 프론트매터 — 구조 다음은 내용이다\n\n그래프가 완성돼도 컴포넌트 본문이 비어 있으면 컴파일 산출은 껍데기다. 이 단계에서\n배치된 모든 컴포넌트의 본문과 프론트매터를 채운다.\n\n## 1. 빈 곳부터 찾는다\n\n`get_component`로 배치된 컴포넌트를 하나씩 확인한다. 점검 목록:\n\n- `body`가 비었거나 한 줄짜리 — 실제 지침이 없다\n- `when_to_use`가 빈 값 — 모델이 언제 집을지 판단할 근거가 없다\n- 에이전트의 `tools`가 미지정 — 전 도구 상속(대부분 과하다)\n- 에이전트의 `skills`가 빈 값인데 본문이 스킬 이름을 언급 — 서브에이전트가\n  쓸 수 있는 스킬은 skills 프론트매터가 결정한다. 산문 언급만으로는 로드되지\n  않는다(declarative 전역·링크된 reference는 자동 합류).\n\n## 2. 본문 작성 원칙\n\n- **왜를 적어라.** \"X를 하라\"보다 \"Y가 깨지므로 X를 하라\"가 지시를 지키게 만든다.\n- 다음 단계·작업 재개·블랙보드 단락은 **컴파일러가 자동으로 붙인다**. 본문에 직접\n  쓰면 이중이 된다 — 본문은 그 단계 고유의 지침만 담는다.\n- 파일 동봉 참조는 `${ROOT}/files/...` 토큰을 쓴다(타깃 중립 — cc-plugin-spec 참조).\n\n## 3. 프론트매터\n\n`list_component_fields`로 그 컴포넌트가 받는 필드를 확인하고 `set_component_field`로\n채운다. 짐작으로 필드명을 넘기지 마라 — 스킬 종류마다 받는 필드가 다르다.\n\n- 스킬 `allowed_tools`: 그 단계가 실제로 쓰는 도구만. 좁을수록 안전하다.\n- 에이전트 `tools`: 명시 목록. `mcp__<서버>__<도구>` 접두에서 서버 이름이 추출돼\n  `mcpServers` 프론트매터에 자동 합류한다.\n- 에이전트 `permission_mode`/`max_turns`: 프로젝트 설치(LOCAL) 빌드에서만 실제로\n  동작한다 — 빌드 타깃이 marketplace면 넣어도 무시된다.\n\n## 4. 훅과 작업 폴더 구성\n\n반복 강제가 필요한 규칙(세션 시작 주입, 도구 사용 감시, 저장 시 검증)은 본문\n지시가 아니라 훅으로 만든다. 훅·규칙·설정은 서로 얽히므로 **여기서 정하지 말고\n`configure-env`로 env-configurator에 위임하라** — 그 에이전트가 이벤트 종류·\nmatcher 제약·부착 규칙과 작업 폴더 문서·설정을 함께 안다.\n\n문서 한두 줄만 손보면 되는 가벼운 경우는 종전대로 `local-docs`로 간다.\n\n## 위임 판단\n\n빈 본문이 **5개 이상**이면 한 컨텍스트에서 전부 작성하면 맥락을 잃는다 —\n컴포넌트 하나씩 **delegate-body**로 body-writer에 위임하라. 위임 시 `note`에\n대상 컴포넌트 이름을 기록한다.\n\n## ultracode 사용\n\n빈 본문이 많거나 기존 본문을 대규모로 고쳐야 할 때(프로젝트 전반 리팩토링 등)는\n**ultracode** 키워드를 써서 다중 에이전트 오케스트레이션을 요청하라 — 병렬로\n여러 컴포넌트를 동시에 작성해 시간을 절약한다.\n\n## 완료\n\n배치 컴포넌트 전부의 본문·프론트매터가 채워졌으면 `GraphDraft`에 작성 완료를\n기록하고 **done**으로 검증 단계에 넘긴다.\n",
+      "config": {
+        "kind": "procedural",
+        "model": "fable",
+        "effort": "high",
+        "hooks": null,
+        "argument_hint": null,
+        "allowed_tools": [
+          "mcp__daedalus__get_project",
+          "mcp__daedalus__get_component",
+          "mcp__daedalus__list_component_fields",
+          "mcp__daedalus__set_component_field",
+          "mcp__daedalus__set_component_body",
+          "mcp__daedalus__set_component_description",
+          "mcp__daedalus__set_component_when_to_use",
+          "mcp__daedalus__create_hook",
+          "mcp__daedalus__update_hook",
+          "mcp__daedalus__set_component_hooks",
+          "mcp__daedalus__compile_preview",
+          "mcp__daedalus__undo"
+        ],
+        "paths": null,
+        "disable_model_invocation": false,
+        "user_invocable": false,
+        "shell": "bash"
+      },
+      "fsm": {
+        "id": "7b2a28b062fd4dd1af971484fdb12d35",
+        "name": "graph-author_fsm",
+        "states": [
+          {
+            "kind": "simple",
+            "id": "2a88dfa8419b4fd0b5946709342f1d3b",
+            "name": "start",
+            "on_entry_start": [],
+            "on_entry": [],
+            "on_entry_end": [],
+            "on_exit_start": [],
+            "on_exit": [],
+            "on_exit_end": [],
+            "on_active": [],
+            "custom_events": {},
+            "inputs": [],
+            "outputs": [],
+            "reads": [],
+            "writes": [],
+            "skill_ref": null
+          }
+        ],
+        "transitions": [],
+        "initial_state": "2a88dfa8419b4fd0b5946709342f1d3b",
+        "final_states": [],
+        "blackboard": {
+          "class_definitions": [],
+          "variables": {}
+        }
+      },
+      "transfer_on": [
+        {
+          "name": "done",
+          "color": "#4488ff",
+          "description": "모든 배치 컴포넌트의 본문·프론트매터 작성 완료"
+        },
+        {
+          "name": "local-docs",
+          "color": "#4488ff",
+          "description": "빌드 타깃이 LOCAL이고 작업 폴더 문서를 간단히 손보면 되는 경우 — 문서·규칙·설정·훅이 얽힐 때는 configure-env로 위임한다. MARKETPLACE면 done으로 간다"
+        }
+      ],
+      "call_agents": [
+        {
+          "name": "delegate-body",
+          "color": "#4488ff",
+          "description": "빈 본문이 5개 이상이면 개별 컴포넌트를 body-writer에 하나씩 위임한다 — 컨텍스트 폭주 방지."
+        },
+        {
+          "name": "configure-env",
+          "color": "#8a4a4a",
+          "description": "작업 폴더에 남길 것(CLAUDE.md 구역·rules·settings·훅)이 여러 갈래로 얽혀 한 컨텍스트에서 다루기 버거우면 env-configurator에 통째로 위임한다 — 문서·설정 텍스트는 길고 본 설계 흐름과 관심사가 다르다."
+        }
+      ]
+    },
+    {
+      "kind": "declarative_skill",
+      "id": "4e1cd4503bd14f29a2c5aba1abccee78",
+      "name": "blackboard-cli",
+      "description": "daedalus-bb CLI로 블랙보드 상태 파일을 읽고 쓰고 검증하는 방법 — 명령 5종, 옵션, exit code 계약.",
+      "when_to_use": "블랙보드 공유 상태(state/*.json)를 읽거나 쓰거나 검증해야 할 때 — 파일을 직접 편집하기 전에 반드시 이 CLI 사용법을 따른다.",
+      "body": "# daedalus-bb — 블랙보드 상태 CLI\n\n블랙보드 상태 파일(`state/<Class>.json`)은 **직접 편집하지 말고 이 CLI로\n읽고 써라.** 쓰기 전 스키마 검증이 내장되어 있어(검증 실패 시 파일 불변,\n원자적 쓰기) 손으로 JSON을 고칠 때 나는 타입 오타·required 누락이 원천\n차단된다. `command -v daedalus-bb`로 존재를 확인하고, 없으면 기존 규칙\n(읽기-수정-쓰기, 없으면 스키마대로 생성, required 채움)대로 직접 편집하라.\n**임의로 패키지를 설치하지 마라** — CLI는 Daedalus 배포에 함께 들어 있다.\n\n## 명령 5종\n\n```sh\ndaedalus-bb [--state-dir state] [--schemas schemas/schemas.json] <command>\n\ndaedalus-bb list                          # 스키마의 클래스·필드 목록 (JSON)\ndaedalus-bb read <Class> [--field NAME]   # 파일 전체 또는 필드 값 하나\ndaedalus-bb init <Class> [--force]        # 스키마 기반 초기 객체 생성\ndaedalus-bb write <Class> --set f=v [--set f2=v2] [--append f=v] [--remove f=v]\ndaedalus-bb validate [Class ...]          # 생략 시 전 클래스 검증\n```\n\n- **전역 옵션(`--state-dir`/`--schemas`)은 하위 명령 앞에만** 온다 —\n  `write Task --schemas …`처럼 뒤에 붙이면 사용법 오류(exit 2)다.\n- 마켓플레이스 플러그인 안에서는 스키마가 cwd에 없다 —\n  `--schemas ${CLAUDE_PLUGIN_ROOT}/schemas/schemas.json`을 명시하라\n  (프로젝트 설치 빌드는 작업 폴더 루트라 기본값이 맞는다).\n\n## write 의미론\n\n- `--set 필드=값` — 값은 스키마 타입으로 코어션된다(integer/number/boolean/\n  string). 컬렉션 필드는 `--set f='[\"a\",\"b\"]'`(JSON 배열 통째)도 받는다.\n- `--append f=v` / `--remove f=v` — 컬렉션 원소 단위 추가/제거.\n  set 컬렉션은 중복이 자동 제거되고, `--remove`는 없는 키면 no-op이다.\n- 파일이 없으면 초기 객체(스키마 default 존중, 없으면 타입별 제로값)에서\n  시작한다. 검증에 걸리면 **아무것도 쓰지 않고** exit 1.\n\n## exit code와 출력 계약\n\n| exit | 의미 |\n|---|---|\n| 0 | 성공 |\n| 1 | 검증 실패 (write는 파일 불변) |\n| 2 | 사용법·스키마·IO 오류 (가용 클래스/필드를 stderr에 나열) |\n| 3 | read/이름 명시 validate의 대상 파일 없음 — \"아직 안 만들어짐\" |\n\n- **성공 경로의 stdout은 JSON**이다(파싱해서 써라). 오류 경로(exit 2/3,\n  init·write의 1)는 stdout이 비고 진단은 stderr로 나온다 — 예외로\n  `validate`는 실패해도 위반 목록을 JSON으로 낸다.\n- exit 3은 고장이 아니다 — 앞 단계가 아직 그 클래스를 안 쓴 정상 상태일 수\n  있다. 문맥으로 판단하라(써야 할 단계가 지났는데 없으면 그게 고장이다).\n\n## 규약 파일\n\n`state/__progress__.json`(작업 재개 규약)은 블랙보드 스키마 밖이다 —\nvalidate 대상이 아니며, 기존 규약대로 직접 다룬다.\n",
+      "config": {
+        "kind": "declarative",
+        "model": "inherit",
+        "effort": null,
+        "hooks": null,
+        "argument_hint": null,
+        "allowed_tools": [],
+        "paths": null,
+        "disable_model_invocation": false,
+        "user_invocable": true
+      }
+    },
+    {
+      "kind": "procedural_skill",
+      "id": "e81e7f56cbe34ac5ab873808f877dd30",
+      "name": "workspace-docs",
+      "description": "로컬 빌드 전용 — 설치 대상 작업 폴더의 CLAUDE.md 구역과 rules 문서를 작성한다.",
+      "when_to_use": "본문 작성이 끝났고 빌드 타깃이 LOCAL이라 작업 폴더 상주 문서(CLAUDE.md 구역·rules)가 배출 대상일 때.",
+      "body": "# 작업 폴더 상주 문서 — CLAUDE.md 구역과 rules\n\n이 단계는 **빌드 타깃이 LOCAL일 때만** 진입한다(graph-author의 local-docs 갈래).\n스킬은 필요할 때 로드되지만, CLAUDE.md 구역과 `paths:` 없는 rule은 **매 세션\n항상 컨텍스트에 실린다** — 여기 넣는 한 줄이 곧 상시 토큰 비용이므로 짧을수록\n좋다.\n\n## 1. 무엇을 어디에 넣을지 가른다\n\n- **CLAUDE.md 구역** (`set_claude_md`): 이 플러그인이 깔린 작업 폴더에서 매 세션\n  알아야 하는 최소한 — 플러그인의 존재, 진입 스킬, 지켜야 할 핵심 규약 한두 줄.\n  파일 전체가 아니라 `<!-- daedalus:<플러그인> -->` 구역만 갈아끼우므로 사용자의\n  기존 내용은 건드리지 않는다.\n- **rule** (`create_rule` + `set_rule_paths`): 특정 파일 경로를 다룰 때만 필요한\n  규칙. `paths` glob을 지정하면 그 경로를 만질 때만 로드된다 — 상시 비용이 없다.\n  비우면 항상 로드되므로, 항상 필요한 내용이면 CLAUDE.md 구역과 어느 쪽이 맞는지\n  다시 생각하라(구역은 하나, rule은 파일 단위 여럿).\n\n## 2. 작성 규칙\n\n- `list_workspace_docs`로 현재 상태를 먼저 본다 — 이미 있는 문서를 덮지 마라.\n- rule 이름은 곧 파일명이다 — `^[a-z0-9][a-z0-9-]*$` 규약(컴파일 게이트가 강제).\n- **본문 맨 위에 `---` 프론트매터를 직접 쓰지 마라** — `paths`는\n  `set_rule_paths`로 지정한다. 직접 쓰면 `---` 블록이 두 번 나가고\n  `rule_body_frontmatter` 경고가 난다.\n- 워크플로가 파일 규약을 갖는다면(예: 상태 파일은 전용 CLI로만 수정) 그 경로에\n  `paths`를 건 rule이 정확한 자리다.\n\n## 3. 완료 판단\n\n넣을 것이 없으면 없는 대로 끝낸다 — 빈 문서는 아무것도 배출하지 않으므로 억지로\n채우지 마라. 작성했으면 **done**으로 검증 단계에 넘긴다(검증이\n`invalid_rule_name`·`duplicate_rule_name`·`rule_body_frontmatter`를 짚어 준다).",
+      "config": {
+        "kind": "procedural",
+        "model": "opus",
+        "effort": "medium",
+        "hooks": null,
+        "argument_hint": null,
+        "allowed_tools": [
+          "mcp__daedalus__list_workspace_docs",
+          "mcp__daedalus__get_workspace_doc",
+          "mcp__daedalus__set_claude_md",
+          "mcp__daedalus__create_rule",
+          "mcp__daedalus__set_rule_body",
+          "mcp__daedalus__set_rule_paths",
+          "mcp__daedalus__rename_rule",
+          "mcp__daedalus__delete_rule",
+          "mcp__daedalus__validate_project",
+          "mcp__daedalus__undo"
+        ],
+        "paths": null,
+        "disable_model_invocation": false,
+        "user_invocable": false,
+        "shell": "bash"
+      },
+      "fsm": {
+        "id": "8b1d585b1bd442378ebac46368c36804",
+        "name": "workspace-docs_fsm",
+        "states": [
+          {
+            "kind": "simple",
+            "id": "bc7e6cddb8f14e2dab9a949384d78555",
+            "name": "start",
+            "on_entry_start": [],
+            "on_entry": [],
+            "on_entry_end": [],
+            "on_exit_start": [],
+            "on_exit": [],
+            "on_exit_end": [],
+            "on_active": [],
+            "custom_events": {},
+            "inputs": [],
+            "outputs": [],
+            "reads": [],
+            "writes": [],
+            "skill_ref": null
+          }
+        ],
+        "transitions": [],
+        "initial_state": "bc7e6cddb8f14e2dab9a949384d78555",
+        "final_states": [],
+        "blackboard": {
+          "class_definitions": [],
+          "variables": {}
+        }
+      },
+      "transfer_on": [
+        {
+          "name": "done",
+          "color": "#4488ff",
+          "description": "작업 폴더 문서 작성 완료 — 검증으로 진행"
+        }
+      ],
+      "call_agents": []
+    },
+    {
+      "kind": "procedural_skill",
+      "id": "4a5bd687f0444ea595c095868021ab51",
+      "name": "session-wrap",
+      "description": "설계 세션 종결 — 결과를 요약하고 진행 기록을 닫는다.",
+      "when_to_use": "",
+      "body": "# 세션 종결 — 요약하고 기록을 닫는다\n\n산출(local이면 설치까지)이 확인된 뒤의 마지막 단계다. 여기서 끝을 명시하지\n않으면 진행 기록이 컴파일 단계에 멈춘 채 남아, 다음 세션이 \"컴파일 중\"으로\n오판하고 재개한다.\n\n## 1. 결과 요약\n\n사용자에게 이번 세션의 결과를 한눈에 보고한다:\n\n- 만들거나 바꾼 컴포넌트·전이·블랙보드 클래스 (무엇을, 왜)\n- 산출 위치와 형태 (local: 설치된 작업 폴더 / marketplace: 산출 폴더)\n- **남은 경고와 그 해석** — 통과했지만 알고 있어야 하는 것들\n- 다음 세션을 위한 힌트 — 미완 항목, 보류된 설계 결정\n\n## 2. 블랙보드 정리\n\n`VerifyResult.accepted`에 수용하고 넘어간 경고 목록을 기록한다 — 다음 세션의\n검증 단계가 같은 경고를 처음 보는 것처럼 다시 해석하지 않게 한다.\n\n## 3. 저장 확인\n\n편집이 남았으면 `save_project`로 저장한다. 메모리에만 있는 편집은 앱을 닫으면\n사라진다.",
+      "config": {
+        "kind": "procedural",
+        "model": "sonnet",
+        "effort": "medium",
+        "hooks": null,
+        "argument_hint": null,
+        "allowed_tools": [
+          "mcp__daedalus__get_project",
+          "mcp__daedalus__save_project",
+          "mcp__daedalus__undo"
+        ],
+        "paths": null,
+        "disable_model_invocation": false,
+        "user_invocable": false,
+        "shell": "bash"
+      },
+      "fsm": {
+        "id": "81353684f1c64ee6a4b281b19b922660",
+        "name": "session-wrap_fsm",
+        "states": [
+          {
+            "kind": "simple",
+            "id": "60bcc636799f44f6bb776e6b3e09b847",
+            "name": "start",
+            "on_entry_start": [],
+            "on_entry": [],
+            "on_entry_end": [],
+            "on_exit_start": [],
+            "on_exit": [],
+            "on_exit_end": [],
+            "on_active": [],
+            "custom_events": {},
+            "inputs": [],
+            "outputs": [],
+            "reads": [],
+            "writes": [],
+            "skill_ref": null
+          }
+        ],
+        "transitions": [],
+        "initial_state": "60bcc636799f44f6bb776e6b3e09b847",
+        "final_states": [],
+        "blackboard": {
+          "class_definitions": [],
+          "variables": {}
+        }
+      },
+      "transfer_on": [
+        {
+          "name": "done",
+          "color": "#4488ff",
+          "description": ""
+        }
+      ],
+      "call_agents": []
+    },
+    {
+      "kind": "transfer_skill",
+      "id": "4406e2b1d3a64f83a85fb30fdada3360",
+      "name": "scope-freeze",
+      "description": "재배선 위임 직전, 고칠 목록을 확정해 기록한다 — surgeon은 이 목록 밖을 건드리지 않는다.",
+      "when_to_use": "",
+      "body": "# 범위 확정 — 위임 전에 목록을 얼린다\n\n대규모 재배선을 surgeon에게 넘기기 직전의 중간 단계다. 범위가 산문으로만\n전달되면 surgeon이 \"겸사겸사\" 그래프의 다른 곳을 고친다 — 호출자가 의도한\n범위를 넘는 편집은 전부 사용자가 되돌려야 한다.\n\n## 할 일\n\n1. 고칠 전이·포트·노드를 **완결된 목록**으로 만든다 — \"그리고 비슷한 것들\"\n   같은 열린 표현 금지. 항목마다 (대상, 현재 상태, 원하는 상태)를 적는다.\n2. 그 목록을 `GraphDraft.wired`가 아니라 위임 메시지 본문에 그대로 싣는다 —\n   surgeon의 유일한 작업 명세가 된다.\n3. 목록이 확정되지 않으면 위임하지 마라 — 범위 불명확은 surgeon이 blocked로\n   되돌리는 첫째 사유다.",
+      "config": {
+        "kind": "transfer",
+        "model": "inherit",
+        "effort": null,
+        "hooks": null,
+        "argument_hint": null,
+        "allowed_tools": [],
+        "paths": null,
+        "disable_model_invocation": false,
+        "user_invocable": false,
+        "shell": "bash"
+      },
+      "fsm": {
+        "id": "4ee280c2951248068eb1dfa4eb19d614",
+        "name": "scope-freeze_fsm",
+        "states": [
+          {
+            "kind": "simple",
+            "id": "0cf136d75bf640f0868e081e0834b646",
+            "name": "start",
+            "on_entry_start": [],
+            "on_entry": [],
+            "on_entry_end": [],
+            "on_exit_start": [],
+            "on_exit": [],
+            "on_exit_end": [],
+            "on_active": [],
+            "custom_events": {},
+            "inputs": [],
+            "outputs": [],
+            "reads": [],
+            "writes": [],
+            "skill_ref": null
+          }
+        ],
+        "transitions": [],
+        "initial_state": "0cf136d75bf640f0868e081e0834b646",
+        "final_states": [],
+        "blackboard": {
+          "class_definitions": [],
+          "variables": {}
+        }
+      }
+    },
+    {
+      "kind": "wrapped_skill",
+      "id": "cf52117325c5407bb0f4c0bafa26c4f3",
+      "name": "claude-md-guide",
+      "description": "외부 배경 지식 — CLAUDE.md 품질 기준(claude-md-improver). 작업 폴더 문서를 쓸 때 무엇이 좋은 CLAUDE.md인지 참고한다.",
+      "when_to_use": "",
+      "body": "",
+      "config": {
+        "kind": "wrapped",
+        "model": "inherit",
+        "effort": null,
+        "hooks": null,
+        "argument_hint": null,
+        "allowed_tools": [],
+        "paths": null,
+        "source": "claude-md-management@claude-plugins-official:claude-md-improver",
+        "usage": "reference",
+        "enabled": true,
+        "disable_model_invocation": null,
+        "user_invocable": null
+      },
+      "fsm": {
+        "id": "e30824f204514e388c6785915ed74473",
+        "name": "claude-md-guide_fsm",
+        "states": [
+          {
+            "kind": "simple",
+            "id": "0f57475ac28f441dbdb02573def826f6",
+            "name": "start",
+            "on_entry_start": [],
+            "on_entry": [],
+            "on_entry_end": [],
+            "on_exit_start": [],
+            "on_exit": [],
+            "on_exit_end": [],
+            "on_active": [],
+            "custom_events": {},
+            "inputs": [],
+            "outputs": [],
+            "reads": [],
+            "writes": [],
+            "skill_ref": null
+          }
+        ],
+        "transitions": [],
+        "initial_state": "0f57475ac28f441dbdb02573def826f6",
+        "final_states": [],
+        "blackboard": {
+          "class_definitions": [],
+          "variables": {}
+        }
+      },
+      "transfer_on": [
+        {
+          "name": "done",
+          "color": "#4488ff",
+          "description": ""
+        }
+      ],
+      "call_agents": []
+    },
+    {
+      "kind": "wrapped_skill",
+      "id": "eed048cb96064441b69faf34fdd4a805",
+      "name": "skill-authoring-guide",
+      "description": "외부 배경 지식 — 스킬 저작 규범(plugin-dev:skill-development). 본문·description·점진 공개를 어떻게 쓰는지 참고한다.",
+      "when_to_use": "",
+      "body": "",
+      "config": {
+        "kind": "wrapped",
+        "model": "inherit",
+        "effort": null,
+        "hooks": null,
+        "argument_hint": null,
+        "allowed_tools": [],
+        "paths": null,
+        "source": "plugin-dev@claude-plugins-official:skill-development",
+        "usage": "reference",
+        "enabled": true,
+        "disable_model_invocation": null,
+        "user_invocable": null
+      },
+      "fsm": {
+        "id": "f695e9eb20a847469cd22d91933461e3",
+        "name": "skill-authoring-guide_fsm",
+        "states": [
+          {
+            "kind": "simple",
+            "id": "92f9c488c876449e990d4014356c877d",
+            "name": "start",
+            "on_entry_start": [],
+            "on_entry": [],
+            "on_entry_end": [],
+            "on_exit_start": [],
+            "on_exit": [],
+            "on_exit_end": [],
+            "on_active": [],
+            "custom_events": {},
+            "inputs": [],
+            "outputs": [],
+            "reads": [],
+            "writes": [],
+            "skill_ref": null
+          }
+        ],
+        "transitions": [],
+        "initial_state": "92f9c488c876449e990d4014356c877d",
+        "final_states": [],
+        "blackboard": {
+          "class_definitions": [],
+          "variables": {}
+        }
+      },
+      "transfer_on": [
+        {
+          "name": "done",
+          "color": "#4488ff",
+          "description": ""
+        }
+      ],
+      "call_agents": []
+    },
+    {
+      "kind": "wrapped_skill",
+      "id": "5df0ce8bda354a24b0d545da759b4838",
+      "name": "skill-eval-guide",
+      "description": "외부 배경 지식 — 스킬 품질·평가(skill-creator). description 트리거 정확도와 eval로 본문 품질을 재는 방법을 참고한다.",
+      "when_to_use": "",
+      "body": "",
+      "config": {
+        "kind": "wrapped",
+        "model": "inherit",
+        "effort": null,
+        "hooks": null,
+        "argument_hint": null,
+        "allowed_tools": [],
+        "paths": null,
+        "source": "skill-creator@claude-plugins-official:skill-creator",
+        "usage": "reference",
+        "enabled": true,
+        "disable_model_invocation": null,
+        "user_invocable": null
+      },
+      "fsm": {
+        "id": "353b8de9e8c9499bb3fe2a50be2715f6",
+        "name": "skill-eval-guide_fsm",
+        "states": [
+          {
+            "kind": "simple",
+            "id": "46faa863fbb2410990d2105519322e97",
+            "name": "start",
+            "on_entry_start": [],
+            "on_entry": [],
+            "on_entry_end": [],
+            "on_exit_start": [],
+            "on_exit": [],
+            "on_exit_end": [],
+            "on_active": [],
+            "custom_events": {},
+            "inputs": [],
+            "outputs": [],
+            "reads": [],
+            "writes": [],
+            "skill_ref": null
+          }
+        ],
+        "transitions": [],
+        "initial_state": "46faa863fbb2410990d2105519322e97",
+        "final_states": [],
+        "blackboard": {
+          "class_definitions": [],
+          "variables": {}
+        }
+      },
+      "transfer_on": [
+        {
+          "name": "done",
+          "color": "#4488ff",
+          "description": ""
+        }
+      ],
+      "call_agents": []
+    },
+    {
+      "kind": "wrapped_skill",
+      "id": "382c2823a3734c05924262436d3ea715",
+      "name": "mcp-integration-guide",
+      "description": "외부 배경 지식 — 플러그인 MCP 배선(plugin-dev:mcp-integration). 서버 유형·.mcp.json·경로 변수 규약을 참고한다.",
+      "when_to_use": "",
+      "body": "",
+      "config": {
+        "kind": "wrapped",
+        "model": "inherit",
+        "effort": null,
+        "hooks": null,
+        "argument_hint": null,
+        "allowed_tools": [],
+        "paths": null,
+        "source": "plugin-dev@claude-plugins-official:mcp-integration",
+        "usage": "reference",
+        "enabled": true,
+        "disable_model_invocation": null,
+        "user_invocable": null
+      },
+      "fsm": {
+        "id": "bf826ff106764eb8a7bf12e3493a52e3",
+        "name": "mcp-integration-guide_fsm",
+        "states": [
+          {
+            "kind": "simple",
+            "id": "c89d71cdf9de44229c2a7dd896689e2b",
+            "name": "start",
+            "on_entry_start": [],
+            "on_entry": [],
+            "on_entry_end": [],
+            "on_exit_start": [],
+            "on_exit": [],
+            "on_exit_end": [],
+            "on_active": [],
+            "custom_events": {},
+            "inputs": [],
+            "outputs": [],
+            "reads": [],
+            "writes": [],
+            "skill_ref": null
+          }
+        ],
+        "transitions": [],
+        "initial_state": "c89d71cdf9de44229c2a7dd896689e2b",
+        "final_states": [],
+        "blackboard": {
+          "class_definitions": [],
+          "variables": {}
+        }
+      },
+      "transfer_on": [
+        {
+          "name": "done",
+          "color": "#4488ff",
+          "description": ""
+        }
+      ],
+      "call_agents": []
+    },
+    {
+      "kind": "wrapped_skill",
+      "id": "38ffc4f1f2704ea1a197d9f5d30095e6",
+      "name": "automation-recommender-guide",
+      "description": "외부 배경 지식 — 자동화 추천(claude-code-setup). 어떤 훅·스킬·MCP·서브에이전트가 이 코드베이스에 맞는지 판단이 서지 않을 때 참고한다.",
+      "when_to_use": "",
+      "body": "",
+      "config": {
+        "kind": "wrapped",
+        "model": "inherit",
+        "effort": null,
+        "hooks": null,
+        "argument_hint": null,
+        "allowed_tools": [],
+        "paths": null,
+        "source": "claude-code-setup@claude-plugins-official:claude-automation-recommender",
+        "usage": "reference",
+        "enabled": true,
+        "disable_model_invocation": null,
+        "user_invocable": null
+      },
+      "fsm": {
+        "id": "775dcd0f1a794b5a819bb16d0f5893e9",
+        "name": "automation-recommender-guide_fsm",
+        "states": [
+          {
+            "kind": "simple",
+            "id": "138be706652043a38ae7aca12497befa",
+            "name": "start",
+            "on_entry_start": [],
+            "on_entry": [],
+            "on_entry_end": [],
+            "on_exit_start": [],
+            "on_exit": [],
+            "on_exit_end": [],
+            "on_active": [],
+            "custom_events": {},
+            "inputs": [],
+            "outputs": [],
+            "reads": [],
+            "writes": [],
+            "skill_ref": null
+          }
+        ],
+        "transitions": [],
+        "initial_state": "138be706652043a38ae7aca12497befa",
+        "final_states": [],
+        "blackboard": {
+          "class_definitions": [],
+          "variables": {}
+        }
+      },
+      "transfer_on": [
+        {
+          "name": "done",
+          "color": "#4488ff",
+          "description": ""
+        }
+      ],
+      "call_agents": []
+    },
+    {
+      "kind": "wrapped_skill",
+      "id": "323fcfe0f51b4a7ea4dcfd6a53b1741a",
+      "name": "hookify-rules-guide",
+      "description": "외부 배경 지식 — hookify 규칙 문법(hookify:writing-rules). 원치 않는 행동을 막는 훅 규칙을 어떻게 쓰는지 참고한다.",
+      "when_to_use": "",
+      "body": "",
+      "config": {
+        "kind": "wrapped",
+        "model": "inherit",
+        "effort": null,
+        "hooks": null,
+        "argument_hint": null,
+        "allowed_tools": [],
+        "paths": null,
+        "source": "hookify@claude-plugins-official:writing-rules",
+        "usage": "reference",
+        "enabled": true,
+        "disable_model_invocation": null,
+        "user_invocable": null
+      },
+      "fsm": {
+        "id": "bf14200cdf09448596865cb93c70717a",
+        "name": "hookify-rules-guide_fsm",
+        "states": [
+          {
+            "kind": "simple",
+            "id": "a75698aa3c5742c487389d8431c97e11",
+            "name": "start",
+            "on_entry_start": [],
+            "on_entry": [],
+            "on_entry_end": [],
+            "on_exit_start": [],
+            "on_exit": [],
+            "on_exit_end": [],
+            "on_active": [],
+            "custom_events": {},
+            "inputs": [],
+            "outputs": [],
+            "reads": [],
+            "writes": [],
+            "skill_ref": null
+          }
+        ],
+        "transitions": [],
+        "initial_state": "a75698aa3c5742c487389d8431c97e11",
+        "final_states": [],
+        "blackboard": {
+          "class_definitions": [],
+          "variables": {}
+        }
+      },
+      "transfer_on": [
+        {
+          "name": "done",
+          "color": "#4488ff",
+          "description": ""
+        }
+      ],
+      "call_agents": []
+    },
+    {
+      "kind": "wrapped_skill",
+      "id": "1d6a895ff416418b8bc256044bee6070",
+      "name": "hook-authoring-guide",
+      "description": "외부 배경 지식 — CC 훅 저작(plugin-dev:hook-development). 이벤트 종류·matcher 제약·프롬프트 훅 API를 참고한다.",
+      "when_to_use": "",
+      "body": "",
+      "config": {
+        "kind": "wrapped",
+        "model": "inherit",
+        "effort": null,
+        "hooks": null,
+        "argument_hint": null,
+        "allowed_tools": [],
+        "paths": null,
+        "source": "plugin-dev@claude-plugins-official:hook-development",
+        "usage": "reference",
+        "enabled": true,
+        "disable_model_invocation": null,
+        "user_invocable": null
+      },
+      "fsm": {
+        "id": "bc53502a8c3c4511a62132952402d642",
+        "name": "hook-authoring-guide_fsm",
+        "states": [
+          {
+            "kind": "simple",
+            "id": "530da020083b4439a5eeddcd82bfb108",
+            "name": "start",
+            "on_entry_start": [],
+            "on_entry": [],
+            "on_entry_end": [],
+            "on_exit_start": [],
+            "on_exit": [],
+            "on_exit_end": [],
+            "on_active": [],
+            "custom_events": {},
+            "inputs": [],
+            "outputs": [],
+            "reads": [],
+            "writes": [],
+            "skill_ref": null
+          }
+        ],
+        "transitions": [],
+        "initial_state": "530da020083b4439a5eeddcd82bfb108",
+        "final_states": [],
+        "blackboard": {
+          "class_definitions": [],
+          "variables": {}
+        }
+      },
+      "transfer_on": [
+        {
+          "name": "done",
+          "color": "#4488ff",
+          "description": ""
+        }
+      ],
+      "call_agents": []
+    },
+    {
+      "kind": "wrapped_skill",
+      "id": "dadf05d8f629474a9c35b7d9aaac81a4",
+      "name": "agent-authoring-guide",
+      "description": "외부 배경 지식 — 서브에이전트 저작(plugin-dev:agent-development). 시스템 프롬프트·트리거 조건·도구 지정 규범을 참고한다.",
+      "when_to_use": "",
+      "body": "",
+      "config": {
+        "kind": "wrapped",
+        "model": "inherit",
+        "effort": null,
+        "hooks": null,
+        "argument_hint": null,
+        "allowed_tools": [],
+        "paths": null,
+        "source": "plugin-dev@claude-plugins-official:agent-development",
+        "usage": "reference",
+        "enabled": true,
+        "disable_model_invocation": null,
+        "user_invocable": null
+      },
+      "fsm": {
+        "id": "16807eb6d46a4bb0b70a99a824bdf450",
+        "name": "agent-authoring-guide_fsm",
+        "states": [
+          {
+            "kind": "simple",
+            "id": "e182869a0d8440dbb297a7506a556556",
+            "name": "start",
+            "on_entry_start": [],
+            "on_entry": [],
+            "on_entry_end": [],
+            "on_exit_start": [],
+            "on_exit": [],
+            "on_exit_end": [],
+            "on_active": [],
+            "custom_events": {},
+            "inputs": [],
+            "outputs": [],
+            "reads": [],
+            "writes": [],
+            "skill_ref": null
+          }
+        ],
+        "transitions": [],
+        "initial_state": "e182869a0d8440dbb297a7506a556556",
+        "final_states": [],
+        "blackboard": {
+          "class_definitions": [],
+          "variables": {}
+        }
+      },
+      "transfer_on": [
+        {
+          "name": "done",
+          "color": "#4488ff",
+          "description": ""
+        }
+      ],
+      "call_agents": []
+    },
+    {
+      "kind": "wrapped_skill",
+      "id": "12883bfee4ed4acca64d2be557808bc9",
+      "name": "plugin-structure-guide",
+      "description": "외부 배경 지식 — 플러그인 구조·매니페스트(plugin-dev:plugin-structure). 디렉토리 배치·plugin.json·자동 발견 규약을 참고한다.",
+      "when_to_use": "",
+      "body": "",
+      "config": {
+        "kind": "wrapped",
+        "model": "inherit",
+        "effort": null,
+        "hooks": null,
+        "argument_hint": null,
+        "allowed_tools": [],
+        "paths": null,
+        "source": "plugin-dev@claude-plugins-official:plugin-structure",
+        "usage": "reference",
+        "enabled": true,
+        "disable_model_invocation": null,
+        "user_invocable": null
+      },
+      "fsm": {
+        "id": "3186a5523fc343da98222f7f02832272",
+        "name": "plugin-structure-guide_fsm",
+        "states": [
+          {
+            "kind": "simple",
+            "id": "2653e3a4d5334008915fab94dc144170",
+            "name": "start",
+            "on_entry_start": [],
+            "on_entry": [],
+            "on_entry_end": [],
+            "on_exit_start": [],
+            "on_exit": [],
+            "on_exit_end": [],
+            "on_active": [],
+            "custom_events": {},
+            "inputs": [],
+            "outputs": [],
+            "reads": [],
+            "writes": [],
+            "skill_ref": null
+          }
+        ],
+        "transitions": [],
+        "initial_state": "2653e3a4d5334008915fab94dc144170",
+        "final_states": [],
+        "blackboard": {
+          "class_definitions": [],
+          "variables": {}
+        }
+      },
+      "transfer_on": [
+        {
+          "name": "done",
+          "color": "#4488ff",
+          "description": ""
+        }
+      ],
+      "call_agents": []
+    },
+    {
+      "kind": "sync_fork_skill",
+      "id": "45f751464bb84fbe95d74aef8f04ddeb",
+      "name": "sdfsdf",
+      "description": "",
+      "when_to_use": "",
+      "body": "",
+      "config": {
+        "kind": "sync_fork",
+        "model": "inherit",
+        "effort": null,
+        "hooks": null,
+        "argument_hint": null,
+        "allowed_tools": [],
+        "paths": null,
+        "disable_model_invocation": null,
+        "user_invocable": null,
+        "shell": "bash",
+        "agent": "hookify:conversation-analyzer"
+      },
+      "fsm": {
+        "id": "9259e361a335496fb55f17387a3d4235",
+        "name": "sdfsdf_fsm",
+        "states": [
+          {
+            "kind": "simple",
+            "id": "0224f0a0e3424a69b21dee959078a31c",
+            "name": "start",
+            "on_entry_start": [],
+            "on_entry": [],
+            "on_entry_end": [],
+            "on_exit_start": [],
+            "on_exit": [],
+            "on_exit_end": [],
+            "on_active": [],
+            "custom_events": {},
+            "inputs": [],
+            "outputs": [],
+            "reads": [],
+            "writes": [],
+            "skill_ref": null
+          }
+        ],
+        "transitions": [],
+        "initial_state": "0224f0a0e3424a69b21dee959078a31c",
+        "final_states": [],
+        "blackboard": {
+          "class_definitions": [],
+          "variables": {}
+        }
+      },
+      "transfer_on": [
+        {
+          "name": "done",
+          "color": "#4488ff",
+          "description": ""
+        }
+      ],
+      "call_agents": []
+    }
+  ],
+  "agents": [
+    {
+      "kind": "agent",
+      "id": "6a500c27767e443789499e6e711333bd",
+      "name": "graph-surgeon",
+      "description": "대규모 그래프 재배선을 별도 컨텍스트에서 수행한다.",
+      "config": {
+        "kind": "agent",
+        "model": "opus",
+        "effort": "high",
+        "hooks": {
+          "check-daedalus-mcp": {}
+        },
+        "tools": [
+          "mcp__daedalus__get_project",
+          "mcp__daedalus__get_component",
+          "mcp__daedalus__get_selection",
+          "mcp__daedalus__get_history",
+          "mcp__daedalus__create_state",
+          "mcp__daedalus__move_state",
+          "mcp__daedalus__rename_state",
+          "mcp__daedalus__delete_state",
+          "mcp__daedalus__connect_states",
+          "mcp__daedalus__disconnect_states",
+          "mcp__daedalus__set_transition",
+          "mcp__daedalus__set_transfer_on",
+          "mcp__daedalus__add_agent_call",
+          "mcp__daedalus__remove_agent_call",
+          "mcp__daedalus__place_component",
+          "mcp__daedalus__set_state_access",
+          "mcp__daedalus__validate_project",
+          "mcp__daedalus__undo",
+          "mcp__daedalus__redo"
+        ],
+        "disallowed_tools": null,
+        "permission_mode": "acceptEdits",
+        "max_turns": 25,
+        "skills": [],
+        "mcp_servers": [
+          "daedalus"
+        ],
+        "memory": null,
+        "color": "cyan",
+        "background": false,
+        "isolation": "none"
+      },
+      "body": "# 대규모 그래프 재배선\n\n호출자가 캔버스를 크게 갈아엎는 작업을 넘겼다. 별도 컨텍스트에서 도는 이유는\n호출자의 대화를 수십 번의 편집 호출로 오염시키지 않기 위해서다.\n\n## 작업 규율\n\n- **조사 없이 자르지 마라.** 먼저 `get_project`로 전체 그래프를 훑어 고칠 목록을\n  만들고, 그 목록대로만 편집한다. 목록에 없는 것을 \"겸사겸사\" 고치지 마라 —\n  호출자가 의도한 범위를 넘는다.\n- **모든 편집은 사용자의 undo 스택에 들어간다.** 되돌릴 수 있지만, 수십 개의\n  편집을 되돌리는 것은 사용자에게 고역이다. 편집 전에 계획을 확정하라.\n- **분기 의미론을 지켜라.** 노드와 선만 만들면 분기가 표현되지 않는다. 여러 갈래로\n  나가는 노드는 `set_transfer_on`으로 갈래를 선언하고 각 전이에 trigger를 물려라.\n  에이전트로 가는 전이는 `add_agent_call`로 만든 호출 포트에서만 나갈 수 있다.\n- **끝나면 검증하라.** `validate_project`가 에러 0인 상태로 반환한다. 경고는\n  원인과 함께 보고에 적는다.\n\n## 보고\n\n완료 시 무엇을 바꿨는지 요약한다: 만든/지운 전이 수, 선언한 포트, 남은 경고.\n블랙보드 `GraphDraft.wired`에 배선 완료 여부를 기록한다.\n\n재배선을 끝낼 수 없으면(범위 불명확, 해소 불가 검증 에러) **blocked**로 끝내라 —\n남은 목록과 막힌 이유를 보고에 적는다. 절반쯤 자른 그래프를 done으로 보고하는\n것이 최악이다: 호출자는 완료로 믿고 다음 단계로 넘어간다.\n",
+      "fsm": {
+        "id": "90eb57ad384b4cc480eb22e8785a8eab",
+        "name": "graph-surgeon_fsm",
+        "states": [
+          {
+            "kind": "entry_point",
+            "id": "cb18bfdb234446ef8a6bddcf5d0a0ad5",
+            "name": "entry",
+            "on_entry_start": [],
+            "on_entry": [],
+            "on_entry_end": [],
+            "on_exit_start": [],
+            "on_exit": [],
+            "on_exit_end": [],
+            "on_active": [],
+            "custom_events": {},
+            "inputs": [],
+            "outputs": [],
+            "reads": [],
+            "writes": []
+          },
+          {
+            "kind": "exit_point",
+            "id": "2c26b93aa373476dbabbd85da6e0cc53",
+            "name": "done",
+            "on_entry_start": [],
+            "on_entry": [],
+            "on_entry_end": [],
+            "on_exit_start": [],
+            "on_exit": [],
+            "on_exit_end": [],
+            "on_active": [],
+            "custom_events": {},
+            "inputs": [],
+            "outputs": [],
+            "reads": [],
+            "writes": [],
+            "color": "#cc6666"
+          },
+          {
+            "kind": "simple",
+            "id": "5d64f44a9b8442428cf2ed42a51be0f0",
+            "name": "survey-graph",
+            "on_entry_start": [],
+            "on_entry": [],
+            "on_entry_end": [],
+            "on_exit_start": [],
+            "on_exit": [],
+            "on_exit_end": [],
+            "on_active": [],
+            "custom_events": {},
+            "inputs": [],
+            "outputs": [],
+            "reads": [],
+            "writes": [],
+            "skill_ref": null
+          },
+          {
+            "kind": "simple",
+            "id": "3c064c3de9c4412b9756a969be37811a",
+            "name": "rewire-edges",
+            "on_entry_start": [],
+            "on_entry": [],
+            "on_entry_end": [],
+            "on_exit_start": [],
+            "on_exit": [],
+            "on_exit_end": [],
+            "on_active": [],
+            "custom_events": {},
+            "inputs": [],
+            "outputs": [],
+            "reads": [],
+            "writes": [],
+            "skill_ref": null
+          }
+        ],
+        "transitions": [
+          {
+            "id": "1322fd0604ee4528ad5b4ecd00ac13f0",
+            "source": "cb18bfdb234446ef8a6bddcf5d0a0ad5",
+            "target": "5d64f44a9b8442428cf2ed42a51be0f0",
+            "type": "external",
+            "trigger": null,
+            "guard": null,
+            "on_guard_check": [],
+            "on_traverse_start": [],
+            "on_traverse": [],
+            "on_traverse_end": [],
+            "custom_events": {},
+            "data_map": {},
+            "skill_ref": null
+          },
+          {
+            "id": "21e97de97cca4d33a9eae9edb1f59799",
+            "source": "5d64f44a9b8442428cf2ed42a51be0f0",
+            "target": "3c064c3de9c4412b9756a969be37811a",
+            "type": "external",
+            "trigger": {
+              "kind": "completion",
+              "name": "done"
+            },
+            "guard": null,
+            "on_guard_check": [],
+            "on_traverse_start": [],
+            "on_traverse": [],
+            "on_traverse_end": [],
+            "custom_events": {},
+            "data_map": {},
+            "skill_ref": null
+          },
+          {
+            "id": "f2dc816477984e51a735e1b0205a262f",
+            "source": "3c064c3de9c4412b9756a969be37811a",
+            "target": "2c26b93aa373476dbabbd85da6e0cc53",
+            "type": "external",
+            "trigger": {
+              "kind": "completion",
+              "name": "done"
+            },
+            "guard": null,
+            "on_guard_check": [],
+            "on_traverse_start": [],
+            "on_traverse": [],
+            "on_traverse_end": [],
+            "custom_events": {},
+            "data_map": {},
+            "skill_ref": null
+          }
+        ],
+        "initial_state": "cb18bfdb234446ef8a6bddcf5d0a0ad5",
+        "final_states": [
+          "2c26b93aa373476dbabbd85da6e0cc53"
+        ],
+        "blackboard": {
+          "class_definitions": [],
+          "variables": {}
+        }
+      },
+      "execution_policy": {
+        "mode": "fixed",
+        "count": 1,
+        "join": "all",
+        "join_count": null
+      },
+      "reference_placements": [],
+      "graph_layout": {
+        "cb18bfdb234446ef8a6bddcf5d0a0ad5": [
+          0.0,
+          100.0
+        ],
+        "5d64f44a9b8442428cf2ed42a51be0f0": [
+          220.0,
+          0.0
+        ],
+        "3c064c3de9c4412b9756a969be37811a": [
+          470.0,
+          0.0
+        ],
+        "2c26b93aa373476dbabbd85da6e0cc53": [
+          602.9292577634706,
+          180.00165244354196
+        ]
+      },
+      "edge_layout": {},
+      "transfer_on": [
+        {
+          "name": "done",
+          "color": "#4488ff",
+          "description": "재배선 완료 — 검증 에러 0, 변경 요약 보고됨"
+        },
+        {
+          "name": "blocked",
+          "color": "#4488ff",
+          "description": "재배선 중단 — 범위 불명확·해소 불가 에러. 남은 목록을 보고하고 수동 배선으로 폴백"
+        }
+      ],
+      "call_agents": []
+    },
+    {
+      "kind": "agent",
+      "id": "2a363db3872c456e891748d2be405b92",
+      "name": "body-writer",
+      "description": "컴포넌트 본문·프론트매터를 별도 컨텍스트에서 작성한다 — graph-author가 목록이 길어 한 컨텍스트에 안 담길 때 위임.",
+      "config": {
+        "kind": "agent",
+        "model": "opus",
+        "effort": "high",
+        "hooks": {
+          "check-daedalus-mcp": {}
+        },
+        "tools": [
+          "mcp__daedalus__get_project",
+          "mcp__daedalus__get_component",
+          "mcp__daedalus__list_component_fields",
+          "mcp__daedalus__set_component_field",
+          "mcp__daedalus__set_component_body",
+          "mcp__daedalus__set_component_description",
+          "mcp__daedalus__set_component_when_to_use",
+          "mcp__daedalus__get_body_outline",
+          "mcp__daedalus__get_body_section",
+          "mcp__daedalus__set_body_section",
+          "mcp__daedalus__compile_preview",
+          "mcp__daedalus__undo"
+        ],
+        "disallowed_tools": null,
+        "permission_mode": "acceptEdits",
+        "max_turns": 30,
+        "skills": [],
+        "mcp_servers": [
+          "daedalus"
+        ],
+        "memory": null,
+        "color": null,
+        "background": false,
+        "isolation": "none"
+      },
+      "body": "# 본문 작성 위임\n\ngraph-author로부터 위임받은 컴포넌트의 본문과 프론트매터를 채운다.\n\n## 입력\n\n호출 시 `note`에 대상 컴포넌트 이름이 기록돼 있다. `get_component`로 현재\n상태를 확인하고 빈 곳(body/when_to_use/allowed_tools 등)을 채워라.\n\n## 작성 원칙\n\n- **왜를 적어라.** \"X를 하라\"보다 \"Y가 깨지므로 X를 하라\"가 지시를 지키게 한다.\n- 다음 단계·작업 재개·블랙보드 단락은 **컴파일러가 자동으로 붙인다** — 본문에\n  직접 쓰면 이중이 된다.\n- `list_component_fields`로 그 컴포넌트가 받는 필드를 확인하고\n  `set_component_field`로 채운다. 짐작으로 필드명을 넘기지 마라.\n- `compile_preview`로 산출 결과를 확인해 껍데기가 아닌지 본다.\n\n## 완료 갈림길\n\n- 대상 컴포넌트의 본문·프론트매터를 채웠으면 **done**으로 보고한다.\n- 대상을 찾을 수 없거나(이름 오타·삭제됨) 작성에 필요한 정보(목표·역할)가\n  부족하면 **failed** — 무엇이 막혔는지 첫 줄에 명시하고 임의로 지어내지 마라.\n  빈 본문을 그럴듯한 추측으로 채우는 것이 최악이다.\n",
+      "fsm": {
+        "id": "c71181a884c5435d8d40b0a9b4d008c2",
+        "name": "body-writer_fsm",
+        "states": [
+          {
+            "kind": "entry_point",
+            "id": "7caf2586a41c4ad0ba8de382bc911535",
+            "name": "entry",
+            "on_entry_start": [],
+            "on_entry": [],
+            "on_entry_end": [],
+            "on_exit_start": [],
+            "on_exit": [],
+            "on_exit_end": [],
+            "on_active": [],
+            "custom_events": {},
+            "inputs": [],
+            "outputs": [],
+            "reads": [],
+            "writes": []
+          }
+        ],
+        "transitions": [],
+        "initial_state": "7caf2586a41c4ad0ba8de382bc911535",
+        "final_states": [],
+        "blackboard": {
+          "class_definitions": [],
+          "variables": {}
+        }
+      },
+      "execution_policy": {
+        "mode": "fixed",
+        "count": 1,
+        "join": "all",
+        "join_count": null
+      },
+      "reference_placements": [],
+      "graph_layout": {},
+      "edge_layout": {},
+      "transfer_on": [
+        {
+          "name": "done",
+          "color": "#4488ff",
+          "description": "대상 컴포넌트의 본문·프론트매터 작성 완료"
+        },
+        {
+          "name": "failed",
+          "color": "#4488ff",
+          "description": "대상을 찾지 못했거나 작성에 필요한 정보 부족 — 무엇이 막혔는지 보고"
+        }
+      ],
+      "call_agents": []
+    },
+    {
+      "kind": "agent",
+      "id": "48fb2be4813d4f9cb536c3ca4cf7f94c",
+      "name": "env-configurator",
+      "description": "설치 환경 구성을 별도 컨텍스트에서 처리한다 — 작업 폴더 문서·규칙·설정·훅을 한 번에 정리한다.",
+      "config": {
+        "kind": "agent",
+        "model": "inherit",
+        "effort": null,
+        "hooks": null,
+        "tools": [
+          "mcp__daedalus__get_project",
+          "mcp__daedalus__list_workspace_docs",
+          "mcp__daedalus__get_workspace_doc",
+          "mcp__daedalus__set_claude_md",
+          "mcp__daedalus__create_rule",
+          "mcp__daedalus__set_rule_body",
+          "mcp__daedalus__set_rule_paths",
+          "mcp__daedalus__rename_rule",
+          "mcp__daedalus__delete_rule",
+          "mcp__daedalus__get_workspace_settings",
+          "mcp__daedalus__set_workspace_settings",
+          "mcp__daedalus__list_hook_events",
+          "mcp__daedalus__list_hook_presets",
+          "mcp__daedalus__create_hook",
+          "mcp__daedalus__update_hook",
+          "mcp__daedalus__get_hook",
+          "mcp__daedalus__set_component_hooks",
+          "mcp__daedalus__copy_global_hook",
+          "mcp__daedalus__compile_check",
+          "mcp__daedalus__validate_project"
+        ],
+        "disallowed_tools": null,
+        "permission_mode": "default",
+        "max_turns": null,
+        "skills": [],
+        "mcp_servers": null,
+        "memory": null,
+        "color": null,
+        "background": false,
+        "isolation": "none"
+      },
+      "body": "# 설치 환경 구성 — 작업 폴더에 남길 것을 한 번에 정리한다\n\n호출자가 넘긴 범위 안에서, 이 플러그인이 **설치 대상 작업 폴더에 남기는 것**을\n전부 구성한다. 본 설계 흐름(그래프·본문)과 관심사가 다르고 텍스트가 길어 별도\n컨텍스트로 위임된 일이다.\n\n다루는 것은 넷이다:\n\n1. **`.claude/CLAUDE.md` 구역** — 매 세션 항상 실리는 최소한. 플러그인의 존재,\n   진입 스킬, 지켜야 할 핵심 규약 한두 줄. `set_claude_md`.\n2. **`.claude/rules/<이름>.md`** — 특정 경로를 만질 때만 필요한 규칙.\n   `create_rule` + `set_rule_paths`(glob). paths를 비우면 항상 로드되므로,\n   항상 필요한 내용이면 CLAUDE.md 구역이 맞는지 다시 판단하라.\n   **본문 맨 위에 `---` 프론트매터를 직접 쓰지 마라** — paths는 전용 도구로\n   지정한다(직접 쓰면 `---`가 두 번 나가 `rule_body_frontmatter` 경고).\n3. **작업 폴더 설정** — 지켜지지 않으면 곤란한 것만(`permissions.deny` 등).\n   `get_workspace_settings`/`set_workspace_settings`. hooks 키는 거부된다 —\n   훅의 정본은 훅 라이브러리다.\n4. **훅** — 반복 강제·감시·차단. `create_hook`으로 정의하고\n   `set_component_hooks`로 **부착**한다. 부착하지 않으면 산출에 실리지 않는다.\n\n## 판단 기준\n\n- 문서는 **읽히기를 기대하는 것**, 설정·훅은 **강제되는 것**이다. 지켜지지\n  않으면 곤란한 것을 문서에만 적어 두지 마라.\n- CLAUDE.md 구역과 paths 없는 rule은 **매 세션 컨텍스트 비용**이다. 한 줄이\n  곧 사용료이므로 짧을수록 좋다.\n- 빌드 타깃이 MARKETPLACE면 1~3은 배출되지 않는다 — 그때는 훅만 다루고 나머지는\n  손대지 않는다(내용을 넣으면 경고만 쌓인다).\n\n## 넣을 것이 없으면 넣지 않는다\n\n억지로 채우지 마라. 빈 문서·빈 설정은 아무것도 배출하지 않는다.\n\n## 막혔을 때\n\n빌드 타깃이나 설치 대상 폴더, 권한 범위가 정해지지 않아 결정할 수 없으면\n지어내지 말고 **blocked**로 나가라 — 무엇이 정해져야 하는지 함께 보고한다.\n\n## 완료\n\n`list_workspace_docs`와 `get_workspace_settings`로 최종 상태를 확인하고, 무엇을\n넣었는지(문서 이름·규칙 paths·설정 키·훅 이름과 부착 대상) 보고한 뒤 **done**.\n",
+      "fsm": {
+        "id": "bfcb09a1220046e0b21f965cdcb37a27",
+        "name": "env-configurator_fsm",
+        "states": [
+          {
+            "kind": "entry_point",
+            "id": "ba2df6df579845fe9df191853d5353ac",
+            "name": "entry",
+            "on_entry_start": [],
+            "on_entry": [],
+            "on_entry_end": [],
+            "on_exit_start": [],
+            "on_exit": [],
+            "on_exit_end": [],
+            "on_active": [],
+            "custom_events": {},
+            "inputs": [],
+            "outputs": [],
+            "reads": [],
+            "writes": []
+          }
+        ],
+        "transitions": [],
+        "initial_state": "ba2df6df579845fe9df191853d5353ac",
+        "final_states": [],
+        "blackboard": {
+          "class_definitions": [],
+          "variables": {}
+        }
+      },
+      "execution_policy": {
+        "mode": "fixed",
+        "count": 1,
+        "join": "all",
+        "join_count": null
+      },
+      "reference_placements": [],
+      "graph_layout": {},
+      "edge_layout": {},
+      "transfer_on": [
+        {
+          "name": "done",
+          "color": "#4488ff",
+          "description": "작업 폴더 문서·규칙·설정·훅 구성 완료 — 무엇을 넣었는지 보고했다"
+        },
+        {
+          "name": "blocked",
+          "color": "#cc6666",
+          "description": "빌드 타깃·설치 대상 폴더·권한 범위가 정해지지 않아 결정할 수 없다 — 호출자가 범위를 정해 다시 위임해야 한다"
+        }
+      ],
+      "call_agents": []
+    },
+    {
+      "kind": "agent",
+      "id": "8dac3cc11bcc4fe79fba7894036a0925",
+      "name": "tooling-scout",
+      "description": "각 단계가 무엇으로 일할지 별도 컨텍스트에서 조사한다 — 내장 도구·기존 MCP·동봉 스크립트·신규 제작 중 조달 방법을 정해 온다.",
+      "config": {
+        "kind": "agent",
+        "model": "inherit",
+        "effort": null,
+        "hooks": null,
+        "tools": [
+          "mcp__daedalus__get_project",
+          "mcp__daedalus__get_component",
+          "mcp__daedalus__list_tool_candidates",
+          "mcp__daedalus__list_wrappable_skills",
+          "mcp__daedalus__set_external_plugins",
+          "mcp__daedalus__set_mcp_server_def",
+          "mcp__daedalus__validate_project",
+          "mcp__daedalus__compile_check"
+        ],
+        "disallowed_tools": null,
+        "permission_mode": "default",
+        "max_turns": null,
+        "skills": [],
+        "mcp_servers": null,
+        "memory": null,
+        "color": null,
+        "background": false,
+        "isolation": "none"
+      },
+      "body": "# 도구 조달 조사 — 각 단계는 무엇으로 일하는가\n\n구조가 완성돼도 단계가 쓸 도구가 없으면 그 지침은 실행 불가능한 소망이다.\n호출자가 넘긴 범위의 노드를 하나씩 보며 **\"이 단계는 어떤 도구로 이 일을\n하는가\"**를 묻고, 조달 방법을 정해 온다. 조사·비교가 길어 별도 컨텍스트로\n위임된 일이다.\n\n## 판정 순서\n\n노드마다 필요한 능력을 적고, 아래 순서로 조달 방법을 고른다. 위가 쌀수록 좋다 —\n아래로 갈수록 만들고 유지할 것이 늘어난다.\n\n1. **CC 내장 도구로 충분** (Read/Write/Edit/Bash/Glob/Grep/WebFetch …)\n   → 조달 없음. 본문 작성 단계에서 `allowed_tools`만 좁힌다.\n2. **기존 MCP 서버가 이미 제공** (`mcp__<서버>__<도구>`)\n   → 도구 이름을 기록하고 **서버 정의를 `set_mcp_server_def`로 등록**한다.\n   정의가 없으면 로컬 빌드가 설치 배선을 못 해 `missing_mcp_server_def`\n   경고가 난다. **사용 선언된 외부 플러그인이 자기 `.mcp.json`으로 제공하는\n   서버는 정의가 필요 없다** — 플러그인 활성화가 함께 가져온다\n   (`list_wrappable_skills`의 `mcp_servers`).\n3. **반복 스크립트/검증 로직이 필요** (파서, 포맷 변환, 일괄 검사)\n   → CLI 스크립트를 `files/`에 동봉하고 본문이 `${ROOT}/files/` 아래 경로로\n   참조, 실행 단계의 `allowed_tools`에 `Bash`를 연다. 프롬프트로 매번 시키는\n   것보다 스크립트 하나가 결정적이고 싸다.\n4. **새 CLI 도구를 만들어야 함** — 3의 동봉 스크립트로 감당이 안 될 때다:\n   런타임·의존성 설치가 필요하거나, 이 플러그인 밖에서도 재사용하거나,\n   성능이 스크립트 수준을 넘어야 하는 경우.\n   → **먼저 인터페이스를 계약으로 확정**하라: 도구 이름, 인자, 출력 형식\n   (LLM이 파싱하므로 JSON이나 고정 포맷), 실패 시 종료 코드. 구현은 이\n   플러그인 범위 밖의 **별도 작업**이므로 그 사실을 함께 보고한다.\n5. **새 MCP 서버를 만들어야 함** (세션 유지 서비스, GUI 연동, 외부 시스템)\n   → 가장 비싸다. 상태 없는 단발 실행이면 CLI(4)로 충분하다 — MCP가 필요한\n   것은 살아 있는 프로세스와 대화해야 할 때뿐이다.\n\n## 이미 있는 것부터 본다\n\n새로 만들자고 결론 내기 전에 **외부 플러그인 카탈로그를 먼저 훑어라**:\n`list_wrappable_skills`가 등록된 마켓플레이스 폴더의 플러그인·스킬·MCP 서버를\n보여준다. 필요한 능력을 이미 제공하는 플러그인이 있으면 `set_external_plugins`로\n사용 선언하는 것이 4·5번보다 압도적으로 싸다 — 빌드가 의존성을 자동 배선한다.\n\n## 점검 항목\n\n- 본문에 \"~를 실행한다\"고 썼는데 그 도구가 어디에도 없는 단계\n- `mcp__` 도구를 참조하는데 정의도 없고 플러그인도 제공하지 않는 서버\n- 에이전트가 도구 미지정(전 도구 상속)인 채로 남아 있는 것 — 과하다\n\n## 완료\n\n노드별 조달 결정(내장/기존 MCP/외부 플러그인/동봉 CLI/신규)을 정리해\n`GraphDraft`에 기록하고, 결정 목록과 그 근거를 보고한 뒤 **done**.\n결정된 도구 목록이 본문 작성 단계에서 `allowed_tools`/`tools` 프론트매터가 된다.\n\n## 막혔을 때\n\n새로 만들어야 한다는 결론인데 그 범위를 호출자가 승인하지 않았거나, 노드의\n목적이 불명확해 필요한 능력을 못 정하면 지어내지 말고 **blocked**로 나가라.\n",
+      "fsm": {
+        "id": "6a4eaa73eda94d6686b29aa7b4081830",
+        "name": "tooling-scout_fsm",
+        "states": [
+          {
+            "kind": "entry_point",
+            "id": "f5aedb0202cc4603994b2be395d5b04d",
+            "name": "entry",
+            "on_entry_start": [],
+            "on_entry": [],
+            "on_entry_end": [],
+            "on_exit_start": [],
+            "on_exit": [],
+            "on_exit_end": [],
+            "on_active": [],
+            "custom_events": {},
+            "inputs": [],
+            "outputs": [],
+            "reads": [],
+            "writes": []
+          }
+        ],
+        "transitions": [],
+        "initial_state": "f5aedb0202cc4603994b2be395d5b04d",
+        "final_states": [],
+        "blackboard": {
+          "class_definitions": [],
+          "variables": {}
+        }
+      },
+      "execution_policy": {
+        "mode": "fixed",
+        "count": 1,
+        "join": "all",
+        "join_count": null
+      },
+      "reference_placements": [],
+      "graph_layout": {},
+      "edge_layout": {},
+      "transfer_on": [
+        {
+          "name": "done",
+          "color": "#4488ff",
+          "description": "노드별 조달 결정 확정 — 본문 작성 단계가 allowed_tools/tools에 반영한다"
+        },
+        {
+          "name": "blocked",
+          "color": "#cc6666",
+          "description": "신규 제작 범위가 승인되지 않았거나 노드 목적이 불명해 조달을 정할 수 없다 — 호출자가 범위를 정해 다시 위임해야 한다"
+        }
+      ],
+      "call_agents": []
+    },
+    {
+      "kind": "fork_agent",
+      "id": "7c47be71ae1d4c83ab00ca97dbf5ef1f",
+      "name": "verify-analyst",
+      "description": "읽기 전용 검증 분석가 — fork 스킬 plugin-verify의 fork 에이전트. 그래프를 고치지 않고 검증 결과를 해석해 보고만 한다.",
+      "config": {
+        "kind": "fork_agent",
+        "model": "inherit",
+        "effort": null,
+        "hooks": {
+          "check-daedalus-mcp": {}
+        },
+        "tools": [
+          "mcp__daedalus__validate_project",
+          "mcp__daedalus__get_project",
+          "mcp__daedalus__get_component",
+          "mcp__daedalus__compile_preview",
+          "Bash",
+          "Read"
+        ],
+        "disallowed_tools": null,
+        "permission_mode": "default",
+        "max_turns": 20,
+        "skills": [
+          "cc-plugin-spec",
+          "daedalus-model"
+        ],
+        "mcp_servers": [
+          "daedalus"
+        ],
+        "memory": null,
+        "color": null
+      },
+      "body": "# 검증 분석가 — 읽고 해석하고 보고한다\n\n너는 Daedalus 프로젝트의 검증 결과를 해석하는 분석가다. 무엇을 할지(검증 절차·갈래 기준)는\n작업 지시로 따로 온다. 이 파일은 네 역할과 한계를 정한다.\n\n## 고치지 않는다\n\n그래프·본문·프론트매터를 직접 고치지 마라 — 편집 도구가 없는 것은 의도다. 고칠 것은\n\"무엇을, 왜\"로 정리해 블랙보드 `VerifyResult.blocking`에 적고, 그것을 고칠 단계로 넘긴다.\n검증 단계가 몰래 고치면 받는 쪽이 무엇이 바뀌었는지 모르고, 사용자의 undo 이력도 뒤섞인다.\n\n## 해석한다\n\n- 경고를 건수로 넘기지 마라. 규칙마다 \"왜 나왔고 무엇을 의미하는가\"를 한 줄로 적는다.\n- 프론트매터 키 케이싱·빌드 타깃 제약 같은 규격 판단은 미리 올라온 `cc-plugin-spec`을,\n  컴포넌트 종류·포트 의미론은 `daedalus-model`을 근거로 삼는다. 짐작으로 판단하지 마라.\n- 설계 결정이 필요한 경고(두 방향 중 선택)는 네가 고르지 말고 보고에 선택지를 적는다.\n\n## 보고한다\n\n작업 지시의 보고 양식(첫 줄 `EXIT: … / NEXT: …`)을 지킨다. 본문에는 에러·경고를 계열별로\n묶어 해석과 함께 적는다. 사용자에게 직접 묻지 마라 — 너는 서브에이전트라 보고를 받은\n메인 대화가 묻는다.\n"
+    }
+  ],
+  "reference_placements": [
+    {
+      "skill_name": "daedalus-model",
+      "x": 51.50787500000018,
+      "y": 904.5726249999997,
+      "connected_states": [
+        "graph-design",
+        "graph-wire",
+        "graph-state",
+        "graph-surgeon"
+      ]
+    },
+    {
+      "skill_name": "cc-plugin-spec",
+      "x": 558.2016250000003,
+      "y": 1031.5591249999993,
+      "connected_states": [
+        "plugin-verify",
+        "plugin-compile",
+        "graph-author",
+        "graph-orient",
+        "body-writer",
+        "env-configurator",
+        "tooling-scout"
+      ]
+    },
+    {
+      "skill_name": "claude-md-guide",
+      "x": 2138.1006673913034,
+      "y": 1069.4917244565215,
+      "connected_states": [
+        "workspace-docs",
+        "env-configurator"
+      ]
+    },
+    {
+      "skill_name": "skill-authoring-guide",
+      "x": 1927.6291250000002,
+      "y": 995.659625,
+      "connected_states": [
+        "graph-author",
+        "body-writer"
+      ]
+    },
+    {
+      "skill_name": "skill-eval-guide",
+      "x": 1630.6499999999999,
+      "y": 245.39999999999995,
+      "connected_states": [
+        "graph-author",
+        "body-writer"
+      ]
+    },
+    {
+      "skill_name": "mcp-integration-guide",
+      "x": 1235.9869318648807,
+      "y": -4.836607216240644,
+      "connected_states": [
+        "tooling-scout"
+      ]
+    },
+    {
+      "skill_name": "automation-recommender-guide",
+      "x": 2320.9925047258976,
+      "y": 1071.1834073724003,
+      "connected_states": [
+        "tooling-scout",
+        "env-configurator"
+      ]
+    },
+    {
+      "skill_name": "hookify-rules-guide",
+      "x": 1646.1654347826088,
+      "y": 1041.5533695652173,
+      "connected_states": [
+        "env-configurator"
+      ]
+    },
+    {
+      "skill_name": "hook-authoring-guide",
+      "x": 2514.006634967534,
+      "y": 955.4584942025562,
+      "connected_states": [
+        "env-configurator"
+      ]
+    },
+    {
+      "skill_name": "agent-authoring-guide",
+      "x": 2249.7130434782616,
+      "y": 371.1434782608696,
+      "connected_states": [
+        "body-writer",
+        "graph-author"
+      ]
+    },
+    {
+      "skill_name": "plugin-structure-guide",
+      "x": 1045.6,
+      "y": 1091.4,
+      "connected_states": [
+        "plugin-compile"
+      ]
+    }
+  ],
+  "tool_shelf": [],
+  "hook_library": [
+    {
+      "id": "3069b373b07a42cb8100289160a11065",
+      "name": "check-daedalus-mcp",
+      "description": "세션 시작 시 Daedalus 앱(MCP 서버)이 떠 있는지 확인하고 접속 정보를 컨텍스트에 주입한다.",
+      "event": "SessionStart",
+      "matcher": "",
+      "enabled": true,
+      "handlers": [
+        {
+          "kind": "command",
+          "id": "94896f6eb27543059982eea3b8328a97",
+          "timeout": 10,
+          "condition": "",
+          "status_message": "",
+          "script": "#!/bin/sh\n# Daedalus 앱이 켜져 있으면 ~/.daedalus/mcp-endpoint.json에 접속 정보가 있다.\n# 있으면 그대로 컨텍스트에 주입하고, 없으면 안내만 남긴다(차단하지 않는다).\nENDPOINT=\"$HOME/.daedalus/mcp-endpoint.json\"\nif [ -f \"$ENDPOINT\" ]; then\n  echo \"[daedalus] MCP 접속 정보:\"\n  cat \"$ENDPOINT\"\nelse\n  echo \"[daedalus] Daedalus 앱이 실행 중이 아닙니다. graph-* 스킬을 쓰려면 앱을 먼저 켜세요.\"\nfi\nexit 0\n",
+          "script_name": "check-daedalus-mcp",
+          "shell": "",
+          "args": [],
+          "run_async": false,
+          "async_rewake": false
+        }
+      ]
+    },
+    {
+      "id": "e58a3d580cec4f45a5ebb6aa1f8bc62d",
+      "name": "guard-blackboard-schema",
+      "description": "state/ 파일 직접 접근을 차단한다 — daedalus-bb가 정본 경로(스키마 검증·낙관적 잠금). CLI가 없는 환경에서만 경고 후 허용(산출 문서의 폴백 지시와 일치).",
+      "event": "PreToolUse",
+      "matcher": "Read|Write|Edit",
+      "enabled": true,
+      "handlers": [
+        {
+          "kind": "command",
+          "id": "d608b517d2944b6a9c9d197bcd9da3ff",
+          "timeout": 5,
+          "condition": "",
+          "status_message": "",
+          "script": "#!/bin/sh\n# state/ 직접 접근 차단 — 정본은 daedalus-bb다(스키마 검증·낙관적 잠금).\n# 도구 정보는 stdin JSON — 환경변수 $TOOL_INPUT은 없다.\n# tool_input 전체가 아니라 file_path 필드만 본다 — 본문이 state/ 경로를\n# 언급하기만 하는 문서 쓰기까지 차단하면 오탐이다.\nINPUT=$(cat)\nFILE=$(printf '%s' \"$INPUT\" | sed -n 's/.*\"file_path\"[[:space:]]*:[[:space:]]*\"\\([^\"]*\\)\".*/\\1/p' | tr '\\\\' '/')\ncase \"$FILE\" in\n  state/*.json|*/state/*.json)\n    if command -v daedalus-bb >/dev/null 2>&1; then\n      echo 'state/ 파일 직접 접근 금지 — daedalus-bb read/write/validate를 쓰세요(스키마 검증·낙관적 잠금). 진행 파일은 daedalus-bb progress.' >&2\n      exit 2\n    fi\n    echo '[경고] daedalus-bb가 없어 직접 편집을 허용합니다 — 자기 플러그인 키만 수정하고 스키마를 지키세요'\n    ;;\nesac\nexit 0\n",
+          "script_name": "guard-blackboard-schema",
+          "shell": "",
+          "args": [],
+          "run_async": false,
+          "async_rewake": false
+        }
+      ]
+    },
+    {
+      "id": "f27917f4d8bb4c0bbf6cf2ced360318c",
+      "name": "validate-on-save",
+      "description": "state/*.json 저장 직후 블랙보드 검증을 자동 실행한다.",
+      "event": "PostToolUse",
+      "matcher": "Write|Edit",
+      "enabled": true,
+      "handlers": [
+        {
+          "kind": "command",
+          "id": "fe6727771c074c71a91df227378c380a",
+          "timeout": 10,
+          "condition": "",
+          "status_message": "",
+          "script": "#!/bin/sh\n# 도구 입력은 stdin JSON — 환경변수 $TOOL_INPUT은 없다. --schemas는 필수다.\nINPUT=$(cat)\nif printf '%s' \"$INPUT\" | grep -Eq 'state[/\\\\]+[^\"]*\\.json' && command -v daedalus-bb >/dev/null 2>&1; then\n  daedalus-bb --schemas \"$CLAUDE_PROJECT_DIR/schemas/daedalus.json\" validate 2>&1 || true\nfi\nexit 0\n",
+          "script_name": "validate-on-save",
+          "shell": "",
+          "args": [],
+          "run_async": false,
+          "async_rewake": false
+        }
+      ]
+    },
+    {
+      "id": "cf8f88fd061945008d9c30311646bdcf",
+      "name": "log-tool-usage",
+      "description": "도구 사용 로그를 남긴다 — 디버깅·감사 추적용.",
+      "event": "PostToolUse",
+      "matcher": "",
+      "enabled": true,
+      "handlers": [
+        {
+          "kind": "command",
+          "id": "8269d074c2ec4c5cbc8ebe0020f47ef3",
+          "timeout": 3,
+          "condition": "",
+          "status_message": "",
+          "script": "#!/bin/sh\n# tool_name은 stdin JSON 필드다 — $TOOL_NAME 환경변수는 없다. 로그는 프로젝트 루트 기준(cwd 무관).\nINPUT=$(cat)\nTOOL=$(printf '%s' \"$INPUT\" | sed -n 's/.*\"tool_name\"[[:space:]]*:[[:space:]]*\"\\([^\"]*\\)\".*/\\1/p')\necho \"[tool-log] $(date +%H:%M:%S) ${TOOL:-unknown}\" >> \"$CLAUDE_PROJECT_DIR/.claude/tool-usage.log\"\nexit 0\n",
+          "script_name": "log-tool-usage",
+          "shell": "",
+          "args": [],
+          "run_async": false,
+          "async_rewake": false
+        }
+      ]
+    }
+  ],
+  "blackboard": {
+    "class_definitions": [
+      {
+        "name": "DesignSession",
+        "description": "이번 설계 세션이 무엇을 만들려는지 — 모든 스킬이 읽는 목표 선언.",
+        "fields": [
+          {
+            "name": "goal",
+            "field_type": "string",
+            "collection": "none",
+            "default": null,
+            "required": true
+          },
+          {
+            "name": "target_project",
+            "field_type": "string",
+            "collection": "none",
+            "default": null,
+            "required": false
+          },
+          {
+            "name": "build_target",
+            "field_type": "string",
+            "collection": "none",
+            "default": "local",
+            "required": true
+          }
+        ]
+      },
+      {
+        "name": "GraphDraft",
+        "description": "설계 진행 상황 — 무엇을 만들었고 어디까지 배선했는지.",
+        "fields": [
+          {
+            "name": "components",
+            "field_type": "string",
+            "collection": "list",
+            "default": null,
+            "required": false
+          },
+          {
+            "name": "placed",
+            "field_type": "string",
+            "collection": "list",
+            "default": null,
+            "required": false
+          },
+          {
+            "name": "wired",
+            "field_type": "bool",
+            "collection": "none",
+            "default": false,
+            "required": false
+          },
+          {
+            "name": "state_declared",
+            "field_type": "bool",
+            "collection": "none",
+            "default": false,
+            "required": false
+          }
+        ]
+      },
+      {
+        "name": "VerifyResult",
+        "description": "검증 결과 — 재시도 루프에서 무엇을 고쳐야 하는지 넘기는 통로.",
+        "fields": [
+          {
+            "name": "error_count",
+            "field_type": "int",
+            "collection": "none",
+            "default": 0,
+            "required": true
+          },
+          {
+            "name": "warning_count",
+            "field_type": "int",
+            "collection": "none",
+            "default": 0,
+            "required": true
+          },
+          {
+            "name": "blocking",
+            "field_type": "string",
+            "collection": "list",
+            "default": null,
+            "required": false
+          },
+          {
+            "name": "accepted",
+            "field_type": "string",
+            "collection": "list",
+            "default": null,
+            "required": false
+          }
+        ]
+      }
+    ],
+    "variables": {}
+  },
+  "graph": {
+    "id": "4305f6b67bac441c8035886d7da83c88",
+    "name": "project_graph",
+    "states": [
+      {
+        "kind": "entry_point",
+        "id": "07c498a5d4ce47508cd495bf7c13a626",
+        "name": "start",
+        "on_entry_start": [],
+        "on_entry": [],
+        "on_entry_end": [],
+        "on_exit_start": [],
+        "on_exit": [],
+        "on_exit_end": [],
+        "on_active": [],
+        "custom_events": {},
+        "inputs": [],
+        "outputs": [],
+        "reads": [],
+        "writes": []
+      },
+      {
+        "kind": "simple",
+        "id": "fbcf4809d9d54e4a89446a6bb69e317f",
+        "name": "graph-orient",
+        "on_entry_start": [],
+        "on_entry": [],
+        "on_entry_end": [],
+        "on_exit_start": [],
+        "on_exit": [],
+        "on_exit_end": [],
+        "on_active": [],
+        "custom_events": {},
+        "inputs": [],
+        "outputs": [],
+        "reads": [],
+        "writes": [
+          "DesignSession"
+        ],
+        "skill_ref": "c001763402534697a03d67a118df67cc"
+      },
+      {
+        "kind": "simple",
+        "id": "5be77a4d502447caaf04886480b7f071",
+        "name": "graph-design",
+        "on_entry_start": [],
+        "on_entry": [],
+        "on_entry_end": [],
+        "on_exit_start": [],
+        "on_exit": [],
+        "on_exit_end": [],
+        "on_active": [],
+        "custom_events": {},
+        "inputs": [],
+        "outputs": [],
+        "reads": [
+          "DesignSession"
+        ],
+        "writes": [
+          "GraphDraft.components",
+          "GraphDraft.placed"
+        ],
+        "skill_ref": "36540c762a1943d7a90751f441818311"
+      },
+      {
+        "kind": "simple",
+        "id": "f779ad58ae474a93baf9193294c70ad9",
+        "name": "graph-surgeon",
+        "on_entry_start": [],
+        "on_entry": [],
+        "on_entry_end": [],
+        "on_exit_start": [],
+        "on_exit": [],
+        "on_exit_end": [],
+        "on_active": [],
+        "custom_events": {},
+        "inputs": [],
+        "outputs": [],
+        "reads": [
+          "DesignSession.goal",
+          "GraphDraft"
+        ],
+        "writes": [
+          "GraphDraft.wired"
+        ],
+        "skill_ref": "6a500c27767e443789499e6e711333bd"
+      },
+      {
+        "kind": "simple",
+        "id": "0a71735c326c4d5ab8557b824063c041",
+        "name": "graph-wire",
+        "on_entry_start": [],
+        "on_entry": [],
+        "on_entry_end": [],
+        "on_exit_start": [],
+        "on_exit": [],
+        "on_exit_end": [],
+        "on_active": [],
+        "custom_events": {},
+        "inputs": [],
+        "outputs": [],
+        "reads": [
+          "DesignSession.goal",
+          "GraphDraft.placed",
+          "VerifyResult.blocking"
+        ],
+        "writes": [
+          "GraphDraft.wired"
+        ],
+        "skill_ref": "81e81814a3d24c55bf208d225bc9010b"
+      },
+      {
+        "kind": "simple",
+        "id": "34564e32d3254f2fa93c60ff2e1295e1",
+        "name": "graph-state",
+        "on_entry_start": [],
+        "on_entry": [],
+        "on_entry_end": [],
+        "on_exit_start": [],
+        "on_exit": [],
+        "on_exit_end": [],
+        "on_active": [],
+        "custom_events": {},
+        "inputs": [],
+        "outputs": [],
+        "reads": [
+          "DesignSession.goal",
+          "GraphDraft.placed"
+        ],
+        "writes": [
+          "GraphDraft.state_declared"
+        ],
+        "skill_ref": "7e757d90f0214999b9d913caecd72848"
+      },
+      {
+        "kind": "simple",
+        "id": "17d8711d1a4e4c7f89775b5a25c4f064",
+        "name": "plugin-verify",
+        "on_entry_start": [],
+        "on_entry": [],
+        "on_entry_end": [],
+        "on_exit_start": [],
+        "on_exit": [],
+        "on_exit_end": [],
+        "on_active": [],
+        "custom_events": {},
+        "inputs": [],
+        "outputs": [],
+        "reads": [
+          "GraphDraft"
+        ],
+        "writes": [
+          "VerifyResult"
+        ],
+        "skill_ref": "d9bebaaac3cd42bdbbea9dcde7ebc559"
+      },
+      {
+        "kind": "simple",
+        "id": "746db47c57db4d249cd543d3f317b4e4",
+        "name": "plugin-compile",
+        "on_entry_start": [],
+        "on_entry": [],
+        "on_entry_end": [],
+        "on_exit_start": [],
+        "on_exit": [],
+        "on_exit_end": [],
+        "on_active": [],
+        "custom_events": {},
+        "inputs": [],
+        "outputs": [],
+        "reads": [
+          "DesignSession.build_target",
+          "DesignSession.target_project",
+          "VerifyResult.error_count"
+        ],
+        "writes": [],
+        "skill_ref": "2e4bb8795b2a451d963c012bf3aefb4a"
+      },
+      {
+        "kind": "simple",
+        "id": "5ee3bc1c5580488baa3f242983d19d11",
+        "name": "graph-author",
+        "on_entry_start": [],
+        "on_entry": [],
+        "on_entry_end": [],
+        "on_exit_start": [],
+        "on_exit": [],
+        "on_exit_end": [],
+        "on_active": [],
+        "custom_events": {},
+        "inputs": [],
+        "outputs": [],
+        "reads": [
+          "DesignSession.goal",
+          "GraphDraft.placed"
+        ],
+        "writes": [
+          "GraphDraft"
+        ],
+        "skill_ref": "0399f18731044306823ff76faa0ba9d3"
+      },
+      {
+        "kind": "simple",
+        "id": "3082139d9fb04801b4e379c4d63e6ed2",
+        "name": "body-writer",
+        "on_entry_start": [],
+        "on_entry": [],
+        "on_entry_end": [],
+        "on_exit_start": [],
+        "on_exit": [],
+        "on_exit_end": [],
+        "on_active": [],
+        "custom_events": {},
+        "inputs": [],
+        "outputs": [],
+        "reads": [
+          "DesignSession.goal",
+          "GraphDraft.placed"
+        ],
+        "writes": [
+          "GraphDraft"
+        ],
+        "skill_ref": "2a363db3872c456e891748d2be405b92"
+      },
+      {
+        "kind": "simple",
+        "id": "e7945896ddb6407590824fdf59ef2d92",
+        "name": "workspace-docs",
+        "on_entry_start": [],
+        "on_entry": [],
+        "on_entry_end": [],
+        "on_exit_start": [],
+        "on_exit": [],
+        "on_exit_end": [],
+        "on_active": [],
+        "custom_events": {},
+        "inputs": [],
+        "outputs": [],
+        "reads": [
+          "DesignSession.build_target",
+          "DesignSession.goal"
+        ],
+        "writes": [],
+        "skill_ref": "e81e7f56cbe34ac5ab873808f877dd30"
+      },
+      {
+        "kind": "simple",
+        "id": "641e91a434ca4263b57617986d8b72d9",
+        "name": "session-wrap",
+        "on_entry_start": [],
+        "on_entry": [],
+        "on_entry_end": [],
+        "on_exit_start": [],
+        "on_exit": [],
+        "on_exit_end": [],
+        "on_active": [],
+        "custom_events": {},
+        "inputs": [],
+        "outputs": [],
+        "reads": [
+          "DesignSession.goal",
+          "VerifyResult.warning_count"
+        ],
+        "writes": [
+          "VerifyResult.accepted"
+        ],
+        "skill_ref": "4a5bd687f0444ea595c095868021ab51"
+      },
+      {
+        "kind": "simple",
+        "id": "23e63326e2dd4a42819c519989adbb3f",
+        "name": "env-configurator",
+        "on_entry_start": [],
+        "on_entry": [],
+        "on_entry_end": [],
+        "on_exit_start": [],
+        "on_exit": [],
+        "on_exit_end": [],
+        "on_active": [],
+        "custom_events": {},
+        "inputs": [],
+        "outputs": [],
+        "reads": [
+          "DesignSession.build_target",
+          "DesignSession.goal",
+          "DesignSession.target_project"
+        ],
+        "writes": [
+          "GraphDraft"
+        ],
+        "skill_ref": "48fb2be4813d4f9cb536c3ca4cf7f94c"
+      },
+      {
+        "kind": "simple",
+        "id": "e9a1f91f34cd4ec18d7a8c486943c5f0",
+        "name": "tooling-scout",
+        "on_entry_start": [],
+        "on_entry": [],
+        "on_entry_end": [],
+        "on_exit_start": [],
+        "on_exit": [],
+        "on_exit_end": [],
+        "on_active": [],
+        "custom_events": {},
+        "inputs": [],
+        "outputs": [],
+        "reads": [],
+        "writes": [],
+        "skill_ref": "8dac3cc11bcc4fe79fba7894036a0925"
+      }
+    ],
+    "transitions": [
+      {
+        "id": "d811dd4d82e549bca0630c6bd32ad958",
+        "source": "fbcf4809d9d54e4a89446a6bb69e317f",
+        "target": "5be77a4d502447caaf04886480b7f071",
+        "type": "external",
+        "trigger": {
+          "kind": "completion",
+          "name": "new"
+        },
+        "guard": {
+          "evaluation": {
+            "kind": "llm_evaluation",
+            "prompt": "캔버스에 배치가 없거나, 사용자가 새로운 워크플로를 만들려는 경우"
+          }
+        },
+        "on_guard_check": [],
+        "on_traverse_start": [],
+        "on_traverse": [],
+        "on_traverse_end": [],
+        "custom_events": {},
+        "data_map": {},
+        "skill_ref": null
+      },
+      {
+        "id": "f2db256870b94d1b91c78009772e1ba2",
+        "source": "5be77a4d502447caaf04886480b7f071",
+        "target": "f779ad58ae474a93baf9193294c70ad9",
+        "type": "external",
+        "trigger": {
+          "kind": "completion",
+          "name": "bulk-rewire"
+        },
+        "guard": {
+          "evaluation": {
+            "kind": "llm_evaluation",
+            "prompt": "재배선할 노드가 스무 개를 넘어 한 컨텍스트에서 다루면 흐름을 놓칠 때"
+          }
+        },
+        "on_guard_check": [],
+        "on_traverse_start": [],
+        "on_traverse": [],
+        "on_traverse_end": [],
+        "custom_events": {},
+        "data_map": {},
+        "skill_ref": "4406e2b1d3a64f83a85fb30fdada3360"
+      },
+      {
+        "id": "eb85ec1396714c2a8c339d0358f0dcd5",
+        "source": "17d8711d1a4e4c7f89775b5a25c4f064",
+        "target": "746db47c57db4d249cd543d3f317b4e4",
+        "type": "external",
+        "trigger": {
+          "kind": "completion",
+          "name": "pass"
+        },
+        "guard": {
+          "evaluation": {
+            "kind": "llm_evaluation",
+            "prompt": "에러가 0건이고 남은 경고를 모두 확인했을 때"
+          }
+        },
+        "on_guard_check": [],
+        "on_traverse_start": [],
+        "on_traverse": [],
+        "on_traverse_end": [],
+        "custom_events": {},
+        "data_map": {},
+        "skill_ref": null
+      },
+      {
+        "id": "27b65abd37e0461e935775cf6f1bc3e2",
+        "source": "fbcf4809d9d54e4a89446a6bb69e317f",
+        "target": "17d8711d1a4e4c7f89775b5a25c4f064",
+        "type": "external",
+        "trigger": {
+          "kind": "completion",
+          "name": "existing"
+        },
+        "guard": null,
+        "on_guard_check": [],
+        "on_traverse_start": [],
+        "on_traverse": [],
+        "on_traverse_end": [],
+        "custom_events": {},
+        "data_map": {},
+        "skill_ref": null
+      },
+      {
+        "id": "c1637db902b44b4c8f3bced39f1fee99",
+        "source": "5be77a4d502447caaf04886480b7f071",
+        "target": "0a71735c326c4d5ab8557b824063c041",
+        "type": "external",
+        "trigger": {
+          "kind": "completion",
+          "name": "done"
+        },
+        "guard": null,
+        "on_guard_check": [],
+        "on_traverse_start": [],
+        "on_traverse": [],
+        "on_traverse_end": [],
+        "custom_events": {},
+        "data_map": {},
+        "skill_ref": null
+      },
+      {
+        "id": "2c052d63ad6548c294788948414aa60d",
+        "source": "17d8711d1a4e4c7f89775b5a25c4f064",
+        "target": "0a71735c326c4d5ab8557b824063c041",
+        "type": "external",
+        "trigger": {
+          "kind": "completion",
+          "name": "fix-wiring"
+        },
+        "guard": null,
+        "on_guard_check": [],
+        "on_traverse_start": [],
+        "on_traverse": [],
+        "on_traverse_end": [],
+        "custom_events": {},
+        "data_map": {},
+        "skill_ref": null
+      },
+      {
+        "id": "49169ecf26af41188b2a328cc86b5a43",
+        "source": "f779ad58ae474a93baf9193294c70ad9",
+        "target": "17d8711d1a4e4c7f89775b5a25c4f064",
+        "type": "external",
+        "trigger": {
+          "kind": "completion",
+          "name": "done"
+        },
+        "guard": null,
+        "on_guard_check": [],
+        "on_traverse_start": [],
+        "on_traverse": [],
+        "on_traverse_end": [],
+        "custom_events": {},
+        "data_map": {},
+        "skill_ref": null
+      },
+      {
+        "id": "6c985c7e945a431788c94b020f28bcf7",
+        "source": "5ee3bc1c5580488baa3f242983d19d11",
+        "target": "17d8711d1a4e4c7f89775b5a25c4f064",
+        "type": "external",
+        "trigger": {
+          "kind": "completion",
+          "name": "done"
+        },
+        "guard": null,
+        "on_guard_check": [],
+        "on_traverse_start": [],
+        "on_traverse": [],
+        "on_traverse_end": [],
+        "custom_events": {},
+        "data_map": {},
+        "skill_ref": null
+      },
+      {
+        "id": "a24810d6f461446fb299cf7eba210b71",
+        "source": "5ee3bc1c5580488baa3f242983d19d11",
+        "target": "3082139d9fb04801b4e379c4d63e6ed2",
+        "type": "external",
+        "trigger": {
+          "kind": "completion",
+          "name": "delegate-body"
+        },
+        "guard": null,
+        "on_guard_check": [],
+        "on_traverse_start": [],
+        "on_traverse": [],
+        "on_traverse_end": [],
+        "custom_events": {},
+        "data_map": {},
+        "skill_ref": null
+      },
+      {
+        "id": "159ea63feccf4d2887de191f05a5acf2",
+        "source": "3082139d9fb04801b4e379c4d63e6ed2",
+        "target": "17d8711d1a4e4c7f89775b5a25c4f064",
+        "type": "external",
+        "trigger": {
+          "kind": "completion",
+          "name": "done"
+        },
+        "guard": null,
+        "on_guard_check": [],
+        "on_traverse_start": [],
+        "on_traverse": [],
+        "on_traverse_end": [],
+        "custom_events": {},
+        "data_map": {},
+        "skill_ref": null
+      },
+      {
+        "id": "3b441e4d46844ba8bde61121b8a7298e",
+        "source": "f779ad58ae474a93baf9193294c70ad9",
+        "target": "0a71735c326c4d5ab8557b824063c041",
+        "type": "external",
+        "trigger": {
+          "kind": "completion",
+          "name": "blocked"
+        },
+        "guard": null,
+        "on_guard_check": [],
+        "on_traverse_start": [],
+        "on_traverse": [],
+        "on_traverse_end": [],
+        "custom_events": {},
+        "data_map": {},
+        "skill_ref": null
+      },
+      {
+        "id": "4bf5e7463ec74a7c9cfb25a0c912d0e3",
+        "source": "3082139d9fb04801b4e379c4d63e6ed2",
+        "target": "5ee3bc1c5580488baa3f242983d19d11",
+        "type": "external",
+        "trigger": {
+          "kind": "completion",
+          "name": "failed"
+        },
+        "guard": null,
+        "on_guard_check": [],
+        "on_traverse_start": [],
+        "on_traverse": [],
+        "on_traverse_end": [],
+        "custom_events": {},
+        "data_map": {},
+        "skill_ref": null
+      },
+      {
+        "id": "dac25155146046a5b5d68521ddc3d688",
+        "source": "746db47c57db4d249cd543d3f317b4e4",
+        "target": "17d8711d1a4e4c7f89775b5a25c4f064",
+        "type": "external",
+        "trigger": {
+          "kind": "completion",
+          "name": "issues-found"
+        },
+        "guard": null,
+        "on_guard_check": [],
+        "on_traverse_start": [],
+        "on_traverse": [],
+        "on_traverse_end": [],
+        "custom_events": {},
+        "data_map": {},
+        "skill_ref": null
+      },
+      {
+        "id": "318b90072eb14402b08588d1f018bb36",
+        "source": "5ee3bc1c5580488baa3f242983d19d11",
+        "target": "e7945896ddb6407590824fdf59ef2d92",
+        "type": "external",
+        "trigger": {
+          "kind": "completion",
+          "name": "local-docs"
+        },
+        "guard": null,
+        "on_guard_check": [],
+        "on_traverse_start": [],
+        "on_traverse": [],
+        "on_traverse_end": [],
+        "custom_events": {},
+        "data_map": {},
+        "skill_ref": null
+      },
+      {
+        "id": "c0f49fe687fd4705aec33b5c6bf9c483",
+        "source": "e7945896ddb6407590824fdf59ef2d92",
+        "target": "17d8711d1a4e4c7f89775b5a25c4f064",
+        "type": "external",
+        "trigger": {
+          "kind": "completion",
+          "name": "done"
+        },
+        "guard": null,
+        "on_guard_check": [],
+        "on_traverse_start": [],
+        "on_traverse": [],
+        "on_traverse_end": [],
+        "custom_events": {},
+        "data_map": {},
+        "skill_ref": null
+      },
+      {
+        "id": "696a856ddf314a2c915e8b5d062fd7f1",
+        "source": "17d8711d1a4e4c7f89775b5a25c4f064",
+        "target": "5ee3bc1c5580488baa3f242983d19d11",
+        "type": "external",
+        "trigger": {
+          "kind": "completion",
+          "name": "fix-content"
+        },
+        "guard": null,
+        "on_guard_check": [],
+        "on_traverse_start": [],
+        "on_traverse": [],
+        "on_traverse_end": [],
+        "custom_events": {},
+        "data_map": {},
+        "skill_ref": null
+      },
+      {
+        "id": "d0b36774b00d431abe4f0730af4926c5",
+        "source": "17d8711d1a4e4c7f89775b5a25c4f064",
+        "target": "34564e32d3254f2fa93c60ff2e1295e1",
+        "type": "external",
+        "trigger": {
+          "kind": "completion",
+          "name": "fix-state"
+        },
+        "guard": null,
+        "on_guard_check": [],
+        "on_traverse_start": [],
+        "on_traverse": [],
+        "on_traverse_end": [],
+        "custom_events": {},
+        "data_map": {},
+        "skill_ref": null
+      },
+      {
+        "id": "3af695ad776d4246a5d2c71475672195",
+        "source": "17d8711d1a4e4c7f89775b5a25c4f064",
+        "target": "e7945896ddb6407590824fdf59ef2d92",
+        "type": "external",
+        "trigger": {
+          "kind": "completion",
+          "name": "fix-docs"
+        },
+        "guard": null,
+        "on_guard_check": [],
+        "on_traverse_start": [],
+        "on_traverse": [],
+        "on_traverse_end": [],
+        "custom_events": {},
+        "data_map": {},
+        "skill_ref": null
+      },
+      {
+        "id": "08a0905c5ac4449e837d449f316bfe19",
+        "source": "746db47c57db4d249cd543d3f317b4e4",
+        "target": "641e91a434ca4263b57617986d8b72d9",
+        "type": "external",
+        "trigger": {
+          "kind": "completion",
+          "name": "done"
+        },
+        "guard": null,
+        "on_guard_check": [],
+        "on_traverse_start": [],
+        "on_traverse": [],
+        "on_traverse_end": [],
+        "custom_events": {},
+        "data_map": {},
+        "skill_ref": null
+      },
+      {
+        "id": "2c81e5cc4463452e9b7be082cee72bba",
+        "source": "0a71735c326c4d5ab8557b824063c041",
+        "target": "34564e32d3254f2fa93c60ff2e1295e1",
+        "type": "external",
+        "trigger": {
+          "kind": "completion",
+          "name": "done"
+        },
+        "guard": null,
+        "on_guard_check": [],
+        "on_traverse_start": [],
+        "on_traverse": [],
+        "on_traverse_end": [],
+        "custom_events": {},
+        "data_map": {},
+        "skill_ref": null
+      },
+      {
+        "id": "bb4f22e404c742a18a2d6668418fd879",
+        "source": "5ee3bc1c5580488baa3f242983d19d11",
+        "target": "23e63326e2dd4a42819c519989adbb3f",
+        "type": "external",
+        "trigger": {
+          "kind": "completion",
+          "name": "configure-env"
+        },
+        "guard": {
+          "evaluation": {
+            "kind": "llm_evaluation",
+            "prompt": "작업 폴더에 남길 것이 문서·규칙·설정·훅으로 얽혀 한 컨텍스트에서 다루기 버거울 때"
+          }
+        },
+        "on_guard_check": [],
+        "on_traverse_start": [],
+        "on_traverse": [],
+        "on_traverse_end": [],
+        "custom_events": {},
+        "data_map": {},
+        "skill_ref": null
+      },
+      {
+        "id": "0fc68a6dc8a348c0ae4bc9b3ed9d654a",
+        "source": "23e63326e2dd4a42819c519989adbb3f",
+        "target": "17d8711d1a4e4c7f89775b5a25c4f064",
+        "type": "external",
+        "trigger": {
+          "kind": "completion",
+          "name": "done"
+        },
+        "guard": null,
+        "on_guard_check": [],
+        "on_traverse_start": [],
+        "on_traverse": [],
+        "on_traverse_end": [],
+        "custom_events": {},
+        "data_map": {},
+        "skill_ref": null
+      },
+      {
+        "id": "212bb95752ea44ce82750e17d5873719",
+        "source": "23e63326e2dd4a42819c519989adbb3f",
+        "target": "5ee3bc1c5580488baa3f242983d19d11",
+        "type": "external",
+        "trigger": {
+          "kind": "completion",
+          "name": "blocked"
+        },
+        "guard": null,
+        "on_guard_check": [],
+        "on_traverse_start": [],
+        "on_traverse": [],
+        "on_traverse_end": [],
+        "custom_events": {},
+        "data_map": {},
+        "skill_ref": null
+      },
+      {
+        "id": "fa405a432fcf4075b01ca5fd604d80f7",
+        "source": "34564e32d3254f2fa93c60ff2e1295e1",
+        "target": "e9a1f91f34cd4ec18d7a8c486943c5f0",
+        "type": "external",
+        "trigger": {
+          "kind": "completion",
+          "name": "scout-tools"
+        },
+        "guard": null,
+        "on_guard_check": [],
+        "on_traverse_start": [],
+        "on_traverse": [],
+        "on_traverse_end": [],
+        "custom_events": {},
+        "data_map": {},
+        "skill_ref": null
+      },
+      {
+        "id": "39ca2e22c813483dab7cbda6200af6ee",
+        "source": "e9a1f91f34cd4ec18d7a8c486943c5f0",
+        "target": "5ee3bc1c5580488baa3f242983d19d11",
+        "type": "external",
+        "trigger": {
+          "kind": "completion",
+          "name": "done"
+        },
+        "guard": null,
+        "on_guard_check": [],
+        "on_traverse_start": [],
+        "on_traverse": [],
+        "on_traverse_end": [],
+        "custom_events": {},
+        "data_map": {},
+        "skill_ref": null
+      },
+      {
+        "id": "b2ef371e730049cc901f5b8780217ba2",
+        "source": "e9a1f91f34cd4ec18d7a8c486943c5f0",
+        "target": "34564e32d3254f2fa93c60ff2e1295e1",
+        "type": "external",
+        "trigger": {
+          "kind": "completion",
+          "name": "blocked"
+        },
+        "guard": null,
+        "on_guard_check": [],
+        "on_traverse_start": [],
+        "on_traverse": [],
+        "on_traverse_end": [],
+        "custom_events": {},
+        "data_map": {},
+        "skill_ref": null
+      }
+    ],
+    "initial_state": "07c498a5d4ce47508cd495bf7c13a626",
+    "final_states": [],
+    "blackboard": {
+      "class_definitions": [],
+      "variables": {}
+    }
+  },
+  "graph_layout": {
+    "fbcf4809d9d54e4a89446a6bb69e317f": [
+      -521.9926677853259,
+      15.007801956521718
+    ],
+    "5be77a4d502447caaf04886480b7f071": [
+      -21.501645624999867,
+      -96.60964218750004
+    ],
+    "f779ad58ae474a93baf9193294c70ad9": [
+      323.2834402173914,
+      60.79404891304341
+    ],
+    "0a71735c326c4d5ab8557b824063c041": [
+      612.2947258979206,
+      -217.85686672967864
+    ],
+    "34564e32d3254f2fa93c60ff2e1295e1": [
+      1137.0745746691875,
+      -385.47337772920594
+    ],
+    "17d8711d1a4e4c7f89775b5a25c4f064": [
+      835.8631450017842,
+      278.0394153430039
+    ],
+    "746db47c57db4d249cd543d3f317b4e4": [
+      1097.5144531929354,
+      809.6228897282605
+    ],
+    "5ee3bc1c5580488baa3f242983d19d11": [
+      1728.3695657608696,
+      -246.1132453804347
+    ],
+    "3082139d9fb04801b4e379c4d63e6ed2": [
+      2133.424404536861,
+      -27.127944234404517
+    ],
+    "e7945896ddb6407590824fdf59ef2d92": [
+      1705.0,
+      365.0
+    ],
+    "641e91a434ca4263b57617986d8b72d9": [
+      1613.7440741349546,
+      1206.522622667872
+    ],
+    "23e63326e2dd4a42819c519989adbb3f": [
+      2186.0079499999993,
+      678.4781375
+    ],
+    "e9a1f91f34cd4ec18d7a8c486943c5f0": [
+      1239.0,
+      -180.0
+    ]
+  },
+  "edge_layout": {},
+  "emit_progress_hook": true,
+  "build_target": "local",
+  "mcp_server_defs": {},
+  "external_plugins": [
+    "claude-code-setup@claude-plugins-official",
+    "claude-md-management@claude-plugins-official",
+    "plugin-dev@claude-plugins-official",
+    "skill-creator@claude-plugins-official",
+    "hookify@claude-plugins-official"
+  ],
+  "workspace_settings": {
+    "permissions": {
+      "deny": [
+        "Write(state/**)",
+        "Edit(state/**)",
+        "MultiEdit(state/**)"
+      ]
+    }
+  },
+  "claude_md": {
+    "id": "b514f4fe8dfe496882dbfe3b32df5abb",
+    "name": "daedalus",
+    "body": "Daedalus 워크플로 플러그인이 이 작업 폴더에 설치되어 있다. 플러그인 설계\n세션은 `/graph-orient`로 시작한다(새 설계·기존 프로젝트 재개 모두). 설계\n편집은 Daedalus 앱의 MCP 도구(`mcp__daedalus__*`)로 하며, 앱이 꺼져 있으면\n먼저 켜야 한다.",
+    "paths": []
+  },
+  "rules": [
+    {
+      "id": "5530532e467144bf8fccb8ae0559565f",
+      "name": "blackboard-state",
+      "body": "`state/` 밑의 블랙보드 상태 파일은 손으로 편집하지 말고 `daedalus-bb`로\n읽고 쓴다 — `read`/`write --set 필드=값`(컬렉션은 `--append`/`--remove`)/\n`validate`. 직접 편집하면 스키마 위반이 검증 없이 흘러가고, 병렬\n서브에이전트의 갱신을 덮어쓸 수 있다(CLI는 낙관적 잠금으로 이를 막는다).\n스키마 경로는 `schemas/daedalus.json`.",
+      "paths": [
+        "state/**"
+      ]
+    }
+  ]
+}

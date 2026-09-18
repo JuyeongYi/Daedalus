@@ -1,0 +1,1 @@
+Bundled skill asset for the golden corpus.

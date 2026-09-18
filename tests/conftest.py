@@ -116,3 +116,22 @@ def _auto_discard_unsaved_changes(monkeypatch):
     monkeypatch.setattr(
         MainWindow, "confirm_discard_changes", lambda self: True, raising=True
     )
+
+
+# ─────────────────── 골든 스냅샷 재생성 플래그 (WP-0 안전망) ───────────────────
+
+def pytest_addoption(parser):
+    """``--regen-golden`` — 골든 스냅샷을 단언하는 대신 다시 쓴다.
+
+    산출이 **의도적으로** 바뀐 커밋에서만 쓴다. `python -m tests.data.golden.regen`
+    과 같은 함수를 부르므로 두 경로의 결과가 어긋날 수 없다.
+    """
+    parser.addoption(
+        "--regen-golden", action="store_true", default=False,
+        help="골든 스냅샷을 검사하지 않고 다시 쓴다 (산출 변경이 의도된 커밋 전용)",
+    )
+
+
+@pytest.fixture(scope="session")
+def regen_golden(pytestconfig) -> bool:
+    return bool(pytestconfig.getoption("--regen-golden"))

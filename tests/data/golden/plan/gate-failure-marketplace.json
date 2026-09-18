@@ -1,0 +1,71 @@
+{
+  "plan": [
+    [
+      "skills/Bad Name/SKILL.md",
+      "skill",
+      "스킬 'Bad Name'"
+    ],
+    [
+      "skills/dupe/SKILL.md",
+      "skill",
+      "스킬 'dupe'"
+    ],
+    [
+      "skills/dupe/SKILL.md",
+      "skill",
+      "스킬 'dupe'"
+    ],
+    [
+      "agents/aide.md",
+      "agent",
+      "에이전트 'aide'"
+    ],
+    [
+      ".claude-plugin/plugin.json",
+      "plugin_manifest",
+      "plugin.json (플러그인 매니페스트)"
+    ]
+  ],
+  "written": [],
+  "copied_files": [],
+  "findings": [
+    [
+      "duplicate_component_name",
+      "dupe"
+    ],
+    [
+      "compile_invalid_component_name",
+      "Bad Name"
+    ],
+    [
+      "compile_output_path_conflict",
+      "skills/dupe/SKILL.md"
+    ],
+    [
+      "invalid_component_name",
+      "Bad Name"
+    ]
+  ],
+  "skipped": [
+    [
+      "compile_gate_error",
+      "스킬 'Bad Name'"
+    ],
+    [
+      "compile_gate_error",
+      "스킬 'dupe'"
+    ],
+    [
+      "compile_gate_error",
+      "스킬 'dupe'"
+    ],
+    [
+      "compile_gate_error",
+      "에이전트 'aide'"
+    ],
+    [
+      "compile_gate_error",
+      "plugin.json (플러그인 매니페스트)"
+    ]
+  ]
+}

@@ -38,6 +38,41 @@ GUI는 PySide6 노드 에디터(`view/`), 앱 내장 MCP 서버(`mcp/`)가 CC와
 | `view/actions/` | **UI 무관 편집 액션** — 캔버스 메뉴·에디터·MCP가 공유하는 기능의 실체 |
 | `view/canvas/`·`commands/`·`editors/`·`panels/`·`viewmodel/`·`widgets/` | 노드 캔버스 · undo 커맨드 · 속성 편집기 · 독 패널 · VM(notify 채널) · 공용 위젯(마크다운 에디터 패키지, TagInput) |
 
+## 테스트 봉합선과 위생 게이트
+
+리팩토링이 **산출 바이트를 바꾸지 않았음**을 증명하는 장치와, 종류 분기가 다시
+번지지 않게 막는 래칫이 여기 모여 있다. 전부 `tests/` 안에 살고 프로덕션 코드는
+한 줄도 알지 않는다.
+
+### 골든 스냅샷 (`tests/data/golden/`)
+
+| 파일 | 무엇 |
+|------|------|
+| `corpus.py` | **코퍼스 2벌.** ① `dogfood.daedalus.json` — 실사용 프로젝트 `project/daedalus_cc_plugin/`의 **동결 사본**(살아 있는 작업 사본은 테스트가 읽지 않는다 — 사용자가 편집하면 골든이 무작위로 깨진다) ② 합성 프로젝트 — 9종 전부 × 배치/미배치 × 블랙보드 유/무 × 랩핑 스킬 3상태(state/reference/`enabled=False`) × async fork × fork 에이전트 × **훅을 가진 ReferenceSkill**. 실사용 코퍼스만으로는 `compile_wrapped_runner`·state 용도 랩핑 스킬·async fork가 0줄 커버라 두 벌이다. `_stamp_ids`가 uuid4 기본값을 결정적 id로 덮는다 |
+| `trees/` | 복사 계획(`files_tree`/`skill_file`)을 태우는 **ASCII 전용** 픽스처. `.gitattributes`의 `-text`로 줄바꿈 정규화를 막는다 — 복사 바이트가 그대로 sha256에 들어간다 |
+| `render.py` | 계산 쪽 **한 곳** — 테스트가 보는 것과 regen이 쓰는 것이 어긋날 수 없다(원칙 1) |
+| `store.py` | 저장 형식 — `*.sha256`(`sha256sum` 형식, 키 정렬) · `plan/<코퍼스>-<타깃>.json` · `dogfood.project.json` |
+| `regen.py` | 재생성 진입점 |
+
+| 테스트 | 고정하는 것 |
+|--------|-------------|
+| `tests/compiler/test_golden_outputs.py` | 공개 파사드 9종(`compile_skill`/`compile_agent`/`compile_wrapped_runner`/`compile_hooks_json`/`compile_hook_scripts`/`compile_schemas_json`/`compile_plugin_manifest`/`compile_guide`/`render_rule`)과 `compile_project`가 쓴 **모든 파일**의 sha256. 파사드 9종이 전부 최소 1건의 산출을 냈는지도 함께 본다 |
+| `tests/compiler/test_plan_order_golden.py` | 계획·쓰기 **순서** — `plan` / `written` / `copied_files` / `errors+warnings(rule, source)` / 게이트 실패 시 `skipped`. 기존 스위트는 순서를 거의 `set`으로만 비교해 "내용은 같은데 순서가 달라졌다"가 조용히 통과한다 |
+| `tests/model/test_golden_project_json.py` | 동결 사본의 로드→저장 바이트 + 왕복 안정성(두 번째 저장도 같다) |
+
+**골든 재생성 — 산출이 *의도적으로* 바뀐 커밋에서만:**
+
+```bash
+python -m tests.data.golden.regen            # 권장 (스크립트 진입점)
+python -m pytest tests/ -q --regen-golden    # 같은 일을 pytest에서
+python -m tests.data.golden.regen --refresh-dogfood   # 동결 사본 자체를 갈아끼울 때만
+```
+
+재생성 diff는 그 커밋의 리뷰 본문에 붙인다. **테스트를 통과시키려고 재생성하지
+않는다** — 골든은 "바뀌었다"를 말해 주는 물건이지 자동으로 따라오는 물건이 아니다.
+경로·정렬은 전부 정규화돼 있어(out_dir 기준 상대 POSIX 문자열, 키 정렬) 실행·플랫폼
+간 결정적이다.
+
 ## 파일 단위 모듈 지도 (원문)
 
 **컴파일러 패턴:** 순수 모델(model/) → 컴파일러(compiler/) → 플러그인 파일
