@@ -393,8 +393,10 @@ daedalus/
     │   │                   #     배치 없으면 SetAttrCmd 하나, 있으면 거부(force면 _canvas_cleanup_commands로 정리 + 전환 1 undo).
     │   │                   #     GUI 버튼과 MCP set_wrapped_usage의 공용 실체
     │   ├── fork_skill.py   #   fork 스킬(2026-09-13) — fork_agent_choices(fork 에이전트 후보 세 종류)/validate_fork_agent/skill_kind_of/
-    │   │                   #     convert_skill_kind(절차형 ↔ fork — config·__class__ 교체 1 undo). 피커·캔버스 메뉴·MCP 공용 실체
-    │   ├── creation.py     #   생성+배치 — NO_PLACE_KINDS(레지스트리 no_place와 같은 규칙)/create_wrapped_skill(WP-WR —
+    │   │                   #     KINDS(3-way: procedural/sync_fork/async_fork)/convert_skill_kind(대상 config 클래스
+    │   │                   #     기준 필드 복사, config·__class__ 교체 + resync_bracket을 묶어 1 undo). 피커·캔버스 메뉴·MCP 공용 실체
+    │   ├── creation.py     #   생성+배치 — NO_PLACE_KINDS(= model/plugin/placement.is_canvas_placeable의 음성 거울
+    │   │                   #     상수 — 판정의 실체는 placement 쪽이고 레지스트리·캔버스도 그 함수를 부른다)/create_wrapped_skill(WP-WR —
     │   │                   #     생성+선언+배치 1 undo, WRAPPED_SOURCE_MIME_PREFIX)/
     │   │                   #     ("여기에 만들기" 빈 캔버스 메뉴(A9-9)·CREATABLE_KINDS는 퇴역 — 정확한 이름 타이핑 요구, 사용자 확정)/
     │   │                   #     make_component(창의 _make_fsm 재사용 — 레지스트리와 같은 물건이어야 한다)/create_and_place.

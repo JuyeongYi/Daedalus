@@ -668,7 +668,8 @@ junction(폴더)·하드링크(파일)는 **무권한이지만 같은 볼륨 전
   7. ~~**Entry Context가 진행 파일을 직접 읽으라고 지시한다**~~ — **해소(2026-09-17, WP-FK2 C3)**. 도입 5문장이
      한 문장(`Check \`prev\` and the branch in \`note\` …`)으로 줄면서 파일 경로 언급이 사라졌고, 읽는 법은
      워크플로 가이드 4절이 `daedalus-bb … progress read`로 통일해 말한다.
-  8. **위생** — 안 쓰는 import: `scene.py` src_ref·Command, `edge_item.py` Qt, `ref_edge_item.py` QRectF
+  8. **위생** — 안 쓰는 import: `edge_item.py` Qt, `ref_edge_item.py` QRectF (2026-09-18 pyflakes 실측 — 이 둘뿐이다)
+     + `scene.py`의 `Command` 중복 임포트(:31 모듈 수준 ↔ :503 함수 지역 — 지역 쪽이 잉여)
      (재-export 파사드 `emit/__init__`·`deser.py`·`markdown_editor.py`는 의도적).
      **해소됨:** `registry_panel`의 죽은 `AgentDefinition` import(WP-E), `validation.md`의 규칙 수·누락 행·
      믹스인 수(WP-B에서 갱신), `architecture.md`의 app.py 줄 수(§7 표가 실측값을 갖는다).
