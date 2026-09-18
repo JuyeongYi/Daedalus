@@ -1,5 +1,9 @@
 # daedalus/view/editors/agent_editor.py
-"""AgentDefinition 편집기 — 본문 + 포트, 스킬 편집기와 같은 레벨 (WP-AF).
+"""에이전트 편집기 — 본문 + 종류별 우측 패널, 스킬 편집기와 같은 레벨 (WP-AF).
+
+에이전트는 두 종류다(2026-09-17): **워크플로 에이전트**(캔버스 노드 —
+출력 포트·호출자 목록)와 **fork 에이전트**(fork 스킬의 실행 기반 — 포트도
+그래프 도착 경로도 없고, 대신 "사용하는 fork 스킬" 목록을 읽는다).
 
 내부 FSM(그래프 탭, EntryPoint/ExitPoint, 로컬 스킬)은 퇴역했다. Daedalus의
 FSM은 런타임 엔진이 없어 내부 FSM이 사주는 것은 에이전트 .md 안의 번호 목록
@@ -20,7 +24,7 @@ from typing import Callable
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QVBoxLayout, QWidget
 
-from daedalus.model.plugin.agent import AgentDefinition
+from daedalus.model.plugin.agent import Agent, AgentDefinition
 from daedalus.model.project import PluginProject
 
 
@@ -73,14 +77,66 @@ class _CallersPanel(QWidget):
         super().showEvent(event)
 
 
+class _ForkUsersPanel(QWidget):
+    """이 fork 에이전트를 쓰는 fork 스킬 목록 — 읽기 전용.
+
+    유도 함수는 `model.plugin.placement.fork_skills_using` 하나다 — 삭제 확인
+    다이얼로그·MCP `delete_component`의 `still_referenced_by`·에이전트 산출의
+    "## Invocation Contract"가 같은 함수를 쓴다. 화면과 산출이 다른 목록을
+    말하면 "누가 이걸 부르지?"의 답이 표면마다 달라진다(원칙 1).
+
+    편집은 여기서 하지 않는다 — 참조는 fork 스킬의 `agent` 필드에 적혀 있고,
+    그것이 단일 진실이다.
+    """
+
+    def __init__(self, agent, project, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        from PySide6.QtWidgets import QLabel, QListWidget
+
+        self._agent = agent
+        self._project = project
+
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(4, 4, 4, 4)
+        lay.addWidget(QLabel("🍴 사용하는 fork 스킬 (읽기 전용)"))
+        self._list = QListWidget()
+        lay.addWidget(self._list, 1)
+        self._empty_label = QLabel(
+            "이 fork 에이전트를 쓰는 fork 스킬이 없습니다 — 산출은 되지만 아무도 "
+            "부르지 않습니다. fork 스킬의 [agent] 필드에서 고르세요."
+        )
+        self._empty_label.setWordWrap(True)
+        self._empty_label.setStyleSheet("color: #888888;")
+        lay.addWidget(self._empty_label)
+        self.refresh()
+
+    def refresh(self) -> None:
+        from daedalus.model.plugin.placement import fork_skills_using
+
+        names = fork_skills_using(self._agent, self._project)
+        self._list.clear()
+        self._list.addItems(names)
+        self._list.setVisible(bool(names))
+        self._empty_label.setVisible(not names)
+
+    def showEvent(self, event) -> None:  # noqa: N802 (Qt override)
+        # 다른 탭에서 fork 스킬의 agent를 바꾼 뒤 돌아오면 반영돼야 한다.
+        self.refresh()
+        super().showEvent(event)
+
+
 class AgentEditor(QWidget):
-    """AgentDefinition 편집기 — ComponentEditor + 출력 포트 패널·호출자 목록."""
+    """에이전트 편집기 — ComponentEditor + 종류별 우측 패널.
+
+    워크플로 에이전트는 출력 포트·에이전트 호출 포트·호출자 목록을, fork
+    에이전트는 "사용하는 fork 스킬" 목록을 받는다.
+    """
 
     agent_changed = Signal()
 
     def __init__(
         self,
-        agent: AgentDefinition,
+        agent: Agent,
         on_notify_fn: Callable[[], None] | None = None,
         project: PluginProject | None = None,
         parent: QWidget | None = None,
@@ -104,6 +160,7 @@ class AgentEditor(QWidget):
         self._transfer_on_panel = None
         self._call_agents_panel = None
         self._callers_panel = None
+        self._fork_users_panel = None
         right_widgets: list[QWidget] = []
         if self._is_workflow:
             # 출력 포트 — 프로젝트 그래프가 이 이름으로 분기한다 (스킬과 동일 패턴).
@@ -128,6 +185,11 @@ class AgentEditor(QWidget):
             right_widgets = [
                 self._transfer_on_panel, self._call_agents_panel, self._callers_panel,
             ]
+        else:
+            # fork 에이전트의 역참조는 그래프가 아니라 **fork 스킬의 agent
+            # 필드**다 — 호출자 목록의 자리를 이 목록이 대신한다.
+            self._fork_users_panel = _ForkUsersPanel(self._agent, self._project)
+            right_widgets = [self._fork_users_panel]
 
         # WP-IP — 입력 경로 패널은 퇴역했다(출력 포트만 남는다).
         self._component_editor = ComponentEditor(

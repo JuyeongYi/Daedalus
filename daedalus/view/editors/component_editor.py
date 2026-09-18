@@ -10,13 +10,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from daedalus.model.plugin.agent import Agent, AgentDefinition
-from daedalus.model.plugin.skill import (
-    DeclarativeSkill,
-    ProceduralSkill,
-    ReferenceSkill,
-    TransferSkill,
-)
+from daedalus.model.plugin.agent import Agent
+from daedalus.model.plugin.skill import Skill
 from daedalus.view.editors.body_editor import (
     SectionContentPanel,
     make_variable_popup,
@@ -25,10 +20,9 @@ from daedalus.view.editors.body_editor import (
 from daedalus.view.editors.skill_editor import _FrontmatterPanel
 from daedalus.view.editors.variable_loader import get_build_target, variables_for
 
-_ComponentType = (
-    ProceduralSkill | DeclarativeSkill | TransferSkill | ReferenceSkill
-    | AgentDefinition
-)
+#: 편집기가 받는 컴포넌트 — 스킬 7종·에이전트 2종 전부(종류별 차이는
+#: 프론트매터 표와 우측 패널이 흡수한다).
+_ComponentType = Skill | Agent
 
 _LEFT_MIN_W = 120
 _CENTER_MIN_W = 200
@@ -54,6 +48,10 @@ class ComponentEditor(QWidget):
         super().__init__(parent)
         self._component = component
         self._on_notify_fn = on_notify_fn
+        # 프론트매터 폼 재생성(종류 전환)에 필요한 생성 인자 — 폼만 다시
+        # 만들려면 만들 때 쓴 것을 그대로 다시 줘야 한다.
+        self._build_target = build_target
+        self._project_vm = project_vm
 
         # 변수 팝업 컨텍스트 — 스킬은 풀 지원, 에이전트 .md는 루트 변수만
         # 인식한다(사용자 확정 매트릭스, variable_loader.variables_for).
@@ -64,6 +62,7 @@ class ComponentEditor(QWidget):
         root_lay.setSpacing(0)
 
         root_splitter = QSplitter(Qt.Orientation.Horizontal)
+        self._root_splitter = root_splitter
 
         # --- 좌측: FrontmatterPanel ---
         self._fm = _FrontmatterPanel(
@@ -134,6 +133,34 @@ class ComponentEditor(QWidget):
                 self._content_panel,
                 variables_fn=lambda: variables_for(var_context, get_build_target()),
             )
+
+    def rebuild_frontmatter(self) -> _FrontmatterPanel:
+        """좌측 프론트매터 폼을 **현재 종류로** 다시 만들고 돌려준다.
+
+        종류 전환(`convert_skill_kind`)은 `__class__`와 config를 통째로 바꾸므로
+        전환 전에 그려진 폼은 다른 종류의 표를 보고 있다 — 사라진 필드를 그대로
+        편집할 수 있고 새로 생긴 필드는 보이지 않는다.
+
+        **본문·우측 패널은 건드리지 않는다.** 편집기 전체를 재생성하면 편집 중인
+        본문 문서와 커서·스크롤이 날아가고, 탭이 목록 끝으로 옮겨진다.
+        """
+        kind = getattr(getattr(self._component, "config", None), "kind", None)
+        new = _FrontmatterPanel(
+            self._component, skill_kind=kind, build_target=self._build_target,
+            project_vm=self._project_vm,
+        )
+        new.setMinimumWidth(_LEFT_MIN_W)
+        new.changed.connect(self._on_model_changed)
+        new.content_changed.connect(lambda: self._on_model_changed(scope="content"))
+
+        sizes = self._root_splitter.sizes()
+        old = self._root_splitter.replaceWidget(0, new)
+        self._root_splitter.setSizes(sizes)
+        if old is not None:
+            old.setParent(None)
+            old.deleteLater()
+        self._fm = new
+        return new
 
     def _on_variable_insert(self) -> None:
         if self._content_panel is not None and self._var_popup is not None:

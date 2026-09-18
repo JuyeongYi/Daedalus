@@ -954,6 +954,30 @@ class MainWindow(QMainWindow):
             self._open_tabs[comp_id] = idx
             self._tabs.setCurrentIndex(idx)
 
+    def rebuild_component_frontmatter(self, component: object) -> None:
+        """열려 있는 편집 탭의 프론트매터 폼을 현재 종류로 다시 만든다. 없으면 무동작.
+
+        종류 전환(`convert_skill_kind`)은 `__class__`와 config를 통째로 바꾸므로
+        열려 있던 폼은 **다른 종류의 표**로 그려진 스테일 위젯이 된다 — 사라진
+        필드를 그대로 편집할 수 있고, 새로 생긴 필드는 보이지 않는다. "탭을
+        닫았다 여세요"라고 안내하는 대신 여기서 다시 만든다.
+
+        `renamed` 재연결이 여기 있는 이유는 원래 배선이 여기(`_open_component`)에
+        있기 때문이다 — 새 폼이 이름 변경을 알리지 못하면 참조 갱신이 끊긴다.
+        """
+        comp_id = getattr(component, "id", None)
+        if comp_id is None or comp_id not in self._open_tabs:
+            return
+        widget = self._tabs.widget(self._open_tabs[comp_id])
+        editor = getattr(widget, "_editor", None) or getattr(
+            widget, "_component_editor", None
+        )
+        rebuild = getattr(editor, "rebuild_frontmatter", None)
+        if not callable(rebuild):
+            return
+        fm = rebuild()
+        fm.renamed.connect(self._on_component_renamed)
+
     def open_component_ports(self, component: object) -> None:
         """컴포넌트 편집 탭을 열고 출력 포트 패널로 포커스를 옮긴다 (A9-5).
 

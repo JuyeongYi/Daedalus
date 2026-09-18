@@ -65,8 +65,19 @@ def _convert(panel, btn: QPushButton, target: str) -> None:
         return
     result = convert_skill_kind(window, panel._component, target)
     dropped = ", ".join(result["dropped"])
-    btn.setEnabled(False)
-    btn.setText(
-        f"{target}로 전환됨{f' ({dropped} 버림)' if dropped else ''} — "
-        f"탭을 닫았다 열면 필드 구성이 바뀝니다"
+    message = (
+        f"'{getattr(panel._component, 'name', '?')}' {target}로 전환됨"
+        f"{f' ({dropped} 버림)' if dropped else ''} — 필드 구성이 갱신됐습니다 "
+        f"(Ctrl+Z로 되돌릴 수 있습니다)"
     )
+    status = getattr(window, "_status_label", None)
+    if status is not None:
+        status.setText(message)
+    # 전환은 열린 편집 탭을 재생성한다 — 이 버튼이 속한 패널이 이미 교체됐으면
+    # 남은 것은 삭제 예정 위젯이라 손댈 것이 없다(탭이 열려 있지 않은 단독 패널
+    # 경로에서는 그대로 살아 있으므로 여기서 결과를 알린다).
+    try:
+        btn.setEnabled(False)
+        btn.setText(message)
+    except RuntimeError:  # pragma: no cover - 위젯이 이미 파괴된 경우
+        pass

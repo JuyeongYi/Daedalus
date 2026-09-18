@@ -17,13 +17,12 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QPushButton,
     QScrollArea,
-    QSpinBox,
     QTextEdit,
     QWidget,
 )
 
-from daedalus.model.plugin.agent import AgentDefinition
-from daedalus.model.plugin.skill import DeclarativeSkill, ProceduralSkill, ReferenceSkill, TransferSkill
+from daedalus.model.plugin.agent import Agent
+from daedalus.model.plugin.skill import Skill
 from daedalus.model.plugin.enums import (
     AgentColor,
     AgentField,
@@ -36,6 +35,8 @@ from daedalus.model.plugin.enums import (
     SkillShell,
 )
 from daedalus.view.editors.kind_switch_row import build_kind_switch_row  # 절차형 ↔ fork
+# 위젯 어댑터 표는 별도 모듈로 이동했다(분해 예산) — 여기서 재-export한다.
+from daedalus.view.editors.field_adapters import _WIDGET_ADAPTERS, _adapter_for  # noqa: F401
 from daedalus.view.widgets.tag_input import TagInput
 
 
@@ -113,85 +114,6 @@ _COL_CHECK, _COL_LABEL, _COL_WIDGET = 0, 1, 2
 _COL_COUNT = 3
 
 _DIM_OPACITY = 0.4
-
-
-# ---------------------------------------------------------------------------
-# 위젯 어댑터 표 — 위젯 타입 하나당 (읽기, 쓰기, 변경 시그널 이름) 한 줄.
-#
-# 값 로드(_apply_value) · 값 읽기(_read_widget_value) · 시그널 연결
-# (_connect_widget_signal)이 **같은 isinstance 사슬을 세 벌** 복제하고 있었다.
-# 위젯 타입이 하나 늘면 세 곳을 함께 고쳐야 하고, 한 곳을 빠뜨리면 "값은
-# 채워지는데 편집이 저장되지 않는" 식의 반쪽 고장이 조용히 생긴다.
-#
-# **순회 순서는 분해 전 elif 사슬의 순서를 그대로 유지한다** — isinstance는
-# 서브클래스에도 참이므로 순서가 곧 우선순위다(표의 줄을 옮기면 동작이 바뀐다).
-# ---------------------------------------------------------------------------
-
-def _write_spin_box(widget: QSpinBox, current: object, rule) -> None:
-    # QSpinBox 기본 상한이 99라 max_turns가 잘릴 수 있다.
-    # CC의 실제 상한은 컴파일러 WP에서 확정 — 잠정 1~1000.
-    widget.setRange(1, 1000)
-    widget.setValue(int(current) if current is not None else 1)
-
-
-def _write_combo_box(widget: QComboBox, current: object, rule) -> None:
-    val = None
-    if current is not None:
-        val = current.value if hasattr(current, "value") else str(current)
-    elif rule.default_value is not None:
-        # default_value는 enum(ModelType.INHERIT 등) 또는 스칼라.
-        dv = rule.default_value
-        val = dv.value if hasattr(dv, "value") else str(dv)
-    if val is not None:
-        idx = widget.findText(val)
-        if idx < 0 and hasattr(widget, "add_unlisted"):  # 후보 밖 저장값도 보인다
-            idx = widget.add_unlisted(val)
-        if idx >= 0:
-            widget.setCurrentIndex(idx)
-
-
-def _write_check_box(widget: QCheckBox, current: object, rule) -> None:
-    widget.setChecked(bool(current) if current is not None else False)
-
-
-def _write_tag_input(widget: TagInput, current: object, rule) -> None:
-    if isinstance(current, list):
-        widget.set_tags(current)
-    elif isinstance(current, dict):
-        # hooks: dict[str, Any] — 키 집합을 태그 목록으로 (WP-SF hooks TagInput 전환)
-        widget.set_tags(list(current.keys()))
-
-
-def _write_text_edit(widget: QTextEdit, current: object, rule) -> None:
-    if current is not None:
-        widget.setPlainText(str(current))
-    widget.setFixedHeight(44)
-
-
-def _write_line_edit(widget: QLineEdit, current: object, rule) -> None:
-    if isinstance(current, list):
-        widget.setText(" ".join(current) if current else "")
-    elif current is not None:
-        widget.setText(str(current))
-
-
-# (위젯 타입, 표시값 읽기, 현재값 쓰기, 변경 시그널 이름)
-_WIDGET_ADAPTERS: tuple[tuple[type, object, object, str], ...] = (
-    (QSpinBox, lambda w: w.value(), _write_spin_box, "valueChanged"),
-    (QComboBox, lambda w: w.currentText(), _write_combo_box, "currentTextChanged"),
-    (QCheckBox, lambda w: w.isChecked(), _write_check_box, "toggled"),
-    (TagInput, lambda w: w.get_tags(), _write_tag_input, "tags_changed"),
-    (QTextEdit, lambda w: w.toPlainText(), _write_text_edit, "textChanged"),
-    (QLineEdit, lambda w: w.text(), _write_line_edit, "editingFinished"),
-)
-
-
-def _adapter_for(widget: QWidget):
-    """위젯에 맞는 어댑터 한 줄. 표에 없는 타입이면 None."""
-    for entry in _WIDGET_ADAPTERS:
-        if isinstance(widget, entry[0]):
-            return entry
-    return None
 
 
 class _OptionalRow(QWidget):
@@ -284,7 +206,7 @@ class _FrontmatterPanel(QScrollArea):
 
     def __init__(
         self,
-        component: ProceduralSkill | DeclarativeSkill | TransferSkill | ReferenceSkill | AgentDefinition,
+        component: Skill | Agent,
         skill_kind: str | None = None,
         parent: QWidget | None = None,
         build_target=None,
@@ -340,21 +262,14 @@ class _FrontmatterPanel(QScrollArea):
         self._build_component_action_row()
         build_kind_switch_row(self, component, skill_kind or self._detect_kind(component))
 
-        # SKILL_FIELD_MATRIX / AGENT_FIELD_MATRIX 기반 필드 생성
-        # 위젯 클래스는 view 측 FIELD_WIDGETS / AGENT_FIELD_WIDGETS에서 조회한다(model→view 의존 역전).
-        from daedalus.model.plugin.agent import Agent
-        from daedalus.model.plugin.field_matrix import matrix_for
+        # SKILL_FIELD_MATRIX / AGENT_FIELD_MATRIX 기반 필드 생성.
+        # 표를 고르는 규칙의 실체는 model의 `matrix_for` 하나다(컴파일러·MCP와
+        # 공용) — `editors/kind_matrix`는 거기에 뷰의 위젯 표만 덧붙인다.
         from daedalus.model.plugin.enums import FieldEmit, FieldVisibility
-        from daedalus.view.editors.field_widgets import AGENT_FIELD_WIDGETS, FIELD_WIDGETS
+        from daedalus.view.editors.kind_matrix import matrix_for
 
-        kind = skill_kind or self._detect_kind(component)
         config = getattr(component, "config", None)
-
-        # 표를 고르는 규칙의 실체는 model의 `matrix_for` 하나다(컴파일러·MCP와 공용).
-        # 여기는 위젯 표만 덧붙이는 얇은 어댑터다.
-        is_agent = isinstance(component, Agent)
-        rules = matrix_for(component)  # type: ignore[assignment]
-        widget_map = AGENT_FIELD_WIDGETS if is_agent else FIELD_WIDGETS  # type: ignore[assignment]
+        rules, widget_map, is_agent = matrix_for(component)
 
         self._loading = True
         try:
@@ -583,8 +498,22 @@ class _FrontmatterPanel(QScrollArea):
             existing = existing if isinstance(existing, dict) else {}
             value = {name: existing.get(name, {}) for name in value}
 
+        if not self._writable(config, attr):
+            return
         setattr(config, attr, value)
         self.changed.emit()
+
+    @staticmethod
+    def _writable(config: object, attr: str) -> bool:
+        """이 config에 실제로 있는 필드인가 — **없으면 쓰지 않는다**.
+
+        종류 전환(`convert_skill_kind`)은 config 객체를 통째로 바꾸므로, 전환
+        전에 만들어진 스테일 위젯이 뒤늦게 write-back하면 없는 필드가 유령
+        인스턴스 속성으로 생긴다. 유령이 생기면 "config에 없으면 자동 비수정"을
+        기대는 설계(MCP `set_component_field`의 `hasattr` 게이트, FIXED 필드
+        비노출)가 통째로 무력해지고, 저장 한 번에 조용히 사라진다(원칙 5).
+        """
+        return config is not None and hasattr(config, attr)
 
     def _build_component_action_row(self) -> None:
         """"미리보기" / "관련 경고" 버튼 행 (A9-1, A9-3).
@@ -774,6 +703,8 @@ class _FrontmatterPanel(QScrollArea):
         if attr is None or config is None:
             return
 
+        if not self._writable(config, attr):
+            return
         setattr(config, attr, self._declared_default(config, attr, fld))
         self.changed.emit()
 

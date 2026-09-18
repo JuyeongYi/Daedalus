@@ -47,3 +47,46 @@ def test_model_combo_has_inherit(qapp):
     items = [combo.itemText(i) for i in range(combo.count())]
     assert "inherit" in items
     assert combo.currentText() == ModelType.INHERIT.value
+
+
+def test_agent_field_widgets_cover_every_agent_matrix_field(qapp):
+    """AGENT_FIELD_MATRIX **두 표**의 모든 필드에 위젯이 있어야 한다.
+
+    표에 있는데 위젯이 없으면 그 행은 조용히 그려지지 않는다(`fld not in
+    widget_map: continue`) — 종류가 늘어난 뒤 이 커버리지가 없으면 "새 종류의
+    폼에서 필드 하나가 사라졌다"를 아무도 잡지 못한다.
+    """
+    from daedalus.model.plugin.enums import AgentField
+    from daedalus.model.plugin.field_matrix import AGENT_FIELD_MATRIX
+    from daedalus.view.editors.field_widgets import AGENT_FIELD_WIDGETS
+
+    matrix_fields: set[AgentField] = set()
+    for rules in AGENT_FIELD_MATRIX.values():
+        matrix_fields.update(rules.keys())
+    # NAME/DESCRIPTION은 공통 헤더가 그린다(위젯 표 대상이 아니다).
+    matrix_fields -= {AgentField.NAME, AgentField.DESCRIPTION}
+
+    missing = matrix_fields - set(AGENT_FIELD_WIDGETS)
+    assert not missing, f"AGENT_FIELD_WIDGETS에 누락된 필드: {[f.value for f in missing]}"
+
+
+def test_agent_field_widgets_values_are_widget_types(qapp):
+    from PySide6.QtWidgets import QWidget
+
+    from daedalus.view.editors.field_widgets import AGENT_FIELD_WIDGETS
+
+    for fld, cls in AGENT_FIELD_WIDGETS.items():
+        assert isinstance(cls, type), f"{fld.value} 매핑이 타입이 아님"
+        assert issubclass(cls, QWidget), f"{fld.value} 매핑이 QWidget 서브클래스 아님"
+
+
+def test_fork_skill_fields_have_widgets(qapp):
+    """fork 2종 표의 필드도 전부 위젯이 있다 — AGENT는 fork 전용 행이다."""
+    from daedalus.model.plugin.field_matrix import SKILL_FIELD_MATRIX
+
+    for key in ("sync_fork", "async_fork"):
+        missing = set(SKILL_FIELD_MATRIX[key]) - set(FIELD_WIDGETS)
+        assert not missing, f"{key}: {[f.value for f in missing]}"
+    assert SkillField.AGENT in FIELD_WIDGETS
+    # BACKGROUND는 FIXED라 그려지지 않지만 표 완전성 때문에 등재한다(CONTEXT 선례).
+    assert SkillField.BACKGROUND in FIELD_WIDGETS

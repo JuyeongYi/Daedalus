@@ -197,12 +197,32 @@ class ComponentActions:
                 if n:
                     ref_lines.append(f"  에이전트 '{ag.name}'의 FSM: {n}개 배치")
 
+        # 이름 참조는 그래프에 없다 — fork 스킬의 `agent` 필드가 이 에이전트를
+        # 가리키면 삭제 후에도 그 문자열이 남는다(undo가 에이전트를 되돌려도
+        # 참조는 돌아오지 않는 쪽이 아니라, 지운 뒤 깨진 이름으로 남는 쪽이다).
+        # 몰래 지우지 않고 **보고한다**(원칙 5). 유도 함수는 산출·MCP와 공용.
+        from daedalus.model.plugin.agent import Agent
+        from daedalus.model.plugin.placement import fork_skills_using
+
+        fork_users: list[str] = []
+        if isinstance(component, Agent):
+            fork_users = fork_skills_using(component, w._project)
+
         msg = f"'{comp_name}'을(를) 삭제하시겠습니까?"
         if ref_lines:
             msg += "\n\n다음 위치에서 참조 중입니다 (삭제 시 None으로 정리됩니다):\n"
             msg += "\n".join(ref_lines[:10])
             if len(ref_lines) > 10:
                 msg += f"\n  ... 외 {len(ref_lines) - 10}건"
+        if fork_users:
+            msg += (
+                "\n\n다음 fork 스킬이 이 에이전트를 fork 에이전트로 쓰고 있습니다 "
+                "(이름 참조라 자동으로 정리되지 않습니다 — 지운 뒤 각 스킬의 "
+                "[agent]를 다시 고르세요):\n"
+            )
+            msg += "\n".join(f"  fork 스킬 '{name}'" for name in fork_users[:10])
+            if len(fork_users) > 10:
+                msg += f"\n  ... 외 {len(fork_users) - 10}건"
 
         reply = QMessageBox.question(
             w,

@@ -147,4 +147,10 @@ def convert_skill_kind(window, component, target: str) -> dict[str, Any]:
     panel = getattr(window, "_registry_panel", None)
     if panel is not None and getattr(window, "_project", None) is not None:
         panel.set_project(window._project)
+    # 열려 있던 편집 탭의 프론트매터 폼은 **다른 종류의 표**로 그려진 스테일
+    # 위젯이다 — 종류마다 필드 구성이 다르다. 여기서 다시 만든다(버튼·캔버스
+    # 메뉴·MCP 어느 경로로 전환해도 같다).
+    rebuild = getattr(window, "rebuild_component_frontmatter", None)
+    if callable(rebuild):
+        rebuild(component)
     return {"changed": True, "old": current, "new": target, "dropped": dropped}

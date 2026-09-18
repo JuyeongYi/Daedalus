@@ -81,6 +81,9 @@ def test_split_modules_are_within_soft_budget():
         "frontmatter_panel.py",
         "transfer_on_panel.py",
         "reference_link_panel.py",
+        # 2차 분해 (WP-FK2) — 위젯 어댑터 표 · 종류 매트릭스 어댑터.
+        "field_adapters.py",
+        "kind_matrix.py",
     )
     oversized = {
         name: len((editors_dir / name).read_text(encoding="utf-8").splitlines())
@@ -96,9 +99,13 @@ def test_widget_adapter_table_covers_all_three_paths():
     분해 전에는 같은 isinstance 사슬이 세 벌 있었다 — 한 곳을 빠뜨리면
     "값은 채워지는데 편집이 저장되지 않는" 반쪽 고장이 조용히 생긴다.
     """
-    from daedalus.view.editors.frontmatter_panel import _WIDGET_ADAPTERS
+    from daedalus.view.editors import field_adapters, frontmatter_panel
 
-    for widget_type, read_fn, write_fn, signal_name in _WIDGET_ADAPTERS:
+    # 표는 별도 모듈로 이동했고 패널이 재-export한다 — 기존 임포트 경로 유지.
+    assert frontmatter_panel._WIDGET_ADAPTERS is field_adapters._WIDGET_ADAPTERS
+    assert frontmatter_panel._adapter_for is field_adapters._adapter_for
+
+    for widget_type, read_fn, write_fn, signal_name in field_adapters._WIDGET_ADAPTERS:
         assert callable(read_fn), widget_type
         assert callable(write_fn), widget_type
         # 시그널은 클래스 속성으로 실존해야 한다 (오타가 런타임까지 숨지 않도록).

@@ -282,3 +282,52 @@ def test_wrapped_editor_open_source_unresolved_shows_guidance(window, qapp):
     assert editor._wrapped_panel.open_source() is False
     assert "마켓플레이스 폴더" in editor._wrapped_panel._w_status.text()
     editor.deleteLater()
+
+
+# ─────────────────────── 용도 고정 커맨드는 공용이다 (WP-FK2 D) ───────────────────────
+
+
+def test_usage_fix_command_is_shared_by_every_placement_surface(qapp):
+    """캔버스 드롭과 MCP 배치가 **같은 커맨드**로 용도를 고정한다(원칙 1·2).
+
+    표면마다 따로 고정하면 undo 단위가 갈라지고(한쪽은 1 undo, 다른 쪽은 2),
+    "최초 배치가 용도를 고정한다"는 규칙이 표면마다 달라진다.
+    """
+    from daedalus.model.plugin.config import WrappedSkillConfig
+    from daedalus.model.plugin.skill import ProceduralSkill, WrappedSkill
+    from daedalus.view.actions.wrapped_usage import usage_fix_command
+
+    undecided = WrappedSkill(
+        fsm=None, name="w", description="d", config=WrappedSkillConfig(source="a@m:w"),
+    )
+    cmd = usage_fix_command(undecided, "state")
+    assert cmd is not None
+    cmd.execute()
+    assert undecided.config.usage == "state"
+    cmd.undo()
+    assert undecided.config.usage == ""
+
+    # 이미 고정된 것은 여기서 바꾸지 않는다(그것은 change_wrapped_usage의 일이다).
+    fixed = WrappedSkill(
+        fsm=None, name="w2", description="d",
+        config=WrappedSkillConfig(source="a@m:w2", usage="reference"),
+    )
+    assert usage_fix_command(fixed, "state") is None
+    # 랩핑 스킬이 아니면 고정할 용도 자체가 없다.
+    assert usage_fix_command(
+        ProceduralSkill(fsm=None, name="p", description="d"), "state"
+    ) is None
+
+
+def test_usage_fix_command_rejects_unknown_usage(qapp):
+    import pytest
+
+    from daedalus.model.plugin.config import WrappedSkillConfig
+    from daedalus.model.plugin.skill import WrappedSkill
+    from daedalus.view.actions.wrapped_usage import usage_fix_command
+
+    comp = WrappedSkill(
+        fsm=None, name="w", description="d", config=WrappedSkillConfig(source="a@m:w"),
+    )
+    with pytest.raises(ValueError, match="알 수 없는 용도"):
+        usage_fix_command(comp, "nonsense")

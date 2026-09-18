@@ -500,17 +500,15 @@ class FsmScene(QGraphicsScene):
         남는다(선택을 되돌릴 수 없는 반쪽 상태) — SetAttrCmd + 배치 커맨드를
         MacroCommand로 묶는다.
         """
-        from daedalus.view.commands.attr_commands import SetAttrCmd
+        from daedalus.view.actions.wrapped_usage import usage_fix_command
         from daedalus.view.commands.base import Command, MacroCommand
         from daedalus.view.commands.reference_commands import CreateRefCmd
         from daedalus.view.commands.state_commands import CreateStateCmd
 
         project_vm = self._project_vm
-        children: list[Command] = [SetAttrCmd(
-            skill.config, "usage", usage,
-            label=f"'{skill.name}' 용도 고정: {usage}",
-            script=f'wrapped usage = "{usage}"',
-        )]
+        # 용도 고정 커맨드의 실체는 공용 액션이다 — MCP `place_component`가
+        # 용도 미정 wrapped를 받을 때도 같은 커맨드를 자기 배치와 묶는다.
+        children: list[Command] = [usage_fix_command(skill, usage)]
         if usage == "reference":
             rvm = ReferenceViewModel(model=skill, x=scene_pos.x(), y=scene_pos.y())
             children.append(CreateRefCmd(

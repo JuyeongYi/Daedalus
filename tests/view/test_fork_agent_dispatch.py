@@ -127,3 +127,83 @@ def test_fork_agent_editor_shows_no_port_panels(window):
     assert editor._is_workflow is False
     assert editor._transfer_on_panel is None
     assert editor._call_agents_panel is None
+
+
+# ---------------------------------------------------------------------------
+# 삭제 확인 — 참조를 몰래 지우지 않고 보고한다 (원칙 5)
+# ---------------------------------------------------------------------------
+
+def _make_fork_skill(name: str, agent_name: str):
+    from daedalus.model.fsm.machine import StateMachine
+    from daedalus.model.fsm.state import SimpleState
+    from daedalus.model.plugin.config import SyncForkSkillConfig
+    from daedalus.model.plugin.skill import SyncForkSkill
+
+    s = SimpleState(name="s")
+    return SyncForkSkill(
+        fsm=StateMachine(name=f"{name}_fsm", states=[s], initial_state=s),
+        name=name, description="d", config=SyncForkSkillConfig(agent=agent_name),
+    )
+
+
+@pytest.fixture
+def delete_dialog(monkeypatch):
+    """삭제 확인 다이얼로그 봉합선 — 메시지를 붙잡고 '아니오'를 돌려준다.
+
+    헤드리스에서 모달이 뜨면 스위트가 멈춘다. 답을 바꾸려면 `answer`에 넣는다.
+    """
+    from PySide6.QtWidgets import QMessageBox
+
+    from daedalus.view import component_actions as mod
+
+    seen: dict = {"messages": [], "answer": QMessageBox.StandardButton.No}
+
+    def _question(_parent, _title, text, *args, **kwargs):
+        seen["messages"].append(text)
+        return seen["answer"]
+
+    monkeypatch.setattr(mod.QMessageBox, "question", staticmethod(_question))
+    return seen
+
+
+def test_delete_dialog_reports_fork_skills_using_the_agent(window, delete_dialog):
+    agent = ForkAgent(name="helper", description="d")
+    window._register_component(agent)
+    window._register_component(_make_fork_skill("scout", "helper"))
+
+    window._component_actions.on_delete_component(agent)
+
+    message = delete_dialog["messages"][0]
+    assert "fork 스킬 'scout'" in message
+    # '아니오'를 골랐으니 아무것도 지워지지 않는다.
+    assert agent in window._project.agents
+
+
+def test_delete_dialog_omits_the_section_when_nobody_uses_it(window, delete_dialog):
+    from PySide6.QtWidgets import QMessageBox
+
+    agent = ForkAgent(name="helper", description="d")
+    window._register_component(agent)
+    delete_dialog["answer"] = QMessageBox.StandardButton.Yes
+
+    window._component_actions.on_delete_component(agent)
+
+    assert "fork 스킬" not in delete_dialog["messages"][0]
+    assert agent not in window._project.agents
+
+
+def test_delete_dialog_report_matches_the_shared_derivation(window, delete_dialog):
+    """화면·산출·MCP가 같은 목록을 말한다 — 유도 함수가 하나다(원칙 1)."""
+    from daedalus.model.plugin.placement import fork_skills_using
+
+    agent = ForkAgent(name="helper", description="d")
+    window._register_component(agent)
+    for name in ("audit", "scout"):
+        window._register_component(_make_fork_skill(name, "helper"))
+
+    window._component_actions.on_delete_component(agent)
+
+    message = delete_dialog["messages"][0]
+    assert fork_skills_using(agent, window._project) == ["audit", "scout"]
+    for name in ("audit", "scout"):
+        assert f"fork 스킬 '{name}'" in message

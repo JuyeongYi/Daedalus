@@ -30,6 +30,11 @@ def _make_agent():
     return AgentDefinition(fsm=fsm, name="TestAgent", description="에이전트")
 
 
+def _make_fork_agent():
+    from daedalus.model.plugin.agent import ForkAgent
+    return ForkAgent(name="TestForkAgent", description="fork 실행 기반")
+
+
 def test_frontmatter_panel_procedural(qapp):
     from daedalus.view.editors.skill_editor import _FrontmatterPanel
     comp = _make_procedural()
@@ -571,34 +576,62 @@ def test_writeback_survives_panel_rebuild(qapp):
 # WP-H: AgentDefinition 프론트매터 패널 회귀 테스트
 # ---------------------------------------------------------------------------
 
-def test_frontmatter_panel_agent_has_13_fields(qapp):
-    """AgentDefinition 전달 시 _field_widgets에 13개 필드(NAME/DESCRIPTION 제외)가 생성된다.
+def _agent_matrix_fields(kind: str) -> set:
+    """이 에이전트 종류의 폼에 나와야 하는 필드 — **매트릭스가 단일 진실**이다.
 
-    빈 패널 버그(SKILL_FIELD_MATRIX.get('agent', {}) → {}) 회귀 방지.
+    숫자를 하드코딩하면 종류가 늘 때마다 무엇이 왜 빠졌는지 알 수 없다
+    (종류가 둘이 된 뒤 13이라는 수는 워크플로 에이전트에만 참이다).
     """
-    from daedalus.view.editors.skill_editor import _FrontmatterPanel
+    from daedalus.model.plugin.enums import AgentField, FieldVisibility
+    from daedalus.model.plugin.field_matrix import AGENT_FIELD_MATRIX
+
+    return {
+        f for f, rule in AGENT_FIELD_MATRIX[kind].items()
+        if f not in (AgentField.NAME, AgentField.DESCRIPTION)
+        and rule.visibility != FieldVisibility.FIXED
+    }
+
+
+@pytest.mark.parametrize(
+    ("kind", "factory"),
+    [
+        ("agent", _make_agent),
+        ("fork_agent", lambda: _make_fork_agent()),
+    ],
+)
+def test_frontmatter_panel_agent_fields_follow_the_kind_matrix(qapp, kind, factory):
+    """종류별 표 그대로 폼이 그려진다 — 빈 패널 버그 회귀 방지.
+
+    빈 패널 버그는 `SKILL_FIELD_MATRIX.get('agent', {})` → {} 폴백이었다. 이제
+    표 선택은 `matrix_for`(모델) 하나이고, 없는 종류는 ValueError다.
+    """
     from daedalus.model.plugin.enums import AgentField
-    comp = _make_agent()
-    panel = _FrontmatterPanel(comp)
+    from daedalus.view.editors.skill_editor import _FrontmatterPanel
+
+    panel = _FrontmatterPanel(factory())
 
     # NAME/DESCRIPTION은 공통 헤더에서 처리되므로 _field_widgets에 없다.
     assert AgentField.NAME not in panel._field_widgets
     assert AgentField.DESCRIPTION not in panel._field_widgets
+    assert set(panel._field_widgets) == _agent_matrix_fields(kind)
 
-    # 나머지 13개 필드가 모두 존재해야 한다.
-    expected_fields = {
-        AgentField.MODEL, AgentField.EFFORT,
-        AgentField.TOOLS, AgentField.DISALLOWED_TOOLS,
-        AgentField.PERMISSION_MODE, AgentField.SKILLS,
-        AgentField.MEMORY, AgentField.COLOR, AgentField.HOOKS,
-        AgentField.MAX_TURNS, AgentField.BACKGROUND,
-        AgentField.ISOLATION, AgentField.MCP_SERVERS,
-    }
-    assert len(expected_fields) == 13
-    for fld in expected_fields:
-        assert fld in panel._field_widgets, (
-            f"AgentField.{fld.name}이 _field_widgets에 없음"
-        )
+
+def test_workflow_agent_form_has_thirteen_fields(qapp):
+    """워크플로 에이전트 표는 13행이다(background·isolation 포함)."""
+    assert len(_agent_matrix_fields("agent")) == 13
+
+
+def test_fork_agent_form_drops_background_and_isolation(qapp):
+    """fork 에이전트는 스킬이 background를 정하고 isolation은 적용되지 않는다."""
+    from daedalus.model.plugin.enums import AgentField
+    from daedalus.view.editors.skill_editor import _FrontmatterPanel
+
+    panel = _FrontmatterPanel(_make_fork_agent())
+    assert AgentField.BACKGROUND not in panel._field_widgets
+    assert AgentField.ISOLATION not in panel._field_widgets
+    assert _agent_matrix_fields("fork_agent") == (
+        _agent_matrix_fields("agent") - {AgentField.BACKGROUND, AgentField.ISOLATION}
+    )
 
 
 def test_frontmatter_panel_agent_combo_default_value(qapp):

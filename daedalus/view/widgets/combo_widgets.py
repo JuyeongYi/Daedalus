@@ -41,7 +41,10 @@ class EffortComboBox(QComboBox):
 
 
 class ForkAgentComboBox(QComboBox):
-    """fork 에이전트 — 내장 / 사용 선언 외부 / 캔버스 미배치 프로젝트 에이전트.
+    """fork 에이전트 — 내장 / 사용 선언 외부 / 프로젝트의 **fork 에이전트**.
+
+    워크플로 에이전트는 후보가 아니다(종류가 다르다 — 2026-09-17). 예전 판정은
+    "캔버스에 배치되지 않은 에이전트"였는데 배치를 지우면 조용히 겸직이 생겼다.
 
     후보는 생성 시점에 제공자(`tag_input.get_fork_agent_choices`)에서 읽는다 —
     값 적용이 후보 연결보다 먼저라 생성자에서 채워야 저장된 값이 선택된다.

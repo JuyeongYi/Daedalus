@@ -79,3 +79,77 @@ def test_exit_points_do_not_feed_output_events():
     agent = AgentDefinition(fsm=fsm, name="legacy", description="")
     assert agent.transfer_on == []
     assert agent.output_events == []
+
+
+# ---------------------------------------------------------------------------
+# fork 에이전트 — 포트 대신 "사용하는 fork 스킬" 목록 (WP-FK2 D)
+# ---------------------------------------------------------------------------
+
+def _fork_project(fork_agent_name: str = "helper", used_by: tuple[str, ...] = ()):
+    from daedalus.model.fsm.state import SimpleState
+    from daedalus.model.plugin.agent import ForkAgent
+    from daedalus.model.plugin.config import SyncForkSkillConfig
+    from daedalus.model.plugin.skill import SyncForkSkill
+    from daedalus.model.project import PluginProject
+
+    agent = ForkAgent(name=fork_agent_name, description="fork 실행 기반")
+    skills = []
+    for name in used_by:
+        s = SimpleState(name="s")
+        skills.append(
+            SyncForkSkill(
+                fsm=StateMachine(name=f"{name}_fsm", states=[s], initial_state=s),
+                name=name, description="d",
+                config=SyncForkSkillConfig(agent=fork_agent_name),
+            )
+        )
+    return agent, PluginProject(name="p", skills=skills, agents=[agent])
+
+
+def test_fork_agent_editor_lists_the_fork_skills_using_it(qapp):
+    """산출("## Invocation Contract")·삭제 확인·MCP와 **같은 유도 함수**를 쓴다."""
+    from daedalus.view.editors.agent_editor import AgentEditor
+
+    agent, project = _fork_project(used_by=("scout", "audit"))
+    editor = AgentEditor(agent, project=project)
+
+    panel = editor._fork_users_panel
+    assert panel is not None
+    names = [panel._list.item(i).text() for i in range(panel._list.count())]
+    assert names == ["audit", "scout"]  # 정렬 — 결정적
+    # isHidden — 창을 띄우지 않은 헤드리스에서 isVisible은 항상 False다.
+    assert panel._empty_label.isHidden() is True
+    assert panel._list.isHidden() is False
+
+
+def test_fork_agent_editor_says_when_nobody_uses_it(qapp):
+    """아무도 부르지 않는 fork 에이전트는 산출은 되지만 죽은 코드다 — 말해 준다."""
+    from daedalus.view.editors.agent_editor import AgentEditor
+
+    agent, project = _fork_project()
+    editor = AgentEditor(agent, project=project)
+
+    panel = editor._fork_users_panel
+    assert panel._list.count() == 0
+    assert panel._list.isHidden() is True
+    assert panel._empty_label.isHidden() is False
+
+
+def test_fork_users_panel_refreshes_from_the_model(qapp):
+    """다른 탭에서 fork 스킬의 agent를 바꾼 뒤 돌아오면 반영돼야 한다."""
+    from daedalus.view.editors.agent_editor import AgentEditor
+
+    agent, project = _fork_project(used_by=("scout",))
+    editor = AgentEditor(agent, project=project)
+    project.skills[0].config.agent = "general-purpose"
+    editor._fork_users_panel.refresh()
+    assert editor._fork_users_panel._list.count() == 0
+
+
+def test_workflow_agent_editor_has_no_fork_users_panel(qapp):
+    """워크플로 에이전트는 fork 에이전트가 될 수 없다 — 이 목록 자체가 없다."""
+    from daedalus.view.editors.agent_editor import AgentEditor
+
+    editor = AgentEditor(_make_agent())
+    assert editor._fork_users_panel is None
+    assert editor._callers_panel is not None

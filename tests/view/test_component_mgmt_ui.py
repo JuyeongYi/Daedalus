@@ -282,3 +282,56 @@ class TestRegistryPreviewSignal:
 
         assert calls == [(skill, proj)]
         win.close()
+
+
+# ---------------------------------------------------------------------------
+# 생성 종류 표의 완전성 (WP-FK2 D — 종류가 9개로 늘었다)
+# ---------------------------------------------------------------------------
+
+class TestComponentKindTables:
+    """레지스트리 섹션 · 이름 다이얼로그 제목 · 팩토리, **세 표가 함께 는다**.
+
+    하나만 늘면 "+" 버튼이 아무것도 만들지 않거나(제목 표 누락 → 조기 반환),
+    만든 컴포넌트가 어느 탭에도 나타나지 않는다(섹션 누락). 오늘 이 세 표에는
+    서로를 고정하는 검사가 없었다.
+    """
+
+    _KINDS = {
+        "procedural", "sync_fork", "async_fork", "declarative", "transfer",
+        "reference", "wrapped", "agent", "fork_agent",
+    }
+
+    def test_registry_sections_match_the_kind_set(self, qapp):
+        panel = RegistryPanel()
+        assert set(panel._sections) == self._KINDS
+
+    def test_every_section_kind_has_a_dialog_title(self, qapp):
+        from daedalus.view.component_actions import ComponentActions
+
+        panel = RegistryPanel()
+        missing = set(panel._sections) - set(ComponentActions._COMPONENT_TITLES)
+        assert not missing, f"이름 다이얼로그 제목 누락: {sorted(missing)}"
+
+    def test_every_kind_has_a_factory(self, qapp):
+        from daedalus.view.actions.creation import make_component
+
+        window = MainWindow()
+        window.set_project(PluginProject(name="p"))
+        try:
+            for kind in sorted(self._KINDS):
+                comp = make_component(window, kind, f"c-{kind}")
+                assert comp is not None, f"팩토리 누락: {kind}"
+                assert comp.config.kind == kind, (
+                    f"{kind}의 config.kind가 매트릭스 키와 다르다: {comp.config.kind}"
+                )
+        finally:
+            window.close()
+
+    def test_tab_prefix_marks_the_two_agent_kinds(self, qapp):
+        """탭 접두는 워크플로 에이전트 🤖 / fork 에이전트 🧩 / 스킬은 없음."""
+        from daedalus.model.plugin.agent import ForkAgent
+        from daedalus.view.app import _tab_prefix
+
+        assert _tab_prefix(_make_agent("a")) == "🤖 "
+        assert _tab_prefix(ForkAgent(name="helper", description="")) == "🧩 "
+        assert _tab_prefix(_make_proc("s")) == ""

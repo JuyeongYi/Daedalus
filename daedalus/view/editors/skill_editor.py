@@ -22,14 +22,8 @@ from typing import Callable
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QHBoxLayout, QWidget
 
-from daedalus.model.plugin.agent import AgentDefinition
-from daedalus.model.plugin.skill import (
-    DeclarativeSkill,
-    ProceduralSkill,
-    ReferenceSkill,
-    StepSkill,
-    TransferSkill,
-)
+from daedalus.model.plugin.agent import Agent
+from daedalus.model.plugin.skill import Skill, StepSkill
 
 # --- 재-export 파사드 (분해 전 이름 그대로) -------------------------------
 from daedalus.view.editors.frontmatter_panel import (  # noqa: F401
@@ -61,7 +55,7 @@ class SkillEditor(QWidget):
 
     def __init__(
         self,
-        component: ProceduralSkill | DeclarativeSkill | TransferSkill | ReferenceSkill | AgentDefinition,
+        component: Skill | Agent,
         on_notify_fn: Callable[[], None] | None = None,
         parent: QWidget | None = None,
         project_vm=None,

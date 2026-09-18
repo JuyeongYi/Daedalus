@@ -158,3 +158,32 @@ def set_wrapped_enabled(window, component, enabled: bool) -> dict[str, Any]:
         script=f'set_wrapped_enabled("{component.name}", {bool(enabled)})',
     ))
     return {"changed": True, "enabled": bool(enabled), "placed": counts}
+
+
+def usage_fix_command(component, usage: str = "state"):
+    """용도 미정 랩핑 스킬의 usage를 고정하는 커맨드. 고정할 것이 없으면 None.
+
+    **최초 배치가 용도를 고정한다**(사용자 확정 2026-09-07)는 규칙을 배치
+    경로들이 공유한다 — 캔버스 드롭은 사용자에게 물어서, MCP `place_component`는
+    GUI와 같게 `"state"`로 고정한다. 커맨드 **하나만** 돌려주므로 각 표면이
+    자기 배치 커맨드와 `MacroCommand`로 묶어 **1 undo**로 만든다: 따로 고정하고
+    따로 배치하면 undo가 배치만 되돌려 용도만 고정된 반쪽 상태가 남는다.
+
+    Raises: ValueError — 알 수 없는 용도.
+    """
+    from daedalus.model.plugin.skill import WrappedSkill
+    from daedalus.view.commands.attr_commands import SetAttrCmd
+
+    if usage not in USAGES:
+        raise ValueError(
+            f"알 수 없는 용도 '{usage}'. 사용 가능: {', '.join(USAGES)}"
+        )
+    if not isinstance(component, WrappedSkill):
+        return None
+    if getattr(component.config, "usage", ""):
+        return None  # 이미 고정됨 — 바꾸는 것은 change_wrapped_usage의 일이다
+    return SetAttrCmd(
+        component.config, "usage", usage,
+        label=f"'{component.name}' 용도 고정: {usage}",
+        script=f'wrapped usage = "{usage}"',
+    )

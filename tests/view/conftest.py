@@ -18,12 +18,16 @@ def _reset_hook_name_provider():
     yield
     from daedalus.view.widgets.tag_input import (
         set_blackboard_candidate_provider,
+        set_fork_agent_choice_provider,
         set_hook_name_provider,
         set_tool_candidate_provider,
     )
     set_hook_name_provider(None)
     set_tool_candidate_provider(None)
     set_blackboard_candidate_provider(None)
+    # fork 에이전트 후보 제공자는 프로젝트를 클로저에 붙잡는다 — 해제하지
+    # 않으면 닫힌 창의 프로젝트가 다음 테스트의 콤보에 나타난다.
+    set_fork_agent_choice_provider(None)
     from daedalus.view.widgets.markdown_editor import set_files_root_provider
     set_files_root_provider(None)
     from daedalus.view.editors.variable_loader import set_build_target_provider
