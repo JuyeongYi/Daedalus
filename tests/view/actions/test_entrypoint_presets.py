@@ -76,8 +76,22 @@ def test_agent_does_not_support_presets():
     assert supports_entry_presets(_agent()) is False
 
 
-def test_empty_node_component_is_none_safe():
-    assert supports_entry_presets(None) is False
+def test_unknown_config_kind_is_loud():
+    """표를 고를 수 없으면 **조용한 False가 아니라 ValueError**다 (D2).
+
+    옛 구현은 `SKILL_FIELD_MATRIX.get(kind)`로 직접 조회해 dict miss를 전부
+    False로 삼켰다 — 에이전트의 False("두 필드가 없다")와 "표를 못 골랐다"가
+    구분되지 않았다(원칙 1·5). 이제 `matrix_for`가 유일한 표 선택자이고
+    그 ValueError를 그대로 흘린다.
+    """
+    class _NoConfig:
+        name = "x"
+        description = "d"
+
+    with pytest.raises(ValueError):
+        supports_entry_presets(_NoConfig())
+    with pytest.raises(ValueError):
+        supports_entry_presets(None)
 
 
 # --- 현재 프리셋 판정 ---

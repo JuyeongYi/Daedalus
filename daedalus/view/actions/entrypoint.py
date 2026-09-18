@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from enum import Enum
 
 from daedalus.model.plugin.enums import FieldVisibility, SkillField
-from daedalus.model.plugin.field_matrix import SKILL_FIELD_MATRIX
+from daedalus.model.plugin.field_matrix import matrix_for
 
 #: 프리셋이 세트로 지정하는 두 config 속성.
 USER_INVOCABLE_ATTR = "user_invocable"
@@ -83,14 +83,19 @@ def supports_entry_presets(component: object) -> bool:
     (reference/transfer의 `user_invocable` 등)에 프리셋을 걸면 컴파일이
     `fixed_value`를 강제하므로 **설정했는데 아무 일도 일어나지 않는** 상태가
     된다 — 그건 없느니만 못한 UI다. 에이전트는 두 필드 자체가 없다.
+
+    표를 고르는 실체는 `matrix_for` 하나다(원칙 1). 옛 구현은
+    `SKILL_FIELD_MATRIX.get(kind)`로 우회해 **표를 못 골랐다**를 dict miss →
+    조용한 False로 삼켰다 — 그래서 에이전트의 정당한 False와 구분되지 않았다.
+    표를 고를 수 없으면 `matrix_for`의 `ValueError`를 그대로 흘린다(원칙 5).
+
+    Raises:
+        ValueError: config가 없거나 그 kind에 해당하는 표가 없을 때.
     """
-    config = getattr(component, "config", None)
-    kind = getattr(config, "kind", None)
-    matrix = SKILL_FIELD_MATRIX.get(kind) if isinstance(kind, str) else None
-    if matrix is None:
-        return False
+    matrix = matrix_for(component)
     return all(
-        matrix[field].visibility is FieldVisibility.OPTIONAL
+        (rule := matrix.get(field)) is not None
+        and rule.visibility is FieldVisibility.OPTIONAL
         for field in (SkillField.USER_INVOCABLE, SkillField.DISABLE_MODEL)
     )
 

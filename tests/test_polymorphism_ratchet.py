@@ -57,7 +57,7 @@ SHAPE_EXCLUDED_SUBJECTS: frozenset[str] = frozenset({"project", "cfg", "config",
 RATCHET: dict[str, int] = {
     "isinstance_sites": 110,
     "isinstance_files": 33,
-    "shape_attr_sites": 123,
+    "shape_attr_sites": 122,
     "shape_attr_files": 41,
 }
 
