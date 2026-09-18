@@ -121,25 +121,36 @@ class TokenReport:
         return sorted(hits, key=lambda e: (-e.tokens, e.path))
 
     def notice(self) -> str | None:
-        """임계 초과 고지 1줄 — 검증 경고가 아니라 정보성 문구다."""
+        """정보성 고지 — 임계 초과 문단 + 공통 안내 파일 한 줄. 없으면 None.
+
+        가이드 줄은 **임계 초과와 무관하게** 나온다. 가이드는 실측 ~1,800토큰이라
+        임계(5,000)를 넘을 일이 없는데, 초과 문단에 붙여만 두면 정상적인
+        프로젝트에서는 영영 보이지 않는다 — 그러면 "포인터를 받은 컴포넌트마다
+        추가로 실린다"는 사실을 말하는 자리가 산출 어디에도 없다.
+
+        다만 이 문자열이 곧 모달 조건은 아니다 — 매 컴파일마다 창이 뜨면
+        계기판이 아니라 방해다. GUI(`view/compile_actions.show_token_notice`)는
+        `over_threshold()`로 띄울지 정하고, 이 문자열은 그때의 본문과 MCP 응답
+        (`compile_preview`의 `token_notice`)에 실린다.
+        """
+        parts: list[str] = []
         hits = self.over_threshold()
-        if not hits:
-            return None
-        head = ", ".join(f"{e.path} ≈{e.tokens:,}" for e in hits[:3])
-        more = f" 외 {len(hits) - 3}건" if len(hits) > 3 else ""
-        text = (
-            f"토큰 비용: 산출 {len(hits)}건이 파일당 임계 {self.threshold:,}토큰을 "
-            f"넘습니다 ({head}{more}). 스킬 본문은 걸릴 때마다 통째로 컨텍스트에 "
-            f"실립니다 — 큰 절을 skill-files/로 내려 필요할 때만 읽게 하는 것을 "
-            f"검토하세요."
-        )
+        if hits:
+            head = ", ".join(f"{e.path} ≈{e.tokens:,}" for e in hits[:3])
+            more = f" 외 {len(hits) - 3}건" if len(hits) > 3 else ""
+            parts.append(
+                f"토큰 비용: 산출 {len(hits)}건이 파일당 임계 {self.threshold:,}토큰을 "
+                f"넘습니다 ({head}{more}). 스킬 본문은 걸릴 때마다 통째로 컨텍스트에 "
+                f"실립니다 — 큰 절을 skill-files/로 내려 필요할 때만 읽게 하는 것을 "
+                f"검토하세요."
+            )
         guides = sum(e.tokens for e in self.entries if e.kind in _GUIDE_KINDS)
         if guides:
-            text += (
-                f"\n공통 안내 파일 ≈{guides:,}토큰은 포인터를 받은 컴포넌트가 "
+            parts.append(
+                f"공통 안내 파일 ≈{guides:,}토큰은 포인터를 받은 컴포넌트가 "
                 f"실행될 때마다 추가로 실립니다."
             )
-        return text
+        return "\n".join(parts) or None
 
     def summary(self) -> str:
         """상태바 한 조각용 요약."""

@@ -153,10 +153,17 @@ def test_token_rules_are_not_registered_as_validation_rules():
 
 
 def test_guide_kinds_are_context_kinds():
-    """가이드도 모델이 Read로 읽는 산문이다 — 임계 판정 대상이다."""
-    from daedalus.compiler.token_report import CONTEXT_KINDS
+    """가이드도 모델이 Read로 읽는 산문이다 — 임계 판정 대상이다.
 
-    assert {"guide_workflow", "guide_blackboard"} <= CONTEXT_KINDS
+    kind 문자열의 단일 진실은 `emit/guides.py`다. 리터럴로 단언하면 개명했을 때
+    토큰 리포트만 조용히 가이드를 못 알아본다(임계 대상에서 빠지고 고지 줄이
+    사라진다) — 그래서 상수를 임포트해 **세 자리가 같은 값을 쓰는지**를 고정한다.
+    """
+    from daedalus.compiler.emit.guides import GUIDE_KINDS
+    from daedalus.compiler.token_report import CONTEXT_KINDS, _GUIDE_KINDS
+
+    assert set(GUIDE_KINDS) <= CONTEXT_KINDS
+    assert set(GUIDE_KINDS) == set(_GUIDE_KINDS)
 
 
 def test_report_lists_each_guide_as_its_own_entry(tmp_path):
@@ -200,6 +207,37 @@ def test_notice_adds_a_line_about_the_shared_guides():
     notice = report.notice()
     assert "공통 안내 파일 ≈100토큰" in notice
     assert "실행될 때마다 추가로 실립니다" in notice
+
+
+def test_guides_line_shows_even_when_nothing_is_over_threshold():
+    """가이드는 임계(5,000)를 넘을 일이 없다 — 초과 문단에만 붙이면 영영 안 보인다."""
+    report = TokenReport()
+    report.add("skills/a/SKILL.md", "skill", "a" * 400)
+    report.add("guides/p/workflow.md", "guide_workflow", "b" * 400)
+    assert report.over_threshold() == []
+    notice = report.notice()
+    assert notice is not None
+    assert notice.startswith("공통 안내 파일 ≈100토큰")
+    assert "임계" not in notice
+
+
+def test_real_compile_reports_the_guides_line(tmp_path):
+    """도그푸드 형상 — 임계를 넘는 파일이 없어도 가이드 줄은 나온다."""
+    from daedalus.model.fsm.event import CompletionEvent
+    from daedalus.model.fsm.state import SimpleState
+    from daedalus.model.fsm.transition import Transition
+
+    a, b = make_procedural("a"), make_procedural("b")
+    project = PluginProject(name="p", skills=[a, b])
+    sa, sb = SimpleState(name="a", skill_ref=a), SimpleState(name="b", skill_ref=b)
+    project.graph.states += [sa, sb]
+    project.graph.transitions.append(
+        Transition(source=sa, target=sb, trigger=CompletionEvent(name="done"))
+    )
+    result = compile_project(project, tmp_path)
+    assert result.ok, [e.message for e in result.errors]
+    assert result.token_report.over_threshold() == []
+    assert "공통 안내 파일" in (result.token_report.notice() or "")
 
 
 def test_gate_rejected_compile_has_empty_report(tmp_path):

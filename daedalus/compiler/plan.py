@@ -27,6 +27,7 @@ from daedalus.compiler.emit import (
     compile_hook_scripts,
     compile_hooks_json,
     compile_schemas_json,
+    emits_output_file,
     hook_library,
 )
 from daedalus.compiler.emit.guides import (
@@ -39,7 +40,7 @@ from daedalus.compiler.emit.guides import (
 from daedalus.compiler.emit.wrapped import needs_runner_agent
 from daedalus.compiler.workspace import has_manual_frontmatter
 from daedalus.model.plugin.hook import HOOK_SCRIPT_DIR
-from daedalus.model.plugin.skill import Skill, is_disabled_wrapped
+from daedalus.model.plugin.skill import Skill
 from daedalus.model.validation import ValidationError
 
 
@@ -180,19 +181,11 @@ def _plan_outputs(
 
     # 전역 스킬
     for skill in project.skills:
-        if not isinstance(skill, Skill):
-            continue
-        # 참조 용도 wrapped(WP-WR, 사용자 확정 2026-09-07)는 **산출 파일이
-        # 없다** — 링크된 노드의 산출에 consult 지시만 합류한다(emit
-        # _background_references_section). SKILL.md를 내면 존재 이유(파일 생성
-        # 불필요)가 사라진다.
-        if (getattr(skill, "kind", "") == "wrapped_skill"
-                and getattr(getattr(skill, "config", None), "usage", "") == "reference"):
-            continue
-        # 비활성 랩핑 스킬(WP-WR, 사용자 확정 2026-09-07 — 삭제 대신 비활성화)도
-        # 산출하지 않는다. 끈 것을 그대로 내보내면 "껐는데 플러그인에는 들어
-        # 있다"가 된다.
-        if is_disabled_wrapped(skill):
+        # 산출 파일 보유 판정의 실체는 `emit.common.emits_output_file` 하나다
+        # (원칙 1) — 참조 용도 wrapped와 비활성 랩핑 스킬을 제외한다(둘 다 WP-WR
+        # 사용자 확정 2026-09-07). 같은 함수를 `emit/guides.py`의 포인터 판정이
+        # 쓰므로 "계획에 오른 집합"과 "포인터 판정 대상 집합"이 어긋날 수 없다.
+        if not isinstance(skill, Skill) or not emits_output_file(skill):
             continue
         label = f"스킬 '{skill.name}'"
         check_name(skill.name, label, skill)

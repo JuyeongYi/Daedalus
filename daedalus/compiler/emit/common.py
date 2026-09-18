@@ -3,7 +3,11 @@
 
 여러 산출 모듈(frontmatter/sections/skill/agent/hooks/manifest)이 함께 쓰는
 최소 단위: enum 값 추출, config 선언 기본값 조회, 본문 블록/블록 결합,
-빌드 타깃 판정, 프로젝트 그래프 placement 판정.
+빌드 타깃 판정, 프로젝트 그래프 placement 판정, **산출 파일 보유 판정**.
+
+마지막 하나(`emits_output_file`)는 emit 밖의 `compiler/plan.py`도 부른다 —
+"누가 산출 파일을 갖는가"의 실체가 계획(plan)과 포인터 판정(guides) 두 벌이면
+고아 가이드 파일이나 가리킬 파일이 없는 포인터가 조용히 생긴다(원칙 1).
 """
 from __future__ import annotations
 
@@ -52,6 +56,49 @@ def _body_block(body: str) -> str | None:
     if not stripped.strip():
         return None
     return stripped
+
+
+# ─────────────────────────── 산출 파일 보유 판정 ───────────────────────────
+
+
+def emits_output_file(component) -> bool:
+    """이 컴포넌트가 자기 산출 파일(`skills/<이름>/SKILL.md` 또는
+    `agents/<이름>.md`)을 갖는가.
+
+    `plan._plan_outputs`의 제외 규칙과 `guides`의 포인터 판정 대상이 같은 집합을
+    가리켜야 한다 — 둘이 어긋나면 ① 아무도 가리키지 않는 가이드 파일이 나가거나
+    ② 산출되지 않는 파일에 포인터가 붙는다. 그래서 판정은 여기 하나다.
+
+    제외 대상은 둘뿐이다(둘 다 WP-WR 사용자 확정):
+      - 참조 용도 랩핑 스킬 — 파일을 만들지 않고 링크된 노드의 산출에 consult
+        지시로만 합류한다.
+      - 비활성 랩핑 스킬 — 껐는데 플러그인에는 들어 있으면 끈 의미가 없다.
+    에이전트는 두 종류 모두 `agents/<이름>.md`를 갖는다.
+    """
+    from daedalus.model.plugin.agent import Agent
+    from daedalus.model.plugin.skill import (
+        Skill,
+        WrappedSkill,
+        is_disabled_wrapped,
+        is_reference_usage,
+    )
+
+    if isinstance(component, Agent):
+        return True
+    if not isinstance(component, Skill):
+        return False
+    if isinstance(component, WrappedSkill) and (
+        is_reference_usage(component) or is_disabled_wrapped(component)
+    ):
+        return False
+    return True
+
+
+def emitted_components(project) -> list:
+    """산출 파일을 갖는 컴포넌트 — 선언 순서(스킬 → 에이전트)."""
+    skills = getattr(project, "skills", None) or []
+    agents = getattr(project, "agents", None) or []
+    return [c for c in [*skills, *agents] if emits_output_file(c)]
 
 
 # ─────────────────────────── 빌드 타깃 판정 ───────────────────────────

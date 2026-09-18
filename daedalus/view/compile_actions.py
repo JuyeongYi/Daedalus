@@ -160,7 +160,13 @@ class CompileActions:
         고칠 의무가 있는 경고와 구분되지 않고, `WARNING_RULES` 등급 체계에도
         들어가지 않는다. 임계 이하이면 아무것도 띄우지 않는다 — 매 컴파일마다
         창이 뜨면 계기판이 아니라 방해다.
+
+        그래서 **띄울지는 `over_threshold()`가 정한다** — `notice()`는 임계를
+        넘은 것이 없어도 공통 안내 파일 한 줄을 돌려주는 정보 문자열이고(MCP
+        응답에도 그대로 실린다), 그 한 줄만으로 창을 띄우면 위 규칙이 깨진다.
         """
+        if not result.token_report.over_threshold():
+            return
         notice = result.token_report.notice()
         if not notice:
             return

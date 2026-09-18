@@ -100,6 +100,8 @@ from daedalus.compiler.emit.common import (
     _graph_placements_any,
     _is_local_build,
     _join_blocks,
+    emits_output_file,
+    emitted_components,
 )
 from daedalus.compiler.emit.frontmatter import (
     _YAML_RESERVED,

@@ -12,9 +12,13 @@
 리터럴로 보이고, 같은 문서가 "Bash로 실행하는 명령의 환경에도 없다"고 못 박는다.
 그래서 가이드 본문의 경로 자리에는 `<SCHEMAS>` 자리표시자를 쓰고, "너를 보낸
 스킬/에이전트 파일에 적힌 `--schemas <경로>`를 그대로 쓰라"고 말한다. 대신
-**각 컴포넌트 산출에는 확장되는 실제 경로를 가진 명령이 최소 1줄 남는다** —
-진행 명령이 없는 컴포넌트(에이전트·fork 에이전트·미배치 스킬)에는 포인터 줄에
-`State CLI:` 한 줄을 덧붙여 그것을 보장한다.
+**포인터를 받은 컴포넌트 산출에는 확장되는 실제 경로를 가진 명령이 최소 1줄
+남는다** — 진행 명령이 없는 컴포넌트(에이전트·fork 에이전트·미배치 스킬)에는
+포인터 줄에 `State CLI:` 한 줄을 덧붙여 그것을 보장한다. 이 보장은 **가이드
+종류와 무관하다**: 워크플로 가이드도 블랙보드 가이드와 똑같이 "너를 보낸 파일에
+적힌 `--schemas` 경로를 쓰라"고 말하므로, 블랙보드 클래스가 없는 프로젝트의
+배치 에이전트(워크플로 포인터만 받는다)에도 경로가 남아야 가이드가 거짓을
+말하지 않는다(원칙 5).
 
 산출 위치는 두 빌드 타깃 공통으로 루트 직하 `guides/<플러그인>/`이다 — 플러그인
 이름으로 네임스페이스를 가르는 것은 `schemas/<플러그인>.json`과 같은 이유(WP-NS)고,
@@ -26,6 +30,7 @@ from daedalus.compiler.emit.common import (
     _graph_placements,
     _graph_placements_any,
     _join_blocks,
+    emitted_components,
 )
 from daedalus.model.plugin.agent import Agent, AgentDefinition
 from daedalus.model.plugin.skill import (
@@ -34,7 +39,6 @@ from daedalus.model.plugin.skill import (
     StepSkill,
     TransferSkill,
     WrappedSkill,
-    is_disabled_wrapped,
     is_reference_usage,
 )
 from daedalus.model.plugin.variables import ROOT_TOKEN
@@ -141,27 +145,20 @@ def blackboard_pointer_wanted(component, project) -> bool:
     return isinstance(component, StepSkill)
 
 
-def _emitted_components(project):
-    """산출 파일을 갖는 컴포넌트 — `_plan_outputs`와 같은 제외 규칙."""
-    for skill in getattr(project, "skills", None) or []:
-        if isinstance(skill, WrappedSkill) and (
-            is_reference_usage(skill) or is_disabled_wrapped(skill)
-        ):
-            continue
-        yield skill
-    yield from getattr(project, "agents", None) or []
-
-
 def workflow_guide_referenced(project) -> bool:
-    """워크플로 가이드를 가리키는 포인터가 하나라도 나가는가 (고아 파일 방지)."""
+    """워크플로 가이드를 가리키는 포인터가 하나라도 나가는가 (고아 파일 방지).
+
+    대상 집합은 `emitted_components` — 계획(`_plan_outputs`)이 파일을 내는 집합과
+    **같은 함수**다(원칙 1).
+    """
     return any(
-        workflow_pointer_kind(c, project) for c in _emitted_components(project)
+        workflow_pointer_kind(c, project) for c in emitted_components(project)
     )
 
 
 def blackboard_guide_referenced(project) -> bool:
     return any(
-        blackboard_pointer_wanted(c, project) for c in _emitted_components(project)
+        blackboard_pointer_wanted(c, project) for c in emitted_components(project)
     )
 
 
@@ -172,7 +169,10 @@ def guide_pointer_line(
 
     has_schema_command: 이 컴포넌트 산출에 확장되는 `--schemas` 경로를 가진 명령이
     이미 남아 있는가(배치 스킬의 진행 명령). 없으면 `State CLI:` 한 줄을 덧붙여
-    가이드의 `<SCHEMAS>` 자리표시자를 채울 실제 경로를 남긴다.
+    가이드의 `<SCHEMAS>` 자리표시자를 채울 실제 경로를 남긴다 — **어느 가이드를
+    가리키든** 그렇다(두 가이드 모두 그 경로를 요구한다). 부분 명령만 종류에
+    따라 다르다: 블랙보드 가이드를 받으면 상태 읽기/쓰기, 아니면 진행 기록이
+    그 경로를 쓰는 유일한 자리다.
     """
     wf = workflow_pointer_kind(component, project)
     bb = blackboard_pointer_wanted(component, project)
@@ -198,10 +198,14 @@ def guide_pointer_line(
     else:
         line = f"Before you start, read {bb_clause}."
 
-    if bb and not has_schema_command:
+    if not has_schema_command:
+        # 여기 도달했다면 포인터가 하나 이상 나간다(위 조기 반환). 가이드는 둘 다
+        # "너를 보낸 파일에 적힌 `--schemas` 경로를 쓰라"고 하므로 경로는 가이드
+        # 종류와 무관하게 남긴다. 부분 명령만 갈린다.
+        subcommands = "<read|write|validate>" if bb else "progress <read|set>"
         line += (
             f"\nState CLI: `daedalus-bb --schemas {ROOT_TOKEN}/schemas/"
-            f"{_plugin(project)}.json <read|write|validate> ...` — the guide "
+            f"{_plugin(project)}.json {subcommands} ...` — the guide "
             f"explains the subcommands."
         )
     return line

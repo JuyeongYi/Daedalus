@@ -396,7 +396,7 @@ def _background_references_section(component, project) -> list[str]:
     return ["\n".join(lines)]
 
 
-def _blackboard_section(project, component=None) -> list[str]:
+def _blackboard_section(project, component) -> list[str]:
     """이 컴포넌트의 블랙보드 접근 선언 → '## Shared State (Blackboard)' 블록.
 
     **총론·CLI 사용법·규칙은 여기 없다** — 스킬마다 글자 하나 다르지 않게
@@ -406,10 +406,14 @@ def _blackboard_section(project, component=None) -> list[str]:
 
     그래서 접근 선언(자체 FSM 재귀 + 그래프 placement) 합집합이 비면 **단락
     자체를 생략한다** — 가이드가 이미 전부 말하고 있어 덧붙일 고유 정보가 없다.
+
+    `component`는 **필수 위치 인자**다. 기본값 None을 남겨 두면 "컴포넌트를
+    빠뜨린 호출 = 단락이 통째로 사라짐"이 아무 말 없이 성립한다(원칙 5) —
+    이 단락의 내용이 전부 컴포넌트에서 나오게 된 뒤로는 의미 없는 호출이다.
     """
     bb = getattr(project, "blackboard", None)
     classes = getattr(bb, "class_definitions", None) or []
-    if not classes or component is None:
+    if not classes:
         return []
 
     reads, writes = _component_access_union(component, project)

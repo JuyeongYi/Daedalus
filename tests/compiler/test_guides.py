@@ -293,6 +293,60 @@ def test_components_without_a_progress_command_get_a_state_cli_line(kind):
     )
 
 
+def test_state_cli_line_is_emitted_without_a_blackboard_too():
+    """가이드 종류와 무관하게 확장 경로가 남는다.
+
+    블랙보드 클래스가 없으면 포인터는 워크플로 가이드만 가리키는데, 그 가이드도
+    "너를 보낸 파일에 적힌 `--schemas` 경로를 쓰라"고 말한다 — 경로가 없으면
+    가이드가 거짓을 말한다(원칙 5). 배치 에이전트에는 진행 명령이 없으므로
+    포인터 줄이 그 경로를 지고 간다.
+    """
+    project, _, _ = _placed_pair()
+    worker = make_agent("worker")
+    project.agents.append(worker)
+    project.graph.states.append(SimpleState(name="worker", skill_ref=worker))
+    text = compile_agent(worker, project=project)
+    assert _WF in text
+    assert (
+        "State CLI: `daedalus-bb --schemas ${ROOT}/schemas/p.json "
+        "progress <read|set> ...`" in text
+    )
+
+
+def test_a_component_without_a_pointer_gets_no_state_cli_line():
+    """자리표시자를 채울 의무는 포인터를 받은 컴포넌트에만 있다."""
+    project, _, _ = _placed_pair()
+    idle = make_procedural("idle")
+    project.skills.append(idle)
+    text = compile_skill(idle, project=project)
+    assert "guides/" not in text
+    assert "State CLI:" not in text
+
+
+def test_pointer_targets_are_exactly_the_components_that_get_a_file():
+    """포인터 판정 대상 집합 == 계획이 파일을 내는 집합 (판정의 실체는 하나다)."""
+    from daedalus.compiler.emit.common import emitted_components
+    from daedalus.compiler.plan import _plan_outputs
+
+    project, _, _ = _placed_pair(blackboard=_blackboard())
+    project.skills.append(_fork(agent="helper"))
+    project.agents.append(ForkAgent(name="helper", description="H.", body="Work."))
+    project.skills.append(WrappedSkill(
+        fsm=StateMachine(name="ref", initial_state=SimpleState(name="s"),
+                         states=[SimpleState(name="s")]),
+        name="ref", description="A doc.",
+        config=WrappedSkillConfig(source="other:doc", usage="reference"),
+    ))
+
+    plan, errors, _ = _plan_outputs(project)
+    assert not errors, [e.message for e in errors]
+    planned = [p.component for p in plan if p.kind in ("skill", "agent")]
+    pointed = emitted_components(project)
+    assert {id(c) for c in pointed} == {id(c) for c in planned}
+    # 참조 용도 랩핑 스킬은 양쪽 모두에서 빠진다(파일도, 포인터도 없다).
+    assert "ref" not in {c.name for c in pointed}
+
+
 @pytest.mark.parametrize(
     "target,expected",
     [
