@@ -112,12 +112,6 @@ def test_default_archive_name_strips_suffixes(tmp_path):
     assert package.default_archive_name(tmp_path / "old.daedalus.json") == "old.ddpj"
 
 
-def test_is_archive():
-    assert package.is_archive("a/b.ddpj")
-    assert package.is_archive("A/B.DDPJ")
-    assert not package.is_archive("a/b.zip")
-
-
 # --- 압축 ---
 
 

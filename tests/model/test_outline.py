@@ -9,13 +9,24 @@ from __future__ import annotations
 import pytest
 
 from daedalus.model.outline import (
+    OutlineEntry,
     char_span,
     find_section,
     parse_outline,
-    replace_section,
     replacement_text,
     section_text,
 )
+
+
+def _replace_section(body: str, entry: OutlineEntry, new_text: str) -> str:
+    """섹션(헤딩 줄 포함)을 new_text로 교체한 새 body — 순수 문자열 오라클.
+
+    프로덕션 교체 경로는 QTextCursor(`char_span` + `replacement_text`)다.
+    이 구현은 그 경로와 **독립적**이어야 비교가 뜻을 가지므로 테스트가 소유한다.
+    """
+    start, end = char_span(body, entry)
+    return body[:start] + replacement_text(body, entry, new_text) + body[end:]
+
 
 _BODY = """\
 프리앰블 — 첫 헤딩 이전 텍스트.
@@ -129,7 +140,7 @@ def test_empty_heading_raises():
 
 def test_replace_preserves_untouched_bytes():
     entry = find_section(_BODY, "배선")
-    new = replace_section(_BODY, entry, "## 배선\n\n새 내용.\n")
+    new = _replace_section(_BODY, entry, "## 배선\n\n새 내용.\n")
     before = _BODY[:_BODY.index("## 배선")]
     after = _BODY[_BODY.index("## 검증"):]
     assert new.startswith(before)
@@ -140,7 +151,7 @@ def test_replace_preserves_untouched_bytes():
 
 def test_replace_last_section_runs_to_eof():
     entry = find_section(_BODY, "검증")
-    new = replace_section(_BODY, entry, "## 검증\n\n교체됨")
+    new = _replace_section(_BODY, entry, "## 검증\n\n교체됨")
     assert new.endswith("## 검증\n\n교체됨")
     assert "끝 문단" not in new
 
@@ -148,14 +159,14 @@ def test_replace_last_section_runs_to_eof():
 def test_replace_inserts_boundary_blank_line_mid_document():
     """새 텍스트가 본문 줄로 끝나면 다음 헤딩과 빈 줄로 경계를 세운다."""
     entry = find_section(_BODY, "배선")
-    new = replace_section(_BODY, entry, "## 배선\n\n개행 없이 끝")
+    new = _replace_section(_BODY, entry, "## 배선\n\n개행 없이 끝")
     assert "개행 없이 끝\n\n## 검증" in new
 
 
 def test_replace_without_heading_merges_into_previous():
     """헤딩 없는 교체 텍스트 — 이전 섹션에 흡수된다 (의도적 병합)."""
     entry = find_section(_BODY, "세부")
-    new = replace_section(_BODY, entry, "그냥 문단.")
+    new = _replace_section(_BODY, entry, "그냥 문단.")
     titles = [e.title for e in parse_outline(new)]
     assert "세부" not in titles
 
@@ -167,12 +178,12 @@ def test_char_span_matches_section_text():
 
 
 def test_char_span_replacement_equals_replace_section():
-    """QTextCursor 경로(char_span + replacement_text)와 replace_section이 같다."""
+    """QTextCursor 경로(char_span + replacement_text)와 순수 문자열 오라클이 같다."""
     for heading, new_text in [("배선", "## 배선\n\nX"), ("검증", "## 검증\n\nY\n")]:
         entry = find_section(_BODY, heading)
         start, end = char_span(_BODY, entry)
         via_span = _BODY[:start] + replacement_text(_BODY, entry, new_text) + _BODY[end:]
-        assert via_span == replace_section(_BODY, entry, new_text)
+        assert via_span == _replace_section(_BODY, entry, new_text)
 
 
 def test_split_join_roundtrip_is_identity():

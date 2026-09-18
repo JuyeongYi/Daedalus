@@ -144,24 +144,15 @@ def replacement_text(body: str, entry: OutlineEntry, new_text: str) -> str:
     """``char_span`` 범위에 실제로 넣을 텍스트 — 경계 정규화 포함.
 
     섹션이 문서 끝이 아니고 새 텍스트 마지막 줄이 비어 있지 않으면 빈 줄
-    하나를 붙여 다음 헤딩과 경계를 세운다. ``replace_section``과 MCP의
-    QTextCursor 교체 경로가 **이 함수를 공유**해야 두 경로 결과가 같다.
+    하나를 붙여 다음 헤딩과 경계를 세운다. MCP의 QTextCursor 교체 경로가
+    ``char_span``과 함께 이 함수를 쓴다 — 순수 문자열 교체 오라클
+    (``tests/model/test_outline._replace_section``)도 같은 함수를 공유해야
+    두 경로 결과가 같다.
     """
     is_last = entry.line_end >= len(body.split("\n"))
     if not is_last and new_text.split("\n")[-1].strip():
         return new_text + "\n"
     return new_text
-
-
-def replace_section(body: str, entry: OutlineEntry, new_text: str) -> str:
-    """섹션(헤딩 줄 포함)을 new_text로 교체한 새 body를 돌려준다.
-
-    교체 텍스트가 자기 헤딩을 포함해야 섹션으로 남는다 — 포함하지 않으면
-    이전 섹션에 흡수된다(의도적 병합도 가능하도록 강제하지 않는다).
-    건드리지 않은 구간은 바이트 그대로다.
-    """
-    start, end = char_span(body, entry)
-    return body[:start] + replacement_text(body, entry, new_text) + body[end:]
 
 
 def char_span(body: str, entry: OutlineEntry) -> tuple[int, int]:

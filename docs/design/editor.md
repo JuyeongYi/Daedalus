@@ -13,9 +13,10 @@
   `widgets/markdown/syntax.py`의 `_FENCE_OPEN/CLOSE_RE` **미러**, 어긋나면 TOC와 섹션 집기가
   달라진다. 하이라이터·에디터도 같은 syntax.py 상수를 임포트하므로 정본은 그 한 곳이다),
   `find_section`(제목/`"## 제목"` 레벨 지정/`"부모 > 자식"` 경로 — 0개·복수 매칭은 ValueError, 조용히
-  하나를 고르지 않는다), `section_text`/`char_span`/`replacement_text`/`replace_section`. 텍스트 연산은
-  전부 `split("\n")` 기반이라 비교체 구간이 바이트 그대로 보존된다. `replace_section`과 QTextCursor
-  경로(char_span+replacement_text)는 `replacement_text`를 공유해 결과가 같다(테스트 고정).
+  하나를 고르지 않는다), `section_text`/`char_span`/`replacement_text`. 텍스트 연산은
+  전부 `split("\n")` 기반이라 비교체 구간이 바이트 그대로 보존된다. 교체는 QTextCursor
+  경로(char_span+replacement_text) 하나뿐이고, 그것과 등가임을 보는 순수 문자열 오라클은
+  테스트가 소유한다(`tests/model/test_outline._replace_section`).
 - **MCP 도구 3종(부분 접근):** `get_body_outline`(구조만 — 본문 전송 없음)/`get_body_section`/
   `set_body_section`(섹션 교체 — `set_component_body`와 같은 문서 경로(WP-BU)라 undo 가능, text에
   자기 헤딩 줄을 포함해야 섹션으로 남는다). 읽기는 `BodyDocumentRegistry.peek`(열린 문서가 있으면
@@ -25,7 +26,7 @@
 
 - **역할:** 루프 전이 등 노드를 가로질러 그려지는 엣지를 사용자가 손으로 정리할 수 있도록 경유점(waypoint)을 추가·드래그·제거하는 기능. 자동 라우팅(장애물 회피 등)은 비목표 — v1은 수동 경유점만.
 - **저장 모델:** `PluginProject.edge_layout`/`AgentDefinition.edge_layout: dict[str, list[list[float]]]` — 키는 **Transition.id**(graph_layout의 state.id 규약과 동일), 값은 `[x, y]` 목록(소스→타깃 순서). 웨이포인트는 뷰 관심사이므로 fsm 모델(Transition)에는 넣지 않는다. `remove_component`가 배치 삭제 시 연결 전이와 함께 `edge_layout`의 해당 키도 정리한다(graph_layout 정리와 동일 위치).
-- **뷰 모델:** `TransitionViewModel.waypoints: list[tuple[float, float]]`(기본 빈 리스트, 뷰 전용). 저장 직전 `app._save_graph_layout`이 `transition_vms`를 순회해 `project.edge_layout`에 기록하고, 로드 시 `app._load_project_graph`가 `edge_layout.get(trans.id, [])`로 `TransitionViewModel(waypoints=...)`를 복원한다(graph_layout과 완전히 동일한 저장/복원 시점 미러링. `AgentDefinition.edge_layout` 필드는 모델에 남아 왕복하지만 에이전트 내부 FSM 캔버스가 퇴역해 지금은 쓰는 곳이 없다).
+- **뷰 모델:** `TransitionViewModel.waypoints: list[tuple[float, float]]`(기본 빈 리스트, 뷰 전용). 저장 직전 `app._save_graph_layout`이 `transition_vms`를 순회해 `project.edge_layout`에 기록하고, 로드 시 `GraphIO.load_project_graph`가 `edge_layout.get(trans.id, [])`로 `TransitionViewModel(waypoints=...)`를 복원한다(graph_layout과 완전히 동일한 저장/복원 시점 미러링. `AgentDefinition.edge_layout` 필드는 모델에 남아 왕복하지만 에이전트 내부 FSM 캔버스가 퇴역해 지금은 쓰는 곳이 없다).
 - **렌더 (`edge_item.py`):** `TransitionEdgeItem.update_path`가 `_route_points()`(소스 포트 → waypoints → 타깃 포트)를 구해 각 구간을 기존과 동일한 베지어 곡선(`_add_curve_segment`)으로 잇는다. 각 구간의 끝점이 정확히 경유점이므로 경로가 그 점을 통과함이 보장된다. 경유점이 없으면 구간이 하나뿐이라 기존 렌더와 완전히 동일(하위 호환 — 회귀 판정은 `test_edge_paint.py`/`test_input_ports.py`/`test_scene_rebuild.py` 무수정 통과). 화살촉은 기존 로직 그대로 `_ARROW_SPACING` 간격으로 **경로 전체에 반복 배치**되고(마지막 구간 전용이 아님 — master와 동일), 라벨도 기존 위치 로직 그대로다.
 - **상호작용:** 엣지 더블클릭 또는 컨텍스트 메뉴 "경유점 추가" → `edge.nearest_segment_index(scene_pos)`(구간별 곡선을 샘플링해 최근접 구간 판정) 위치에 삽입. 자식 `WaypointHandleItem`(작은 원, 선택 엣지 색 `#88aaff`)은 **항상 표시**하고 엣지 비선택 시 흐리게만 그린다(`_sync_handles`, opacity `_HANDLE_IDLE_OPACITY`) — `setVisible(False)`로 숨기면 Qt가 마우스 그랩·선택 가능성까지 잃어 드래그가 죽고, 이를 우회하려 `mousePressEvent`에서 super를 건너뛰면 Qt가 드래그 기준 좌표를 기록하지 못해 다음 이동이 화면 왼쪽 위로 튄다(사용자 보고 2건이 같은 뿌리) — 엣지는 절대 이동하지 않으므로(pos()가 항상 원점) 자식 로컬 좌표가 곧 씬 좌표다. 핸들은 Qt 기본 `ItemIsMovable`로 드래그되고 `itemChange(ItemPositionHasChanged)`가 실시간 미리보기(`edge.update_waypoint_preview`, undo 없음)를 반영하며, release 시 `scene.handle_items_moved`(WP-DM 이전에는 `handle_waypoint_moved`)가 undo 가능한 커맨드를 커밋한다(노드 드래그 관례와 동일 결). **핸들의 좌클릭 press/release는 `super()`를 반드시 호출한다** — Qt가 거기서 드래그 기준 좌표를 기록하므로 우회하면 다음 이동이 스테일 오프셋으로 계산돼 아이템이 화면 왼쪽 위로 튄다(사용자 보고). 단일 클릭 선택 규칙이 엣지 선택을 해제해도, 핸들을 항상 표시하는 위 정책 덕에 마우스 그랩이 유지되므로 수동 선택 조작은 필요 없다(초기 구현은 super를 건너뛰고 선택을 직접 조작했으나, 그게 바로 좌상단 튐의 원인이었다 — `c3d7f39`에서 폐기). 핸들 우클릭 "경유점 제거" 또는 핸들 선택 후 Delete(씬 Delete 처리는 선택에 핸들이 있으면 **경유점만 제거하고 엣지/노드 삭제 분기를 건너뛴다** — 한 키에 전이까지 지워지는 것 방지), 엣지 컨텍스트 메뉴 "경유점 모두 제거"(직선 복원)도 제공.
 - **undo:** `AddWaypointCmd`/`MoveWaypointCmd`/`RemoveWaypointCmd`/`ClearWaypointsCmd`(`view/commands/transition_commands.py`) — `MoveStateCmd`와 동일한 관례로 `TransitionViewModel.waypoints`를 직접 변경(모델 sync_fn 불필요, 저장 시점에만 project.edge_layout으로 평탄화). 프로젝트 캔버스(`FsmScene`) 전용 — 에이전트 내부 FSM 캔버스는 WP-AF로 퇴역했다.
@@ -108,7 +109,7 @@
   `StateViewModel`/`TransitionViewModel` 객체를 되돌려 놓으므로 노드 좌표·엣지
   경유점이 layout dict 왕복 없이 그대로 살아난다. 모델만 복원하고 VM을 새로 만들면
   전이 VM이 캔버스에 없는 유령 노드를 가리켜 엣지가 허공에 그려진다.
-- **그래서 `delete_component`는 `_load_project_graph()`를 부르지 않는다.** 부르면
+- **그래서 `delete_component`는 `GraphIO.load_project_graph()`를 부르지 않는다.** 부르면
   VM이 통째로 새 객체로 갈리고, undo가 되돌려 놓을 옛 VM과 캔버스의 VM이 서로 다른
   물건이 된다. 레지스트리 갱신도 따로 하지 않는다 — `execute`의 notify가
   `_on_project_vm_changed` → `set_placed_ids` → `_rebuild`를 태우고, 그 rebuild가

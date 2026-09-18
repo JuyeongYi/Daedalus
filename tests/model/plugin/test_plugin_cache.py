@@ -172,13 +172,6 @@ def test_failed_clone_leaves_no_half_cache(cache_home, monkeypatch):
     assert not list(cache_home.iterdir()) if cache_home.is_dir() else True
 
 
-def test_clear_cache_counts_removed(cache_home, fake_clone):
-    plugin_cache.cached_skills("p@mkt", SPEC)
-    plugin_cache.cached_skills("p@mkt", {**SPEC, "sha": "other"})
-    assert plugin_cache.clear_cache() == 2
-    assert plugin_cache.clear_cache() == 0
-
-
 def test_missing_git_is_reported_plainly(cache_home, monkeypatch):
     """git이 없는 환경에서 stack trace 대신 무엇을 깔라는지 말한다."""
     def _no_git(*args, **kwargs):

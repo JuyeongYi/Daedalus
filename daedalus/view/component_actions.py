@@ -244,7 +244,7 @@ class ComponentActions:
         GUI 레지스트리 삭제와 MCP `delete_component`가 공유하는 실체다. 조작
         경로에 따라 Ctrl+Z가 듣고 안 듣고가 갈리면 협업 도구로 실격이다.
 
-        **`_load_project_graph()`를 부르지 않는다** — 커맨드가 캔버스 VM을 직접
+        **`GraphIO.load_project_graph()`를 부르지 않는다** — 커맨드가 캔버스 VM을 직접
         떼어냈고, 여기서 모델로부터 VM을 다시 만들면 undo가 되돌려 놓을 VM 객체와
         캔버스에 있는 VM 객체가 서로 다른 물건이 되어(전이 VM이 사라진 노드 VM을
         가리킨다) 되돌린 그래프가 깨진다.

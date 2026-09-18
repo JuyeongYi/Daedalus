@@ -509,10 +509,7 @@ class MainWindow(QMainWindow):
         # (WP-EP: EntryPoint는 그리지 않음).
         self._graph_io.load_project_graph()
 
-    # --- 그래프 로드/레이아웃 저장 (GraphIO 위임) ---
-
-    def _load_project_graph(self) -> None:
-        self._graph_io.load_project_graph()
+    # --- 레이아웃 저장 (GraphIO 위임) ---
 
     def _save_graph_layout(self) -> None:
         self._graph_io.save_graph_layout()
@@ -535,7 +532,7 @@ class MainWindow(QMainWindow):
         self._project_vm.reference_links.clear()
 
         # 3) 새 프로젝트 로드 — set_project가 registry/scene 갱신
-        # (notify는 set_project → _load_project_graph 끝에서 1회 발화 — 중복 금지)
+        # (notify는 set_project → GraphIO.load_project_graph 끝에서 1회 발화 — 중복 금지)
         self.set_project(project)
 
         # 4) 방금 로드한 상태는 미저장 변경이 아니다. 위 notify가 _mark_dirty를
@@ -628,9 +625,6 @@ class MainWindow(QMainWindow):
     def _save_to_path(self, path: str) -> bool:
         return self._session_io.save_to_path(path)
 
-    def _carry_files_dir(self, new_file: str) -> int:
-        return self._session_io.carry_files_dir(new_file)
-
     def _save_project(self) -> None:
         self._session_io.save_project()
 
@@ -661,20 +655,11 @@ class MainWindow(QMainWindow):
     def _import_package_dialog(self) -> None:
         self._session_io.import_package_dialog()
 
-    def _remember_recent(self, path: str) -> None:
-        self._session_io.remember_recent(path)
-
     def _rebuild_recent_menu(self) -> None:
         self._session_io.rebuild_recent_menu()
 
     # 순수 함수라 인스턴스가 필요 없다 — `MainWindow._recent_label(...)`로 직접 쓴다.
     _recent_label = staticmethod(recent_label)
-
-    def _open_recent(self, path: str) -> None:
-        self._session_io.open_recent(path)
-
-    def _clear_recent(self) -> None:
-        self._session_io.clear_recent()
 
     def open_path(self, path: str) -> bool:
         return self._session_io.open_path(path)
@@ -683,9 +668,6 @@ class MainWindow(QMainWindow):
 
     def _compile_project_dialog(self) -> None:
         self._compile_actions.compile_project_dialog()
-
-    def _known_server_defs(self) -> dict[str, dict]:
-        return self._compile_actions.known_server_defs()
 
     def compile_inputs(self) -> dict:
         """컴파일 환경 주입 인자 — Ctrl+B와 MCP `compile_check`가 공유한다 (G3)."""
@@ -701,9 +683,6 @@ class MainWindow(QMainWindow):
 
     def _launch_claude_code(self) -> None:
         self._launch_actions.launch_claude_code()
-
-    def _ensure_daedalus_mcp_json(self, work_dir: str) -> None:
-        self._launch_actions.ensure_daedalus_mcp_json(work_dir)
 
     def _open_global_catalogue(self) -> None:
         """도구 메뉴 — 전역 카탈로그 폴더를 탐색기로 연다 (없으면 만든다)."""
@@ -780,9 +759,6 @@ class MainWindow(QMainWindow):
     def _show_validation_dock(self) -> None:
         self._validation_actions.show_validation_dock()
 
-    def _find_validation_dock(self) -> QDockWidget | None:
-        return self._validation_actions.find_validation_dock()
-
     def _on_validation_item_activated(self, error: ValidationError) -> None:
         self._validation_actions.on_validation_item_activated(error)
 
@@ -804,9 +780,6 @@ class MainWindow(QMainWindow):
 
     def _focus_in_project_canvas(self, subject: object) -> None:
         self._validation_actions.focus_in_project_canvas(subject)
-
-    def _focus_in_agent_tab(self, agent_name: str, subject: object) -> None:
-        self._validation_actions.focus_in_agent_tab(agent_name, subject)
 
     # --- 조회 / 동기화 ---
 
@@ -1002,9 +975,6 @@ class MainWindow(QMainWindow):
 
     #: 종류 → 다이얼로그 제목 (단일 진실은 ComponentActions).
     _COMPONENT_TITLES = ComponentActions._COMPONENT_TITLES
-
-    def _ask_unique_name(self, dialog_title: str) -> str | None:
-        return self._component_actions.ask_unique_name(dialog_title)
 
     def _make_fsm(self, name: str) -> object:
         return self._component_actions.make_fsm(name)

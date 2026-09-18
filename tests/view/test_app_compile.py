@@ -90,7 +90,7 @@ def test_compile_action_warnings_show_validation_dock(qapp, tmp_path, monkeypatc
         "daedalus.view.app.QFileDialog.getExistingDirectory",
         lambda *a, **k: str(tmp_path),
     )
-    dock = window._find_validation_dock()
+    dock = window._validation_actions.find_validation_dock()
     assert dock is not None
     dock.hide()
 

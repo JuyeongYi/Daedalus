@@ -99,7 +99,7 @@ def test_open_recent_loads_project(window, tmp_path):
     window._save_to_path(path)
     window.load_project(PluginProject(name="other"))
 
-    window._open_recent(path)
+    window._session_io.open_recent(path)
     assert window._current_path == path
     assert window._project.name == "p"
 
@@ -109,7 +109,7 @@ def test_open_recent_drops_missing_file(window, tmp_path):
     window._save_to_path(path)
     os.remove(path)
 
-    window._open_recent(path)
+    window._session_io.open_recent(path)
     assert recent.load() == [], "사라진 파일은 목록에서 제거돼야 한다"
     assert _recent_action_texts(window) == ["(없음)"]
     assert "찾을 수 없어" in window._status_label.text()
@@ -117,7 +117,7 @@ def test_open_recent_drops_missing_file(window, tmp_path):
 
 def test_clear_recent_empties_menu(window, tmp_path):
     window._save_to_path(str(tmp_path / "a.daedalus.json"))
-    window._clear_recent()
+    window._session_io.clear_recent()
     assert recent.load() == []
     assert _recent_action_texts(window) == ["(없음)"]
 

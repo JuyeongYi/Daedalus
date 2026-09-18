@@ -22,7 +22,7 @@ def window(qapp):
 
 def test_daedalus_def_known_without_running_server(window):
     """MCP를 끄고 컴파일해도 기본 포트로 배선한다 — 설치 후 앱을 켜면 붙는다."""
-    defs = window._known_server_defs()
+    defs = window._compile_actions.known_server_defs()
     assert defs["daedalus"] == {
         "type": "http", "url": "http://127.0.0.1:8787/mcp",
     }
@@ -33,4 +33,5 @@ def test_running_service_port_wins(window):
         url = "http://127.0.0.1:9123/mcp"
 
     window._mcp_service = _FakeService()
-    assert window._known_server_defs()["daedalus"]["url"] == "http://127.0.0.1:9123/mcp"
+    assert (window._compile_actions.known_server_defs()["daedalus"]["url"]
+            == "http://127.0.0.1:9123/mcp")

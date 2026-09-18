@@ -386,7 +386,7 @@ hold the departing skill after this branch fires.
   결과로 생성/갱신/보존 목록 반환) + GUI 도구 메뉴 항목. 미저장 프로젝트
   (`_current_path` None)는 files/와 같은 정책으로 거부.
 - **정본은 프로젝트 폴더 `evals/`다** — files/·skill-files/와 같은 가족:
-  파일시스템이 단일 진실, Save As의 `_carry_files_dir`가 동반 복사 대상에
+  파일시스템이 단일 진실, Save As의 `SessionIO.carry_files_dir`가 동반 복사 대상에
   추가, `.ddpj` 패키지에 자연 포함(폴더가 곧 프로젝트 — WP-PK).
 - **컴파일 통합은 복사뿐이다(MARKETPLACE, D2):** `compile_project`가 files/
   복사와 같은 관례로 `<out>/evals/`에 정렬 순회 복사 — 산출 플러그인 폴더를
@@ -485,7 +485,7 @@ hold the departing skill after this branch fires.
    미저장 거부, 결과 보고 형식.
 4. `project_compiler.py` — D2 채택 시 MARKETPLACE `<out>/evals/` 복사(계획
    집합 합류, `_copy_files_tree` 재사용).
-5. Save As 동반(`_carry_files_dir`에 evals/ 추가) + `.ddpj` 자연 포함 확인.
+5. Save As 동반(`SessionIO.carry_files_dir`에 evals/ 추가) + `.ddpj` 자연 포함 확인.
 6. (early access 게이트 개방 후) 실 러너 로드 스모크 — 후속 배치.
 
 #### 10. 하지 않는 것

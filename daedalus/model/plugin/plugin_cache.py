@@ -245,15 +245,3 @@ def cached_skills(plugin_id: str, spec: object, refresh: bool = False):
         return None
     return _scan_skills(plugin_dir, plugin_id)
 
-
-def clear_cache() -> int:
-    """받아 둔 실물을 모두 지운다 — 지운 폴더 수. (디스크 정리용)"""
-    root = cache_dir()
-    if not root.is_dir():
-        return 0
-    count = 0
-    for child in root.iterdir():
-        if child.is_dir():
-            shutil.rmtree(child, ignore_errors=True)
-            count += 1
-    return count

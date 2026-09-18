@@ -35,10 +35,6 @@ class PackageError(Exception):
     """패키지를 읽거나 쓸 수 없을 때."""
 
 
-def is_archive(path: str | os.PathLike[str]) -> bool:
-    return str(path).lower().endswith(ARCHIVE_SUFFIX)
-
-
 def is_legacy_file(path: str | os.PathLike[str]) -> bool:
     """구버전 파일인가 — 폴더 안 정본(`.daedalus.json`)이 아닌 `<이름>.daedalus.json`."""
     name = os.path.basename(str(path))

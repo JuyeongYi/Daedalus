@@ -61,25 +61,24 @@ def test_collaborators_are_not_mixins():
 
 _DELEGATED = [
     # 세션 입출력
-    "_sync_files_root", "_update_title", "_save_to_path", "_carry_files_dir",
+    "_sync_files_root", "_update_title", "_save_to_path",
     "_save_project", "_save_project_as", "project_has_content", "_new_project",
     "_edit_project_properties", "_open_project_dialog",
     "_open_file_dialog", "_export_package_dialog", "_import_package_dialog",
-    "_remember_recent", "_rebuild_recent_menu", "_recent_label", "_open_recent",
-    "_clear_recent", "open_path",
+    "_rebuild_recent_menu", "_recent_label", "open_path",
     # 컴파일
-    "_compile_project_dialog", "_known_server_defs", "compile_inputs",
+    "_compile_project_dialog", "compile_inputs",
     # MCP / 실행
     "start_mcp_service", "_show_mcp_info", "_launch_claude_code",
-    "_ensure_daedalus_mcp_json",
     # 검증
-    "_run_validation", "_show_validation_dock", "_find_validation_dock",
+    "_run_validation", "_show_validation_dock",
     "_on_validation_item_activated", "_focus_in_project_canvas",
-    "_focus_in_agent_tab",
-    # 그래프 왕복 — load_project·저장 경로·테스트가 창에서 직접 부른다
-    "_load_project_graph", "_save_graph_layout",
-    # 컴포넌트 수명주기 — context_menus / actions.creation / MCP가 직접 부른다
-    "_ask_unique_name", "_make_fsm", "_make_agent_fsm", "_register_component",
+    # 그래프 왕복 — 저장 경로가 창에서 직접 부른다
+    "_save_graph_layout",
+    # 컴포넌트 수명주기 — actions.creation / MCP가 창에서 직접 부르거나
+    # (`_make_fsm`·`_register_component`·`delete_component`), 레지스트리 패널
+    # 시그널에 연결된 슬롯이다(`_on_*`).
+    "_make_fsm", "_make_agent_fsm", "_register_component",
     "_on_new_component", "_on_component_renamed", "_on_delete_component",
     "delete_component",
 ]
@@ -155,4 +154,5 @@ def test_mcp_service_handle_is_read_from_window(window):
         url = "http://127.0.0.1:9999/mcp"
 
     window._mcp_service = _FakeService()
-    assert window._known_server_defs()["daedalus"]["url"] == "http://127.0.0.1:9999/mcp"
+    assert (window._compile_actions.known_server_defs()["daedalus"]["url"]
+            == "http://127.0.0.1:9999/mcp")

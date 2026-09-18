@@ -121,7 +121,7 @@ daedalus/
 │   │                       #   pack(결정적 zip)/unpack(zip slip 방어). Qt 무관 순수 stdlib.
 │   ├── outline.py           # 본문 아웃라인(WP-BO) — body 마크다운의 파생 인덱스. parse_outline(fence-aware 헤딩 파서)/
 │   │                       #   find_section(제목·"## 제목" 레벨 지정·"부모 > 자식" 경로, 0개·복수 매칭 ValueError)/
-│   │                       #   section_text/char_span/replacement_text/replace_section(비교체 구간 바이트 보존). Qt 무관 순수 stdlib.
+│   │                       #   section_text/char_span/replacement_text(비교체 구간 바이트 보존). Qt 무관 순수 stdlib.
 │   ├── templates.py         # 시작 템플릿 카탈로그(A7) — 아키타입 3종의 id/제목/요약(TEMPLATES) +
 │   │                       #   list_templates/find_template/load_template(TemplateError) +
 │   │                       #   **save_user_template/delete_user_template**(Save As Template) —
@@ -366,17 +366,17 @@ daedalus/
     │                       #   load_project_graph(project.graph + graph_layout/edge_layout → state_vms/transition_vms/
     │                       #     reference_vms/reference_links 재구성 + notify. WP-EP: EntryPoint와 그에 닿는 전이는 VM을 만들지 않는다)/
     │                       #   save_graph_layout(VM 좌표 → project.graph_layout[state.id] + waypoints → project.edge_layout[Transition.id]).
-    │                       #   창에는 _load_project_graph/_save_graph_layout 한 줄 위임이 남는다(set_project·SessionIO 저장 경로·테스트가 직접 부른다).
+    │                       #   창에는 _save_graph_layout 한 줄 위임만 남는다(SessionIO 저장 경로가 직접 부른다) — set_project는 GraphIO.load_project_graph를 직접 부른다.
     ├── component_actions.py  # ComponentActions(window) — 컴포넌트 생성·이름 변경·삭제 (app.py로부터 추출).
     │                       #   ask_unique_name(이름 입력+중복 검증)/make_fsm/make_agent_fsm(백킹 FSM 팩토리)/register_component
     │                       #     (CreateComponentCmd)/on_new_component/on_component_renamed(중복 거부 + RenameComponentCmd)/
     │                       #   on_delete_component(확인 다이얼로그) → delete_component(공용 실체 — MCP도 이것을 부른다.
-    │                       #     본문 문서 캐시 정리 + 탭 닫기 + RemoveComponentCmd 실행. **_load_project_graph를 부르지 않는다**).
+    │                       #     본문 문서 캐시 정리 + 탭 닫기 + RemoveComponentCmd 실행. **GraphIO.load_project_graph를 부르지 않는다**).
     │                       #   **컴포넌트 팩토리는 actions/creation.make_component 하나뿐이다** — 레지스트리 경로와 캔버스
     │                       #     "여기에 만들기" 경로가 같은 5키 dict를 문자 그대로 중복 보유하던 것을 해소했다(한쪽만 고치면
     │                       #     어디서 만들었느냐에 따라 다른 물건이 된다). FSM 생성은 creation이 다시 window._make_fsm/
     │                       #     _make_agent_fsm을 부르므로 팩토리의 단일 진실이 유지된다.
-    │                       #   창에는 _ask_unique_name/_make_fsm/_make_agent_fsm/_register_component/_on_new_component/
+    │                       #   창에는 _make_fsm/_make_agent_fsm/_register_component/_on_new_component/
     │                       #     _on_component_renamed/_on_delete_component/delete_component 한 줄 위임 + _COMPONENT_TITLES 별칭이 남는다
     │                       #     (context_menus.py·actions/creation.py·MCP props.py가 창에서 직접 부른다).
     ├── actions/            # **UI 무관 편집 액션** (A8/A9) — 기능의 실체. 캔버스 우클릭 메뉴와 에디터 위젯은 둘 다 여기를
