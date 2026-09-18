@@ -8,6 +8,7 @@ from uuid import uuid4
 from daedalus.model.fsm.machine import StateMachine
 from daedalus.model.fsm.section import EventDef
 from daedalus.model.plugin.base import PluginComponent, WorkflowComponent
+from daedalus.model.plugin.placement import placement_role_of
 from daedalus.model.plugin.roles import (
     BodySource,
     Bucket,
@@ -146,13 +147,12 @@ def is_reference_usage(component: object) -> bool:
     캔버스 드롭·링크·에디터 패널·emit·검증이 전부 이 판정을 쓴다 — 표면마다
     다른 판정을 들고 있으면 참조 노드로 놓이는데 산출은 파일을 만드는 식의
     어긋남이 생긴다.
+
+    **한 줄 파사드다**(WP-2b): 실체는 `component.effective_placement()`이고
+    여기서는 그 값에 이름을 붙일 뿐이다. 새 참조 종류는 `PLACEMENT` 선언만으로
+    이 판정에 합류한다 — 호출자 무수정.
     """
-    if isinstance(component, ReferenceSkill):
-        return True
-    return (
-        isinstance(component, WrappedSkill)
-        and getattr(component.config, "usage", "") == "reference"
-    )
+    return placement_role_of(component) is PlacementRole.REFERENCE
 
 
 def is_disabled_wrapped(component: object) -> bool:
@@ -162,11 +162,12 @@ def is_disabled_wrapped(component: object) -> bool:
     않는다"를 표현하는 유일한 방법이 이 상태이고, 산출·배선·검증이 전부 이
     판정을 공유해야 한다(표면마다 다르면 꺼 뒀는데 산출에는 남는 식이 된다).
     랩핑 스킬이 아닌 컴포넌트는 항상 False — 그쪽엔 이 스위치가 없다.
+
+    **한 줄 파사드다**(WP-2b): 실체는 `component.is_active()`이고 스위치가 없는
+    종류는 기저 구현이 항상 True를 답한다.
     """
-    return (
-        isinstance(component, WrappedSkill)
-        and not getattr(component.config, "enabled", True)
-    )
+    active = getattr(component, "is_active", None)
+    return callable(active) and not active()
 
 
 def has_external_body(component: object) -> bool:

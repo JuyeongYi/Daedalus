@@ -10,33 +10,43 @@
 캔버스 드롭·레지스트리 드래그·"여기에 만들기"·MCP `place_component`가 전부
 여기를 부른다 — 음성 목록(NO_PLACE_KINDS 등)을 표면마다 따로 들고 있으면
 어긋난다(원칙 1).
+
+**판정의 실체는 컴포넌트 자신이다**(WP-2b). 여기 있는 것은 "어떤 배치 역할이
+무슨 이름으로 불리는가"라는 어휘 번역뿐이고, 종류 목록은 없다 — 새 종류는
+`PLACEMENT` ClassVar 한 줄을 고르는 것으로 이 두 함수의 답을 얻는다.
 """
 from __future__ import annotations
+
+from daedalus.model.plugin.roles import PlacementRole
+
+
+def placement_role_of(component: object) -> PlacementRole:
+    """컴포넌트의 실제 배치 역할 — 컴포넌트가 **아니면** ``NONE``.
+
+    호출자가 넘기는 값에는 `None`(빈 노드의 skill_ref)이나 kind 문자열 같은
+    비-컴포넌트가 섞인다. 예외로 터뜨리는 대신 "놓을 수 없다"로 답하는 것이
+    종전 `isinstance` 사다리의 동작이었고, 그 계약을 그대로 유지한다.
+
+    `skill.is_reference_usage`도 이것을 쓴다 — 관용 규칙이 두 벌이면 한쪽만
+    None을 견디는 어긋남이 생긴다(원칙 1). `placement`는 `skill`을 임포트하지
+    않으므로(반대 방향) 실체를 여기 둔다.
+    """
+    role = getattr(component, "effective_placement", None)
+    return role() if callable(role) else PlacementRole.NONE
 
 
 def is_state_placeable(component: object) -> bool:
     """그래프에 상태 노드로 놓을 수 있는 컴포넌트인가.
 
-    True: `StepSkill`(절차형·fork 2종), 용도가 `reference`가 **아닌**
-    `WrappedSkill`(state 또는 미정 — 미정은 배치 경로가 state로 고정한다),
-    `AgentDefinition`.
-    False: `DeclarativeSkill`·`TransferSkill`·`ReferenceSkill`(참조 노드는 별도
-    경로)·`ForkAgent`(fork 스킬이 부르는 실행 기반이라 그래프 노드가 아니다).
+    실체는 `component.effective_placement() is PlacementRole.STATE` 하나다 —
+    **단일 배치** 노드만 상태가 된다. 오늘 True인 것: `StepSkill`(절차형·fork
+    2종), 용도가 `reference`가 **아닌** `WrappedSkill`(state 또는 미정 — 미정은
+    배치 경로가 state로 고정한다), `AgentDefinition`.
+    False: `DeclarativeSkill`(PLACEMENT=NONE)·`TransferSkill`(EDGE)·
+    `ReferenceSkill`(REFERENCE — 참조 노드는 별도 경로)·`ForkAgent`(NONE —
+    fork 스킬이 부르는 실행 기반이라 그래프 노드가 아니다).
     """
-    from daedalus.model.plugin.agent import AgentDefinition
-    from daedalus.model.plugin.skill import (
-        StepSkill,
-        WrappedSkill,
-        is_reference_usage,
-    )
-
-    if isinstance(component, AgentDefinition):
-        return True
-    if isinstance(component, StepSkill):
-        return True
-    if isinstance(component, WrappedSkill):
-        return not is_reference_usage(component)
-    return False
+    return placement_role_of(component) is PlacementRole.STATE
 
 
 def is_canvas_placeable(component: object) -> bool:
@@ -45,9 +55,7 @@ def is_canvas_placeable(component: object) -> bool:
     `is_state_placeable`과 **다른 질문**이다: 참조 스킬은 상태 노드가 될 수
     없지만 캔버스에는 참조 노드로 놓인다(레지스트리에서 드래그 가능).
     """
-    from daedalus.model.plugin.skill import is_reference_usage
-
-    return is_state_placeable(component) or is_reference_usage(component)
+    return placement_role_of(component) in (PlacementRole.STATE, PlacementRole.REFERENCE)
 
 
 def fork_skills_using(agent, project) -> list[str]:
@@ -57,13 +65,18 @@ def fork_skills_using(agent, project) -> list[str]:
     Contract")·MCP(`delete_component`의 `still_referenced_by`)가 같은 목록을
     말해야 하므로 실체는 여기 하나다. 컴파일러는 뷰를 임포트할 수 없으므로
     (import 계약) 실체가 모델에 있어야 한다.
-    """
-    from daedalus.model.plugin.skill import ForkSkill
 
+    "이 스킬이 누구에게 본문을 맡기는가"는 `delegated_agent_name()`이 답한다
+    (Q33). 랩핑 스킬은 **자기 이름의 러너**를 답하므로 프로젝트 에이전트
+    이름과 겹치지 않는 한 자연히 빠진다 — 종전 `isinstance(s, ForkSkill)`
+    필터와 같은 집합이고, 동명 랩퍼가 생기면 그것은 이름 중복 규칙
+    (`duplicate_component_name`)이 먼저 짚는다.
+    """
     name = getattr(agent, "name", None)
     if not name:
         return []
     return sorted(
-        s.name for s in getattr(project, "skills", None) or []
-        if isinstance(s, ForkSkill) and getattr(s.config, "agent", "") == name
+        s.name
+        for s in getattr(project, "skills", None) or []
+        if s.delegated_agent_name() == name
     )

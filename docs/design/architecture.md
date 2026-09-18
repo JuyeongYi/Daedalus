@@ -159,6 +159,7 @@ WP-1 D9에서 삭제해 목록에서 빠졌다.
 | `tests/compiler/test_emit_import_acyclic.py` | `compiler/emit/*` 모듈 간 임포트 방향. **모듈 레벨 간선은 비순환**(오늘 통과)이고 `common`은 리프다. 함수 안 지연 임포트까지 포함한 최종 계약은 **오늘 통과하지 않는다** — `sections ↔ wrapped`, `agent → sections → wrapped → agent` 순환이 지연 임포트로 살아 있다(`sections.py:350`·`wrapped.py:118,169`). 단언을 느슨하게 하는 대신 `xfail(strict=True)`로 기록했다: WP-6이 방향을 정리하면 그 표식이 실패해 제거를 강제한다 |
 | `tests/model/test_component_missing_keys.py` | **부재 의미론** — `transfer_on` 키가 없는 스킬 dict는 `[]`로 로드된다. dataclass 기본값은 `[EventDef("done")]`이라 선언형 엔진이 기본값으로 떨어지면 키 없는 파일에 출력 포트가 **발명**되고 `transfer_on_not_empty`가 에러에서 조용한 통과로 뒤집힌다. JSON 골든은 *키가 있는* 파일만 지키므로 이 차이는 따로 잡아야 한다 |
 | `tests/model/plugin/test_capability_surface.py` | **능력 표면**(WP-2a) — 구체 9종 × ClassVar 13칸 전수, `fields()`에 ClassVar가 새지 않음(R5), `WorkflowComponent`에 메서드 없음(R2), 능력 메서드가 오늘의 판정(`emits_output_file`/`is_reference_usage`/`placement.*`/`has_external_body`)과 **같은 답**을 냄, `new()` ↔ `make_component` 9종 필드 단위 등가. 호출자 치환 WP(2b~2d)의 동작 불변을 미리 고정하는 게이트다 |
+| `tests/model/fsm/test_state_is_kind_neutral.py` | **fsm 레이어는 컴포넌트 종류를 모른다**(WP-2b, Q35) — `model/fsm/state.py` 소스에 구체 컴포넌트 클래스 이름이 하나도 없고 `SimpleState.skill_ref`의 주석이 `PluginComponent | None`임을 AST로 고정한다. 종류 유니온은 런타임이 읽지 않는 표라 낡아도 아무것도 실패하지 않았다(카탈로그 M11 👻) |
 | `tests/model/plugin/test_component_hierarchy.py` | 9종 구체 컴포넌트의 생성자 필드 순서. 2026-09-19 실측 정정: "위치 인수로 만드는 코드가 있다"는 옛 주석은 **거짓**이다(위치 인수 호출은 `daedalus/` 0건, `tests/` 0건). 진짜 이유는 다중 상속 dataclass의 필드 순서 제약이고, 이 단언이 "필드를 한 개도 기저로 올리지 않는다" 규약의 게이트다 |
 
 ## 파일 단위 모듈 지도 (원문)
@@ -217,9 +218,11 @@ daedalus/
 │   │   │                   #   WorkflowComponent(ABC) — fsm **필드 홀더. 메서드 금지**(MRO에서 PluginComponent 기본 구현에 가려진다)
 │   │   ├── skill.py        # Skill(ABC) → StepSkill(ABC) → ProceduralSkill / ForkSkill(ABC) → SyncForkSkill·AsyncForkSkill(2026-09-17),
 │   │   │                   #   WrappedSkill, DeclarativeSkill, TransferSkill, ReferenceSkill + is_reference_usage/is_disabled_wrapped
+│   │                   #   (WP-2b 이후 **한 줄 파사드** — effective_placement()/is_active()가 실체)
 │   │   │                   #   + 종류별 능력 선언(KIND/CONFIG_CLS/PLACEMENT/…)과 오버라이드. 인스턴스 훅을 덮는 유일한 클래스가 WrappedSkill이다
 │   │   ├── agent.py        # Agent(ABC) → AgentDefinition(워크플로 — 캔버스 노드) / ForkAgent(fork 스킬 실행 기반, WP-FK2)
-│   │   ├── placement.py    # 배치 가능 판정 **두 개**(is_state_placeable/is_canvas_placeable) + fork 역참조 fork_skills_using.
+│   │   ├── placement.py    # 배치 가능 판정 **두 개**(is_state_placeable/is_canvas_placeable — 실체는 effective_placement()) +
+│   │   │                   #   placement_role_of(비-컴포넌트 관용의 단일 진실) + fork 역참조 fork_skills_using(delegated_agent_name 기반).
 │   │   │                   #   캔버스 드롭·레지스트리 드래그·creation·MCP place_component·에이전트 편집기·삭제 확인·
 │   │   │                   #   MCP still_referenced_by/used_by_fork_skills·컴파일러 fork 계약이 전부 여기를 부른다(원칙 1)
 │   │   ├── tool.py         # Tool(ABC) + BuiltinTool/MCPTool/UserDefinedTool (tool_shelf 도구 단일 진실)

@@ -210,30 +210,6 @@ ALLOWLIST: dict[str, tuple[str, str]] = {
         "`tests/model/plugin/test_capability_surface.py`가 "
         "9종 전부의 선언 완결성을 강제한다.",
     ),
-    "model.plugin.base::PluginComponent.delegated_agent_name": (
-        "contract-registry",
-        "Q33 본문을 실행하는 서브에이전트 — 능력 표면의 선언 쪽 절반이다. "
-        "호출자 쪽 절반을 배선할 곳: "
-        "WP-2b `validation/project_rules/workflow` · WP-2c `compiler/emit/fork`. "
-        "`tests/model/plugin/test_capability_surface.py`가 "
-        "9종 전부의 선언 완결성을 강제한다.",
-    ),
-    "model.plugin.skill::ForkSkill.delegated_agent_name": (
-        "contract-registry",
-        "Q33 본문을 실행하는 서브에이전트 — 능력 표면의 선언 쪽 절반이다. "
-        "호출자 쪽 절반을 배선할 곳: "
-        "WP-2b `validation/project_rules/workflow` · WP-2c `compiler/emit/fork`. "
-        "`tests/model/plugin/test_capability_surface.py`가 "
-        "9종 전부의 선언 완결성을 강제한다.",
-    ),
-    "model.plugin.skill::WrappedSkill.delegated_agent_name": (
-        "contract-registry",
-        "Q33 본문을 실행하는 서브에이전트 — 능력 표면의 선언 쪽 절반이다. "
-        "호출자 쪽 절반을 배선할 곳: "
-        "WP-2c — `compiler/emit/wrapped`의 러너 에이전트 이름. "
-        "`tests/model/plugin/test_capability_surface.py`가 "
-        "9종 전부의 선언 완결성을 강제한다.",
-    ),
     "model.plugin.config::ComponentConfig.name_refs": (
         "contract-registry",
         "Q14 이름 참조 열거 — 능력 표면의 선언 쪽 절반이다. "

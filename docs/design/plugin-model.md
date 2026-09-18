@@ -170,14 +170,20 @@ no-op가 된다. 그래서 `PluginComponent`가 **선언(ClassVar) + 인스턴�
 
 **두 판정이다** — 하나로 합치면 참조 스킬 경로가 죽는다.
 
-| 함수 | 질문 | True |
-|------|------|------|
-| `is_state_placeable(c)` | 그래프에 **SimpleState 노드**로 놓을 수 있는가 | `StepSkill`(절차형·fork 2종), 용도가 reference가 **아닌** `WrappedSkill`, `AgentDefinition` |
-| `is_canvas_placeable(c)` | 캔버스에 놓을 수 있는가(상태 **또는** 참조 노드) | 위 + `is_reference_usage`(ReferenceSkill·용도 reference 랩핑) |
+| 함수 | 질문 | 실체 (WP-2b) | True |
+|------|------|------|------|
+| `is_state_placeable(c)` | 그래프에 **SimpleState 노드**로 놓을 수 있는가 | `c.effective_placement() is PlacementRole.STATE` | `StepSkill`(절차형·fork 2종), 용도가 reference가 **아닌** `WrappedSkill`, `AgentDefinition` |
+| `is_canvas_placeable(c)` | 캔버스에 놓을 수 있는가(상태 **또는** 참조 노드) | `effective_placement() in (STATE, REFERENCE)` | 위 + `is_reference_usage`(ReferenceSkill·용도 reference 랩핑) |
+
+**두 함수 모두 종류 목록을 갖지 않는다**(WP-2b) — 컴포넌트가 `PLACEMENT` ClassVar로 선언한 역할을
+`effective_placement()`가 인스턴스 상태와 합쳐 답하고, 여기서는 그 값에 이름만 붙인다. 새 종류는
+선언 한 줄로 두 판정에 합류한다. 비-컴포넌트(`None`·kind 문자열)를 관용하는 자리는
+`placement_role_of(c)` 하나이고 `skill.is_reference_usage`도 그것을 쓴다(관용 규칙 2벌 금지 — 원칙 1).
 
 캔버스 드롭(`scene.py`)·레지스트리 드래그·"여기에 만들기"(`creation.NO_PLACE_KINDS`)·MCP `place_component`가
 전부 이것을 부른다(음성 목록 3벌 → 양성 판정 2개, 원칙 1). `DeclarativeSkill`·`TransferSkill`·`ForkAgent`는 False다.
-같은 모듈의 `fork_skills_using(agent, project)`는 **fork 역참조의 단일 진실**이다 — 에이전트 편집기의
+같은 모듈의 `fork_skills_using(agent, project)`는 **fork 역참조의 단일 진실**이다 —
+필터는 `s.delegated_agent_name() == agent.name`(Q33)이라 종류 이름을 묻지 않는다 — 에이전트 편집기의
 "🍴 사용하는 fork 스킬" 패널·삭제 확인 다이얼로그·MCP `delete_component`의 `still_referenced_by`·`get_component`의
 `used_by_fork_skills`·컴파일러의 fork 에이전트 "## Invocation Contract"가 전부 같은 목록을 말한다
 (컴파일러는 뷰를 임포트할 수 없으므로 실체가 모델에 있어야 한다).
