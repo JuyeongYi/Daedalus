@@ -283,7 +283,9 @@ def _fork_base_contract_section(agent, project) -> list[str]:
     ]
     if not lines:
         return []
-    return [
+    # 목록은 한 블록으로 낸다 — 블록을 나누면 `_join_blocks`가 항목 사이에 빈
+    # 줄을 넣어 다른 단락("## Exits"·"## Next Steps")과 생김새가 어긋난다.
+    return ["\n".join([
         "## Invocation Contract",
         (
             "This agent is invoked through the paths below. If this file has a "
@@ -291,7 +293,7 @@ def _fork_base_contract_section(agent, project) -> list[str]:
             "what you receive; otherwise the task text is all you get."
         ),
         *lines,
-    ]
+    ])]
 
 
 def _call_contract_section(agent: AgentDefinition, project) -> list[str]:
@@ -348,7 +350,9 @@ def _call_contract_section(agent: AgentDefinition, project) -> list[str]:
     if not entries:
         return []
     entries.sort(key=lambda e: (e[0], e[1]))
-    blocks: list[str] = [
+    # 항목은 한 블록으로 모은다 — 블록마다 나누면 `_join_blocks`가 빈 줄을 넣어
+    # 다른 목록 단락("## Exits"·"## Delegation")과 생김새가 어긋난다.
+    lines: list[str] = [
         "## Invocation Contract",
         (
             "This agent is invoked through the paths below. If this file has a "
@@ -376,8 +380,8 @@ def _call_contract_section(agent: AgentDefinition, project) -> list[str]:
                 f" The caller follows transition skill {shown} before delegating — "
                 f"work from what that step produced."
             )
-        blocks.append(line)
-    return blocks
+        lines.append(line)
+    return ["\n".join(lines)]
 
 
 def _agent_delegation_section(agent: AgentDefinition, project=None) -> list[str]:

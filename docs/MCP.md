@@ -80,6 +80,11 @@ GUI가 켜지면 `127.0.0.1`에 Streamable HTTP로 뜬다.
 | `create_agent` | `kind` | `agent`(워크플로 에이전트 — 캔버스 노드) · `fork_agent`(fork 스킬의 실행 기반) |
 | `convert_skill` | `to` | `procedural` · `sync_fork` · `async_fork` |
 
+- **읽는 쪽 `kind`는 철자가 다르다.** 조회 응답(`get_project`의 스킬·에이전트 행, `get_component`,
+  `get_canvas`의 노드)은 **클래스 철자**를 말한다 — `procedural_skill` · `sync_fork_skill` ·
+  `async_fork_skill` · `declarative_skill` · `transfer_skill` · `reference_skill` · `wrapped_skill` ·
+  `agent` · `fork_agent`. 쓰는 쪽 파라미터는 위 표의 **짧은 형**(`procedural` · `sync_fork` …)이다.
+  조회 값을 그대로 `create_skill(kind=)`에 넣으면 거절된다.
 - **fork 스킬은 두 종류다.** `sync_fork`는 서브에이전트를 기다리고, `async_fork`는 기다리지 않는다
   (보고가 나중에 작업 알림으로 온다). 이 차이를 만드는 `background` 프론트매터는 종류가 정하므로
   `list_component_fields`에 나오지 않고 `set_component_field`로도 바꿀 수 없다 — 바꾸려면
@@ -92,7 +97,9 @@ GUI가 켜지면 `127.0.0.1`에 Streamable HTTP로 뜬다.
   "사용하는 fork 스킬" 패널과 같은 목록이다. `get_project`의 에이전트 행에는 `kind`가 실린다.
 - **`place_component`는 배치되지 않는 종류를 거절하되 갈 곳을 말한다** — 참조 용도는
   `place_reference`로. 용도를 아직 정하지 않은 랩핑 스킬을 주면 GUI와 같게 `state`로 고정하고
-  (고정 + 배치가 1 undo) 응답에 `usage_fixed`를 실어 알린다.
+  (고정 + 배치가 1 undo) 응답에 `usage_fixed`를 실어 알린다. **이미 배치된 컴포넌트는 거절한다** —
+  같은 스킬을 두 번 놓으면 프로젝트가 컴파일되지 않는다(`no_duplicate_skill_ref`). 옮기려면
+  `move_state`를 쓴다.
 
 ### 작업 폴더 문서·설정 (10)
 

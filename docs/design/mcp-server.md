@@ -244,6 +244,12 @@
 | `create_agent` | `kind` | `agent`(워크플로 에이전트 — 캔버스 노드) · `fork_agent`(fork 스킬의 실행 기반 — fsm·포트·배치 없음) |
 | `convert_skill` | `to` | `procedural` · `sync_fork` · `async_fork` (3-way) |
 
+- **읽는 쪽과 쓰는 쪽의 철자가 다르다.** 조회(`get_project`의 스킬·에이전트 행, `get_component`,
+  `get_canvas`의 노드)는 `comp.kind` — 즉 **클래스 철자**(`procedural_skill` · `sync_fork_skill` ·
+  `async_fork_skill` · `declarative_skill` · `transfer_skill` · `reference_skill` · `wrapped_skill` ·
+  `agent` · `fork_agent`)를 싣고, 쓰는 쪽 파라미터는 위 표의 **짧은 형**을 받는다. 판정의 실체가
+  다르기 때문이다 — 읽는 쪽은 모델이 스스로 말하는 `kind` 프로퍼티(원칙 1), 쓰는 쪽은 도구의
+  생성 어휘(`_SKILL_KINDS`)다. 둘을 섞어 넣으면 거절된다(조용히 받지 않는다 — 원칙 5).
 - **`create_agent(kind="fork_agent", x=, y=)`는 거절한다.** fork 에이전트는 그래프 노드가 아니다
   (`NO_PLACE_KINDS`). 좌표를 조용히 무시하면 "배치했는데 아무 데도 없는" 상태가 된다.
 - **`convert_skill`은 3-way다.** sync↔async는 같은 fork라 `agent`를 보존하고 버리는 것이 없다
@@ -260,7 +266,9 @@
   transfer·fork_agent는 "배치되지 않는 종류". 용도 미정 랩핑 스킬은 **거부하지 않고** GUI와 같게
   usage를 `"state"`로 고정하고(캔버스는 물어서 고정한다) 고정+배치를 `MacroCommand` **1 undo**로
   묶은 뒤 응답에 `usage_fixed: "state"`를 싣는다(오케스트레이터 확정 2026-09-18 — 오늘 되던 배치를 이유
-  없이 깨지 않는다).
+  없이 깨지 않는다). **이미 배치된 컴포넌트도 거절한다** — 캔버스 드롭의 "이미 배치됨" 조기 반환과
+  같은 가드다(없으면 MCP만 같은 스킬을 두 노드로 놓아 `no_duplicate_skill_ref`로 컴파일이 막힌다).
+  캔버스는 조용히 무시하지만 MCP는 이유와 갈 곳(`move_state`)을 말한다.
 - **`connect_states`는 이 판정을 쓰지 않는다.** 도착이 에이전트인가는 `AgentDefinition`(워크플로
   에이전트)으로 판정한다 — 배치 판정으로 갈아끼우면 스킬 대상에도 True가 되어 **모든 스킬 간
   전이가 호출 포트를 요구**하게 된다. fork 에이전트는 노드가 될 수 없어 `_find_state_vm`에서

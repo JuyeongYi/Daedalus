@@ -96,7 +96,7 @@ class StateNodeItem(DraggableItemMixin, QGraphicsItem):
         """skill_ref에서 EventDef 목록 반환.
 
         AgentDefinition은 output_event_defs 프로퍼티를,
-        ProceduralSkill은 transfer_on 필드를 사용한다.
+        StepSkill(절차형·fork 2종)과 WrappedSkill은 transfer_on 필드를 사용한다.
         """
         model = self._state_vm.model
         if not hasattr(model, "skill_ref"):

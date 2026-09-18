@@ -91,6 +91,9 @@ def test_placed_fork_waits_and_reports_instead_of_next_steps(flavor):
     assert "EXIT: <branch> / NEXT:" in text
     assert "`next`" in text  # 갈래 목록은 유지
     assert "Main conversation: run `daedalus-bb" in text
+    # 보고 블록은 통째로 구체적이다 — 이름과 자리표시자를 섞지 않는다.
+    assert "--completed scout --current <next target> --prev scout" in text
+    assert "<this skill>" not in text
     assert "## Next Steps" not in text
     assert "## Resuming Work" not in text
 
@@ -108,7 +111,8 @@ def test_placed_terminal_fork_reports_end(flavor):
     fork = _fork(flavor=flavor)
     text = compile_skill(fork, project=_placed(fork, with_next=False))
     assert "EXIT: done / NEXT: (end)" in text
-    assert "--current done" in text
+    assert "--completed scout --current done" in text
+    assert "<this skill>" not in text
     assert "## Finishing Up" not in text
 
 
@@ -217,6 +221,11 @@ def test_caller_hands_current_to_async_fork():
     assert '--note "awaiting background fork"' in text
     # 일반 진행 명령은 그대로 남는다(비동기 갈래만 규약이 다르다).
     assert "--completed <this skill> --current <next target>" in text
+    # 두 명령이 쌓이므로 어느 쪽이 이기는지 말한다(리뷰 지적).
+    assert "For that branch use this instead of the command above:" in text
+    assert text.index("--current <next target>") < text.index(
+        "For that branch use this instead of the command above:"
+    )
 
 
 @pytest.mark.parametrize("flavor", sorted(FORK_KINDS))

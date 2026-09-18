@@ -126,7 +126,7 @@ class _DetachComponentCmd(Command):
     사람이 읽는 로그 문자열이라 복원 정보가 없다). 매 execute마다 다시 뜨는데,
     undo가 앞 상태를 정확히 복원하므로 redo가 같은 스냅샷을 다시 잡는다.
 
-    **config.skills / ProceduralSkillConfig.agent의 이름 참조는 건드리지 않는다** —
+    **config.skills / ForkSkillConfig.agent의 이름 참조는 건드리지 않는다** —
     ``remove_component``도 건드리지 않기 때문이다(남은 참조는
     ``dangling_string_reference`` 경고가 짚는다). 여기서 임의로 지우면 삭제를
     되돌려도 참조가 돌아오지 않는 비대칭이 생긴다.

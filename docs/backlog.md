@@ -756,6 +756,20 @@ Tier 2다. 출발점은 2026-05 조사(ClaudeManager가 만든 plain 셸 스크�
 - **WP-WR 2단계 잔여** — 에디터 소스 콤보·본문 미리보기, `dangling_wrapped_source`(카탈로그 실존 검사 — 소스 부재는
   게이트 에러가 아니라 경고, 호출자 주입), `wrapped_source_has_workflow`(소스 본문에 우리 자동 헤딩이 보이면 이중
   지시 경고), 소스 스킬이 `disable-model-invocation: true`면 실행 에이전트에 주입도 직접 인보크도 안 된다는 경고.
+- **종료 경로 크래시 — WP-E에서 미룬 항목 (재현 조건 미기록)** — WP-E 리뷰에서 창을 닫는 중의
+  크래시가 언급됐지만 재현 조건이 커밋 메시지에도 설계 문서에도 남지 않았다. **코드가 보여 주는
+  사실만** 적는다: `ProjectViewModel`의 리스너 등록이 창 수명과 짝이 맞지 않는다.
+  ① `MainWindow`는 `_on_project_vm_changed` · `_mark_dirty`(structure·content 양쪽) ·
+  `_update_statusbar`를 등록만 하고 `closeEvent`에서 떼지 않는다.
+  ② `closeEvent`는 `FsmScene.close()`(자기 `_rebuild` 리스너 해제)도 부르지 않는다 — 프로젝트
+  캔버스는 닫을 수 없는 고정 탭이라 `_close_tab`의 `widget.close()` 경로를 타지 않는다.
+  ③ 컴포넌트 탭의 `ComponentEditor`는 `on_notify_fn=self._project_vm.notify`를 그대로 들고 있어
+  `deleteLater` 뒤에도 vm을 부를 수 있다(`_on_model_changed` → `call_notify`).
+  그래서 창이 닫힌 뒤 `notify()`가 한 번 더 돌면 이미 삭제된 C++ 객체(상태바 라벨·씬 아이템)를
+  건드린다. 고치는 방향은 **등록의 짝 맞추기**다 — `closeEvent`에서 `FsmScene.close()`와
+  `remove_listener` 3건을 부르고, 탭 편집기를 닫을 때 `_on_notify_fn`을 끊는다. 다만 재현 조건이
+  없으므로 **재현 테스트를 먼저 만든다**(헤드리스 스위트는 `confirm_discard_changes` 스텁으로
+  닫기 확인을 지나치므로 지금 이 경로를 밟지 않는다).
 - **컴파일 미리보기 비모달화** — 지금은 모달(`view/actions/preview.py`의 `exec()`)이라 편집하며 나란히 못 본다. 랩핑
   스킬의 실행 에이전트 산출도 미리보기에 아직 없다.
 - **참조 하이라이트** — 2초 뒤 `clearSelection()`이 사용자 선택까지 지운다(`canvas/context_menus.py`). 별도 이펙트
@@ -787,6 +801,19 @@ Tier 2다. 출발점은 2026-05 조사(ClaudeManager가 만든 plain 셸 스크�
   WP-RF 관례). WP-FK2가 끝난 2026-09-19에도 1,102줄 그대로다 — **`app.py`에 다음 기능을 넣기
   전에 먼저 쪼갠다.**
   `compiler/project_compiler.py`는 WP-C의 `plan.py` 분해로 676줄이 되어 목록에서 빠졌다.
+- **`view/canvas/scene.py` 분해 후보 (2026-09-19 리뷰)** — 992줄로 800줄 권고를 넘었고 1,200
+  상한까지 208줄이다. 한 파일이 세 책임을 겹쳐 든다(스멜 ①). 봉합선:
+  ① **드롭 수용** — `drop_skill` · `drop_wrapped_source` · `_ask_wrapped_usage` ·
+  `_place_wrapped_fixing_usage` · `drop_reference_skill`(레지스트리에서 들어오는 입구,
+  용도 질문 모달이 붙어 테스트 봉합선이기도 하다).
+  ② **배치·삭제 커맨드 조립** — `_create_state` · `_delete_state` · `_delete_transition` ·
+  `_create_and_assign_transfer_skill` · 참조 노드/링크 생성·삭제(전부 CommandStack 경유라
+  씬 그리기와 섞일 이유가 없다).
+  ③ **엣지 라우팅·드래그** — `update_edges_for_node` · 경유점(`handle_waypoint_moved` ·
+  `remove_waypoint` · `clear_waypoints`) · 전이/참조 링크 드래그 3종.
+  컨텍스트 메뉴는 이미 `canvas/context_menus.py`로 빠져 있어 얇은 위임만 남았다 — 같은 관례로
+  옮기면 된다(이동만·동작 불변, 재-export 파사드, 기존 테스트 무수정). **`scene.py`에 다음
+  기능을 넣기 전에 먼저 쪼갠다** — `app.py`와 같은 게이트다.
 
 ## 8. 테스트
 

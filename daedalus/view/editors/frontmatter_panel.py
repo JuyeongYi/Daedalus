@@ -510,7 +510,10 @@ class _FrontmatterPanel(QScrollArea):
     ) -> bool:
         """이 config에 써도 되는 필드인가 — **두 종류의 부재를 가른다**(원칙 5).
 
-        ① **이 종류의 표에 없는 필드** = 스테일 위젯이다. 종류 전환
+        판정 순서는 **표 먼저, `hasattr` 나중**이다 — 반대로 하면 ①이 발동하지
+        못한다(같은 계열 config는 속성 이름을 공유한다).
+
+        ① **이 종류의 표에 없는(또는 FIXED로 고정된) 필드** = 스테일 위젯이다. 종류 전환
            (`convert_skill_kind`)은 `__class__`와 config를 통째로 바꾸므로,
            전환 전에 만들어진 폼이 뒤늦게 write-back할 수 있다. 조용히 버린다 —
            유령 인스턴스 속성이 생기면 "config에 없으면 자동 비수정"을 기대는
@@ -524,11 +527,15 @@ class _FrontmatterPanel(QScrollArea):
         """
         if config is None:
             return False
-        if hasattr(config, attr):
-            return True
+        # **표를 먼저 본다.** `hasattr`를 먼저 물으면 ①이 영영 발동하지 않는다 —
+        # 종류 전환은 config 클래스를 바꾸지만 같은 계열(StepSkillConfig 파생 등)은
+        # 속성 이름을 공유하므로, 전환 전 폼의 뒤늦은 write-back이 새 종류의 표에
+        # 없는 필드를 그대로 써 버린다(FIXED 값도 같은 길로 덮인다).
         rule = self._rule_for(fld)
         if rule is None or rule.visibility is FieldVisibility.FIXED:
-            return False  # ① 스테일 위젯 — 이 종류의 표에 없는 필드
+            return False  # ① 스테일 위젯 — 이 종류의 표에 없는(또는 고정된) 필드
+        if hasattr(config, attr):
+            return True
         raise AttributeError(  # ② 표와 config의 불일치
             f"'{getattr(self._component, 'name', '?')}'"
             f"({getattr(getattr(self._component, 'config', None), 'kind', '?')})의 "

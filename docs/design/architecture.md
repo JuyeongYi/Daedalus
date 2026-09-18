@@ -453,13 +453,17 @@ daedalus/
     │                       #     execute/undo 어느 방향이든 마지막 한 번이 확정된 상태를 본다(MacroCommand.undo는 역순이다))
     ├── editors/            # 속성 편집기 (skill + 그 분해 패널 3종(frontmatter_panel/transfer_on_panel/reference_link_panel),
     │                       #   agent, hook, body, body_documents, component, variable_loader, catalogue_loader, field_widgets,
-    │                       #   project_properties, blackboard_editor, workspace_editor)
+    │                       #   field_adapters, kind_matrix, kind_switch_row, project_properties, blackboard_editor, workspace_editor)
     │                       # skill_editor(WP-RF): 구 단일 모듈(1,172줄 — 프론트매터 폼·출력 포트 카드·참조 링크 세 책임)을 형제
     │                       #   모듈 3개로 분해(이동만·동작 불변). skill_editor.py에는 SkillEditor만 남고 **재-export 파사드**로
     │                       #   `from …skill_editor import _FrontmatterPanel` 등 기존 언더스코어 임포트 경로가 전부 무수정 동작한다
     │                       #   (component_editor·agent_editor + 테스트 10여 파일이 그 경로를 쓴다. test_skill_editor_facade.py가 고정). 구획:
     │                       #     frontmatter_panel.py   — _FIELD_ATTR_MAP/_FIELD_ENUM_MAP/_LIST_FIELDS/_TOOL_CANDIDATE_FIELDS + 그리드 열
-    │                       #                              상수 + _OptionalRow + _FrontmatterPanel. **위젯 어댑터 표 `_WIDGET_ADAPTERS`**가
+    │                       #                              상수 + _OptionalRow + _FrontmatterPanel. 쓰기 게이트 `_writable`은 **표를 먼저**
+    │                       #                              본다(`matrix_for` → 없거나 FIXED면 스테일 위젯이라 조용히 버리고, 표에 있는데
+    │                       #                              config에 없으면 AttributeError) — `hasattr`를 먼저 물으면 같은 계열 config가
+    │                       #                              속성 이름을 공유해 스테일 write-back이 그대로 통과한다.
+    │                       #                              **위젯 어댑터 표 `_WIDGET_ADAPTERS`**(실체는 field_adapters.py, 여기서 재-export)가
     │                       #                              단일 진실 — (위젯 타입, 읽기, 쓰기, 변경 시그널 이름) 한 줄이 값 로드(_apply_value)·
     │                       #                              값 읽기(_read_widget_value)·시그널 연결(_connect_widget_signal) 세 경로를 함께
     │                       #                              채운다(분해 전에는 같은 isinstance 사슬이 세 벌이라, 한 곳을 빠뜨리면 "값은
@@ -472,7 +476,8 @@ daedalus/
     │                       #     kind_matrix.py         — matrix_for(component) → (규칙 표, 위젯 표, is_agent). **얇은 어댑터**다 —
     │                       #                              표 선택의 실체는 model.plugin.field_matrix.matrix_for이고(컴파일러는 뷰를
     │                       #                              임포트할 수 없다) 여기서는 뷰에만 있는 위젯 표를 짝지어 준다. 800줄 예산 분리
-    │                       #     field_adapters.py      — _WIDGET_ADAPTERS 표(아래 설명) 분리분
+    │                       #     field_adapters.py      — _WIDGET_ADAPTERS 표(위 설명) + _adapter_for. WP-E에서 frontmatter_panel에서
+    │                       #                              떼어냈다(이동만·동작 불변, 재-export 파사드 — 800줄 예산 분리)
     │                       # **필드 행 정렬 규칙**: 라벨|필드 행은 열 폭을 공유하는 레이아웃에 넣는다 — skill_editor._FrontmatterPanel은
     │                       #   QGridLayout(0=체크박스·1=라벨(우측 정렬)·2=값 위젯, 스팬 행은 헤더/그룹 구분 라벨/버튼 행), 나머지는
     │                       #   QFormLayout(hook_panel·property_panel·project_properties·workspace_editor). ad-hoc HBox로 행을

@@ -586,9 +586,10 @@ class PropsTools(_BaseTools):
     def list_component_fields(self, name: str) -> dict[str, Any]:
         """이 컴포넌트가 받는 프론트매터 필드와 현재 값.
 
-        스킬과 에이전트는 받는 필드가 다르고, 스킬은 종류(procedural/declarative/
-        transfer/reference)마다 또 다르다. 짐작으로 set_component_field를 부르지
-        않도록 실제 목록을 돌려준다. `emit`은 그 필드가 어디로 나가는지다
+        스킬과 에이전트는 받는 필드가 다르고, 스킬은 종류(procedural/sync_fork/
+        async_fork/declarative/transfer/reference/wrapped)마다, 에이전트는
+        종류(agent/fork_agent)마다 또 다르다. 짐작으로 set_component_field를
+        부르지 않도록 실제 목록을 돌려준다. `emit`은 그 필드가 어디로 나가는지다
         (frontmatter / body / settings).
         """
         import enum

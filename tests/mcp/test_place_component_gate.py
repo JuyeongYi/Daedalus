@@ -109,3 +109,33 @@ def test_already_fixed_wrapped_placement_says_nothing_about_usage(tools, window)
     assert "usage_fixed" not in out
     comp = next(s for s in window._project.skills if s.name == "w")
     assert comp.config.usage == "state"
+
+
+# ---------------------------------------------------------------------------
+# 중복 배치 — 캔버스 드롭과 같은 조기 반환 게이트 (통합 리뷰 지적)
+# ---------------------------------------------------------------------------
+
+def test_second_placement_is_rejected_and_points_at_move_state(tools, window):
+    """두 번 놓으면 `no_duplicate_skill_ref`로 컴파일이 막힌다 — 이유와 갈 곳을 말한다."""
+    tools.create_skill("s", kind="procedural")
+    tools.place_component("s", x=0, y=0)
+    stack = window._project_vm.command_stack
+    before = len(stack.history)
+
+    with pytest.raises(ValueError, match="이미 노드"):
+        tools.place_component("s", x=100, y=100)
+    with pytest.raises(ValueError, match="move_state"):
+        tools.place_component("s", x=100, y=100)
+
+    # 거절은 게이트에서 끝난다 — 노드도 undo 항목도 늘지 않는다.
+    assert len(window._project_vm.state_vms) == 1
+    assert len(stack.history) == before
+
+
+def test_second_placement_of_wrapped_does_not_refix_usage(tools, window):
+    """용도가 이미 state로 고정된 랩핑 스킬도 두 번째 배치는 막힌다."""
+    tools.create_skill("w", kind="wrapped")
+    tools.place_component("w", x=0, y=0)
+    with pytest.raises(ValueError, match="이미 노드"):
+        tools.place_component("w", x=50, y=50)
+    assert len(window._project_vm.state_vms) == 1

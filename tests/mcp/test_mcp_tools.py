@@ -168,9 +168,13 @@ def test_set_component_body_updates_model_and_document(tools, window):
     "kind,expected",
     [
         ("procedural", "procedural_skill"),
+        ("sync_fork", "sync_fork_skill"),
+        ("async_fork", "async_fork_skill"),
         ("declarative", "declarative_skill"),
         ("transfer", "transfer_skill"),
         ("reference", "reference_skill"),
+        # wrapped는 source 없이도 만들어진다(나중에 set_component_field로 채운다).
+        ("wrapped", "wrapped_skill"),
     ],
 )
 def test_create_skill_each_kind(tools, window, kind, expected):

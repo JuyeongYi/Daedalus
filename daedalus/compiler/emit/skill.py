@@ -238,10 +238,11 @@ def _async_fork_handoff_note(cli: str, names: list[str]) -> str:
     """
     shown = ", ".join(f"`{n}`" for n in names)
     return (
-        f"Handing off to a background fork ({shown}) is still a handoff: record it "
-        f"as `{cli} set --completed <this skill> --current <that fork> --prev "
-        '<this skill> --note "awaiting background fork"`, then do not block on it — '
-        "that fork's report says what to record next."
+        f"Handing off to a background fork ({shown}) is still a handoff. For that "
+        f"branch use this instead of the command above: `{cli} set --completed "
+        "<this skill> --current <that fork> --prev <this skill> --note "
+        '"awaiting background fork"`, then do not block on it — that fork\'s '
+        "report says what to record next."
     )
 
 

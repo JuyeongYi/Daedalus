@@ -98,7 +98,9 @@ def fork_report_section(
     cli: `daedalus-bb … progress` 접두. branch_lines: Next Steps와 같은 갈래 목록
     (없으면 ""). terminal: 나가는 전이가 없는 마지막 단계인가.
     background: 비동기 fork인가 — 도입 문구와 선행 조건이 갈린다.
-    skill_name: 선행 조건이 지목할 이 스킬의 이름.
+    skill_name: 이 스킬의 이름 — 선행 조건이 지목하고, 진행 명령의
+    `--completed`/`--prev` 자리에 그대로 박힌다(한 블록 안에서 이름과
+    `<this skill>` 자리표시자를 섞지 않는다 — 통째로 구체적이어야 한다).
     """
     intro = _ASYNC_INTRO if background else _SYNC_INTRO
     pre = (
@@ -111,7 +113,7 @@ def fork_report_section(
             "This skill is the last step of the workflow. Start your report with "
             "the line `EXIT: done / NEXT: (end)`, and end it with:\n"
             + pre
-            + f'- Main conversation: run `{cli} set --completed <this skill> '
+            + f'- Main conversation: run `{cli} set --completed {skill_name} '
             '--current done --note "<result summary>"`.',
         ]
     blocks = ["## Report", intro]
@@ -122,8 +124,8 @@ def fork_report_section(
         "/<skill>` (for a branch that delegates, `NEXT: agent <name>`). End it "
         "with the progress command for the main conversation, filled in:\n"
         + pre
-        + f"- Main conversation: run `{cli} set --completed <this skill> "
-        '--current <next target> --prev <this skill> --note "<branch> — '
-        '<one-line handoff>"`, then continue with NEXT.'
+        + f"- Main conversation: run `{cli} set --completed {skill_name} "
+        f"--current <next target> --prev {skill_name} --note \"<branch> — "
+        '<one-line handoff>\"`, then continue with NEXT.'
     )
     return blocks

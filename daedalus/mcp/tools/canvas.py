@@ -35,6 +35,10 @@ class CanvasTools(_BaseTools):
         고정하고(캔버스는 물어서 고정한다) 고정+배치를 **1 undo**로 묶는다 —
         응답의 `usage_fixed`가 그 사실을 말한다. 거부하지 않는다(사용자 확정
         2026-09-18).
+
+        **이미 배치된 컴포넌트는 거부한다** — 캔버스 드롭의 "이미 배치됨" 조기
+        반환과 같은 가드다. 두 번 놓으면 `no_duplicate_skill_ref`로 프로젝트가
+        컴파일되지 않는다.
         """
         from daedalus.model.fsm.state import SimpleState
         from daedalus.model.plugin.placement import is_state_placeable
@@ -58,6 +62,16 @@ class CanvasTools(_BaseTools):
                 f"그래프 노드가 아니고, fork 에이전트는 fork 스킬의 실행 "
                 f"기반이라 노드가 되지 않습니다."
             )
+        # 이미 배치된 컴포넌트는 두 번 놓지 않는다 — 캔버스 드롭의 조기 반환과
+        # 같은 가드다(`view/canvas/scene.py`). 없으면 MCP만 같은 스킬을 두 노드로
+        # 놓아 프로젝트가 `no_duplicate_skill_ref`로 컴파일 불가가 된다 — 캔버스는
+        # 조용히 무시하지만 MCP는 이유를 말하고 거부한다(원칙 5).
+        for svm in vm.state_vms:
+            if getattr(svm.model, "skill_ref", None) is comp:
+                raise ValueError(
+                    f"'{comp.name}'은(는) 이미 노드 '{svm.model.name}'으로 "
+                    f"배치돼 있습니다 — 옮기려면 move_state를 씁니다."
+                )
         # 용도 미정 wrapped — 고정 커맨드의 실체는 캔버스와 같은 공용 액션이다.
         fix = usage_fix_command(comp, "state")
         state = SimpleState(name=comp.name, skill_ref=comp)
