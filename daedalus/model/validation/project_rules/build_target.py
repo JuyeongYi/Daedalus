@@ -23,7 +23,7 @@ class _BuildTargetRules:
             return []
         errors: list[ValidationError] = []
         for agent in getattr(project, "agents", []):
-            cfg = getattr(agent, "config", None)
+            cfg = agent.config  # 모든 컴포넌트가 config를 갖는다(기저 선언 — Q4)
             tools = getattr(cfg, "tools", None) or []
             mcp_servers = getattr(cfg, "mcp_servers", None) or []
             has_mcp_tool = any(
@@ -66,7 +66,7 @@ class _BuildTargetRules:
         checked = [AgentField.HOOKS, AgentField.PERMISSION_MODE]
         errors: list[ValidationError] = []
         for agent in getattr(project, "agents", []):
-            cfg = getattr(agent, "config", None)
+            cfg = agent.config  # Q4
             unsupported: list[str] = []
             for afield in checked:
                 if agent_field_supported(afield, build_target):

@@ -82,18 +82,17 @@ class _ProjectRules(
         `project.hook_library`만 본다(하위 호환).
         """
         errors: list[ValidationError] = []
+        # FSM 보유는 컴포넌트가 답한다(`state_machines()` — Q2). FSM이 없는
+        # 종류(선언형·참조 스킬·fork 에이전트)는 빈 목록이라 자연 제외된다.
         for skill in project.skills:
-            fsm = getattr(skill, "fsm", None)
-            if fsm is not None:
+            for sm in skill.state_machines():
                 errors.extend(_MachineRules._validate_machine(
-                    fsm, path=(f"skill:{skill.name}",),
+                    sm, path=(f"skill:{skill.name}",),
                 ))
         for agent in project.agents:
-            # fork 에이전트에는 fsm이 없다 — 스킬 쪽과 같은 가드로 통일한다.
-            fsm = getattr(agent, "fsm", None)
-            if fsm is not None:
+            for sm in agent.state_machines():
                 errors.extend(_MachineRules._validate_machine(
-                    fsm, path=(f"agent:{agent.name}",),
+                    sm, path=(f"agent:{agent.name}",),
                 ))
         # 프로젝트 워크플로 그래프 — placement가 하나라도 있을 때만 머신 규칙 적용.
         # 빈 캔버스(EntryPoint 하나뿐)는 검증 스킵 (경고 폭주 방지).
@@ -111,7 +110,7 @@ class _ProjectRules(
         errors.extend(_NamingRules._check_invalid_component_name(project))
         errors.extend(_NamingRules._check_invalid_project_name(project))
         errors.extend(_NamingRules._check_dangling_string_references(project))
-        errors.extend(_NamingRules._check_wrapped_sources(project))
+        errors.extend(_NamingRules._check_external_sources(project))
         errors.extend(_NamingRules._check_external_plugins(project))
         errors.extend(_NamingRules._check_wrapped_usage(project))
         # 도구(tool_shelf) 규칙

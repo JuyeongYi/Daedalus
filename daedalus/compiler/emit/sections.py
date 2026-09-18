@@ -366,7 +366,7 @@ def linked_background_skills(component, project) -> list[tuple[str, str]]:
             continue
         ext = external_skill_name(getattr(skill.config, "source", "") or "")
         if not ext:
-            continue  # wrapped_source_missing 소관 — 빈 지시를 내지 않는다
+            continue  # external_source_missing 소관 — 빈 지시를 내지 않는다
         seen.add(skill.name)
         entries.append((ext, skill.description))
     entries.sort(key=lambda e: e[0])

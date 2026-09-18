@@ -41,8 +41,10 @@
   나가고(플러그인이 활성화되면 스킬은 CC가 네이티브 로드 — WrappedSkill은
   워크플로 단계로 놓을 때만 필요), 어긋남은 경고 2종이 짚는다:
   `unused_external_plugin`(선언·미참조 — 의도적 활성화면 무시),
-  `undeclared_external_plugin`(랩핑 소스가 미선언 플러그인 참조 — 배선이 안
-  나가 런타임에 스킬을 못 찾는다). bare 선언은 enabledPlugins 불가라
+  `undeclared_external_plugin`(외부 참조가 미선언 플러그인을 가리킴 — 배선이 안
+  나가 런타임에 스킬을 못 찾는다). 두 경고의 참조 판정은 WP-2b에서
+  `c.external_plugin_refs()` 하나가 됐고(종류 중립 — Q15), source 형식 경고는
+  `external_source_missing`으로 개명·일반화됐다(옛 이름 `wrapped_source_missing`). bare 선언은 enabledPlugins 불가라
   `external_plugin_no_marketplace` 경고(컴파일러 emit — out_dir 없는
   dry-run에서도 나온다, 폴더 무관 판정).
 - **재사용은 랩퍼 복수로**(사용자 확정): 같은 source를 여러 랩퍼가 감싸는 것이

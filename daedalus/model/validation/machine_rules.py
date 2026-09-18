@@ -296,42 +296,46 @@ class _MachineRules:
         states: list,
         path: tuple[str, ...] = (),
     ) -> list[ValidationError]:
+        """transfer_on_not_empty — 출력 포트를 **요구하는** 노드가 포트 0개면 에러.
+
+        "요구하는가"는 컴포넌트가 `REQUIRES_OUTPUT_PORTS`로 선언한다(Q30) —
+        오늘 True인 것은 `StepSkill`(절차형·fork 2종)과 `AgentDefinition`이고,
+        갈래를 갖지 않는 종류(선언형·전이·참조·랩핑·fork 에이전트)는 선언하지
+        않아 자연 제외된다. 종전 두 갈래 `isinstance` 사다리와 같은 집합이다.
+
+        문구만 버킷으로 가른다 — 스킬은 `transfer_on`, 에이전트는 "출력 포트"가
+        사용자에게 익숙한 말이다.
+        """
         from daedalus.model.fsm.state import SimpleState
-        from daedalus.model.plugin.skill import StepSkill
-        from daedalus.model.plugin.agent import AgentDefinition
+        from daedalus.model.plugin.roles import Bucket
+
         errors: list[ValidationError] = []
         for state in states:
             if not isinstance(state, SimpleState):
                 continue
             ref = state.skill_ref
-            if ref is None:
+            if ref is None or not type(ref).REQUIRES_OUTPUT_PORTS:
                 continue
-            # StepSkill = 절차형 + fork 2종(갈래를 갖는 워크플로 단계).
-            if isinstance(ref, StepSkill):
-                if not ref.transfer_on:
-                    errors.append(ValidationError(
-                        rule="transfer_on_not_empty",
-                        message=(
-                            f"'{ref.name}' 스킬의 transfer_on이 비어 있습니다. "
-                            f"최소 하나의 이벤트가 필요합니다."
-                        ),
-                        source=ref.name,
-                        subject=ref,
-                        path=path,
-                    ))
-            elif isinstance(ref, AgentDefinition):
+            if ref.output_ports():
+                continue
+            if type(ref).BUCKET is Bucket.SKILLS:
+                message = (
+                    f"'{ref.name}' 스킬의 transfer_on이 비어 있습니다. "
+                    f"최소 하나의 이벤트가 필요합니다."
+                )
+            else:
                 # WP-AF — 출력 포트는 transfer_on이 단일 진실.
-                if not ref.output_events:
-                    errors.append(ValidationError(
-                        rule="transfer_on_not_empty",
-                        message=(
-                            f"'{ref.name}' 에이전트의 출력 포트(transfer_on)가 "
-                            f"비어 있습니다. 최소 하나의 출력 이벤트가 필요합니다."
-                        ),
-                        source=ref.name,
-                        subject=ref,
-                        path=path,
-                    ))
+                message = (
+                    f"'{ref.name}' 에이전트의 출력 포트(transfer_on)가 "
+                    f"비어 있습니다. 최소 하나의 출력 이벤트가 필요합니다."
+                )
+            errors.append(ValidationError(
+                rule="transfer_on_not_empty",
+                message=message,
+                source=ref.name,
+                subject=ref,
+                path=path,
+            ))
         return errors
 
     # ------------------------------------------------------------------
@@ -480,8 +484,6 @@ class _MachineRules:
     ) -> list[ValidationError]:
         """trigger_unknown_event — CompletionEvent trigger의 이름이 source 출력 이벤트 집합에 없으면 경고."""
         from daedalus.model.fsm.state import SimpleState
-        from daedalus.model.plugin.skill import StepSkill
-        from daedalus.model.plugin.agent import AgentDefinition
 
         errors: list[ValidationError] = []
         for t in sm.transitions:
@@ -491,21 +493,17 @@ class _MachineRules:
             known_events: set[str] | None = None
 
             if isinstance(source, SimpleState) and source.skill_ref is not None:
-                ref = source.skill_ref
-                # StepSkill(절차형·fork 2종)/AgentDefinition만 출력 이벤트
-                # 집합을 정의한다.
-                # DeclarativeSkill 등은 known_events=None → 검사 스킵.
-                # 주의: TransferSkill.output_events는 항상 []이므로 향후 분기에
-                # 추가하면 모든 trigger가 오탐이 된다 — 추가 금지.
-                if isinstance(ref, StepSkill):
-                    # transfer_on(output_events) + call_agents — 캔버스는 Agent Call
-                    # 포트에서도 전이를 만들므로(trigger=CompletionEvent(이벤트명))
-                    # call_agents 이벤트도 합법적 출력 이벤트 집합에 포함한다.
-                    known_events = set(ref.output_events) | {
-                        e.name for e in ref.call_agents
-                    }
-                elif isinstance(ref, AgentDefinition):
-                    known_events = set(ref.output_events)
+                # 합법 출력 이벤트 집합은 컴포넌트가 스스로 답한다
+                # (`known_outgoing_events()` — Q30). `None`은 "이 종류는 집합을
+                # 정의하지 않는다" = 검사 스킵이고, 빈 집합(무엇도 나갈 수 없다)과
+                # 구분된다. 오늘 집합을 정의하는 것은 StepSkill(출력 포트 +
+                # 호출 포트 — 캔버스는 Agent Call 포트에서도 전이를 만든다)과
+                # AgentDefinition(출력 포트만 — backlog D9)뿐이다.
+                # 주의: 전이 스킬의 포트는 항상 비었으므로 그쪽이 집합을
+                # 정의하기 시작하면 모든 trigger가 오탐이 된다.
+                declared = source.skill_ref.known_outgoing_events()
+                if declared is not None:
+                    known_events = set(declared)
             elif isinstance(source, CompositeState):
                 # sub_machine ExitPoint 이름 + "done"
                 exit_names = {

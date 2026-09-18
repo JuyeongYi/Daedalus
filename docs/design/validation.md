@@ -86,16 +86,21 @@ blackboard/body_variables/build_target/workflow/fork/workspace)을 합성한 오
 | `duplicate_rule_name` | 작업 폴더 규칙 문서의 동명 에러 — 상세는 "작업 폴더 문서 (WP-WD) #### 검증" 표 |
 | `invalid_rule_name` | 규칙 문서 이름 규약 경고 (컴파일 게이트가 에러로 승격) — 같은 표 |
 | `workspace_doc_in_marketplace_build` | MARKETPLACE 빌드인데 작업 폴더 문서에 내용이 있으면 경고 — 같은 표 |
-| `wrapped_source_missing` | 랩핑 스킬 source 빈 값·형식 불일치 경고 (WP-WR — `플러그인[@마켓]:스킬`) |
+| `external_source_missing` | **외부 정본을 선언한 컴포넌트**의 source 빈 값·형식 불일치 경고 (`플러그인[@마켓]:이름`). 대상은 `c.external_source is not None`인 것 전부다 — WP-2b에서 랩핑 전용 `wrapped_source_missing`을 **개명·일반화**했다(Q34). 종류를 묻지 않으므로 외부 정본을 갖는 새 종류는 선언 한 줄로 이 검사를 받는다. 실존(카탈로그 해소)은 파일시스템 소관이라 보지 않는다 |
 | `wrapped_usage_conflict` | 랩핑 스킬 용도 고정(state/reference) ↔ 배치 어긋남 경고 (WP-WR — 한 스킬 두 용도 금지) |
-| `unused_external_plugin` | 외부 플러그인을 사용 선언했는데 어떤 랩핑 스킬도 참조하지 않음 — 배선은 그대로, 경고만 (WP-WR) |
-| `undeclared_external_plugin` | 랩핑 스킬 source가 미선언 플러그인을 가리킴 — 배선이 안 나가 런타임에 못 찾는다 (WP-WR) |
+| `unused_external_plugin` | 외부 플러그인을 사용 선언했는데 어떤 **컴포넌트도** 참조하지 않음 — 배선은 그대로, 경고만 (WP-WR). 참조 판정은 `c.external_plugin_refs()`(Q15)이고 꺼 둔 컴포넌트·형식이 깨진 source는 그 안에서 이미 빠진다 |
+| `undeclared_external_plugin` | **컴포넌트의** 외부 참조가 미선언 플러그인을 가리킴 — 배선이 안 나가 런타임에 못 찾는다 (WP-WR). 대상 판정은 `external_plugin_refs()` 하나다 |
 | `external_plugin_no_marketplace` | 마켓 표기 없는 bare 선언은 enabledPlugins 배선 불가 경고 (컴파일러 emit, WP-WR) |
+
+**규칙의 술어는 종류가 아니라 능력 선언이다 (WP-2b).** 위 표의 "어떤 종류에 적용되는가"는 전부 컴포넌트가 선언한 능력에서 나온다 — `transfer_on_not_empty`는 `REQUIRES_OUTPUT_PORTS`, `trigger_unknown_event`의 합법 이벤트 집합은 `known_outgoing_events()`(`None` = 검사 스킵), `transfer_skill_reused`의 대상은 `effective_placement() is EDGE`, `unused_fork_agent`/`fork_agent_wrong_kind`는 `IS_FORK_BASE`, 외부 참조 규칙 3종은 `external_source`/`external_plugin_refs()`, `dangling_hook_ref`의 참조 수집은 `hook_refs()`, `dangling_string_reference`의 스킬 이름 참조는 `config.name_refs(Bucket.SKILLS)`다. 표의 "오늘 걸리는 종류" 문구는 **설명**이고 정본은 선언이다 — 새 종류는 선언을 고르는 것으로 규칙에 합류한다.
+
+**랩핑 전용으로 남은 좁힘 3곳**은 소스에 `# WRAPPED-ONLY` 태그가 붙어 있다: `_agent_call_edges`의 caller (랩핑 스킬도 서브에이전트에서 돌지만 종전 집합에 없었고, 넓히면 `agent_chain_too_deep` 깊이와 `agent_calls_higher_model`이 조용히 달라진다), `mid_chain_user_invocable`의 대상, `wrapped_usage_conflict`의 용도 스위치 보유 판정. WrappedSkill 퇴역(WP-10)이 태그를 따라 전수 삭제한다.
+
 | `agent_chain_too_deep` | 프로젝트 그래프의 **에이전트 → 에이전트 호출 체인**이 `MAX_AGENT_CHAIN`(3)을 넘으면 **에러** (2026-09-12). CC는 주 대화 기준 3계층까지만 중첩을 허용하고 한계에 닿은 서브에이전트에게서 Agent 도구를 회수하므로, 더 깊은 체인은 **설계대로 돌지 않고 조용히 달라진다**(마지막 에이전트가 혼자 처리). 스킬은 메인 스레드에서 도니 중간에 스킬을 끼우면 깊이가 1부터 다시 시작한다. 보고는 **체인 시작점에서 한 번**(노드마다 반복 금지), 순환(A→B→A)은 깊이 무한이라 같은 규칙이 다른 메시지로 잡는다. **fork 스킬은 에이전트 1계층 호출자로 센다**(2026-09-13 — 서브에이전트에서 돈다) |
 | `agent_calls_higher_model` | 에이전트가 **자기보다 상위 모델**의 에이전트를 호출하면 **에러** (사용자 확정 2026-09-12). 티어 표의 단일 진실은 `model/plugin/enums.MODEL_TIER`(haiku<sonnet<opus<fable). 어느 한쪽이 `INHERIT`면 물려받는 값이라 상위/하위가 성립하지 않아 건너뛴다. 스킬 → 상위 모델 에이전트는 대상이 아니다(메인 스레드가 부르는 것이라 중첩이 아니다). 단 **fork 스킬은 호출자로 본다** — 티어는 실효 모델(스킬이 `INHERIT`면 fork 에이전트로 쓰는 프로젝트 에이전트 값) |
 | `fork_agent_missing` | fork 스킬 `agent`가 내장도, `플러그인:이름` 형식도, 프로젝트 에이전트도 아니면 **에러** (2026-09-13) — CC는 못 찾은 에이전트를 조용히 general-purpose로 돌린다. 정확 일치(대소문자 포함) |
 | `fork_agent_undeclared_plugin` | `플러그인:이름`의 플러그인이 `external_plugins`에 없으면 **에러** — 플러그인이 켜지지 않아 역시 조용히 범용으로 돈다(랩핑의 `undeclared_external_plugin`은 경고지만 fork는 에러). 그 에이전트가 플러그인에 실제로 있는지는 파일시스템이라 검증기가 보지 않는다(피커·MCP는 카탈로그로 거른다) |
-| `fork_agent_wrong_kind` | fork 스킬 `agent`가 **워크플로 에이전트**(`AgentDefinition`)를 가리키면 **에러** (WP-FK2) — 워크플로 에이전트는 캔버스 노드로 불리는 종류라 fork 에이전트가 될 수 없다. 배치 여부와 무관하다(퇴역한 `fork_agent_placed`는 배치를 봤다). 메시지가 대안(fork 에이전트 종류로 만들기 / 다른 에이전트 고르기)을 말한다 |
+| `fork_agent_wrong_kind` | fork 스킬 `agent`가 **fork 실행 기반이 될 수 없는 에이전트**(`IS_FORK_BASE`를 선언하지 않는 종류 = 오늘의 `AgentDefinition`)를 가리키면 **에러** (WP-FK2) — 워크플로 에이전트는 캔버스 노드로 불리는 종류라 fork 에이전트가 될 수 없다. 배치 여부와 무관하다(퇴역한 `fork_agent_placed`는 배치를 봤다). 메시지가 대안(fork 에이전트 종류로 만들기 / 다른 에이전트 고르기)을 말한다 |
 | `fork_model_overrides_agent` | 스킬과 fork 에이전트로 쓰는 프로젝트 에이전트 **양쪽에 model(또는 effort)이 있고 다르면** 경고 — fork에서는 스킬 값이 이긴다(실측). 스킬이 비면 에이전트 값이 쓰이므로 정상 |
 | `unused_fork_agent` | 어떤 fork 스킬도 부르지 않는 `ForkAgent` 경고 (WP-FK2) — `agents/<이름>.md`로 산출은 되지만 아무도 실행하지 않는다(조용한 무동작 방지). 역참조 판정은 `model/plugin/placement.fork_skills_using` 한 곳이다(편집기 패널·삭제 확인·MCP `still_referenced_by`와 같은 실체). 워크플로 에이전트는 대상이 아니다 |
 | `disabled_wrapped_placed` | 비활성 랩핑 스킬이 캔버스에 남아 있으면 경고 (WP-WR — 상세는 `wrapped-skills.md`) |

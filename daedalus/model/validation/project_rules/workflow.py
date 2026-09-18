@@ -24,10 +24,20 @@ def _agent_call_edges(project) -> list[tuple]:
     caller는 에이전트 또는 **fork 스킬**이다 — fork 스킬은 서브에이전트에서 돌아
     에이전트 1계층으로 센다(사용자 확정 2026-09-13). 일반 스킬 → 에이전트는
     대상이 아니다(메인 스레드가 부르므로 중첩이 아니다).
+
+    술어 두 개로 갈린다(Q9):
+
+    - caller = **자기 본문이 서브에이전트에서 도는 노드**
+      (`RUNS_IN_SUBAGENT`). 랩핑 스킬도 서브에이전트(러너)에서 돌지만 이
+      규칙의 집합에는 들어 있지 않았고, 넓히면 `agent_chain_too_deep` 깊이와
+      `agent_calls_higher_model`이 조용히 달라진다 — 위 docstring이 제외를
+      의도로 말하므로 `BODY_SOURCE is OWNED`로 종전 집합을 보존한다.
+    - callee = **이쪽으로 가는 전이가 위임인 노드**(`DELEGATION_TARGET`).
+      `ForkAgent`도 True지만 캔버스 노드가 될 수 없어(`PLACEMENT=NONE`)
+      `skill_ref`로 오지 않는다.
     """
     from daedalus.model.fsm.state import SimpleState
-    from daedalus.model.plugin.agent import AgentDefinition
-    from daedalus.model.plugin.skill import ForkSkill
+    from daedalus.model.plugin.roles import BodySource
 
     graph = getattr(project, "graph", None)
     if graph is None:
@@ -38,9 +48,14 @@ def _agent_call_edges(project) -> list[tuple]:
         if not isinstance(src, SimpleState) or not isinstance(tgt, SimpleState):
             continue
         caller, callee = src.skill_ref, tgt.skill_ref
-        if not isinstance(caller, (AgentDefinition, ForkSkill)):
+        if caller is None or callee is None:
             continue
-        if not isinstance(callee, AgentDefinition):
+        if not (
+            type(caller).RUNS_IN_SUBAGENT
+            and type(caller).BODY_SOURCE is BodySource.OWNED  # WRAPPED-ONLY
+        ):
+            continue
+        if not type(callee).DELEGATION_TARGET:
             continue
         port = getattr(getattr(trans, "trigger", None), "name", "") or ""
         out.append((src, tgt, caller, callee, port))
@@ -153,13 +168,18 @@ class _WorkflowRules:
         성립하지 않는다. 티어 표의 단일 진실은 `model/plugin/enums.MODEL_TIER`.
         """
         from daedalus.model.plugin.enums import MODEL_TIER, ModelType
-        from daedalus.model.plugin.skill import ForkSkill
+        from daedalus.model.plugin.roles import Bucket
         from daedalus.model.validation.project_rules.fork import fork_project_agent
 
         def effective_model(component):
-            """실제로 도는 모델 — fork 스킬이 비어 있으면 fork 에이전트 값(실측)."""
-            model = getattr(getattr(component, "config", None), "model", None)
-            if isinstance(component, ForkSkill) and model is ModelType.INHERIT:
+            """실제로 도는 모델 — fork 스킬이 비어 있으면 fork 에이전트 값(실측).
+
+            "본문을 남에게 맡기는가"는 `delegated_agent_name()`이 답한다(Q26/Q33).
+            여기 오는 것은 `_agent_call_edges`가 고른 caller/callee뿐이라
+            에이전트(None)와 fork 스킬(config.agent) 둘밖에 없다.
+            """
+            model = component.config.model
+            if component.delegated_agent_name() is not None and model is ModelType.INHERIT:
                 target = fork_project_agent(component, project)
                 if target is not None:
                     model = target.config.model
@@ -177,7 +197,7 @@ class _WorkflowRules:
             if callee_tier <= caller_tier:
                 continue
             port_note = f"(포트 '{port}') " if port else ""
-            role = "fork 스킬" if isinstance(caller, ForkSkill) else "에이전트"
+            role = "fork 스킬" if type(caller).BUCKET is Bucket.SKILLS else "에이전트"
             errors.append(ValidationError(
                 rule="agent_calls_higher_model",
                 message=(
@@ -209,15 +229,17 @@ class _WorkflowRules:
         순회 범위는 프로젝트 그래프 + 각 스킬/에이전트 FSM(재귀)이다 —
         `dangling_tool_ref`/블랙보드 규칙과 같은 범위.
         """
-        from daedalus.model.plugin.skill import TransferSkill
+        from daedalus.model.plugin.placement import placement_role_of
+        from daedalus.model.plugin.roles import PlacementRole
 
         # id(스킬) → (스킬, [경로 표지…]) — 어디에 붙었는지 알려 줘야 고칠 수 있다.
         uses: dict[int, tuple[object, list[str]]] = {}
 
         def _make_visitor(label: str):
             def _visit(trans) -> None:
+                # 전이에 붙는 종류 = 배치 역할이 EDGE인 종류다(Q5).
                 ref = getattr(trans, "skill_ref", None)
-                if not isinstance(ref, TransferSkill):
+                if placement_role_of(ref) is not PlacementRole.EDGE:
                     return
                 entry = uses.setdefault(id(ref), (ref, []))
                 src = getattr(getattr(trans, "source", None), "name", "?")
@@ -279,7 +301,7 @@ class _WorkflowRules:
         고쳐야 하는지 알린다. **명시 `False`만 통과한다.**
         """
         from daedalus.model.fsm.state import SimpleState
-        from daedalus.model.plugin.skill import StepSkill
+        from daedalus.model.plugin.roles import BodySource, Bucket, PlacementRole
 
         graph = getattr(project, "graph", None)
         if graph is None:
@@ -296,7 +318,14 @@ class _WorkflowRules:
             if not isinstance(state, SimpleState):
                 continue
             skill = state.skill_ref
-            if not isinstance(skill, StepSkill):
+            # 종전 집합은 StepSkill(절차형·fork 2종)이다 — 단일 배치되는 스킬
+            # 중 본문 정본이 자기 것인 종류. 랩핑 스킬은 `user_invocable`
+            # 프론트매터를 내지만 이 규칙의 대상이 아니었다.
+            if skill is None or not (
+                type(skill).BUCKET is Bucket.SKILLS
+                and skill.effective_placement() is PlacementRole.STATE
+                and type(skill).BODY_SOURCE is BodySource.OWNED  # WRAPPED-ONLY
+            ):
                 continue
             if not incoming.get(id(state)):
                 continue  # 진입점 후보

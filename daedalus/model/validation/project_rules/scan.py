@@ -23,15 +23,18 @@ def graph_has_placements(graph: StateMachine) -> bool:
 
 
 def project_machines(project):
-    """프로젝트의 모든 최상위 FSM(skill.fsm / agent.fsm)을 (label, sm)로 yield."""
+    """프로젝트의 모든 최상위 FSM을 (label, sm)로 yield.
+
+    "FSM을 갖는가"는 컴포넌트가 답한다(`state_machines()` — Q2). FSM이 없는
+    종류(선언형·참조 스킬·fork 에이전트)는 빈 목록을 답해 자연 제외된다 —
+    `getattr(x, "fsm", None)`로 형상을 더듬던 자리다.
+    """
     for skill in project.skills:
-        fsm = getattr(skill, "fsm", None)
-        if fsm is not None:
-            yield (f"skill:{skill.name}", fsm)
+        for sm in skill.state_machines():
+            yield (f"skill:{skill.name}", sm)
     for agent in project.agents:
-        fsm = getattr(agent, "fsm", None)  # fork 에이전트에는 fsm이 없다
-        if fsm is not None:
-            yield (f"agent:{agent.name}", fsm)
+        for sm in agent.state_machines():
+            yield (f"agent:{agent.name}", sm)
 
 
 def scan_state_access(sm: StateMachine, visit) -> None:

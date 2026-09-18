@@ -57,12 +57,12 @@ class _BodyVariableRules:
 
         for skill in getattr(project, "skills", []):
             _scan(
-                f"스킬 '{skill.name}'", skill, getattr(skill, "body", ""),
+                f"스킬 '{skill.name}'", skill, skill.body,
                 (f"skill:{skill.name}",),
             )
         for agent in getattr(project, "agents", []):
             _scan(
-                f"에이전트 '{agent.name}'", agent, getattr(agent, "body", ""),
+                f"에이전트 '{agent.name}'", agent, agent.body,
                 (f"agent:{agent.name}",),
             )
         return errors
@@ -85,7 +85,7 @@ class _BodyVariableRules:
         token = "${CLAUDE_SKILL_DIR}"
         errors: list[ValidationError] = []
         for agent in getattr(project, "agents", []):
-            remaining = _strip_markdown_code(getattr(agent, "body", "") or "")
+            remaining = _strip_markdown_code(agent.body or "")
             if token in remaining:
                 errors.append(ValidationError(
                     rule="skill_dir_token_in_agent",
@@ -155,7 +155,7 @@ class _BodyVariableRules:
         )
         for agent in getattr(project, "agents", []):
             _scan(
-                f"에이전트 '{agent.name}'", agent, getattr(agent, "body", ""),
+                f"에이전트 '{agent.name}'", agent, agent.body,
                 agent_tokens, (f"agent:{agent.name}",),
             )
 
@@ -163,7 +163,7 @@ class _BodyVariableRules:
         if claude_md is not None:
             _scan(
                 "작업 폴더 문서 'CLAUDE.md'", claude_md,
-                getattr(claude_md, "body", ""), SKILL_ONLY_VARIABLES, (),
+                claude_md.body, SKILL_ONLY_VARIABLES, (),
             )
         for doc in getattr(project, "rules", None) or []:
             _scan(

@@ -46,7 +46,7 @@ from daedalus.model.plugin.skill import (
 def parse_wrapped_source(source: str) -> tuple[str, str]:
     """WP-WR source 참조 `plugin[@marketplace]:skill` → (plugin_id, skill_name).
 
-    형식이 어긋나면 ("", "") — 검증 경고(`wrapped_source_missing`)가 짚고
+    형식이 어긋나면 ("", "") — 검증 경고(`external_source_missing`)가 짚고
     emit은 지시 단락을 생략한다(빈 참조로 산출을 오염시키지 않는다).
     """
     if ":" not in (source or ""):
@@ -78,7 +78,7 @@ def needs_runner_agent(component: object) -> bool:
 
     state 용도 + 활성 + source 형식이 맞는 랩핑 스킬만. 참조 용도는 산출 파일이
     없고(링크된 에이전트의 skills 프론트매터로 주입된다), source가 비면 위임할
-    대상이 없다(`wrapped_source_missing`이 짚는다).
+    대상이 없다(`external_source_missing`이 짚는다).
     """
     return (
         isinstance(component, WrappedSkill)

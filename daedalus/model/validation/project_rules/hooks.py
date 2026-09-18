@@ -10,22 +10,18 @@ class _HookRules:
 
     @staticmethod
     def _collect_hook_refs(project):
-        """config.hooks 키(훅 이름 참조)를 (label, name, subject)로 yield.
+        """훅 이름 참조를 (label, name, subject)로 yield.
 
-        스킬/에이전트의 config.hooks를 모두 훑는다.
+        "내가 참조하는 훅 이름"은 컴포넌트가 답한다(`hook_refs()` — Q24).
+        **삽입 순서 그대로**여야 한다 — `dangling_hook_ref` 경고가 "첫 등장
+        순서"로 나가는 것이 오늘의 결정성 계약이다.
         """
         for skill in getattr(project, "skills", []):
-            cfg = getattr(skill, "config", None)
-            hooks = getattr(cfg, "hooks", None)
-            if isinstance(hooks, dict):
-                for name in hooks:
-                    yield (f"skill:{skill.name}", name, skill)
+            for name in skill.hook_refs():
+                yield (f"skill:{skill.name}", name, skill)
         for agent in getattr(project, "agents", []):
-            cfg = getattr(agent, "config", None)
-            hooks = getattr(cfg, "hooks", None)
-            if isinstance(hooks, dict):
-                for name in hooks:
-                    yield (f"agent:{agent.name}", name, agent)
+            for name in agent.hook_refs():
+                yield (f"agent:{agent.name}", name, agent)
 
     @staticmethod
     def _check_duplicate_hook_name(project) -> list[ValidationError]:

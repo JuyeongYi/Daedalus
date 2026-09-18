@@ -472,16 +472,19 @@ def test_provided_server_names_suppress_missing_def(tmp_path):
 
 
 def test_wrapped_source_missing_warns():
+    """규칙 이름은 WP-2b에서 `external_source_missing`으로 개명됐다 —
+    검사가 랩핑 전용이 아니라 `external_source`를 선언한 **모든** 컴포넌트를
+    보기 때문이다(Q34). 랩핑 스킬에 대한 판정은 그대로다."""
     project = PluginProject(name="p")
     project.skills.append(_wrapped(source=""))
     rules = [e.rule for e in Validator.validate_project(project)]
-    assert "wrapped_source_missing" in rules
+    assert "external_source_missing" in rules
 
 
 def test_valid_declared_source_no_warning():
     project = _project_with_wrapped()
     rules = [e.rule for e in Validator.validate_project(project)]
-    assert "wrapped_source_missing" not in rules
+    assert "external_source_missing" not in rules
     assert "undeclared_external_plugin" not in rules
     assert "unused_external_plugin" not in rules
 
@@ -523,5 +526,5 @@ def test_same_source_multiple_wrappers_is_normal():
     project.external_plugins.append("other@mkt")
     issues = Validator.validate_project(project)
     assert not [e for e in issues if not e.is_warning]
-    assert "wrapped_source_missing" not in [e.rule for e in issues]
+    assert "external_source_missing" not in [e.rule for e in issues]
     assert "undeclared_external_plugin" not in [e.rule for e in issues]

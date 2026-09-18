@@ -70,8 +70,8 @@ KIND_DECLARATION_FILES: frozenset[str] = frozenset({
 
 #: 실측 기준선 (2026-09-19, WP-0c 직후 HEAD). **내리기만 한다.**
 RATCHET: dict[str, int] = {
-    "component_kind_sites": 156,
-    "component_kind_files": 25,
+    "component_kind_sites": 151,
+    "component_kind_files": 24,
     "plan_kind_sites": 22,
     "plan_kind_files": 3,
 }

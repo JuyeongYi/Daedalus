@@ -17,8 +17,14 @@ from daedalus.model.validation.severity import ValidationError
 
 
 def fork_project_agent(skill, project):
-    """fork 스킬이 fork 에이전트로 쓰는 **프로젝트** 에이전트 (내장·외부·없음이면 None)."""
-    name = getattr(skill.config, "agent", "")
+    """fork 스킬이 fork 에이전트로 쓰는 **프로젝트** 에이전트 (내장·외부·없음이면 None).
+
+    "이 스킬이 본문을 누구에게 맡기는가"는 컴포넌트가 답한다
+    (`delegated_agent_name()` — Q33). 내장 이름(`general-purpose`)·외부
+    플러그인 이름(`플러그인:이름`)은 프로젝트 목록에 없으므로 None이 되고,
+    그 경우의 등급은 `_check_fork_agents`가 가른다.
+    """
+    name = skill.delegated_agent_name() or ""
     return next((a for a in project.agents if a.name == name), None)
 
 
@@ -29,10 +35,9 @@ class _ForkRules:
     def _check_fork_agents(project) -> list[ValidationError]:
         """fork_agent_wrong_kind / fork_agent_missing / fork_agent_undeclared_plugin (에러),
         fork_model_overrides_agent (경고)."""
-        from daedalus.model.plugin.agent import AgentDefinition
         from daedalus.model.plugin.config import BUILTIN_FORK_AGENTS
         from daedalus.model.plugin.enums import ModelType
-        from daedalus.model.plugin.skill import ForkSkill
+        from daedalus.model.plugin.roles import BodySource
 
         declared = {
             p.partition("@")[0] for p in getattr(project, "external_plugins", None) or []
@@ -47,9 +52,15 @@ class _ForkRules:
             ))
 
         for skill in project.skills:
-            if not isinstance(skill, ForkSkill):
+            # fork 스킬 = 본문이 **자기 것**이면서 서브에이전트에서 도는 스킬.
+            # 랩핑 스킬도 서브에이전트(러너)에서 돌지만 본문 정본이 외부라
+            # `agent` 필드 자체가 없다 — 종전 `isinstance(ForkSkill)`과 같은 집합.
+            if not (
+                type(skill).RUNS_IN_SUBAGENT
+                and type(skill).BODY_SOURCE is BodySource.OWNED  # WRAPPED-ONLY
+            ):
                 continue
-            name = skill.config.agent
+            name = skill.delegated_agent_name() or ""
             target = fork_project_agent(skill, project)
             if target is None:
                 if name in BUILTIN_FORK_AGENTS:
@@ -70,7 +81,9 @@ class _ForkRules:
                     ))
                 continue
 
-            if isinstance(target, AgentDefinition):
+            # fork 실행 기반이 될 수 있는 종류인가 (Q27 — `IS_FORK_BASE`).
+            # 워크플로 에이전트는 선언하지 않으므로 여기 걸린다.
+            if not type(target).IS_FORK_BASE:
                 add(skill, rule="fork_agent_wrong_kind", message=(
                     f"fork 스킬 '{skill.name}'의 에이전트 '{target.name}'은(는) 워크플로 "
                     f"에이전트입니다 — 워크플로 에이전트는 fork 에이전트가 될 수 없습니다. "
@@ -106,12 +119,11 @@ class _ForkRules:
         일어나지 않는 상태라 알린다(원칙 5). 워크플로 에이전트는 대상이 아니다
         (캔버스 노드로 불린다).
         """
-        from daedalus.model.plugin.agent import ForkAgent
         from daedalus.model.plugin.placement import fork_skills_using
 
         errors: list[ValidationError] = []
         for agent in getattr(project, "agents", None) or []:
-            if not isinstance(agent, ForkAgent):
+            if not type(agent).IS_FORK_BASE:  # Q27 — 워크플로 에이전트는 대상 아님
                 continue
             if fork_skills_using(agent, project):
                 continue

@@ -74,13 +74,11 @@ class _BlackboardRules:
             return _visit
 
         for skill in project.skills:
-            fsm = getattr(skill, "fsm", None)
-            if fsm is not None:
-                scan_state_access(fsm, _make_checker((f"skill:{skill.name}",)))
+            for sm in skill.state_machines():  # Q2 — FSM 보유는 컴포넌트가 답한다
+                scan_state_access(sm, _make_checker((f"skill:{skill.name}",)))
         for agent in project.agents:
-            fsm = getattr(agent, "fsm", None)  # fork 에이전트에는 fsm이 없다
-            if fsm is not None:
-                scan_state_access(fsm, _make_checker((f"agent:{agent.name}",)))
+            for sm in agent.state_machines():
+                scan_state_access(sm, _make_checker((f"agent:{agent.name}",)))
         graph = getattr(project, "graph", None)
         if graph is not None:
             scan_state_access(graph, _make_checker(("project",)))
@@ -104,13 +102,11 @@ class _BlackboardRules:
             declared.update(getattr(state, "writes", None) or [])
 
         for skill in project.skills:
-            fsm = getattr(skill, "fsm", None)
-            if fsm is not None:
-                scan_state_access(fsm, _collect)
+            for sm in skill.state_machines():  # Q2
+                scan_state_access(sm, _collect)
         for agent in project.agents:
-            fsm = getattr(agent, "fsm", None)  # fork 에이전트에는 fsm이 없다
-            if fsm is not None:
-                scan_state_access(fsm, _collect)
+            for sm in agent.state_machines():
+                scan_state_access(sm, _collect)
         graph = getattr(project, "graph", None)
         if graph is not None:
             scan_state_access(graph, _collect)

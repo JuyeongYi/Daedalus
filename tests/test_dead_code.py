@@ -106,118 +106,6 @@ ALLOWLIST: dict[str, tuple[str, str]] = {
     # 잊힐 수 없다. 표면의 나머지(effective_placement·is_active·emits_output·
     # can_delete·output_ports·call_ports·new·creation_defaults)는 이미 표면
     # 안에서 서로를 불러 규칙 A를 그대로 통과한다 — 여기 없는 이유다.
-    "model.plugin.base::PluginComponent.state_machines": (
-        "contract-registry",
-        "Q2 FSM 보유 — 능력 표면의 선언 쪽 절반이다. "
-        "호출자 쪽 절반을 배선할 곳: "
-        "WP-2b — `model/project.project_state_machines`·검증 스캔. "
-        "`tests/model/plugin/test_capability_surface.py`가 "
-        "9종 전부의 선언 완결성을 강제한다.",
-    ),
-    "model.plugin.skill::StepSkill.state_machines": (
-        "contract-registry",
-        "Q2 FSM 보유 — 능력 표면의 선언 쪽 절반이다. "
-        "호출자 쪽 절반을 배선할 곳: "
-        "WP-2b — `model/project.project_state_machines`·검증 스캔. "
-        "`tests/model/plugin/test_capability_surface.py`가 "
-        "9종 전부의 선언 완결성을 강제한다.",
-    ),
-    "model.plugin.skill::TransferSkill.state_machines": (
-        "contract-registry",
-        "Q2 FSM 보유 — 능력 표면의 선언 쪽 절반이다. "
-        "호출자 쪽 절반을 배선할 곳: "
-        "WP-2b — `model/project.project_state_machines`·검증 스캔. "
-        "`tests/model/plugin/test_capability_surface.py`가 "
-        "9종 전부의 선언 완결성을 강제한다.",
-    ),
-    "model.plugin.skill::WrappedSkill.state_machines": (
-        "contract-registry",
-        "Q2 FSM 보유 — 능력 표면의 선언 쪽 절반이다. "
-        "호출자 쪽 절반을 배선할 곳: "
-        "WP-2b — `model/project.project_state_machines`·검증 스캔. "
-        "`tests/model/plugin/test_capability_surface.py`가 "
-        "9종 전부의 선언 완결성을 강제한다.",
-    ),
-    "model.plugin.agent::AgentDefinition.state_machines": (
-        "contract-registry",
-        "Q2 FSM 보유 — 능력 표면의 선언 쪽 절반이다. "
-        "호출자 쪽 절반을 배선할 곳: "
-        "WP-2b — `model/project.project_state_machines`·검증 스캔. "
-        "`tests/model/plugin/test_capability_surface.py`가 "
-        "9종 전부의 선언 완결성을 강제한다.",
-    ),
-    "model.plugin.base::PluginComponent.known_outgoing_events": (
-        "contract-registry",
-        "Q30 합법 출력 이벤트 집합 — 능력 표면의 선언 쪽 절반이다. "
-        "호출자 쪽 절반을 배선할 곳: "
-        "WP-2b — `model/validation/machine_rules`의 trigger_unknown_event. "
-        "`tests/model/plugin/test_capability_surface.py`가 "
-        "9종 전부의 선언 완결성을 강제한다.",
-    ),
-    "model.plugin.skill::StepSkill.known_outgoing_events": (
-        "contract-registry",
-        "Q30 합법 출력 이벤트 집합 — 능력 표면의 선언 쪽 절반이다. "
-        "호출자 쪽 절반을 배선할 곳: "
-        "WP-2b — `model/validation/machine_rules`의 trigger_unknown_event. "
-        "`tests/model/plugin/test_capability_surface.py`가 "
-        "9종 전부의 선언 완결성을 강제한다.",
-    ),
-    "model.plugin.agent::AgentDefinition.known_outgoing_events": (
-        "contract-registry",
-        "Q30 합법 출력 이벤트 집합 — 능력 표면의 선언 쪽 절반이다. "
-        "호출자 쪽 절반을 배선할 곳: "
-        "WP-2b — `model/validation/machine_rules`의 trigger_unknown_event. "
-        "`tests/model/plugin/test_capability_surface.py`가 "
-        "9종 전부의 선언 완결성을 강제한다.",
-    ),
-    "model.plugin.base::PluginComponent.hook_refs": (
-        "contract-registry",
-        "Q24 훅 이름 참조(삽입 순서) — 능력 표면의 선언 쪽 절반이다. "
-        "호출자 쪽 절반을 배선할 곳: "
-        "WP-2b — `model/validation/project_rules/hooks`의 dangling_hook_ref. "
-        "`tests/model/plugin/test_capability_surface.py`가 "
-        "9종 전부의 선언 완결성을 강제한다.",
-    ),
-    "model.plugin.base::PluginComponent.external_plugin_refs": (
-        "contract-registry",
-        "Q15 외부 플러그인 설치 id 참조 — 능력 표면의 선언 쪽 절반이다. "
-        "호출자 쪽 절반을 배선할 곳: "
-        "WP-2b — `naming._check_external_plugins`의 종류 중립화. "
-        "`tests/model/plugin/test_capability_surface.py`가 "
-        "9종 전부의 선언 완결성을 강제한다.",
-    ),
-    "model.plugin.skill::WrappedSkill.external_plugin_refs": (
-        "contract-registry",
-        "Q15 외부 플러그인 설치 id 참조 — 능력 표면의 선언 쪽 절반이다. "
-        "호출자 쪽 절반을 배선할 곳: "
-        "WP-2b — `naming._check_external_plugins`의 종류 중립화. "
-        "`tests/model/plugin/test_capability_surface.py`가 "
-        "9종 전부의 선언 완결성을 강제한다.",
-    ),
-    "model.plugin.base::PluginComponent.external_source": (
-        "contract-registry",
-        "Q34 외부 정본 원문 — 능력 표면의 선언 쪽 절반이다. "
-        "호출자 쪽 절반을 배선할 곳: "
-        "WP-2b — `naming._check_wrapped_sources`의 `_check_external_sources` 일반화. "
-        "`tests/model/plugin/test_capability_surface.py`가 "
-        "9종 전부의 선언 완결성을 강제한다.",
-    ),
-    "model.plugin.skill::WrappedSkill.external_source": (
-        "contract-registry",
-        "Q34 외부 정본 원문 — 능력 표면의 선언 쪽 절반이다. "
-        "호출자 쪽 절반을 배선할 곳: "
-        "WP-2b — `naming._check_wrapped_sources`의 `_check_external_sources` 일반화. "
-        "`tests/model/plugin/test_capability_surface.py`가 "
-        "9종 전부의 선언 완결성을 강제한다.",
-    ),
-    "model.plugin.config::ComponentConfig.name_refs": (
-        "contract-registry",
-        "Q14 이름 참조 열거 — 능력 표면의 선언 쪽 절반이다. "
-        "호출자 쪽 절반을 배선할 곳: "
-        "WP-2b — `model/project.rename_component`. "
-        "`tests/model/plugin/test_capability_surface.py`가 "
-        "9종 전부의 선언 완결성을 강제한다.",
-    ),
     "model.plugin.config::ComponentConfig.rename_ref": (
         "contract-registry",
         "Q14 이름 참조 치환 — 능력 표면의 선언 쪽 절반이다. "
@@ -226,25 +114,9 @@ ALLOWLIST: dict[str, tuple[str, str]] = {
         "`tests/model/plugin/test_capability_surface.py`가 "
         "9종 전부의 선언 완결성을 강제한다.",
     ),
-    "model.plugin.config::ForkSkillConfig.name_refs": (
-        "contract-registry",
-        "Q14 이름 참조 열거 — 능력 표면의 선언 쪽 절반이다. "
-        "호출자 쪽 절반을 배선할 곳: "
-        "WP-2b — `model/project.rename_component`. "
-        "`tests/model/plugin/test_capability_surface.py`가 "
-        "9종 전부의 선언 완결성을 강제한다.",
-    ),
     "model.plugin.config::ForkSkillConfig.rename_ref": (
         "contract-registry",
         "Q14 이름 참조 치환 — 능력 표면의 선언 쪽 절반이다. "
-        "호출자 쪽 절반을 배선할 곳: "
-        "WP-2b — `model/project.rename_component`. "
-        "`tests/model/plugin/test_capability_surface.py`가 "
-        "9종 전부의 선언 완결성을 강제한다.",
-    ),
-    "model.plugin.config::AgentConfigBase.name_refs": (
-        "contract-registry",
-        "Q14 이름 참조 열거 — 능력 표면의 선언 쪽 절반이다. "
         "호출자 쪽 절반을 배선할 곳: "
         "WP-2b — `model/project.rename_component`. "
         "`tests/model/plugin/test_capability_surface.py`가 "
