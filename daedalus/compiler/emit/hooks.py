@@ -49,7 +49,9 @@ def component_hook_groups(
     """
     from daedalus.model.plugin.hook import HookEvent
 
-    referenced = getattr(getattr(component, "config", None), "hooks", None) or {}
+    # 참조 목록의 실체는 컴포넌트의 `hook_refs()` 하나다(Q24) — 깨진
+    # `config.hooks`(dict가 아닌 값)를 견디는 자리가 두 벌이면 한쪽만 터진다.
+    referenced = component.hook_refs()
     if not referenced or project is None:
         return {}
     wanted = set(referenced)
@@ -94,7 +96,7 @@ def emitted_hooks(
     return [
         h for h in library
         if (h.name in own or h.name in referenced)
-        and getattr(h, "enabled", True)
+        and h.enabled
     ]
 
 
@@ -133,9 +135,7 @@ def hooks_needing_scripts(
     for component in referencing:
         if not emits_output_file(component):
             continue
-        cfg_hooks = getattr(getattr(component, "config", None), "hooks", None)
-        if isinstance(cfg_hooks, dict):
-            wanted.update(cfg_hooks)
+        wanted.update(component.hook_refs())
     return [h for h in library if h.name in wanted]
 
 
@@ -148,19 +148,14 @@ def _collect_referenced_hook_names(project) -> list[str]:
     """
     names: list[str] = []
     seen: set[str] = set()
-
-    def _add_from(cfg) -> None:
-        hooks = getattr(cfg, "hooks", None)
-        if isinstance(hooks, dict):
-            for name in hooks:
-                if name not in seen:
-                    seen.add(name)
-                    names.append(name)
-
-    for skill in getattr(project, "skills", []):
-        _add_from(getattr(skill, "config", None))
-    for agent in getattr(project, "agents", []):
-        _add_from(getattr(agent, "config", None))
+    for component in [
+        *(getattr(project, "skills", None) or []),
+        *(getattr(project, "agents", None) or []),
+    ]:
+        for name in component.hook_refs():
+            if name not in seen:
+                seen.add(name)
+                names.append(name)
     return names
 
 

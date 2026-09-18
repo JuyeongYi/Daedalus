@@ -62,7 +62,6 @@ from daedalus.model.plugin.skill import (
     TransferSkill,
     WrappedSkill,
     has_external_body,
-    is_disabled_wrapped,
     is_reference_usage,
 )
 from daedalus.view.component_actions import ComponentActions
@@ -320,7 +319,10 @@ def test_capability_answers_match_todays_predicates(comp):
     assert (
         comp.effective_placement() is PlacementRole.REFERENCE
     ) is is_reference_usage(comp)
-    assert comp.is_active() is (not is_disabled_wrapped(comp))
+    # `is_disabled_wrapped` 파사드는 WP-2c에서 마지막 호출자가 사라져 삭제됐다 —
+    # 이제 능력 메서드를 **원 필드**에 직접 맞춰 본다(파사드끼리의 동어반복이
+    # 아니라 실제 상태를 건다).
+    assert comp.is_active() is bool(getattr(comp.config, "enabled", True))
     assert (type(comp).BODY_SOURCE is BodySource.EXTERNAL) is has_external_body(comp)
     assert (comp.effective_placement() is PlacementRole.STATE) is is_state_placeable(
         comp

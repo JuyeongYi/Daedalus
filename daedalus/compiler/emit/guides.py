@@ -32,15 +32,7 @@ from daedalus.compiler.emit.common import (
     _join_blocks,
     emitted_components,
 )
-from daedalus.model.plugin.agent import Agent, AgentDefinition
-from daedalus.model.plugin.skill import (
-    DeclarativeSkill,
-    ForkSkill,
-    StepSkill,
-    TransferSkill,
-    WrappedSkill,
-    is_reference_usage,
-)
+from daedalus.model.plugin.roles import BodySource, Bucket, PlacementRole
 from daedalus.model.plugin.variables import ROOT_TOKEN
 
 #: 산출 계획 kind — 가이드가 둘이므로 kind도 둘이다(`_PlannedOutput`에 구분 필드를
@@ -111,22 +103,34 @@ def workflow_pointer_kind(component, project) -> str:
     수도 없다. 그래서 보고 양식만 가리키는 전용 줄을 낸다.
 
     fork 에이전트·랩핑 실행 에이전트·미배치 스킬은 대상이 아니다("").
+
+    **판정은 전부 능력 선언이다**(WP-2c) — 종류를 열거하지 않으므로 새 종류는
+    `PLACEMENT`/`RUNS_IN_SUBAGENT`/`IS_FORK_BASE`를 고르는 것으로 합류한다.
     """
     if not _workflow_guide_available(project):
         return ""
-    if isinstance(component, TransferSkill):
-        # 전이 스킬은 그래프 노드가 아니다 — 진행 파일을 만드는 배치 스킬이
+    if component.effective_placement() is PlacementRole.EDGE:
+        # 엣지 스킬은 그래프 노드가 아니다 — 진행 파일을 만드는 배치 스킬이
         # 하나라도 있으면(위 게이트) 지침이 고아가 아니다.
         return "main"
     if not _graph_placements(component, project):
         return ""
-    if isinstance(component, ForkSkill):
+    if component.effective_placement() is PlacementRole.REFERENCE:
+        # 참조 노드는 스스로 워크플로를 진행시키지 않는다. 참조 용도 랩핑
+        # 스킬은 산출 파일도 없지만, D1 이전에 만든 `.ddpj`에는 state 노드로
+        # 박혀 있을 수 있어 여기까지 도달한다.
+        return ""
+    if (
+        component.BUCKET is Bucket.SKILLS
+        and component.RUNS_IN_SUBAGENT
+        and component.BODY_SOURCE is BodySource.OWNED
+    ):
+        # fork 스킬 — 본문이 우리 것이면서 서브에이전트에서 도는 단계.
         return "fork"
-    if isinstance(component, WrappedSkill):
-        return "" if is_reference_usage(component) else "main"
-    if isinstance(component, (StepSkill, DeclarativeSkill, AgentDefinition)):
-        return "main"
-    return ""
+    if component.IS_FORK_BASE:
+        # fork 실행 기반(fork 에이전트) — 가이드는 그것을 쓰는 fork 스킬이 받는다.
+        return ""
+    return "main"
 
 
 def blackboard_pointer_wanted(component, project) -> bool:
@@ -135,14 +139,19 @@ def blackboard_pointer_wanted(component, project) -> bool:
     오늘 "## Shared State (Blackboard)"가 배출되는 컴포넌트와 같은 집합이다 —
     단계 스킬(fork 2종 포함)·state 용도 랩핑 스킬·에이전트 두 종류. 클래스 정의가
     하나도 없으면 가이드 자체가 없다.
+
+    술어는 **"그래프 노드로 도는 종류인가"**(선언 `PLACEMENT`) ∪ 에이전트
+    전부이고, 거기서 **인스턴스**가 참조 노드로 쓰이는 것만 뺀다 — 선언(종류가
+    블랙보드 단락을 갖는가)과 상태(이 인스턴스가 참조로 놓였는가)를 나눠 묻는다.
     """
     if not _blackboard_guide_available(project):
         return False
-    if isinstance(component, Agent):
-        return True
-    if isinstance(component, WrappedSkill):
-        return not is_reference_usage(component)
-    return isinstance(component, StepSkill)
+    if component.effective_placement() is PlacementRole.REFERENCE:
+        return False
+    return (
+        component.BUCKET is Bucket.AGENTS
+        or type(component).PLACEMENT is PlacementRole.STATE
+    )
 
 
 def workflow_guide_referenced(project) -> bool:

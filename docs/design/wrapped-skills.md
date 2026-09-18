@@ -22,7 +22,8 @@
   접미사를 붙이면 사용자 에이전트와 부딪칠 새 경우가 생긴다). **model/effort는
   실행 에이전트로 옮긴다**(SKILL.md 프론트매터에서 빠진다 — 일하는 컨텍스트가
   거기다). 산출 판정의 단일 진실은 `needs_runner_agent`(state 용도·활성·source
-  형식 일치) — 산출 계획(`kind="wrapped_runner"`)과 절차 단락이 공유한다.
+  형식 일치 — 술어는 `BODY_SOURCE is EXTERNAL` × `effective_placement() is STATE` ×
+  `is_active()` 능력 선언이다) — 산출 계획(`kind="wrapped_runner"`)과 절차 단락이 공유한다.
   **`플러그인:스킬` 해석은 실측했다**(CC 2.1.268 바이너리, 공식 문서에는 없음):
   에이전트 `skills` 각 이름을 ① 정확한 명령 이름 → ② 에이전트의 플러그인 접두 +
   이름 → ③ `:이름` 접미 일치 순으로 찾는다. 못 찾거나
@@ -89,7 +90,8 @@
   소스·프론트매터·배선을 다시 입력하는 비용이 크고, 지우면 이 프로젝트가 그
   외부 스킬을 한때 썼다는 사실 자체가 사라진다. "쓰지 않는다"는
   `WrappedSkillConfig.enabled`(기본 True, 직렬화 왕복, 키 부재=True)로 말하고
-  판정의 단일 진실은 `model/plugin/skill.is_disabled_wrapped`다.
+  판정의 단일 진실은 `WrappedSkill.is_active()`다(옛 파사드 `is_disabled_wrapped`는
+  WP-2c에서 마지막 호출자가 사라져 삭제됐다).
   - **끄면 빠지는 곳**: 산출 계획(state 용도 SKILL.md 미산출) / 참조 용도의
     `## Background Skills` consult 지시 / 외부 플러그인 참조 판정
     (`unused`·`undeclared` 둘 다 — 꺼둔 것은 쓰지 않는 것이다).

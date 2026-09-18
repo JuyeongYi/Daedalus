@@ -63,35 +63,18 @@ def _body_block(body: str) -> str | None:
 
 def emits_output_file(component) -> bool:
     """이 컴포넌트가 자기 산출 파일(`skills/<이름>/SKILL.md` 또는
-    `agents/<이름>.md`)을 갖는가.
+    `agents/<이름>.md`)을 갖는가 — **한 줄 파사드**(WP-2c).
 
-    `plan._plan_outputs`의 제외 규칙과 `guides`의 포인터 판정 대상이 같은 집합을
-    가리켜야 한다 — 둘이 어긋나면 ① 아무도 가리키지 않는 가이드 파일이 나가거나
-    ② 산출되지 않는 파일에 포인터가 붙는다. 그래서 판정은 여기 하나다.
+    판정의 실체는 컴포넌트 자신의 `emits_output()`이다(`OUTPUT_LOCATION` 선언 ×
+    `is_active()`). 여기 남아 있는 것은 컴파일러 어휘의 이름 하나뿐이다 —
+    `plan._plan_outputs`의 제외 규칙과 `guides`의 포인터 판정이 같은 함수를
+    부르는 것이 원래의 목적이었고, 이제는 같은 **메서드**를 부른다.
 
-    제외 대상은 둘뿐이다(둘 다 WP-WR 사용자 확정):
-      - 참조 용도 랩핑 스킬 — 파일을 만들지 않고 링크된 노드의 산출에 consult
-        지시로만 합류한다.
-      - 비활성 랩핑 스킬 — 껐는데 플러그인에는 들어 있으면 끈 의미가 없다.
-    에이전트는 두 종류 모두 `agents/<이름>.md`를 갖는다.
+    종전 사다리가 열거하던 제외 대상(참조 용도·비활성 랩핑 스킬)은
+    `WrappedSkill.emits_output()` 오버라이드가 답한다 — 새 종류는 여기를 고치지
+    않고 `OUTPUT_LOCATION` 한 줄로 합류한다.
     """
-    from daedalus.model.plugin.agent import Agent
-    from daedalus.model.plugin.skill import (
-        Skill,
-        WrappedSkill,
-        is_disabled_wrapped,
-        is_reference_usage,
-    )
-
-    if isinstance(component, Agent):
-        return True
-    if not isinstance(component, Skill):
-        return False
-    if isinstance(component, WrappedSkill) and (
-        is_reference_usage(component) or is_disabled_wrapped(component)
-    ):
-        return False
-    return True
+    return component.emits_output()
 
 
 def emitted_components(project) -> list:
@@ -118,6 +101,34 @@ def _is_local_build(project) -> bool:
     from daedalus.model.plugin.enums import BuildTarget
 
     return _build_target(project) is BuildTarget.LOCAL
+
+
+# ─────────────────────────── 위임 대상 에이전트 이름 ───────────────────────────
+
+
+def agent_invocation_name(component, project) -> str:
+    """이 컴포넌트의 본문을 실행하는 서브에이전트를 **CC가 찾는 이름** (WP-2c).
+
+    "누구에게 위임하는가"는 컴포넌트가 답하고(`delegated_agent_name()` — fork
+    스킬은 `config.agent`, 랩핑 스킬은 자기 이름의 러너), "그 이름을 CC가 어떻게
+    부르는가"는 빌드 타깃이 답한다. 둘을 한 함수로 묶어 두면 위임 대상을 갖는
+    종류가 늘 때마다 이름 해소 규칙이 복제된다.
+
+    프로젝트 에이전트만 타깃별로 바뀐다 — 마켓 빌드는 `플러그인:이름`, LOCAL은
+    `이름`. 내장(`general-purpose`)·외부 에이전트는 저장된 문자열 그대로다
+    (정확 일치라 틀리면 조용히 general-purpose로 돈다).
+
+    위임 대상이 없는 종류는 `general-purpose`로 답한다 — 종전
+    `resolve_fork_agent_name`의 `or "general-purpose"` 폴백과 같다.
+    """
+    agent = component.delegated_agent_name() or "general-purpose"
+    if project is None:
+        return agent
+    if not any(a.name == agent for a in getattr(project, "agents", None) or []):
+        return agent
+    if _is_local_build(project):
+        return agent
+    return f"{getattr(project, 'name', '')}:{agent}"
 
 
 # ─────────────────────────── 프로젝트 그래프 placement ───────────────────────────

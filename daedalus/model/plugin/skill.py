@@ -167,21 +167,6 @@ def is_reference_usage(component: object) -> bool:
     return placement_role_of(component) is PlacementRole.REFERENCE
 
 
-def is_disabled_wrapped(component: object) -> bool:
-    """비활성으로 꺼 둔 랩핑 스킬인가 (WP-WR, 사용자 확정 2026-09-07).
-
-    랩핑 스킬은 **삭제할 수 없고** `config.enabled`로 끈다 — 그래서 "쓰지
-    않는다"를 표현하는 유일한 방법이 이 상태이고, 산출·배선·검증이 전부 이
-    판정을 공유해야 한다(표면마다 다르면 꺼 뒀는데 산출에는 남는 식이 된다).
-    랩핑 스킬이 아닌 컴포넌트는 항상 False — 그쪽엔 이 스위치가 없다.
-
-    **한 줄 파사드다**(WP-2b): 실체는 `component.is_active()`이고 스위치가 없는
-    종류는 기저 구현이 항상 True를 답한다.
-    """
-    active = getattr(component, "is_active", None)
-    return callable(active) and not active()
-
-
 def has_external_body(component: object) -> bool:
     """본문의 **정본이 외부**에 있는가 — 본문 편집 잠금의 단일 판정.
 

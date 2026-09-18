@@ -124,7 +124,7 @@ def _frontmatter_lines_skill(
     """
     # 표를 고르는 규칙의 실체는 model의 `matrix_for` 하나다(config.kind가 키).
     matrix = matrix_for(skill)
-    config = getattr(skill, "config", None)
+    config = skill.config
     lines: list[str] = []
 
     for sfield in SkillField:
@@ -208,10 +208,12 @@ def _compose_description(component: Skill | AgentDefinition) -> str:
 
     정책 2: description이 있으면 "<description> Use when <when_to_use>".
     description이 비어 있으면 when_to_use만(있을 때). 둘 다 비면 빈 문자열.
-    when_to_use는 Skill에만 있으므로 getattr 가드.
+    `when_to_use` 필드를 갖는 것은 스킬뿐이지만, 기저 `PluginComponent`가 빈
+    문자열을 클래스 속성으로 선언하므로(WP-2a 형상 기본값) 에이전트도 그냥
+    읽는다 — getattr 가드가 없어도 값이 같다.
     """
     desc = (component.description or "").strip()
-    when = (getattr(component, "when_to_use", "") or "").strip()
+    when = (component.when_to_use or "").strip()
     if desc and when:
         sep = " " if desc.endswith((".", "!", "?")) else ". "
         return f"{desc}{sep}Use when {when}"

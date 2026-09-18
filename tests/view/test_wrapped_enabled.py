@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import pytest
 
-from daedalus.model.plugin.skill import is_disabled_wrapped
 from daedalus.model.project import PluginProject
 
 
@@ -78,10 +77,10 @@ def test_toggle_disables_and_reenables(window, tools):
     skill = _wrapped(tools)
     out = tools.set_wrapped_enabled("wrap-it", False)
     assert out["changed"] is True and out["enabled"] is False
-    assert is_disabled_wrapped(skill)
+    assert not skill.is_active()
 
     tools.set_wrapped_enabled("wrap-it", True)
-    assert not is_disabled_wrapped(skill)
+    assert skill.is_active()
 
 
 def test_toggle_is_undoable(window, tools):

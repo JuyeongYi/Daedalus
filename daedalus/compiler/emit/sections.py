@@ -26,7 +26,7 @@ from daedalus.model.fsm.strategy import (
     ToolEvaluation,
 )
 from daedalus.model.fsm.walk import iter_states
-from daedalus.model.plugin.agent import Agent, AgentDefinition
+from daedalus.model.plugin.roles import BodySource, Bucket, PlacementRole
 from daedalus.model.plugin.skill import Skill, StepSkill
 
 
@@ -106,11 +106,15 @@ def _state_label(state: State) -> str:
 
 
 def _describe_node_action(state: SimpleState) -> str:
-    """SimpleState의 skill_ref에 따른 작업 지시 문구."""
+    """SimpleState의 skill_ref에 따른 작업 지시 문구.
+
+    "이 노드로 가는 것이 위임인가"는 대상이 선언한다(`DELEGATION_TARGET`, Q9) —
+    종류를 열거하지 않는다.
+    """
     ref = state.skill_ref
     if ref is None:
         return ""
-    if isinstance(ref, AgentDefinition):
+    if getattr(ref, "DELEGATION_TARGET", False):
         return f"delegate to agent `{ref.name}`"
     # 스킬 참조
     name = getattr(ref, "name", "")
@@ -271,8 +275,7 @@ def _mcp_requirement_section_skill(skill: Skill) -> list[str]:
     """스킬 config.allowed_tools의 mcp__ 접두에서 서버 이름을 추출해 "## Requirements"
     단락을 만든다. 서버가 없으면 빈 목록(단락 생략).
     """
-    config = getattr(skill, "config", None)
-    servers = _mcp_servers_from_tools(getattr(config, "allowed_tools", None))
+    servers = _mcp_servers_from_tools(getattr(skill.config, "allowed_tools", None))
     if not servers:
         return []
     names = ", ".join(f"`{s}`" for s in servers)
@@ -292,10 +295,10 @@ def referenced_mcp_servers(project) -> list[str]:
     """
     servers: set[str] = set()
     for skill in getattr(project, "skills", []) or []:
-        config = getattr(skill, "config", None)
+        config = skill.config
         servers.update(_mcp_servers_from_tools(getattr(config, "allowed_tools", None)))
     for agent in getattr(project, "agents", []) or []:
-        config = getattr(agent, "config", None)
+        config = agent.config
         servers.update(getattr(config, "mcp_servers", None) or [])
         servers.update(_mcp_servers_from_tools(getattr(config, "tools", None)))
     return sorted(s for s in servers if s)
@@ -319,9 +322,10 @@ def _component_access_union(component, project) -> tuple[set[str], set[str]]:
     reads/writes 선언 합집합 (WP-BB Part D-2)."""
     reads: set[str] = set()
     writes: set[str] = set()
-    fsm = getattr(component, "fsm", None)
-    if fsm is not None:
-        reads, writes = _collect_state_access(fsm)
+    for sm in component.state_machines():
+        sm_reads, sm_writes = _collect_state_access(sm)
+        reads.update(sm_reads)
+        writes.update(sm_writes)
     for placement in _graph_placements(component, project):
         reads.update(getattr(placement, "reads", None) or [])
         writes.update(getattr(placement, "writes", None) or [])
@@ -348,13 +352,16 @@ def linked_background_skills(component, project) -> list[tuple[str, str]]:
     if not node_names:
         return []
     from daedalus.compiler.emit.wrapped import external_skill_name
-    from daedalus.model.plugin.skill import is_disabled_wrapped
 
+    # **참조 노드로 쓰이는, 본문 정본이 외부인, 켜져 있는 스킬** — 세 능력
+    # 선언이 종전의 `kind == "wrapped_skill" and usage == "reference" and
+    # not disabled` 사다리를 그대로 대신한다(WP-2c). 자체 산출이 있는
+    # `ReferenceSkill`은 `BODY_SOURCE`가 OWNED라 자연 제외된다.
     wrapped_refs = {
         s.name: s for s in project.skills
-        if getattr(s, "kind", "") == "wrapped_skill"
-        and getattr(getattr(s, "config", None), "usage", "") == "reference"
-        and not is_disabled_wrapped(s)
+        if s.BODY_SOURCE is BodySource.EXTERNAL
+        and s.effective_placement() is PlacementRole.REFERENCE
+        and s.is_active()
     }
     entries: list[tuple[str, str]] = []
     seen: set[str] = set()
@@ -364,7 +371,7 @@ def linked_background_skills(component, project) -> list[tuple[str, str]]:
             continue
         if not node_names & set(getattr(rp, "connected_states", []) or []):
             continue
-        ext = external_skill_name(getattr(skill.config, "source", "") or "")
+        ext = external_skill_name(skill.external_source or "")
         if not ext:
             continue  # external_source_missing 소관 — 빈 지시를 내지 않는다
         seen.add(skill.name)
@@ -434,7 +441,8 @@ def _blackboard_section(project, component) -> list[str]:
     ]
 
     # "이 컴포넌트를 무엇이라 부르는가" — 에이전트 두 종류 모두 "agent"다.
-    subject = "agent" if isinstance(component, Agent) else "skill"
+    # 컴파일러 산출의 영어 명사 — 버킷이 가른다(에이전트 두 종류 모두 "agent").
+    subject = "agent" if component.BUCKET is Bucket.AGENTS else "skill"
     intro_lines: list[str] = []
     if reads:
         intro_lines.append(
@@ -467,7 +475,7 @@ def _tool_shelf_section(project) -> list[str]:
     for tool in shelf:
         desc = f" — {tool.description}" if getattr(tool, "description", "") else ""
         lines.append(f"- **{tool.name}** ({tool.kind}){desc}")
-        body = getattr(tool, "body", "")
+        body = tool.body
         note = getattr(tool, "allowed_arguments_note", "")
         server = getattr(tool, "server", "")
         tool_name = getattr(tool, "tool_name", "")

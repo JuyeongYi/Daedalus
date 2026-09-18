@@ -18,7 +18,7 @@ CC의 `context: fork` 스킬은 SKILL.md 본문을 작업 지시로 삼아 `agen
 """
 from __future__ import annotations
 
-from daedalus.compiler.emit.common import _is_local_build
+from daedalus.compiler.emit.common import agent_invocation_name
 from daedalus.compiler.emit.frontmatter import _format_kv
 
 # 판정의 실체는 모델에 있다(뷰·MCP·컴파일러가 같은 목록을 말해야 한다) —
@@ -27,15 +27,14 @@ from daedalus.model.plugin.placement import fork_skills_using  # noqa: F401
 
 
 def resolve_fork_agent_name(skill, project) -> str:
-    """fork 스킬 `agent:`에 적을 이름 — 프로젝트 에이전트만 타깃별로 바꾼다."""
-    agent = getattr(skill.config, "agent", "") or "general-purpose"
-    if project is None:
-        return agent
-    if not any(a.name == agent for a in getattr(project, "agents", None) or []):
-        return agent
-    if _is_local_build(project):
-        return agent
-    return f"{getattr(project, 'name', '')}:{agent}"
+    """fork 스킬 `agent:`에 적을 이름 — **한 줄 파사드**(WP-2c).
+
+    실체는 `common.agent_invocation_name`이다: "누구에게 위임하는가"는
+    컴포넌트가(`delegated_agent_name()`), "그 이름을 CC가 어떻게 부르는가"는
+    빌드 타깃이 답한다. fork 스킬이 위임 대상을 갖는 유일한 종류가 아니므로
+    (랩핑 스킬도 러너에 위임한다) 해소 규칙이 fork 전용 모듈에 있으면 복제된다.
+    """
+    return agent_invocation_name(skill, project)
 
 
 def fork_frontmatter_lines(lines: list[str], skill, project) -> list[str]:

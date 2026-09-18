@@ -53,12 +53,12 @@ SHAPE_ATTRS: frozenset[str] = frozenset({
 #: 첫 인자가 이것들이면 컴포넌트 형상 질문이 아니다(프로젝트/설정/문서 조회).
 SHAPE_EXCLUDED_SUBJECTS: frozenset[str] = frozenset({"project", "cfg", "config", "doc"})
 
-#: 실측 기준선 (2026-09-19, WP-2b 완료 — model 소비자 치환 직후). **내리기만 한다.**
+#: 실측 기준선 (2026-09-19, WP-2c 1/3 — emit 공용 판정 치환 직후). **내리기만 한다.**
 RATCHET: dict[str, int] = {
-    "isinstance_sites": 84,
-    "isinstance_files": 26,
-    "shape_attr_sites": 85,
-    "shape_attr_files": 32,
+    "isinstance_sites": 71,
+    "isinstance_files": 22,
+    "shape_attr_sites": 68,
+    "shape_attr_files": 28,
 }
 
 #: 정당한 잔존 사이트 — `module::qualname`. 면제는 **사유와 철거 주체**를 적는다.
@@ -66,11 +66,8 @@ RATCHET: dict[str, int] = {
 #: `deser_plugin::_coerce_config`(역직렬화 안전망) 둘이다.
 ISINSTANCE_EXEMPT: dict[str, str] = {
     # WP-1 D4 — 본문 정본이 외부인가. 능력 선언 `BODY_SOURCE`(WP-2a)가 아직
-    # 없어 종류로 묻는다. **WP-2c가 이 함수 본문을
+    # 없어 종류로 묻는다. **WP-2c 3/3이 이 함수 본문을
     # `BODY_SOURCE is BodySource.EXTERNAL`로 바꾸고 이 면제를 지운다.**
-    # 이 커밋 전에는 같은 질문이 `component_editor`의 별칭 `_Wrapped`
-    # 뒤에 숨어 스캐너에 잡히지 않았다(판정 2벌 = 원칙 1 위반) — 판정을
-    # 모델 한 곳으로 모으면서 드러난 사이트라 실제 분기 수는 늘지 않았다.
     "model.plugin.skill::has_external_body":
         "본문 편집 잠금(GUI)·MCP 본문 쓰기 거절의 공유 판정 — WP-2c가 철거",
 }
@@ -266,13 +263,15 @@ def test_exemptions_point_at_live_sites():
 def test_scanner_sees_the_known_hotspots():
     """스캐너가 조용히 0을 세지 않는지 — 알려진 집중 지점을 확인한다."""
     modules = {module for module, _l, _q, _w in scan_isinstance()}
-    assert "compiler.emit.skill" in modules
+    # WP-2c가 `compiler.emit.skill`을 0으로 비운다 — 아직 남은 집중 지점으로
+    # 교체한다(단언 수는 그대로다. 표적을 지우면 스캐너가 조용히 0을 세도 통과한다).
+    assert "view.panels.registry_panel" in modules
     assert "model.serialize.ser" in modules
     shape_modules = {module for module, _l, _q, _w in scan_shape_attrs()}
-    # WP-2b가 `model.project`를 0으로 비웠다 — 남은 집중 지점으로 교체한다
-    # (단언 수는 그대로다. 표적을 지우면 스캐너가 조용히 0을 세도 통과한다).
+    # WP-2b가 `model.project`를, WP-2c가 `compiler.emit.sections`를 비웠다 —
+    # 같은 이유로 남은 집중 지점(WP-2d·WP-7 소관)으로 교체한다.
     assert "mcp.tools.query" in shape_modules
-    assert "compiler.emit.sections" in shape_modules
+    assert "view.editors.frontmatter_panel" in shape_modules
 
 
 def test_shape_exclusion_rule_is_applied():

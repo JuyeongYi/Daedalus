@@ -175,7 +175,9 @@
     - 프론트매터에 `context: fork`·`agent:`·`background:`를 낸다. 셋 다 매트릭스가 정하고(`context`·`background`는
       FIXED) `fork_frontmatter_lines`는 `agent:` **이름 해소만** 한다. 기본값 `general-purpose`도 **명시 배출**한다
       (결정적·읽는 사람에게 분명). 프로젝트 에이전트는 MARKETPLACE `플러그인:이름` / LOCAL `이름`
-      (`resolve_fork_agent_name`), 내장·외부는 저장된 문자열 그대로다(정확 일치).
+      (`resolve_fork_agent_name` → `emit/common.agent_invocation_name`: 위임 대상 이름은 컴포넌트가
+      `delegated_agent_name()`으로 답하고 빌드 타깃이 접두를 정한다), 내장·외부는 저장된 문자열
+      그대로다(정확 일치).
     - `background`는 **배치 여부와 무관하게 항상** 나간다 — 동기 fork `false`, 비동기 fork `true`. 키를 빼면
       CC 기본값(백그라운드)으로 돌아 산출이 침묵한다. 키 순서는 enum 선언 순서라 `context` → `agent` → `background`.
     - **서브에이전트는 다음 단계를 시작하지도, 진행 기록을 쓰지도 않는다** — fork 에이전트가 `Explore`/`Plan`이면 상태 파일

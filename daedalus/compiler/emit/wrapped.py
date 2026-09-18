@@ -36,11 +36,8 @@ from daedalus.compiler.emit.frontmatter import (
     _yaml_scalar,
 )
 from daedalus.model.plugin.enums import AgentField, ModelType
-from daedalus.model.plugin.skill import (
-    WrappedSkill,
-    is_disabled_wrapped,
-    is_reference_usage,
-)
+from daedalus.model.plugin.roles import BodySource, Bucket, PlacementRole
+from daedalus.model.plugin.skill import WrappedSkill
 
 
 def parse_wrapped_source(source: str) -> tuple[str, str]:
@@ -79,12 +76,21 @@ def needs_runner_agent(component: object) -> bool:
     state 용도 + 활성 + source 형식이 맞는 랩핑 스킬만. 참조 용도는 산출 파일이
     없고(링크된 에이전트의 skills 프론트매터로 주입된다), source가 비면 위임할
     대상이 없다(`external_source_missing`이 짚는다).
+
+    술어는 능력 선언이다(WP-2c): **본문 정본이 외부인 스킬**(`BODY_SOURCE`)이
+    **상태 노드로 놓이고**(`effective_placement()`) **켜져 있을 때**
+    (`is_active()`) 러너가 필요하다. 컴포넌트가 아닌 값(빈 노드의 `skill_ref`
+    등)이 섞여 들어오므로 선언 조회는 `getattr` 폴백으로 관용한다 — 종전
+    `isinstance` 사다리와 같은 계약이다.
     """
+    if getattr(component, "BUCKET", None) is not Bucket.SKILLS:
+        return False
+    if getattr(component, "BODY_SOURCE", None) is not BodySource.EXTERNAL:
+        return False
     return (
-        isinstance(component, WrappedSkill)
-        and not is_reference_usage(component)
-        and not is_disabled_wrapped(component)
-        and bool(external_skill_name(getattr(component.config, "source", "")))
+        component.effective_placement() is PlacementRole.STATE
+        and component.is_active()
+        and bool(external_skill_name(component.external_source or ""))
     )
 
 
@@ -117,9 +123,7 @@ def _wrapped_requirements_section(skill) -> list[str]:
     """
     from daedalus.compiler.emit.sections import _mcp_servers_from_tools
 
-    plugin_id, _skill_name = parse_wrapped_source(
-        getattr(getattr(skill, "config", None), "source", "")
-    )
+    plugin_id, _skill_name = parse_wrapped_source(skill.external_source or "")
     lines: list[str] = []
     if plugin_id:
         lines.append(
@@ -127,7 +131,7 @@ def _wrapped_requirements_section(skill) -> list[str]:
             f"must be installed and enabled (settings `enabledPlugins`)."
         )
     servers = _mcp_servers_from_tools(
-        getattr(getattr(skill, "config", None), "allowed_tools", None)
+        getattr(skill.config, "allowed_tools", None)
     )
     if servers:
         names = ", ".join(f"`{x}`" for x in servers)
