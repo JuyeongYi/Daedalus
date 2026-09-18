@@ -385,6 +385,7 @@ daedalus/
 │   │   │                   #     list_hook_presets/copy_global_hook — G7·G8).
 │   │   │                   #     _hook_detail(전문 = 개요 + 핸들러 CC 스키마 + 스크립트 본문)은 get_hook과 편집 결과에서만
 │   │   ├── body.py         #   본문(set_component_body/get_body_outline/get_body_section/set_body_section — WP-BU/WP-BO 경로)
+│   │   │                   #     쓰기 두 도구는 `_reject_external_body` → `skill.has_external_body`(GUI 본문 잠금과 같은 판정)로 거절
 │   │   ├── props.py        #   생성·속성(create_skill/create_agent/rename_component/description/when_to_use/field/project_properties/set_mcp_server_def).
 │   │   │                   #     팩토리는 actions/creation.make_component 직호출(S1 — 자체 dict 2벌 폐기),
 │   │   │                   #     create_skill/create_agent의 x·y는 create_and_place로 생성+배치 1 undo(G14)

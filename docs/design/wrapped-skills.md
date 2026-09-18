@@ -106,6 +106,11 @@
   프론트매터·연결선 정의만 여기서 한다. 매트릭스에 CONTEXT/AGENT/SHELL 없음
   — kind별 명시 부재는 test_field_matrix의 `_KIND_ABSENT_FIELDS`가 계약으로
   고정.
+  **MCP도 같은 판정으로 거절한다**(원칙 2 패리티): `set_component_body`·
+  `set_body_section`은 `skill.has_external_body(component)`가 참이면
+  ValueError로 이유(정본 source)와 대안을 말한다. GUI 잠금과 MCP 거절이
+  같은 함수를 부르지 않으면 "GUI는 막는데 MCP는 조용히 성공하고 산출에는
+  없는" 상태가 된다(원칙 1·5).
 - **외부 플러그인 카탈로그(D2)**: `model/plugin/wrap_catalog.py`가 발견의
   단일 진실(파일시스템을 아는 모듈 — hook_store 지위. 검증기·컴파일러는
   임포트 금지, 필요하면 호출자 주입). **마켓플레이스 폴더** 등록은 전역

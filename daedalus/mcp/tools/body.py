@@ -28,12 +28,15 @@ class BodyTools(_BaseTools):
 
         본문은 캔버스와 분리된 자체 undo 스택을 쓰므로(WP-BU) 그 문서에 적용한다 —
         에디터가 열려 있으면 화면에 즉시 반영되고, 편집기에서 Ctrl+Z로 되돌릴 수 있다.
+
+        본문 정본이 **외부**인 컴포넌트(랩핑 스킬)는 거절한다 — `_reject_external_body`.
         """
         from PySide6.QtGui import QTextCursor
 
         from daedalus.view.editors import body_documents
 
         comp = self._find_component(name)
+        self._reject_external_body(comp)
         old = str(getattr(comp, "body", "") or "")
         doc = body_documents.registry().document_for(comp)
 
@@ -111,6 +114,7 @@ class BodyTools(_BaseTools):
         from daedalus.view.editors import body_documents
 
         comp = self._find_component(name)
+        self._reject_external_body(comp)
         doc = body_documents.registry().document_for(comp)
         body = doc.toPlainText()  # 편집 중에는 문서가 진실이다(WP-BU)
         entry = outline.find_section(body, heading)
@@ -133,6 +137,33 @@ class BodyTools(_BaseTools):
             "new_length": len(repl),
             "body_length": len(comp.body),
         }
+
+    @staticmethod
+    def _reject_external_body(comp: Any) -> None:
+        """본문 정본이 외부에 있는 컴포넌트의 본문 쓰기를 **거절**한다.
+
+        랩핑 스킬의 본문은 산출에 **절대 도달하지 않는다** — 정본은
+        `config.source`가 가리키는 외부 플러그인의 SKILL.md이고, 컴파일은
+        그것을 인보크하라는 지시만 만든다. GUI는 그래서 본문 편집기를 아예
+        만들지 않는다(WP-WR, 사용자 확정). MCP만 성공을 돌려주면 "썼는데
+        산출에 없는" 조용한 no-op이 된다(원칙 2 패리티 · 원칙 5).
+
+        판정의 실체는 모델의 `has_external_body` 하나다 — GUI 잠금과 여기가
+        같은 함수를 부른다. WP-2c에서 그 함수 본문이
+        `BODY_SOURCE is BodySource.EXTERNAL`로 바뀐다(지금은 그 선언이 없다).
+        """
+        from daedalus.model.plugin.skill import has_external_body
+
+        if not has_external_body(comp):
+            return
+        source = str(getattr(comp.config, "source", "") or "") or "(source 미지정)"
+        raise ValueError(
+            f"'{comp.name}'은(는) 랩핑 스킬이라 본문을 쓸 수 없습니다 — 본문의 "
+            f"정본은 외부 플러그인 스킬 '{source}'이고, 컴파일은 그것을 "
+            "인보크하라는 지시만 만듭니다(써도 산출에 나가지 않습니다). "
+            "바꿀 수 있는 것은 이름·설명·프론트매터·포트와 "
+            "`set_component_field(field=\"source\")`입니다."
+        )
 
     @staticmethod
     def _body_text(comp: Any) -> str:

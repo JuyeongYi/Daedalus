@@ -87,6 +87,19 @@ def is_disabled_wrapped(component: object) -> bool:
     )
 
 
+def has_external_body(component: object) -> bool:
+    """본문의 **정본이 외부**에 있는가 — 본문 편집 잠금의 단일 판정.
+
+    랩핑 스킬의 본문은 산출에 절대 도달하지 않는다: 정본은 `config.source`가
+    가리키는 외부 플러그인의 SKILL.md이고, 컴파일은 그것을 인보크하라는 지시만
+    만든다(WP-WR, 사용자 확정 2026-09-07). 그래서 편집기는 본문 패널을 아예
+    만들지 않고(`view/editors/component_editor`), MCP 본문 쓰기 도구는
+    거절한다(`mcp/tools/body`) — 두 표면이 **같은 판정**을 써야 "GUI는 막는데
+    MCP는 조용히 성공"이 생기지 않는다(원칙 1·2).
+    """
+    return isinstance(component, WrappedSkill)
+
+
 @dataclass
 class StepSkill(Skill, WorkflowComponent, ABC):
     """워크플로 **단계** 스킬 공통 = Skill + FSM + 포트 (추상).

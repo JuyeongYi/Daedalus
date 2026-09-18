@@ -144,3 +144,48 @@ def test_tools_are_exposed(qapp):
 
     for name in ("get_body_outline", "get_body_section", "set_body_section"):
         assert name in TOOL_NAMES
+
+
+# --- D4: 본문 정본이 외부인 컴포넌트는 쓰기를 거절한다 (WP-1) ---
+
+
+@pytest.fixture
+def wrapped_window(qapp):
+    """랩핑 스킬 하나만 든 창 — 본문 정본은 외부 플러그인 스킬이다."""
+    from daedalus.model.plugin.skill import WrappedSkill
+    from daedalus.view.app import MainWindow
+
+    s1 = SimpleState(name="Start")
+    fsm = StateMachine(name="f", initial_state=s1, states=[s1], final_states=[s1])
+    skill = WrappedSkill(fsm=fsm, name="review", description="d")
+    skill.config.source = "alpha@mkt:review"
+    win = MainWindow()
+    win.set_project(PluginProject(name="p", skills=[skill]))
+    yield win
+    win.close()
+
+
+@pytest.fixture
+def wrapped_tools(wrapped_window):
+    from daedalus.mcp.tools import DaedalusTools
+
+    return DaedalusTools(wrapped_window)
+
+
+def test_set_component_body_rejects_external_body_source(wrapped_tools):
+    """랩핑 스킬 본문 쓰기는 **조용한 no-op**이 아니라 거절이다 (D4).
+
+    GUI는 랩핑 스킬에 본문 편집기를 아예 만들지 않는다(WP-WR 사용자 확정) —
+    정본은 `config.source`의 외부 스킬이고 컴파일은 인보크 지시를 생성한다.
+    MCP만 성공을 돌려주면 "썼는데 산출에 없는" 조용한 실패가 된다(원칙 2·5).
+    """
+    with pytest.raises(ValueError) as err:
+        wrapped_tools.set_component_body("review", "새 본문")
+    assert "alpha@mkt:review" in str(err.value)
+    assert wrapped_tools._find_component("review").body == ""
+
+
+def test_set_body_section_rejects_external_body_source(wrapped_tools):
+    """같은 문서 경로를 타는 섹션 쓰기도 같은 게이트를 지난다."""
+    with pytest.raises(ValueError):
+        wrapped_tools.set_body_section("review", "## 규칙", "## 규칙\n\n새 내용")

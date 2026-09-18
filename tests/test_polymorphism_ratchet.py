@@ -61,10 +61,19 @@ RATCHET: dict[str, int] = {
     "shape_attr_files": 41,
 }
 
-#: 정당한 잔존 사이트 — `module::qualname`. 오늘은 비어 있다.
+#: 정당한 잔존 사이트 — `module::qualname`. 면제는 **사유와 철거 주체**를 적는다.
 #: 리팩토링 종료 시점의 예정 면제는 `kinds::spec_for`와
 #: `deser_plugin::_coerce_config`(역직렬화 안전망) 둘이다.
-ISINSTANCE_EXEMPT: dict[str, str] = {}
+ISINSTANCE_EXEMPT: dict[str, str] = {
+    # WP-1 D4 — 본문 정본이 외부인가. 능력 선언 `BODY_SOURCE`(WP-2a)가 아직
+    # 없어 종류로 묻는다. **WP-2c가 이 함수 본문을
+    # `BODY_SOURCE is BodySource.EXTERNAL`로 바꾸고 이 면제를 지운다.**
+    # 이 커밋 전에는 같은 질문이 `component_editor`의 별칭 `_Wrapped`
+    # 뒤에 숨어 스캐너에 잡히지 않았다(판정 2벌 = 원칙 1 위반) — 판정을
+    # 모델 한 곳으로 모으면서 드러난 사이트라 실제 분기 수는 늘지 않았다.
+    "model.plugin.skill::has_external_body":
+        "본문 편집 잠금(GUI)·MCP 본문 쓰기 거절의 공유 판정 — WP-2c가 철거",
+}
 SHAPE_ATTR_EXEMPT: dict[str, str] = {}
 
 

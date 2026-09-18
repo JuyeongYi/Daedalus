@@ -80,11 +80,11 @@ class ComponentEditor(QWidget):
         # 정본은 config.source의 외부 스킬이고 컴파일이 인보크 지시를 생성한다.
         # 비활성 편집기를 보여 주는 대신 원본 경로 + "원본 열기" 버튼만 둔다
         # (프론트매터·연결선 정의는 좌/우 패널이 그대로 담당).
-        from daedalus.model.plugin.skill import WrappedSkill as _Wrapped
+        from daedalus.model.plugin.skill import has_external_body
 
         self._content_panel: SectionContentPanel | None = None
         self._wrapped_panel: _WrappedSourcePanel | None = None
-        if isinstance(component, _Wrapped):
+        if has_external_body(component):
             self._wrapped_panel = _WrappedSourcePanel(component)
             self._wrapped_panel.setMinimumWidth(_CENTER_MIN_W)
             root_splitter.addWidget(self._wrapped_panel)
