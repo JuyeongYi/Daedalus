@@ -23,6 +23,7 @@ Daedalus 프로젝트는 컴파일할 때 **빌드 타깃**을 하나 고릅니�
 | `plugin.json` | 만든다 | 만들지 않는다 |
 | 스킬 위치 | `skills/<이름>/SKILL.md` | `.claude/skills/<이름>/SKILL.md` |
 | 에이전트 위치 | `agents/<이름>.md` | `.claude/agents/<이름>.md` |
+| 공통 안내 파일 | `guides/<플러그인>/workflow.md`·`blackboard.md` | 같은 경로(작업 폴더 기준) |
 | 훅 등록 | `hooks/hooks.json` | 설정 파일(`.claude/settings.json` 등)의 `hooks`에 병합 |
 | 본문의 `${ROOT}` | `${CLAUDE_PLUGIN_ROOT}` | `${CLAUDE_PROJECT_DIR}` |
 | fork 스킬의 에이전트 이름 | `플러그인:이름` | `이름` |
@@ -39,7 +40,9 @@ Daedalus 프로젝트는 컴파일할 때 **빌드 타깃**을 하나 고릅니�
 <출력 폴더>/
   .claude-plugin/plugin.json     ← 플러그인 매니페스트 (항상 생성)
   skills/<스킬>/SKILL.md
-  agents/<에이전트>.md
+  agents/<에이전트>.md           ← 워크플로 에이전트·fork 에이전트 둘 다
+  guides/<플러그인>/workflow.md   ← 공통 안내 파일 (가리키는 컴포넌트가 있을 때)
+  guides/<플러그인>/blackboard.md
   hooks/hooks.json               ← 훅이 있을 때
   hooks/scripts/<훅>.sh
   schemas/<플러그인>.json         ← 블랙보드 클래스가 있을 때
@@ -63,6 +66,8 @@ Daedalus 프로젝트는 컴파일할 때 **빌드 타깃**을 하나 고릅니�
 <작업 폴더>/
   .claude/skills/<스킬>/SKILL.md
   .claude/agents/<에이전트>.md
+  guides/<플러그인>/workflow.md   ← 공통 안내 파일 (`.claude/` 밖입니다)
+  guides/<플러그인>/blackboard.md
   .claude/settings.json          ← (또는 settings.local.json) 훅·MCP·설정 병합
   .claude/rules/<규칙>.md         ← 규칙 문서가 있을 때
   .claude/CLAUDE.md              ← 이 플러그인 구역만 갱신
@@ -99,7 +104,7 @@ Daedalus 프로젝트는 컴파일할 때 **빌드 타깃**을 하나 고릅니�
 
 ### fork 스킬의 에이전트 이름
 
-fork 스킬이 프로젝트 안의 에이전트를 fork 에이전트로 쓰면, 프론트매터 `agent:` 값이 타깃마다 다르게 나갑니다.
+fork 스킬이 프로젝트 안의 **fork 에이전트**를 쓰면, 프론트매터 `agent:` 값이 타깃마다 다르게 나갑니다.
 
 - 마켓플레이스: `agent: my-plugin:researcher` — 플러그인 에이전트는 이 형식으로만 찾힙니다.
 - 로컬: `agent: researcher`

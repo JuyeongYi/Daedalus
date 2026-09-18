@@ -1,7 +1,35 @@
-# 에이전트 — 본문 + 출력 포트 (WP-AF)
+# 에이전트 — 두 종류, 본문 + 출력 포트 (WP-AF / WP-FK2)
 
 > CLAUDE.md에서 이관한 설계 기록(2026-09-12, 원문 그대로). 코드와 어긋나면 코드가
 > 정본이다 — 발견 즉시 이 문서를 고친다. 색인은 루트 `CLAUDE.md`의 "설계 문서" 절.
+
+## 에이전트 두 종류 (WP-FK2, 사용자 확정 2026-09-17)
+
+`Agent(PluginComponent, ABC)`가 추상 부모이고 구체 종류는 둘이다 — 계층·config 표는 `plugin-model.md`.
+
+| | `AgentDefinition` (kind `agent`) | `ForkAgent` (kind `fork_agent`) |
+|---|---|---|
+| 뜻 | **워크플로 에이전트** — 그래프에 배치되는 노드 | fork 스킬의 **실행 기반** |
+| 부르는 것 | 호출자의 `call_agents` 포트에서 나가는 전이 | `config.agent`로 지목한 fork 스킬 |
+| fsm / transfer_on / call_agents / execution_policy / 배치 | 있다 | **없다** |
+| config | `AgentConfig`(+ background, isolation, color) | `ForkAgentConfig`(+ color) |
+| 산출 | `agents/<이름>.md` | `agents/<이름>.md` (**같다**) |
+| 편집기 우측 패널 | 출력 포트 · 에이전트 호출 포트 · 호출자 목록 | 🍴 **사용하는 fork 스킬**(읽기 전용) |
+| 탭 접두 | 🤖 | 🧩 |
+
+- **두 판정의 축이 다르다.** "에이전트 컴포넌트 전반"(`project.agents` 버킷·`compile_agent`·매트릭스·편집기·
+  미리보기·토큰 리포트 라벨)은 `Agent`를 보고, "그래프에 배치된 노드가 에이전트인가"(위임 문구·호출 계약·
+  캔버스/MCP 연결 규칙)는 `AgentDefinition`을 본다 — ForkAgent는 배치 불가라 후자에서 자연 제외된다.
+  전자를 좁게 두면 ForkAgent가 `project.skills`로 새어 저장이 `when_to_use`에서 죽고 미리보기가
+  `compile_skill`로 떨어진다.
+- **역참조 조회의 실체는 하나다** — `model/plugin/placement.fork_skills_using(agent, project)`.
+  편집기 패널·삭제 확인 다이얼로그·MCP `delete_component`의 `still_referenced_by`·MCP `get_component`의
+  `used_by_fork_skills`·컴파일러의 "## Invocation Contract"가 전부 이것을 부른다(원칙 1·2).
+  컴파일러는 뷰를 임포트할 수 없으므로(import 계약) 실체가 모델에 있어야 한다 —
+  `compiler/emit/fork.fork_skills_using`은 이 함수를 재-export하는 얇은 껍데기다.
+- **검증:** 워크플로 에이전트를 fork 스킬의 `agent`로 지목하면 에러 `fork_agent_wrong_kind`(배치 여부 무관 —
+  퇴역한 `fork_agent_placed`는 배치를 봤다), 아무 fork 스킬도 부르지 않는 ForkAgent는 경고 `unused_fork_agent`.
+  `fork_agent_isolation_ignored`는 필드 자체가 없어져 퇴역했다.
 
 ## 에이전트 — 본문 + 출력 포트 (WP-AF, 내부 FSM 퇴역)
 
@@ -41,21 +69,28 @@
   결과가 메인 컨텍스트에 남지 않는 것이다(진행 기록·재개가 약해진다 — `no_agent_to_agent`
   경고). 하드 제약 둘은 에러다: `agent_chain_too_deep`(깊이 3), `agent_calls_higher_model`
   (자기보다 상위 모델 호출 금지 — 사용자 확정).
-- **fork 에이전트 (2026-09-13, 종류 분리 WP-FK2):** fork 스킬의 실행 기반은 **`ForkAgent`**(kind
-  `fork_agent`)라는 별도 종류다 — 캔버스에 배치되지 않고 fsm·포트가 없다. 그 에이전트 본문이 시스템
-  프롬프트, fork 스킬 본문이 작업 지시다(실측). `.md`의 "## Invocation Contract"에 "Execution base of
-  fork skill X"가 유도된다. `skills` 프리로드·`maxTurns`는 적용되고 `isolation`은 적용되지 않으므로
-  `ForkAgentConfig`에 그 필드가 아예 없다(실측 재확인 2026-09-18, CC 2.1.274 — 경고
-  `fork_agent_isolation_ignored`는 그래서 퇴역했다). 워크플로 에이전트(`AgentDefinition`)를 fork
-  스킬의 `agent`로 지목하면 에러 `fork_agent_wrong_kind`, 아무 fork 스킬도 부르지 않는 `ForkAgent`는
-  경고 `unused_fork_agent`다. 상세는 `plugin-model.md` "fork 스킬".
-- **에이전트 편집기:** AgentEditor = ComponentEditor + 출력 포트 패널 + **에이전트 호출 포트
-  패널**(스킬 에디터와 같은 `_TransferOnPanel` 위젯) — 스킬 편집기와
-  같은 레벨(그래프/컨텐츠 탭 구조 제거, 별도 그래프 VM 없음 — undo는 프로젝트 스택).
+- **fork 에이전트 (2026-09-13, 종류 분리 WP-FK2):** 그 에이전트 본문이 시스템 프롬프트, fork 스킬 본문이
+  작업 지시다(실측). `.md`의 "## Invocation Contract"에 "Execution base of fork skill `X` — that skill's
+  instructions arrive as your task; this file sets your role and limits."가 유도된다(`_fork_base_contract_section`).
+  `skills` 프리로드·`maxTurns`는 적용되고 `isolation`은 적용되지 않으므로 `ForkAgentConfig`에 그 필드가
+  아예 없다(실측 재확인 2026-09-18, CC 2.1.274 — 상세 기록은 `plugin-model.md` 실측 표).
+- **에이전트 편집기:** AgentEditor = ComponentEditor + **종류별 우측 패널**. 워크플로 에이전트는 출력 포트
+  패널 + 에이전트 호출 포트 패널(스킬 에디터와 같은 `_TransferOnPanel` 위젯) + 호출자 목록을, fork
+  에이전트는 "🍴 사용하는 fork 스킬" 읽기 전용 목록을 받는다(비어 있으면 "산출은 되지만 아무도 부르지
+  않습니다 — fork 스킬의 [agent] 필드에서 고르세요" 안내. 탭을 다시 보일 때 `showEvent`가 새로
+  읽으므로 다른 탭에서 `agent`를 바꿔도 반영된다). 스킬 편집기와 같은 레벨(그래프/컨텐츠 탭 구조 제거,
+  별도 그래프 VM 없음 — undo는 프로젝트 스택). 프론트매터 폼은 `matrix_for(agent)`가 고른 종류별 표로
+  그린다(fork 에이전트에는 background·isolation 행이 없다).
 - **MCP:** 도구의 `agent` 스코프 파라미터는 WP-RF-1c에서 시그니처째 제거됐다(스키마 노출 기준 —
-  캔버스 편집의 대상은 프로젝트 그래프 하나뿐이다). `set_transfer_on(에이전트 이름)`으로 출력
-  포트 편집. `create_agent`는 기본 포트 done으로 시작. 호출 포트 도구
-  (`add_agent_call`/`set_agent_calls`/`remove_agent_call`)는 절차형 스킬·state 용도 랩핑
-  스킬·**에이전트**를 받는다(판정의 단일 진실은 `PortTools._require_call_port_owner`).
-- **컴파일:** "## 내부 워크플로"는 legacy FSM에 실질 상태(SimpleState 등)가 있을 때만 배출.
-  "## 출구"는 transfer_on 기반(`_agent_outputs_section` — 완료 보고 첫 줄에 출구 명시 지시 + description 병기).
+  캔버스 편집의 대상은 프로젝트 그래프 하나뿐이다). `create_agent(name, kind="agent"|"fork_agent")`가
+  종류를 받고(기본 `"agent"`), fork 에이전트에 x/y를 주면 배치 불가라 거절한다. `set_transfer_on`은
+  fork 에이전트를 **명시 거부**한다("fork 에이전트는 fork 스킬의 실행 기반이라 갈래가 없습니다" —
+  `SetAttrCmd`의 `getattr(..., None)` 폴백 때문에, 거부하지 않으면 없는 필드가 인스턴스 속성으로 생기고
+  성공 응답이 돌아간 뒤 저장 한 번에 사라진다). 워크플로 에이전트는 기본 포트 done으로 시작한다.
+  호출 포트 도구(`add_agent_call`/`set_agent_calls`/`remove_agent_call`)는 절차형·fork 스킬·state 용도
+  랩핑 스킬·**워크플로 에이전트**를 받는다(판정의 단일 진실은 `PortTools._require_call_port_owner`).
+  `get_project`의 에이전트 행과 `get_component`가 `kind`를 싣고, fork 에이전트에는
+  `used_by_fork_skills`가 함께 실린다(원칙 2 — GUI의 새 조회에 대응하는 읽기).
+- **컴파일:** 종류별 본문 조립은 `compiler.md` 7-b번. "## Internal Workflow"는 legacy FSM에 실질
+  상태(SimpleState 등)가 있을 때만, "## Exits"는 transfer_on 기반(`_agent_outputs_section` — 완료 보고
+  첫 줄에 출구 명시 지시 + description 병기)이며 **둘 다 워크플로 에이전트 전용**이다.

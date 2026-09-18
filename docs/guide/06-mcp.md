@@ -109,7 +109,7 @@ daedalus --no-mcp          # 서버를 띄우지 않습니다
 |------|-----------|---------------|
 | 조회 | `get_project`, `get_selection` | 프로젝트 구조, 내 선택, 히스토리, 검증·컴파일 미리보기 |
 | 컴포넌트 | `create_skill`, `convert_skill` | 스킬·에이전트 만들기, 이름 변경, 삭제, 설정 필드, 진입점 프리셋 |
-| 캔버스 구조 | `place_component`, `connect_states` | 노드 배치·이동, 전이 연결, 경유점 |
+| 캔버스 구조 | `place_component`, `connect_states` | 노드 배치·이동, 전이 연결, 경유점. 노드가 될 수 없는 종류(선언형·전이·fork 에이전트)를 주면 이유를 말하며 거부합니다 — GUI 드롭과 **같은 판정**입니다 |
 | 포트·분기 | `set_transfer_on`, `add_agent_call` | 갈래 선언, 에이전트 호출 포트 |
 | 참조 노드 | `place_reference`, `link_reference` | 참조 문서 배치와 링크 |
 | 블랙보드 | `create_blackboard_class`, `set_state_access` | 공유 상태 설계, 노드별 읽기·쓰기 선언 |
@@ -141,21 +141,44 @@ Claude가 하는 일:
 
 ### 예시 2. 절차형 스킬을 fork 스킬로 바꾸기
 
-> **나:** `research` 스킬은 서브에이전트에게 통째로 맡기고 싶어. fork로 바꾸고 Explore 에이전트로 돌려 줘.
+> **나:** `research` 스킬은 서브에이전트에게 통째로 맡기고 싶어. 동기 fork로 바꾸고 Explore 에이전트로 돌려 줘.
 
-1. `convert_skill("research", to="fork")` → 이름·본문·설명·포트·전이·배치는 그대로. fork에서 효과가 없는 `allowed_tools`는 버리고 결과의 `dropped`로 알려 줍니다.
+1. `convert_skill("research", to="sync_fork")` → 이름·본문·설명·포트·전이·배치는 그대로. fork에서 효과가 없는 `allowed_tools`는 버리고 결과의 `dropped`로 알려 줍니다.
 2. `set_component_field("research", "agent", "Explore")` → fork 에이전트 지정 (기본값은 `general-purpose`)
 3. `focus_node("research")` → 바뀐 노드를 화면에 띄워 보여 줌
 
-전환은 한 번의 undo 단위입니다. 편집기의 전환 버튼, 캔버스 우클릭과 **같은 함수**를 씁니다.
+전환은 **3-way**입니다 — `to=`에 `"procedural"` / `"sync_fork"` / `"async_fork"`를 줍니다.
+동기 ↔ 비동기 전환은 버리는 값이 없습니다(`agent`가 그대로 따라오고 `dropped`가 비어 있습니다).
+전환은 한 번의 undo 단위이고, 편집기의 전환 버튼·캔버스 우클릭과 **같은 함수**를 씁니다.
+
+`background`와 `context`는 **종류가 정하는 값**이라 `set_component_field`로 바꿀 수 없습니다
+(config에 없는 필드라 자동으로 거부되고, `list_component_fields`에도 나오지 않습니다).
 
 fork 에이전트로 고를 수 있는 것:
 
 - 내장 에이전트: `general-purpose`, `Explore`, `Plan`
 - 사용 선언한 외부 플러그인 에이전트 (`플러그인:이름`)
-- **캔버스에 배치되지 않은** 프로젝트 에이전트
+- 프로젝트의 **fork 에이전트**(`create_agent(name, kind="fork_agent")`로 만든 것)
 
-이름은 대소문자까지 정확히 맞아야 합니다. 틀리면 Claude Code가 조용히 `general-purpose`로 돌려 버리므로 Daedalus가 미리 거부하고 선택지를 알려 줍니다. 처음부터 fork 스킬로 만들 때는 `create_skill(name, kind="fork", fork_agent="Explore")`.
+**워크플로 에이전트는 고를 수 없습니다** — 종류가 다릅니다. 이름을 주면 그 사실을 말하며 거부합니다.
+이름은 대소문자까지 정확히 맞아야 합니다. 틀리면 Claude Code가 조용히 `general-purpose`로 돌려
+버리므로 Daedalus가 미리 거부하고 선택지를 알려 줍니다.
+처음부터 fork 스킬로 만들 때는 `create_skill(name, kind="sync_fork", fork_agent="Explore")`.
+
+### 예시 2-b. fork 에이전트 만들고 누가 쓰는지 보기
+
+> **나:** 조사 전용 작업자를 하나 만들고, 그걸 쓰는 fork 스킬이 뭔지 알려 줘.
+
+1. `create_agent("scout", kind="fork_agent")` → fork 스킬의 실행 기반이 생깁니다.
+   좌표(`x`, `y`)를 주면 **거부**합니다 — fork 에이전트는 캔버스에 놓이지 않습니다.
+2. `set_component_field("research", "agent", "scout")`
+3. `get_component("scout")` → `kind: "fork_agent"`와 `used_by_fork_skills: ["research"]`가 함께 옵니다.
+
+`used_by_fork_skills`는 에이전트 편집기의 "🍴 사용하는 fork 스킬" 패널·삭제 확인 다이얼로그와
+**같은 목록**입니다. 아무도 쓰지 않으면 `unused_fork_agent` 경고가 뜹니다.
+
+fork 에이전트에는 출력 포트가 없으므로 `set_transfer_on`은 이유를 말하며 거부합니다.
+`list_component_fields`도 종류별 표를 따라 `background`·`isolation`을 보여 주지 않습니다.
 
 ### 예시 3. 분기가 있는 흐름 만들기
 

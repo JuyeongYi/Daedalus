@@ -35,8 +35,17 @@
   생략). 블랙보드 단락(`_blackboard_section(project, component)`)은 component(스킬/에이전트)
   자체 FSM(재귀) + 프로젝트 그래프 placement의 reads/writes 합집합(`_component_access_union`)을
   구해, 비어있지 않으면 "이 스킬/에이전트가 읽는 것/쓰는 것"을 명시하고 파일 목록을 관련
-  클래스만으로 좁힌다. 합집합이 비면(또는 component 미지정) 기존 전 클래스 일반 안내 그대로
-  — 하위 호환, 접근 선언 0개 프로젝트의 산출 문자열은 불변이다.
+  클래스만으로 좁힌다. **합집합이 비면 단락 자체를 생략한다**(WP-FK2 C3) — 총론·CLI 사용법·
+  규칙이 전부 `guides/<플러그인>/blackboard.md`로 갔으므로 접근 선언이 없으면 이 컴포넌트에
+  대해 덧붙일 고유 정보가 남지 않는다. `component`는 필수 위치 인자다(빠뜨린 호출이 조용히
+  단락을 없애지 않도록 — 원칙 5).
+- **CLI 사용법·상태 파일 목록·읽기-수정-쓰기 규칙은 공통 안내 파일에 한 번만 실린다**
+  (`compiler.md` 정책 21번). 컴포넌트 산출에는 프론트매터 직후의 **포인터 1줄**이 그 파일을
+  가리키고, 진행 명령이 없는 컴포넌트(에이전트 두 종류·랩핑 실행 에이전트·미배치 스킬)에는
+  같은 줄에 `State CLI: daedalus-bb --schemas ${ROOT}/schemas/<플러그인>.json …` 한 줄이 붙는다 —
+  **가이드 본문에는 `${ROOT}` 치환 토큰을 쓸 수 없기 때문이다**(치환은 스킬·에이전트 content
+  에서만 일어난다, 공식 문서 확인 2026-09-17). 가이드는 경로 자리에 `<SCHEMAS>` 자리표시자를
+  쓰고 "너를 보낸 파일에 적힌 `--schemas` 경로를 그대로 쓰라"고 말한다.
 - **검증:** `dangling_blackboard_ref`(reads/writes 참조가 블랙보드에 실존하는지, 재귀 +
   프로젝트 그래프 포함)/`orphan_blackboard_field`(어떤 상태도 참조하지 않는 필드 경고 — 클래스
   전체 참조는 그 필드 전부 커버로 간주, 프로젝트 전체에 접근 선언이 하나도 없으면 스킵) 2종.
@@ -127,6 +136,7 @@ daedalus-bb --schemas <경로> [--state-dir DIR] <command>
 - **컴파일러 산출 형상과의 결합은 테스트가 고정한다.** CLI는 모델을 임포트할 수 없지만
   `tests/`는 양쪽을 볼 수 있으므로, `tests/cli/test_schema_contract.py`가
   `compile_schemas_json`이 **실제로 만든 텍스트**를 스키마 파일로 깔고 list/init/write/
-  validate를 돌린다(손으로 쓴 픽스처만 쓰면 컴파일러가 형상을 바꿔도 CLI 테스트는 전부 초록인
+  validate를 돌린다(가이드 텍스트의 명령·옵션 이름이 실제 파서와 일치하는지는
+  `tests/compiler/test_guides.py`가 따로 고정한다 — 예전에는 `test_blackboard_section.py`가 맡았다)(손으로 쓴 픽스처만 쓰면 컴파일러가 형상을 바꿔도 CLI 테스트는 전부 초록인
   채 런타임만 깨진다). `BLACKBOARD_FIELD_TYPES` 밖 legacy 타입(ANY/JSON/bare LIST)도 경고
   등급이라 실제로 산출에 나오므로 함께 고정한다.

@@ -84,11 +84,17 @@ daedalus/
 │   ├── plugin/       # Claude 플러그인 메타데이터
 │   │   ├── enums.py        # ModelType, EffortLevel, PermissionMode, AgentField, FieldEmit, BuildTarget(WP-TG) 등
 │   │   ├── policy.py       # ExecutionPolicy (병렬 서브에이전트). JoinStrategy는 fsm/join.py에서 직수입 (re-export 없음 — RF-1b)
-│   │   ├── config.py       # ComponentConfig(ABC), SkillConfig(ABC), ProceduralSkillConfig, ForkSkillConfig(+BUILTIN_FORK_AGENTS),
-│   │   │                   # WrappedSkillConfig, DeclarativeSkillConfig, TransferSkillConfig, ReferenceSkillConfig, AgentConfig
+│   │   ├── config.py       # ComponentConfig(ABC) → SkillConfig(ABC) → StepSkillConfig(ABC) → ProceduralSkillConfig /
+│   │   │                   #   ForkSkillConfig(ABC, +BUILTIN_FORK_AGENTS) → SyncForkSkillConfig·AsyncForkSkillConfig,
+│   │   │                   #   WrappedSkillConfig, DeclarativeSkillConfig, TransferSkillConfig, ReferenceSkillConfig,
+│   │   │                   #   AgentConfigBase(ABC) → AgentConfig(+background·isolation)·ForkAgentConfig
 │   │   ├── base.py         # PluginComponent(ABC), WorkflowComponent(ABC)
-│   │   ├── skill.py        # Skill(ABC), ProceduralSkill, ForkSkill(절차형 하위 — 2026-09-13), WrappedSkill, DeclarativeSkill, TransferSkill, ReferenceSkill
-│   │   ├── agent.py        # AgentDefinition
+│   │   ├── skill.py        # Skill(ABC) → StepSkill(ABC) → ProceduralSkill / ForkSkill(ABC) → SyncForkSkill·AsyncForkSkill(2026-09-17),
+│   │   │                   #   WrappedSkill, DeclarativeSkill, TransferSkill, ReferenceSkill + is_reference_usage/is_disabled_wrapped
+│   │   ├── agent.py        # Agent(ABC) → AgentDefinition(워크플로 — 캔버스 노드) / ForkAgent(fork 스킬 실행 기반, WP-FK2)
+│   │   ├── placement.py    # 배치 가능 판정 **두 개**(is_state_placeable/is_canvas_placeable) + fork 역참조 fork_skills_using.
+│   │   │                   #   캔버스 드롭·레지스트리 드래그·creation·MCP place_component·에이전트 편집기·삭제 확인·
+│   │   │                   #   MCP still_referenced_by/used_by_fork_skills·컴파일러 fork 계약이 전부 여기를 부른다(원칙 1)
 │   │   ├── tool.py         # Tool(ABC) + BuiltinTool/MCPTool/UserDefinedTool (tool_shelf 도구 단일 진실)
 │   │   ├── hook.py         # HookDef + HookEvent(CC 9종) (hook_library 훅 단일 진실)
 │   │   ├── hook_presets.py # BUILTIN_HOOK_PRESETS (복사용 훅 템플릿) + preset_copy(핸들러까지 깊은 복사)
@@ -96,7 +102,8 @@ daedalus/
 │   │   │                  #   resolve_hooks(전역 ← 프로젝트 병합의 단일 진실)/hook_to_json. **파일시스템을 아는 유일한 훅 모듈**
 │   │   ├── variables.py    # 본문 경로 변수(WP-RT) — ${ROOT} 타깃 중립 토큰, 타깃별 확장 매핑, 구버전 마이그레이션
 │   │   │                   #   + SKILL_ONLY_VARIABLES(A6 — 스킬 본문에서만 치환되는 토큰 3종. skill_only_variable_in_body의 단일 진실)
-│   │   ├── field_matrix.py # FieldRule(emit 포함), SKILL_FIELD_MATRIX, AGENT_FIELD_MATRIX (스킬/에이전트 유형별 프론트매터 필드 규칙)
+│   │   ├── field_matrix.py # FieldRule(emit 포함), SKILL_FIELD_MATRIX(7종), AGENT_FIELD_MATRIX(agent/fork_agent)
+│   │   │                   #   + **matrix_for(component)** — 표 선택의 단일 진실(키 = config.kind. 미지 kind는 ValueError)
 │   │   └── workspace_doc.py# WorkspaceDoc(name, body, paths, id) — .claude/CLAUDE.md 구역과 .claude/rules/<name>.md의 편집 단위(WP-WD).
 │   │                       #   값 동등성이고 id는 비교 제외 — 본문 undo 스택이 이름이 아니라 안정 식별자로 문서를 잡는다.
 │   │                       #   paths(A13)는 규칙 전용 `paths:` 프론트매터 glob 목록 — 비면 프론트매터를 내지 않는다(항상 로드).
@@ -178,8 +185,14 @@ daedalus/
 │   │   ├── skill.py        #   SKILL.md 조립 — 다음 단계·작업 재개(WP-RS)·진입 맥락(WP-IC) + compile_skill
 │   │   ├── agent.py        #   에이전트 .md 조립 — 프론트매터(skills 합류·LOCAL hooks/mcpServers)·호출 계약·출구 + compile_agent
 │   │   ├── wrapped.py      #   랩핑 스킬 산출 — 위임 절차 단락 + 실행 서브에이전트(compile_wrapped_runner/needs_runner_agent/parse_wrapped_source)
-│   │   ├── fork.py         #   fork 스킬 산출(2026-09-13) — resolve_fork_agent_name(타깃별 agent 이름)/fork_frontmatter_lines
-│   │   │                   #   (background: false)/fork_report_section("## Report")/fork_skills_using(fork 에이전트 호출 계약)
+│   │   ├── fork.py         #   fork 스킬 산출(2종, 2026-09-17) — resolve_fork_agent_name(타깃별 agent 이름)/
+│   │   │                   #   fork_frontmatter_lines(agent: 이름 해소만 — context·background는 매트릭스 FIXED)/
+│   │   │                   #   fork_report_section("## Report", 종류별 도입·async 선행 조건)/
+│   │   │                   #   fork_skills_using(model.plugin.placement 재-export 껍데기)
+│   │   ├── guides.py       #   공통 안내 파일(WP-FK2 C3) — compile_workflow_guide/compile_blackboard_guide/compile_guide,
+│   │   │                   #   포인터 판정(workflow_pointer_kind: ""|"main"|"fork" / blackboard_pointer_wanted)과
+│   │   │                   #   guide_pointer_line/_insert_guide_pointer, guide_rel_path, GUIDE_KINDS.
+│   │   │                   #   가이드 본문에는 ${ROOT} 등 치환 변수를 쓰지 않는다(<SCHEMAS> 자리표시자)
 │   │   ├── hooks.py        #   compile_hooks_json/compile_hook_scripts (진행 상태 합성 훅 포함)
 │   │   └── manifest.py     #   compile_plugin_manifest/compile_schemas_json + 경로 변수 확장(expand_root_token)
 │   ├── plan.py             # 산출 계획(WP-FK2 C0 분해, 이동만) — _PlannedOutput/_plan_outputs/_hook_script_name_conflicts/
@@ -425,6 +438,9 @@ daedalus/
     │                       #   믹스인을 QGraphicsItem 앞에 둔다). 상세는 "캔버스 드래그 이동" 항목 참조.
     ├── commands/           # Undo/Redo 커맨드 (state, transition — Add/Move/Remove/ClearWaypointsCmd(WP-ER) 포함, exit_point,
     │                       #   component — Create/RenameComponentCmd(WP-CE 1차) + RemoveComponentCmd(A2 — MacroCommand 서브클래스.
+    │                       #     `_bucket`(+_DetachComponentCmd의 같은 판정)이 `isinstance(c, Agent)`로 **에이전트 두 종류를 모두**
+    │                       #     project.agents로 보낸다 — ForkAgent가 project.agents에 들어가는 **유일한 경로**다(좁히면 skills로
+    │                       #     새어 저장·레지스트리·검증·산출이 전부 어긋난다).
     │                       #     캔버스 정리는 기존 DeleteRef/DeleteTransition/DeleteStateCmd 조립, 모델 잔여분만 _DetachComponentCmd),
     │                       #   attr — SetAttrCmd/AppendToListCmd/RemoveFromListCmd(WP-CE 범용 폼 편집. 편집마다 클래스를 만들지 않고
     │                       #     "속성 하나 바꾸기"+"리스트 넣고 빼기" 둘로 환원한다. SetAttrCmd는 최초 execute에서만 old를 잡는다 —
@@ -449,7 +465,12 @@ daedalus/
     │                       #                              우선순위**다 — isinstance는 서브클래스에도 참이라 순서를 바꾸면 동작이 바뀐다.
     │                       #     transfer_on_panel.py   — _COLOR_PRESETS + _ColorPickerPopup + _EventCard + _TransferOnPanel
     │                       #     reference_link_panel.py— _ReferenceLinkPanel
-    │                       #     kind_switch_row.py     — 절차형 ↔ fork 전환 버튼·안내 행(build_kind_switch_row, 800줄 예산 때문에 분리)
+    │                       #     kind_switch_row.py     — 절차형 ↔ 동기/비동기 fork **3-way** 전환 버튼·안내 행
+    │                       #                              (build_kind_switch_row, 800줄 예산 때문에 분리)
+    │                       #     kind_matrix.py         — matrix_for(component) → (규칙 표, 위젯 표, is_agent). **얇은 어댑터**다 —
+    │                       #                              표 선택의 실체는 model.plugin.field_matrix.matrix_for이고(컴파일러는 뷰를
+    │                       #                              임포트할 수 없다) 여기서는 뷰에만 있는 위젯 표를 짝지어 준다. 800줄 예산 분리
+    │                       #     field_adapters.py      — _WIDGET_ADAPTERS 표(아래 설명) 분리분
     │                       # **필드 행 정렬 규칙**: 라벨|필드 행은 열 폭을 공유하는 레이아웃에 넣는다 — skill_editor._FrontmatterPanel은
     │                       #   QGridLayout(0=체크박스·1=라벨(우측 정렬)·2=값 위젯, 스팬 행은 헤더/그룹 구분 라벨/버튼 행), 나머지는
     │                       #   QFormLayout(hook_panel·property_panel·project_properties·workspace_editor). ad-hoc HBox로 행을

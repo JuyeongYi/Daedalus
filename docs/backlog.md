@@ -11,7 +11,7 @@
 | 결정 대기 — 설계 완료 | §1-1 A5 컴파일 분할 | 결정 D1~D7 |
 | 〃 | §1-2 A1 평가 루프 | 결정 D1~D9, early access 스펙 |
 | 〃 | §1-3 WP-LK 스토어 빌드 + 링크 | 잔존 의문 U2~U8 |
-| 결정 대기 — 제안 단계 | §2 **fork 스킬**(설계안·실측 완료, 사용자 확정 대기) · reference 랩핑의 스킬 링크 예외 · statusLine 도구 · 외부 에이전트 노드 · `get_project` 축약 기본값 | 사용자 결정 |
+| 결정 대기 — 제안 단계 | §2 fork 후속(랩핑 실행 에이전트 합치기) · reference 랩핑의 스킬 링크 예외 · statusLine 도구 · 외부 에이전트 노드 · 컴포넌트 도입문 2차 호이스트 · `get_project` 축약 기본값 | 사용자 결정 |
 | 규격 정정 후속 | §5 스킬 훅 — 지운 참조 복구 여부 · 중복 실행 미실측 | 사용자 확인 |
 | 컴파일러 Tier 2 | §3 도구·스크립트 실행 래퍼, 외부 오케스트레이터 | 설계 전 |
 | 보류 | §4 기존 플러그인 임포트 · 블랙보드 단락 rules 이관 · Region 확장 | 개시 미정 |
@@ -617,13 +617,16 @@ junction(폴더)·하드링크(파일)는 **무권한이지만 같은 볼륨 전
 
 ## 2. 결정 대기 — 제안 단계
 
-- **fork 스킬 후속** (구현 2026-09-13 — 정본은 `docs/design/plugin-model.md` "fork 스킬"):
+- **fork 스킬 후속** (fork 2종·fork 에이전트 종류는 2026-09-17 구현 완료 — 정본은
+  `docs/design/plugin-model.md` "fork 스킬 2종 + fork 에이전트"). 남은 항목은 둘뿐이다:
   ① 랩핑 스킬 실행 에이전트를 fork 방식으로 합치기 — 보류(실행 에이전트는 생성물이라 fork 에이전트 후보 세 종류에 들지
   않고, 2026-09-12 확정 "model/effort는 실행 에이전트로"와 부딪힌다). fork 도그푸딩 뒤 다시 본다.
-  ② 전환 후 편집 탭이 스스로 다시 구성되지 않는다(랩핑 용도 전환과 같은 한계 — 탭을 닫았다 연다).
-  ③ 외부 플러그인 에이전트가 그 플러그인에 실제로 있는지는 검증하지 않는다(검증기는 파일시스템 무접근 —
-  카탈로그 주입 인자가 필요). MCP·피커는 카탈로그로 거른다.
-  ④ 내장 `statusline-setup`은 후보에 없다(사용자 확정 세 이름만).
+  ② 외부 플러그인 에이전트가 그 플러그인에 실제로 있는지는 검증하지 않는다(검증기는 파일시스템 무접근 —
+  카탈로그 주입 인자가 필요). MCP·피커는 카탈로그로 거른다. 내장 `statusline-setup`이 후보에 없는 것은
+  사용자 확정(세 이름만)이라 항목이 아니다.
+  **해소됨(2026-09-17/18):** 전환 후 편집 탭이 스스로 다시 구성되지 않던 문제는
+  `view/commands/surface_commands.resync_bracket`이 전환 매크로 양 끝에서 프론트매터 폼·레지스트리를
+  다시 그리면서 사라졌다(undo에도 걸린다).
 - **참조 용도 랩핑 스킬이 스킬 노드에 링크된 경우** — 외부 스킬은 서브에이전트에서만 쓴다는 원칙(2026-09-12)의
   예외로 둘지(현행: 메인 컨텍스트 consult 지시), 상담용 서브에이전트를 합성할지.
 - **statusLine 스크립트 도구** — `statusLine`은 LOCAL 전용이다(플러그인 루트 `settings.json`의 허용 키는
@@ -631,7 +634,7 @@ junction(폴더)·하드링크(파일)는 **무권한이지만 같은 볼륨 전
   모의 입력 실행 미리보기. 확인 필요: statusLine 명령에 `${CLAUDE_PROJECT_DIR}`가 주어지는지(문서 없음 — 실측),
   사용자 개인 statusLine을 덮는 단일 슬롯 문제(경고). 같은 김에 마켓 빌드의 **플러그인 `settings.json` 기본값
   배출**(`agent`·`subagentStatusLine`)도 미지원이다.
-- **외부 플러그인 에이전트 노드** — (fork 에이전트로 외부 에이전트를 쓸 수 있게 됐다 — 노드가 여전히 필요한지 재검토.) 감쌀 수 없으므로 입력만 있는 노드(에이전트 호출 포트로만 진입, 나가는 전이
+- **외부 플러그인 에이전트 노드** — fork 스킬의 `agent:`로 외부 에이전트를 이미 쓸 수 있다(`플러그인:이름`). 노드가 여전히 필요한지부터 재검토한다. 필요하다면: 감쌀 수 없으므로 입력만 있는 노드(에이전트 호출 포트로만 진입, 나가는 전이
   금지). 동기 호출(기본)과 백그라운드 실행 옵션, 카탈로그 `agents/*.md` 탐색, 사용 선언(`external_plugins`) 배선
   재사용. 외부 에이전트는 우리 블랙보드를 모르므로 호출 포트 description이 유일한 입력 통로다.
 - **프로젝트 속성 다이얼로그가 CommandStack을 거치지 않는다** (2026-09-13 발견) — `project_properties.py`가
@@ -653,26 +656,31 @@ junction(폴더)·하드링크(파일)는 **무권한이지만 같은 볼륨 전
      ⑥ 에이전트→에이전트→스킬 선은 산출 어디에도 없다.
   3. **블랙보드 클래스·필드 이름 중복** — GUI는 중복을 막지 않고 검증 규칙도 없다. `compile_schemas_json`이 키로 덮어써
      스키마 하나가 사라진다(대소문자만 다른 이름은 Windows/macOS 파일 충돌). `duplicate_blackboard_class/field` 에러 필요.
-  4. **에이전트 설정과 산출 지시의 모순** — `background: true` 에이전트는 보고로 분기 불가(fork는 강제 false인데 일반
-     에이전트는 무방비), `Agent` 도구 없는데 호출 포트(위임 지시가 나가지만 혼자 처리), `Bash` 없는데 블랙보드 CLI 지시,
+  4. **에이전트 설정과 산출 지시의 모순** — **워크플로 에이전트**의 `background: true`는 보고로 분기가 불가능한데
+     무경고다(fork는 2026-09-17부터 종류가 값을 정하므로 이 항목의 대상이 아니다 — 비동기 fork는 보고 규약과
+     `current` 인계 3단 규약을 함께 낸다),
+     `Agent` 도구 없는데 호출 포트(위임 지시가 나가지만 혼자 처리), `Bash` 없는데 블랙보드 CLI 지시,
      `tools: []`(체크만 하고 비움)는 키가 생략돼 **전 도구 상속**, 에이전트 `skills`에 프리로드되지 않는 스킬(전이 스킬·
      disable-model 선언형·참조 용도/비활성 랩핑)이 들어가도 무경고.
   5. **빈 컴포넌트 무경고** — 설명·본문·when_to_use가 빈 스킬도 통과·산출되고, 캔버스에 없는 빈 스킬도 설치된다.
      빈 출력 포트 설명은 Next Steps에 설명 없는 갈래를 만든다.
   6. **MARKETPLACE 빌드는 MCP 서버 정의를 싣지 않는데 경고가 없다** — `missing_mcp_server_def`는 LOCAL 배선에서만 나온다.
-  7. **Entry Context가 진행 파일을 직접 읽으라고 지시한다** — Resuming Work는 `daedalus-bb progress read`. state/ 접근을
-     막는 훅·permissions와 부딪히므로 CLI로 통일.
-  8. **위생** — 안 쓰는 import 7건(`field_matrix.py` AgentColor·MemoryScope, `scene.py:318` src_ref·`:499` Command,
-     `registry_panel.py:19` AgentDefinition, `edge_item.py:5` Qt, `ref_edge_item.py:5` QRectF — 재-export 파사드
-     `emit/__init__`·`deser.py`·`markdown_editor.py`는 의도적). 문서: `validation.md` 프로젝트 규칙 "25종"(실제 37) +
-     표에 `disabled_wrapped_placed`·`workspace_settings_in_marketplace_build` 누락 + 믹스인 "8종"(실제 9, fork 누락),
-     `architecture.md:277` app.py "~910줄"(실제 1060).
+  7. ~~**Entry Context가 진행 파일을 직접 읽으라고 지시한다**~~ — **해소(2026-09-17, WP-FK2 C3)**. 도입 5문장이
+     한 문장(`Check \`prev\` and the branch in \`note\` …`)으로 줄면서 파일 경로 언급이 사라졌고, 읽는 법은
+     워크플로 가이드 4절이 `daedalus-bb … progress read`로 통일해 말한다.
+  8. **위생** — 안 쓰는 import: `scene.py` src_ref·Command, `edge_item.py` Qt, `ref_edge_item.py` QRectF
+     (재-export 파사드 `emit/__init__`·`deser.py`·`markdown_editor.py`는 의도적).
+     **해소됨:** `registry_panel`의 죽은 `AgentDefinition` import(WP-E), `validation.md`의 규칙 수·누락 행·
+     믹스인 수(WP-B에서 갱신), `architecture.md`의 app.py 줄 수(§7 표가 실측값을 갖는다).
   9. **dogfood 프로젝트(`project/daedalus_cc_plugin`)** — 빈 fork 스킬 `sdfsdf`·`graph-design` 동봉 쓰레기 파일 2개 삭제
      확인 대기, `session-wrap` when_to_use·done 설명 빈 값, `tooling-scout` writes 선언 누락(본문은 GraphDraft 기록),
      `env-configurator`·`tooling-scout` model·maxTurns·MCP 확인 훅 미지정, 오래된 본문(`daedalus-model` 5종·옛 state 경로,
      `graph-design` 종류 목록, `blackboard-cli` progress 누락·옛 경로, `plugin-compile` settings 파일 고정 설명),
      `guard-blackboard-schema`가 진행 파일 Read를 막음 vs Entry Context, `permissions.deny state/**`로 CLI 부재 시 대비책
      불가, `log-tool-usage` 훅 상시 실행 부담. 앱의 plugin-verify fork 전환·verify-analyst 추가는 미저장.
+     **2026-09-17 이후 추가**: 이 파일을 열면 fork 2종 마이그레이션(`migrate_fork_split`)이 구 `fork_skill`을
+     동기 fork로 옮기고 참조된 미배치 에이전트를 fork 에이전트로 재분류한다 — 미배치 fork에는 경고가 뜨며,
+     비동기가 맞는 단계는 종류를 바꿔야 한다. 저장은 사용자 몫이라 여기서는 건드리지 않는다.
 - **GUI 블랙보드 편집이 undo되지 않는다** (2026-09-13, 블랙보드 안내서 작성 중 확인) — 🗂 블랙보드 탭과 속성 패널의
   reads/writes 입력이 모델에 직접 기록한다(설계 원칙 3 위반. MCP 블랙보드 도구는 CommandStack 경유). 또 GUI 탭의
   클래스 이름 변경과 MCP `set_blackboard_fields`의 필드 이름 변경은 노드 reads/writes 참조를 옛 이름에 남긴다 —
@@ -726,22 +734,13 @@ Tier 2다. 출발점은 2026-05 조사(ClaudeManager가 만든 plain 셸 스크�
 
 - **B2 기존 플러그인 임포트(역방향 파서)** — 손으로 쓴 SKILL.md/agent .md를 모델로 들이기. 가치는 인정되나 파서
   품질 리스크. 착수 시 설계부터.
-- **블랙보드 단락 중복** — "## Shared State (Blackboard)" 단락(CLI 사용법 + 규칙)이 모든 procedural 스킬·에이전트에
-  복제된다. LOCAL은 `.claude/rules/`로 이관하면 1번만 실린다(마켓플레이스는 단락 유지 — rules는 LOCAL 전용). 산출
-  구조가 바뀌는 큰 변경이라 별도 판단.
+- ~~**블랙보드 단락 중복**~~ — **해소(2026-09-17, WP-FK2 C3)**. LOCAL 전용 `.claude/rules/` 이관안 대신
+  **두 타깃 공통** `guides/<플러그인>/blackboard.md`로 빼고 각 산출에는 포인터 1줄만 남겼다
+  (`compiler.md` 정책 21번). 워크플로 개념·진행 기록·재개 규칙도 같은 방식으로 `workflow.md`에 모였다.
 - **Region 확장** — 리전별 우선순위, 취소 정책, 동기화 포인트.
 
 ## 5. 기능 잔여
 
-- **WP-G 문서 갱신 체크리스트 (WP-FK2 C3 이후 남은 문서-코드 불일치, 스멜 ⑤)** — 코드가 정본이므로 문서를
-  고친다. 빠뜨리기 쉬운 지점을 명시한다:
-  ① `docs/design/compiler.md` 정책 10의 "합집합이 비면 기존 전 클래스 일반 안내 그대로 — 하위 호환" →
-  지금은 **단락 자체를 생략**한다(`emit/sections.py`). ② 같은 정책의 "CLI 우선 지시가 3줄 규칙 앞에
-  합류한다" → CLI 문장은 컴포넌트 산출에서 전부 빠지고 `guides/<플러그인>/blackboard.md`로 갔다.
-  ③ "명령·옵션 이름은 `tests/compiler/test_blackboard_section.py`가 고정한다" → 고정은
-  `tests/compiler/test_guides.py`로 옮겼다. ④ "`_blackboard_section`은 return이 둘" → 셋이다
-  (클래스 0개 / reads·writes 합집합 0개 / 본문). ⑤ 산출 구조 절에 `guides/<플러그인>/`이 없다.
-  ⑥ `docs/design/architecture.md` 모듈 지도에 `compiler/emit/guides.py`가 없다(`plan.py`만 등재).
 - **스킬 훅 정정의 남은 일** (정정 자체는 2026-09-13 완료 — `docs/design/hooks.md` "스킬 훅").
   ① `project/daedalus_cc_plugin`의 `graph-orient`(check-daedalus-mcp)·`graph-state`
   (guard-blackboard-schema, validate-on-save) 훅 참조를 틀린 경고에 따라 지웠다. 세 훅 모두 전역으로
@@ -772,7 +771,7 @@ Tier 2다. 출발점은 2026-05 조사(ClaudeManager가 만든 plain 셸 스크�
 
 ## 7. 코드 위생 — 800줄 초과 (1,200 상한은 테스트가 강제)
 
-| 파일 | 줄 (2026-09-18 실측) |
+| 파일 | 줄 (2026-09-19 실측) |
 |------|-----|
 | `view/app.py` | 1,102 |
 | `view/canvas/scene.py` | 992 |
@@ -784,7 +783,8 @@ Tier 2다. 출발점은 2026-05 조사(ClaudeManager가 만든 plain 셸 스크�
   붙어 1,102줄이 됐다(1,200 상한까지 98줄). 봉합선은 **탭·편집기 수명주기**다 —
   `_open_component` · `_close_tab` · `_sync_tab_titles` · `rebuild_component_frontmatter` ·
   `open_component_ports`를 `view/tabs.py`(가칭)로 옮기면 한 덩어리로 빠진다(이동만·동작 불변,
-  WP-RF 관례). WP-F/WP-G에서 `app.py`에 더 넣기 전에 먼저 쪼갠다.
+  WP-RF 관례). WP-FK2가 끝난 2026-09-19에도 1,102줄 그대로다 — **`app.py`에 다음 기능을 넣기
+  전에 먼저 쪼갠다.**
   `compiler/project_compiler.py`는 WP-C의 `plan.py` 분해로 676줄이 되어 목록에서 빠졌다.
 
 ## 8. 테스트
