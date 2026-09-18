@@ -17,10 +17,13 @@
   실소비자가 생길 때만 파사드에 오른다.
 
 **참조로 치는 것**(정적 트레이스의 알려진 구멍을 메운다):
-  `ast.Name` · `ast.Attribute.attr` · import 별칭 · **문자열 상수**.
+  `ast.Name` · `ast.Attribute.attr` · import 별칭 · **문자열 디스패치 모듈
+  (`STRING_DISPATCH_SOURCES`)의 문자열 상수**.
   마지막 항목이 중요하다 — MCP 도구 76종은 `mcp/service.py`의 `TOOL_NAMES`
-  문자열 튜플에서 `getattr`로 디스패치되고, `test_purity.py`는 소스 문자열
-  안에서 임포트한다(DEADCODE §2.10이 짚은 오탐의 원인).
+  문자열 튜플에서 `getattr`로 디스패치된다. 다만 **그 모듈로 범위를 좁힌다**:
+  문자열 상수를 `daedalus/` 전체에서 참조로 세면 이름이 우연히 겹치는 무관한
+  리터럴(`add_parser("validate")`·`SimpleState(name="validate")` …)이 진짜
+  고아 심볼을 조용히 살려 낸다 — 게이트의 맹점이지 구멍 메우기가 아니다.
 
 **자동 면제**(allowlist를 짧게 유지한다):
   - dunder(`__init__` 등)
@@ -68,14 +71,31 @@ ALLOWLIST: dict[str, tuple[str, str]] = {
         "전역 훅을 저장하는 GUI·MCP 표면 자체가 없는 것이 진짜 공백이고, "
         "그건 docs/backlog.md 항목이다.",
     ),
+    "model.validation.machine_rules::_MachineRules.validate": (
+        "test-seam",
+        "믹스인을 통한 `Validator.validate(sm)` 공개 진입점(머신 수준 검증) — "
+        "`model/validation/__init__.py:68`이 `validate_project`와 나란히 공개 "
+        "표면으로 선언한다. 오늘 프로덕션 호출자는 프로젝트 경로 한 갈래뿐이고, "
+        "머신 규칙 30여 종을 규칙별로 태우는 쪽은 tests/model/test_validation.py"
+        "(+ tests/model/fsm/test_machine.py)다. 지우면 그 테스트들이 private "
+        "`_validate_machine`로 내려간다(DEADCODE §3.1).",
+    ),
     "view.editors.body_documents::BodyDocumentRegistry.sync_from_model": (
         "test-seam",
         "editor.md:80이 지정한 **유일한 인가 경로** — 모델 body가 에디터 밖에서 "
         "바뀐 경우의 갱신 수단. 오늘은 모든 쓰기가 QTextDocument를 통과해 "
         "staleness가 없어 호출자도 없다. 지우면 첫 외부 변경 경로에서 조용한 "
-        "staleness 버그가 난다(DEADCODE §2.7). backlog에 배선 조건과 함께 등재.",
+        "staleness 버그가 난다(DEADCODE §2.7). docs/backlog.md '5. 기능 잔여'에 "
+        "배선 조건(component.body를 document_for 없이 쓰는 첫 경로)과 함께 등재.",
     ),
 }
+
+#: 문자열로 심볼을 디스패치하는 모듈 (`_SRC` 기준 상대 POSIX 경로).
+#: 이 파일들의 문자열 상수만 참조로 센다 — 범위를 넓히면 무관한 리터럴이
+#: 고아 심볼을 되살린다. 새 디스패치 표가 생기면 여기에 **명시로** 등재한다.
+STRING_DISPATCH_SOURCES: frozenset[str] = frozenset({
+    "mcp/service.py",   # TOOL_NAMES 튜플 → getattr 디스패치 (MCP 도구 76종)
+})
 
 #: 파사드 → 핀 목록이 사는 테스트 파일과 변수 이름 (규칙 B).
 FACADE_PINS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
@@ -125,6 +145,7 @@ def _referenced_names(
     for path, tree in trees.items():
         skip = _module_level_target_ids(tree)
         skip_imports = ignore_imports_in is not None and path == ignore_imports_in
+        dispatches = path.relative_to(_SRC).as_posix() in STRING_DISPATCH_SOURCES
         for node in ast.walk(tree):
             if skip_imports and isinstance(node, (ast.Import, ast.ImportFrom)):
                 continue
@@ -143,7 +164,11 @@ def _referenced_names(
                     names.add(alias.name.rsplit(".", 1)[-1])
                     if alias.asname:
                         names.add(alias.asname)
-            elif isinstance(node, ast.Constant) and isinstance(node.value, str):
+            elif (
+                dispatches
+                and isinstance(node, ast.Constant)
+                and isinstance(node.value, str)
+            ):
                 names.add(node.value)
     return names
 
@@ -274,6 +299,41 @@ def test_string_constants_count_as_references():
     dead = set(scan_unreferenced())
     assert "mcp.tools.canvas::CanvasTools.place_component" not in dead
     assert "mcp.tools.query::QueryTools.compile_check" not in dead
+
+
+def test_string_rescue_is_scoped_to_declared_dispatch_sources():
+    """디스패치 표가 아닌 모듈의 문자열은 아무것도 되살리지 않는다.
+
+    범위를 넓히면 이름이 우연히 겹치는 무관한 리터럴이 고아 심볼을 조용히
+    살린다 — 실제 사례: `_MachineRules.validate`는 `cli/blackboard.py`의
+    `add_parser("validate")`와 `__main__.py`의 `SimpleState(name="validate")`
+    때문에 게이트를 통과했었다. 그 심볼이 지금은 **allowlist 사유와 함께**
+    잡혀 있어야 한다.
+    """
+    assert STRING_DISPATCH_SOURCES == frozenset({"mcp/service.py"}), (
+        "디스패치 표가 늘었다면 그 모듈이 실제로 문자열 → 심볼 디스패치를 "
+        "하는지 확인하고 이 단언을 갱신하라"
+    )
+    dead = set(scan_unreferenced())
+    assert "model.validation.machine_rules::_MachineRules.validate" in dead, (
+        "문자열 구제가 다시 전역으로 새고 있다 — 무관한 리터럴이 심볼을 살린다"
+    )
+
+    trees = _parse_all()
+    outside_literals = {
+        node.value
+        for path, tree in trees.items()
+        if path.relative_to(_SRC).as_posix() not in STRING_DISPATCH_SOURCES
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Constant) and isinstance(node.value, str)
+    }
+    assert "validate" in outside_literals, (
+        "전제가 깨졌다 — 디스패치 표 밖에 'validate' 리터럴이 있어야 이 테스트가 "
+        "범위 제한을 실제로 증명한다"
+    )
+    assert "validate" not in _referenced_names(trees), (
+        "디스패치 표 밖 문자열이 참조로 세어지고 있다"
+    )
 
 
 def test_qt_override_auto_exemption_is_active():

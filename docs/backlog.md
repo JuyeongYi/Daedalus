@@ -777,6 +777,13 @@ Tier 2다. 출발점은 2026-05 조사(ClaudeManager가 만든 plain 셸 스크�
 - **호출 계약 줄 길이** — 포트 설명 + transfer 설명 + 전제 지시가 한 줄이라 항목 많은 에이전트에서 길다.
 - **도구/MCP 카탈로그 편집 UI** — 지금은 로더(`catalogue_loader`)와 폴더 열기뿐.
 - **전역 훅 직접 편집 UI** — 읽기 전용 표시 + 프로젝트로 복사 + 폴더 열기까지.
+- **`view/editors/body_documents.py`의 `BodyDocumentRegistry.sync_from_model` 배선** — 호출자가 없다.
+  `docs/design/editor.md:80`이 지정한 **유일한 인가 경로**(모델 body가 에디터 밖에서 바뀐 경우의 갱신
+  수단)인데, 오늘은 모든 쓰기가 `document_for`의 `QTextDocument`를 통과하므로 그런 경로 자체가 없다.
+  **배선 조건**: `component.body`를 `document_for` 없이 직접 쓰는 첫 경로(마이그레이션·임포트가 열려
+  있는 컴포넌트의 본문을 건드리는 순간)가 생기면 **그 자리에서** 호출한다. 그 전에 지우면 첫 외부
+  변경 경로에서 조용한 staleness 버그가 난다(스캔 게이트에는 `tests/test_dead_code.py`의 ALLOWLIST에
+  `test-seam`으로 등재돼 있다).
 
 ## 6. 알려진 제약 (WP-LK 매니페스트가 생기면 정리 가능)
 

@@ -11,6 +11,14 @@
    않는다**: 사용자가 편집하면 골든이 무작위로 깨진다. 사본은 이 폴더에
    커밋돼 있고 갱신은 명시적인 재생성(regen)으로만 한다.
 
+   **출처(2026-09-19)**: 이 사본은 그 시점의 **아직 커밋되지 않은 작업 사본**
+   에서 떴다(HEAD의 `project/daedalus_cc_plugin/.daedalus.json`이 아니다 —
+   당시 작업 사본은 HEAD 대비 +1570/-317줄이었고, 종류·훅 커버리지가 더 넓어
+   안전망으로 쓸모가 많다). 그래서 이 파일의 내용은 리포 안 다른 어디에도
+   없다. 나중에 `--refresh-dogfood`를 돌렸을 때 나오는 큰 diff를 직렬화
+   회귀로 오해하지 말 것 — 사용자가 그 작업 사본을 커밋하면 그때 다시 떠서
+   출처를 git 이력으로 되돌리면 된다.
+
 ② **synthetic** — 여기서 조립하는 합성 프로젝트. 9종 전부 ×
    (배치/미배치) × (블랙보드 유/무) × 랩핑 스킬 3상태(state/reference/
    enabled=False) × async fork × fork 에이전트 × **훅을 가진 ReferenceSkill**
@@ -170,6 +178,15 @@ def _agent_fsm(name: str) -> StateMachine:
 
 
 def _hook_library() -> list[HookDef]:
+    """훅 라이브러리 4종. 마지막 `ref-only`는 **D6 관측점**이다.
+
+    `emitted_hooks`는 라이브러리 소유 훅을 `enabled` 스위치로 거르므로
+    `enabled=False`인 훅은 전역 배출 경로로 들어오지 않는다. 그래서 이 훅의
+    스크립트가 산출되는 유일한 길은 `hooks_needing_scripts`의 **스킬 루프**뿐이고,
+    오늘은 그 루프의 `is_reference_usage` 게이트가 참조 용도 스킬을 건너뛴다.
+    D6(게이트 제거)이 들어오면 `ref-only.sh`가 새로 나타나 골든 해시가 움직인다 —
+    `enabled=True`인 훅(guard-bash 등)만 참조하면 그 변화가 통째로 가려진다.
+    """
     return [
         HookDef(
             name="guard-bash", description="Bash 호출 감시",
@@ -185,6 +202,12 @@ def _hook_library() -> list[HookDef]:
             name="notify-stop", description="종료 알림",
             event=HookEvent.STOP,
             handlers=[CommandHook(script="echo stop")],
+        ),
+        HookDef(
+            name="ref-only", description="참조 용도 스킬만 참조하는 훅",
+            event=HookEvent.STOP,
+            handlers=[CommandHook(script="echo ref")],
+            enabled=False,
         ),
     ]
 
@@ -243,12 +266,13 @@ def _components() -> dict[str, object]:
         ),
         # §8 골든 행 — 훅을 가진 ReferenceSkill. D6(emit/hooks.py의 두 루프
         # 통합)이 산출을 바꾸는 자리라 골든 diff로 드러나야 한다.
+        # `ref-only`(enabled=False)가 그 관측점이다 — `_hook_library` docstring 참조.
         "reference": ReferenceSkill(
             name="ref-with-hooks",
             description="Reference document that also declares hooks",
             when_to_use="looking up the contract",
             body="# Contract\n\nReference body.\n",
-            config=ReferenceSkillConfig(hooks={"guard-bash": {}}),
+            config=ReferenceSkillConfig(hooks={"guard-bash": {}, "ref-only": {}}),
         ),
         "wrapped_state": WrappedSkill(
             fsm=_skill_fsm("wrapped-state"),
