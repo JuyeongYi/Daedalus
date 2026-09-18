@@ -186,6 +186,54 @@ def test_v1_retired_keys_silently_dropped():
         assert key not in text
 
 
+def test_agent_graph_ownership_keys_dropped():
+    """에이전트의 그래프 소유 키 4종은 퇴역 — 로드·재직렬화에서 사라진다 (D8).
+
+    `execution_policy`/`reference_placements`/`graph_layout`/`edge_layout`은
+    **어떤 편집 표면도 쓰지 않고 직렬화 왕복만** 하던 호환 잔재였다. 에이전트는
+    그래프에 놓이는 노드이지 그래프를 소유하지 않는다 — `PluginProject`의
+    동명 필드가 단일 진실이다(원칙 7: 퇴역 개념은 흔적 없이).
+    """
+    data = _v1_base()
+    data["agents"].append({
+        "kind": "agent", "id": "a9", "name": "legacy", "description": "d",
+        "execution_policy": {
+            "mode": "dynamic", "count": 3, "join": "n_of", "join_count": 2,
+        },
+        "reference_placements": [{"skill_name": "proc", "x": 1.0, "y": 2.0}],
+        "graph_layout": {"st1": [10.0, 20.0]},
+        "edge_layout": {"t1": [[1.0, 2.0]]},
+        "transfer_on": [{"name": "done", "color": "#4488ff", "description": ""}],
+        "fsm": {
+            "id": "f9", "name": "af",
+            "states": [{"kind": "entry_point", "id": "e9", "name": "entry"}],
+            "transitions": [], "initial_state": "e9", "final_states": [],
+        },
+    })
+    warnings: list[str] = []
+    p = deserialize_project(data, collect_warnings=warnings)
+    assert warnings == []
+    agent = p.agents[0]
+    for key in (
+        "execution_policy", "reference_placements", "graph_layout", "edge_layout",
+    ):
+        assert not hasattr(agent, key), key
+    out = serialize_project(p)
+    agent_dict = next(a for a in out["agents"] if a["name"] == "legacy")
+    for key in (
+        "execution_policy", "reference_placements", "graph_layout", "edge_layout",
+    ):
+        assert key not in agent_dict, key
+
+
+def test_execution_policy_module_is_gone():
+    """`model/plugin/policy.py`는 퇴역했다 — 잔재 임포트 경로를 남기지 않는다."""
+    import importlib
+
+    with pytest.raises(ModuleNotFoundError):
+        importlib.import_module("daedalus.model.plugin.policy")
+
+
 def test_v1_number_field_type_becomes_float():
     """FieldType.NUMBER 퇴역 — v1의 "number"는 FLOAT으로 읽는다 (블랙보드/변수)."""
     data = _v1_base()

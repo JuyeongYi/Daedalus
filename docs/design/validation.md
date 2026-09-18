@@ -65,7 +65,7 @@ blackboard/body_variables/build_target/workflow/fork/workspace)을 합성한 오
 |------|------|
 | `duplicate_component_name` | skills/agents 전체에서 동명 컴포넌트 에러 (컴파일 디렉토리 충돌) |
 | `invalid_component_name` | 이름이 `^[a-z0-9][a-z0-9-]*$` 불일치 시 경고, 빈 이름은 에러 |
-| `dangling_string_reference` | `AgentConfigBase.skills`(에이전트 두 종류 모두), `reference_placements.skill_name`의 문자열 참조 실존 검사 (스킬 이름은 전역 skills 기준). fork 스킬 `agent`는 내장·외부도 가리킬 수 있어 여기서 보지 않는다 — `fork_agent_missing`이 맡는다 |
+| `dangling_string_reference` | `AgentConfigBase.skills`(에이전트 두 종류 모두), `PluginProject.reference_placements.skill_name`의 문자열 참조 실존 검사 (스킬 이름은 전역 skills 기준). fork 스킬 `agent`는 내장·외부도 가리킬 수 있어 여기서 보지 않는다 — `fork_agent_missing`이 맡는다 |
 | `duplicate_tool_name` | `tool_shelf` 내 동명 Tool 에러 (이름 참조 모호) |
 | `empty_tool_definition` | UserDefinedTool 본문(body) 빈 값 / MCPTool server·tool_name 빈 값 경고 |
 | `dangling_tool_ref` | FSM의 ToolEvaluation/ToolExecution.tool이 `tool_shelf ∪ CC_BUILTIN_TOOLS`에 없으면 경고 (빈 문자열은 스킵). 참조 수집은 상태 훅·custom_events·전이 가드/액션 체인 + Composite 중첩 + sub_machine/Region 재귀 |

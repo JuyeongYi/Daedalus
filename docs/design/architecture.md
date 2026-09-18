@@ -204,7 +204,6 @@ daedalus/
 │   │                       #   재귀 골격과 얽혀 있어 순회만 떼면 경로 라벨 불변을 보장할 수 없다(주석으로 명시).
 │   ├── plugin/       # Claude 플러그인 메타데이터
 │   │   ├── enums.py        # ModelType, EffortLevel, PermissionMode, AgentField, FieldEmit, BuildTarget(WP-TG) 등
-│   │   ├── policy.py       # ExecutionPolicy (병렬 서브에이전트). JoinStrategy는 fsm/join.py에서 직수입 (re-export 없음 — RF-1b)
 │   │   ├── config.py       # ComponentConfig(ABC) → SkillConfig(ABC) → StepSkillConfig(ABC) → ProceduralSkillConfig /
 │   │   │                   #   ForkSkillConfig(ABC, +BUILTIN_FORK_AGENTS) → SyncForkSkillConfig·AsyncForkSkillConfig,
 │   │   │                   #   WrappedSkillConfig, DeclarativeSkillConfig, TransferSkillConfig, ReferenceSkillConfig,

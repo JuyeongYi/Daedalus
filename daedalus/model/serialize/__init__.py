@@ -126,7 +126,6 @@ from daedalus.model.plugin.enums import (
     SkillShell,
 )
 from daedalus.model.plugin.hook import HookDef, HookEvent
-from daedalus.model.plugin.policy import ExecutionPolicy
 from daedalus.model.plugin.skill import (
     AsyncForkSkill,
     DeclarativeSkill,
@@ -171,7 +170,6 @@ from daedalus.model.serialize.ser import (
     _ser_hook,
     _ser_hook_handler,
     _ser_machine,
-    _ser_policy,
     _ser_ref_placement,
     _ser_region,
     _ser_skill,
@@ -212,7 +210,6 @@ from daedalus.model.serialize.deser import (
     _deser_hook,
     _deser_hook_handler,
     _deser_machine,
-    _deser_policy,
     _deser_ref_placement,
     _deser_region,
     _deser_skill,

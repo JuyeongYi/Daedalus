@@ -1,4 +1,9 @@
-"""JoinStrategy 정본 위치(fsm/join.py) 검증 — plugin.policy re-export는 RF-1b에서 삭제."""
+"""JoinStrategy 정본 위치(fsm/join.py) 검증.
+
+`plugin.policy` re-export는 RF-1b에서, `ExecutionPolicy`와 그 모듈 자체는
+2026-09-19(WP-1 D8)에 퇴역했다 — 에이전트의 병렬 실행 정책은 편집 표면 0에
+직렬화 왕복만 하던 잔재였다. `JoinStrategy`는 `ParallelState`가 계속 쓴다.
+"""
 from __future__ import annotations
 
 
@@ -9,18 +14,14 @@ def test_join_strategy_new_location():
     assert JoinStrategy.N_OF.value == "n_of"
 
 
-def test_join_strategy_not_reexported_from_policy():
-    """RF-1b — 별칭 경로는 없다. __all__에 ExecutionPolicy만 남는다."""
-    from daedalus.model.plugin import policy
-    assert policy.__all__ == ["ExecutionPolicy"]
+def test_policy_module_is_retired():
+    """`model/plugin/policy.py`는 통째로 퇴역했다 (D8) — 잔재 경로가 없다."""
+    import importlib
 
+    import pytest
 
-def test_execution_policy_uses_fsm_join():
-    from daedalus.model.fsm.join import JoinStrategy
-    from daedalus.model.plugin.policy import ExecutionPolicy
-    p = ExecutionPolicy(join=JoinStrategy.N_OF, join_count=2)
-    assert p.join is JoinStrategy.N_OF
-    assert p.join_count == 2
+    with pytest.raises(ModuleNotFoundError):
+        importlib.import_module("daedalus.model.plugin.policy")
 
 
 def test_parallel_state_join_defaults():

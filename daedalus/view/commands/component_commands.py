@@ -149,12 +149,13 @@ class _DetachComponentCmd(Command):
         return f'# 모델 정리: {getattr(self._component, "name", "?")}'
 
     def _ref_placement_lists(self) -> list[list]:
-        lists = [self._project.reference_placements]
-        for agent in self._project.agents:
-            placements = getattr(agent, "reference_placements", None)
-            if isinstance(placements, list):
-                lists.append(placements)
-        return lists
+        """참조 배치 목록 — 프로젝트 하나뿐이다.
+
+        에이전트의 `reference_placements`는 2026-09-19에 퇴역했다(에이전트는
+        그래프에 놓이는 노드이지 그래프를 소유하지 않는다) — 목록을 유지한 것은
+        되돌리기 단위(undo)가 여러 목록을 한 번에 복원해야 하기 때문이다.
+        """
+        return [self._project.reference_placements]
 
     def _skill_ref_holders(self) -> list[object]:
         """skill_ref가 이 컴포넌트를 가리키는 SimpleState/Transition 전부.

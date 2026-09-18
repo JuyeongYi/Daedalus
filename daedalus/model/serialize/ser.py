@@ -54,7 +54,6 @@ from daedalus.model.plugin.config import (
     TransferSkillConfig,
 )
 from daedalus.model.plugin.hook import HookDef
-from daedalus.model.plugin.policy import ExecutionPolicy
 from daedalus.model.plugin.skill import (
     StepSkill,
     TransferSkill,
@@ -458,15 +457,6 @@ def _ser_config(c: Any) -> dict:
     return d
 
 
-def _ser_policy(p: ExecutionPolicy) -> dict:
-    return {
-        "mode": p.mode,
-        "count": p.count,
-        "join": p.join.value,
-        "join_count": p.join_count,
-    }
-
-
 # ── skill / agent ──
 
 def _ser_skill(s: Any) -> dict:
@@ -502,15 +492,6 @@ def _ser_agent(a: Agent) -> dict:
     if isinstance(a, AgentDefinition):
         d.update({
             "fsm": _ser_machine(a.fsm),
-            "execution_policy": _ser_policy(a.execution_policy),
-            "reference_placements": [
-                _ser_ref_placement(r) for r in a.reference_placements
-            ],
-            "graph_layout": {k: list(v) for k, v in a.graph_layout.items()},
-            # WP-ER — 전이 엣지 경유점(waypoint). 키는 Transition.id.
-            "edge_layout": {
-                k: [list(pt) for pt in v] for k, v in a.edge_layout.items()
-            },
             # WP-AF — 출력 포트. v1 파일의 ExitPoint는 _migrate_v1이 승계한다.
             "transfer_on": [_ser_eventdef(e) for e in a.transfer_on],
             # 에이전트 호출 포트(2026-09-12) — 키 부재인 구버전 파일은 빈 목록으로 로드된다.

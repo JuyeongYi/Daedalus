@@ -71,7 +71,6 @@ from daedalus.model.serialize.deser_plugin import (
     _deser_eventdef,
     _deser_hook,
     _deser_hook_handler,
-    _deser_policy,
     _deser_ref_placement,
     _deser_skill,
     _deser_tool,

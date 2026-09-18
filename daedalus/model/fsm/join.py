@@ -6,7 +6,7 @@ __all__ = ["JoinStrategy"]
 
 
 class JoinStrategy(Enum):
-    """ParallelState/ExecutionPolicy의 조인(완료 종합) 전략.
+    """ParallelState의 조인(완료 종합) 전략.
 
     순수 FSM 개념이므로 ``model/fsm/``에 둔다.
 

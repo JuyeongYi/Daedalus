@@ -105,17 +105,23 @@ class TestRenameComponent:
         rename_component(proj, ref, "new-doc")
         assert proj.reference_placements[0].skill_name == "new-doc"
 
-    def test_updates_agent_reference_placements(self):
+    def test_agents_have_no_reference_placements_to_update(self):
+        """에이전트의 `reference_placements`는 퇴역했다 (2026-09-19).
+
+        참조 배치의 실체는 `PluginProject.reference_placements` 하나다 —
+        에이전트는 그래프에 놓이는 노드이지 그래프를 소유하지 않는다.
+        """
         proj = _make_project()
         ref = ReferenceSkill(name="ref-doc", description="")
         proj.skills.append(ref)
+        proj.reference_placements.append(ReferencePlacement(skill_name="ref-doc"))
 
         agent = _make_agent("ag")
-        agent.reference_placements.append(ReferencePlacement(skill_name="ref-doc"))
         proj.agents.append(agent)
+        assert not hasattr(agent, "reference_placements")
 
         rename_component(proj, ref, "new-doc")
-        assert agent.reference_placements[0].skill_name == "new-doc"
+        assert proj.reference_placements[0].skill_name == "new-doc"
 
     def test_does_not_touch_hooks_keys(self):
         """hooks 키는 hook_library HookDef.name 참조 — 컴포넌트 이름 변경과 무관."""
@@ -229,14 +235,10 @@ class TestRemoveComponent:
         ref = ReferenceSkill(name="ref-doc", description="")
         proj.skills.append(ref)
         proj.reference_placements.append(ReferencePlacement(skill_name="ref-doc"))
-
-        agent = _make_agent("ag")
-        agent.reference_placements.append(ReferencePlacement(skill_name="ref-doc"))
-        proj.agents.append(agent)
+        proj.agents.append(_make_agent("ag"))
 
         log = remove_component(proj, ref)
         assert len(proj.reference_placements) == 0
-        assert len(agent.reference_placements) == 0
         assert any("참조 배치" in line for line in log)
 
     def test_nullifies_skill_ref_in_other_fsms(self):

@@ -11,7 +11,7 @@
 |---|---|---|
 | 뜻 | **워크플로 에이전트** — 그래프에 배치되는 노드 | fork 스킬의 **실행 기반** |
 | 부르는 것 | 호출자의 `call_agents` 포트에서 나가는 전이 | `config.agent`로 지목한 fork 스킬 |
-| fsm / transfer_on / call_agents / execution_policy / 배치 | 있다 | **없다** |
+| fsm / transfer_on / call_agents / 배치 | 있다 | **없다** |
 | config | `AgentConfig`(+ background, isolation, color) | `ForkAgentConfig`(+ color) |
 | 산출 | `agents/<이름>.md` | `agents/<이름>.md` (**같다**) |
 | 편집기 우측 패널 | 출력 포트 · 에이전트 호출 포트 · 호출자 목록 | 🍴 **사용하는 fork 스킬**(읽기 전용) |

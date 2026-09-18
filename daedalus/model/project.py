@@ -180,11 +180,6 @@ def rename_component(
             if rp.skill_name == old_name:
                 rp.skill_name = new_name
 
-        for agent in project.agents:
-            for rp in getattr(agent, "reference_placements", []):
-                if rp.skill_name == old_name:
-                    rp.skill_name = new_name
-
 
 def project_state_machines(project: PluginProject) -> list[StateMachine]:
     """프로젝트가 소유한 최상위 FSM 전부 — 그래프 + 각 스킬/에이전트 FSM.
@@ -345,8 +340,6 @@ def remove_component(
             return before - len(placements)
 
         n_rp = _clean_ref_placements(project.reference_placements)
-        for agent in project.agents:
-            n_rp += _clean_ref_placements(getattr(agent, "reference_placements", []))
         if n_rp > 0:
             log.append(f"참조 배치 {n_rp}개 제거됨")
 

@@ -149,22 +149,21 @@ def test_machine_initial_and_final_identity():
 
 
 def test_graph_layout_keys_are_id():
-    """graph_layout 키가 id로 보존."""
-    entry = EntryPoint(name="entry")
-    done = ExitPoint(name="done")
-    fsm = StateMachine(
-        name="af", initial_state=entry, states=[entry, done], final_states=[done]
-    )
-    agent = AgentDefinition(
-        fsm=fsm, name="ag", description="d",
-        graph_layout={entry.id: [1.0, 2.0], done.id: [3.0, 4.0]},
-    )
-    p = PluginProject(name="P", agents=[agent])
+    """graph_layout 키가 id로 보존 — 소유자는 **프로젝트**다.
+
+    에이전트의 동명 필드는 2026-09-19에 퇴역했다(에이전트는 그래프에 놓이는
+    노드이지 그래프를 소유하지 않는다).
+    """
+    proc, shared = _make_proc_skill()
+    p = PluginProject(name="P", skills=[shared, proc])
+    node = SimpleState(name="a", skill_ref=proc)
+    p.graph.states.append(node)
+    p.graph_layout = {node.id: [1.0, 2.0]}
+
     p2 = _roundtrip(p)
-    ag2 = p2.agents[0]
-    entry2 = next(s for s in ag2.fsm.states if s.name == "entry")
-    assert entry2.id in ag2.graph_layout
-    assert ag2.graph_layout[entry2.id] == [1.0, 2.0]
+    node2 = next(s for s in p2.graph.states if s.name == "a")
+    assert node2.id in p2.graph_layout
+    assert p2.graph_layout[node2.id] == [1.0, 2.0]
 
 
 def test_enum_restored():

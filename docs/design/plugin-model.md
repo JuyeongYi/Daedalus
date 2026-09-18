@@ -46,7 +46,12 @@ PluginComponent(ABC)                      base.py  (name, description, abstract 
   (`PluginComponent.kind`가 abstractmethod).
 - dataclass 필드 순서 실측(2026-09-17): `config`를 `StepSkill`에서 선언해야 `…, when_to_use, config, body,
   transfer_on, call_agents` 순서가 유지되고, `body`를 `Agent`에 올리면 `AgentDefinition`에서 body가
-  execution_policy 앞으로 올라가 순서가 깨진다 — 그래서 `body`는 두 구체 에이전트가 각자 선언한다.
+  `config` 바로 뒤로 올라가 순서가 깨진다 — 그래서 `body`는 두 구체 에이전트가 각자 선언한다.
+- **에이전트는 그래프를 소유하지 않는다 (2026-09-19 퇴역).** `AgentDefinition.execution_policy` ·
+  `reference_placements` · `graph_layout` · `edge_layout`과 `model/plugin/policy.py`(`ExecutionPolicy`)를
+  삭제했다 — 넷 다 **편집 표면 0**에 직렬화 왕복만 하던 호환 잔재였고(원칙 7), 실체는 `PluginProject`의
+  동명 필드다. 구버전 파일의 키는 `serialize.migrate._migrate_v1`이 단방향으로 떨군다
+  (`_AGENT_GRAPH_OWNERSHIP_KEYS` — fork 에이전트 이관 경로와 같은 목록).
 
 ### 배치 가능 판정 (`model/plugin/placement.py`)
 
@@ -232,7 +237,7 @@ background를 지정할 수 없다.
   실행 기반으로만 쓰이는 에이전트는 다른 물건"이다. 예전에는 "**배치되지 않은** 워크플로 에이전트"로 겸직을
   막았는데, 그 판정은 배치를 지우기만 하면 조용히 겸직이 생겼다(원칙 5). 이제 종류가 다르므로 워크플로
   에이전트를 fork 스킬의 `agent`로 지목하면 에러(`fork_agent_wrong_kind`)이고, 배치 여부는 보지 않는다.
-  ForkAgent에는 fsm·transfer_on·call_agents·execution_policy·배치가 **없다** — 결과 분기는 그를 부르는
+  ForkAgent에는 fsm·transfer_on·call_agents·배치가 **없다** — 결과 분기는 그를 부르는
   fork 스킬의 보고 양식(`EXIT: … / NEXT: …`)이 정한다.
 - **fork 에이전트 후보 세 종류** (`view/actions/fork_skill.fork_agent_choices` — 편집기 피커·MCP 검증·
   `create_skill(fork_agent=)`가 공유): ① 내장 `general-purpose`/`Explore`/`Plan`
@@ -260,8 +265,8 @@ background를 지정할 수 없다.
      CC 기본값(백그라운드)으로 돌았으므로 동작이 바뀐다 — 경고 1건("비동기가 필요하면 종류를 바꾸라").
   2. **에이전트 재분류**: 그래프 배치 id 집합에 없고(`graph.states[*].skill_ref`) 어떤 fork 스킬의
      `config.agent`가 이름으로 가리키는 에이전트 → `kind`/`config.kind`를 `fork_agent`로 바꾸고
-     fsm·transfer_on·call_agents·execution_policy·reference_placements·graph_layout·edge_layout·
-     config.background·config.isolation 키를 **드롭**한다(퇴역 개념의 잔재 금지, 원칙 7). 경고 1건.
+     fsm·transfer_on·call_agents·`_AGENT_GRAPH_OWNERSHIP_KEYS`(execution_policy·reference_placements·
+     graph_layout·edge_layout)·config.background·config.isolation 키를 **드롭**한다(퇴역 개념의 잔재 금지, 원칙 7). 경고 1건.
      배치 + 참조는 건드리지 않는다(`fork_agent_wrong_kind`가 짚는다), 미배치 + 미참조는 워크플로 에이전트 그대로.
   3. 순서는 `_migrate_v1` 안에서 `migrate_skill_context` **뒤**다. 모든 dict 접근이 방어적이다 — pseudo
      상태에는 `skill_ref` 키가 아예 없고 `graph`·`config` 키 부재는 구버전 파일의 정상 입력이다.

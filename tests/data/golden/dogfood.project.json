@@ -1568,32 +1568,6 @@
           "variables": {}
         }
       },
-      "execution_policy": {
-        "mode": "fixed",
-        "count": 1,
-        "join": "all",
-        "join_count": null
-      },
-      "reference_placements": [],
-      "graph_layout": {
-        "cb18bfdb234446ef8a6bddcf5d0a0ad5": [
-          0.0,
-          100.0
-        ],
-        "5d64f44a9b8442428cf2ed42a51be0f0": [
-          220.0,
-          0.0
-        ],
-        "3c064c3de9c4412b9756a969be37811a": [
-          470.0,
-          0.0
-        ],
-        "2c26b93aa373476dbabbd85da6e0cc53": [
-          602.9292577634706,
-          180.00165244354196
-        ]
-      },
-      "edge_layout": {},
       "transfer_on": [
         {
           "name": "done",
@@ -1677,15 +1651,6 @@
           "variables": {}
         }
       },
-      "execution_policy": {
-        "mode": "fixed",
-        "count": 1,
-        "join": "all",
-        "join_count": null
-      },
-      "reference_placements": [],
-      "graph_layout": {},
-      "edge_layout": {},
       "transfer_on": [
         {
           "name": "done",
@@ -1773,15 +1738,6 @@
           "variables": {}
         }
       },
-      "execution_policy": {
-        "mode": "fixed",
-        "count": 1,
-        "join": "all",
-        "join_count": null
-      },
-      "reference_placements": [],
-      "graph_layout": {},
-      "edge_layout": {},
       "transfer_on": [
         {
           "name": "done",
@@ -1857,15 +1813,6 @@
           "variables": {}
         }
       },
-      "execution_policy": {
-        "mode": "fixed",
-        "count": 1,
-        "join": "all",
-        "join_count": null
-      },
-      "reference_placements": [],
-      "graph_layout": {},
-      "edge_layout": {},
       "transfer_on": [
         {
           "name": "done",

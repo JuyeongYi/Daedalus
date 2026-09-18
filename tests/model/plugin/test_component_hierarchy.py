@@ -158,9 +158,11 @@ def test_dataclass_field_order_is_unchanged():
     ]
     for cls in (ProceduralSkill, SyncForkSkill, AsyncForkSkill, WrappedSkill):
         assert list(inspect.signature(cls).parameters) == step_order, cls.__name__
+    # 그래프 소유 필드 4종(execution_policy/reference_placements/graph_layout/
+    # edge_layout)은 2026-09-19(WP-1 D8)에 퇴역했다 — 에이전트는 그래프에
+    # 놓이는 노드이지 그래프를 소유하지 않는다.
     assert list(inspect.signature(AgentDefinition).parameters) == [
-        "fsm", "name", "description", "config", "execution_policy", "body",
-        "reference_placements", "graph_layout", "edge_layout", "transfer_on",
+        "fsm", "name", "description", "config", "body", "transfer_on",
         "call_agents", "id",
     ]
     assert list(inspect.signature(ForkAgent).parameters) == [

@@ -13,7 +13,7 @@
 
 - `ParallelState` 내 독립 실행 단위
 - `sub_machine: StateMachine`을 포함 — 각 Region은 자신만의 FSM을 가짐
-- **조인 전략:** `ParallelState.join: JoinStrategy = ALL` + `join_count: int | None`. ALL=전 Region, ANY=하나, N_OF=`join_count`개 완료 시 join. `JoinStrategy`는 순수 FSM 개념이라 `model/fsm/join.py`가 정본이며 필요한 곳이 직수입한다(RF-1b에서 policy.py re-export 삭제 — `ExecutionPolicy`도 동일 enum 사용).
+- **조인 전략:** `ParallelState.join: JoinStrategy = ALL` + `join_count: int | None`. ALL=전 Region, ANY=하나, N_OF=`join_count`개 완료 시 join. `JoinStrategy`는 순수 FSM 개념이라 `model/fsm/join.py`가 정본이며 필요한 곳이 직수입한다(RF-1b에서 policy.py re-export 삭제, 2026-09-19에 `policy.py`·`ExecutionPolicy` 자체가 퇴역 — 지금 소비자는 `ParallelState`뿐이다).
 
 ## FSM + Blackboard 하이브리드
 
@@ -52,7 +52,7 @@
 - **기본값:** `default_factory=_make_project_graph` — `EntryPoint(name="start")`를 `initial_state`로 갖는 빈 머신(states 포함). `StateMachine.initial_state`는 required 유지(Optional 완화 없음), 직렬화 포맷도 불변.
 - **EntryPoint 격하 (WP-EP):** CC 플러그인에는 단일 진입점이 없다 — user_invocable 스킬은 전부 `/skill`로 독립 시작 가능하고 모델 자동 인보크도 있어, FSM 관념의 "시작점"이 성립하지 않는다. 따라서 **프로젝트 캔버스(탭 0)는 EntryPoint와 그에 닿는 전이를 그리지 않는다** — `GraphIO.load_project_graph`가 `graph.states`에서 EntryPoint 인스턴스를 스킵하고(VM 미생성), EntryPoint에 닿는 전이도 VM이 없어 자연히 렌더되지 않는다(구버전 파일의 시작 전이도 경고 없이 조용히 숨는다). 모델은 불변 — `project.graph.initial_state`는 여전히 EntryPoint이고 구버전 파일의 시작 전이도 저장 왕복 시 보존된다. `FsmScene`의 EntryPoint 삭제-방어 코드(`_delete_state`/컨텍스트 메뉴/keyPress)는 그대로 두지만, 프로젝트 캔버스에서는 VM이 없어 자연히 죽은 경로가 된다(에이전트 내부 FSM 캔버스는 WP-AF로 퇴역했으므로 이제 그 코드를 공유하는 씬도 없다).
 - **placement:** 배치된 스킬/에이전트는 `SimpleState(skill_ref=...)`로 그래프에 들어간다 (에이전트도 SimpleState로, CompositeState 승격 없음). `FsmScene.set_project`가 `_target_fsm = project.graph`로 배선해 Create/Delete/Transition 커맨드가 그래프에 동기화된다 (undo/redo 일관). `_target_fsm`이 배선되는 씬은 이제 이 하나뿐이다 — 에이전트 내부 FSM 캔버스는 WP-AF로 퇴역했다.
-- **graph_layout:** `dict[str, list[float]]` — 키는 **state.id** (AgentDefinition.graph_layout과 동일 규약, 이름 변경 안전). 저장 직전 `app._save_graph_layout`이 VM 좌표를 기록, 로드 시 `GraphIO.load_project_graph`가 graph+graph_layout으로 캔버스 VM을 재구성(실체는 둘 다 `view/graph_io.GraphIO`). EntryPoint는 캔버스 VM이 없으므로 `graph_layout`에도 그 키가 기록되지 않는다(WP-EP).
+- **graph_layout:** `dict[str, list[float]]` — 키는 **state.id**(이름 변경 안전). 소유자는 `PluginProject` 하나다(2026-09-19 — `AgentDefinition`의 동명 필드 퇴역). 저장 직전 `app._save_graph_layout`이 VM 좌표를 기록, 로드 시 `GraphIO.load_project_graph`가 graph+graph_layout으로 캔버스 VM을 재구성(실체는 둘 다 `view/graph_io.GraphIO`). EntryPoint는 캔버스 VM이 없으므로 `graph_layout`에도 그 키가 기록되지 않는다(WP-EP).
 - **블랙보드 배선:** `project.graph.blackboard.parent = project.blackboard` — `PluginProject.__post_init__`(생성 경로)과 `deserialize_project`(역직렬화 생성 경로) 양쪽에서 보장.
 
 ## CompletionEvent
@@ -83,4 +83,4 @@ EvaluationStrategy(ABC)        ExecutionStrategy(ABC)
 - **포맷 v2 + `_migrate_v1` (RF-1b):** `serialize_project`는 항상 `"format": 2`를 쓴다. `deserialize_project`는 format 1(또는 키 부재 구버전)을 받으면 **`_migrate_v1` 한 함수로 집약된 단방향 마이그레이션**을 태운 뒤 v2로 읽는다(왕복 보존 없음 — 열면 v2로 저장된다). 미지의 상위 format은 명시 에러. `_migrate_v1`이 다루는 축(입력 dict는 deepcopy로 불변): ① delegations 드롭(경고 — WP-RF-1a. 위임을 가리키던 placement skill_ref는 dangling 경고와 함께 None으로 정리) ①-b 에이전트 로컬 스킬 → **전역 스킬 승격**(WP-RF-1c, `_promote_local_skills` — 이름 충돌(전역 스킬·에이전트·먼저 승격된 스킬) 시 `<agent>--<name>` 개명 + 재충돌 시 `-2` 접미 유일화 + 개명 시 소유 에이전트 config.skills 참조 치환, 승격마다 경고 1건, id 보존이라 transfer skill_ref 해소 유지. 승격 dict는 data["skills"]에 합류해 이후 단계·역직렬화에서 전역 스킬과 같은 경로. **format 2 파일도 에이전트 dict에 `skills` 키가 있으면 같은 승격을 탄다** — RF-1b 시점 코드가 저장한 v2 파일의 인라인 로컬 스킬이 경고 없이 드롭되는 것 방지) ② sections 트리→body 평탄화(render_markdown) + `${CLAUDE_PLUGIN_ROOT}/files/`→`${ROOT}/files/` 치환(WP-RT) ③ 퇴역 키 조용히 드롭 — entry_paths/caller_contracts/전이의 target_port(WP-IP/WP-CT, 경고 불필요) ④ 에이전트 transfer_on 부재 시 내부 FSM ExitPoint 이름·색 승계(WP-AF) ⑤ 구버전 훅(커맨드 하나짜리)을 handlers 목록으로 감싸기 + 핸들러 command→script(WP-HK/WP-HS) ⑥ `field_type: "number"`→`"float"`(FieldType.NUMBER 퇴역). 픽스처 고정은 `tests/model/test_migrate_v1.py`(v2 왕복 항등 포함).
 - **그래프 노드가 될 수 있는 컴포넌트**는 `model/plugin/placement.is_state_placeable`가 정한다(WP-FK2) — `StepSkill`(절차형·fork 2종), 용도가 reference가 아닌 `WrappedSkill`, `AgentDefinition`. `ForkAgent`는 fsm·포트가 없고 fork 스킬이 부르는 실행 기반이라 **노드가 될 수 없다**. 캔버스·MCP·"여기에 만들기"가 모두 같은 함수를 부른다 — 상세는 `plugin-model.md` "배치 가능 판정".
 - **프로젝트 그래프 직렬화:** `serialize_project`는 `graph`(`_ser_machine` 재사용)와 `graph_layout`을 왕복한다. 그래프 placement의 skill_ref는 component id로 평탄화되고, 역직렬화 시 pass1에서 등록된 skills/agents를 pass2가 해소한다(그래프 `_deser_machine`은 pass1에서 호출). 하위 호환: `"graph"` 키 부재(구버전 파일) → `_make_project_graph()`로 빈 그래프 생성(경고 없음). graph.blackboard.parent는 역직렬화 시 프로젝트 블랙보드로 재연결.
-- `AgentDefinition.graph_layout`/`PluginProject.graph_layout`의 키는 state.name이 아니라 **state.id**다 (이름 변경 시 레이아웃 유실 방지).
+- `PluginProject.graph_layout`의 키는 state.name이 아니라 **state.id**다 (이름 변경 시 레이아웃 유실 방지).

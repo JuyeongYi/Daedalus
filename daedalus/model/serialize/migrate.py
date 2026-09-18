@@ -20,6 +20,13 @@ from daedalus.model.serialize.ser import FORMAT_VERSION
 # ═══════════════════════ v1 → v2 마이그레이션 ═══════════════════════
 
 
+#: 에이전트가 그래프를 소유하던 시절의 키 (2026-09-19 퇴역 — 단방향 드롭).
+#: `_fork_agent_names` 경로의 fork 이관도 같은 목록을 쓴다.
+_AGENT_GRAPH_OWNERSHIP_KEYS: tuple[str, ...] = (
+    "execution_policy", "reference_placements", "graph_layout", "edge_layout",
+)
+
+
 def _migrate_v1(data: dict, warnings: list[str]) -> dict:
     """format 1(또는 키 부재) dict → format 2 dict. 단방향 — 입력은 변형하지 않는다.
 
@@ -32,7 +39,10 @@ def _migrate_v1(data: dict, warnings: list[str]) -> dict:
       2. 컴포넌트 본문: ``sections`` 트리 → ``body`` 평탄화(render_markdown) +
          ``${CLAUDE_PLUGIN_ROOT}/files/`` → ``${ROOT}/files/`` 치환(WP-RT)
       3. 퇴역 키 드롭: ``entry_paths`` / ``caller_contracts`` /
-         전이의 ``target_port`` (WP-IP/WP-CT — 경고 없음, 퇴역 개념)
+         전이의 ``target_port`` (WP-IP/WP-CT — 경고 없음, 퇴역 개념) +
+         에이전트의 그래프 소유 키 ``execution_policy`` / ``reference_placements`` /
+         ``graph_layout`` / ``edge_layout`` (2026-09-19 — 에이전트는 그래프에
+         놓이는 노드이지 그래프를 소유하지 않는다)
       4. 에이전트 출력 포트: ``transfer_on`` 부재 시 내부 FSM의 ExitPoint
          이름·색 승계 (WP-AF)
       5. 훅: 커맨드 하나짜리 구버전(HookDef.command/timeout) → handlers 목록,
@@ -80,6 +90,11 @@ def _migrate_v1(data: dict, warnings: list[str]) -> dict:
         _migrate_component(s)
     for a in data.get("agents", []) or []:
         _migrate_component(a)
+        # 3) 그래프 소유 키 드롭 — 에이전트는 그래프에 놓이는 노드이지 그래프를
+        # 소유하지 않는다(2026-09-19). 넷 다 편집 표면 0인 왕복 잔재였고 실체는
+        # PluginProject의 동명 필드다. 경고 없음(퇴역 개념).
+        for retired in _AGENT_GRAPH_OWNERSHIP_KEYS:
+            a.pop(retired, None)
         # 4) ExitPoint → transfer_on 승계 (이름·색, 단방향 — 경고 없음).
         # ExitPoint 상태 자체는 fsm에 남는다(순수 FSM 개념).
         if not a.get("transfer_on"):
@@ -281,8 +296,7 @@ def migrate_fork_split(
             continue
         a["kind"] = "fork_agent"
         a.setdefault("config", {})["kind"] = "fork_agent"
-        for k in ("fsm", "transfer_on", "call_agents", "execution_policy",
-                  "reference_placements", "graph_layout", "edge_layout"):
+        for k in ("fsm", "transfer_on", "call_agents", *_AGENT_GRAPH_OWNERSHIP_KEYS):
             a.pop(k, None)
         a["config"].pop("background", None)
         a["config"].pop("isolation", None)

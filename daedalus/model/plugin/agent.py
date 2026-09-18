@@ -12,7 +12,6 @@ from daedalus.model.plugin.config import (
     AgentConfigBase,
     ForkAgentConfig,
 )
-from daedalus.model.plugin.policy import ExecutionPolicy
 
 
 @dataclass
@@ -25,8 +24,8 @@ class Agent(PluginComponent, ABC):
     그대로 본다 — ForkAgent는 배치될 수 없어 자연 제외된다.
 
     `body`는 **여기서 선언하지 않는다** — 넣으면 `fields(AgentDefinition)`에서
-    body가 execution_policy 앞으로 올라가 종전 필드 순서가 깨진다(실측
-    2026-09-17). 두 구체 클래스가 각자 선언한다.
+    body가 `config` 바로 뒤로 올라가 종전 필드 순서가 깨진다(실측 2026-09-17).
+    두 구체 클래스가 각자 선언한다.
     """
     config: AgentConfigBase = field(default_factory=AgentConfigBase)  # type: ignore[type-abstract]
     # 안정 식별자 — 값 동등성 비교에서는 제외(compare=False).
@@ -41,19 +40,20 @@ class AgentDefinition(Agent, WorkflowComponent):
     전역 스킬로 승격된다(serialize._migrate_v1). 에이전트에게 줄 지식은 전역
     스킬로 만들면 컴파일이 skills 프론트매터에 자동 합류시킨다(WP-AS).
 
+    **에이전트는 그래프에 놓이는 노드이지 그래프를 소유하지 않는다** — 배치·경유점
+    좌표(`graph_layout`/`edge_layout`)와 참조 노드 배치(`reference_placements`),
+    그리고 병렬 실행 정책(`execution_policy`)은 퇴역했다(2026-09-19). 넷 다 어떤
+    편집 표면도 쓰지 않고 직렬화 왕복만 하던 호환 잔재였고, 실체는 `PluginProject`의
+    동명 필드다. 구버전 파일의 키는 `serialize.migrate._migrate_v1`이 단방향으로
+    떨군다(원칙 7).
+
     필드 순서 (dataclass MRO):
       fsm (required, WorkflowComponent)
       name, description (required, PluginComponent)
-      config (Agent), execution_policy, body (default)
+      config (Agent), body (default)
     """
     config: AgentConfig = field(default_factory=AgentConfig)  # type: ignore[assignment]
-    execution_policy: ExecutionPolicy = field(default_factory=ExecutionPolicy)
     body: str = ""
-    reference_placements: list = field(default_factory=list)  # list[ReferencePlacement]
-    graph_layout: dict[str, list[float]] = field(default_factory=dict)
-    # WP-ER — 전이 엣지의 경유점(waypoint) 좌표. 키는 Transition.id, 값은 [x, y] 목록
-    # (소스→타깃 순서). PluginProject.edge_layout과 동일 규약.
-    edge_layout: dict[str, list[list[float]]] = field(default_factory=dict)
     # WP-AF — 출력 포트. 내부 FSM 퇴역 후 에이전트의 결과 분기는 스킬과 동일하게
     # transfer_on이 담는다. v1 파일의 ExitPoint 출력 포트는 로드 시 transfer_on으로
     # 마이그레이션된다(serialize._migrate_v1) — 여기가 단일 진실이다.

@@ -37,7 +37,6 @@ from daedalus.model.plugin.enums import (
     SkillShell,
 )
 from daedalus.model.plugin.hook import HookDef, HookEvent
-from daedalus.model.plugin.policy import ExecutionPolicy
 from daedalus.model.plugin.skill import (
     WrappedSkill,
     AsyncForkSkill,
@@ -182,17 +181,6 @@ def _deser_config(d: dict) -> Any:
     return c
 
 
-def _deser_policy(d: dict | None) -> ExecutionPolicy:
-    if d is None:
-        return ExecutionPolicy()
-    return ExecutionPolicy(
-        mode=d.get("mode", "fixed"),
-        count=d.get("count", 1),
-        join=_to_enum(JoinStrategy, d.get("join"), JoinStrategy.ALL),
-        join_count=d.get("join_count"),
-    )
-
-
 # ── skill / agent ──
 
 def _coerce_config(config, expected_cls, *, kind: str, name: str, reg: _Registry):
@@ -311,16 +299,7 @@ def _deser_agent(d: dict, reg: _Registry) -> Agent:
             config=_coerce_config(
                 config, AgentConfig, kind=kind, name=name, reg=reg
             ),
-            execution_policy=_deser_policy(d.get("execution_policy")),
             body=_deser_body(d),
-            reference_placements=[
-                _deser_ref_placement(r) for r in d.get("reference_placements", [])
-            ],
-            graph_layout={k: list(v) for k, v in d.get("graph_layout", {}).items()},
-            # WP-ER — 구버전 키 부재 → 빈 dict (경고 없음).
-            edge_layout={
-                k: [list(pt) for pt in v] for k, v in d.get("edge_layout", {}).items()
-            },
             # WP-AF — 출력 포트가 단일 진실. v1의 ExitPoint 승계는 _migrate_v1 소관.
             transfer_on=[_deser_eventdef(e) for e in d.get("transfer_on", [])],
             # 에이전트 호출 포트(2026-09-12) — 키 부재(구버전) → 빈 목록, 경고 없음.

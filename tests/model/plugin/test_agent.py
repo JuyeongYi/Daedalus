@@ -3,8 +3,6 @@ from __future__ import annotations
 from daedalus.model.fsm.machine import StateMachine
 from daedalus.model.fsm.pseudo import EntryPoint, ExitPoint
 from daedalus.model.plugin.agent import AgentDefinition
-from daedalus.model.fsm.join import JoinStrategy
-from daedalus.model.plugin.policy import ExecutionPolicy
 
 
 def _make_agent_fsm():
@@ -81,14 +79,19 @@ def test_agent_output_event_defs():
     assert defs[0].color == "#44aa44"
 
 
-def test_agent_execution_policy_default():
-    fsm = _make_agent_fsm()
-    agent = AgentDefinition(fsm=fsm, name="A", description="d")
-    assert isinstance(agent.execution_policy, ExecutionPolicy)
+def test_agent_does_not_own_the_graph():
+    """그래프 소유 필드 4종은 퇴역했다 (2026-09-19) — 에이전트는 노드다.
 
+    `execution_policy`/`reference_placements`/`graph_layout`/`edge_layout`은
+    편집 표면 0에 직렬화 왕복만 하던 잔재였다. 실체는 `PluginProject`의
+    동명 필드다(원칙 7 — 퇴역 개념은 흔적 없이).
+    """
+    import dataclasses
 
-def test_agent_execution_policy_parallel():
-    fsm = _make_agent_fsm()
-    policy = ExecutionPolicy(join=JoinStrategy.ANY)
-    agent = AgentDefinition(fsm=fsm, name="A", description="d", execution_policy=policy)
-    assert agent.execution_policy.join == JoinStrategy.ANY
+    agent = AgentDefinition(fsm=_make_agent_fsm(), name="A", description="d")
+    names = {f.name for f in dataclasses.fields(agent)}
+    for retired in (
+        "execution_policy", "reference_placements", "graph_layout", "edge_layout",
+    ):
+        assert retired not in names, retired
+        assert not hasattr(agent, retired), retired
