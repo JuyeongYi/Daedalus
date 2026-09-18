@@ -97,39 +97,6 @@ ALLOWLIST: dict[str, tuple[str, str]] = {
         "staleness 버그가 난다(DEADCODE §2.7). docs/backlog.md '5. 기능 잔여'에 "
         "배선 조건(component.body를 document_for 없이 쓰는 첫 경로)과 함께 등재.",
     ),
-    # ── WP-2a 능력 표면 (REFACTOR_SPEC §2-b/§2-c) ──────────────────────
-    # 선언만 하고 아무도 읽지 않는 **의도된 중간 상태**다. 능력 선언과 호출자
-    # 치환을 한 커밋에 섞으면 9 클래스 × 100여 사이트가 한 덩어리가 되고 되돌릴
-    # 지점이 사라진다(§10 R15) — 그래서 WP-2a는 "추가만 하는 항상 녹색 WP"이고
-    # 소비자 배선은 WP-2b~2d가 한다. 배선되는 순간
-    # `test_allowlist_entries_are_still_dead`가 **이 항목을 지우라고 실패**하므로
-    # 잊힐 수 없다. 표면의 나머지(effective_placement·is_active·emits_output·
-    # can_delete·output_ports·call_ports·new·creation_defaults)는 이미 표면
-    # 안에서 서로를 불러 규칙 A를 그대로 통과한다 — 여기 없는 이유다.
-    "model.plugin.config::ComponentConfig.rename_ref": (
-        "contract-registry",
-        "Q14 이름 참조 치환 — 능력 표면의 선언 쪽 절반이다. "
-        "호출자 쪽 절반을 배선할 곳: "
-        "WP-2b — `model/project.rename_component`. "
-        "`tests/model/plugin/test_capability_surface.py`가 "
-        "9종 전부의 선언 완결성을 강제한다.",
-    ),
-    "model.plugin.config::ForkSkillConfig.rename_ref": (
-        "contract-registry",
-        "Q14 이름 참조 치환 — 능력 표면의 선언 쪽 절반이다. "
-        "호출자 쪽 절반을 배선할 곳: "
-        "WP-2b — `model/project.rename_component`. "
-        "`tests/model/plugin/test_capability_surface.py`가 "
-        "9종 전부의 선언 완결성을 강제한다.",
-    ),
-    "model.plugin.config::AgentConfigBase.rename_ref": (
-        "contract-registry",
-        "Q14 이름 참조 치환 — 능력 표면의 선언 쪽 절반이다. "
-        "호출자 쪽 절반을 배선할 곳: "
-        "WP-2b — `model/project.rename_component`. "
-        "`tests/model/plugin/test_capability_surface.py`가 "
-        "9종 전부의 선언 완결성을 강제한다.",
-    ),
 }
 
 #: **자동 면제의 맹점 기준선** — 외부 기저 상속 클래스라서 규칙 A가 건너뛰지만

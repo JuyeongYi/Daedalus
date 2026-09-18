@@ -160,11 +160,23 @@ no-op가 된다. 그래서 `PluginComponent`가 **선언(ClassVar) + 인스턴�
 무관한 참조를 오갱신한다. 오버라이드는 `ForkSkillConfig`(`agent` → AGENTS)와
 `AgentConfigBase`(`skills` → SKILLS) 둘뿐이고, 그 사실 자체를 테스트가 양방향으로 고정한다.
 
-> **오늘의 상태(WP-2a).** 표면은 **선언만** 돼 있고 호출자는 아직 옛 판정을 쓴다 —
-> 선언과 100여 사이트 치환을 한 커밋에 섞으면 되돌릴 지점이 사라지기 때문이다.
-> 소비자 배선은 WP-2b(model)·WP-2c(compiler)·WP-2d(view/MCP)가 하고, 그때까지
-> 소비자 없는 메서드는 `tests/test_dead_code.py`의 allowlist에 **배선 예정 WP와 함께**
-> 등재돼 있다(배선되는 순간 `test_allowlist_entries_are_still_dead`가 삭제를 강제한다).
+> **오늘의 상태(WP-2b 완료).** **model 계층의 호출자는 전부 이 표면을 쓴다** —
+> 배치 판정(`placement.*`·`is_reference_usage`·`is_disabled_wrapped`), 검증 규칙의
+> 술어(`REQUIRES_OUTPUT_PORTS`·`known_outgoing_events()`·`IS_FORK_BASE`·
+> `external_source`/`external_plugin_refs()`·`hook_refs()`·`config.name_refs`),
+> `project.rename_component`/`project_state_machines`/`remove_component`,
+> `fsm.SimpleState.skill_ref`의 타입. model 계층에 남은 컴포넌트 대상 `isinstance`는
+> `serialize/ser.py`의 직렬화 사다리(WP-4가 철거)와 `skill.has_external_body`
+> (WP-2c가 `BODY_SOURCE`로 치환) 둘뿐이다.
+>
+> compiler·view·MCP 호출자는 아직 옛 판정을 쓴다 — 배선은 WP-2c(compiler)·
+> WP-2d(view/MCP)가 잇는다. 그때까지 소비자 없는 메서드는
+> `tests/test_dead_code.py`의 allowlist에 **배선 예정 WP와 함께** 등재돼 있고,
+> 배선되는 순간 `test_allowlist_entries_are_still_dead`가 삭제를 강제한다.
+>
+> **랩핑 전용으로 남은 좁힘**은 소스에 `# WRAPPED-ONLY` 태그가 붙는다 — 능력 선언으로는
+> 표현되지 않지만 오늘의 집합을 정확히 보존해야 하는 자리이고(예: `_agent_call_edges`의
+> caller, 용도 스위치 보유 판정), WrappedSkill 퇴역(WP-10)이 태그를 따라 전수 삭제한다.
 
 ### 배치 가능 판정 (`model/plugin/placement.py`)
 

@@ -530,13 +530,16 @@ def project_wrapped_sources(project) -> set[str]:
     MCP가 QDialog가 든 파일을 임포트해 모델 질문을 답했다(D7).
 
     `used_plugin_*`과 달리 파일시스템을 읽지 않는다 — 프로젝트만 본다.
+
+    "외부 정본을 무엇으로 가리키는가"는 컴포넌트가 답한다
+    (`external_source` — Q34). 종류를 묻지 않으므로 외부 정본을 갖는 새 종류는
+    선언 한 줄로 이 집합에 합류한다.
     """
     out: set[str] = set()
     for skill in getattr(project, "skills", None) or []:
-        if getattr(skill, "kind", "") == "wrapped_skill":
-            source = getattr(getattr(skill, "config", None), "source", "") or ""
-            if source:
-                out.add(source)
+        source = skill.external_source
+        if source:
+            out.add(source)
     return out
 
 

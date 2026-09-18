@@ -239,10 +239,13 @@ daedalus/
 │   │                       #   값 동등성이고 id는 비교 제외 — 본문 undo 스택이 이름이 아니라 안정 식별자로 문서를 잡는다.
 │   │                       #   paths(A13)는 규칙 전용 `paths:` 프론트매터 glob 목록 — 비면 프론트매터를 내지 않는다(항상 로드).
 │   ├── project.py           # PluginProject (최상위 컨테이너, name+description+version — plugin.json 매니페스트 소스), ReferencePlacement, tool_shelf, hook_library, blackboard(최상위), graph(워크플로 백킹 머신)+graph_layout+edge_layout(WP-ER 엣지 웨이포인트, 키: Transition.id), emit_progress_hook(WP-RS SessionStart 진행 상태 훅 토글, 기본 True), build_target(WP-TG 빌드 타깃 — MARKETPLACE/LOCAL, 기본 MARKETPLACE), claude_md/rules(WP-WD 작업 폴더 문서 — LOCAL 전용 배출), mcp_server_defs(WP-MW — 이름→.mcp.json 서버 객체, LOCAL 설치 배선 소스)
-│   │                       # + rename_component(project, component, new_name) — 이름 변경 + 문자열 참조 3종 일괄 갱신 (Qt 무관)
+│   │                       # + rename_component(project, component, new_name) — 이름 변경 + 문자열 참조 일괄 갱신 (Qt 무관).
+│   │                       #   어느 설정이 어느 네임스페이스의 이름을 가리키는지는 **설정이 답한다**(config.rename_ref(BUCKET, old, new) — Q14) —
+│   │                       #   여기 isinstance 사다리가 있으면 이름 참조를 갖는 새 설정 종류가 개명을 조용히 놓친다
 │   │                       # + remove_component(project, component) → list[str] — 모델 정리 (graph placement, skill_ref None화 등).
 │   │                       #   undo 가능한 삭제는 view/commands의 RemoveComponentCmd가 이것을 감싼다(A2) — 이 함수 자체는 계속 순수 모델
-│   │                       # + project_state_machines(project) — 그래프 + 각 스킬/에이전트 FSM(라벨 없음, 그래프 포함)
+│   │                       # + project_state_machines(project) — 그래프 + 각 스킬/에이전트 FSM(라벨 없음, 그래프 포함).
+│   │                       #   FSM 보유 판정은 component.state_machines()(Q2) — 검증 스캔(scan.project_machines·blackboard·__init__)과 같은 실체
 │   │                       # + blackboard_rename_ref_updates(project, old, new) → [(state, "reads"|"writes", 새 리스트)] —
 │   │                       #   블랙보드 클래스 개명 시 갱신될 상태 접근 선언을 **계산만** 한다(모델 불변). GUI는 그대로 대입하고
 │   │                       #   MCP는 같은 값으로 SetAttrCmd를 만들어 1 undo 단위로 묶는다 — 적용은 표면마다 달라도 판정은 한 곳

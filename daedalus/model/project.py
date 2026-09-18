@@ -131,51 +131,40 @@ def rename_component(
 
     갱신 대상:
     - component.name 자체
-    - ForkSkillConfig.agent (에이전트 이름 참조 — 두 에이전트 종류 모두)
-    - AgentConfigBase.skills (스킬 이름 리스트 — 두 에이전트 종류 모두)
-    - ReferencePlacement.skill_name (project + 각 agent의 reference_placements)
+    - 각 config가 **자기 네임스페이스로 선언한** 이름 참조
+      (`config.rename_ref(namespace, old, new)` — 오늘은 `ForkSkillConfig.agent`가
+      에이전트 이름, `AgentConfigBase.skills`가 스킬 이름 목록)
+    - ReferencePlacement.skill_name (project의 reference_placements)
 
     ComponentConfig.hooks 키는 hook_library의 HookDef.name 참조로 컴포넌트 이름과
     무관하므로 건드리지 않는다.
 
-    각 참조는 **참조 대상 타입별로 분리**해 갱신한다 — 동명-다른타입 컴포넌트
-    (예: 스킬 "x"와 에이전트 "x")가 공존해도 무관 참조를 오갱신하지 않는다:
-    - ForkSkillConfig.agent는 에이전트 이름 참조 → component가 에이전트일 때만
-    - AgentConfigBase.skills는 스킬 이름 참조 → component가 스킬일 때만
-    - ReferencePlacement.skill_name은 스킬 이름 참조 → component가 스킬일 때만
+    **네임스페이스를 넘기는 이유**(Q14): 동명-다른타입 컴포넌트(예: 스킬 "x"와
+    에이전트 "x")가 공존해도 무관 참조를 오갱신하지 않기 위해서다. 어느 설정이
+    어느 네임스페이스의 이름을 가리키는지는 **그 설정이 안다** — 여기서
+    `isinstance(cfg, ForkSkillConfig)` 식으로 열거하면 이름 참조를 갖는 새 설정
+    종류가 생길 때마다 이 함수를 고쳐야 하고, 빠뜨리면 개명이 참조를 조용히
+    끊는다(원칙 5). `component.BUCKET`도 값 비교다 — 에이전트 **두 종류 모두**가
+    대상이고(fork 스킬이 가리키는 주 대상이 fork 에이전트다), 워크플로
+    에이전트로 좁히면 fork 에이전트 개명 때 참조가 조용히 끊긴다.
     """
-    from daedalus.model.plugin.config import AgentConfigBase, ForkSkillConfig
+    from daedalus.model.plugin.roles import Bucket
 
     old_name: str = getattr(component, "name", "")
     if old_name == new_name:
         return
 
-    # 에이전트 **두 종류 모두**가 대상이다 — 이 플래그가 ForkSkillConfig.agent
-    # 치환을 켜는 스위치이고, fork 스킬이 가리키는 주 대상이 바로 fork
-    # 에이전트다. 워크플로 에이전트로 좁히면 fork 에이전트 개명 때 참조가
-    # 조용히 끊긴다(원칙 5).
-    is_agent = isinstance(component, Agent)
-    is_skill = isinstance(component, Skill)
+    namespace: Bucket = type(component).BUCKET
 
     # 1) 이름 자체 변경
     component.name = new_name  # type: ignore[union-attr]
 
-    # 2) ForkSkillConfig.agent 갱신 — 에이전트 이름 참조
-    if is_agent:
-        for skill in project.skills:
-            cfg = getattr(skill, "config", None)
-            if isinstance(cfg, ForkSkillConfig) and cfg.agent == old_name:
-                cfg.agent = new_name
+    # 2) config의 이름 참조 갱신 — 같은 네임스페이스를 가리키는 것만 반응한다
+    for comp in [*project.skills, *project.agents]:
+        comp.config.rename_ref(namespace, old_name, new_name)
 
-    # 3) AgentConfigBase.skills 갱신 — 스킬 이름 참조
-    if is_skill:
-        for agent in project.agents:
-            cfg = getattr(agent, "config", None)
-            if isinstance(cfg, AgentConfigBase) and isinstance(cfg.skills, list):
-                cfg.skills = [new_name if s == old_name else s for s in cfg.skills]
-
-    # 4) ReferencePlacement.skill_name 갱신 — 스킬 이름 참조 (project + 각 agent)
-    if is_skill:
+    # 3) ReferencePlacement.skill_name 갱신 — 스킬 이름 참조
+    if namespace is Bucket.SKILLS:
         for rp in project.reference_placements:
             if rp.skill_name == old_name:
                 rp.skill_name = new_name
@@ -188,14 +177,10 @@ def project_state_machines(project: PluginProject) -> list[StateMachine]:
     주고 **프로젝트 그래프를 포함**한다(상태 reads/writes는 배치 노드에도 붙는다).
     """
     machines: list[StateMachine] = [project.graph]
-    for skill in project.skills:
-        fsm = getattr(skill, "fsm", None)
-        if fsm is not None:
-            machines.append(fsm)
-    for agent in project.agents:
-        fsm = getattr(agent, "fsm", None)
-        if fsm is not None:
-            machines.append(fsm)
+    for comp in [*project.skills, *project.agents]:
+        # FSM 보유는 컴포넌트가 답한다(`state_machines()` — Q2). FSM이 없는
+        # 종류(선언형·참조 스킬·fork 에이전트)는 빈 목록이라 자연 제외된다.
+        machines.extend(comp.state_machines())
     return machines
 
 
@@ -281,6 +266,7 @@ def remove_component(
     """
     from daedalus.model.fsm.state import SimpleState
     from daedalus.model.fsm.walk import iter_states, iter_transitions
+    from daedalus.model.plugin.roles import Bucket
 
     log: list[str] = []
     comp_name: str = getattr(component, "name", str(component))
@@ -331,7 +317,7 @@ def remove_component(
 
     # --- 3) reference_placements 정리 — skill_name은 스킬 이름 참조이므로
     #     component가 스킬일 때만 (동명 에이전트 삭제 시 오삭제 방지) ---
-    if isinstance(component, Skill):
+    if type(component).BUCKET is Bucket.SKILLS:
         def _clean_ref_placements(placements: list) -> int:
             before = len(placements)
             to_remove = [rp for rp in placements if rp.skill_name == comp_name]
@@ -358,14 +344,9 @@ def remove_component(
         return count
 
     nullified = 0
-    for skill in project.skills:
-        fsm = getattr(skill, "fsm", None)
-        if fsm is not None:
-            nullified += _nullify_skill_refs_in_machine(fsm)
-    for agent in project.agents:
-        fsm = getattr(agent, "fsm", None)
-        if fsm is not None:
-            nullified += _nullify_skill_refs_in_machine(fsm)
+    for comp in [*project.skills, *project.agents]:
+        for sm in comp.state_machines():  # Q2
+            nullified += _nullify_skill_refs_in_machine(sm)
     if nullified > 0:
         log.append(f"다른 FSM 내 skill_ref {nullified}개 → None")
 

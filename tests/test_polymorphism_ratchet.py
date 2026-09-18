@@ -53,12 +53,12 @@ SHAPE_ATTRS: frozenset[str] = frozenset({
 #: 첫 인자가 이것들이면 컴포넌트 형상 질문이 아니다(프로젝트/설정/문서 조회).
 SHAPE_EXCLUDED_SUBJECTS: frozenset[str] = frozenset({"project", "cfg", "config", "doc"})
 
-#: 실측 기준선 (2026-09-19, WP-2b 검증 치환 직후). **내리기만 한다.**
+#: 실측 기준선 (2026-09-19, WP-2b 완료 — model 소비자 치환 직후). **내리기만 한다.**
 RATCHET: dict[str, int] = {
-    "isinstance_sites": 89,
-    "isinstance_files": 27,
-    "shape_attr_sites": 93,
-    "shape_attr_files": 34,
+    "isinstance_sites": 84,
+    "isinstance_files": 26,
+    "shape_attr_sites": 85,
+    "shape_attr_files": 32,
 }
 
 #: 정당한 잔존 사이트 — `module::qualname`. 면제는 **사유와 철거 주체**를 적는다.
@@ -269,7 +269,9 @@ def test_scanner_sees_the_known_hotspots():
     assert "compiler.emit.skill" in modules
     assert "model.serialize.ser" in modules
     shape_modules = {module for module, _l, _q, _w in scan_shape_attrs()}
-    assert "model.project" in shape_modules
+    # WP-2b가 `model.project`를 0으로 비웠다 — 남은 집중 지점으로 교체한다
+    # (단언 수는 그대로다. 표적을 지우면 스캐너가 조용히 0을 세도 통과한다).
+    assert "mcp.tools.query" in shape_modules
     assert "compiler.emit.sections" in shape_modules
 
 
