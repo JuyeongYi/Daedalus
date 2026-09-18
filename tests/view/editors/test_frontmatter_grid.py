@@ -165,3 +165,28 @@ def test_lock_leaves_supported_fields_alone(qapp):
     row = panel._field_widgets[AgentField.TOOLS].parent()
     assert isinstance(row, _OptionalRow)
     assert row.isEnabled() and row._cb.isEnabled()
+
+
+# --- D3: 종류 감지의 "procedural" 조용한 폴백 제거 (WP-1) ---
+
+
+def test_detect_kind_is_loud_when_kind_is_unavailable(qapp):
+    """config를 읽을 수 없으면 절차형인 척하지 않고 ValueError를 낸다.
+
+    D3(카탈로그 F11): `_detect_kind`는 config에 kind가 없으면 조용히
+    `"procedural"`로 떨어졌다 — `matrix_for`의 ValueError 정책이 없애려던
+    바로 그 버그 유형이다(원칙 5). 종류 키를 고르는 규칙은 표를 고르는
+    규칙과 **같아야** 한다(원칙 1).
+    """
+    class _NoConfig:
+        name = "x"
+        description = "d"
+
+    with pytest.raises(ValueError):
+        _FrontmatterPanel._detect_kind(_NoConfig())
+
+
+def test_detect_kind_matches_config_kind(qapp):
+    """정상 컴포넌트에서는 `component.config.kind`를 그대로 돌려준다."""
+    assert _FrontmatterPanel._detect_kind(make_procedural()) == "procedural"
+    assert _FrontmatterPanel._detect_kind(make_agent()) == "agent"

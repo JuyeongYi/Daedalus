@@ -399,10 +399,17 @@ class _FrontmatterPanel(QScrollArea):
 
     @staticmethod
     def _detect_kind(component: object) -> str:
-        config = getattr(component, "config", None)
-        if config is not None and hasattr(config, "kind"):
-            return config.kind
-        return "procedural"
+        """이 컴포넌트의 config 종류 — 표를 고르는 키와 **같은 키**다(원칙 1).
+
+        `matrix_for`가 먼저 돌아 "config가 없다 / 그 kind에 표가 없다"를 이유와
+        함께 거절한다. 옛 구현은 조용히 `"procedural"`로 떨어져 종류를 모르는
+        컴포넌트를 절차형인 양 보여 줬다 — `matrix_for`의 ValueError 정책이
+        없애려던 바로 그 폴백이다(원칙 5).
+        """
+        from daedalus.model.plugin.field_matrix import matrix_for
+
+        matrix_for(component)  # 표를 고를 수 없으면 ValueError (조용한 폴백 금지)
+        return component.config.kind  # type: ignore[attr-defined]
 
     @staticmethod
     def _get_current(config: object, component: object, fld: SkillField | AgentField) -> object:
