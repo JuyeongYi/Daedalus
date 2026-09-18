@@ -181,14 +181,16 @@ def create_and_place(
 ) -> object | None:
     """컴포넌트를 만들고 (배치 대상이면) 그 좌표에 놓는다 — 1 undo 단위.
 
-    참조 스킬은 상태 노드가 아니라 **참조 노드**로 놓인다(캔버스 드롭과 같은
-    커맨드). `NO_PLACE_KINDS`는 만들기만 한다.
+    참조 **용도**의 컴포넌트는 상태 노드가 아니라 **참조 노드**로 놓인다
+    (캔버스 드롭과 같은 커맨드·같은 판정 `is_reference_usage`). 종류로 묻던
+    옛 분기(`isinstance(..., ReferenceSkill)`)는 참조 용도 랩핑 스킬을
+    state 노드로 놓았다. `NO_PLACE_KINDS`는 만들기만 한다.
 
     캔버스 "여기에 만들기" 메뉴가 퇴역한 뒤로도 이 경로는 살아 있다 — MCP
     `create_skill(x, y)`가 좌표를 주면 여기로 온다.
     """
     from daedalus.model.fsm.state import SimpleState
-    from daedalus.model.plugin.skill import ReferenceSkill
+    from daedalus.model.plugin.skill import is_reference_usage
     from daedalus.view.canvas.sync import sync_refs_to_model
     from daedalus.view.commands.base import Command, MacroCommand
     from daedalus.view.commands.component_commands import CreateComponentCmd
@@ -209,7 +211,7 @@ def create_and_place(
     from daedalus.model.plugin.placement import is_canvas_placeable
 
     if is_canvas_placeable(component):
-        if isinstance(component, ReferenceSkill):
+        if is_reference_usage(component):
             rvm = ReferenceViewModel(model=component, x=x, y=y)
             children.append(CreateRefCmd(
                 project_vm, rvm,

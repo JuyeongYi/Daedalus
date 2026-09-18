@@ -35,7 +35,10 @@ def _scene_with(vm: ProjectViewModel, project=None) -> FsmScene:
     scene = FsmScene(vm)
     if project is not None:
         scene.set_project(project)  # 백킹 머신 배선 — 없으면 모델에 동기화되지 않는다
-    FsmCanvasView(scene)  # views()가 비어 있으면 드롭 판정이 안 된다
+    # 뷰는 **씬에 매어 둔다** — 지역 변수로 버리면 GC가 가져가 `scene.views()`가
+    # 비고, 드롭 히트 판정이 조용히 실패한다(다른 테스트의 할당량에 따라
+    # 결과가 달라지는 유령 실패가 된다 — 2026-09-19 실측).
+    scene._test_view = FsmCanvasView(scene)
     scene._rebuild()
     return scene
 

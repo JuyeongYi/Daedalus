@@ -186,3 +186,32 @@ def test_create_wrapped_with_position_places_node(window):
     assert window._project.skills == []
     assert window._project.external_plugins == []
     assert _placements(window) == []
+
+
+# --- D1: 배치 판정은 `is_reference_usage` 하나다 (WP-1) ---
+
+
+def test_create_and_place_uses_reference_usage_predicate(window, monkeypatch):
+    """참조 **용도**의 컴포넌트는 상태 노드가 아니라 참조 노드로 놓인다.
+
+    D1(카탈로그 F11): 여기만 `isinstance(component, ReferenceSkill)`로 물어
+    참조 용도 WrappedSkill이 state 노드로 놓였다. 다른 모든 배치 지점
+    (캔버스 드롭·`create_wrapped_skill`·`is_canvas_placeable`)은
+    `is_reference_usage`를 쓴다 — 판정의 실체는 하나여야 한다(원칙 1).
+    """
+    from daedalus.model.plugin.skill import WrappedSkill, is_reference_usage
+    from daedalus.view.actions import creation
+
+    made = make_component(window, "wrapped", "ref-wrap")
+    made.config.source = "alpha@mkt:review"
+    made.config.usage = "reference"
+    assert isinstance(made, WrappedSkill) and is_reference_usage(made)
+    monkeypatch.setattr(creation, "make_component", lambda *a, **k: made)
+
+    comp = create_and_place(
+        window._fsm_scene, window, "wrapped", "ref-wrap", 10.0, 20.0
+    )
+
+    assert comp is made
+    assert _placements(window) == []
+    assert [r.model.name for r in window._project_vm.reference_vms] == ["ref-wrap"]

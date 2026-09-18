@@ -55,8 +55,8 @@ SHAPE_EXCLUDED_SUBJECTS: frozenset[str] = frozenset({"project", "cfg", "config",
 
 #: 실측 기준선 (2026-09-19, WP-0c 직후 HEAD). **내리기만 한다.**
 RATCHET: dict[str, int] = {
-    "isinstance_sites": 111,
-    "isinstance_files": 34,
+    "isinstance_sites": 110,
+    "isinstance_files": 33,
     "shape_attr_sites": 123,
     "shape_attr_files": 41,
 }
