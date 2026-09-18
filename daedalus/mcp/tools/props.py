@@ -276,7 +276,7 @@ class PropsTools(_BaseTools):
                 if isinstance(cfg, AgentConfigBase) and name in (cfg.skills or []):
                     still.append(f"agent:{agent.name}.skills")
 
-        kind = getattr(comp, "kind", type(comp).__name__)
+        kind = comp.kind
         self._window.delete_component(comp)
         return {"deleted": name, "kind": kind, "still_referenced_by": still}
 

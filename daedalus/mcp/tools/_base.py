@@ -124,7 +124,7 @@ class _BaseTools:
 
     @staticmethod
     def _component_kind(comp: Any) -> str:
-        return str(getattr(comp, "kind", type(comp).__name__))
+        return str(comp.kind)
 
     def _reject_duplicate_name(self, name: str) -> None:
         if any(getattr(c, "name", None) == name for c in self._components()):

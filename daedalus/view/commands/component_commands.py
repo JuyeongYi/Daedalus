@@ -51,13 +51,14 @@ class CreateComponentCmd(Command):
 
     @property
     def description(self) -> str:
-        kind = getattr(self._component, "kind", type(self._component).__name__)
-        return f"{kind} '{getattr(self._component, 'name', '?')}' 생성"
+        return f"{self._component.kind} '{getattr(self._component, 'name', '?')}' 생성"
 
     @property
     def script_repr(self) -> str:
-        kind = getattr(self._component, "kind", "component")
-        return f'create_component("{getattr(self._component, "name", "?")}", kind="{kind}")'
+        return (
+            f'create_component("{getattr(self._component, "name", "?")}", '
+            f'kind="{self._component.kind}")'
+        )
 
     def execute(self) -> None:
         bucket = _bucket(self._project, self._component)
@@ -141,8 +142,7 @@ class _DetachComponentCmd(Command):
 
     @property
     def description(self) -> str:
-        kind = getattr(self._component, "kind", type(self._component).__name__)
-        return f"{kind} '{getattr(self._component, 'name', '?')}' 모델 정리"
+        return f"{self._component.kind} '{getattr(self._component, 'name', '?')}' 모델 정리"
 
     @property
     def script_repr(self) -> str:
@@ -283,7 +283,7 @@ class RemoveComponentCmd(MacroCommand):
         self, project: PluginProject, project_vm: ProjectViewModel, component: object
     ) -> None:
         self._component = component
-        kind = getattr(component, "kind", type(component).__name__)
+        kind = component.kind
         name = getattr(component, "name", "?")
         children = _canvas_cleanup_commands(project, project_vm, component)
         children.append(_DetachComponentCmd(project, component))

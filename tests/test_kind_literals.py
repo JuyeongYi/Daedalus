@@ -292,3 +292,54 @@ def test_vocabulary_sizes_are_as_declared():
     """어휘 크기를 고정 — 종류가 늘면 여기서 먼저 걸려 래칫을 다시 재게 한다."""
     assert len(COMPONENT_KIND_LITERALS) == 16
     assert len(PLAN_KIND_LITERALS) == 14
+
+
+# ── kind 폴백 금지 (WP-1 D5) ──────────────────────────────────────
+
+def _is_type_name_expr(node: ast.expr) -> bool:
+    """`type(<무엇>).__name__` 꼴인가."""
+    return (
+        isinstance(node, ast.Attribute)
+        and node.attr == "__name__"
+        and isinstance(node.value, ast.Call)
+        and isinstance(node.value.func, ast.Name)
+        and node.value.func.id == "type"
+    )
+
+
+def _kind_type_name_fallbacks() -> list[tuple[str, int]]:
+    """`getattr(x, "kind", type(x).__name__)` 전수 — (모듈, 줄)."""
+    sites: list[tuple[str, int]] = []
+    for path in sorted(_SRC.rglob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if not (isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Name)
+                    and node.func.id == "getattr"
+                    and len(node.args) == 3):
+                continue
+            key, fallback = node.args[1], node.args[2]
+            if (isinstance(key, ast.Constant) and key.value == "kind"
+                    and _is_type_name_expr(fallback)):
+                sites.append((_module_name(path), node.lineno))
+    return sites
+
+
+def test_kind_is_never_read_with_a_class_name_fallback():
+    """`kind`는 모든 컴포넌트의 `@abstractmethod` property다 — 폴백은 죽은 코드다.
+
+    D5(카탈로그 F11): `getattr(comp, "kind", type(comp).__name__)`는 **도달할
+    수 없는** 분기(스멜 ③)이면서, 컴포넌트가 아닌 것이 흘러들어 왔을 때의
+    실패를 클래스 이름으로 **가린다**(원칙 5) — 화면·MCP 응답에 종류 대신
+    `"SimpleState"` 같은 문자열이 조용히 실린다. `comp.kind`로 직접 묻는다.
+
+    (config에서 읽는 `getattr(config, "kind", None)` 꼴은 config 자체가
+    None일 수 있는 자리라 여기 대상이 아니다 — 그쪽은 종류 리터럴 비교와
+    함께 WP-2b/WP-2d가 소유한다.)
+    """
+    sites = _kind_type_name_fallbacks()
+    assert sites == [], (
+        "`kind`의 클래스 이름 폴백은 도달 불가 죽은 코드이자 실패 은폐다 — "
+        "`x.kind`로 바꿔라:\n"
+        + "\n".join(f"  {m}:{ln}" for m, ln in sites)
+    )
