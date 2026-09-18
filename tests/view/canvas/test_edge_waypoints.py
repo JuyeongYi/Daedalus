@@ -216,12 +216,19 @@ def test_scene_handle_edge_double_clicked_inserts_via_undo_stack(qapp):
     assert tvm.waypoints == []
 
 
-def test_scene_handle_waypoint_moved_commits_undoable(qapp):
+def test_scene_waypoint_release_commits_undoable(qapp):
+    """경유점 release는 노드와 **같은 단일 진입점**(handle_items_moved)을 탄다.
+
+    WP-DM 이전의 `handle_waypoint_moved` 위임 래퍼는 2026-09-19에 삭제됐다
+    (호출부가 0이 되어 존치 사유가 사라졌다 — 퇴역 개념의 호환 잔재).
+    단언은 release 완료 후 **vm 좌표**로 한다(CLAUDE.md 봉합선 규칙).
+    """
     scene, vm, tvm, edge = _make_scene_with_edge()
     scene.handle_edge_double_clicked(edge, QPointF(50.0, 5.0))
     old_pos = QPointF(*tvm.waypoints[0])
     new_pos = QPointF(60.0, 90.0)
-    scene.handle_waypoint_moved(edge, 0, old_pos, new_pos)
+    handle = edge._handles[0]
+    scene.handle_items_moved(handle, old_pos, new_pos)
     assert tvm.waypoints[0] == (60.0, 90.0)
     vm.command_stack.undo()
     assert tvm.waypoints[0] == (old_pos.x(), old_pos.y())

@@ -816,8 +816,9 @@ Tier 2다. 출발점은 2026-05 조사(ClaudeManager가 만든 plain 셸 스크�
   ② **배치·삭제 커맨드 조립** — `_create_state` · `_delete_state` · `_delete_transition` ·
   `_create_and_assign_transfer_skill` · 참조 노드/링크 생성·삭제(전부 CommandStack 경유라
   씬 그리기와 섞일 이유가 없다).
-  ③ **엣지 라우팅·드래그** — `update_edges_for_node` · 경유점(`handle_waypoint_moved` ·
-  `remove_waypoint` · `clear_waypoints`) · 전이/참조 링크 드래그 3종.
+  ③ **엣지 라우팅·드래그** — `update_edges_for_node` · 경유점(`handle_edge_double_clicked` ·
+  `remove_waypoint` · `clear_waypoints`) · 드래그 release 단일 진입점(`handle_items_moved` ·
+  `snapshot_drag_positions`) · 전이/참조 링크 드래그 3종.
   컨텍스트 메뉴는 이미 `canvas/context_menus.py`로 빠져 있어 얇은 위임만 남았다 — 같은 관례로
   옮기면 된다(이동만·동작 불변, 재-export 파사드, 기존 테스트 무수정). **`scene.py`에 다음
   기능을 넣기 전에 먼저 쪼갠다** — `app.py`와 같은 게이트다.

@@ -134,9 +134,8 @@ EXTERNAL_BASE_HIDDEN_BASELINE: frozenset[str] = frozenset({
     # app.py:948 `getattr(editor, "rebuild_frontmatter")`
     "view.editors.component_editor::ComponentEditor.rebuild_frontmatter",
     # ── override도 동적 호출도 아니다 — 귀속 WP가 정해진 잔재 ──
-    # REFACTOR_SPEC §11: 사용자 확정 대상(결정 9) → 확정되면 WP-0b에 합류
-    "view.canvas.scene::FsmScene.handle_node_moved",
-    "view.canvas.scene::FsmScene.handle_waypoint_moved",
+    # (`handle_node_moved`/`handle_waypoint_moved`는 WP-1 D9에서 삭제됐다 —
+    #  `editor.md`의 존치 사유였던 "기존 호출부 호환"의 그 호출부가 없어졌다.)
     # REFACTOR_SPEC §11: WP-7 — 삭제가 아니라 context_menus 배선 일관화
     "view.canvas.scene::FsmScene._add_agent_actions_menu",
     "view.canvas.scene::FsmScene._show_component_findings",
@@ -487,9 +486,9 @@ def test_external_base_hidden_baseline_is_not_stale():
 def test_hidden_scan_and_rule_a_scan_are_disjoint():
     """두 갈래가 겹치거나 새지 않는지 — 한 메서드는 한쪽에만 속한다."""
     assert not (set(scan_external_base_hidden()) & set(scan_unreferenced()))
-    assert "view.canvas.scene::FsmScene.handle_node_moved" in scan_external_base_hidden(), (
-        "DEADCODE §2.5가 죽었다고 분류한 메서드가 맹점 목록에 없다 — 스캔이 "
-        "면제 분기를 실제로 태우지 않고 있다"
+    assert "view.canvas.scene::FsmScene.contextMenuEvent" in scan_external_base_hidden(), (
+        "외부 기저(QGraphicsScene) 상속 클래스의 소비자 0 메서드가 맹점 목록에 "
+        "없다 — 스캔이 면제 분기를 실제로 태우지 않고 있다"
     )
 
 

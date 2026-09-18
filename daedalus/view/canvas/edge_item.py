@@ -155,16 +155,6 @@ class TransitionEdgeItem(QGraphicsPathItem):
 
     # --- WP-ER 경유점 편집 ---
 
-    def handle_at(self, index: int) -> "WaypointHandleItem | None":
-        """index에 해당하는 경유점 핸들 아이템 반환 (WP-DM).
-
-        scene.handle_waypoint_moved가 handle_items_moved에 위임할 때 쓴다.
-        범위 밖이면 None.
-        """
-        if 0 <= index < len(self._handles):
-            return self._handles[index]
-        return None
-
     def nearest_segment_index(self, scene_pos: QPointF) -> int:
         """scene_pos에 가장 가까운 구간의 0-based 인덱스.
 
@@ -192,8 +182,8 @@ class TransitionEdgeItem(QGraphicsPathItem):
         """드래그 중 실시간 미리보기 — undo 커맨드 없이 vm에 직접 반영.
 
         노드 드래그 중 update_edges_for_node가 하는 역할과 동일한 결의 실시간
-        갱신. 커밋(undo 가능)은 release 시 scene.handle_items_moved가 한다
-        (WP-DM 이전에는 handle_waypoint_moved였다).
+        갱신. 커밋(undo 가능)은 release 시 scene.handle_items_moved가 한다 —
+        노드·참조 노드·경유점이 **같은 단일 진입점**을 탄다(WP-DM).
 
         주의: 이 실시간 갱신 때문에 release 시점의 vm 좌표는 이미 새 값이다 —
         함께 드래그된(passenger) 웨이포인트의 구 위치는 press 시점 스냅샷

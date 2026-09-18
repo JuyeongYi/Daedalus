@@ -42,7 +42,6 @@ from daedalus.view.commands.transition_commands import (
     ClearWaypointsCmd,
     CreateTransitionCmd,
     DeleteTransitionCmd,
-    MoveWaypointCmd,
     RemoveWaypointCmd,
     SetTransitionSkillRefCmd,
 )
@@ -236,13 +235,6 @@ class FsmScene(QGraphicsScene):
                 description="캔버스 다중 이동",
             ))
 
-    def handle_node_moved(
-        self, node: StateNodeItem, old_pos: QPointF, new_pos: QPointF
-    ) -> None:
-        """노드 드래그 release — WP-DM: handle_items_moved에 위임(시그니처
-        유지, 기존 호출부·테스트 호환)."""
-        self.handle_items_moved(node, old_pos, new_pos)
-
     # --- 엣지 경유점 (WP-ER) ---
 
     def handle_edge_double_clicked(self, edge: TransitionEdgeItem, scene_pos: QPointF) -> None:
@@ -250,28 +242,6 @@ class FsmScene(QGraphicsScene):
         index = edge.nearest_segment_index(scene_pos)
         self._project_vm.execute(
             AddWaypointCmd(edge.transition_vm, index, scene_pos.x(), scene_pos.y())
-        )
-
-    def handle_waypoint_moved(
-        self,
-        edge: TransitionEdgeItem,
-        index: int,
-        old_pos: QPointF,
-        new_pos: QPointF,
-    ) -> None:
-        """경유점 핸들 드래그 release — WP-DM: handle_items_moved에 위임(시그니처
-        유지, 기존 호출부·테스트 호환)."""
-        handle = edge.handle_at(index)
-        if handle is not None:
-            self.handle_items_moved(handle, old_pos, new_pos)
-            return
-        # 방어적 폴백 — 인덱스가 어긋난 경우 기존 단일 커맨드 경로 유지
-        self._project_vm.execute(
-            MoveWaypointCmd(
-                edge.transition_vm, index,
-                old_x=old_pos.x(), old_y=old_pos.y(),
-                new_x=new_pos.x(), new_y=new_pos.y(),
-            )
         )
 
     def remove_waypoint(self, edge: TransitionEdgeItem, index: int) -> None:

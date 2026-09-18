@@ -150,7 +150,7 @@ def test_multi_drag_updates_all_vm_coords(qapp):
     node_b.setPos(250.0, 60.0)
 
     # release 핸들러 — node_a가 트리거
-    scene.handle_node_moved(node_a, QPointF(0.0, 0.0), QPointF(50.0, 60.0))
+    scene.handle_items_moved(node_a, QPointF(0.0, 0.0), QPointF(50.0, 60.0))
 
     assert (avm.x, avm.y) == (50.0, 60.0), "트리거 노드 vm 좌표가 신좌표여야 한다"
     assert (bvm.x, bvm.y) == (250.0, 60.0), "동반 이동 노드 vm 좌표도 신좌표여야 한다"

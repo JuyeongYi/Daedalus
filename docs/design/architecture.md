@@ -132,14 +132,15 @@ python -m tests.data.golden.regen --refresh-dogfood   # 동결 사본 자체를 
 
 이 면제는 **이름 단위가 아니라 클래스 단위**라 대가가 크다 — 실측(2026-09-19)
 클래스 92/261(35%), 비-dunder 메서드 560/1040(53%)이 면제되고, 그중 소비자가 0인
-메서드가 28개다. 즉 규칙 A는 뷰 계층에서 대체로 잠든다. 그래서 그 28개를
-`EXTERNAL_BASE_HIDDEN_BASELINE`에 동결해 **맹점 자체를 래칫으로** 만든다: 면제에
-가려진 소비자 0 메서드가 새로 생기면 이름을 찍고 실패하고(진짜 override면 등재,
-아니면 배선하거나 삭제), 목록은 다른 래칫과 같이 줄어들기만 한다. 28개 중
-14개만 진짜 Qt override이고, 나머지는 `getattr` 동적 호출 2종
+메서드가 28개였다(WP-1 D9 이후 26개). 즉 규칙 A는 뷰 계층에서 대체로 잠든다.
+그래서 그것들을 `EXTERNAL_BASE_HIDDEN_BASELINE`에 동결해 **맹점 자체를 래칫으로**
+만든다: 면제에 가려진 소비자 0 메서드가 새로 생기면 이름을 찍고 실패하고(진짜
+override면 등재, 아니면 배선하거나 삭제), 목록은 다른 래칫과 같이 줄어들기만 한다.
+26개 중 14개만 진짜 Qt override이고, 나머지는 `getattr` 동적 호출 2종
 (`rebuild_component_frontmatter`/`rebuild_frontmatter`) · DEADCODE §2.9의 테스트
-봉합선 8종 · 귀속 WP가 정해진 잔재 4종(`handle_node_moved`/`handle_waypoint_moved`
-= 사용자 확정 대기, `_add_agent_actions_menu`/`_show_component_findings` = WP-7)이다.
+봉합선 8종 · 귀속 WP가 정해진 잔재 2종(`_add_agent_actions_menu`/
+`_show_component_findings` = WP-7)이다. `handle_node_moved`/`handle_waypoint_moved`는
+WP-1 D9에서 삭제해 목록에서 빠졌다.
 
 `ALLOWLIST`는 `{심볼: (범주, 사유)}`이고 사유가 비면 실패한다. 범주 5종:
 `framework-hook` · `entry-point` · `test-seam` · `contract-registry` ·
