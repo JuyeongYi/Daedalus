@@ -6,7 +6,7 @@
 **올라가지 않는 것**만 보장한다 — 내리는 것은 각 WP의 일이고, 올리는 커밋은
 리뷰가 거부한다.
 
-두 래칫(REFACTOR_SPEC §8):
+세 래칫(REFACTOR_SPEC §8 ①② + WP-11 ③):
 
 ① **컴포넌트 클래스 대상 `isinstance`** — 두 번째 인자(튜플/리스트/집합 포함)에
    컴포넌트·config 클래스 이름이 든 호출. "이 객체가 무슨 종류인가"를 타입으로
@@ -17,7 +17,13 @@
    첫 인자가 `project`/`cfg`/`config`/`doc`인 호출은 **제외**한다 — 그쪽은
    컴포넌트 형상이 아니라 프로젝트/설정 dict의 하위 호환 조회다.
 
-두 래칫 모두 **기준선은 이 저장소에서 실측했다**(명세의 숫자를 베끼지 않았다).
+③ **FSM 상태·전략·훅 핸들러·Tool 클래스 대상 `isinstance`** — 컴포넌트 종류가
+   아니지만 같은 결함 형태(병렬 사다리)라 같은 규칙으로 감시한다. WP-11이
+   서술 사다리·폼 사다리·의사 상태 사다리·Tool 사다리를 걷어 89 → 53이 됐다.
+   남은 53의 대부분은 검증 규칙(`machine_rules`)과 FSM 직렬화의 구조 순회로,
+   "종류를 묻는" 것이 아니라 "구조를 내려가는" 자리다.
+
+세 래칫 모두 **기준선은 이 저장소에서 실측했다**(명세의 숫자를 베끼지 않았다).
 면제는 `module::qualname`으로 적는다 — 줄 번호로 적으면 위아래 편집만으로
 면제가 엉뚱한 자리로 미끄러진다.
 """
@@ -52,6 +58,24 @@ SHAPE_ATTRS: frozenset[str] = frozenset({
     "output_events", "output_event_defs",
 })
 
+# ── FSM·전략·훅 핸들러·Tool 클래스 35종 (§5 말미 ①~⑤의 사정권) ──
+FSM_CLASS_NAMES: frozenset[str] = frozenset({
+    # FSM 상태(+ Region) 9종
+    "State", "SimpleState", "CompositeState", "ParallelState", "Region",
+    "ChoiceState", "TerminateState", "EntryPoint", "ExitPoint",
+    # 평가/실행 전략 11종
+    "EvaluationStrategy", "LLMEvaluation", "ToolEvaluation", "MCPEvaluation",
+    "ExpressionEvaluation", "CompositeEvaluation",
+    "ExecutionStrategy", "LLMExecution", "ToolExecution", "MCPExecution",
+    "CompositeExecution",
+    # 이벤트 5종
+    "Event", "StateEvent", "CompletionEvent", "BlackboardEvent", "BlackboardTrigger",
+    # 훅 핸들러 6종
+    "HookHandler", "CommandHook", "PromptHook", "AgentHook", "HttpHook", "McpToolHook",
+    # Tool 4종
+    "Tool", "BuiltinTool", "MCPTool", "UserDefinedTool",
+})
+
 #: 첫 인자가 이것들이면 컴포넌트 형상 질문이 아니다(프로젝트/설정/문서 조회).
 SHAPE_EXCLUDED_SUBJECTS: frozenset[str] = frozenset({"project", "cfg", "config", "doc"})
 
@@ -74,11 +98,19 @@ SHAPE_EXCLUDED_SUBJECTS: frozenset[str] = frozenset({"project", "cfg", "config",
 #: `mcp/tools/props`의 형상 getattr을 걷었다(33 → 25). WP-7·WP-8을 합치면 형상
 #: 래칫은 23/10파일이고, 병합 후 **재실측한 값**을 잠갔다 — 두 가지의 감소분을
 #: 더하면 겹치는 자리를 두 번 세게 된다.
+#: WP-11이 래칫 ③을 도입하며 병렬 사다리 넷을 걷었다(89/17 → 53/12):
+#: 상태 서술 13 + legacy 에이전트 변형 5 + 훅 핸들러 폼 10 + 의사 상태 5 +
+#: Tool 직렬화 3. 남은 자리는 **종류 질문이 아니라 구조 순회**다 — 합성 상태를
+#: 재귀로 내려가거나(`walk`·`machine_rules`), FSM 값 객체를 저장 dict로
+#: 펴는(`ser`) 자리이고, 폴리모픽 메서드로 바꾸려면 fsm 레이어에 컴파일러·
+#: 검증 어휘를 들이게 된다(경계 계약 위반). 더 내리려면 별도 WP가 소유한다.
 RATCHET: dict[str, int] = {
     "isinstance_sites": 4,
     "isinstance_files": 2,
     "shape_attr_sites": 23,
     "shape_attr_files": 10,
+    "fsm_isinstance_sites": 53,
+    "fsm_isinstance_files": 12,
 }
 
 #: 정당한 잔존 사이트 — `module::qualname`. 면제는 **사유와 철거 주체**를 적는다.
@@ -86,6 +118,7 @@ RATCHET: dict[str, int] = {
 #: `deser_plugin::_coerce_config`(역직렬화 안전망) 둘이다.
 ISINSTANCE_EXEMPT: dict[str, str] = {}
 SHAPE_ATTR_EXEMPT: dict[str, str] = {}
+FSM_ISINSTANCE_EXEMPT: dict[str, str] = {}
 
 
 # ─────────────────────────── AST 스캐너 ───────────────────────────
@@ -156,6 +189,26 @@ def scan_isinstance() -> list[tuple[str, int, str, str]]:
             if node.func.id != "isinstance" or len(node.args) != 2:
                 continue
             hit = _class_names_in(node.args[1]) & COMPONENT_CLASS_NAMES
+            if not hit:
+                continue
+            sites.append((module, node.lineno, _enclosing(node, qualnames),
+                          ",".join(sorted(hit))))
+    return sites
+
+
+def scan_fsm_isinstance() -> list[tuple[str, int, str, str]]:
+    """③ FSM·전략·훅 핸들러·Tool 클래스 대상 사이트 — ①과 같은 규칙, 다른 이름 집합."""
+    sites: list[tuple[str, int, str, str]] = []
+    for path in _source_files():
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        qualnames = _qualname_map(tree)
+        module = _module_name(path)
+        for node in ast.walk(tree):
+            if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)):
+                continue
+            if node.func.id != "isinstance" or len(node.args) != 2:
+                continue
+            hit = _class_names_in(node.args[1]) & FSM_CLASS_NAMES
             if not hit:
                 continue
             sites.append((module, node.lineno, _enclosing(node, qualnames),
@@ -256,11 +309,59 @@ def test_shape_attr_ratchet_baseline_is_not_stale():
     )
 
 
+# ────────────────── ③ FSM·전략·훅·Tool isinstance 래칫 ──────────────────
+
+def test_isinstance_on_fsm_classes_does_not_grow():
+    sites = _apply_exemptions(scan_fsm_isinstance(), FSM_ISINSTANCE_EXEMPT)
+    files = {module for module, _line, _qual, _what in sites}
+    assert len(sites) <= RATCHET["fsm_isinstance_sites"], (
+        f"FSM·전략·훅·Tool 클래스 대상 isinstance가 {len(sites)}건으로 늘었다 "
+        f"(기준선 {RATCHET['fsm_isinstance_sites']}). 새 병렬 사다리를 만들지 말고 "
+        f"singledispatch(기저 폴백이 옳을 때)나 명시 레지스트리(누락이 에러여야 "
+        f"할 때)를 써라:\n" + _report(sites)
+    )
+    assert len(files) <= RATCHET["fsm_isinstance_files"], (
+        f"FSM 분기가 {len(files)}개 파일로 퍼졌다 "
+        f"(기준선 {RATCHET['fsm_isinstance_files']}):\n" + _report(sites)
+    )
+
+
+def test_fsm_isinstance_ratchet_baseline_is_not_stale():
+    sites = _apply_exemptions(scan_fsm_isinstance(), FSM_ISINSTANCE_EXEMPT)
+    files = {module for module, _line, _qual, _what in sites}
+    assert RATCHET["fsm_isinstance_sites"] == len(sites), (
+        f"기준선({RATCHET['fsm_isinstance_sites']})과 실측({len(sites)})이 다르다 — "
+        f"RATCHET['fsm_isinstance_sites']를 {len(sites)}로 내려 잠가라."
+    )
+    assert RATCHET["fsm_isinstance_files"] == len(files), (
+        f"기준선({RATCHET['fsm_isinstance_files']})과 실측({len(files)})이 다르다 — "
+        f"RATCHET['fsm_isinstance_files']를 {len(files)}로 내려 잠가라."
+    )
+
+
+def test_wp11_ladders_are_gone():
+    """WP-11이 걷은 네 사다리가 **다시 자라지 않는지** — 이름으로 못 박는다.
+
+    수만 보면 다른 자리가 늘고 이 자리가 줄어도 통과한다. 걷은 자리를 이름으로
+    적어 두면 그 파일에 사다리가 돌아오는 순간 실패한다.
+    """
+    modules = {module for module, _l, _q, _w in scan_fsm_isinstance()}
+    for gone in (
+        "compiler.emit.sections",        # 상태·전략·트리거 서술
+        "compiler.emit.agent_sections",  # legacy 에이전트 변형
+        "view.editors.hook_panel",       # 훅 핸들러 폼(구성·저장)
+        "view.editors.hook_handler_form",
+        "view.canvas.node_item",         # 의사 상태 스타일
+        "view.graph_io",                 # 프로젝트 캔버스 제외 규칙
+    ):
+        assert gone not in modules, f"{gone}에 종류 사다리가 돌아왔다"
+
+
 # ─────────────────────────── 스캐너 자기 검증 ───────────────────────────
 
 def test_exemptions_carry_a_reason():
     """면제는 사유를 강제한다 — 빈 사유는 '왜 남았는지'를 지운다."""
-    for table in (ISINSTANCE_EXEMPT, SHAPE_ATTR_EXEMPT):
+    for table in (ISINSTANCE_EXEMPT, SHAPE_ATTR_EXEMPT, FSM_ISINSTANCE_EXEMPT):
         for key, reason in table.items():
             assert reason.strip(), f"{key}: 면제 사유가 비었다"
 
@@ -269,8 +370,10 @@ def test_exemptions_point_at_live_sites():
     """존재하지 않는 자리를 면제로 붙잡고 있지 않은지 — 목록은 줄어들기만 한다."""
     live_isinstance = {f"{m}::{q}" for m, _l, q, _w in scan_isinstance()}
     live_shape = {f"{m}::{q}" for m, _l, q, _w in scan_shape_attrs()}
+    live_fsm = {f"{m}::{q}" for m, _l, q, _w in scan_fsm_isinstance()}
     stale = sorted(set(ISINSTANCE_EXEMPT) - live_isinstance)
     stale += sorted(set(SHAPE_ATTR_EXEMPT) - live_shape)
+    stale += sorted(set(FSM_ISINSTANCE_EXEMPT) - live_fsm)
     assert not stale, f"사라진 자리를 면제가 붙잡고 있다 — 목록에서 빼라: {stale}"
 
 
@@ -285,6 +388,10 @@ def test_scanner_sees_the_known_hotspots():
     shape_modules = {module for module, _l, _q, _w in scan_shape_attrs()}
     # WP-2b가 `model.project`를, WP-2c가 `compiler.emit.sections`를 비웠다 —
     # 같은 이유로 남은 집중 지점(WP-8·프론트매터 패널 소관)으로 교체한다.
+    fsm_modules = {module for module, _l, _q, _w in scan_fsm_isinstance()}
+    # WP-11 이후 ③의 집중 지점은 검증 규칙과 FSM 직렬화의 **구조 순회**다.
+    assert "model.validation.machine_rules" in fsm_modules
+    assert "model.serialize.ser" in fsm_modules
     assert "mcp.tools.query" in shape_modules
     assert "view.editors.frontmatter_panel" in shape_modules
 

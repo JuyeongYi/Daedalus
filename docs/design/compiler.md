@@ -205,6 +205,13 @@ AST로 강제) `emit/guides.py`의 `WORKFLOW_GUIDE_KIND`/`BLACKBOARD_GUIDE_KIND`
     "훅을 무엇을 참조하는가"=`hook_refs()` · "FSM이 있는가"=`state_machines()` · "포트가 무엇인가"=`output_ports()`/`call_ports()`.
     새 종류는 산출 코드를 고치지 않고 선언을 고른다.
 
+12-b. **FSM 상태·전략 서술의 디스패치 (WP-11)**: 컴포넌트 종류가 아닌 **FSM 계층**의 병렬 사다리도 함께 걷었다 —
+    `_describe_step`/`_describe_evaluation`/`_describe_trigger`/`_unguarded_is_else`(`emit/sections.py`)와 legacy 에이전트 변형
+    `_describe_legacy_step`/`_legacy_extra_marks`/`_is_substantive_state`(`emit/agent_sections.py`)가 전부 `singledispatch`다.
+    기준: **기저 폴백이 옳으면 singledispatch, 누락이 에러여야 하면 명시 레지스트리**(Tool 직렬화가 후자 — `TOOL_KINDS`).
+    두 벌의 상태 서술은 **일부러 다르다**(§0-a) — 합치면 구버전 에이전트 산출 바이트가 바뀐다. `tests/compiler/test_state_prose_dispatch.py`가
+    폴백의 옳음과 두 문구가 다르다는 사실을 함께 고정한다.
+
 13. **진입 맥락 + 호출 계약 (WP-IC/WP-IP/WP-CT)**: 배치된 전역 `StepSkill`(절차형·fork 2종)·`DeclarativeSkill`·state 용도 `WrappedSkill`에서 incoming 전이가 1개 이상이면, `_entry_context_section`이 "## Resuming Work" 프리앰블 뒤·본문 앞에 "## Entry Context" 단락을 배출한다. **도입은 한 문장이다** — `Check \`prev\` and the branch in \`note\`, then follow the matching entry below.`(예전의 5문장 도입 — 어디서 읽는가·여러 갈래를 어떻게 가르는가·에이전트 위임 뒤의 `prev` — 은 워크플로 가이드 4절로 갔다. 진행 파일을 직접 읽으라는 지시도 함께 사라져 CLI 경로로 통일됐다).
     항목은 출처 이름순으로 한 줄씩이다: `- entered from \`X\` [조건]`(+ 출처의 transfer_on description 병기, 전이 스킬 수행 완료 문구 합류). 출처가 **워크플로 에이전트**면 `- entered after agent \`X\` returned` + 위임 스킬 이름 병기(규약상 `prev`에는 에이전트가 아니라 위임 스킬이 남는다), **비동기 fork**면 `- entered when background fork \`X\` reported`(그 fork가 다음 단계를 부른 것이 아니라, 보고를 받은 메인이 시작시켰다). 동기 fork는 일반 출처와 문구가 같다. 포트 그룹 헤딩 없음, 그래프에서만 유도(WP-IP). incoming 0개 배치·미배치는 산출 변화 없음.
     `compile_agent`의 "## Invocation Contract"는 종류가 가른다 — 워크플로 에이전트는 `_call_contract_section`이 프로젝트 그래프의 incoming 호출 전이에서 유도하고(WP-CT — 수동 카드 없음), fork 에이전트는 `_fork_base_contract_section`이 자기를 실행 기반으로 쓰는 fork 스킬 줄만 낸다(7-b번).

@@ -817,7 +817,6 @@ Tier 2다. 출발점은 2026-05 조사(ClaudeManager가 만든 plain 셸 스크�
 | `view/app.py` | 1,102 |
 | `view/canvas/scene.py` | 992 |
 | `view/widgets/markdown/editor.py` | 928 |
-| `view/editors/hook_panel.py` | 859 |
 | `cli/blackboard.py` | 851 |
 
 - **`view/app.py` 분해 후보 (2026-09-18 리뷰)** — WP-FK2에서 `rebuild_component_frontmatter`가
@@ -841,6 +840,17 @@ Tier 2다. 출발점은 2026-05 조사(ClaudeManager가 만든 plain 셸 스크�
   컨텍스트 메뉴는 이미 `canvas/context_menus.py`로 빠져 있어 얇은 위임만 남았다 — 같은 관례로
   옮기면 된다(이동만·동작 불변, 재-export 파사드, 기존 테스트 무수정). **`scene.py`에 다음
   기능을 넣기 전에 먼저 쪼갠다** — `app.py`와 같은 게이트다.
+
+- **FSM 계층의 남은 구조 순회 `isinstance` 53건 (WP-11 이후, 2026-09-19 실측)** — 래칫 ③의 기준선이다.
+  걷은 것은 **종류를 묻는** 사다리 넷(상태 서술·훅 핸들러 폼·의사 상태·Tool 직렬화)이고, 남은 53은
+  성격이 다르다: `walk.iter_states`·`machine_rules`·`ser`가 **합성 상태를 재귀로 내려가거나**
+  FSM 값 객체를 저장 dict로 펴는 자리다. 폴리모픽 메서드로 옮기려면 `model/fsm/**`가 검증 어휘·
+  컴파일러 어휘를 알아야 해서 경계 계약(fsm은 Claude 무관·최하위)을 깬다. 줄이려면 방문자
+  (visitor) 도입이 선행돼야 하고, 그것은 **사용자 확정 대상**이다(설계 변경).
+- **legacy `_describe_agent_fsm` 삭제 검토** — 에이전트 내부 FSM은 WP-AF에서 퇴역했고, 이 함수는
+  구버전 파일의 실질 상태를 서술하는 잔재다. 삭제하면 그 산출이 사라지므로(구버전 프로젝트의
+  설계가 본문에서 증발) **마이그레이션으로 본문에 흡수한 뒤** 지워야 한다 — 사용자 확정 대상.
+  WP-11은 이 변형을 합치지 않고 별도 `singledispatch`로 두어 산출 바이트를 보존했다.
 
 ## 8. 테스트
 
