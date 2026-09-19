@@ -170,6 +170,8 @@ WP-1 D9에서 삭제해 목록에서 빠졌다.
 | 테스트 | 고정하는 것 |
 |--------|-------------|
 | `tests/compiler/test_emit_import_acyclic.py` | `compiler/emit/*` 모듈 간 임포트 방향. **모듈 레벨 간선은 비순환**(오늘 통과)이고 `common`은 리프다. 함수 안 지연 임포트까지 포함한 최종 계약은 **오늘 통과하지 않는다** — `sections ↔ wrapped`, `agent → sections → wrapped → agent` 순환이 지연 임포트로 살아 있다(`sections.py:350`·`wrapped.py:118,169`). 단언을 느슨하게 하는 대신 `xfail(strict=True)`로 기록했다: WP-6이 방향을 정리하면 그 표식이 실패해 제거를 강제한다 |
+| `tests/compiler/test_emitters.py` | **표 구동 산출의 시끄러운 실패**(WP-6) — `emitter_for`/`plan_for_kind`/`provider_for`가 미지 값에 이유와 **등록 목록**을 말하는 ValueError를 내고, `output_path`는 산출 없는 자리를 거절한다. 표의 완결성도 양방향이다: 절 튜플의 모든 절에 provider가 있고(누락 = 단락이 조용히 사라짐) 모든 provider를 어느 종류든 쓴다(미사용 = 죽은 코드) |
+| `tests/test_kind_registry_parity.py` §3 | **`EMITTERS` ↔ `KIND_REGISTRY` 양방향**(WP-6) — 산출이 있는 종류마다 emitter 하나, `OUTPUT_LOCATION is NONE`인 종류에는 없음. `SECTION_PLANS` 키 집합도 같고 emitter의 `plan_kind`는 버킷과 짝이다 |
 | `tests/compiler/test_unit_contract.py` | **`CompileUnit` 계약**(WP-5) — 단위 id 유일·선언 순서 고정, 모든 계획 행이 `mode`/`phase`/`expands_root`/`token_kind`를 **선언**함(드라이버의 kind 튜플로 되돌아가지 않는다), `render()` 2회 동일(순수), `plan()`이 주입 경로 밖 파일을 읽지 않음(`Path.read_text` 감시 — 원칙 4), 파사드 계획 ⊂ 전체 계획이고 차집합이 정확히 `{files_tree}`, `OUTPUT_LOCATION`이 NONE인 컴포넌트는 예외 없이 건너뛰고 **이름 게이트도 받지 않음**(WP-9 선행 조건) |
 | `tests/model/test_component_missing_keys.py` | **부재 의미론** — `transfer_on` 키가 없는 스킬 dict는 `[]`로 로드된다. dataclass 기본값은 `[EventDef("done")]`이라 선언형 엔진이 기본값으로 떨어지면 키 없는 파일에 출력 포트가 **발명**되고 `transfer_on_not_empty`가 에러에서 조용한 통과로 뒤집힌다. JSON 골든은 *키가 있는* 파일만 지키므로 이 차이는 따로 잡아야 한다 |
 | `tests/model/plugin/test_capability_surface.py` | **능력 표면**(WP-2a) — 구체 9종 × ClassVar 13칸 전수, `fields()`에 ClassVar가 새지 않음(R5), `WorkflowComponent`에 메서드 없음(R2), 능력 메서드가 오늘의 판정(`emits_output_file`/`is_reference_usage`/`placement.*`/`has_external_body`)과 **같은 답**을 냄, `new()` ↔ `make_component` 9종 필드 단위 등가. 호출자 치환 WP(2b~2d)의 동작 불변을 미리 고정하는 게이트다 |
@@ -401,9 +403,12 @@ daedalus/
 │   │   ├── sink.py         #   OutputSink — 쓰기·복사·병합·토큰 계상의 유일한 실행자. dry_run·${ROOT} 확장·LF/UTF-8·
 │   │   │                   #   out_root None 규약을 아는 곳이 하나라 "새 단위가 dry_run을 깜빡"이 불가능하다. + MergeOutcome.
 │   │   ├── paths.py        #   _OUTPUT_NAME_RE/SKILL_FILES_DIRNAME/_skill_dir_name/_hook_script_name_conflicts/
-│   │   │                   #   _iter_tree_files/_is_link_like (plan.py에서 이동만 — AST 동일).
-│   │   ├── components.py   #   ComponentUnit(bucket) ×2 — 스킬/에이전트/랩핑 러너. **게이트(emits_output())가 앞**이라
-│   │   │                   #   산출 없는 종류는 이름 게이트도 받지 않는다(WP-9 ExternalAgent의 선행 조건).
+│   │   │                   #   _iter_tree_files/_is_link_like (plan.py에서 이동만 — AST 동일) +
+│   │   │                   #   output_path(OutputLocation, 이름, cc_prefix) — CC 플러그인 레이아웃 조립의 단일 진실(WP-6).
+│   │   ├── components.py   #   ComponentUnit(bucket) ×2 — **종류 지식이 없다**(WP-6): emitter_for(c).outputs()의
+│   │   │                   #   EmittedFile 선언을 계획 행으로 옮기고 경로·이름 게이트만 건다. 러너 행도 emitter의 선언이다.
+│   │   │                   #   **게이트(emits_output())가 앞**이라 산출 없는 종류는 이름 게이트도 받지 않는다
+│   │   │                   #   (WP-9 ExternalAgent의 선행 조건 — emitter도 없어 emitter_for가 먼저 돌면 죽는다).
 │   │   ├── hooks.py        #   HooksUnit — hooks.json(MARKET 전용) + 훅 스크립트. **계획 단계에서 1회 렌더해 payload**에 메모.
 │   │   ├── docs.py         #   WorkspaceRuleUnit · GuideUnit ×2(GUIDE_UNITS) · SchemasUnit · ManifestUnit.
 │   │   ├── trees.py        #   SkillFilesUnit(COPY_FILE — 파일 1건 = 행 1개라 경로 충돌 게이트 대상) ·

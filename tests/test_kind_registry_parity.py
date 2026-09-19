@@ -7,7 +7,7 @@
 "팔레트에 안 보임"·"MCP가 거절함"·"파일에서 안 읽힘"으로 나타난다(👻).
 
 그래서 여기서는 **집합 등식**만 쓴다 — 한쪽을 고치고 다른 쪽을 잊으면 실패한다.
-`KIND_UI`(WP-7)·`EMITTERS`(WP-6) 부분은 그 표들이 생길 때 이 파일에 합류한다.
+`EMITTERS`(WP-6)는 §3절에 합류했다. `KIND_UI`(WP-7)는 그 표가 생길 때 합류한다.
 
 생성 등가 게이트(`make_component` ↔ `new()`)도 여기로 옮겨 왔다 —
 `view/actions/creation`의 종류별 람다 9개를 레지스트리 파생으로 바꾸는 것이
@@ -19,6 +19,9 @@ import dataclasses
 
 import pytest
 
+from daedalus.compiler import plan_kinds
+from daedalus.compiler.emit.emitters import EMITTERS
+from daedalus.compiler.emit.section_plan import SECTION_PLANS
 from daedalus.mcp.tools.props import PropsTools
 from daedalus.model.plugin.field_matrix import (
     AGENT_FIELD_MATRIX,
@@ -101,7 +104,36 @@ def test_kinds_that_emit_a_file_have_frontmatter_rows():
             assert FieldEmit.FRONTMATTER in emits, kind
 
 
-# ── 3. MCP 어휘 ──────────────────────────────────────────────────────────
+# ── 3. 산출 emitter (WP-6) ───────────────────────────────────────────────
+
+def test_emitters_are_exactly_the_kinds_that_emit_a_file():
+    """**양방향**이다 — 산출이 있는 종류마다 emitter가 하나, 없는 종류에는 없다.
+
+    한쪽만 보면 둘 다 조용히 깨진다: emitter를 잊으면 그 종류가 컴파일에서
+    `emitter_for` ValueError로 죽고, 산출이 없는 종류(WP-9 `ExternalAgent`)에
+    emitter를 남기면 계획에 오르지도 않는 파일을 렌더하는 죽은 코드가 된다.
+    """
+    expected = {
+        kind for kind, spec in KIND_REGISTRY.items()
+        if spec.output_location is not OutputLocation.NONE
+    }
+    assert set(EMITTERS) == expected
+
+
+def test_section_plans_are_exactly_the_emitter_kinds():
+    """emitter와 절 표는 같은 종류 집합을 말한다 — 한쪽만 늘면 조회가 죽는다."""
+    assert set(SECTION_PLANS) == set(EMITTERS)
+
+
+@pytest.mark.parametrize("kind", sorted(EMITTERS))
+def test_emitter_plan_kind_matches_the_bucket(kind):
+    """스킬은 `skill`, 에이전트는 `agent` 계획 kind로 오른다(러너는 별도 행)."""
+    spec = KIND_REGISTRY[kind]
+    expected = plan_kinds.SKILL if spec.bucket is Bucket.SKILLS else plan_kinds.AGENT
+    assert EMITTERS[kind].plan_kind == expected
+
+
+# ── 4. MCP 어휘 ──────────────────────────────────────────────────────────
 
 def test_mcp_create_vocabulary_is_derived_from_the_registry():
     """`create_skill`/`create_agent`가 받는 종류 = 레지스트리의 config 어휘.
@@ -112,7 +144,7 @@ def test_mcp_create_vocabulary_is_derived_from_the_registry():
     assert PropsTools._AGENT_KINDS == config_kinds_in(Bucket.AGENTS)
 
 
-# ── 4. 생성 등가 (V7 이관 게이트) ────────────────────────────────────────
+# ── 5. 생성 등가 (V7 이관 게이트) ────────────────────────────────────────
 
 def _fsm_factory_for(spec, window: _StubWindow):
     return (

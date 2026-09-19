@@ -10,12 +10,13 @@ from __future__ import annotations
 
 import os
 import re
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from daedalus.compiler.emit import (
     _collect_referenced_hook_names,
     hook_library,
 )
+from daedalus.model.plugin.roles import OutputLocation
 from daedalus.model.validation import ValidationError
 
 # CC 플러그인 산출물 이름 규약 — Validator._COMPONENT_NAME_RE와 동일 패턴.
@@ -32,6 +33,28 @@ SKILL_FILES_DIRNAME = "skill-files"
 
 def _skill_dir_name(skill_name: str) -> str:
     return skill_name
+
+
+def output_path(
+    location: OutputLocation, name: str, cc_prefix: PurePosixPath,
+) -> PurePosixPath:
+    """컴포넌트 산출 자리(`OutputLocation`) → 산출 루트 기준 상대 경로.
+
+    모델은 **위치 종류**만 말하고(`SKILL_DIR`/`AGENT_FILE`/`NONE`) `skills/<n>/
+    SKILL.md` 같은 CC 플러그인 레이아웃 조립은 컴파일러가 한다 — 레이아웃은 CC의
+    규약이지 모델의 어휘가 아니다. `emit/`도 이 함수를 부르지 않는다(`emit`은
+    `units`보다 아래층이다): emitter는 `EmittedFile`로 자리와 이름만 말한다.
+
+    `NONE`은 도달 불가다 — 호출자가 `emits_output()`으로 앞에서 거른다.
+    """
+    if location is OutputLocation.SKILL_DIR:
+        return cc_prefix / "skills" / _skill_dir_name(name) / "SKILL.md"
+    if location is OutputLocation.AGENT_FILE:
+        return cc_prefix / "agents" / f"{name}.md"
+    raise ValueError(
+        f"산출 파일이 없는 자리입니다: {location!r} — "
+        f"`emits_output()`이 거짓인 컴포넌트에는 경로를 묻지 않는다."
+    )
 
 
 def _hook_script_name_conflicts(project, resolved_hooks=None) -> list[ValidationError]:

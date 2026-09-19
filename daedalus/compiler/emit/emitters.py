@@ -46,6 +46,7 @@ from daedalus.compiler.emit.section_plan import (
     plan_for_kind,
 )
 from daedalus.compiler.emit.wrapped import compile_wrapped_runner, needs_runner_agent
+from daedalus.compiler.token_report import TokenKind
 from daedalus.model.plugin.agent import AgentDefinition, ForkAgent
 from daedalus.model.plugin.enums import SkillField
 from daedalus.model.plugin.roles import OutputLocation
@@ -87,6 +88,10 @@ class ComponentEmitter(ABC):
     plan_kind: ClassVar[str]
     #: 사람이 읽는 표지 — 게이트 에러 문구가 쓴다.
     label_fmt: ClassVar[str]
+    #: 타깃 중립 토큰 `${ROOT}`를 빌드 타깃 변수로 확장하는가 (WP-RT).
+    expands_root: ClassVar[bool] = True
+    #: 토큰 계기판에서 세는 방식 (A5-lite) — 컴포넌트 산출은 컨텍스트에 실린다.
+    token_kind: ClassVar[TokenKind] = TokenKind.CONTEXT
 
     @property
     def sections(self) -> tuple[SectionId, ...]:
