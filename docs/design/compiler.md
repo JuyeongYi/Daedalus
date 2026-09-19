@@ -107,9 +107,12 @@ AST로 강제) `emit/guides.py`의 `WORKFLOW_GUIDE_KIND`/`BLACKBOARD_GUIDE_KIND`
 - **emitter는 경로를 조립하지 않는다** — `EmittedFile`은 `OutputLocation`과 이름까지만 말하고
   `<cc>/skills/<n>/SKILL.md` 조립은 `units/paths.output_path`가 한다. `emit`은 `units`보다
   아래층이라(`units.context`가 `emit`을 임포트한다) 반대 방향 간선은 패키지 순환이 된다.
-- **`emit/` 안의 임포트 방향**은 `tests/compiler/test_emit_import_acyclic.py`가 함수 안 지연 임포트까지
-  포함해 비순환으로 강제한다: `common → {frontmatter, sections, wrapped, fork} → {skill_sections,
-  agent_sections} → section_plan → pointer_rules → guides → emitters → {skill, agent}`.
+- **`emit/` 안의 임포트 방향**은 `tests/compiler/test_emit_import_acyclic.py`가 함수 안 지연 임포트와
+  `TYPE_CHECKING` 블록까지 포함해 비순환으로 강제한다: `common`(리프) → `{frontmatter, sections}` →
+  `{fork, wrapped}` → `{skill_sections, agent_sections}` → `section_plan` → `pointer_rules` →
+  `guides` → `emitters` → `{skill, agent}`. 포인터 **판정**(`pointer_rules` — 절 표의
+  `GuidePointerRule`을 읽는다)과 포인터 **문구**(`guides.guide_pointer_line`)가 다른 파일인 이유가
+  그것이다(한 파일이면 `guides → section_plan → … → guides` 순환).
 
 **출력 구조 (CC 플러그인 규약, `project.build_target == MARKETPLACE` — 기본):**
 - `<out>/.claude-plugin/plugin.json` — 플러그인 매니페스트 (MARKETPLACE에서 항상 생성 — 이게 없으면 산출 디렉토리를 CC 플러그인으로 설치할 수 없다)
@@ -322,7 +325,7 @@ AST로 강제) `emit/guides.py`의 `WORKFLOW_GUIDE_KIND`/`BLACKBOARD_GUIDE_KIND`
       fork 자신의 "## Report"("진행 파일을 네가 갱신하지 말라")와 정면으로 충돌한다.
     - fork 에이전트 산출은 7-b 항목 참조.
 
-21. **공통 안내 파일 (WP-FK2 C3, `compiler/emit/guides.py`)**: 워크플로 개념·진행 기록 규약·재개 규칙·진입 맥락
+21. **공통 안내 파일 (WP-FK2 C3, `compiler/emit/guides.py` + 대상 판정 `compiler/emit/pointer_rules.py`)**: 워크플로 개념·진행 기록 규약·재개 규칙·진입 맥락
     읽는 법·fork 보고 양식·블랙보드 CLI 사용법은 스킬마다 **글자 하나 다르지 않은 같은 문장**이었다. 배치된 스킬이
     열이면 같은 산문이 열 번 산출되고 그 토큰은 걸릴 때마다 실린다(A12 — 반복은 곧 사용료). 그래서 공통 문장은
     파일 둘로 모으고 각 컴포넌트 산출에는 **포인터 1줄**만 남긴다.

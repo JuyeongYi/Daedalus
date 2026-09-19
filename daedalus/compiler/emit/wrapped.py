@@ -29,45 +29,23 @@ SKILL.md에 남기면 위임만 하는 메인 스레드의 모델이 바뀐다.
 """
 from __future__ import annotations
 
-from daedalus.compiler.emit.common import _MISSING, _config_default
+from daedalus.compiler.emit.common import (  # noqa: F401 — 재-export 파사드
+    _MISSING,
+    _config_default,
+    _join_blocks,
+    external_skill_name,
+    parse_wrapped_source,
+)
 from daedalus.compiler.emit.frontmatter import (
     _format_kv,
     _frontmatter_block,
     _yaml_scalar,
 )
+from daedalus.compiler.emit.sections import _exits_section, _mcp_servers_from_tools
 from daedalus.model.plugin.enums import AgentField, ModelType
 from daedalus.model.plugin.placement import is_state_placeable
 from daedalus.model.plugin.roles import BodySource, Bucket
 from daedalus.model.plugin.skill import WrappedSkill
-
-
-def parse_wrapped_source(source: str) -> tuple[str, str]:
-    """WP-WR source 참조 `plugin[@marketplace]:skill` → (plugin_id, skill_name).
-
-    형식이 어긋나면 ("", "") — 검증 경고(`external_source_missing`)가 짚고
-    emit은 지시 단락을 생략한다(빈 참조로 산출을 오염시키지 않는다).
-    """
-    if ":" not in (source or ""):
-        return "", ""
-    plugin_id, _, skill_name = source.partition(":")
-    plugin_id, skill_name = plugin_id.strip(), skill_name.strip()
-    if not plugin_id or not skill_name:
-        return "", ""
-    return plugin_id, skill_name
-
-
-def external_skill_name(source: str) -> str:
-    """source → CC 명령 이름 `플러그인:스킬` (마켓 표기 제거). 형식 불일치면 "".
-
-    크로스 플러그인 스킬 지목의 공식 표기는 `/플러그인:스킬`이고 플러그인 이름에
-    마켓 표기가 붙지 않는다(공식 문서 확인 2026-09-06 — @마켓은 설치 식별자라
-    dependencies/enabledPlugins 전용이다). 에이전트 `skills` 프론트매터도 같은
-    이름으로 해석된다(모듈 docstring의 실측).
-    """
-    plugin_id, skill_name = parse_wrapped_source(source)
-    if not skill_name:
-        return ""
-    return f"{plugin_id.partition('@')[0]}:{skill_name}"
 
 
 def needs_runner_agent(component: object) -> bool:
@@ -122,8 +100,6 @@ def _wrapped_requirements_section(skill) -> list[str]:
     `_mcp_requirement_section_skill`과 헤딩이 겹치지 않도록 여기서 한 단락으로
     합쳐 만든다(같은 사실을 두 번 말하지 않는다).
     """
-    from daedalus.compiler.emit.sections import _mcp_servers_from_tools
-
     plugin_id, _skill_name = parse_wrapped_source(skill.external_source or "")
     lines: list[str] = []
     if plugin_id:
@@ -171,9 +147,6 @@ def compile_wrapped_runner(skill: WrappedSkill) -> str:
 
     `needs_runner_agent`가 False인 컴포넌트에는 부르지 않는다(산출 계획이 거른다).
     """
-    from daedalus.compiler.emit.agent import _exits_section
-    from daedalus.compiler.emit.common import _join_blocks
-
     ext = external_skill_name(skill.config.source)
     blocks: list[str] = [_frontmatter_block(_runner_frontmatter_lines(skill))]
     blocks.append("## Procedure")

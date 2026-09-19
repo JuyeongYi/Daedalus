@@ -34,7 +34,8 @@ from daedalus.compiler.emit.frontmatter import (
     _yaml_block_lines,
     _yaml_scalar,
 )
-from daedalus.compiler.emit.sections import (
+from daedalus.compiler.emit.sections import (  # noqa: F401 — _exits_section 재-export
+    _exits_section,
     _describe_access,
     _describe_guard,
     _describe_node_action,
@@ -522,20 +523,3 @@ def _agent_outputs_section(agent: AgentDefinition) -> list[str]:
     출구로 끝났는지 명시해야 한다. description이 있으면 판정 기준으로 병기.
     """
     return _exits_section(agent.output_ports())
-
-
-def _exits_section(events) -> list[str]:
-    """출구 목록 → "## Exits" 단락. 에이전트와 랩핑 스킬 실행 에이전트
-    (emit/wrapped.py)가 공유한다 — 호출자가 분기하는 규약이 같아야 한다."""
-    if not events:
-        return []
-    lines = [
-        "## Exits",
-        "End with exactly one of the exits below. State which exit you took on "
-        "the first line of your final report — the caller branches on that name:",
-    ]
-    for ev in events:
-        desc = (getattr(ev, "description", "") or "").strip()
-        lines.append(f"- `{ev.name}`" + (f" — {desc}" if desc else ""))
-    return ["\n".join(lines)]
-

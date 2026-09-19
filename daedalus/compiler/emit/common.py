@@ -84,6 +84,42 @@ def emitted_components(project) -> list:
     return [c for c in [*skills, *agents] if emits_output_file(c)]
 
 
+# ─────────────────────── 외부 스킬 소스 참조 (WP-WR) ───────────────────────
+#
+# 순수 문자열 파싱이라 여기(리프)에 둔다 — 종전에는 `wrapped.py`에 있었고
+# `sections.linked_background_skills`가 **함수 안에서** 그것을 임포트해
+# `sections ↔ wrapped` 순환을 만들었다(WP-6에서 해소, `wrapped.py`가 재-export).
+
+
+def parse_wrapped_source(source: str) -> tuple[str, str]:
+    """WP-WR source 참조 `plugin[@marketplace]:skill` → (plugin_id, skill_name).
+
+    형식이 어긋나면 ("", "") — 검증 경고(`external_source_missing`)가 짚고
+    emit은 지시 단락을 생략한다(빈 참조로 산출을 오염시키지 않는다).
+    """
+    if ":" not in (source or ""):
+        return "", ""
+    plugin_id, _, skill_name = source.partition(":")
+    plugin_id, skill_name = plugin_id.strip(), skill_name.strip()
+    if not plugin_id or not skill_name:
+        return "", ""
+    return plugin_id, skill_name
+
+
+def external_skill_name(source: str) -> str:
+    """source → CC 명령 이름 `플러그인:스킬` (마켓 표기 제거). 형식 불일치면 "".
+
+    크로스 플러그인 스킬 지목의 공식 표기는 `/플러그인:스킬`이고 플러그인 이름에
+    마켓 표기가 붙지 않는다(공식 문서 확인 2026-09-06 — @마켓은 설치 식별자라
+    dependencies/enabledPlugins 전용이다). 에이전트 `skills` 프론트매터도 같은
+    이름으로 해석된다(모듈 docstring의 실측).
+    """
+    plugin_id, skill_name = parse_wrapped_source(source)
+    if not skill_name:
+        return ""
+    return f"{plugin_id.partition('@')[0]}:{skill_name}"
+
+
 # ─────────────────────────── 빌드 타깃 판정 ───────────────────────────
 
 

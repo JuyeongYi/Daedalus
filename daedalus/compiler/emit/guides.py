@@ -27,14 +27,14 @@
 from __future__ import annotations
 
 from daedalus.compiler import plan_kinds
-from daedalus.compiler.emit.common import (
-    _graph_placements,
-    _graph_placements_any,
-    _join_blocks,
-    emitted_components,
+from daedalus.compiler.emit.common import _join_blocks, emitted_components
+from daedalus.compiler.emit.pointer_rules import (  # noqa: F401 — 재-export 파사드
+    _blackboard_classes,
+    _blackboard_guide_available,
+    _workflow_guide_available,
+    blackboard_pointer_wanted,
+    workflow_pointer_kind,
 )
-from daedalus.model.plugin.placement import is_edge_placeable, is_reference_placed
-from daedalus.model.plugin.roles import BodySource, Bucket, PlacementRole
 from daedalus.model.plugin.variables import ROOT_TOKEN
 
 #: 산출 계획 kind — 가이드가 둘이므로 kind도 둘이다(`PlannedOutput`에 구분 필드를
@@ -73,89 +73,6 @@ def guide_rel_path(project, kind: str) -> str:
 def _guide_ref(project, kind: str) -> str:
     """컴포넌트 본문이 가리키는 참조 — 타깃 중립 토큰이 붙는다(컴포넌트에서 확장)."""
     return f"{ROOT_TOKEN}/{guide_rel_path(project, kind)}"
-
-
-# ─────────────────────────── 게이트 ───────────────────────────
-
-
-def _blackboard_classes(project) -> list:
-    bb = getattr(project, "blackboard", None)
-    return list(getattr(bb, "class_definitions", None) or [])
-
-
-def _workflow_guide_available(project) -> bool:
-    """워크플로 가이드가 말할 것이 있는가 — 그래프에 배치 노드가 하나라도 있는가."""
-    return project is not None and _graph_placements_any(project)
-
-
-def _blackboard_guide_available(project) -> bool:
-    return project is not None and bool(_blackboard_classes(project))
-
-
-# ─────────────────────────── 포인터 대상 판정 ───────────────────────────
-
-
-def workflow_pointer_kind(component, project) -> str:
-    """이 컴포넌트가 받는 워크플로 가이드 포인터 종류 — "" | "main" | "fork".
-
-    "main"은 **메인 대화에서 도는 배치 컴포넌트**다(배치된 절차형·선언형·state
-    용도 랩핑 스킬·워크플로 에이전트, placement가 있는 프로젝트의 전이 스킬).
-
-    fork 스킬은 "fork"다 — 가이드 2·3절("진행 기록을 이렇게 갱신하라", "current가
-    다르면 사용자에게 확인하라")은 fork 자신의 "## Report"("진행 파일을 네가
-    갱신하지 말라")와 정면으로 충돌하고, fork 서브에이전트는 사용자에게 되물을
-    수도 없다. 그래서 보고 양식만 가리키는 전용 줄을 낸다.
-
-    fork 에이전트·랩핑 실행 에이전트·미배치 스킬은 대상이 아니다("").
-
-    **판정은 전부 능력 선언이다**(WP-2c) — 종류를 열거하지 않으므로 새 종류는
-    `PLACEMENT`/`RUNS_IN_SUBAGENT`/`IS_FORK_BASE`를 고르는 것으로 합류한다.
-    """
-    if not _workflow_guide_available(project):
-        return ""
-    if is_edge_placeable(component):
-        # 엣지 스킬은 그래프 노드가 아니다 — 진행 파일을 만드는 배치 스킬이
-        # 하나라도 있으면(위 게이트) 지침이 고아가 아니다.
-        return "main"
-    if not _graph_placements(component, project):
-        return ""
-    if is_reference_placed(component):
-        # 참조 노드는 스스로 워크플로를 진행시키지 않는다. 참조 용도 랩핑
-        # 스킬은 산출 파일도 없지만, D1 이전에 만든 `.ddpj`에는 state 노드로
-        # 박혀 있을 수 있어 여기까지 도달한다.
-        return ""
-    if (
-        component.BUCKET is Bucket.SKILLS
-        and component.RUNS_IN_SUBAGENT
-        and component.BODY_SOURCE is BodySource.OWNED
-    ):
-        # fork 스킬 — 본문이 우리 것이면서 서브에이전트에서 도는 단계.
-        return "fork"
-    if component.IS_FORK_BASE:
-        # fork 실행 기반(fork 에이전트) — 가이드는 그것을 쓰는 fork 스킬이 받는다.
-        return ""
-    return "main"
-
-
-def blackboard_pointer_wanted(component, project) -> bool:
-    """이 컴포넌트가 블랙보드 가이드 포인터를 받는가.
-
-    오늘 "## Shared State (Blackboard)"가 배출되는 컴포넌트와 같은 집합이다 —
-    단계 스킬(fork 2종 포함)·state 용도 랩핑 스킬·에이전트 두 종류. 클래스 정의가
-    하나도 없으면 가이드 자체가 없다.
-
-    술어는 **"그래프 노드로 도는 종류인가"**(선언 `PLACEMENT`) ∪ 에이전트
-    전부이고, 거기서 **인스턴스**가 참조 노드로 쓰이는 것만 뺀다 — 선언(종류가
-    블랙보드 단락을 갖는가)과 상태(이 인스턴스가 참조로 놓였는가)를 나눠 묻는다.
-    """
-    if not _blackboard_guide_available(project):
-        return False
-    if is_reference_placed(component):
-        return False
-    return (
-        component.BUCKET is Bucket.AGENTS
-        or type(component).PLACEMENT is PlacementRole.STATE
-    )
 
 
 def workflow_guide_referenced(project) -> bool:

@@ -6,7 +6,7 @@ tool_shelf 참조 단락.
 """
 from __future__ import annotations
 
-from daedalus.compiler.emit.common import _graph_placements
+from daedalus.compiler.emit.common import _graph_placements, external_skill_name
 from daedalus.model.fsm.event import CompletionEvent
 from daedalus.model.fsm.guard import Guard
 from daedalus.model.fsm.machine import StateMachine
@@ -352,8 +352,6 @@ def linked_background_skills(component, project) -> list[tuple[str, str]]:
     }
     if not node_names:
         return []
-    from daedalus.compiler.emit.wrapped import external_skill_name
-
     # **참조 노드로 쓰이는, 본문 정본이 외부인, 켜져 있는 스킬** — 세 능력
     # 선언이 종전의 `kind == "wrapped_skill" and usage == "reference" and
     # not disabled` 사다리를 그대로 대신한다(WP-2c). 자체 산출이 있는
@@ -488,3 +486,22 @@ def _tool_shelf_section(project) -> list[str]:
             lines.append(f"  - Body:\n\n```\n{body.strip()}\n```")
     blocks.append("\n".join(lines))
     return blocks
+
+
+# ─────────────────────────── 출구 목록 ───────────────────────────
+
+
+def _exits_section(events) -> list[str]:
+    """출구 목록 → "## Exits" 단락. 에이전트와 랩핑 스킬 실행 에이전트
+    (emit/wrapped.py)가 공유한다 — 호출자가 분기하는 규약이 같아야 한다."""
+    if not events:
+        return []
+    lines = [
+        "## Exits",
+        "End with exactly one of the exits below. State which exit you took on "
+        "the first line of your final report — the caller branches on that name:",
+    ]
+    for ev in events:
+        desc = (getattr(ev, "description", "") or "").strip()
+        lines.append(f"- `{ev.name}`" + (f" — {desc}" if desc else ""))
+    return ["\n".join(lines)]

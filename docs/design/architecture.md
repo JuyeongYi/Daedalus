@@ -169,7 +169,7 @@ WP-1 D9에서 삭제해 목록에서 빠졌다.
 
 | 테스트 | 고정하는 것 |
 |--------|-------------|
-| `tests/compiler/test_emit_import_acyclic.py` | `compiler/emit/*` 모듈 간 임포트 방향. **모듈 레벨 간선은 비순환**(오늘 통과)이고 `common`은 리프다. 함수 안 지연 임포트까지 포함한 최종 계약은 **오늘 통과하지 않는다** — `sections ↔ wrapped`, `agent → sections → wrapped → agent` 순환이 지연 임포트로 살아 있다(`sections.py:350`·`wrapped.py:118,169`). 단언을 느슨하게 하는 대신 `xfail(strict=True)`로 기록했다: WP-6이 방향을 정리하면 그 표식이 실패해 제거를 강제한다 |
+| `tests/compiler/test_emit_import_acyclic.py` | `compiler/emit/*` 모듈 간 임포트 방향. **모듈 레벨 간선도, 함수 안 지연 임포트·`TYPE_CHECKING`까지 포함한 전체 간선도 비순환**이다(WP-6에서 `xfail(strict)` 제거). 방향: `common`(리프) → `{frontmatter, sections}` → `{fork, wrapped}` → `{skill_sections, agent_sections}` → `section_plan` → `pointer_rules` → `guides` → `emitters` → `{skill, agent}`. WP-6이 끊은 세 간선(`sections→wrapped`·`wrapped→agent`·`section_plan→emitters`)은 방향을 직접 고정해 되돌아오는 것을 막는다. **`TYPE_CHECKING` 임포트도 간선으로 센다** — 타입만 쓰더라도 "이 모듈이 저 모듈을 안다"는 사실은 같고, 눈감아 주면 모듈 지도가 거짓이 된다 |
 | `tests/compiler/test_emitters.py` | **표 구동 산출의 시끄러운 실패**(WP-6) — `emitter_for`/`plan_for_kind`/`provider_for`가 미지 값에 이유와 **등록 목록**을 말하는 ValueError를 내고, `output_path`는 산출 없는 자리를 거절한다. 표의 완결성도 양방향이다: 절 튜플의 모든 절에 provider가 있고(누락 = 단락이 조용히 사라짐) 모든 provider를 어느 종류든 쓴다(미사용 = 죽은 코드) |
 | `tests/test_kind_registry_parity.py` §3 | **`EMITTERS` ↔ `KIND_REGISTRY` 양방향**(WP-6) — 산출이 있는 종류마다 emitter 하나, `OUTPUT_LOCATION is NONE`인 종류에는 없음. `SECTION_PLANS` 키 집합도 같고 emitter의 `plan_kind`는 버킷과 짝이다 |
 | `tests/compiler/test_unit_contract.py` | **`CompileUnit` 계약**(WP-5) — 단위 id 유일·선언 순서 고정, 모든 계획 행이 `mode`/`phase`/`expands_root`/`token_kind`를 **선언**함(드라이버의 kind 튜플로 되돌아가지 않는다), `render()` 2회 동일(순수), `plan()`이 주입 경로 밖 파일을 읽지 않음(`Path.read_text` 감시 — 원칙 4), 파사드 계획 ⊂ 전체 계획이고 차집합이 정확히 `{files_tree}`, `OUTPUT_LOCATION`이 NONE인 컴포넌트는 예외 없이 건너뛰고 **이름 게이트도 받지 않음**(WP-9 선행 조건) |
@@ -360,10 +360,12 @@ daedalus/
 │   ├── emit/               # model → SKILL.md/agent .md/hooks.json 텍스트 (결정적, LF). 구 emit.py를 WP-RF-3a로 패키지 분해(이동만·동작 불변)
 │   │   ├── __init__.py     #   재-export 파사드 — 분해 전 emit.py의 모든 속성(public + 테스트가 쓰는 _헬퍼) 그대로 제공,
 │   │   │                   #   기존 `from daedalus.compiler.emit import …` 임포트 전부 무수정 동작(test_emit_facade.py가 고정)
-│   │   ├── common.py       #   공용 헬퍼 — _enum_value/_config_default/_MISSING/_body_block/_join_blocks/_build_target/_is_local_build/_graph_placements(_any)/
-│   │   │                   #   emits_output_file(component.emits_output() 파사드)/agent_invocation_name(위임 대상 이름 해소 — 빌드 타깃별)
+│   │   ├── common.py       #   공용 헬퍼(리프) — _enum_value/_config_default/_MISSING/_body_block/_join_blocks/_build_target/_is_local_build/_graph_placements(_any)/
+│   │   │                   #   emits_output_file(component.emits_output() 파사드)/agent_invocation_name(위임 대상 이름 해소 — 빌드 타깃별)/
+│   │   │                   #   parse_wrapped_source·external_skill_name(WP-6: 순수 문자열 파싱이라 리프로 — sections↔wrapped 순환 해소)
 │   │   ├── frontmatter.py  #   YAML 표기(_yaml_scalar/_yaml_list/_yaml_block_lines) + 스킬 프론트매터(_frontmatter_lines_skill)·_compose_description
-│   │   ├── sections.py     #   공용 단락 — 가드/트리거·FSM 절차 서술(_describe_fsm)·요구 환경 MCP(referenced_mcp_servers)·블랙보드(_blackboard_section)·tool_shelf
+│   │   ├── sections.py     #   공용 단락 — 가드/트리거·FSM 절차 서술(_describe_fsm)·요구 환경 MCP(referenced_mcp_servers)·블랙보드(_blackboard_section)·tool_shelf·
+│   │   │                   #   _exits_section("## Exits" — 에이전트와 랩핑 러너가 공유한다, WP-6: wrapped→agent 순환 해소)
 │   │   ├── skill_sections.py #   스킬 전용 단락 빌더 — 다음 단계·작업 재개(WP-RS)·진입 맥락(WP-IC)·진행 기록 잔여.
 │   │   │                   #   조립 분기는 능력 선언만 본다(WP-2c) — 컴포넌트 대상 isinstance 0
 │   │   ├── agent_sections.py #   에이전트 전용 단락 빌더 — 프론트매터(skills 합류·LOCAL hooks/mcpServers)·호출 계약(종류별)·
@@ -384,9 +386,13 @@ daedalus/
 │   │   │                   #   fork_frontmatter_lines(agent: 이름 해소만 — context·background는 매트릭스 FIXED)/
 │   │   │                   #   fork_report_section("## Report", 종류별 도입·async 선행 조건)/
 │   │   │                   #   fork_skills_using(model.plugin.placement 재-export 껍데기)
+│   │   ├── pointer_rules.py #  가이드 포인터 **대상 판정**(WP-6, guides.py에서 분리) — workflow_pointer_kind(""|"main"|"fork") /
+│   │   │                   #   blackboard_pointer_wanted / _workflow_guide_available / _blackboard_guide_available.
+│   │   │                   #   종류 쪽 판정은 절 표의 GuidePointerRule·BLACKBOARD∈sections 한 줄이고 거기에 인스턴스 배치 상태를 곱한다.
+│   │   │                   #   판정이 종류 선언을 읽고 포인터 **문구**가 다시 판정을 읽으므로 한 파일이면 순환이다 → guides.py가 재-export
 │   │   ├── guides.py       #   공통 안내 파일(WP-FK2 C3) — compile_workflow_guide/compile_blackboard_guide/compile_guide,
-│   │   │                   #   포인터 판정(workflow_pointer_kind: ""|"main"|"fork" / blackboard_pointer_wanted)과
-│   │   │                   #   guide_pointer_line/_insert_guide_pointer, guide_rel_path, GUIDE_KINDS.
+│   │   │                   #   포인터 문구 guide_pointer_line/_insert_guide_pointer, guide_rel_path, GUIDE_KINDS,
+│   │   │                   #   workflow_guide_referenced/blackboard_guide_referenced(고아 파일 방지) + pointer_rules 재-export.
 │   │   │                   #   가이드 본문에는 ${ROOT} 등 치환 변수를 쓰지 않는다(<SCHEMAS> 자리표시자)
 │   │   ├── hooks.py        #   compile_hooks_json/compile_hook_scripts (진행 상태 합성 훅 포함)
 │   │   └── manifest.py     #   compile_plugin_manifest/compile_schemas_json + 경로 변수 확장(expand_root_token)

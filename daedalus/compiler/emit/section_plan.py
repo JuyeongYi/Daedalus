@@ -21,7 +21,8 @@ BLACKBOARD 뒤에 오고 에이전트는 SETTINGS_NOTE가 BLACKBOARD 앞에 온�
 
 **임포트 방향.** 이 모듈은 단락 빌더를 **아래에서** 임포트하고(`skill_sections`·
 `agent_sections`·`sections`·`wrapped`·`fork`), `emitters.py`를 임포트하지
-않는다(provider 인자의 emitter 타입은 `TYPE_CHECKING` 전용). 조립 결과에 가이드
+않는다(provider의 emitter 인자는 타입 주석도 달지 않는다 — `TYPE_CHECKING`
+블록의 임포트도 간선으로 세기 때문이다). 조립 결과에 가이드
 포인터를 끼우는 후처리도 여기서 하지 않는다 — 그 판정이 다시 종류 선언을 읽어야
 해서 순환이 되기 때문이다(`emitters.ComponentEmitter.render`가 맡는다,
 `tests/compiler/test_emit_import_acyclic.py`).
@@ -30,7 +31,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import TYPE_CHECKING, Callable
+from typing import Any, Callable
 
 from daedalus.compiler.emit.agent_sections import (
     _agent_delegation_section,
@@ -78,9 +79,6 @@ from daedalus.model.plugin.skill import (
     TransferSkill,
     WrappedSkill,
 )
-
-if TYPE_CHECKING:  # pragma: no cover - 정적 타입 전용(순환 임포트 방지)
-    from daedalus.compiler.emit.emitters import ComponentEmitter
 
 
 class SectionId(StrEnum):
@@ -252,7 +250,11 @@ def plan_for_kind(kind: str | None) -> SectionPlan:
 # 않는다** — 그 타입은 `compiler/units/`에 있고 `units.context`가 `emit`을
 # 임포트하므로, emit이 반대로 units를 들이면 패키지 순환이 된다.
 
-Provider = Callable[[object, object, "ComponentEmitter"], list[str]]
+#: `emitter`의 타입(`emitters.ComponentEmitter`)은 **이름으로도 임포트하지
+#: 않는다** — `TYPE_CHECKING` 블록의 임포트도 모듈 간 간선으로 세므로
+#: (`tests/compiler/test_emit_import_acyclic.py`) 그것만으로 순환이 된다.
+#: 방향은 `section_plan → emitters` 한 쪽뿐이다.
+Provider = Callable[[Any, Any, Any], list[str]]
 
 
 def _provide_resume(component, project, emitter) -> list[str]:

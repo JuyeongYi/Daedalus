@@ -9,22 +9,24 @@ WP-6이 절 적용 표(`section_plan.py`)와 emitter(`emitters.py`)를 이 패�
 
 그래서 두 가지를 따로 잰다:
 
-① **모듈 레벨 간선** — 항상 비순환이어야 한다(오늘 통과).
-② **모든 간선**(함수 안 지연 임포트 포함) — §4-b가 요구하는 최종 계약.
-   **오늘은 통과하지 않는다**: `sections ↔ wrapped`와
-   `agent → sections → wrapped → agent` 두 순환이 지연 임포트로 살아 있다
-   (`sections.py:350` → `wrapped.external_skill_name`,
-   `wrapped.py:118` → `sections._mcp_servers_from_tools`,
-   `wrapped.py:169` → `agent._exits_section`). 실측 결과이므로 단언을
-   느슨하게 하지 않고 `xfail(strict=True)`로 **기록**한다 — WP-6이 방향을
-   정리해 순환이 사라지면 이 표식이 즉시 실패해 제거를 강제한다.
+① **모듈 레벨 간선** — 항상 비순환이어야 한다.
+② **모든 간선**(함수 안 지연 임포트 + `TYPE_CHECKING` 블록 포함) — §4-b의
+   최종 계약. WP-6까지는 통과하지 않았다: `sections ↔ wrapped`와
+   `agent → sections → wrapped → agent` 두 순환이 지연 임포트로 살아 있어
+   `xfail(strict=True)`로 기록해 뒀다. WP-6이 셋을 끊었다 —
+   `parse_wrapped_source`/`external_skill_name`은 순수 문자열 파싱이라
+   `common`(리프)으로, `_exits_section`은 에이전트와 랩핑 러너가 공유하는
+   단락이라 `sections`로 내려갔다. 그래서 이제 ②도 **단언**이다.
+
+**`TYPE_CHECKING` 임포트도 간선으로 센다.** 정적 타입만 쓰는 임포트라도
+"이 모듈이 저 모듈을 안다"는 사실은 같고, 그것을 눈감아 주면 모듈 지도가
+거짓이 된다 — `section_plan`이 `emitters`의 타입을 주석으로만 쓰던 자리가
+실제로 그렇게 걸렸다(그쪽은 타입 주석을 떼어 해소했다).
 """
 from __future__ import annotations
 
 import ast
 from pathlib import Path
-
-import pytest
 
 _REPO = Path(__file__).resolve().parent.parent.parent
 _PKG = "daedalus.compiler.emit"
@@ -127,28 +129,31 @@ def test_common_is_a_leaf():
     assert edges(module_level_only=False)[f"{_PKG}.common"] == set()
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "실측(2026-09-19): 지연 임포트로 sections ↔ wrapped, "
-        "agent → sections → wrapped → agent 순환이 살아 있다. "
-        "REFACTOR_SPEC §4-b가 WP-6에서 pointer_rules 추출로 정리한다 — "
-        "정리되면 이 xfail(strict)이 실패해 제거를 강제한다."
-    ),
-)
 def test_all_imports_including_deferred_are_acyclic():
-    """§4-b 최종 계약 — 함수 안 지연 임포트까지 포함해 비순환."""
+    """§4-b 최종 계약 — 함수 안 지연 임포트·TYPE_CHECKING까지 포함해 비순환."""
     cycle = find_cycle(edges(module_level_only=False))
     assert cycle is None, "  " + " → ".join(cycle or [])
 
 
-def test_known_deferred_cycle_is_recorded():
-    """xfail이 가리키는 순환이 **실제로** 있는지 — 사라지면 표식을 지워야 한다.
+def test_the_former_cycles_are_one_directional_now():
+    """WP-6이 끊은 세 간선이 **되돌아오지 않는지** — 순환의 자리를 못 박는다.
 
-    xfail(strict)만으로는 "왜 실패하는가"가 남지 않는다. 여기서 순환의 실물을
-    짚어 두면 WP-6이 무엇을 끊어야 하는지 바로 읽힌다.
+    비순환 단언만 남기면 "어디가 위험했는지"가 사라진다. 세 쌍은 실제로 순환을
+    이뤘던 자리이므로 방향을 직접 고정한다.
     """
     graph = edges(module_level_only=False)
-    assert f"{_PKG}.wrapped" in graph[f"{_PKG}.sections"]
+    # ① sections는 wrapped를 모른다(공용 문자열 파싱은 common으로 내려갔다).
+    assert f"{_PKG}.wrapped" not in graph[f"{_PKG}.sections"]
     assert f"{_PKG}.sections" in graph[f"{_PKG}.wrapped"]
-    assert f"{_PKG}.agent" in graph[f"{_PKG}.wrapped"]
+    # ② wrapped는 agent를 모른다(_exits_section은 sections가 갖는다).
+    assert f"{_PKG}.agent" not in graph[f"{_PKG}.wrapped"]
+    # ③ section_plan은 emitters를 모른다(타입 주석으로도).
+    assert f"{_PKG}.emitters" not in graph[f"{_PKG}.section_plan"]
+    assert f"{_PKG}.section_plan" in graph[f"{_PKG}.emitters"]
+
+
+def test_pointer_rules_sits_below_guides():
+    """포인터 **판정**은 아래, 포인터 **문구**는 위 — §4-b 방향 계약의 실물."""
+    graph = edges(module_level_only=False)
+    assert f"{_PKG}.pointer_rules" in graph[f"{_PKG}.guides"]
+    assert f"{_PKG}.guides" not in graph[f"{_PKG}.pointer_rules"]
