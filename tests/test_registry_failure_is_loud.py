@@ -10,7 +10,7 @@
 **빠진 종류 이름이 실려 있는지**를 본다. 이름이 없으면 사용자는 "알 수 없는
 종류"라는 말만 보고 어느 종류인지 모른다.
 
-WP-6/WP-7이 `EMITTERS`/`KIND_UI`를 만들면 같은 파라미터화가 그쪽에도 붙는다.
+`EMITTERS`(WP-6)와 `KIND_UI`(WP-7)도 같은 방식으로 지켜진다.
 """
 from __future__ import annotations
 
@@ -94,3 +94,48 @@ def test_wrong_bucket_is_refused_even_when_the_kind_exists():
     """
     with pytest.raises(ValueError, match="agent"):
         spec_by_kind("agent", bucket=Bucket.SKILLS, subject="스킬 'x'")
+
+
+# ── 뷰 표면 (WP-7) ───────────────────────────────────────────────────────
+
+@pytest.fixture
+def kind_ui_without_procedural(monkeypatch):
+    """`procedural_skill`의 **뷰 행**만 빠진 표 — 다른 행은 그대로다."""
+    from daedalus.view import kind_ui as kind_ui_mod
+
+    thinned = {
+        k: v for k, v in kind_ui_mod.KIND_UI.items() if k != _VICTIM_KIND
+    }
+    monkeypatch.setattr(kind_ui_mod, "KIND_UI", thinned)
+    return thinned
+
+
+def test_palette_build_names_the_kind_without_a_ui_row(
+    qapp, kind_ui_without_procedural
+):
+    """UI 행이 빠지면 팔레트 구축이 **그 종류 이름을 찍고** 죽는다.
+
+    예전에는 아이콘 없는 행·회색 기본 노드로 **조용히** 그려졌다 — 어느 종류가
+    빠졌는지 화면만 봐서는 알 수 없었다(👻, 원칙 5).
+    """
+    from daedalus.view.panels.registry_panel import RegistryPanel
+
+    with pytest.raises(ValueError, match=_VICTIM_KIND):
+        RegistryPanel()
+
+
+def test_component_lookup_names_the_kind_without_a_ui_row(
+    qapp, kind_ui_without_procedural
+):
+    """인스턴스 조회도 같은 거절이다 — 캔버스 노드·편집 탭이 함께 부른다."""
+    from daedalus.model.fsm.machine import StateMachine
+    from daedalus.model.fsm.state import SimpleState
+    from daedalus.view.kind_ui import ui_for
+
+    state = SimpleState(name="s")
+    skill = ProceduralSkill(
+        fsm=StateMachine(name="f", states=[state], initial_state=state),
+        name="x", description="d",
+    )
+    with pytest.raises(ValueError, match=_VICTIM_KIND):
+        ui_for(skill)

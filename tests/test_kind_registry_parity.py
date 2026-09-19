@@ -7,7 +7,7 @@
 "팔레트에 안 보임"·"MCP가 거절함"·"파일에서 안 읽힘"으로 나타난다(👻).
 
 그래서 여기서는 **집합 등식**만 쓴다 — 한쪽을 고치고 다른 쪽을 잊으면 실패한다.
-`EMITTERS`(WP-6)는 §3절에 합류했다. `KIND_UI`(WP-7)는 그 표가 생길 때 합류한다.
+`EMITTERS`(WP-6)는 §3절에, `KIND_UI`(WP-7)는 §6절에 합류했다.
 
 생성 등가 게이트(`make_component` ↔ `new()`)도 여기로 옮겨 왔다 —
 `view/actions/creation`의 종류별 람다 9개를 레지스트리 파생으로 바꾸는 것이
@@ -37,8 +37,9 @@ from daedalus.model.plugin.kinds import (
     spec_for,
 )
 from daedalus.model.plugin.enums import FieldEmit
-from daedalus.model.plugin.roles import Bucket, OutputLocation
+from daedalus.model.plugin.roles import Bucket, OutputLocation, PlacementRole
 from daedalus.view.actions.creation import make_component
+from daedalus.view.kind_ui import KIND_UI, DIALOG_TITLES, ui_by_config_kind
 
 # 창 대역은 **한 벌만** 둔다 — FSM 팩토리가 두 벌이 되면 "같은 물건인가"를 묻는
 # 이 파일의 등가 게이트 자체가 흐려진다.
@@ -201,3 +202,69 @@ def test_required_ports_exist_right_after_new(kind):
     comp = spec.component_cls.new("thing", fsm_factory=_fsm_factory_for(spec, window))
     assert comp.output_ports(), f"{kind}이(가) 포트 0개로 태어난다"
     assert spec_for(comp) is spec
+
+
+# ── 6. 뷰 표면 (WP-7) ────────────────────────────────────────────────────
+
+def test_kind_ui_rows_are_exactly_the_registered_kinds():
+    """**양방향**이다 — UI 행이 없는 종류도, 종류가 없는 UI 행도 없다.
+
+    한쪽만 보면 둘 다 조용히 깨진다: 행을 잊으면 그 종류가 팔레트·캔버스·편집
+    탭에서 `ui_for` ValueError로 죽고(예전에는 회색 기본 노드로 **조용히**
+    그려졌다), 남은 행은 아무도 그리지 않는 죽은 표가 된다.
+    """
+    assert set(KIND_UI) == set(KIND_REGISTRY)
+
+
+def test_kind_ui_order_follows_the_registry():
+    """선언 순서 = 팔레트 탭 순서 — 같은 질문에 같은 순서로 답한다(결정성)."""
+    assert list(KIND_UI) == list(KIND_REGISTRY)
+
+
+def test_dialog_titles_cover_every_config_kind():
+    """이름 입력 다이얼로그 제목은 config 어휘 전부를 덮는다 (V9)."""
+    assert set(DIALOG_TITLES) == set(CONFIG_KIND_INDEX)
+    assert all(DIALOG_TITLES.values())
+
+
+#: 상태 노드로 놓이지 않는데도 캔버스 스타일을 갖는 종류 — **구버전 저장
+#: 그래프의 폴백**이다. `declarative`는 예전에 배치 가능했고, 그때 저장된
+#: `.daedalus.json`의 배치는 로드 시 그대로 복원된다(배치 **판정**만 막혔다).
+#: 새 종류가 이 목록에 드는 것은 규칙 위반이다 — 목록은 줄어들기만 한다.
+_LEGACY_STYLED_KINDS: frozenset[str] = frozenset({"declarative_skill"})
+
+
+@pytest.mark.parametrize("kind", sorted(KIND_REGISTRY))
+def test_state_placeable_kinds_have_a_node_style(kind):
+    """상태 노드로 놓이는 종류는 캔버스 스타일을 갖는다 — 그리고 그 역도 참이다.
+
+    `node_style`이 없으면 노드가 **빈 상태와 구분되지 않는 회청색**으로
+    그려진다(랩핑 스킬이 겪은 실제 회귀). 반대로 놓이지 않는 종류에 스타일을
+    남기면 아무도 쓰지 않는 표가 된다 — 예외는 구버전 그래프 폴백뿐이고
+    그 목록도 여기서 고정한다.
+    """
+    spec = KIND_REGISTRY[kind]
+    expected = spec.placement is PlacementRole.STATE or kind in _LEGACY_STYLED_KINDS
+    assert (KIND_UI[kind].node_style is not None) is expected
+
+
+@pytest.mark.parametrize("kind", sorted(KIND_REGISTRY))
+def test_switch_labels_are_exactly_the_convert_family_kinds(kind):
+    """전환 라벨은 전환 가족 선언과 짝이다 — 라벨 없는 가족원은 버튼이 안 생긴다."""
+    spec = KIND_REGISTRY[kind]
+    ui = KIND_UI[kind]
+    assert (ui.switch_label is not None) is (spec.convert_family is not None)
+    assert (ui.switch_tooltip is not None) is (spec.convert_family is not None)
+
+
+def test_registry_sections_use_the_registry_vocabulary():
+    """팔레트 섹션 키 = config 어휘(R14) — 손으로 조립한 kind 문자열이 없다."""
+    from daedalus.view.panels.registry_panel import _SECTION_KINDS
+
+    assert list(_SECTION_KINDS) == list(
+        config_kinds_in(Bucket.SKILLS)
+    ) + list(config_kinds_in(Bucket.AGENTS))
+    for config_kind in _SECTION_KINDS:
+        assert ui_by_config_kind(config_kind) is KIND_UI[
+            spec_by_config_kind(config_kind).kind
+        ]
