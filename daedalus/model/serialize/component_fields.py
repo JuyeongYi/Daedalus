@@ -50,7 +50,7 @@ KEY_ORDER: Mapping[Bucket, tuple[str, ...]] = {
 
 #: **부재 의미론** — 키가 없을 때 dataclass 기본값과 **다른** 값을 쓰는 필드.
 #:
-#: `transfer_on` 하나다. `StepSkill`/`WrappedSkill`의 선언 기본값은
+#: `transfer_on` 하나다. `StepSkill`의 선언 기본값은
 #: `[EventDef("done")]`인데, 키 없는 저장 파일에 그 값을 쓰면 출력 포트가
 #: **발명**되고 `transfer_on_not_empty` 검증이 에러에서 조용한 통과로 뒤집힌다
 #: (원칙 5). `call_agents`는 선언 기본값이 이미 빈 목록이라 행이 필요 없다 —

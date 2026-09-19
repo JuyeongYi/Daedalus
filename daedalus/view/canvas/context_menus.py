@@ -153,7 +153,7 @@ def add_component_actions_menu(scene, menu: QMenu, state_vm: StateViewModel) -> 
     if preview_act is not None:
         preview_act.setToolTip("이 컴포넌트가 어떤 파일로 나가는지 — 파일은 쓰지 않는다")
         # 산출 자리가 아예 없는 종류는 미리볼 것이 없다(`OUTPUT_LOCATION is NONE`).
-        # 참조 용도·비활성 랩핑 스킬은 **대상이다** — 산출 파일이 없어도 무엇으로
+        # 이번 빌드에 파일이 나가지 않는 컴포넌트도 **대상이다** — 무엇으로
         # 컴파일되는지는 볼 수 있다(`emits_output()`으로 걸면 안 되는 이유).
         if not can_preview(component):
             preview_act.setEnabled(False)

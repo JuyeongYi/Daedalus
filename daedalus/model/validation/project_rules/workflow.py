@@ -28,10 +28,12 @@ def _agent_call_edges(project) -> list[tuple]:
     술어 두 개로 갈린다(Q9):
 
     - caller = **자기 본문이 서브에이전트에서 도는 노드**
-      (`RUNS_IN_SUBAGENT`). 랩핑 스킬도 서브에이전트(러너)에서 돌지만 이
-      규칙의 집합에는 들어 있지 않았고, 넓히면 `agent_chain_too_deep` 깊이와
-      `agent_calls_higher_model`이 조용히 달라진다 — 위 docstring이 제외를
-      의도로 말하므로 `BODY_SOURCE is OWNED`로 종전 집합을 보존한다.
+      (`RUNS_IN_SUBAGENT`) 중 **본문 정본이 자기 것인** 것(`BODY_SOURCE`).
+      외부 플러그인 에이전트(WP-9)도 서브에이전트에서 돌지만 이 집합에 넣지
+      않는다 — 넓히면 `agent_chain_too_deep` 깊이와 `agent_calls_higher_model`
+      이 조용히 달라지고(우리가 만들지 않은 파일의 model 값을 우리 경고가
+      단정한다), 그것은 이 규칙이 아니라 사용자 확정이 필요한 변경이다
+      (`docs/backlog.md`).
       `ForkAgent`도 이 술어를 통과하지만 캔버스 노드가 될 수 없어
       (`PLACEMENT=NONE`) `skill_ref`로 오지 않는다 — callee 쪽과 같은 논거다.
     - callee = **이쪽으로 가는 전이가 위임인 노드**(`DELEGATION_TARGET`).
@@ -54,7 +56,7 @@ def _agent_call_edges(project) -> list[tuple]:
             continue
         if not (
             type(caller).RUNS_IN_SUBAGENT
-            and type(caller).BODY_SOURCE is BodySource.OWNED  # WRAPPED-ONLY
+            and type(caller).BODY_SOURCE is BodySource.OWNED
         ):
             continue
         if not type(callee).DELEGATION_TARGET:
@@ -309,7 +311,7 @@ class _WorkflowRules:
         """
         from daedalus.model.fsm.state import SimpleState
         from daedalus.model.plugin.placement import is_state_placeable
-        from daedalus.model.plugin.roles import BodySource, Bucket
+        from daedalus.model.plugin.roles import Bucket
 
         graph = getattr(project, "graph", None)
         if graph is None:
@@ -326,13 +328,10 @@ class _WorkflowRules:
             if not isinstance(state, SimpleState):
                 continue
             skill = state.skill_ref
-            # 종전 집합은 StepSkill(절차형·fork 2종)이다 — 단일 배치되는 스킬
-            # 중 본문 정본이 자기 것인 종류. 랩핑 스킬은 `user_invocable`
-            # 프론트매터를 내지만 이 규칙의 대상이 아니었다.
+            # 집합은 StepSkill(절차형·fork 2종) — 단일 배치되는 스킬 종류다.
             if skill is None or not (
                 type(skill).BUCKET is Bucket.SKILLS
                 and is_state_placeable(skill)
-                and type(skill).BODY_SOURCE is BodySource.OWNED  # WRAPPED-ONLY
             ):
                 continue
             if not incoming.get(id(state)):

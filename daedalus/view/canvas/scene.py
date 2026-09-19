@@ -384,26 +384,18 @@ class FsmScene(QGraphicsScene):
         skill = self._skill_lookup(skill_name)
         if skill is None:
             return
-        # 참조 스킬은 별도 처리 (여러 인스턴스 허용) — 용도가 reference로
-        # 고정된 WrappedSkill도 같은 경로다(WP-WR).
-        from daedalus.model.plugin.skill import is_reference_usage
+        # 참조 노드로 놓이는 종류는 별도 처리 (여러 인스턴스 허용).
+        from daedalus.model.plugin.placement import (
+            is_reference_placed,
+            is_state_placeable,
+        )
 
-        if is_reference_usage(skill):
+        if is_reference_placed(skill):
             self.drop_reference_skill(skill_name, scene_pos)
-            return
-        # 최초 배치가 무언가를 묻는 종류인가 — 종류가 아니라 **뷰 표면 선언**이
-        # 답한다(WP-7 ②, `KIND_UI[kind].first_placement_prompt`). 오늘은 용도
-        # 미정 랩핑 스킬 하나이고, 물어서 고정 + 배치를 1 undo로 묶는다.
-        from daedalus.view.kind_ui import ui_for
-
-        prompt = ui_for(skill).first_placement_prompt
-        if prompt is not None and prompt(self, skill, scene_pos):
             return
         # 상태 노드로 놓을 수 있는 종류인가 — 판정의 실체는 model의
         # `is_state_placeable` 하나다(레지스트리·"여기에 만들기"·MCP와 공용).
-        # **위치를 옮기지 않는다**: 참조 조기 반환과 용도 미정 wrapped 처리보다
-        # 반드시 뒤여야 그 두 경로가 살아 있다.
-        from daedalus.model.plugin.placement import is_state_placeable
+        # **위치를 옮기지 않는다**: 참조 조기 반환보다 반드시 뒤여야 한다.
 
         if not is_state_placeable(skill):
             return
@@ -414,87 +406,6 @@ class FsmScene(QGraphicsScene):
         model = SimpleState(name=skill.name, skill_ref=skill)  # type: ignore[arg-type,union-attr]
         vm = StateViewModel(model=model, x=scene_pos.x(), y=scene_pos.y())
         self._project_vm.execute(CreateStateCmd(self._project_vm, vm, fsm=self._target_fsm))
-
-    def drop_wrapped_source(
-        self, source: str, scene_pos: QPointF, usage: str | None = None,
-    ) -> None:
-        """레지스트리 🔗 **후보 행**(선언된 외부 플러그인의 스킬) 드롭 (WP-WR).
-
-        아직 컴포넌트가 아니므로 여기서 WrappedSkill을 만들어 배치한다 —
-        실체는 `actions/creation.create_wrapped_skill`(생성 + 미선언이면 선언 +
-        배치까지 MacroCommand 1 undo, MCP `create_skill(source=, x=, y=)`와
-        같은 경로). 창 참조는 컨텍스트 메뉴와 같은 관례(views()[0].window()) —
-        씬은 MainWindow를 직접 참조하지 않는다.
-
-        usage(사용자 확정 2026-09-07): None이면 **묻는다** — 최초 배치가
-        용도를 고정한다(state=워크플로 단계 / reference=참조 노드·산출 없음).
-        """
-        views = self.views()
-        if not views:
-            return
-        if usage is None:
-            usage = self._ask_wrapped_usage()
-            if usage is None:
-                return  # 취소 — 아무것도 만들지 않는다
-        from daedalus.view.actions.creation import create_wrapped_skill
-
-        create_wrapped_skill(
-            views[0].window(), source, x=scene_pos.x(), y=scene_pos.y(),
-            usage=usage,
-        )
-
-    def _ask_wrapped_usage(self) -> str | None:
-        """wrapped 최초 배치의 용도 선택 팝업 — "state"/"reference"/None(취소).
-
-        테스트·헤드리스는 이 메서드를 몽키패치한다(모달 회피 봉합선 —
-        SessionIO.exec_new_project_dialog 관례).
-        """
-        from PySide6.QtGui import QCursor
-
-        menu = QMenu()
-        state_act = menu.addAction("워크플로 단계로 (State — SKILL.md 산출)")
-        ref_act = menu.addAction("참조로 (Reference — 산출 파일 없음, 복수 배치)")
-        chosen = menu.exec(QCursor.pos())
-        if chosen is state_act:
-            return "state"
-        if chosen is ref_act:
-            return "reference"
-        return None
-
-    def _place_wrapped_fixing_usage(
-        self, skill, usage: str, scene_pos: QPointF,
-    ) -> None:
-        """용도 미정 wrapped의 최초 배치 — 용도 고정 + 배치를 1 undo로.
-
-        따로 고정하고 따로 배치하면 undo가 배치만 되돌려 용도만 고정된 채
-        남는다(선택을 되돌릴 수 없는 반쪽 상태) — SetAttrCmd + 배치 커맨드를
-        MacroCommand로 묶는다.
-        """
-        from daedalus.view.actions.wrapped_usage import usage_fix_command
-        from daedalus.view.commands.base import MacroCommand
-        from daedalus.view.commands.reference_commands import CreateRefCmd
-        from daedalus.view.commands.state_commands import CreateStateCmd
-
-        project_vm = self._project_vm
-        # 용도 고정 커맨드의 실체는 공용 액션이다 — MCP `place_component`가
-        # 용도 미정 wrapped를 받을 때도 같은 커맨드를 자기 배치와 묶는다.
-        # 고칠 것이 없으면 None이 온다(이미 고정됐거나 wrapped가 아님) —
-        # 호출자 가드에 기대지 않는다. 이 헬퍼는 MCP `place_component`도
-        # 부르게 될 공용 경로다.
-        fix = usage_fix_command(skill, usage)
-        children: list[Command] = [fix] if fix is not None else []
-        if usage == "reference":
-            rvm = ReferenceViewModel(model=skill, x=scene_pos.x(), y=scene_pos.y())
-            children.append(CreateRefCmd(
-                project_vm, rvm, sync_fn=self._sync_refs_to_model,
-            ))
-        else:
-            state = SimpleState(name=skill.name, skill_ref=skill)
-            vm = StateViewModel(model=state, x=scene_pos.x(), y=scene_pos.y())
-            children.append(CreateStateCmd(project_vm, vm, fsm=self._target_fsm))
-        project_vm.execute(
-            MacroCommand(children, f"wrapped '{skill.name}' 용도 고정 + 배치")
-        )
 
     # --- 컨텍스트 메뉴 ---
 
@@ -825,15 +736,14 @@ class FsmScene(QGraphicsScene):
     def drop_reference_skill(self, skill_name: str, scene_pos: QPointF) -> None:
         """참조 스킬을 캔버스에 드롭 — 여러 인스턴스 허용. undo 가능.
 
-        용도가 reference로 고정된 WrappedSkill도 받는다(WP-WR) — 판정의 단일
-        진실은 `is_reference_usage`.
+        배치 종류 판정의 단일 진실은 `placement.is_reference_placed`다.
         """
-        from daedalus.model.plugin.skill import is_reference_usage
+        from daedalus.model.plugin.placement import is_reference_placed
 
         if self._skill_lookup is None:
             return
         skill = self._skill_lookup(skill_name)
-        if not is_reference_usage(skill):
+        if not is_reference_placed(skill):
             return
         rvm = ReferenceViewModel(model=skill, x=scene_pos.x(), y=scene_pos.y())
         cmd = CreateRefCmd(

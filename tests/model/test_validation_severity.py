@@ -53,9 +53,7 @@ _WARN_RULES = frozenset({
     "choice_completeness_missing_else",
     "parallel_join_count",
     "dangling_string_reference",
-    "external_source_missing",  # WP-WR (WP-2b 개명 — 옛 이름 wrapped_source_missing)
-    "wrapped_usage_conflict",  # WP-WR — 용도 고정 ↔ 배치 어긋남
-    "disabled_wrapped_placed",  # WP-WR — 비활성 랩퍼가 캔버스에 남아 있음
+    "external_source_missing",  # 외부 정본 참조(source) 형식 불일치
     "unused_external_plugin",  # WP-WR — 선언·미참조
     "undeclared_external_plugin",  # WP-WR — 참조·미선언
     "external_plugin_no_marketplace",  # WP-WR — 아래 _EXTERNALLY_EMITTED_RULES

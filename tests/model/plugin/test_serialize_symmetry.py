@@ -25,7 +25,7 @@ from daedalus.model.plugin.config import ComponentConfig
 from daedalus.model.plugin.kinds import KIND_REGISTRY
 from daedalus.model.plugin.serial_fields import FieldSpec
 
-#: 구체 설정 클래스 10종 — 레지스트리에서 파생한다(손으로 세면 새 종류를 놓친다).
+#: 구체 설정 클래스 9종 — 레지스트리에서 파생한다(손으로 세면 새 종류를 놓친다).
 CONFIG_CLASSES = tuple(spec.config_cls for spec in KIND_REGISTRY.values())
 
 
@@ -35,8 +35,8 @@ def _ids(classes):
 
 def test_registry_covers_every_concrete_config():
     """파생 목록이 비어 있거나 중복이면 이 파일의 모든 단언이 무의미해진다."""
-    assert len(CONFIG_CLASSES) == len(KIND_REGISTRY) == 10
-    assert len(set(CONFIG_CLASSES)) == 10
+    assert len(CONFIG_CLASSES) == len(KIND_REGISTRY) == 9
+    assert len(set(CONFIG_CLASSES)) == 9
 
 
 @pytest.mark.parametrize("cls", CONFIG_CLASSES, ids=_ids(CONFIG_CLASSES))
@@ -118,14 +118,6 @@ def test_model_missing_key_loads_as_none_not_the_declared_default():
 
     assert ProceduralSkillConfig.from_dict({}).model is None
     assert ProceduralSkillConfig().model is not None
-
-
-def test_wrapped_usage_missing_key_loads_as_state():
-    """`usage` 키 부재는 "state"다 — 그때는 state 용도만 있었다(구버전 파일)."""
-    from daedalus.model.plugin.config import WrappedSkillConfig
-
-    assert WrappedSkillConfig.from_dict({}).usage == "state"
-    assert WrappedSkillConfig().usage == ""
 
 
 def test_unknown_keys_in_the_saved_dict_are_ignored():

@@ -64,11 +64,9 @@ WARNING_RULES: frozenset[str] = frozenset({
     "parallel_join_count",
     # 프로젝트 수준 경고
     "dangling_string_reference",
-    "external_source_missing",  # WP-WR (WP-2b에서 종류 중립 일반화 — 옛 이름 wrapped_source_missing)
-    "wrapped_usage_conflict",  # WP-WR — 용도 고정 ↔ 배치 어긋남
-    "disabled_wrapped_placed",  # WP-WR — 비활성 랩퍼가 캔버스에 남아 있음
-    "unused_external_plugin",  # WP-WR — 선언했는데 어떤 랩핑 스킬도 참조 안 함
-    "undeclared_external_plugin",  # WP-WR — 랩핑 소스가 미선언 플러그인을 가리킴
+    "external_source_missing",  # 외부 정본 참조(source) 형식 불일치
+    "unused_external_plugin",  # 선언했는데 아무 컴포넌트도 참조 안 함
+    "undeclared_external_plugin",  # 외부 정본이 미선언 플러그인을 가리킴
     "external_plugin_no_marketplace",  # WP-WR — 컴파일러 emit (bare 선언은 enabledPlugins 불가)
     "invalid_component_name",  # 빈 이름 제외는 is_warning에서 처리
     # 도구(tool_shelf) 경고

@@ -136,18 +136,16 @@ def test_all_imports_including_deferred_are_acyclic():
 
 
 def test_the_former_cycles_are_one_directional_now():
-    """WP-6이 끊은 세 간선이 **되돌아오지 않는지** — 순환의 자리를 못 박는다.
+    """WP-6이 끊은 간선이 **되돌아오지 않는지** — 순환의 자리를 못 박는다.
 
-    비순환 단언만 남기면 "어디가 위험했는지"가 사라진다. 세 쌍은 실제로 순환을
-    이뤘던 자리이므로 방향을 직접 고정한다.
+    비순환 단언만 남기면 "어디가 위험했는지"가 사라진다. 아래 쌍은 실제로
+    순환을 이뤘던 자리이므로 방향을 직접 고정한다.
+
+    (`wrapped` 모듈이 걸려 있던 두 간선은 WP-10에서 그 모듈과 함께 사라졌다 —
+    공용 문자열 파싱은 이미 `common`으로 내려가 있다.)
     """
     graph = edges(module_level_only=False)
-    # ① sections는 wrapped를 모른다(공용 문자열 파싱은 common으로 내려갔다).
-    assert f"{_PKG}.wrapped" not in graph[f"{_PKG}.sections"]
-    assert f"{_PKG}.sections" in graph[f"{_PKG}.wrapped"]
-    # ② wrapped는 agent를 모른다(_exits_section은 sections가 갖는다).
-    assert f"{_PKG}.agent" not in graph[f"{_PKG}.wrapped"]
-    # ③ section_plan은 emitters를 모른다(타입 주석으로도).
+    # section_plan은 emitters를 모른다(타입 주석으로도).
     assert f"{_PKG}.emitters" not in graph[f"{_PKG}.section_plan"]
     assert f"{_PKG}.section_plan" in graph[f"{_PKG}.emitters"]
 

@@ -10,7 +10,7 @@
    dataclass 필드 순서·MRO가 조용히 바뀐다.
 3. **능력이 오늘의 판정과 같은 답을 내는가** — `emits_output()` ↔
    `emit/common.emits_output_file`, `effective_placement()` ↔
-   `is_reference_usage`/`placement.*` 처럼, 호출자를 치환할 WP-2b~2d가
+   `placement.is_reference_placed` 처럼, 호출자를 치환할 WP-2b~2d가
    **동작 불변**임을 여기서 미리 고정한다.
 
 `new()`/`creation_defaults()`의 **생성 등가 게이트**(`make_component`와 필드 단위
@@ -47,9 +47,12 @@ from daedalus.model.plugin.config import (
     StepSkillConfig,
     SyncForkSkillConfig,
     TransferSkillConfig,
-    WrappedSkillConfig,
 )
-from daedalus.model.plugin.placement import is_canvas_placeable, is_state_placeable
+from daedalus.model.plugin.placement import (
+    is_canvas_placeable,
+    is_reference_placed,
+    is_state_placeable,
+)
 from daedalus.model.plugin.roles import (
     BodySource,
     Bucket,
@@ -66,9 +69,7 @@ from daedalus.model.plugin.skill import (
     StepSkill,
     SyncForkSkill,
     TransferSkill,
-    WrappedSkill,
     has_external_body,
-    is_reference_usage,
 )
 from daedalus.view.component_actions import ComponentActions
 
@@ -140,15 +141,6 @@ EXPECTED_DECLARATIONS: dict[type, dict[str, object]] = {
         "IS_FORK_BASE": False, "REQUIRES_OUTPUT_PORTS": False,
         "HAS_INTERNAL_FSM": False,
     },
-    WrappedSkill: {
-        "KIND": "wrapped_skill", "CONFIG_CLS": WrappedSkillConfig,
-        "BUCKET": _S, "PLACEMENT": PlacementRole.STATE,
-        "OUTPUT_LOCATION": _SKILL_DIR, "BODY_SOURCE": BodySource.EXTERNAL,
-        "CONVERT_FAMILY": None, "DELEGATION_TARGET": False,
-        "RUNS_IN_SUBAGENT": True, "REPORTS_OUT_OF_BAND": False,
-        "IS_FORK_BASE": False, "REQUIRES_OUTPUT_PORTS": False,
-        "HAS_INTERNAL_FSM": False,
-    },
     AgentDefinition: {
         "KIND": "agent", "CONFIG_CLS": AgentConfig,
         "BUCKET": _A, "PLACEMENT": PlacementRole.STATE,
@@ -189,7 +181,7 @@ ABSTRACT_COMPONENTS: tuple[type, ...] = (
 )
 CONCRETE_CONFIGS: tuple[type, ...] = (
     ProceduralSkillConfig, SyncForkSkillConfig, AsyncForkSkillConfig,
-    WrappedSkillConfig, DeclarativeSkillConfig, TransferSkillConfig,
+    DeclarativeSkillConfig, TransferSkillConfig,
     ReferenceSkillConfig, AgentConfig, ForkAgentConfig, ExternalAgentConfig,
 )
 ABSTRACT_CONFIGS: tuple[type, ...] = (
@@ -286,7 +278,7 @@ def test_classvars_never_became_dataclass_fields(cls):
     않으면 dataclass가 문자열 주석을 **필드로** 오해한다 — 그 사고의 게이트다.
     """
     names = {f.name for f in dataclasses.fields(cls)}
-    leaked = names & (set(CLASSVAR_NAMES) | {"USAGE_REFERENCE"})
+    leaked = names & set(CLASSVAR_NAMES)
     assert not leaked, f"{cls.__name__}의 ClassVar가 필드가 됐다: {sorted(leaked)}"
 
 
@@ -318,21 +310,14 @@ def test_mro_puts_plugin_component_defaults_before_the_mixin():
 
 # ── 3. 능력이 오늘의 판정과 같은 답을 내는가 ─────────────────────────────
 
-def _wrapped(usage: str = "state", enabled: bool = True, source: str = "alpha:beta"):
-    skill = WrappedSkill(fsm=_fsm(), name="w", description="d")
-    skill.config.usage = usage
-    skill.config.enabled = enabled
-    skill.config.source = source
-    return skill
+def _external(source: str = "alpha:beta") -> ExternalAgent:
+    agent = ExternalAgent(name="x", description="d")
+    agent.config.source = source
+    return agent
 
 
 def _capability_corpus() -> list[object]:
-    return [
-        *[_instance(cls) for cls in CONCRETE_COMPONENTS],
-        _wrapped(usage="reference"),
-        _wrapped(usage="", enabled=False),
-        _wrapped(usage="reference", enabled=False),
-    ]
+    return [*[_instance(cls) for cls in CONCRETE_COMPONENTS], _external()]
 
 
 @pytest.mark.parametrize("comp", _capability_corpus(), ids=lambda c: repr(c.kind))
@@ -341,11 +326,10 @@ def test_capability_answers_match_todays_predicates(comp):
     assert comp.emits_output() is emits_output_file(comp)
     assert (
         comp.effective_placement() is PlacementRole.REFERENCE
-    ) is is_reference_usage(comp)
-    # `is_disabled_wrapped` 파사드는 WP-2c에서 마지막 호출자가 사라져 삭제됐다 —
-    # 이제 능력 메서드를 **원 필드**에 직접 맞춰 본다(파사드끼리의 동어반복이
-    # 아니라 실제 상태를 건다).
-    assert comp.is_active() is bool(getattr(comp.config, "enabled", True))
+    ) is is_reference_placed(comp)
+    # 인스턴스 훅 오버라이드는 `WrappedSkill` 퇴역(WP-10)으로 0이 됐다 —
+    # 모든 종류가 기저 구현(`True`)을 쓴다.
+    assert comp.is_active() is True
     assert (type(comp).BODY_SOURCE is BodySource.EXTERNAL) is has_external_body(comp)
     assert (comp.effective_placement() is PlacementRole.STATE) is is_state_placeable(
         comp
@@ -356,10 +340,10 @@ def test_capability_answers_match_todays_predicates(comp):
 
 
 def test_reference_skill_is_a_reference_placement_by_declaration():
-    """참조 스킬은 **선언으로** 참조 노드다 — `is_reference_usage`의 첫 분기."""
+    """참조 스킬은 **선언으로** 참조 노드다."""
     ref = ReferenceSkill(name="r", description="d")
     assert ref.effective_placement() is PlacementRole.REFERENCE
-    assert is_reference_usage(ref)
+    assert is_reference_placed(ref)
 
 
 @pytest.mark.parametrize("cls", CONCRETE_COMPONENTS, ids=lambda c: c.__name__)
@@ -423,29 +407,23 @@ def test_known_outgoing_events_keeps_the_agent_skill_asymmetry():
 
 
 def test_delete_and_delegation_hooks():
-    assert ProceduralSkill(fsm=_fsm(), name="p", description="").can_delete() == (
-        True, None
-    )
-    blocked, reason = _wrapped().can_delete()
-    # 사유는 **절**이다 — 판정("삭제할 수 없습니다")과 대안 안내는 호출자가
-    # 소유한다. 모델이 완결 문장을 돌려주면 두 계층이 같은 말을 이어 붙인다.
-    assert blocked is False and reason == "랩핑 스킬이기 때문입니다"
-    assert "삭제할 수 없" not in reason and "비활성화" not in reason
+    # `can_delete()` 오버라이드는 WP-10 이후 0이다 — 모든 종류가 삭제 가능하다.
+    for comp in _capability_corpus():
+        assert comp.can_delete() == (True, None)
 
     fork = SyncForkSkill(fsm=_fsm(), name="f", description="")
     fork.config.agent = "worker"
     assert fork.delegated_agent_name() == "worker"
-    assert _wrapped().delegated_agent_name() == "w"
+    assert _external().delegated_agent_name() is None
     assert ProceduralSkill(fsm=_fsm(), name="p", description="").delegated_agent_name() is None
 
 
 def test_external_reference_hooks_match_the_wiring_rule():
-    """`external_plugin_refs()`는 오늘 `naming._check_external_plugins`의 제외 규칙과 같다."""
-    assert _wrapped(source="alpha@mkt:beta").external_plugin_refs() == ["alpha@mkt"]
-    assert _wrapped(source="alpha:beta", enabled=False).external_plugin_refs() == []
-    assert _wrapped(source="").external_plugin_refs() == []
-    assert _wrapped(source="alpha:").external_plugin_refs() == []
-    assert _wrapped(source="alpha:beta").external_source == "alpha:beta"
+    """`external_plugin_refs()`는 `naming._check_external_plugins`의 제외 규칙과 같다."""
+    assert _external(source="alpha@mkt:beta").external_plugin_refs() == ["alpha@mkt"]
+    assert _external(source="").external_plugin_refs() == []
+    assert _external(source="alpha:").external_plugin_refs() == []
+    assert _external(source="alpha:beta").external_source == "alpha:beta"
     assert ProceduralSkill(fsm=_fsm(), name="p", description="").external_source is None
     assert ProceduralSkill(
         fsm=_fsm(), name="p", description=""

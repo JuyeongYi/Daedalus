@@ -29,7 +29,7 @@ class BodyTools(_BaseTools):
         본문은 캔버스와 분리된 자체 undo 스택을 쓰므로(WP-BU) 그 문서에 적용한다 —
         에디터가 열려 있으면 화면에 즉시 반영되고, 편집기에서 Ctrl+Z로 되돌릴 수 있다.
 
-        본문 정본이 **외부**인 컴포넌트(랩핑 스킬)는 거절한다 — `_reject_external_body`.
+        본문 정본이 **외부**인 컴포넌트는 거절한다 — `_reject_external_body`.
         """
         from PySide6.QtGui import QTextCursor
 
@@ -142,11 +142,11 @@ class BodyTools(_BaseTools):
     def _reject_external_body(comp: Any) -> None:
         """본문 정본이 외부에 있는 컴포넌트의 본문 쓰기를 **거절**한다.
 
-        랩핑 스킬의 본문은 산출에 **절대 도달하지 않는다** — 정본은
-        `config.source`가 가리키는 외부 플러그인의 SKILL.md이고, 컴파일은
-        그것을 인보크하라는 지시만 만든다. GUI는 그래서 본문 편집기를 아예
-        만들지 않는다(WP-WR, 사용자 확정). MCP만 성공을 돌려주면 "썼는데
-        산출에 없는" 조용한 no-op이 된다(원칙 2 패리티 · 원칙 5).
+외부 정본 컴포넌트의 본문은 산출에 **절대 도달하지 않는다** — 정본은
+        `config.source`가 가리키는 외부 플러그인의 파일이고, 우리 산출에는
+        부르는 쪽의 위임 지시만 나간다. GUI는 그래서 본문 편집기를 아예
+        만들지 않는다. MCP만 성공을 돌려주면 "썼는데 산출에 없는" 조용한
+        no-op이 된다(원칙 2 패리티 · 원칙 5).
 
         판정의 실체는 모델의 `has_external_body` 하나다 — GUI 잠금과 여기가
         같은 함수를 부르고, 그 함수는 종류가 아니라 능력 선언
@@ -159,9 +159,9 @@ class BodyTools(_BaseTools):
             return
         source = str(comp.external_source or "") or "(source 미지정)"
         raise ValueError(
-            f"'{comp.name}'은(는) 랩핑 스킬이라 본문을 쓸 수 없습니다 — 본문의 "
-            f"정본은 외부 플러그인 스킬 '{source}'이고, 컴파일은 그것을 "
-            "인보크하라는 지시만 만듭니다(써도 산출에 나가지 않습니다). "
+            f"'{comp.name}'의 본문은 정본이 외부에 있어 쓸 수 없습니다 — "
+            f"정본은 외부 플러그인의 '{source}'이고, 우리 산출에는 부르는 쪽의 "
+            "위임 지시만 나갑니다(써도 산출에 나가지 않습니다). "
             "바꿀 수 있는 것은 이름·설명·프론트매터·포트와 "
             "`set_component_field(field=\"source\")`입니다."
         )

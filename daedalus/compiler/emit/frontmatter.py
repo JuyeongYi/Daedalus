@@ -115,17 +115,13 @@ def _yaml_block_lines(value: Any, indent: int = 0) -> list[str]:
 
 
 def _frontmatter_lines_skill(
-    skill: Skill, *, skip: frozenset[SkillField] = frozenset(),
+    skill: Skill,
 ) -> list[str]:
     """스킬 프론트매터 키-값 줄 목록 (--- 구분선 제외).
 
     name/description은 항상 출력(REQUIRED). when_to_use는 description에 합류하므로
     여기서는 직출하지 않는다. 나머지는 매트릭스 emit==FRONTMATTER + visibility 규칙.
 
-    `skip`: **종류가 제외를 정한다**(C9). 종전에는 여기에
-    `kind_key == "wrapped"` 하드코딩이 있었다 — 랩핑 스킬의 model/effort가
-    실행 서브에이전트 쪽으로 간다는 사실은 랩핑 산출 전략의 것이지 YAML 렌더러의
-    것이 아니다(`emit/emitters.WrappedEmitter.frontmatter_skip`).
     """
     # 표를 고르는 규칙의 실체는 model의 `matrix_for` 하나다(config.kind가 키).
     matrix = matrix_for(skill)
@@ -135,13 +131,10 @@ def _frontmatter_lines_skill(
     for sfield in SkillField:
         rule = matrix.get(sfield)
         if rule is None:
-            # 그 kind에 없는 필드 (WP-WR — wrapped에는 CONTEXT/AGENT/SHELL이
-            # 없고, 다른 kind에는 SOURCE가 없다). 매트릭스가 정의의 단일
-            # 진실이므로 부재 = 비적용이다.
+            # 그 kind에 없는 필드(선언형에 SHELL이 없는 식). 매트릭스가
+            # 정의의 단일 진실이므로 부재 = 비적용이다.
             continue
         if rule.emit is not FieldEmit.FRONTMATTER:
-            continue
-        if sfield in skip:
             continue
         # hooks는 settings.json 모양의 3단 블록이라 한 줄 키-값으로 낼 수 없다 —
         # compile_skill이 훅 라이브러리를 보고 블록으로 붙인다(2026-09-13).

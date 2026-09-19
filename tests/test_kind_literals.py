@@ -7,11 +7,11 @@
 
 두 어휘를 따로 센다:
 
-① **컴포넌트 kind** 16종 — 컴포넌트 KIND 9 + config KIND 9에서 겹치는
-   `agent`/`fork_agent` 2를 뺀 값. 최종 목표는 `model/serialize/migrate.py`
+① **컴포넌트 kind** 15종 — 컴포넌트 KIND 9 + config KIND 9에서 겹치는
+   `agent`/`fork_agent`/`external_agent` 3을 뺀 값. 최종 목표는 `model/serialize/migrate.py`
    한 파일(구버전 파일의 문자열을 해석하는 마이그레이션은 리터럴이 정본이다).
 
-② **plan kind** 14종 — 산출 계획의 kind 문자열. `agent`/`skill`은 컴포넌트
+② **plan kind** 13종 — 산출 계획의 kind 문자열. `agent`/`skill`은 컴포넌트
    어휘와 겹치므로 `compiler/**`와 `mcp/tools/query.py`에서만 plan kind로 센다
    (§8 규정). 최종 목표는 신설될 `compiler/plan_kinds.py` 한 파일.
 
@@ -35,17 +35,17 @@ from pathlib import Path
 _REPO = Path(__file__).resolve().parent.parent
 _SRC = _REPO / "daedalus"
 
-#: 컴포넌트 kind 9 + config kind 9 (겹치는 agent/fork_agent 제외) = 16.
+#: 컴포넌트 kind 9 + config kind 9 (겹치는 agent/fork_agent/external_agent 제외) = 15.
 COMPONENT_KIND_LITERALS: frozenset[str] = frozenset({
     "procedural_skill", "sync_fork_skill", "async_fork_skill", "declarative_skill",
-    "transfer_skill", "reference_skill", "wrapped_skill", "agent", "fork_agent",
+    "transfer_skill", "reference_skill", "agent", "fork_agent", "external_agent",
     "procedural", "sync_fork", "async_fork", "declarative", "transfer",
-    "reference", "wrapped",
+    "reference",
 })
 
-#: 산출 계획 kind 14종 (REFACTOR_SPEC §2-f `plan_kinds.py`).
+#: 산출 계획 kind 13종 (REFACTOR_SPEC §2-f `plan_kinds.py`).
 PLAN_KIND_LITERALS: frozenset[str] = frozenset({
-    "skill", "wrapped_runner", "agent", "skill_file", "hooks_json", "hook_script",
+    "skill", "agent", "skill_file", "hooks_json", "hook_script",
     "workspace_rule", "guide_workflow", "guide_blackboard", "schemas_json",
     "plugin_manifest", "files_tree", "local_wiring", "claude_md",
 })
@@ -95,9 +95,11 @@ KIND_DECLARATION_FILES: frozenset[str] = frozenset({
 #: 그 표의 키는 리터럴이 아니라 **클래스 선언 참조**(`ProceduralSkill.KIND`)다.
 #: WP-8이 걷어낸 자리: MCP의 종류·필드 허용 목록이 kinds 레지스트리와
 #: `SKILL_FIELD_MATRIX`에서 파생되면서 `props.py`가 들고 있던 리터럴이 사라졌다.
+#: WP-10이 걷어낸 자리: 랩핑 스킬 전용 모듈(`view/actions/wrapped_usage`)과
+#: MCP·뷰의 `"wrapped"` 어휘가 클래스와 함께 사라졌다(20 → 13, 11 → 8파일).
 RATCHET: dict[str, int] = {
-    "component_kind_sites": 20,
-    "component_kind_files": 11,
+    "component_kind_sites": 13,
+    "component_kind_files": 8,
     "plan_kind_sites": 1,
     "plan_kind_files": 1,
 }
@@ -337,8 +339,8 @@ def test_allowed_files_exist():
 
 def test_vocabulary_sizes_are_as_declared():
     """어휘 크기를 고정 — 종류가 늘면 여기서 먼저 걸려 래칫을 다시 재게 한다."""
-    assert len(COMPONENT_KIND_LITERALS) == 16
-    assert len(PLAN_KIND_LITERALS) == 14
+    assert len(COMPONENT_KIND_LITERALS) == 15
+    assert len(PLAN_KIND_LITERALS) == 13
 
 
 # ── kind 폴백 금지 (WP-1 D5) ──────────────────────────────────────

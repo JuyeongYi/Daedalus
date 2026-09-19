@@ -32,30 +32,25 @@ class CanvasTools(_BaseTools):
         하나다(캔버스 드롭·레지스트리·"여기에 만들기"와 공용) — 표면마다
         음성 목록을 따로 들면 MCP만 조용히 엉뚱한 노드를 만든다(원칙 1·5).
 
-        **용도 미정 랩핑 스킬**(WP-WR)을 받으면 GUI와 같게 용도를 `"state"`로
-        고정하고(캔버스는 물어서 고정한다) 고정+배치를 **1 undo**로 묶는다 —
-        응답의 `usage_fixed`가 그 사실을 말한다. 거부하지 않는다(사용자 확정
-        2026-09-18).
-
         **이미 배치된 컴포넌트는 거부한다** — 캔버스 드롭의 "이미 배치됨" 조기
         반환과 같은 가드다. 두 번 놓으면 `no_duplicate_skill_ref`로 프로젝트가
         컴파일되지 않는다.
         """
         from daedalus.model.fsm.state import SimpleState
-        from daedalus.model.plugin.placement import is_state_placeable
-        from daedalus.model.plugin.skill import is_reference_usage
-        from daedalus.view.actions.wrapped_usage import usage_fix_command
-        from daedalus.view.commands.base import Command, MacroCommand
+        from daedalus.model.plugin.placement import (
+            is_reference_placed,
+            is_state_placeable,
+        )
         from daedalus.view.commands.state_commands import CreateStateCmd
         from daedalus.view.viewmodel.state_vm import StateViewModel
 
         vm, fsm = self._scope()
         comp = self._find_component(name)
         if not is_state_placeable(comp):
-            if is_reference_usage(comp):
+            if is_reference_placed(comp):
                 raise ValueError(
-                    f"'{comp.name}'은(는) 참조 용도라 상태 노드가 될 수 "
-                    f"없습니다 — 참조 노드는 place_reference로 놓습니다."
+                    f"'{comp.name}'은(는) 참조로 배치되는 종류라 상태 노드가 "
+                    f"될 수 없습니다 — 참조 노드는 place_reference로 놓습니다."
                 )
             # 거절 문구도 **배치 역할 선언**에서 파생한다(P5) — 종류 이름을
             # 손으로 열거하면 새 종류가 생기는 날 문구가 거짓말을 한다(거절은
@@ -77,29 +72,15 @@ class CanvasTools(_BaseTools):
                     f"'{comp.name}'은(는) 이미 노드 '{svm.model.name}'으로 "
                     f"배치돼 있습니다 — 옮기려면 move_state를 씁니다."
                 )
-        # 용도 미정 wrapped — 고정 커맨드의 실체는 캔버스와 같은 공용 액션이다.
-        fix = usage_fix_command(comp, "state")
         state = SimpleState(name=comp.name, skill_ref=comp)
         svm = StateViewModel(model=state, x=float(x), y=float(y))
-        place: Command = CreateStateCmd(vm, svm, fsm=fsm)
-        if fix is None:
-            vm.execute(place)
-        else:
-            vm.execute(
-                MacroCommand(
-                    [fix, place],
-                    f"wrapped '{comp.name}' 용도 고정 + 배치",
-                )
-            )
-        out: dict[str, Any] = {
+        vm.execute(CreateStateCmd(vm, svm, fsm=fsm))
+        return {
             "placed": comp.name,
             "node": state.name,
             "x": float(x),
             "y": float(y),
         }
-        if fix is not None:
-            out["usage_fixed"] = "state"
-        return out
 
     def create_state(
         self, name: str, x: float = 0.0, y: float = 0.0
@@ -168,8 +149,8 @@ class CanvasTools(_BaseTools):
         **에이전트 노드로 가는 전이는 반드시 call_agent 포트에서 나가야 한다** —
         캔버스와 같은 규칙이다. 호출 계약은 컴파일러가 그래프(호출 포트 + 전이)
         에서 유도하므로 에이전트 쪽에 따로 입력할 것이 없다(WP-CT).
-        출발은 호출 포트를 가질 수 있는 컴포넌트면 된다 — 절차형 스킬, state 용도
-        랩핑 스킬, 그리고 **에이전트**(2026-09-12 — CC 중첩 스폰 허용). 깊이·모델
+        출발은 호출 포트를 가질 수 있는 컴포넌트면 된다 — 단계 스킬, 그리고
+        **에이전트**(2026-09-12 — CC 중첩 스폰 허용). 깊이·모델
         티어 제약은 검증이 짚는다(agent_chain_too_deep/agent_calls_higher_model).
 
         **두 질문을 다른 술어로 묻는다.** 출발이 호출 포트를 가질 수 있는가는
@@ -190,9 +171,7 @@ class CanvasTools(_BaseTools):
         src_ref = getattr(src.model, "skill_ref", None)
         tgt_ref = getattr(tgt.model, "skill_ref", None)
         # 호출 포트를 가질 수 있는가 — `PortTools._require_call_port_owner`와
-        # **같은 술어**(단일 배치 노드인가)를 쓴다. 예전에는 한쪽이 "call_agents
-        # 필드 보유", 다른 쪽이 거기에 참조 용도 제외까지 얹어 두 표면의 답이
-        # 달라질 수 있었다(원칙 1).
+        # **같은 술어**(단일 배치 노드인가)를 쓴다(원칙 1).
         src_has_call_ports = is_state_placeable(src_ref)
         # 이 노드로 가는 전이가 "위임"인가 — 종류가 아니라 선언이 답한다(Q9).
         tgt_is_delegation = tgt_ref is not None and tgt_ref.DELEGATION_TARGET
@@ -202,7 +181,7 @@ class CanvasTools(_BaseTools):
             if not src_has_call_ports:
                 raise ValueError(
                     f"에이전트 '{target}'은 호출 포트를 가진 컴포넌트에서만 호출할 수 "
-                    f"있습니다 — 절차형 스킬, state 용도 랩핑 스킬, 에이전트."
+                    f"있습니다 — 단계 스킬, 에이전트."
                 )
             if not trigger:
                 raise ValueError(
@@ -408,22 +387,21 @@ class CanvasTools(_BaseTools):
     def place_reference(self, name: str, x: float = 0.0, y: float = 0.0) -> dict[str, Any]:
         """참조 문서를 프로젝트 캔버스에 참조 노드로 배치한다.
 
-        대상은 ReferenceSkill과 **용도가 reference로 고정된 랩핑 스킬**이다
-        (WP-WR — 판정의 단일 진실은 `is_reference_usage`). 참조 노드는 상태가
-        아니라 **여러 상태가 공유하는 문서**라, 같은 스킬을 여러 번 놓을 수
-        있다(그래서 place_component가 아니라 별도 도구다). 놓은 뒤
-        link_reference로 상태에 연결한다.
+        대상은 **참조로 배치되는 종류**다(판정의 단일 진실은
+        `placement.is_reference_placed`). 참조 노드는 상태가 아니라 **여러
+        상태가 공유하는 문서**라, 같은 스킬을 여러 번 놓을 수 있다(그래서
+        place_component가 아니라 별도 도구다). 놓은 뒤 link_reference로 상태에
+        연결한다.
         """
         from PySide6.QtCore import QPointF
 
-        from daedalus.model.plugin.skill import is_reference_usage
+        from daedalus.model.plugin.placement import is_reference_placed
 
         comp = self._find_component(name)
-        if not is_reference_usage(comp):
+        if not is_reference_placed(comp):
             raise ValueError(
                 f"'{name}'은 참조 문서가 아닙니다(현재 {comp.kind}) — "
-                "일반 스킬·에이전트는 place_component로 배치하라(랩핑 스킬은 "
-                "생성 시 usage=\"reference\"로 고정해야 참조로 놓을 수 있다)."
+                "일반 스킬·에이전트는 place_component로 배치하세요."
             )
         before = len(self._vm.reference_vms)
         self._scene.drop_reference_skill(name, QPointF(float(x), float(y)))

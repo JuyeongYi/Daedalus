@@ -28,7 +28,7 @@ def placement_role_of(component: object) -> PlacementRole:
     비-컴포넌트가 섞인다. 예외로 터뜨리는 대신 "놓을 수 없다"로 답하는 것이
     종전 `isinstance` 사다리의 동작이었고, 그 계약을 그대로 유지한다.
 
-    `skill.is_reference_usage`도 이것을 쓴다 — 관용 규칙이 두 벌이면 한쪽만
+    캔버스·편집기·MCP가 전부 이것을 쓴다 — 관용 규칙이 두 벌이면 한쪽만
     None을 견디는 어긋남이 생긴다(원칙 1). `placement`는 `skill`을 임포트하지
     않으므로(반대 방향) 실체를 여기 둔다.
     """
@@ -41,8 +41,7 @@ def is_state_placeable(component: object) -> bool:
 
     실체는 `component.effective_placement() is PlacementRole.STATE` 하나다 —
     **단일 배치** 노드만 상태가 된다. 오늘 True인 것: `StepSkill`(절차형·fork
-    2종), 용도가 `reference`가 **아닌** `WrappedSkill`(state 또는 미정 — 미정은
-    배치 경로가 state로 고정한다), `AgentDefinition`.
+    2종), `AgentDefinition`, `ExternalAgent`.
     False: `DeclarativeSkill`(PLACEMENT=NONE)·`TransferSkill`(EDGE)·
     `ReferenceSkill`(REFERENCE — 참조 노드는 별도 경로)·`ForkAgent`(NONE —
     fork 스킬이 부르는 실행 기반이라 그래프 노드가 아니다).
@@ -84,7 +83,7 @@ def is_reference_placed(component: object) -> bool:
 
     `is_state_placeable`/`is_edge_placeable`과 **같은 층의 이름**이다. 이
     질문도 손으로 `placement_role_of(c) is PlacementRole.REFERENCE`를 적으면
-    표면마다 답이 갈린다(원칙 1) — `skill.is_reference_usage`는 이 함수의
+    표면마다 답이 갈린다(원칙 1) — 참조 배치 판정은 이 함수의
     한 줄 파사드이고, 실체는 여기 하나다.
     """
     return placement_role_of(component) is PlacementRole.REFERENCE
@@ -113,12 +112,12 @@ def fork_skills_using(agent, project) -> list[str]:
     `isinstance(s, ForkSkill) and s.config.agent == name`과 **정확히 같은
     집합**이다.
 
-    `delegated_agent_name()`(Q33)을 쓰지 않는 이유: 랩핑 스킬은 **자기 이름의
-    러너**를 답하므로 에이전트와 동명인 랩퍼가 fork 스킬 참조자로 섞여 든다.
-    이름 중복은 `duplicate_component_name`이 짚지만 그것은 검증 에러일 뿐
-    게이트가 아니고, 삭제 확인·MCP `delete_component`/`get_component`는
-    검증 상태와 무관하게 이 목록을 읽는다 — 편집 도중의 이름 충돌이 틀린
-    참조자 목록으로 새 나가면 안 된다.
+    `delegated_agent_name()`(Q33)을 쓰지 않는 이유: 그 메서드는 "이 컴포넌트의
+    본문을 누가 실행하는가"라는 더 넓은 질문이라, 자기 이름을 답하는 종류가
+    생기면 에이전트와 동명인 컴포넌트가 fork 참조자로 섞여 든다. 이름 중복은
+    `duplicate_component_name`이 짚지만 그것은 검증 에러일 뿐 게이트가 아니고,
+    삭제 확인·MCP `delete_component`/`get_component`는 검증 상태와 무관하게
+    이 목록을 읽는다.
     """
     name = getattr(agent, "name", None)
     if not name:

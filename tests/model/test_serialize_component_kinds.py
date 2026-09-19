@@ -10,17 +10,17 @@ import pytest
 
 from daedalus.model.fsm.machine import StateMachine
 from daedalus.model.fsm.state import SimpleState
-from daedalus.model.plugin.agent import AgentDefinition, ForkAgent
+from daedalus.model.plugin.agent import AgentDefinition, ExternalAgent, ForkAgent
 from daedalus.model.plugin.config import (
     AgentConfig,
     AsyncForkSkillConfig,
     DeclarativeSkillConfig,
+    ExternalAgentConfig,
     ForkAgentConfig,
     ProceduralSkillConfig,
     ReferenceSkillConfig,
     SyncForkSkillConfig,
     TransferSkillConfig,
-    WrappedSkillConfig,
 )
 from daedalus.model.plugin.enums import (
     AgentColor,
@@ -37,7 +37,6 @@ from daedalus.model.plugin.skill import (
     ReferenceSkill,
     SyncForkSkill,
     TransferSkill,
-    WrappedSkill,
 )
 from daedalus.model.project import PluginProject
 from daedalus.model.serialize import (
@@ -60,7 +59,6 @@ ALL_CONFIGS = [
     ProceduralSkillConfig(model=ModelType.OPUS, shell=SkillShell.POWERSHELL),
     SyncForkSkillConfig(agent="Explore", user_invocable=True),
     AsyncForkSkillConfig(agent="Plan", disable_model_invocation=False),
-    WrappedSkillConfig(source="ext:skill", usage="reference", enabled=False),
     TransferSkillConfig(user_invocable=False, disable_model_invocation=True),
     DeclarativeSkillConfig(user_invocable=True),
     ReferenceSkillConfig(user_invocable=False),
@@ -74,6 +72,7 @@ ALL_CONFIGS = [
         skills=["a"], mcp_servers=["m"], memory=MemoryScope.PROJECT,
         color=AgentColor.CYAN,
     ),
+    ExternalAgentConfig(source="ext:agent"),
 ]
 
 
@@ -179,6 +178,10 @@ def test_project_with_every_component_kind_roundtrips():
         agents=[
             AgentDefinition(fsm=_fsm(), name="a", description="d"),
             ForkAgent(name="fa", description="d", body="Do it."),
+            ExternalAgent(
+                name="ea", description="d",
+                config=ExternalAgentConfig(source="ext:agent"),
+            ),
         ],
     )
     warnings: list[str] = []

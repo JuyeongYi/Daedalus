@@ -45,10 +45,8 @@ from daedalus.compiler.emit.section_plan import (
     assemble_blocks,
     plan_for_kind,
 )
-from daedalus.compiler.emit.wrapped import compile_wrapped_runner, needs_runner_agent
 from daedalus.compiler.token_report import TokenKind
 from daedalus.model.plugin.agent import AgentDefinition, ForkAgent
-from daedalus.model.plugin.enums import SkillField
 from daedalus.model.plugin.roles import OutputLocation
 from daedalus.model.plugin.skill import (
     AsyncForkSkill,
@@ -57,11 +55,7 @@ from daedalus.model.plugin.skill import (
     ReferenceSkill,
     SyncForkSkill,
     TransferSkill,
-    WrappedSkill,
 )
-
-#: 러너 행 표지 — 같은 컴포넌트가 두 파일을 낼 때 어느 쪽인지 말한다.
-RUNNER_PAYLOAD = "runner"
 
 
 @dataclass(frozen=True)
@@ -76,7 +70,6 @@ class EmittedFile:
     name: str
     label: str
     plan_kind: str
-    payload: Any = None
 
 
 class ComponentEmitter(ABC):
@@ -130,9 +123,7 @@ class ComponentEmitter(ABC):
     def frontmatter_block(self, component, project, resolved_hooks) -> str:
         """`---`로 감싼 프론트매터 블록."""
 
-    def render(
-        self, component, project=None, resolved_hooks=None, *, payload: Any = None,
-    ) -> str:
+    def render(self, component, project=None, resolved_hooks=None) -> str:
         """산출 텍스트 1건 (LF, BOM 없음, 결정적)."""
         blocks = assemble_blocks(component, project, resolved_hooks, self)
         _insert_guide_pointer(blocks, component, project)
@@ -144,12 +135,8 @@ class SkillEmitter(ComponentEmitter, ABC):
 
     plan_kind = plan_kinds.SKILL
     label_fmt = "스킬 '{name}'"
-    #: 프론트매터에서 제외할 필드 — 종류가 정한다(종전 `frontmatter.py`의
-    #: `kind_key == "wrapped"` 하드코딩이 여기로 들어왔다, C9).
-    frontmatter_skip: ClassVar[frozenset] = frozenset()
-
     def frontmatter_block(self, component, project, resolved_hooks) -> str:
-        lines = _frontmatter_lines_skill(component, skip=self.frontmatter_skip)
+        lines = _frontmatter_lines_skill(component)
         lines = self.adjust_frontmatter(lines, component, project)
         # 스킬 훅 — 스킬이 활성인 동안만 걸린다(2026-09-13 실측: 플러그인 스킬도
         # 동작). settings.json과 같은 3단 구조라 한 줄 키-값이 아니라 블록으로 낸다.
@@ -195,37 +182,6 @@ class ReferenceEmitter(SkillEmitter):
     kind = ReferenceSkill.KIND
 
 
-class WrappedEmitter(SkillEmitter):
-    """랩핑 스킬 — SKILL.md + state 용도면 실행 서브에이전트까지 **2개** (WP-WR).
-
-    모델·effort는 SKILL.md가 아니라 실행 에이전트 쪽으로 간다 — 일을 하는
-    컨텍스트가 거기다. SKILL.md에 남기면 위임만 하는 메인 스레드의 모델이 바뀐다.
-    """
-
-    kind = WrappedSkill.KIND
-    frontmatter_skip = frozenset({SkillField.MODEL, SkillField.EFFORT})
-
-    def outputs(self, component) -> list[EmittedFile]:
-        files = super().outputs(component)
-        if files and needs_runner_agent(component):
-            files.append(EmittedFile(
-                location=OutputLocation.AGENT_FILE,
-                name=component.name,
-                label=f"랩핑 스킬 '{component.name}'의 실행 서브에이전트",
-                plan_kind=plan_kinds.WRAPPED_RUNNER,
-                payload=RUNNER_PAYLOAD,
-            ))
-        return files
-
-    def render(self, component, project=None, resolved_hooks=None, *, payload=None) -> str:
-        if payload == RUNNER_PAYLOAD:
-            # 러너는 절 표를 거치지 않는 손수 조립기다 — **가이드 포인터가 붙지
-            # 않는 것이 오늘의 산출**이라 그대로 축자 호출한다(바이트 보존).
-            # 포인터 누락 자체는 backlog D8이고 WP-10에서 클래스와 함께 사라진다.
-            return compile_wrapped_runner(component)
-        return super().render(component, project, resolved_hooks)
-
-
 class AgentEmitter(ComponentEmitter, ABC):
     """에이전트 산출 — `agents/<이름>.md` 1개 + 에이전트 프론트매터 표."""
 
@@ -259,7 +215,6 @@ EMITTERS: dict[str, ComponentEmitter] = {
         DeclarativeEmitter(),
         TransferEmitter(),
         ReferenceEmitter(),
-        WrappedEmitter(),
         WorkflowAgentEmitter(),
         ForkAgentEmitter(),
     )

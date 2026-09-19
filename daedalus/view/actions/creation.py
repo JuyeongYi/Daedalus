@@ -57,113 +57,21 @@ def make_component(
     )
 
 
-def unique_component_name(project, base: str) -> str:
-    """스킬·에이전트 이름과 겹치지 않는 이름 (겹치면 -2, -3 … 접미)."""
-    taken = {c.name for c in list(getattr(project, "skills", None) or [])
-             + list(getattr(project, "agents", None) or [])}
-    if base not in taken:
-        return base
-    n = 2
-    while f"{base}-{n}" in taken:
-        n += 1
-    return f"{base}-{n}"
-
-
-#: 레지스트리 🔗 후보 행이 캔버스로 끄는 드래그 mime 접두 (WP-WR) —
-#: `wrapped-source:<source>`. 일반 컴포넌트 드래그(mime=컴포넌트 이름)와
-#: 구분하는 단일 진실이고, canvas_view.dropEvent와 registry_panel이 함께 쓴다.
-WRAPPED_SOURCE_MIME_PREFIX = "wrapped-source:"
-
-
-def create_wrapped_skill(
-    window, source: str, name: str | None = None, description: str = "",
-    x: float | None = None, y: float | None = None,
-    usage: str = "state",
-):
-    """WrappedSkill 생성 + source 대입 + 사용 플러그인 자동 선언 — 1 undo (WP-WR).
-
-    레지스트리 🔗 후보 행의 캔버스 드롭과 MCP `create_skill(kind="wrapped",
-    source=)`가 둘 다 이것을 부른다. source의 플러그인부가
-    `project.external_plugins`에 없으면 **함께 선언한다**(사용자 확정 —
-    사용하기로 한 플러그인은 목록에 자동 명시). 등록 전에 source를 채우므로
-    undo/redo에 소스 없는 중간 상태가 없고, 선언 추가·(x/y가 있으면) 캔버스
-    배치까지 MacroCommand 한 단위다 — `create_and_place`와 같은 결.
-
-    usage(사용자 확정 2026-09-07): "state"(워크플로 단계 — SimpleState 배치·
-    SKILL.md 산출) / "reference"(참조 노드 복수 배치 — 산출 파일 없음, 링크된
-    노드에 consult 지시 합류). 생성 시 고정된다 — 한 스킬 두 용도 금지.
-    """
-    from daedalus.model.fsm.state import SimpleState
-    from daedalus.view.canvas.sync import sync_refs_to_model
-    from daedalus.view.commands.attr_commands import SetAttrCmd
-    from daedalus.view.commands.base import Command, MacroCommand
-    from daedalus.view.commands.component_commands import CreateComponentCmd
-    from daedalus.view.commands.reference_commands import CreateRefCmd
-    from daedalus.view.commands.state_commands import CreateStateCmd
-    from daedalus.view.viewmodel.state_vm import ReferenceViewModel, StateViewModel
-
-    if usage not in ("state", "reference"):
-        raise ValueError(f"usage는 state 또는 reference여야 합니다 (받은 값: {usage!r}).")
-    project = getattr(window, "_project", None)
-    if project is None:
-        return None
-    if name is None:
-        _, _, skill_part = source.partition(":")
-        name = unique_component_name(project, skill_part.strip() or "wrapped-skill")
-    component = make_component(window, "wrapped", name, description)
-    if component is None:  # pragma: no cover — kind는 고정 문자열
-        return None
-    component.config.source = source
-    component.config.usage = usage
-
-    project_vm = window._project_vm
-    children: list[Command] = [CreateComponentCmd(project, component)]
-    plugin_id = source.partition(":")[0].strip()
-    declared = list(getattr(project, "external_plugins", None) or [])
-    if plugin_id and plugin_id not in declared:
-        children.append(SetAttrCmd(
-            project,
-            "external_plugins",
-            [*declared, plugin_id],
-            label=f"외부 플러그인 사용 선언: {plugin_id}",
-            script=f'external_plugins += "{plugin_id}"',
-        ))
-    if x is not None and y is not None:
-        if usage == "reference":
-            rvm = ReferenceViewModel(model=component, x=float(x), y=float(y))
-            children.append(CreateRefCmd(
-                project_vm, rvm,
-                sync_fn=lambda: sync_refs_to_model(
-                    project_vm, project.reference_placements
-                ),
-            ))
-        else:
-            state = SimpleState(name=name, skill_ref=component)
-            vm = StateViewModel(model=state, x=float(x), y=float(y))
-            children.append(CreateStateCmd(project_vm, vm, fsm=project.graph))
-    project_vm.execute(
-        children[0] if len(children) == 1
-        else MacroCommand(children, f"wrapped '{name}' 생성 + 플러그인 선언")
-    )
-    return component
-
-
 def create_and_place(
     scene, window, kind: str, name: str, x: float, y: float, description: str = "",
     agent: str | None = None,
 ) -> object | None:
     """컴포넌트를 만들고 (배치 대상이면) 그 좌표에 놓는다 — 1 undo 단위.
 
-    참조 **용도**의 컴포넌트는 상태 노드가 아니라 **참조 노드**로 놓인다
-    (캔버스 드롭과 같은 커맨드·같은 판정 `is_reference_usage`). 종류로 묻던
-    옛 분기(`isinstance(..., ReferenceSkill)`)는 참조 용도 랩핑 스킬을
-    state 노드로 놓았다. 어느 노드로도 놓이지 않는 종류는 만들기만 한다.
+    참조로 배치되는 컴포넌트는 상태 노드가 아니라 **참조 노드**로 놓인다
+    (캔버스 드롭과 같은 커맨드·같은 판정 `placement.is_reference_placed`).
+    어느 노드로도 놓이지 않는 종류는 만들기만 한다.
 
     캔버스 "여기에 만들기" 메뉴가 퇴역한 뒤로도 이 경로는 살아 있다 — MCP
     `create_skill(x, y)`가 좌표를 주면 여기로 온다.
     """
     from daedalus.model.fsm.state import SimpleState
-    from daedalus.model.plugin.skill import is_reference_usage
+    from daedalus.model.plugin.placement import is_reference_placed
     from daedalus.view.canvas.sync import sync_refs_to_model
     from daedalus.view.commands.base import Command, MacroCommand
     from daedalus.view.commands.component_commands import CreateComponentCmd
@@ -184,7 +92,7 @@ def create_and_place(
     from daedalus.model.plugin.placement import is_canvas_placeable
 
     if is_canvas_placeable(component):
-        if is_reference_usage(component):
+        if is_reference_placed(component):
             rvm = ReferenceViewModel(model=component, x=x, y=y)
             children.append(CreateRefCmd(
                 project_vm, rvm,

@@ -125,7 +125,6 @@ class SkillField(Enum):
     HOOKS = "hooks"
     DISABLE_MODEL = "disable_model_invocation"
     USER_INVOCABLE = "user_invocable"
-    SOURCE = "source"  # WP-WR 랩핑 스킬 전용 — 외부 스킬 참조
 
     @property
     def frontmatter_key(self) -> str | None:
@@ -135,10 +134,6 @@ class SkillField(Enum):
         정책이므로 None을 반환한다. 나머지는 snake_case → kebab-case 변환.
         """
         if self is SkillField.WHEN_TO_USE:
-            return None
-        if self is SkillField.SOURCE:
-            # WP-WR — 프론트매터 키가 아니라 본문 지시("Follow skill …")로
-            # 배출된다. 프론트매터에 내면 CC가 모르는 키라 조용히 무시된다.
             return None
         return self.value.replace("_", "-")
 
@@ -166,9 +161,9 @@ class AgentField(Enum):
     def frontmatter_key(self) -> str | None:
         """CC 서브에이전트 프론트매터의 실제 키 — **camelCase** (WP-LA에서 확정).
 
-        `SOURCE`는 `None`이다(`SkillField.SOURCE`와 같은 규약) — 외부 플러그인
-        에이전트를 가리키는 참조일 뿐이고, 그 종류는 산출 파일 자체가 없다.
-        프론트매터 키로 내면 CC가 모르는 키라 조용히 무시된다.
+        `SOURCE`는 `None`이다 — 외부 플러그인 에이전트를 가리키는 참조일 뿐이고,
+        그 종류는 산출 파일 자체가 없다. 프론트매터 키로 내면 CC가 모르는 키라
+        조용히 무시된다.
 
         공식 sub-agents 문서의 필드 표 기준(2026-08 확인): `disallowedTools`,
         `permissionMode`, `maxTurns`, `mcpServers`. 단일 단어 필드는 그대로다.

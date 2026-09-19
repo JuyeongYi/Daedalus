@@ -111,8 +111,8 @@ class FieldTools(_BaseTools):
         """이 컴포넌트가 받는 프론트매터 필드와 현재 값.
 
         스킬과 에이전트는 받는 필드가 다르고, 스킬은 종류(procedural/sync_fork/
-        async_fork/declarative/transfer/reference/wrapped)마다, 에이전트는
-        종류(agent/fork_agent)마다 또 다르다. 짐작으로 set_component_field를
+        async_fork/declarative/transfer/reference)마다, 에이전트는
+        종류(agent/fork_agent/external_agent)마다 또 다르다. 짐작으로 set_component_field를
         부르지 않도록 실제 목록을 돌려준다. `emit`은 그 필드가 어디로 나가는지다
         (frontmatter / body / settings).
         """
@@ -183,21 +183,6 @@ class FieldTools(_BaseTools):
         config = comp.config
         if field == "hooks":
             raise ValueError("훅 참조는 set_component_hooks를 쓰세요.")
-        if field == "usage":
-            raise ValueError(
-                "usage는 직접 설정할 수 없습니다 — 랩핑 스킬의 용도는 최초 "
-                "배치(또는 create_skill의 usage 인자)가 고정하며, 한 스킬 두 "
-                "용도는 금지입니다(WP-WR). 바꾸려면 스킬을 지우고 다시 만드세요."
-            )
-        if field == "enabled" and hasattr(config, "enabled"):
-            # 매트릭스에 `enabled` 행이 없는 것은 "그런 필드가 없어서"가 아니라
-            # **전용 도구가 있어서**다(랩핑 스킬 활성/비활성). "필드가 없습니다"로
-            # 거절하면 사실과 다르고 갈 곳도 알려주지 못한다(원칙 5) —
-            # hooks·usage와 같은 층의 포인터 분기다.
-            raise ValueError(
-                "랩핑 스킬의 활성/비활성은 set_wrapped_enabled를 쓰세요 — "
-                "배선·산출 반영이 함께 1 undo로 들어갑니다."
-            )
         # 허용 판정은 **매트릭스 한 곳**에서 나온다(P4). 예전에는 "config에
         # 속성이 있는가"만 물어서, 매트릭스에 없는 필드(fork의 allowed_tools —
         # fork에서는 에이전트 도구가 이긴다)나 종류가 고정하는 필드까지 받아

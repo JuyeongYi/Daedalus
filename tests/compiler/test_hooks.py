@@ -222,27 +222,25 @@ def test_reference_skill_hooks_need_scripts(monkeypatch):
     assert "guard-bash.sh" in names
 
 
-def test_reference_usage_wrapped_hooks_still_skipped():
-    """산출 파일을 내지 않는 스킬은 여전히 세지 않는다 (D6의 반대편).
+def test_components_without_an_output_file_are_still_skipped():
+    """산출 파일을 내지 않는 컴포넌트는 여전히 세지 않는다 (D6의 반대편).
 
-    참조 용도 랩핑 스킬은 SKILL.md를 만들지 않으므로 그 훅은 어디서도 돌지
+    외부 플러그인 에이전트는 우리 산출 파일이 없으므로 그 훅은 어디서도 돌지
     않는다 — 스크립트를 내면 아무도 쓰지 않는 파일이 산출에 남는다.
     """
     from daedalus.compiler.emit.hooks import compile_hook_scripts
-    from daedalus.model.plugin.skill import WrappedSkill
-
-    from tests.compiler.builders import make_linear_fsm
+    from daedalus.model.plugin.agent import ExternalAgent
+    from daedalus.model.plugin.config import ExternalAgentConfig
 
     library = _library()
     for hook in library:
         hook.enabled = False
-    wrapped = WrappedSkill(
-        fsm=make_linear_fsm("wrapped-ref"), name="wrapped-ref", description="d",
+    external = ExternalAgent(
+        name="reviewer", description="d",
+        config=ExternalAgentConfig(source="alpha@mkt:review"),
     )
-    wrapped.config.source = "alpha@mkt:review"
-    wrapped.config.usage = "reference"
-    wrapped.config.hooks = {"guard-bash": {}}
-    proj = PluginProject(name="p", skills=[wrapped], hook_library=library)
+    external.config.hooks = {"guard-bash": {}}
+    proj = PluginProject(name="p", agents=[external], hook_library=library)
 
     assert compile_hook_scripts(proj) == []
 

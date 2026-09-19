@@ -2,10 +2,10 @@
 """외부 플러그인 카탈로그 창 (WP-WR D2) — 트리 구성 + 사용 선언 체크.
 
 발견 로직 자체는 tests/model/plugin/test_wrap_catalog.py가 검증한다. 이 창의
-동작은 등록·선언뿐이고(사용자 확정 — 실제 랩핑은 빌드 소관) 생성 버튼이 없다.
-WrappedSkill 생성의 공유 실체 `actions/creation.create_wrapped_skill`
-(레지스트리·캔버스·MCP 경로)도 여기서 함께 검증한다 — 창은 그 결과(✔)를
-표시만 한다.
+동작은 등록·선언뿐이고(사용자 확정 — 배선은 빌드 소관) 생성 버튼이 없다.
+✔ 표시는 "이 프로젝트가 이미 그 source를 쓰고 있다"이고 판정의 실체는 모델
+(`wrap_catalog.project_external_sources`)이다 — MCP `list_external_plugins`가
+같은 함수를 부른다.
 """
 from __future__ import annotations
 
@@ -37,6 +37,11 @@ def marketplace(tmp_path):
     (sdir / "SKILL.md").write_text(
         "---\nname: review\ndescription: Reviews.\n---\n", encoding="utf-8"
     )
+    adir = plugin_dir / "agents"
+    adir.mkdir(parents=True)
+    (adir / "critic.md").write_text(
+        "---\nname: critic\ndescription: Critiques.\n---\n", encoding="utf-8"
+    )
     return tmp_path / "catalog"
 
 
@@ -62,8 +67,12 @@ def test_tree_shows_marketplace_plugin_skill(window, marketplace):
     plugin_item = folder_item.child(0)
     assert "alpha" in plugin_item.text(0)
     skill_item = plugin_item.child(0)
-    assert skill_item.text(0) == "review"
+    assert skill_item.text(0) == "\U0001F4C4 review"
     assert skill_item.toolTip(0) == "alpha@mkt:review"
+    # 플러그인이 동봉한 **에이전트**도 같은 규약으로 한 행씩 나온다(WP-10).
+    agent_item = plugin_item.child(1)
+    assert agent_item.text(0) == "\U0001F916 critic"
+    assert agent_item.toolTip(0) == "alpha:critic"
 
 
 def test_plugin_checkbox_declares_external_plugin(window, marketplace, qapp):
@@ -84,7 +93,8 @@ def test_plugin_checkbox_declares_external_plugin(window, marketplace, qapp):
     qapp.processEvents()  # 미뤄진 refresh 소진
     plugin_item = dlg._tree.topLevelItem(0).child(0)
     assert plugin_item.checkState(0) == Qt.CheckState.Checked
-    assert plugin_item.childCount() == 1  # 스킬은 체크와 무관하게 항상 보인다
+    # 스킬·에이전트 행은 체크와 무관하게 항상 보인다.
+    assert plugin_item.childCount() == 2
 
     window._undo()  # 선언은 프로젝트 편집 — undo된다
     assert window._project.external_plugins == []
@@ -106,49 +116,21 @@ def test_dialog_has_no_create_action(window):
     assert not hasattr(dlg, "create_wrapped")
 
 
-def test_create_wrapped_skill_action_registers_and_declares_with_undo(window):
-    """공유 실체(레지스트리·캔버스·MCP 경로) — 생성 + 미선언이면 선언까지 1 undo."""
-    from daedalus.view.actions.creation import create_wrapped_skill
-
-    component = create_wrapped_skill(window, "alpha@mkt:review")
-    assert component is not None
-    assert window._project.skills[0] is component
-    assert component.kind == "wrapped_skill"
-    assert component.name == "review"
-    assert component.config.source == "alpha@mkt:review"
-    assert window._project.external_plugins == ["alpha@mkt"]
-
-    window._undo()  # 생성+선언 1 undo
-    assert window._project.skills == []
-    assert window._project.external_plugins == []
-    window._redo()
-    assert window._project.skills[0].config.source == "alpha@mkt:review"
-    assert window._project.external_plugins == ["alpha@mkt"]
-
-
-def test_create_wrapped_skill_action_uniquifies_name(window):
-    from daedalus.view.actions.creation import create_wrapped_skill
-
-    first = create_wrapped_skill(window, "alpha@mkt:review")
-    second = create_wrapped_skill(window, "alpha@mkt:review")
-    assert first.name == "review"
-    assert second.name == "review-2"
-
-
-def test_already_wrapped_marker_in_tree(window, marketplace):
+def test_already_used_marker_in_tree(window, marketplace):
+    """✔ = 이 프로젝트의 어떤 컴포넌트가 그 source를 외부 정본으로 쓴다."""
     from daedalus.model.plugin import wrap_catalog
-    from daedalus.view.actions.creation import create_wrapped_skill
+    from daedalus.model.plugin.agent import ExternalAgent
+    from daedalus.model.plugin.config import ExternalAgentConfig
 
     wrap_catalog.add_marketplace(str(marketplace), "mkt")
     dlg = _make_dialog(window)
-    create_wrapped_skill(window, "alpha@mkt:review")
+    window._project.agents.append(ExternalAgent(
+        name="critic", description="d",
+        config=ExternalAgentConfig(source="alpha:critic"),
+    ))
     dlg.refresh()
-    skill_item = dlg._tree.topLevelItem(0).child(0).child(0)
-    assert "✔" in skill_item.text(0)
-    # 생성이 선언까지 했으므로 플러그인 체크도 켜져 있다
-    from PySide6.QtCore import Qt
-
-    assert dlg._tree.topLevelItem(0).child(0).checkState(0) == Qt.CheckState.Checked
+    agent_item = dlg._tree.topLevelItem(0).child(0).child(1)
+    assert "✔" in agent_item.text(0)
 
 
 def test_remove_selected_marketplace(window, marketplace):

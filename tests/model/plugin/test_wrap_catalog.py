@@ -223,14 +223,34 @@ def test_plugin_mcp_servers_discovered(tmp_path):
     assert plugins[0].mcp_servers == ["srv-a", "srv-b"]  # 이름순
 
 
-def test_resolve_skill_file(tmp_path):
+def test_resolve_source_file(tmp_path):
+    """**버킷이 파일 규약을 고른다** — 에이전트는 `agents/<이름>.md`.
+
+    종류를 묻지 않으므로 외부 정본을 갖는 새 종류는 선언 한 줄로 합류한다.
+    """
+    from daedalus.model.plugin.agent import ExternalAgent
+    from daedalus.model.plugin.config import ExternalAgentConfig
+
     plugin_dir = _make_plugin(tmp_path, "alpha", skills=["review"])
+    agents_dir = plugin_dir / "agents"
+    agents_dir.mkdir(parents=True, exist_ok=True)
+    (agents_dir / "critic.md").write_text(
+        "---\nname: critic\n---\n", encoding="utf-8"
+    )
     add_marketplace(str(tmp_path), "m")
-    md = wrap_catalog.resolve_skill_file("alpha@m:review")
-    assert md == plugin_dir / "skills" / "review" / "SKILL.md"
-    assert wrap_catalog.resolve_skill_file("alpha@other:review") is None  # 마켓 불일치
-    assert wrap_catalog.resolve_skill_file("alpha@m:nope") is None
-    assert wrap_catalog.resolve_skill_file("") is None
+
+    agent = ExternalAgent(
+        name="critic", description="",
+        config=ExternalAgentConfig(source="alpha@m:critic"),
+    )
+    assert wrap_catalog.resolve_source_file(agent) == agents_dir / "critic.md"
+
+    agent.config.source = "alpha@other:critic"  # 마켓 불일치
+    assert wrap_catalog.resolve_source_file(agent) is None
+    agent.config.source = "alpha@m:nope"
+    assert wrap_catalog.resolve_source_file(agent) is None
+    agent.config.source = ""
+    assert wrap_catalog.resolve_source_file(agent) is None
 
 
 def test_used_plugin_mcp_servers_filters_by_declaration(tmp_path):

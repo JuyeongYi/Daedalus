@@ -32,7 +32,7 @@ def resolve_fork_agent_name(skill, project) -> str:
     실체는 `common.agent_invocation_name`이다: "누구에게 위임하는가"는
     컴포넌트가(`delegated_agent_name()`), "그 이름을 CC가 어떻게 부르는가"는
     빌드 타깃이 답한다. fork 스킬이 위임 대상을 갖는 유일한 종류가 아니므로
-    (랩핑 스킬도 러너에 위임한다) 해소 규칙이 fork 전용 모듈에 있으면 복제된다.
+    해소 규칙이 fork 전용 모듈에만 있으면 다른 위임 자리에서 복제된다.
     """
     return agent_invocation_name(skill, project)
 

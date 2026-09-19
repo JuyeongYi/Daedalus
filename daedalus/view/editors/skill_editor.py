@@ -70,9 +70,11 @@ class SkillEditor(QWidget):
         from daedalus.view.editors.component_editor import ComponentEditor
         from daedalus.view.panels.file_panel import SkillFilesPanel
 
-        from daedalus.model.plugin.placement import is_state_placeable
+        from daedalus.model.plugin.placement import (
+            is_reference_placed,
+            is_state_placeable,
+        )
         from daedalus.model.plugin.roles import Bucket
-        from daedalus.model.plugin.skill import is_reference_usage
 
         right_widgets: list[QWidget] = []
         # 입력 경로 편집 패널은 없다(WP-IP) — (출처, 트리거)가 경로를 특정하고,
@@ -80,9 +82,8 @@ class SkillEditor(QWidget):
         # **포트를 갖는 것은 "단일 배치되는 노드"다**(WP-2d): 워크플로 단계로
         # 한 번 놓이는 컴포넌트만 갈래를 선언할 의미가 있다. 종류를 열거하던
         # 자리인데, 그러면 종류가 하나 늘 때마다 여기 빠뜨려 GUI에서 출력
-        # 추가가 불가능해진다(WrappedSkill이 실제로 그랬다 — 사용자 보고).
-        # 참조 용도로 고정된 wrapped·참조 스킬은 REFERENCE라 자동으로 빠진다
-        # (사용자 확정 2026-09-07).
+        # 추가가 불가능해진다(실제로 겪은 회귀다 — 사용자 보고).
+        # 참조 스킬은 PLACEMENT가 REFERENCE라 자동으로 빠진다.
         # 버킷 게이트는 **이 편집기가 맡는 표면**을 긋는다 — 에이전트도
         # PLACEMENT=STATE이지만 그 포트 패널은 AgentEditor가 만든다.
         if component.BUCKET is Bucket.SKILLS and is_state_placeable(component):
@@ -91,8 +92,8 @@ class SkillEditor(QWidget):
                 _TransferOnPanel(component.call_agents, title="🤖 Agent Call", default_color="#8a4a4a", multiline_desc=True)
             )
         # 참조 링크 관리 (A9-7) — 캔버스 우클릭 "링크 추가"와 같은 함수.
-        # 참조 용도 wrapped도 같은 패널이다(is_reference_usage 단일 판정).
-        if is_reference_usage(component) and project_vm is not None:
+        # 판정의 단일 진실은 `placement.is_reference_placed`다.
+        if is_reference_placed(component) and project_vm is not None:
             right_widgets.append(_ReferenceLinkPanel(component, project_vm))
 
         # 스킬별 동봉 파일 (WP-SF) — 전역 파일 독과 **동시에** 떠서, 이 스킬

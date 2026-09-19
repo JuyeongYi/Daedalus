@@ -36,17 +36,22 @@ _REPO = Path(__file__).resolve().parent.parent
 _SRC = _REPO / "daedalus"
 
 # ── 컴포넌트/설정 클래스 이름 29종 (구체 9 + 추상 5 + 믹스인 1 + config 14) ──
+# WP-9가 `ExternalAgent`/`ExternalAgentConfig`를, WP-10이 `WrappedSkill`/
+# `WrappedSkillConfig`를 갈아 끼웠다 — 없는 클래스 이름을 남겨 두면 스캐너가
+# 아무것도 세지 않는 표적을 들고 다니게 된다.
 COMPONENT_CLASS_NAMES: frozenset[str] = frozenset({
     # 추상 기저 + 믹스인
     "PluginComponent", "Skill", "StepSkill", "ForkSkill", "Agent", "WorkflowComponent",
     # 구체 컴포넌트 9종
     "ProceduralSkill", "SyncForkSkill", "AsyncForkSkill", "DeclarativeSkill",
-    "TransferSkill", "ReferenceSkill", "WrappedSkill", "AgentDefinition", "ForkAgent",
+    "TransferSkill", "ReferenceSkill", "AgentDefinition", "ForkAgent",
+    "ExternalAgent",
     # config 14종
     "ComponentConfig", "SkillConfig", "StepSkillConfig", "ProceduralSkillConfig",
     "ForkSkillConfig", "SyncForkSkillConfig", "AsyncForkSkillConfig",
-    "WrappedSkillConfig", "DeclarativeSkillConfig", "AgentConfigBase", "AgentConfig",
+    "DeclarativeSkillConfig", "AgentConfigBase", "AgentConfig",
     "ForkAgentConfig", "TransferSkillConfig", "ReferenceSkillConfig",
+    "ExternalAgentConfig",
 })
 
 # ── 컴포넌트 형상 속성 (§8 래칫 ② 목록 + output_events/output_event_defs) ──
@@ -105,12 +110,12 @@ SHAPE_EXCLUDED_SUBJECTS: frozenset[str] = frozenset({"project", "cfg", "config",
 #: 펴는(`ser`) 자리이고, 폴리모픽 메서드로 바꾸려면 fsm 레이어에 컴파일러·
 #: 검증 어휘를 들이게 된다(경계 계약 위반). 더 내리려면 별도 WP가 소유한다.
 RATCHET: dict[str, int] = {
-    "isinstance_sites": 4,
-    "isinstance_files": 2,
-    "shape_attr_sites": 23,
+    "isinstance_sites": 1,
+    "isinstance_files": 1,
+    "shape_attr_sites": 21,
     "shape_attr_files": 10,
-    "fsm_isinstance_sites": 53,
-    "fsm_isinstance_files": 12,
+    "fsm_isinstance_sites": 52,
+    "fsm_isinstance_files": 11,
 }
 
 #: 정당한 잔존 사이트 — `module::qualname`. 면제는 **사유와 철거 주체**를 적는다.
@@ -380,11 +385,9 @@ def test_exemptions_point_at_live_sites():
 def test_scanner_sees_the_known_hotspots():
     """스캐너가 조용히 0을 세지 않는지 — 알려진 집중 지점을 확인한다."""
     modules = {module for module, _l, _q, _w in scan_isinstance()}
-    # WP-2c가 `compiler.emit.skill`을, WP-4가 `model.serialize.ser`를, WP-7이
-    # 뷰의 kind 표를 0으로 비웠다 — 남은 집중 지점으로 교체한다(단언 수는
-    # 그대로다. 표적을 지우면 스캐너가 조용히 0을 세도 통과한다).
+    # ①은 WP-10 이후 `kinds::spec_for` **한 자리**만 남았다(예정 면제) — 표적이
+    # 하나뿐이라 그 하나를 건다. 지워지면 스캐너가 조용히 0을 세도 통과한다.
     assert "model.plugin.kinds" in modules
-    assert "view.actions.wrapped_usage" in modules
     shape_modules = {module for module, _l, _q, _w in scan_shape_attrs()}
     # WP-2b가 `model.project`를, WP-2c가 `compiler.emit.sections`를 비웠다 —
     # 같은 이유로 남은 집중 지점(WP-8·프론트매터 패널 소관)으로 교체한다.

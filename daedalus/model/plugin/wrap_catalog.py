@@ -62,7 +62,7 @@ class CataloguedSkill:
 
     name: str
     description: str
-    source: str  # "플러그인[@마켓]:스킬" — WrappedSkillConfig.source에 그대로 쓴다
+    source: str  # "플러그인[@마켓]:스킬" — 외부 정본 참조 원문 표기
 
 
 @dataclass
@@ -102,7 +102,7 @@ class CataloguedPlugin:
     #: "설치 여부"가 아니라 **스킬을 읽을 수 있는가**가 이 필드의 뜻이다. 마켓
     #: 저장소만 훑던 시절에는 사용자가 CC로 설치한 플러그인이 "미설치"로 나왔다
     #: (실측 — CC는 마켓 저장소가 아니라 별도 캐시에 푼다). 못 읽으면 `skills`가
-    #: 비어 랩핑(WrappedSkill)은 불가하지만, **사용 선언은 지금도 된다** —
+    #: 비어 스킬·에이전트 목록은 알 수 없지만, **사용 선언은 지금도 된다** —
     #: plugin_id만 있으면 빌드가 dependencies/enabledPlugins를 내고 설치는 CC가 한다.
     files_from: str = "marketplace"
     #: 마켓플레이스가 선언한 `source` (마켓 저장소 동봉분은 None).
@@ -119,7 +119,7 @@ class CataloguedPlugin:
 
     @property
     def has_files(self) -> bool:
-        """실물을 읽었는가 — 스킬 목록과 랩핑 가능 여부가 여기에 달렸다."""
+        """실물을 읽었는가 — 스킬·에이전트 목록이 여기에 달렸다."""
         return bool(self.files_from)
 
     @property
@@ -501,57 +501,59 @@ def scan_catalog(
     return [(folder, discover_plugins(folder)) for folder in folders]
 
 
-def resolve_skill_file(source: str) -> Path | None:
-    """랩핑 source(`플러그인[@마켓]:스킬`) → 카탈로그에서 원본 SKILL.md 경로.
+def resolve_source_file(component) -> Path | None:
+    """외부 정본 컴포넌트 → 카탈로그에서 그 원본 파일 경로. 못 찾으면 None.
 
-    등록된 마켓플레이스 폴더에서 plugin_id 정확 일치로 찾는다. 못 찾으면
-    None — 폴더 미등록이거나 소스가 다른 머신의 것이다(에러가 아니라 안내
-    대상). wrapped 에디터의 "원본 열기" 버튼이 쓴다.
+    `source`(``플러그인[@마켓]:이름``)의 plugin_id를 등록된 마켓플레이스
+    폴더에서 정확 일치로 찾고, **버킷이 파일 규약을 고른다**: 스킬은
+    ``skills/<이름>/SKILL.md``, 에이전트는 ``agents/<이름>.md``(이름의 콜론은
+    하위 폴더다 — `_scan_agents`의 규약과 같다).
+
+    못 찾으면 None이다 — 폴더 미등록이거나 소스가 다른 머신의 것이다(에러가
+    아니라 안내 대상). 편집기의 "원본 열기" 버튼이 쓴다. 버킷을 묻는 것은
+    **컴포넌트**이므로, 외부 정본을 갖는 새 종류는 여기를 고치지 않는다.
     """
-    plugin_id, _, skill_name = source.partition(":")
-    plugin_id, skill_name = plugin_id.strip(), skill_name.strip()
-    if not plugin_id or not skill_name:
+    source = getattr(component, "external_source", None) or ""
+    plugin_id, _, ref_name = source.partition(":")
+    plugin_id, ref_name = plugin_id.strip(), ref_name.strip()
+    if not plugin_id or not ref_name:
         return None
+    is_agent = getattr(component, "BUCKET", None) is Bucket.AGENTS
     for _folder, plugins in scan_catalog():
         for plugin in plugins:
             if plugin.plugin_id != plugin_id:
                 continue
-            md = Path(plugin.path) / "skills" / skill_name / "SKILL.md"
-            if md.is_file():
-                return md
+            base = Path(plugin.path)
+            path = (
+                base.joinpath("agents", *ref_name.split(":")).with_suffix(".md")
+                if is_agent
+                else base / "skills" / ref_name / "SKILL.md"
+            )
+            if path.is_file():
+                return path
     return None
 
 
-def can_resolve_source(component) -> bool:
-    """이 컴포넌트의 원본 파일을 카탈로그가 찾아 줄 수 있는가 (WP-9 리뷰 반영).
+def project_external_sources(project) -> set[str]:
+    """이 프로젝트가 이미 쓰고 있는 외부 정본 source 집합.
 
-    카탈로그가 훑는 것은 플러그인의 `skills/<이름>/SKILL.md` 하나뿐이라, 정본이
-    외부인 **에이전트**(WP-9)의 원본은 해소하지 못한다. 그래서 "원본 열기"를
-    보여 줄지를 종류가 아니라 **버킷**으로 묻는다 — 누르면 언제나 "찾지
-    못했습니다"만 내놓는 버튼은 조용한 실패다(원칙 5).
-
-    외부 에이전트 파일(`agents/<이름>.md`) 해소는 `docs/backlog.md`에 있다.
-    """
-    return component.BUCKET is Bucket.SKILLS
-
-
-def project_wrapped_sources(project) -> set[str]:
-    """이 프로젝트가 이미 랩핑한 source 집합.
-
-    "어떤 외부 스킬이 이미 감싸져 있는가"는 **모델 질문**이다 — 카탈로그 창의
-    ✔ 표시와 MCP `list_wrappable_skills`의 `already_wrapped`가 같은 답을
-    말해야 한다(원칙 1·2). 예전에는 카탈로그 **창 모듈**이 실체를 들고 있어
-    MCP가 QDialog가 든 파일을 임포트해 모델 질문을 답했다(D7).
+    "이 외부 항목을 이미 쓰고 있는가"는 **모델 질문**이다 — 카탈로그 창의
+    ✔ 표시와 MCP `list_external_plugins`의 `already_used`가 같은 답을 말해야
+    한다(원칙 1·2). 예전에는 카탈로그 **창 모듈**이 실체를 들고 있어 MCP가
+    QDialog가 든 파일을 임포트해 모델 질문을 답했다(D7).
 
     `used_plugin_*`과 달리 파일시스템을 읽지 않는다 — 프로젝트만 본다.
 
     "외부 정본을 무엇으로 가리키는가"는 컴포넌트가 답한다
-    (`external_source` — Q34). 종류를 묻지 않으므로 외부 정본을 갖는 새 종류는
-    선언 한 줄로 이 집합에 합류한다.
+    (`external_source` — Q34). 종류도 버킷도 묻지 않으므로 외부 정본을 갖는
+    새 종류는 선언 한 줄로 이 집합에 합류한다.
     """
     out: set[str] = set()
-    for skill in getattr(project, "skills", None) or []:
-        source = skill.external_source
+    for component in [
+        *(getattr(project, "skills", None) or []),
+        *(getattr(project, "agents", None) or []),
+    ]:
+        source = component.external_source
         if source:
             out.add(source)
     return out

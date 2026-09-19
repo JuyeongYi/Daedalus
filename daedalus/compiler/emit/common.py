@@ -71,9 +71,8 @@ def emits_output_file(component) -> bool:
     `units.components.ComponentUnit`의 제외 규칙과 `guides`의 포인터 판정이 같은 함수를
     부르는 것이 원래의 목적이었고, 이제는 같은 **메서드**를 부른다.
 
-    종전 사다리가 열거하던 제외 대상(참조 용도·비활성 랩핑 스킬)은
-    `WrappedSkill.emits_output()` 오버라이드가 답한다 — 새 종류는 여기를 고치지
-    않고 `OUTPUT_LOCATION` 한 줄로 합류한다.
+    종전 사다리가 열거하던 제외 대상은 컴포넌트의 선언이 답한다 — 새 종류는
+    여기를 고치지 않고 `OUTPUT_LOCATION` 한 줄로 합류한다.
     """
     return component.emits_output()
 
@@ -85,40 +84,25 @@ def emitted_components(project) -> list:
     return [c for c in [*skills, *agents] if emits_output_file(c)]
 
 
-# ─────────────────────── 외부 스킬 소스 참조 (WP-WR) ───────────────────────
+# ───────────────────── 외부 정본 소스 참조 (WP-WR → WP-9) ─────────────────────
 #
-# 순수 문자열 파싱이라 여기(리프)에 둔다 — 종전에는 `wrapped.py`에 있었고
-# `sections.linked_background_skills`가 **함수 안에서** 그것을 임포트해
-# `sections ↔ wrapped` 순환을 만들었다(WP-6에서 해소, `wrapped.py`가 재-export).
+# 순수 문자열 파싱이라 여기(리프)에 둔다 — 함수 안 지연 임포트로 모듈 간 순환을
+# 만들지 않기 위해서다(WP-6에서 해소).
 
 
-def parse_wrapped_source(source: str) -> tuple[str, str]:
-    """WP-WR source 참조 `plugin[@marketplace]:skill` → (plugin_id, skill_name).
+def parse_external_source(source: str) -> tuple[str, str]:
+    """외부 정본 참조 `plugin[@marketplace]:name` → (plugin_id, ref_name).
 
     형식이 어긋나면 ("", "") — 검증 경고(`external_source_missing`)가 짚고
     emit은 지시 단락을 생략한다(빈 참조로 산출을 오염시키지 않는다).
     """
     if ":" not in (source or ""):
         return "", ""
-    plugin_id, _, skill_name = source.partition(":")
-    plugin_id, skill_name = plugin_id.strip(), skill_name.strip()
-    if not plugin_id or not skill_name:
+    plugin_id, _, ref_name = source.partition(":")
+    plugin_id, ref_name = plugin_id.strip(), ref_name.strip()
+    if not plugin_id or not ref_name:
         return "", ""
-    return plugin_id, skill_name
-
-
-def external_skill_name(source: str) -> str:
-    """source → CC 명령 이름 `플러그인:스킬` (마켓 표기 제거). 형식 불일치면 "".
-
-    크로스 플러그인 스킬 지목의 공식 표기는 `/플러그인:스킬`이고 플러그인 이름에
-    마켓 표기가 붙지 않는다(공식 문서 확인 2026-09-06 — @마켓은 설치 식별자라
-    dependencies/enabledPlugins 전용이다). 에이전트 `skills` 프론트매터도 같은
-    이름으로 해석된다(모듈 docstring의 실측).
-    """
-    plugin_id, skill_name = parse_wrapped_source(source)
-    if not skill_name:
-        return ""
-    return f"{plugin_id.partition('@')[0]}:{skill_name}"
+    return plugin_id, ref_name
 
 
 # ─────────────────────────── 빌드 타깃 판정 ───────────────────────────
@@ -147,7 +131,7 @@ def agent_invocation_name(component, project) -> str:
     """이 컴포넌트의 본문을 실행하는 서브에이전트를 **CC가 찾는 이름** (WP-2c).
 
     "누구에게 위임하는가"는 컴포넌트가 답하고(`delegated_agent_name()` — fork
-    스킬은 `config.agent`, 랩핑 스킬은 자기 이름의 러너), "그 이름을 CC가 어떻게
+    스킬은 `config.agent`), "그 이름을 CC가 어떻게
     부르는가"는 빌드 타깃이 답한다. 둘을 한 함수로 묶어 두면 위임 대상을 갖는
     종류가 늘 때마다 이름 해소 규칙이 복제된다.
 
@@ -194,7 +178,7 @@ def delegation_target_name(component) -> str | None:
     source = component.external_source
     if source is None:
         return component.name
-    _plugin_id, ref_name = parse_wrapped_source(source)
+    _plugin_id, ref_name = parse_external_source(source)
     return source if ref_name else None
 
 

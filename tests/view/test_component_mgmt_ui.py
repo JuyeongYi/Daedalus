@@ -298,7 +298,7 @@ class TestComponentKindTables:
 
     _KINDS = {
         "procedural", "sync_fork", "async_fork", "declarative", "transfer",
-        "reference", "wrapped", "agent", "fork_agent", "external_agent",
+        "reference", "agent", "fork_agent", "external_agent",
     }
 
     def test_registry_sections_match_the_kind_set(self, qapp):

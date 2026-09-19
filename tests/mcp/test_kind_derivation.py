@@ -45,19 +45,6 @@ def test_fork_agent_rejection_lists_the_kinds_whose_config_has_agent(tools):
     )
 
 
-def test_source_rejection_lists_the_kinds_whose_config_has_source(tools):
-    with pytest.raises(ValueError) as excinfo:
-        tools.create_skill("x", kind="declarative", source="other@mkt:s")
-    message = str(excinfo.value)
-    assert "source" in message and "wrapped" in message
-
-
-def test_usage_rejection_lists_the_kinds_whose_config_has_usage(tools):
-    with pytest.raises(ValueError) as excinfo:
-        tools.create_skill("x", kind="transfer", usage="reference")
-    assert "wrapped" in str(excinfo.value)
-
-
 def test_fork_agent_is_reported_for_every_kind_whose_config_has_it(tools):
     """응답의 `fork_agent`도 파생이다 — fork 2종을 이름으로 열거하지 않는다."""
     import dataclasses
@@ -205,13 +192,6 @@ def test_rejection_offers_only_fields_that_can_actually_be_set(tools):
     }
     for field in offered:
         tools.set_component_field("xfer", field, current[field])
-
-
-def test_wrapped_enabled_points_at_its_dedicated_tool(tools):
-    """`enabled`는 매트릭스 행이 없지만 "필드가 없다"가 아니라 **포인터**다."""
-    tools.create_skill("w", kind="wrapped", source="other@mkt:s")
-    with pytest.raises(ValueError, match="set_wrapped_enabled"):
-        tools.set_component_field("w", "enabled", False)
 
 
 # --- P5: 배치 거절 문구는 배치 역할에서 파생 -------------------------------

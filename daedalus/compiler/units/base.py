@@ -95,7 +95,7 @@ class CompileUnit(ABC):
     """
 
     id: ClassVar[str] = ""
-    #: 한 단위가 여러 kind를 낼 때(스킬 + 랩핑 러너). 비면 `(id,)`.
+    #: 한 단위가 여러 kind를 낼 때. 비면 `(id,)`.
     ids: ClassVar[tuple[str, ...]] = ()
 
     def unit_ids(self) -> tuple[str, ...]:

@@ -40,7 +40,7 @@ class PropsTools(FieldTools):
     def _config_field_names(kind: str) -> frozenset[str]:
         """이 config 종류가 **실제로 가진** 필드 이름 (P3).
 
-        생성 인자(`fork_agent`/`source`/`usage`)가 어느 종류에 유효한지는
+        생성 인자(`fork_agent` 등)가 어느 종류에 유효한지는
         손으로 적은 kind 목록이 아니라 **그 종류의 config 클래스**가 답한다 —
         목록을 따로 들면 새 종류가 인자를 갖고도 거절당하고(👻), 그 거절은
         테스트도 컴파일도 실패시키지 않는다.
@@ -137,15 +137,12 @@ class PropsTools(FieldTools):
         description: str = "",
         x: float | None = None,
         y: float | None = None,
-        source: str = "",
-        usage: str = "",
         fork_agent: str = "",
     ) -> dict[str, Any]:
         """스킬을 만든다.
 
         kind: procedural(작업 지침·자체 FSM) / declarative(배경 지식) /
         transfer(전이 시 실행되는 보조 지침) / reference(참조 문서) /
-        wrapped(다른 플러그인 스킬의 랩핑 — 본문 없음, WP-WR) /
         sync_fork/async_fork(본문이 서브에이전트의 작업 지시가 되는 단계 —
         sync는 `background: false`로 부른 쪽이 보고를 기다리고, async는
         `background: true`로 보고가 작업 알림으로 온다. 2026-09-17).
@@ -158,23 +155,6 @@ class PropsTools(FieldTools):
         에이전트에게 줄 지식도 전역 스킬로 만든다 — 전역 declarative와 에이전트
         노드에 링크된 reference는 컴파일 시 에이전트 skills 프론트매터에 자동
         합류된다(로컬 스킬은 퇴역, WP-RF-1c).
-
-        source(WP-WR): 설정에 `source`를 가진 종류(wrapped) 전용 —
-        `플러그인[@마켓]:스킬` 형식으로
-        감쌀 외부 스킬을 지정한다(`list_wrappable_skills`가 후보와 source
-        문자열을 준다). source의 플러그인이 external_plugins에 미선언이면
-        **선언까지 함께** 1 undo로 들어가고, x/y를 함께 주면 배치까지 같은
-        1 undo다(레지스트리 🔗 후보 행의 캔버스 드롭과 같은 실체 —
-        `actions/creation.create_wrapped_skill`). 다른 종류에 주면 거절한다
-        (조용히 무시하면 "설정했는데 아무 일도 일어나지 않는" 상태가 된다).
-        생략하면 나중에 `set_component_field(name, "source", ...)`로 채운다.
-
-        usage(WP-WR): kind="wrapped"+source 전용 — "state"(기본: 워크플로
-        단계, SKILL.md 산출·단일 배치) 또는 "reference"(참조 노드 복수 배치,
-        **산출 파일 없음** — 링크된 노드의 산출에 consult 지시만 합류).
-        생성 시 **고정**되며 한 스킬 두 용도는 금지다(어긋난 배치는
-        `wrapped_usage_conflict` 경고). reference의 배치·링크는
-        `place_reference`/`link_reference`를 쓴다.
 
         x/y(G14): **함께** 주면 만들자마자 그 좌표에 배치한다 — 생성과 배치가
         1 undo 단위로 묶인다(캔버스 "여기에 만들기"와 같은 경로). reference는
@@ -194,44 +174,7 @@ class PropsTools(FieldTools):
             from daedalus.view.actions.fork_skill import validate_fork_agent
 
             validate_fork_agent(self._project, fork_agent)
-        if source:
-            self._reject_arg_the_kind_cannot_hold(
-                Bucket.SKILLS, kind, "source", SkillField.SOURCE.value,
-                "감쌀 외부 스킬 개념이 없습니다",
-            )
-        if usage:
-            self._reject_arg_the_kind_cannot_hold(
-                Bucket.SKILLS, kind, "usage", "usage",
-                "용도 선택 개념이 없습니다",
-            )
-            if not source:
-                raise ValueError(
-                    "usage는 source와 함께만 씁니다 — 용도는 랩핑 스킬이 감싼 "
-                    "외부 스킬을 어떻게 쓸지의 선택입니다(state/reference)."
-                )
         self._reject_duplicate_name(name)
-        if source:
-            if (x is None) != (y is None):
-                raise ValueError(
-                    "x와 y는 함께 주어야 합니다 — 한쪽만으로는 배치 좌표가 "
-                    "정해지지 않습니다."
-                )
-            from daedalus.view.actions.creation import create_wrapped_skill
-
-            component = create_wrapped_skill(
-                self._window, source, name=name, description=description,
-                x=x, y=y, usage=usage or "state",
-            )
-            if component is None:  # pragma: no cover — 프로젝트는 항상 있다
-                raise RuntimeError(f"'{name}'을(를) 만들지 못했습니다.")
-            return {
-                "created": name,
-                "kind": kind,
-                "usage": component.config.usage,
-                "placed": x is not None,
-                "source": source,
-                "external_plugins": list(self._project.external_plugins),
-            }
         placed = self._create_component(
             kind, name, description, x, y, agent=fork_agent or None
         )
@@ -312,9 +255,7 @@ class PropsTools(FieldTools):
         `validate_project`의 `dangling_string_reference` 경고가 짚어 준다 —
         결과의 `still_referenced_by`로 그 목록을 함께 돌려준다.
 
-        **랩핑 스킬(kind="wrapped")은 삭제할 수 없다**(사용자 확정 2026-09-07) —
-        `set_wrapped_enabled(name, false)`로 끄면 산출·배선에서 빠지고 소스와
-        배치는 남아 언제든 되돌릴 수 있다.
+        삭제할 수 없는 종류가 있으면 이유와 함께 거절한다(`can_delete()`).
         """
         from daedalus.model.plugin.placement import fork_skills_using
         from daedalus.model.plugin.roles import Bucket

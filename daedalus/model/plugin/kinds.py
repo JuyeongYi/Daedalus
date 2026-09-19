@@ -51,7 +51,6 @@ from daedalus.model.plugin.skill import (
     ReferenceSkill,
     SyncForkSkill,
     TransferSkill,
-    WrappedSkill,
 )
 
 
@@ -133,7 +132,6 @@ COMPONENT_CLASSES: tuple[type[PluginComponent], ...] = (
     DeclarativeSkill,
     TransferSkill,
     ReferenceSkill,
-    WrappedSkill,
     AgentDefinition,
     ForkAgent,
     ExternalAgent,

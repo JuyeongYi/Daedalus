@@ -19,7 +19,6 @@ from __future__ import annotations
 
 # ── 컴포넌트 산출 (TEXT) ──
 SKILL = "skill"
-WRAPPED_RUNNER = "wrapped_runner"
 AGENT = "agent"
 
 # ── 복사 ──

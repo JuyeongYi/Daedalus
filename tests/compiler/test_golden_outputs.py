@@ -79,16 +79,16 @@ def test_project_outputs_match_golden(rendered, regen_golden):
 
 
 def test_every_facade_is_exercised_by_the_corpus(rendered):
-    """§8이 지명한 9개 파사드가 **전부** 최소 1건의 산출을 냈는지.
+    """§8이 지명한 파사드 8종이 **전부** 최소 1건의 산출을 냈는지.
 
     코퍼스가 어떤 파사드도 태우지 않으면 해시가 아무리 맞아도 그 파사드는
     보호되지 않는다 — 합성 코퍼스가 존재하는 이유가 바로 이것이다(실사용
-    프로젝트만으로는 `compile_wrapped_runner`가 0줄이다).
+    프로젝트에는 async fork 스킬도 fork 에이전트도 없다).
     """
     facades, _, _ = rendered
     facade_names = {key.split("/")[2] for key in facades}
     assert facade_names == {
-        "compile_skill", "compile_agent", "compile_wrapped_runner",
+        "compile_skill", "compile_agent",
         "compile_hooks_json", "compile_hook_scripts", "compile_schemas_json",
         "compile_plugin_manifest", "compile_guide", "render_rule",
     }

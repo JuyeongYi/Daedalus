@@ -41,14 +41,12 @@ TOOL_NAMES = (
     "list_project_templates",
     # 외부 플러그인 카탈로그 (WP-WR D2) — 폴더 등록은 홈 설정 파일이라 undo
     # 비대상, 사용 선언(set_external_plugins)은 프로젝트 편집이라 undo 가능
-    "list_wrappable_skills",
+    "list_external_plugins",
     "fetch_plugin_skills",
     "list_marketplace_folders",
     "add_marketplace_folder",
     "remove_marketplace_folder",
     "set_external_plugins",
-    "set_wrapped_usage",
-    "set_wrapped_enabled",
     # 세션 — 저장은 undo 대상이 아니다(파일 쓰기)
     "save_project",
     "open_project",

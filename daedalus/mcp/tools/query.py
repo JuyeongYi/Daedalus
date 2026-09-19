@@ -122,7 +122,7 @@ class QueryTools(_BaseTools):
                 "emit_progress_hook": getattr(project, "emit_progress_hook", None),
                 "mcp_server_defs": dict(getattr(project, "mcp_server_defs", None) or {}),
                 # WP-WR — 사용 선언된 외부 플러그인("이름[@마켓]"). 후보·상세는
-                # list_wrappable_skills, 편집은 set_external_plugins.
+                # list_external_plugins, 편집은 set_external_plugins.
                 "external_plugins": list(
                     getattr(project, "external_plugins", None) or []
                 ),

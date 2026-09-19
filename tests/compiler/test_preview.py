@@ -26,48 +26,26 @@ from daedalus.compiler.preview import (
 from daedalus.compiler.token_report import TokenKind
 from daedalus.model.fsm.machine import StateMachine
 from daedalus.model.fsm.pseudo import EntryPoint
-from daedalus.model.plugin.config import WrappedSkillConfig
 from daedalus.model.plugin.enums import BuildTarget
 from daedalus.model.plugin.roles import OutputLocation
-from daedalus.model.plugin.skill import WrappedSkill
 from daedalus.model.project import PluginProject
 from tests.compiler.builders import make_agent, make_procedural
 
 _SRC = Path(__file__).resolve().parent.parent.parent / "daedalus"
 
 
-def _wrapped(usage: str = "reference", enabled: bool = True) -> WrappedSkill:
-    entry = EntryPoint(name="start")
-    return WrappedSkill(
-        fsm=StateMachine(name="w_fsm", states=[entry], initial_state=entry),
-        name="review-step", description="Wrapped review step.",
-        config=WrappedSkillConfig(
-            source="other@mkt:code-review", usage=usage, enabled=enabled,
-        ),
-    )
+# ── ① 산출 게이트를 거치지 않는다 ────────────────────────────────────
 
-
-# ── ① 산출 파일이 없어도 미리보기는 렌더된다 ──────────────────────────
-
-def test_preview_of_reference_usage_wrapped_still_renders():
-    """참조 용도 랩핑 스킬은 산출 파일이 없지만 미리보기는 정상이다.
-
-    미리보기의 질문은 "이 컴포넌트가 무엇으로 컴파일되는가"이지 "이번 빌드에
-    파일이 나가는가"가 아니다 — `emits_output()`으로 게이트를 걸면 오늘 멀쩡히
-    동작하는 표면이 조용히 사라진다.
+def test_preview_does_not_go_through_the_output_gate():
+    """미리보기의 질문은 "이 컴포넌트가 무엇으로 컴파일되는가"이지 "이번 빌드에
+    파일이 나가는가"가 아니다 — `emits_output()`으로 게이트를 걸면 이번 빌드에
+    파일이 나가지 않는 컴포넌트의 미리보기가 조용히 사라진다.
     """
-    skill = _wrapped(usage="reference")
-    assert not skill.emits_output()
+    skill = make_procedural("review-step")
     assert can_preview(skill)
     preview = preview_component(skill)
     assert preview.text.startswith("---\n")
     assert skill.name in preview.text
-
-
-def test_preview_of_disabled_wrapped_still_renders():
-    skill = _wrapped(usage="state", enabled=False)
-    assert not skill.emits_output()
-    assert preview_component(skill).text
 
 
 # ── ② 산출 자리가 없는 종류는 미리볼 것이 없다 ────────────────────────

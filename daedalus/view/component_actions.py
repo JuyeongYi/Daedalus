@@ -256,9 +256,7 @@ class ComponentActions:
         if not deletable:
             raise ValueError(
                 f"'{getattr(component, 'name', '')}'은(는) 삭제할 수 없습니다 — "
-                f"{reason}. 비활성화(set_wrapped_enabled / 스킬 편집기의 "
-                f"[비활성화])하면 산출과 배선에서 빠지고 언제든 되돌릴 수 "
-                f"있습니다."
+                f"{reason}."
             )
 
         comp_id = getattr(component, "id", None)

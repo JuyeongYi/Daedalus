@@ -47,7 +47,6 @@ from daedalus.view.widgets.tag_input import TagInput
 # 로드(load) 경로와 저장(write-back) 경로가 같은 테이블을 공유한다.
 # ---------------------------------------------------------------------------
 _FIELD_ATTR_MAP: dict[SkillField | AgentField, str] = {
-    SkillField.SOURCE: "source",  # WP-WR
     SkillField.ARGUMENT_HINT: "argument_hint",
     SkillField.MODEL: "model",
     SkillField.EFFORT: "effort",
@@ -576,7 +575,7 @@ class _FrontmatterPanel(QScrollArea):
         preview = QPushButton("미리보기")
         preview.setToolTip("이 컴포넌트가 어떤 파일로 나가는지 — 파일은 쓰지 않는다")
         # 산출 자리가 없는 종류(`OUTPUT_LOCATION is NONE`)만 잠근다 — 참조 용도·
-        # 비활성 랩핑 스킬은 파일이 나가지 않아도 미리보기 대상이다.
+        # 이번 빌드에 파일이 나가지 않아도 미리보기 대상이다.
         if not can_preview(self._component):
             preview.setEnabled(False)
             preview.setToolTip("이 종류는 산출 파일이 없어 미리볼 것이 없습니다.")

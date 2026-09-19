@@ -17,9 +17,8 @@ def test_skill_field_values():
     assert SkillField.HOOKS.value == "hooks"
     assert SkillField.DISABLE_MODEL.value == "disable_model_invocation"
     assert SkillField.USER_INVOCABLE.value == "user_invocable"
-    assert SkillField.SOURCE.value == "source"  # WP-WR
     assert SkillField.BACKGROUND.value == "background"  # fork 2종 FIXED
-    assert len(SkillField) == 16
+    assert len(SkillField) == 15
     # 프론트매터 출력 순서는 enum 선언 순서다 — fork는 context·agent·background가
     # 붙어 나와야 읽힌다.
     order = [f.name for f in SkillField]
@@ -43,7 +42,7 @@ def test_field_rule_dataclass():
 def test_matrix_has_all_skill_kinds():
     expected = {
         "procedural", "sync_fork", "async_fork", "declarative", "transfer",
-        "reference", "wrapped",
+        "reference",
     }
     assert set(SKILL_FIELD_MATRIX.keys()) == expected
 
@@ -114,21 +113,19 @@ def test_matrix_background_fixed_splits_the_two_forks():
 # agent 지정 불가). fork는 allowed_tools가 없다(에이전트 도구가 이긴다 — 실측).
 _FORK_ONLY = {SkillField.CONTEXT, SkillField.AGENT, SkillField.BACKGROUND}
 _KIND_ABSENT_FIELDS = {
-    "procedural": {SkillField.SOURCE} | _FORK_ONLY,
-    "sync_fork": {SkillField.SOURCE, SkillField.ALLOWED_TOOLS},
-    "async_fork": {SkillField.SOURCE, SkillField.ALLOWED_TOOLS},
+    "procedural": set(_FORK_ONLY),
+    "sync_fork": {SkillField.ALLOWED_TOOLS},
+    "async_fork": {SkillField.ALLOWED_TOOLS},
     # declarative/reference에는 SHELL이 없다 — 두 config가 `shell`을 선언하지
     # 않고 직렬화도 그 키를 쓰지 않는다(2026-09-18 리뷰: 표에만 있던 시절에는
     # 편집기가 콤보박스를 그려 주고 그 값이 저장 한 번에 사라졌다).
-    "declarative": {SkillField.SOURCE, SkillField.SHELL} | _FORK_ONLY,
-    "transfer": {SkillField.SOURCE} | _FORK_ONLY,
+    "declarative": {SkillField.SHELL} | _FORK_ONLY,
+    "transfer": set(_FORK_ONLY),
     # reference는 DISABLE_MODEL도 없다 — ReferenceSkillConfig는 user_invocable만
     # 선언한다.
     "reference": {
-        SkillField.SOURCE, SkillField.SHELL, SkillField.DISABLE_MODEL,
+        SkillField.SHELL, SkillField.DISABLE_MODEL,
     } | _FORK_ONLY,
-    # wrapped는 본문을 만들지 않는다 — 본문 실행 방식 필드 4종이 비적용.
-    "wrapped": _FORK_ONLY | {SkillField.SHELL},
 }
 
 
@@ -211,13 +208,10 @@ def test_declarative_and_reference_have_no_shell_row():
 # ---------------------------------------------------------------------------
 
 def test_frontmatter_key_mapping():
-    """WHEN_TO_USE·SOURCE → None(직출 금지), 나머지 → kebab-case."""
+    """WHEN_TO_USE → None(직출 금지), 나머지 → kebab-case."""
     assert SkillField.WHEN_TO_USE.frontmatter_key is None
-    # SOURCE(WP-WR)는 프론트매터 키가 아니라 본문 지시로 배출 — CC가 모르는
-    # 키를 내면 조용히 무시된다.
-    assert SkillField.SOURCE.frontmatter_key is None
     for field in SkillField:
-        if field in (SkillField.WHEN_TO_USE, SkillField.SOURCE):
+        if field is SkillField.WHEN_TO_USE:
             continue
         key = field.frontmatter_key
         assert key is not None
@@ -382,11 +376,11 @@ def test_skill_matrix_when_to_use_emit_body():
 
 
 def test_skill_matrix_other_fields_emit_frontmatter():
-    """스킬 매트릭스에서 WHEN_TO_USE·SOURCE(본문 배출) 외 필드의 emit은 FRONTMATTER."""
+    """스킬 매트릭스에서 WHEN_TO_USE(본문 배출) 외 필드의 emit은 FRONTMATTER."""
     from daedalus.model.plugin.field_matrix import SKILL_FIELD_MATRIX
     for kind, rules in SKILL_FIELD_MATRIX.items():
         for fld, rule in rules.items():
-            if fld in (SkillField.WHEN_TO_USE, SkillField.SOURCE):
+            if fld is SkillField.WHEN_TO_USE:
                 continue
             assert rule.emit == FieldEmit.FRONTMATTER, (
                 f"{kind}/{fld} emit이 FRONTMATTER이 아님: {rule.emit!r}"
@@ -396,7 +390,7 @@ def test_skill_matrix_other_fields_emit_frontmatter():
 def test_agent_field_frontmatter_key_kebab_case():
     """AgentField 전 멤버의 frontmatter_key가 camelCase여야 한다 — SOURCE는 None."""
     # SOURCE(WP-9)는 프론트매터 키가 아니다 — 외부 플러그인 에이전트는 산출
-    # 파일 자체가 없고, 내면 CC가 모르는 키라 조용히 무시된다(SkillField와 같은 규약).
+    # 파일 자체가 없고, 내면 CC가 모르는 키라 조용히 무시된다.
     assert AgentField.SOURCE.frontmatter_key is None
     for af in AgentField:
         if af is AgentField.SOURCE:

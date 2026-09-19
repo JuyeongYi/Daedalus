@@ -1,17 +1,17 @@
 # daedalus/view/editors/wrap_catalog_dialog.py
 """외부 플러그인 카탈로그 창 (WP-WR, D2) — 등록된 **마켓플레이스 폴더**의 외부
-플러그인·스킬을 트리로 보이고, 체크박스로 "이 프로젝트에서 사용"을 선언한다.
+플러그인·스킬·에이전트를 트리로 보이고, 체크박스로 "이 프로젝트에서 사용"을 선언한다.
 
 - 발견·폴더 등록의 실체는 `model/plugin/wrap_catalog`(전역 —
   `~/.daedalus/external_marketplaces.json`), **사용 선언은 프로젝트 모델**
   (`PluginProject.external_plugins` — 사용자 확정: 프로젝트 단위 저장)이다.
   체크 토글은 SetAttrCmd라 undo되고 저장 파일에 왕복한다.
-- **이 창의 동작은 등록과 선언뿐이다**(사용자 확정) — 실제 랩핑(인보크 지시
-  산출 + dependencies/enabledPlugins 배선)은 **빌드가** 한다. 외부 스킬을
-  워크플로 단계로 놓고 싶을 때만 WrappedSkill을 만드는데, 그 생성은 기존
-  경로(레지스트리 🔗 탭·캔버스 "여기에 만들기"·MCP `create_skill(source=)`)
-  소관이라 여기에는 생성 버튼이 없다. 스킬 행은 후보 확인용이고 ✔는 이미
-  랩핑된 소스 표시다.
+- **이 창의 동작은 등록과 선언뿐이다**(사용자 확정) — dependencies/
+  enabledPlugins 배선은 **빌드가** 한다. 외부 플러그인의 **에이전트**를
+  워크플로 노드로 쓰고 싶으면 `ExternalAgent`를 만드는데(레지스트리 탭·MCP
+  `create_agent(kind="external_agent", source=)`), 그 생성은 기존 경로 소관이라
+  여기에는 생성 버튼이 없다. 스킬·에이전트 행은 후보 확인용이고 ✔는 이 프로젝트가
+  **이미 그 source를 쓰고 있다**는 표시다.
 """
 from __future__ import annotations
 
@@ -32,8 +32,8 @@ from PySide6.QtWidgets import (
 
 import daedalus.model.plugin.wrap_catalog as wrap_catalog
 
-_ROLE_KIND = Qt.ItemDataRole.UserRole + 1      # "marketplace" | "plugin" | "skill"
-_ROLE_SOURCE = Qt.ItemDataRole.UserRole + 2    # skill 행: source 문자열
+_ROLE_KIND = Qt.ItemDataRole.UserRole + 1      # "marketplace" | "plugin" | "skill" | "agent"
+_ROLE_SOURCE = Qt.ItemDataRole.UserRole + 2    # skill/agent 행: source 문자열
 _ROLE_FOLDER_PATH = Qt.ItemDataRole.UserRole + 3  # marketplace 행: 등록 경로
 _ROLE_PLUGIN_ID = Qt.ItemDataRole.UserRole + 4    # plugin 행: 설치 식별자
 #: plugin 행: marketplace.json 선언 source — 실물을 받아오는 재료(클론).
@@ -47,18 +47,18 @@ _FILES_FROM_LABELS = {
     "cache": "받아 둔 캐시 (~/.daedalus/cache/plugin/)",
 }
 
-_COLOR_WRAPPED = QColor("#448844")
+_COLOR_USED = QColor("#448844")
 _COLOR_MUTED = QColor("#888888")
 
 
-#: 트리의 ✔ 표시 판정 — 실체는 모델(`wrap_catalog.project_wrapped_sources`)이고
-#: MCP `list_wrappable_skills`가 **같은 함수**를 부른다(원칙 1·2). 이 이름은
+#: 트리의 ✔ 표시 판정 — 실체는 모델(`wrap_catalog.project_external_sources`)이고
+#: MCP `list_external_plugins`가 **같은 함수**를 부른다(원칙 1·2). 이 이름은
 #: 창 안 호출부와 기존 임포트를 위한 별칭으로만 남는다.
-project_wrapped_sources = wrap_catalog.project_wrapped_sources
+project_external_sources = wrap_catalog.project_external_sources
 
 
 class WrapCatalogDialog(QDialog):
-    """마켓플레이스 폴더 → 플러그인(체크=사용 선언) → 스킬 트리."""
+    """마켓플레이스 폴더 → 플러그인(체크=사용 선언) → 스킬·에이전트 트리."""
 
     def __init__(self, window, parent=None) -> None:
         super().__init__(parent or window)
@@ -75,7 +75,7 @@ class WrapCatalogDialog(QDialog):
         lay = QVBoxLayout(self)
 
         self._tree = QTreeWidget()
-        self._tree.setHeaderLabels(["마켓플레이스 / 플러그인 / 스킬", "설명"])
+        self._tree.setHeaderLabels(["마켓플레이스 / 플러그인 / 스킬·에이전트", "설명"])
         self._tree.setColumnWidth(0, 280)
         # 플러그인 행 체크박스 = 이 프로젝트에서 사용 선언(external_plugins).
         # refresh가 blockSignals로 트리를 다시 그리므로 사람 토글에서만 온다.
@@ -105,7 +105,7 @@ class WrapCatalogDialog(QDialog):
         refresh_btn.clicked.connect(self.refresh)
         btn_row.addWidget(refresh_btn)
 
-        # 미설치 플러그인의 실물을 캐시에 받아 스킬을 읽는다(WP-WR) — **버튼을
+        # 미설치 플러그인의 실물을 캐시에 받아 스킬·에이전트를 읽는다 — **버튼을
         # 누를 때만 인터넷에 나간다**. 목록을 여는 것만으로는 절대 받지 않는다
         # (수백 개를 일괄 클론하면 디스크도 시간도 감당할 수 없다).
         self._fetch_btn = QPushButton("스킬 목록 받아오기")
@@ -139,7 +139,7 @@ class WrapCatalogDialog(QDialog):
             return
         if total == 0:
             self._status.setText(
-                "등록된 마켓플레이스 폴더에서 스킬을 찾지 못했습니다 — 폴더 "
+                "등록된 마켓플레이스 폴더에서 스킬·에이전트를 찾지 못했습니다 — 폴더 "
                 "아래에 .claude-plugin/plugin.json과 skills/<이름>/SKILL.md "
                 "구조가 있는지 확인하세요."
             )
@@ -149,8 +149,8 @@ class WrapCatalogDialog(QDialog):
     @staticmethod
     def _counts_text(total: int, used_count: int) -> str:
         return (
-            f"외부 스킬 {total}개. 체크 = 이 프로젝트에서 사용(빌드가 의존성 "
-            f"자동 배선, 현재 {used_count}개). ✔ = 이미 랩핑됨."
+            f"외부 스킬·에이전트 {total}개. 체크 = 이 프로젝트에서 사용(빌드가 의존성 "
+            f"자동 배선, 현재 {used_count}개). ✔ = 이미 이 프로젝트가 씀."
         )
 
     def _update_status_counts(self) -> None:
@@ -175,10 +175,10 @@ class WrapCatalogDialog(QDialog):
             self._status.setText(self._counts_text(total, used))
 
     def _rebuild_tree(self) -> tuple[int | None, int]:
-        """트리 재구성. (스킬 수 | None=폴더 없음, 사용 선언된 플러그인 수)."""
+        """트리 재구성. (항목 수 | None=폴더 없음, 사용 선언된 플러그인 수)."""
         self._tree.clear()
         project = getattr(self._window, "_project", None)
-        wrapped = project_wrapped_sources(project)
+        used_sources = project_external_sources(project)
         declared = set(getattr(project, "external_plugins", None) or [])
         catalog = wrap_catalog.scan_catalog()
         if not catalog:
@@ -201,7 +201,7 @@ class WrapCatalogDialog(QDialog):
             # 실물을 아직 못 읽은 플러그인은 별도 그룹으로 접어 둔다(사용자
             # 보고 2026-09-07 — 공식 마켓은 291개 선언 중 실물이 40개였다. 한
             # 목록에 쏟으면 쓸 수 있는 것을 찾을 수 없다). **사용 선언은 여기서도
-            # 된다** — 스킬 목록과 랩핑만 실물이 있어야 한다.
+            # 된다** — 스킬·에이전트 목록만 실물이 있어야 한다.
             unread = [p for p in plugins if not p.has_files]
             group: QTreeWidgetItem | None = None
             if unread:
@@ -236,8 +236,8 @@ class WrapCatalogDialog(QDialog):
                     plugin_item.setToolTip(
                         0,
                         f"{plugin.plugin_id}\n실물이 로컬에 없습니다 — 사용 선언은 "
-                        f"지금 가능하고(빌드가 의존성을 배선), 스킬 목록과 랩핑은 "
-                        f"[스킬 목록 받아오기]로 받은 뒤에 됩니다.",
+                        f"지금 가능하고(빌드가 의존성을 배선), 스킬·에이전트 목록은 "
+                        f"[스킬 목록 받아오기]로 받은 뒤에 보입니다.",
                     )
                 else:
                     label = _FILES_FROM_LABELS.get(plugin.files_from, "")
@@ -256,20 +256,29 @@ class WrapCatalogDialog(QDialog):
                     0, Qt.CheckState.Checked if used else Qt.CheckState.Unchecked
                 )
                 parent_item.addChild(plugin_item)
-                for skill in plugin.skills:
+                # 스킬 행과 에이전트 행은 같은 규약이다 — source(에이전트는
+                # `agent_type`)가 이 프로젝트의 외부 정본 집합에 있으면 ✔.
+                rows = [
+                    ("skill", f"📄 {s.name}", s.description, s.source)
+                    for s in plugin.skills
+                ] + [
+                    ("agent", f"🤖 {a.name}", a.description, a.agent_type)
+                    for a in plugin.agents
+                ]
+                for row_kind, label, description, source in rows:
                     total += 1
-                    already = skill.source in wrapped
-                    text = f"{skill.name} ✔" if already else skill.name
-                    skill_item = QTreeWidgetItem([text, skill.description])
-                    skill_item.setToolTip(0, skill.source)
-                    skill_item.setData(0, _ROLE_KIND, "skill")
-                    skill_item.setData(0, _ROLE_SOURCE, skill.source)
+                    already = source in used_sources
+                    text = f"{label} ✔" if already else label
+                    row_item = QTreeWidgetItem([text, description])
+                    row_item.setToolTip(0, source)
+                    row_item.setData(0, _ROLE_KIND, row_kind)
+                    row_item.setData(0, _ROLE_SOURCE, source)
                     if already:
-                        skill_item.setForeground(0, _COLOR_WRAPPED)
-                        skill_item.setToolTip(
-                            0, f"{skill.source} — 이미 이 프로젝트에서 랩핑됨"
+                        row_item.setForeground(0, _COLOR_USED)
+                        row_item.setToolTip(
+                            0, f"{source} — 이미 이 프로젝트가 쓰고 있습니다"
                         )
-                    plugin_item.addChild(skill_item)
+                    plugin_item.addChild(row_item)
                 plugin_item.setExpanded(
                     plugin.plugin_id in self._expanded_plugins
                 )
@@ -371,13 +380,12 @@ class WrapCatalogDialog(QDialog):
             return None
         # 세션 dict에 담아 두지 않는다 — 캐시에 실물이 남았으므로 다음
         # `scan_catalog`부터 **설치된 플러그인과 완전히 같은 경로**로 실린다
-        # (레지스트리 🔗 후보도 그 목록에서 나온다. 창 안에만 들고 있으면
-        # 받아왔는데도 어디서도 랩핑할 수 없다 — 사용자 보고 2026-09-07).
+        # (창 안에만 들고 있으면 받아왔는데도 다른 표면에서 보이지 않는다 —
+        # 사용자 보고 2026-09-07).
         self._expanded_plugins.add(plugin_id)
         self.refresh()
         self._status.setText(
-            f"'{plugin_id}' 스킬 {len(skills)}개를 캐시에서 읽었습니다 — "
-            "캔버스로 끌어 워크플로 단계로 감쌀 수 있습니다."
+            f"'{plugin_id}' 스킬 {len(skills)}개를 캐시에서 읽었습니다."
         )
         return list(skills)
 

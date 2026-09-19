@@ -9,7 +9,7 @@
 `app.py`의 편집기 클래스 전수 열거와 탭 접두, `NO_PLACE_KINDS`.
 
 표가 여럿이면 새 종류는 **조용히** 빠진다 — 아이콘 없는 행, 회색 기본 노드(실제
-회귀: 랩핑 스킬이 빈 상태와 구분되지 않게 그려졌다, 사용자 보고 2026-09-07),
+회귀: 한 종류가 빈 상태와 구분되지 않게 그려졌다, 사용자 보고 2026-09-07),
 열리지 않는 편집 탭. 그래서 표는 하나고, 조회는 `ui_for()` 하나이며, 없는 종류는
 **이유와 선택지를 말하는 ValueError**다(원칙 5).
 
@@ -21,7 +21,7 @@ core(`model/`·`compiler/`·`mcp/endpoint.py`·`cli/`)는 Qt를 임포트할 수
 종류"가 회색 기본 스타일로 조용히 그려진다 — 그 회귀를 이미 겪었다. 빠뜨리면
 `tests/test_kind_registry_parity.py`가 집합 등식으로 실패한다.
 
-**위젯 클래스를 값으로 들지 않는다**(R7): `editor_factory`/`first_placement_prompt`는
+**위젯 클래스를 값으로 들지 않는다**(R7): `editor_factory`는
 **호출 가능 객체**이고 실제 임포트는 그 안에서 지연된다 — 모듈 임포트만으로 편집기
 패키지 전체가 끌려오면 임포트 그래프가 굳는다.
 """
@@ -42,7 +42,6 @@ from daedalus.model.plugin.skill import (
     ReferenceSkill,
     SyncForkSkill,
     TransferSkill,
-    WrappedSkill,
 )
 
 #: 종류 전환 명사형을 라벨에서 유도하는 접미(V12) — 버튼과 상태 문구가 같은
@@ -71,26 +70,6 @@ def _agent_editor(component, *, on_notify_fn, project, project_vm):
     )
 
 
-def _ask_wrapped_usage_on_first_placement(scene, component, scene_pos) -> bool:
-    """용도 미정 랩핑 스킬의 **최초 배치**가 용도를 고정한다 (WP-WR, 사용자 확정).
-
-    처리했으면 True — 호출자(`FsmScene.drop_skill`)는 곧바로 돌아간다. 물을 것이
-    없으면(용도가 이미 고정됐거나 취소) False/True를 구분해 돌려준다:
-    - 용도가 이미 있으면 **False**(평소 배치 경로로 계속 간다)
-    - 물었는데 취소면 **True**(배치하지 않고 끝낸다)
-
-    묻는 팝업 자체는 `scene._ask_wrapped_usage`다 — 테스트·헤드리스가 그 메서드를
-    몽키패치하는 **봉합선**이라 여기서 옮기지 않는다.
-    """
-    if getattr(component.config, "usage", ""):
-        return False  # 이미 고정됨 — 평소 배치 경로로 간다
-    usage = scene._ask_wrapped_usage()
-    if usage is None:
-        return True
-    scene._place_wrapped_fixing_usage(component, usage, scene_pos)
-    return True
-
-
 # ─────────────────────────── 표 ───────────────────────────
 
 @dataclass(frozen=True)
@@ -117,10 +96,6 @@ class KindUI:
     """종류 전환 버튼 라벨 — `CONVERT_FAMILY`가 있는 종류만 (V12)."""
     switch_tooltip: str | None = None
     """전환 시 **버려지는 것**을 말하는 툴팁 (V12)."""
-    has_enable_toggle: bool = False
-    """레지스트리 우클릭이 '삭제' 대신 켜기/끄기를 내는가 (랩핑 스킬 — WP-10에서 소멸)."""
-    first_placement_prompt: Callable[..., bool] | None = None
-    """최초 배치 시 용도를 묻는 훅 — `(scene, component, scene_pos) -> 처리했는가`."""
 
 
 #: **뷰의 유일한 종류 표.** 키는 모델의 컴포넌트 `KIND`이고 문자열 리터럴은 쓰지
@@ -196,21 +171,6 @@ KIND_UI: dict[str, KindUI] = {
         dialog_title="새 Reference Skill",
         editor_factory=_skill_editor,
     ),
-    # 랩핑 스킬(WP-WR)도 배치되면 플러그인 FSM의 상태라 헤더는 STATE지만,
-    # 본문 정본이 외부에 있다는 것이 한눈에 보여야 한다 — 레지스트리 🔗 탭과
-    # 같은 보라 계열 + 🔗 아이콘. 이 항목이 없어 wrapped가 기본 스타일(빈
-    # 상태와 구분되지 않는 회청색)로 그려졌다(사용자 보고 2026-09-07).
-    WrappedSkill.KIND: KindUI(
-        icon="🔗",
-        section_label="🔗 WRAPPED",
-        section_color=QColor("#aa88cc"),
-        tab_label="🔗",
-        node_style=("#241a2a", "#8a5aaa", "STATE", "🔗"),
-        dialog_title="새 Wrapped Skill",
-        editor_factory=_skill_editor,
-        has_enable_toggle=True,
-        first_placement_prompt=_ask_wrapped_usage_on_first_placement,
-    ),
     AgentDefinition.KIND: KindUI(
         icon="🤖",
         section_label="🤖 AGENTS",
@@ -234,8 +194,8 @@ KIND_UI: dict[str, KindUI] = {
     ),
     # 외부 플러그인 에이전트(WP-9)도 배치되면 플러그인 FSM의 상태라 헤더는
     # AGENT지만, **정본이 외부에 있고 산출 파일이 없다**는 것이 한눈에 보여야 한다 —
-    # 에이전트 계열의 붉은색과 구분되는 자톤 + 플러그 아이콘. 랩핑 스킬이 이 행이
-    # 없어 회색 기본 노드로 그려졌던 회귀(2026-09-07)를 다시 내지 않기 위해 반드시 둔다.
+    # 에이전트 계열의 붉은색과 구분되는 자톤 + 플러그 아이콘. 종전에 한 종류가
+    # 이 행이 없어 회색 기본 노드로 그려졌던 회귀(2026-09-07)를 다시 내지 않기 위해 반드시 둔다.
     ExternalAgent.KIND: KindUI(
         icon="🔌",
         section_label="🔌 EXTERNAL AGENTS",

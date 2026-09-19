@@ -1,12 +1,11 @@
 # daedalus/compiler/units/components.py
-"""컴포넌트 산출 단위 — 스킬·에이전트·랩핑 러너 (WP-5 / WP-6).
+"""컴포넌트 산출 단위 — 스킬·에이전트 (WP-5 / WP-6).
 
 **이 단위에는 종류 지식이 없다.** "이 컴포넌트가 몇 개의 파일을, 어느 자리에,
 어떤 계획 kind로 내는가"는 `emit/emitters.py`의 emitter가 말하고, 여기는 그
 선언(`EmittedFile`)을 계획 행으로 옮기며 경로 규약(`units/paths.output_path`)과
-이름 게이트를 건다. 랩핑 스킬의 실행 서브에이전트 행이 하나 더 붙는 것도
-`WrappedEmitter.outputs()`의 선언이다 — 종전에는 이 파일이 `needs_runner_agent`를
-직접 물었다(같은 판정이 두 자리에 있었다).
+이름 게이트를 건다. 한 컴포넌트가 파일을 여럿 내는 종류가 생기면 그 선언도
+`outputs()`가 하고 이 파일은 바뀌지 않는다.
 
 버킷마다 인스턴스가 하나다(`ComponentUnit(Bucket.SKILLS)` /
 `ComponentUnit(Bucket.AGENTS)`).
@@ -31,8 +30,8 @@ class ComponentUnit(TextUnit):
     def __init__(self, bucket: Bucket) -> None:
         self.bucket = bucket
         self.ids = (
-            (plan_kinds.SKILL, plan_kinds.WRAPPED_RUNNER)
-            if bucket is Bucket.SKILLS else (plan_kinds.AGENT,)
+            (plan_kinds.SKILL,) if bucket is Bucket.SKILLS
+            else (plan_kinds.AGENT,)
         )
 
     def _components(self, ctx) -> list:
@@ -45,18 +44,17 @@ class ComponentUnit(TextUnit):
         out: list[PlannedOutput] = []
         for component in self._components(ctx):
             # 산출 파일 보유 판정의 실체는 컴포넌트의 `emits_output()` 하나다
-            # (원칙 1). 참조 용도 wrapped와 비활성 랩핑 스킬이 여기서 빠진다
-            # (둘 다 WP-WR 사용자 확정 2026-09-07). `emit/guides.py`의 포인터
-            # 판정이 같은 메서드를 쓰므로 "계획에 오른 집합"과 "포인터 판정 대상
-            # 집합"이 어긋날 수 없다.
+            # (원칙 1). `OUTPUT_LOCATION`이 NONE인 종류(외부 플러그인 에이전트)
+            # 가 여기서 빠진다. `emit/guides.py`의 포인터 판정이 같은 메서드를
+            # 쓰므로 "계획에 오른 집합"과 "포인터 판정 대상 집합"이 어긋날 수 없다.
             if not component.emits_output():
                 continue
             emitter = emitter_for(component)
             files = emitter.outputs(component)
             if not files:
                 continue
-            # 이름 게이트는 **컴포넌트당 한 번**이다 — 러너 행은 랩퍼와 같은
-            # 이름을 쓰므로 두 번 걸면 같은 에러가 두 줄 나간다.
+            # 이름 게이트는 **컴포넌트당 한 번**이다 — 한 컴포넌트가 파일을
+            # 여럿 내도 이름은 하나라 두 번 걸면 같은 에러가 두 줄 나간다.
             gate.check_output_name(component.name, files[0].label, component)
             for emitted in files:
                 out.append(PlannedOutput(
@@ -69,14 +67,10 @@ class ComponentUnit(TextUnit):
                     component=component,
                     expands_root=emitter.expands_root,
                     token_kind=emitter.token_kind,
-                    payload=emitted.payload,
                 ))
         return out
 
     def render(self, planned, ctx) -> str:
         return emitter_for(planned.component).render(
-            planned.component,
-            ctx.project,
-            ctx.resolved_hooks,
-            payload=planned.payload,
+            planned.component, ctx.project, ctx.resolved_hooks,
         )

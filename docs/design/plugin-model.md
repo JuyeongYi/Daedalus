@@ -3,7 +3,7 @@
 > CLAUDE.md에서 이관한 설계 기록(2026-09-12, 원문 그대로). 코드와 어긋나면 코드가
 > 정본이다 — 발견 즉시 이 문서를 고친다. 색인은 루트 `CLAUDE.md`의 "설계 문서" 절.
 
-## 스킬 7종과 에이전트 3종
+## 스킬 6종과 에이전트 3종
 
 | 종류 | `kind` | 본질 | FSM·배치 |
 |------|--------|------|---------|
@@ -13,7 +13,6 @@
 | DeclarativeSkill | `declarative_skill` | 배경 지식 | FSM 없음 |
 | TransferSkill | `transfer_skill` | 전이 시 실행되는 보조 지침 | 자체 FSM 보유, 엣지 위 |
 | ReferenceSkill | `reference_skill` | 참조 문서 | FSM 없음, 참조 노드로 복수 배치 |
-| WrappedSkill | `wrapped_skill` | 다른 플러그인 스킬의 랩핑(WP-WR) | 본문 없음 — 정본은 config.source의 외부 스킬(런타임 참조). 배치·transfer_on은 procedural과 동일(단일 배치) |
 | AgentDefinition | `agent` | 별도 컨텍스트의 작업자 — **워크플로 에이전트**(캔버스 노드) | **내부 FSM 퇴역(WP-AF)** — 절차는 본문, 결과 분기는 transfer_on |
 | ForkAgent | `fork_agent` | fork 스킬의 **실행 기반** (2026-09-17) | fsm·포트 없음, **캔버스 배치 불가**. 산출은 워크플로 에이전트와 같은 `agents/<이름>.md` |
 | ExternalAgent | `external_agent` | 다른 플러그인의 서브에이전트를 워크플로 노드로(WP-9) | fsm 없음, **캔버스 상태 노드**(포트 있음). 정본은 `config.source`의 외부 에이전트라 **산출 파일이 없다** |
@@ -28,7 +27,6 @@ PluginComponent(ABC)                      base.py  (name, description, abstract 
 │   │   └── ForkSkill(StepSkill, ABC)              # 추상 — fork 공통. 인스턴스화 금지
 │   │       ├── SyncForkSkill(ForkSkill)           kind "sync_fork_skill"
 │   │       └── AsyncForkSkill(ForkSkill)          kind "async_fork_skill"
-│   ├── WrappedSkill(Skill, WorkflowComponent)     kind "wrapped_skill"
 │   ├── DeclarativeSkill / TransferSkill / ReferenceSkill
 └── Agent(PluginComponent, ABC)           agent.py  # 추상 — config·안정 id 공통
     ├── AgentDefinition(Agent, WorkflowComponent)  kind "agent"
@@ -38,7 +36,7 @@ PluginComponent(ABC)                      base.py  (name, description, abstract 
 
 - `StepSkill`은 예전의 `ForkSkill ⊂ ProceduralSkill` 상속이 지탱하던 **"워크플로 단계 스킬"** 판정의 새 이름이다.
   `isinstance(x, StepSkill)` = "단계(fork 포함)", `isinstance(x, ProceduralSkill)` = "절차형만", `isinstance(x, ForkSkill)` = "fork 2종".
-  "배치되는 스킬인가"를 묻던 `(StepSkill, WrappedSkill)` 튜플은 **더 이상 쓰지 않는다**(WP-2d) —
+  "배치되는 스킬인가"를 종류 튜플로 묻던 자리는 **더 이상 없다**(WP-2d) —
   `placement.is_state_placeable(c)`가 그 질문의 실체다(포트 패널·MCP 포트 도구 공용).
 - 에이전트 쪽도 **같은 축으로 두 판정**이다: "에이전트 컴포넌트 전반"(어느 리스트에 담는가 / 어느 컴파일러로
   보내는가 / 어느 매트릭스·에디터를 쓰는가)은 `Agent`, "그래프에 **배치된 노드**가 에이전트인가"(위임 문구·호출
@@ -124,16 +122,16 @@ no-op가 된다. 그래서 `PluginComponent`가 **선언(ClassVar) + 인스턴�
 | `DeclarativeSkill` | `KIND`, `CONFIG_CLS` (PLACEMENT은 기본 NONE) |
 | `TransferSkill` | `KIND`, `CONFIG_CLS`, `PLACEMENT=EDGE` |
 | `ReferenceSkill` | `KIND`, `CONFIG_CLS`, `PLACEMENT=REFERENCE` |
-| `WrappedSkill` | `KIND`, `CONFIG_CLS`, `PLACEMENT=STATE`, `BODY_SOURCE=EXTERNAL`, `RUNS_IN_SUBAGENT=True` |
 | `Agent` | `BUCKET=AGENTS`, `OUTPUT_LOCATION=AGENT_FILE`, `DELEGATION_TARGET=True`, `RUNS_IN_SUBAGENT=True` |
 | `AgentDefinition` | `KIND`, `CONFIG_CLS`, `PLACEMENT=STATE`, `REQUIRES_OUTPUT_PORTS=True`, `HAS_INTERNAL_FSM=True` |
 | `ForkAgent` | `KIND`, `CONFIG_CLS`, `IS_FORK_BASE=True` |
 | `ExternalAgent` | `KIND`, `CONFIG_CLS`, `PLACEMENT=STATE`, `OUTPUT_LOCATION=NONE`, `BODY_SOURCE=EXTERNAL`, `REQUIRES_OUTPUT_PORTS=True` |
 
 **인스턴스 훅 (종류 선언이 아니라 상태가 답한다).** `effective_placement()` ·
-`is_active()` · `emits_output()` · `can_delete()`. 오늘 오버라이드하는 클래스는
-`WrappedSkill` 하나다 — 용도(`usage`)·켜짐(`enabled`) 스위치를 가진 종류가 그것뿐이고,
-그래서 WP-10에서 이 클래스가 퇴역하면 오버라이드가 0이 된다.
+`is_active()` · `emits_output()` · `can_delete()`. 오늘 이것을 오버라이드하는 클래스는
+**하나도 없다** — 유일한 오버라이드 덩어리였던 `WrappedSkill`이 WP-10에서 퇴역했다.
+훅 자체는 남긴다: 인스턴스 상태가 배치·산출·삭제 가능성을 바꾸는 종류가 다시 생길 때
+호출자 100여 곳이 아니라 그 클래스 한 곳을 고치는 것이 이 표면의 값이다.
 
 **형상 조회.** `state_machines()` · `output_ports()` · `call_ports()` ·
 `known_outgoing_events()`. 기본은 전부 "없음"이고(`known_outgoing_events()`는 `None` =
@@ -203,16 +201,13 @@ no-op가 된다. 그래서 `PluginComponent`가 **선언(ClassVar) + 인스턴�
 > `tests/test_dead_code.py`의 allowlist에 배선 예정 WP와 함께 얹어 두었던 항목은
 > WP-2b가 model 계층을 배선하면서 전부 빠졌다 — 오늘 allowlist에는 능력 표면 항목이
 > 하나도 없다(남은 4건은 계약 레지스트리·테스트 봉합선이라 성격이 다르다).
-> 같은 규칙이 **파사드에도** 적용된다: `is_disabled_wrapped`는 WP-2c에서 마지막
-> 호출자가 사라져 **삭제**했다(`is_active()`가 실체다). `is_reference_usage`·
-> `has_external_body`는 view/MCP 호출자가 남아 있어 한 줄 파사드로 살고, 둘 다
-> 본문이 능력 호출 한 줄이다(`effective_placement()` / `BODY_SOURCE`).
+> 같은 규칙이 **파사드에도** 적용된다: `is_disabled_wrapped`는 WP-2c에서,
+> `is_reference_usage`는 WP-10에서 마지막 호출자가 사라져 **삭제**했다(실체는
+> 각각 `is_active()`와 `placement.is_reference_placed`다). `has_external_body`는
+> view/MCP 호출자가 남아 있어 한 줄 파사드로 살고, 본문은 `BODY_SOURCE` 조회 한 줄이다.
 >
 > 종류 표(생성·전환·MCP 어휘·역직렬화)는 WP-3의 종류 레지스트리가 흡수했다 — 아래 절.
->
-> **랩핑 전용으로 남은 좁힘**은 소스에 `# WRAPPED-ONLY` 태그가 붙는다 — 능력 선언으로는
-> 표현되지 않지만 오늘의 집합을 정확히 보존해야 하는 자리이고(전수 목록과 개수는
-> `validation.md`), WrappedSkill 퇴역(WP-10)이 태그를 따라 전수 삭제한다.
+
 
 ### 종류 레지스트리 (`model/plugin/kinds.py`, WP-3, 2026-09-19)
 
@@ -267,17 +262,17 @@ WP-4가 통째로 지웠다 — `_deser_config`가 `spec_by_config_kind(kind).co
 
 | 함수 | 질문 | 실체 (WP-2b) | True |
 |------|------|------|------|
-| `is_state_placeable(c)` | 그래프에 **SimpleState 노드**로 놓을 수 있는가 | `c.effective_placement() is PlacementRole.STATE` | `StepSkill`(절차형·fork 2종), 용도가 reference가 **아닌** `WrappedSkill`, `AgentDefinition` |
-| `is_canvas_placeable(c)` | 캔버스에 놓을 수 있는가(상태 **또는** 참조 노드) | `effective_placement() in (STATE, REFERENCE)` | 위 + `is_reference_usage`(ReferenceSkill·용도 reference 랩핑) |
+| `is_state_placeable(c)` | 그래프에 **SimpleState 노드**로 놓을 수 있는가 | `c.effective_placement() is PlacementRole.STATE` | `StepSkill`(절차형·fork 2종), `AgentDefinition`, `ExternalAgent` |
+| `is_canvas_placeable(c)` | 캔버스에 놓을 수 있는가(상태 **또는** 참조 노드) | `effective_placement() in (STATE, REFERENCE)` | 위 + `ReferenceSkill` |
 | `is_edge_placeable(c)` | 전이 **엣지**에 붙는가 | `effective_placement() is PlacementRole.EDGE` | `TransferSkill` |
-| `is_reference_placed(c)` | **참조**처럼 배치되는가 | `effective_placement() is PlacementRole.REFERENCE` | `ReferenceSkill`, 용도가 reference인 `WrappedSkill` |
+| `is_reference_placed(c)` | **참조**처럼 배치되는가 | `effective_placement() is PlacementRole.REFERENCE` | `ReferenceSkill` |
 
 **네 함수 모두 종류 목록을 갖지 않는다**(WP-2b) — 컴포넌트가 `PLACEMENT` ClassVar로 선언한 역할을
 `effective_placement()`가 인스턴스 상태와 합쳐 답하고, 여기서는 그 값에 이름만 붙인다. 새 종류는
 선언 한 줄로 네 판정에 합류한다. 비-컴포넌트(`None`·kind 문자열)를 관용하는 자리는
 `placement_role_of(c)` 하나이고 나머지 셋은 그것을 쓴다(관용 규칙 2벌 금지 — 원칙 1).
-`skill.is_reference_usage`는 `is_reference_placed`의 **한 줄 파사드**다 — 용도 어휘(WP-WR)로 묻는
-호출자가 쓰는 이름이고, 배치 역할 비교를 손으로 적는 자리는 없어야 한다.
+배치 역할 비교를 손으로 적는 자리는 없어야 한다 — 캔버스·편집기·MCP가 전부 이름 붙은
+술어를 부른다.
 
 **포트를 갖는가도 `is_state_placeable`이 답한다**(WP-2d) — 워크플로 단계로 한 번 놓이는 노드만
 출력 포트·에이전트 호출 포트를 선언할 의미가 있다. 스킬 편집기 포트 패널(거기에 **버킷=SKILLS** 게이트가
@@ -294,7 +289,7 @@ WP-4가 통째로 지웠다 — `_deser_config`가 `spec_by_config_kind(kind).co
 한 줄 위의 파사드이고, `STATE`/`REFERENCE` 비교를 손으로 베껴 적는 표면은 없다. `DeclarativeSkill`·`TransferSkill`·`ForkAgent`는 False다.
 같은 모듈의 `fork_skills_using(agent, project)`는 **fork 역참조의 단일 진실**이다 —
 필터는 `name in s.config.name_refs(Bucket.AGENTS)`(Q14)라 종류 이름을 묻지 않는다 —
-`delegated_agent_name()`(Q33)을 쓰면 랩핑 스킬이 **자기 이름의 러너**를 답해 에이전트와 동명인 랩퍼가
+`delegated_agent_name()`(Q33)을 쓰면 자기 이름을 답하는 종류가 에이전트와 동명일 때
 fork 스킬 참조자로 섞여 든다 — 에이전트 편집기의
 "🍴 사용하는 fork 스킬" 패널·삭제 확인 다이얼로그·MCP `delete_component`의 `still_referenced_by`·`get_component`의
 `used_by_fork_skills`·컴파일러의 fork 에이전트 "## Invocation Contract"가 전부 같은 목록을 말한다
@@ -302,7 +297,7 @@ fork 스킬 참조자로 섞여 든다 — 에이전트 편집기의
 
 ## SKILL_FIELD_MATRIX / AGENT_FIELD_MATRIX
 
-`SKILL_FIELD_MATRIX`의 키는 **7종**이다 — `procedural`, `sync_fork`, `async_fork`, `declarative`, `wrapped`,
+`SKILL_FIELD_MATRIX`의 키는 **6종**이다 — `procedural`, `sync_fork`, `async_fork`, `declarative`,
 `transfer`, `reference`. `AGENT_FIELD_MATRIX`의 키는 **3종** — `agent`, `fork_agent`, `external_agent`.
 매트릭스에 없는 필드는 그 종류에 **없다**(부재 = 비적용).
 
@@ -363,7 +358,7 @@ class FieldType(Enum):
 
 ## 진입 의미론 tri-state + 진입점 프리셋 (A8)
 
-**두 필드는 tri-state다:** `StepSkillConfig`(절차형·fork 2종 공통)/`WrappedSkillConfig`/`DeclarativeSkillConfig`의
+**두 필드는 tri-state다:** `StepSkillConfig`(절차형·fork 2종 공통)/`DeclarativeSkillConfig`의
 `user_invocable: bool | None = None`, `disable_model_invocation: bool | None = None`.
 `None` = **미지정**(프론트매터 키 생략 → CC 기본값 위임), `True`/`False` = 명시 지정.
 순수 bool이면 "기본값을 쓴다"와 "기본값과 같은 값을 못 박았다"가 구분되지 않아,
@@ -432,7 +427,6 @@ ComponentConfig(ABC)                              # model, effort, hooks 공통 
 │   │   └── ForkSkillConfig(ABC)                  # 추상 — + agent (기본 "general-purpose")
 │   │       ├── SyncForkSkillConfig               kind "sync_fork"
 │   │       └── AsyncForkSkillConfig              kind "async_fork"
-│   ├── WrappedSkillConfig                        # source, usage, enabled (WP-WR)
 │   ├── DeclarativeSkillConfig
 │   ├── TransferSkillConfig
 │   └── ReferenceSkillConfig

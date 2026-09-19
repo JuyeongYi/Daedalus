@@ -32,6 +32,3 @@ from daedalus.compiler.emit.skill_sections import (  # noqa: F401 — 재-export
     _transfer_prefix,
     _transfer_progress_note,
 )
-from daedalus.compiler.emit.wrapped import (  # noqa: F401 — 기존 임포트 경로 보존
-    parse_wrapped_source,
-)

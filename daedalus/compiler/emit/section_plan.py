@@ -20,7 +20,7 @@ BLACKBOARD 뒤에 오고 에이전트는 SETTINGS_NOTE가 BLACKBOARD 앞에 온�
 튜플 자체로 대체됐다.
 
 **임포트 방향.** 이 모듈은 단락 빌더를 **아래에서** 임포트하고(`skill_sections`·
-`agent_sections`·`sections`·`wrapped`·`fork`), `emitters.py`를 임포트하지
+`agent_sections`·`sections`·`fork`), `emitters.py`를 임포트하지
 않는다(provider의 emitter 인자는 타입 주석도 달지 않는다 — `TYPE_CHECKING`
 블록의 임포트도 간선으로 세기 때문이다). 조립 결과에 가이드
 포인터를 끼우는 후처리도 여기서 하지 않는다 — 그 판정이 다시 종류 선언을 읽어야
@@ -48,7 +48,6 @@ from daedalus.compiler.emit.common import (
 )
 from daedalus.compiler.emit.fork import fork_report_section
 from daedalus.compiler.emit.sections import (
-    _background_references_section,
     _blackboard_section,
     _describe_fsm,
     _mcp_requirement_section_skill,
@@ -65,10 +64,6 @@ from daedalus.compiler.emit.skill_sections import (
     _resume_preamble_section,
     _transfer_progress_note,
 )
-from daedalus.compiler.emit.wrapped import (
-    _wrapped_procedure_section,
-    _wrapped_requirements_section,
-)
 from daedalus.model.plugin.agent import AgentDefinition, ForkAgent
 from daedalus.model.plugin.skill import (
     AsyncForkSkill,
@@ -77,7 +72,6 @@ from daedalus.model.plugin.skill import (
     ReferenceSkill,
     SyncForkSkill,
     TransferSkill,
-    WrappedSkill,
 )
 
 
@@ -88,13 +82,10 @@ class SectionId(StrEnum):
     ENTRY_CONTEXT = "entry_context"          # "## Entry Context" (WP-IC)
     BODY = "body"                            # 사용자 본문
     TRANSFER_PROGRESS = "transfer_progress"  # 전이 스킬의 "## Progress Record"
-    DELEGATED_PROCEDURE = "delegated_procedure"  # 랩핑 스킬 "## Procedure" (WP-10 삭제)
     FSM_PROCEDURE = "fsm_procedure"          # 스킬 내부 FSM 절차
     TOOL_SHELF = "tool_shelf"                # 참조 문서 선반
     BLACKBOARD = "blackboard"                # "## Shared State (Blackboard)"
-    BACKGROUND_SKILLS = "background_skills"  # 링크된 참조 용도 랩핑 스킬 consult
     REQUIREMENTS_MCP = "requirements_mcp"    # "## Requirements" (MCP 서버)
-    REQUIREMENTS_WRAPPED = "requirements_wrapped"  # 〃 + 소스 플러그인 (WP-10 삭제)
     OUTCOME = "outcome"                      # 다음 단계 | fork 보고 | 작업 완료
     CALL_CONTRACT = "call_contract"          # 워크플로 에이전트 "## Invocation Contract"
     FORK_BASE_CONTRACT = "fork_base_contract"  # fork 에이전트 〃
@@ -152,7 +143,6 @@ _STEP_SKILL_SECTIONS: tuple[SectionId, ...] = (
     SectionId.FSM_PROCEDURE,
     SectionId.TOOL_SHELF,
     SectionId.BLACKBOARD,
-    SectionId.BACKGROUND_SKILLS,
     SectionId.REQUIREMENTS_MCP,
     SectionId.OUTCOME,
 )
@@ -179,7 +169,6 @@ SECTION_PLANS: dict[str, SectionPlan] = {
             SectionId.RESUME,
             SectionId.ENTRY_CONTEXT,
             SectionId.BODY,
-            SectionId.BACKGROUND_SKILLS,
             SectionId.REQUIREMENTS_MCP,
             SectionId.OUTCOME,
         ),
@@ -189,7 +178,6 @@ SECTION_PLANS: dict[str, SectionPlan] = {
         sections=(
             SectionId.BODY,
             SectionId.TRANSFER_PROGRESS,
-            SectionId.BACKGROUND_SKILLS,
             SectionId.REQUIREMENTS_MCP,
             SectionId.OUTCOME,
         ),
@@ -200,25 +188,11 @@ SECTION_PLANS: dict[str, SectionPlan] = {
     ReferenceSkill.KIND: SectionPlan(
         sections=(
             SectionId.BODY,
-            SectionId.BACKGROUND_SKILLS,
             SectionId.REQUIREMENTS_MCP,
             SectionId.OUTCOME,
         ),
         # 참조 스킬은 여러 노드에 링크되는 자료라 자기 placement가 없다.
         tracks_progress=False,
-    ),
-    WrappedSkill.KIND: SectionPlan(
-        sections=(
-            SectionId.RESUME,
-            SectionId.ENTRY_CONTEXT,
-            SectionId.BODY,
-            SectionId.DELEGATED_PROCEDURE,
-            SectionId.BLACKBOARD,
-            SectionId.BACKGROUND_SKILLS,
-            SectionId.REQUIREMENTS_WRAPPED,
-            SectionId.OUTCOME,
-        ),
-        guide_pointer=GuidePointerRule.MAIN_IF_PLACED,
     ),
     AgentDefinition.KIND: SectionPlan(
         sections=(
@@ -294,10 +268,6 @@ def _provide_transfer_progress(component, project, emitter) -> list[str]:
     return ["## Progress Record", _transfer_progress_note(project)]
 
 
-def _provide_delegated_procedure(component, project, emitter) -> list[str]:
-    return _wrapped_procedure_section(component)
-
-
 def _provide_fsm_procedure(component, project, emitter) -> list[str]:
     # "어떤 FSM을 갖는가"는 컴포넌트가 답한다(`state_machines()`, Q2).
     return [b for sm in component.state_machines() for b in _describe_fsm(sm, component)]
@@ -311,16 +281,8 @@ def _provide_blackboard(component, project, emitter) -> list[str]:
     return [] if project is None else _blackboard_section(project, component)
 
 
-def _provide_background_skills(component, project, emitter) -> list[str]:
-    return [] if project is None else _background_references_section(component, project)
-
-
 def _provide_requirements_mcp(component, project, emitter) -> list[str]:
     return _mcp_requirement_section_skill(component)
-
-
-def _provide_requirements_wrapped(component, project, emitter) -> list[str]:
-    return _wrapped_requirements_section(component)
 
 
 def _provide_call_contract(component, project, emitter) -> list[str]:
@@ -401,13 +363,10 @@ SECTION_PROVIDERS: dict[SectionId, Provider] = {
     SectionId.ENTRY_CONTEXT: _provide_entry_context,
     SectionId.BODY: _provide_body,
     SectionId.TRANSFER_PROGRESS: _provide_transfer_progress,
-    SectionId.DELEGATED_PROCEDURE: _provide_delegated_procedure,
     SectionId.FSM_PROCEDURE: _provide_fsm_procedure,
     SectionId.TOOL_SHELF: _provide_tool_shelf,
     SectionId.BLACKBOARD: _provide_blackboard,
-    SectionId.BACKGROUND_SKILLS: _provide_background_skills,
     SectionId.REQUIREMENTS_MCP: _provide_requirements_mcp,
-    SectionId.REQUIREMENTS_WRAPPED: _provide_requirements_wrapped,
     SectionId.OUTCOME: _provide_outcome,
     SectionId.CALL_CONTRACT: _provide_call_contract,
     SectionId.FORK_BASE_CONTRACT: _provide_fork_base_contract,

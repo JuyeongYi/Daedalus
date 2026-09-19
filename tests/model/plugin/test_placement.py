@@ -9,11 +9,11 @@ import pytest
 
 from daedalus.model.fsm.machine import StateMachine
 from daedalus.model.fsm.state import SimpleState
-from daedalus.model.plugin.agent import AgentDefinition, ForkAgent
+from daedalus.model.plugin.agent import AgentDefinition, ExternalAgent, ForkAgent
 from daedalus.model.plugin.config import (
     AsyncForkSkillConfig,
+    ExternalAgentConfig,
     SyncForkSkillConfig,
-    WrappedSkillConfig,
 )
 from daedalus.model.plugin.placement import (
     fork_skills_using,
@@ -27,7 +27,6 @@ from daedalus.model.plugin.skill import (
     ReferenceSkill,
     SyncForkSkill,
     TransferSkill,
-    WrappedSkill,
 )
 from daedalus.model.project import PluginProject
 
@@ -37,10 +36,9 @@ def _fsm() -> StateMachine:
     return StateMachine(name="m", states=[s], initial_state=s)
 
 
-def _wrapped(usage: str) -> WrappedSkill:
-    return WrappedSkill(
-        fsm=_fsm(), name="w", description="d",
-        config=WrappedSkillConfig(source="p:s", usage=usage),
+def _external() -> ExternalAgent:
+    return ExternalAgent(
+        name="ea", description="d", config=ExternalAgentConfig(source="p:a"),
     )
 
 
@@ -49,15 +47,14 @@ _STATE_PLACEABLE = [
     SyncForkSkill(fsm=_fsm(), name="sf", description="d"),
     AsyncForkSkill(fsm=_fsm(), name="af", description="d"),
     AgentDefinition(fsm=_fsm(), name="a", description="d"),
-    _wrapped("state"),
-    _wrapped(""),  # 용도 미정 — 배치 경로가 state로 고정한다(오늘 동작 유지)
+    # 산출 파일이 없어도 그래프 노드다(WP-9) — 배치와 산출은 다른 질문이다.
+    _external(),
 ]
 
 _NOT_STATE_PLACEABLE = [
     DeclarativeSkill(name="dc", description="d"),
     TransferSkill(fsm=_fsm(), name="t", description="d"),
     ReferenceSkill(name="r", description="d"),
-    _wrapped("reference"),
     ForkAgent(name="fa", description="d"),
 ]
 
@@ -77,9 +74,9 @@ def test_not_state_placeable(comp):
 
 def test_reference_nodes_are_canvas_placeable_but_not_state_placeable():
     """참조는 상태 노드가 아니지만 캔버스에는 놓인다 — 두 판정이 갈리는 지점."""
-    for comp in (ReferenceSkill(name="r", description="d"), _wrapped("reference")):
-        assert is_state_placeable(comp) is False
-        assert is_canvas_placeable(comp) is True
+    comp = ReferenceSkill(name="r", description="d")
+    assert is_state_placeable(comp) is False
+    assert is_canvas_placeable(comp) is True
 
 
 def test_fork_agent_is_not_placeable_at_all():

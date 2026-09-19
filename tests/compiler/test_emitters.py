@@ -17,7 +17,6 @@ import pytest
 
 from daedalus.compiler.emit.emitters import (
     EMITTERS,
-    RUNNER_PAYLOAD,
     ComponentEmitter,
     EmittedFile,
     compile_skill,
@@ -131,7 +130,6 @@ def test_outputs_declare_the_location_the_component_kind_says():
     )
     assert agent_file.location is OutputLocation.AGENT_FILE
     assert type(skill).BUCKET is Bucket.SKILLS
-    assert RUNNER_PAYLOAD not in (skill_file.payload, agent_file.payload)
 
 
 def test_render_is_deterministic():

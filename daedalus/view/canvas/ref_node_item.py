@@ -21,7 +21,7 @@ _HEADER_LABEL = "📖 REFERENCE"
 
 # 본문 정본이 **외부**인 참조 노드 (WP-WR) — 같은 참조 노드지만 정본이 외부
 # 플러그인이라 한눈에 갈려야 한다(우리 문서는 산출 파일이 있고 이쪽은 없다).
-# 색·아이콘은 레지스트리 🔗 탭·상태 노드의 wrapped 스타일과 같은 보라 계열.
+# 색·아이콘은 참조 스킬 레지스트리 탭과 같은 계열.
 _EXTERNAL_BG = QColor("#241a2a")
 _EXTERNAL_BORDER = QColor("#8a5aaa")
 _EXTERNAL_HEADER_LABEL = "🔗 EXT REFERENCE"

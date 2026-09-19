@@ -39,7 +39,6 @@ FIELD_WIDGETS: dict[SkillField, type[QWidget]] = {
     SkillField.BACKGROUND:     QCheckBox,  # fork 2종 FIXED — 종류가 값이라 그려지지 않는다
     SkillField.SHELL:          ShellComboBox,
     SkillField.PATHS:          TagInput,
-    SkillField.SOURCE:         QLineEdit,  # WP-WR — plugin@marketplace:skill
     SkillField.HOOKS:          TagInput,
     SkillField.DISABLE_MODEL:  QCheckBox,
     SkillField.USER_INVOCABLE: QCheckBox,

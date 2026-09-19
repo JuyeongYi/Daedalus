@@ -300,7 +300,7 @@ class _MachineRules:
 
         "요구하는가"는 컴포넌트가 `REQUIRES_OUTPUT_PORTS`로 선언한다(Q30) —
         오늘 True인 것은 `StepSkill`(절차형·fork 2종)과 `AgentDefinition`이고,
-        갈래를 갖지 않는 종류(선언형·전이·참조·랩핑·fork 에이전트)는 선언하지
+        갈래를 갖지 않는 종류(선언형·전이·참조·fork 에이전트)는 선언하지
         않아 자연 제외된다. 종전 두 갈래 `isinstance` 사다리와 같은 집합이다.
 
         문구만 버킷으로 가른다 — 스킬은 `transfer_on`, 에이전트는 "출력 포트"가

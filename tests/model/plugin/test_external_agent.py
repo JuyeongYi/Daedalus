@@ -411,37 +411,37 @@ def test_body_writes_are_rejected():
     assert has_external_body(_external())
 
 
-def test_the_canvas_badge_does_not_call_it_a_wrapped_skill():
+def test_the_canvas_badge_names_this_kind_not_another():
     """뱃지 문구·아이콘도 **선언**에서 나온다 (WP-9 리뷰 — 스멜 ⑤).
 
-    술어(`has_external_body`)만 종류 중립이고 문구가 랩핑 스킬로 굳어 있으면,
-    외부 플러그인 **에이전트** 노드가 캔버스에서 🔗 "랩핑 스킬"로 불린다.
+    술어(`has_external_body`)만 종류 중립이고 문구가 한 종류로 굳어 있으면,
+    다른 종류의 노드가 캔버스에서 틀린 이름으로 불린다.
     """
     pytest.importorskip("PySide6")
     from daedalus.view.canvas.node_badges import badges_for
 
     (icon, tooltip), = badges_for(_external())
     assert icon == "🔌"
-    assert "랩핑 스킬" not in tooltip
     assert "EXTERNAL AGENTS" in tooltip and _SOURCE in tooltip
 
 
 def test_the_editor_panel_speaks_of_an_agent_not_a_skill():
-    """편집기 산문과 "원본 열기" 버튼도 종류를 따라간다 (WP-9 리뷰).
+    """편집기 산문은 **버킷**을 따라간다 (WP-9 리뷰).
 
-    카탈로그는 플러그인의 `skills/<이름>/SKILL.md`만 해소한다 — 에이전트에
-    버튼을 남겨 두면 누를 때마다 "찾지 못했습니다"만 내놓는다(조용한 실패).
+    산문이 한 버킷으로 굳어 있으면 다른 버킷의 편집기가 틀린 지시를 한다
+    (원칙 5). "원본 열기"는 두 버킷 모두 해소한다(WP-10 —
+    `wrap_catalog.resolve_source_file`가 스킬은 `skills/<이름>/SKILL.md`,
+    에이전트는 `agents/<이름>.md`를 찾는다).
     """
     pytest.importorskip("PySide6")
     from PySide6.QtWidgets import QApplication
 
-    from daedalus.view.editors.component_editor import _WrappedSourcePanel
+    from daedalus.view.editors.component_editor import _ExternalSourcePanel
 
     QApplication.instance() or QApplication([])
-    panel = _WrappedSourcePanel(_external(source=""))
+    panel = _ExternalSourcePanel(_external(source=""))
     assert "에이전트" in panel._w_status.text()
     assert "스킬" not in panel._w_status.text()
-    assert panel._btn_open.isHidden()
 
 
 def test_editable_fields_are_name_description_source():

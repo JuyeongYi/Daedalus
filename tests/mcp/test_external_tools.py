@@ -1,9 +1,9 @@
 # tests/mcp/test_wrap_tools.py
 """외부 플러그인 카탈로그 MCP 도구 (WP-WR D2) — GUI 카탈로그 창과의 패리티.
 
-list_wrappable_skills/list_marketplace_folders/add_marketplace_folder/
-remove_marketplace_folder/set_external_plugins +
-create_skill(kind="wrapped", source=...) 경로. 등록 파일은 conftest가 격리한다.
+list_external_plugins/list_marketplace_folders/add_marketplace_folder/
+remove_marketplace_folder/fetch_plugin_skills/set_external_plugins.
+등록 파일은 conftest가 격리한다.
 """
 from __future__ import annotations
 
@@ -53,7 +53,7 @@ def marketplace(tmp_path):
 
 
 def test_folders_empty_note(tools):
-    out = tools.list_wrappable_skills()
+    out = tools.list_external_plugins()
     assert out["marketplace_folders"] == []
     assert "add_marketplace_folder" in out["note"]
 
@@ -78,7 +78,7 @@ def test_remove_unknown_folder_rejected(tools):
 
 def test_list_wrappable_skills(tools, marketplace):
     tools.add_marketplace_folder(str(marketplace), "mkt")
-    out = tools.list_wrappable_skills()
+    out = tools.list_external_plugins()
     plugins = out["marketplace_folders"][0]["plugins"]
     assert [p["plugin_id"] for p in plugins] == ["alpha@mkt"]
     assert plugins[0]["used"] is False
@@ -106,7 +106,7 @@ def test_set_external_plugins_rejects_empty_id(tools):
 def test_used_flag_follows_declaration(tools, marketplace):
     tools.add_marketplace_folder(str(marketplace), "mkt")
     tools.set_external_plugins(["alpha@mkt"])
-    plugins = tools.list_wrappable_skills()["marketplace_folders"][0]["plugins"]
+    plugins = tools.list_external_plugins()["marketplace_folders"][0]["plugins"]
     assert plugins[0]["used"] is True
 
 
@@ -116,106 +116,11 @@ def test_get_project_meta_lists_external_plugins(tools):
     assert out["external_plugins"] == ["alpha@mkt"]
 
 
-def test_create_skill_with_source_declares_plugin(tools, window):
-    """랩핑 생성 시 미선언 플러그인은 선언까지 함께 — 1 undo (GUI와 같은 실체)."""
-    out = tools.create_skill("wrap-it", kind="wrapped", source="other@mkt:code-review")
-    assert out["source"] == "other@mkt:code-review"
-    assert out["external_plugins"] == ["other@mkt"]
-    skill = window._project.skills[0]
-    assert skill.kind == "wrapped_skill"
-    assert skill.config.source == "other@mkt:code-review"
-    assert window._project.external_plugins == ["other@mkt"]
-
-    tools.undo()  # 생성+선언이 한 단위로 되돌아온다
-    assert window._project.skills == []
-    assert window._project.external_plugins == []
-    tools.redo()
-    assert window._project.skills[0].config.source == "other@mkt:code-review"
-    assert window._project.external_plugins == ["other@mkt"]
-
-
-def test_create_skill_with_source_already_declared(tools, window):
-    tools.set_external_plugins(["other@mkt"])
-    tools.create_skill("wrap-it", kind="wrapped", source="other@mkt:code-review")
-    assert window._project.external_plugins == ["other@mkt"]  # 중복 선언 없음
-    tools.undo()  # 생성만 되돌아온다 (선언은 이전 편집 소유)
-    assert window._project.skills == []
-    assert window._project.external_plugins == ["other@mkt"]
-
-
-def test_create_skill_reference_usage(tools, window):
-    """usage=reference — 산출 파일 없는 참조 용도로 고정 생성 + 참조 배치."""
-    out = tools.create_skill(
-        "bg", kind="wrapped", source="other@mkt:x", usage="reference", x=1, y=2,
-    )
-    assert out["usage"] == "reference"
-    comp = window._project.skills[0]
-    assert comp.config.usage == "reference"
-    assert window._project.reference_placements[0].skill_name == "bg"
-
-
-def test_reference_usage_rejects_transfer_on(tools):
-    tools.create_skill("bg", kind="wrapped", source="other@mkt:x", usage="reference")
-    with pytest.raises(ValueError, match="출력 포트"):
-        tools.set_transfer_on("bg", [{"name": "done"}])
-
-
-def test_reference_usage_rejection_names_the_way_out(tools):
-    """거절은 **이유와 빠져나갈 길**을 말한다(원칙 5).
-
-    종류 이름(`wrapped_skill`)만 돌려주면 "랩핑 스킬은 포트를 갖는다"는 설명과
-    자기모순으로 읽힌다 — 막는 것은 종류가 아니라 이 인스턴스의 용도다.
-    """
-    tools.create_skill("bg", kind="wrapped", source="other@mkt:x", usage="reference")
-    for call in (
-        lambda: tools.set_transfer_on("bg", [{"name": "done"}]),
-        lambda: tools.add_agent_call("bg", "ask"),
-    ):
-        with pytest.raises(ValueError, match="참조 용도") as exc:
-            call()
-        assert 'set_wrapped_usage("bg", "state")' in str(exc.value)
-
-
-def test_reference_skill_rejection_has_no_wrapped_escape_hatch(tools):
-    """참조 스킬은 용도 스위치가 없다 — 없는 길을 가리키면 안 된다."""
+def test_reference_skill_has_no_output_ports(tools):
+    """참조 스킬은 단일 배치 노드가 아니라 출력 포트를 갖지 않는다."""
     tools.create_skill("ref", kind="reference")
-    with pytest.raises(ValueError, match="출력 포트") as exc:
+    with pytest.raises(ValueError, match="출력 포트"):
         tools.set_transfer_on("ref", [{"name": "done"}])
-    assert "set_wrapped_usage" not in str(exc.value)
-
-
-def test_usage_field_not_directly_settable(tools):
-    tools.create_skill("w", kind="wrapped", source="other@mkt:x")
-    with pytest.raises(ValueError, match="최초 배치"):
-        tools.set_component_field("w", "usage", "reference")
-
-
-def test_usage_without_source_rejected(tools):
-    with pytest.raises(ValueError, match="usage"):
-        tools.create_skill("w", kind="wrapped", usage="reference")
-
-
-def test_source_rejected_for_non_wrapped(tools, window):
-    with pytest.raises(ValueError, match="wrapped"):
-        tools.create_skill("s", kind="procedural", source="other@mkt:x")
-    assert window._project.skills == []  # 거절이면 생성도 없어야 한다
-
-
-def test_source_with_xy_places_in_one_undo(tools, window):
-    """source+x/y = 생성+선언+배치 1 undo — 레지스트리 후보 드롭과 같은 경로."""
-    out = tools.create_skill("s", kind="wrapped", source="other@mkt:x", x=10, y=20)
-    assert out["placed"] is True
-    vm = next(v for v in window._project_vm.state_vms if v.model.name == "s")
-    assert (vm.x, vm.y) == (10.0, 20.0)
-    tools.undo()
-    assert window._project.skills == []
-    assert window._project.external_plugins == []
-
-
-def test_source_with_half_coordinates_rejected(tools, window):
-    with pytest.raises(ValueError, match="함께"):
-        tools.create_skill("s", kind="wrapped", source="other@mkt:x", x=10)
-    assert window._project.skills == []
 
 
 # --- 미설치 플러그인 (마켓이 선언만 한 것) ---
@@ -237,13 +142,13 @@ def test_unfetched_hidden_by_default_but_counted(tools, marketplace):
     ])
     tools.add_marketplace_folder(str(marketplace), "mkt")
 
-    out = tools.list_wrappable_skills()
+    out = tools.list_external_plugins()
     names = [p["name"] for p in out["marketplace_folders"][0]["plugins"]]
     assert names == ["alpha"]  # 실물을 읽은 것만
     assert out["unfetched_count"] == 1
     assert "include_unfetched" in out["unfetched_note"]
 
-    full = tools.list_wrappable_skills(include_unfetched=True)
+    full = tools.list_external_plugins(include_unfetched=True)
     plugins = {p["name"]: p for p in full["marketplace_folders"][0]["plugins"]}
     assert set(plugins) == {"alpha", "remote-only"}
     assert plugins["alpha"]["files_from"] == "marketplace"
@@ -259,7 +164,7 @@ def test_unfetched_plugin_can_be_declared(tools, window, marketplace):
 
     tools.set_external_plugins(["remote-only@mkt"])
     assert window._project.external_plugins == ["remote-only@mkt"]
-    full = tools.list_wrappable_skills(include_unfetched=True)
+    full = tools.list_external_plugins(include_unfetched=True)
     plugins = {p["name"]: p for p in full["marketplace_folders"][0]["plugins"]}
     assert plugins["remote-only"]["used"] is True
 

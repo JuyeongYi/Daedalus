@@ -46,7 +46,6 @@ from daedalus.compiler.emit.sections import (  # noqa: F401 — _exits_section �
     _ordered_states,
     _transition_condition,
     _unguarded_is_else,
-    linked_background_skills,
 )
 from daedalus.model.fsm.pseudo import EntryPoint, ExitPoint
 from daedalus.model.fsm.state import CompositeState, SimpleState, State
@@ -132,9 +131,7 @@ def _agent_skills_list(agent: AgentDefinition, project) -> list[str]:
             if getattr(s, "skill_ref", None) is agent
         }
         if node_names:
-            # 2. 참조 노드로 **선언된** 스킬(참조 스킬). 용도가 reference인
-            #    랩핑 스킬은 선언 PLACEMENT가 STATE라 여기 들어오지 않는다 —
-            #    그쪽은 아래 3단계가 `플러그인:스킬` 이름으로 따로 싣는다.
+            # 2. 참조 노드로 **선언된** 스킬(참조 스킬).
             ref_names = {
                 s.name for s in project.skills
                 if type(s).PLACEMENT is PlacementRole.REFERENCE
@@ -143,12 +140,6 @@ def _agent_skills_list(agent: AgentDefinition, project) -> list[str]:
                 if rp.skill_name in ref_names and node_names & set(rp.connected_states):
                     if rp.skill_name not in auto:
                         auto.append(rp.skill_name)
-        # 3. 링크된 참조 용도 랩핑 스킬(외부 플러그인) — `플러그인:스킬` 이름으로
-        #    주입한다. CC가 이 이름을 플러그인 스킬 명령과 정확히 맞춰 해석한다
-        #    (emit/wrapped.py docstring의 실측). 외부 스킬은 서브에이전트에서만 쓴다.
-        for ext, _desc in linked_background_skills(agent, project):
-            if ext not in auto:
-                auto.append(ext)
     for name in getattr(agent.config, "skills", None) or []:
         if name not in auto:
             auto.append(name)

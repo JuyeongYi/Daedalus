@@ -48,9 +48,9 @@ class SimpleState(State):
     # fork 에이전트처럼 PLACEMENT가 NONE인 종류는 여기 오지 않는다.
     #
     # 타입은 **종류 목록이 아니라 기저**다(Q35): 예전의
-    # `StepSkill | DeclarativeSkill | AgentDefinition`은 배치 가능한
-    # `WrappedSkill`이 빠져 있어도 아무도 실패하지 않는 낡은 선언 표였다
-    # (스멜 ⑤). 새 종류는 `fsm/**`를 한 줄도 건드리지 않는다 —
+    # `StepSkill | DeclarativeSkill | AgentDefinition`은 배치 가능한 종류가
+    # 빠져 있어도 아무도 실패하지 않는 낡은 선언 표였다(스멜 ⑤).
+    # 새 종류는 `fsm/**`를 한 줄도 건드리지 않는다 —
     # `tests/model/fsm/test_state_is_kind_neutral.py`가 그것을 고정한다.
     skill_ref: PluginComponent | None = None
 

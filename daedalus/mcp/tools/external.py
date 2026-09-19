@@ -1,4 +1,4 @@
-# daedalus/mcp/tools/wrap.py
+# daedalus/mcp/tools/external.py
 """외부 플러그인 카탈로그 도구 (WP-WR, D2) — GUI "외부 플러그인 카탈로그" 창의
 MCP 짝.
 
@@ -19,10 +19,10 @@ from typing import Any
 from ._base import _BaseTools
 
 
-class WrapTools(_BaseTools):
+class ExternalTools(_BaseTools):
     """외부 플러그인 카탈로그 조회 + 마켓플레이스 폴더 등록 + 사용 선언."""
 
-    def list_wrappable_skills(
+    def list_external_plugins(
         self, include_unfetched: bool = False
     ) -> dict[str, Any]:
         """등록된 마켓플레이스 폴더에서 외부 플러그인·스킬을 나열한다.
@@ -41,8 +41,8 @@ class WrapTools(_BaseTools):
 
         실물이 없어도 **사용 선언은 지금 할 수 있다** — plugin_id만 있으면
         빌드가 dependencies/enabledPlugins를 내고 설치는 CC가 한다. 다만
-        **랩핑(WrappedSkill)은 스킬 이름을 알아야** 하므로 실물이 필요하다
-        (`fetch_plugin_skills`가 받아 온다).
+        **스킬·에이전트 이름을 알려면** 실물이 필요하다(`fetch_plugin_skills`
+        가 받아 온다).
 
         플러그인의 `plugin_id`(`이름[@마켓]`)를 `set_external_plugins`에 넣으면
         "이 프로젝트에서 사용" 선언이 되고 빌드가 dependencies(MARKETPLACE)/
@@ -50,20 +50,20 @@ class WrapTools(_BaseTools):
         스킬을 쓸 수 있다(활성화되면 CC가 네이티브로 로드한다). `used`가 그
         선언 여부다.
 
-        스킬의 `source`는 그 스킬을 **워크플로 단계로** 감쌀 때만 필요하다 —
-        `create_skill(kind="wrapped", source=...)`(미선언 플러그인이면 선언까지
-        1 undo). `already_wrapped`는 이 프로젝트에 이미 그 source를 감싼 랩핑
-        스킬이 있다는 뜻이다(복수 랩퍼는 정상). `mcp_servers`는 그 플러그인이
+        `already_used`는 이 프로젝트의 어떤 컴포넌트가 이미 그 source를 외부
+        정본으로 쓰고 있다는 뜻이다(스킬 행의 `source`, 에이전트 행의
+        `agent_type`을 같은 집합에 대고 본다). `mcp_servers`는 그 플러그인이
         `.mcp.json`으로 제공하는 MCP 서버 이름들 — 에이전트 `mcp_servers`
         필드에 그대로 쓸 수 있다(개별 도구 목록은 지원하지 않는다). `agents`는 그
-        플러그인이 동봉한 에이전트 — `agent_type`(`플러그인:이름`)이 CC가 찾는 이름이다
-        (정확 일치 — 틀리면 조용히 범용 에이전트로 돈다).
+        플러그인이 동봉한 에이전트 — `agent_type`(`플러그인:이름`)이 CC가 찾는 이름이고,
+        그대로 `create_agent(kind="external_agent", source=...)`에 쓴다(정확 일치 —
+        틀리면 조용히 범용 에이전트로 돈다).
         폴더가 없으면 `add_marketplace_folder`로 먼저 등록한다.
         """
         from daedalus.model.plugin import wrap_catalog
 
         project = self._project
-        wrapped = wrap_catalog.project_wrapped_sources(project)
+        used_sources = wrap_catalog.project_external_sources(project)
         declared = set(getattr(project, "external_plugins", None) or [])
         folders_out: list[dict[str, Any]] = []
         unfetched_total = 0
@@ -98,6 +98,7 @@ class WrapTools(_BaseTools):
                             "name": a.name,
                             "agent_type": a.agent_type,
                             "description": a.description,
+                            "already_used": a.agent_type in used_sources,
                         }
                         for a in p.agents
                     ],
@@ -106,7 +107,7 @@ class WrapTools(_BaseTools):
                             "name": s.name,
                             "description": s.description,
                             "source": s.source,
-                            "already_wrapped": s.source in wrapped,
+                            "already_used": s.source in used_sources,
                         }
                         for s in p.skills
                     ],
@@ -142,8 +143,7 @@ class WrapTools(_BaseTools):
     ) -> dict[str, Any]:
         """실물이 없는 플러그인의 스킬을 받아온다 (WP-WR).
 
-        마켓은 플러그인을 선언만 하므로 실물이 없으면 스킬 목록을 알 수 없고,
-        그러면 랩핑(WrappedSkill)을 만들 수 없다.
+        마켓은 플러그인을 선언만 하므로 실물이 없으면 스킬 목록을 알 수 없다.
         이 도구는 실물을 `~/.daedalus/cache/plugin/`에 **얕게 클론**해 받아
         두고 거기서 스킬을 읽는다 — 그래서 이름뿐 아니라 **설명(SKILL.md
         프론트매터)까지** 나오고, 스캔은 설치된 플러그인과 **같은 코드**를 쓴다.
@@ -155,10 +155,11 @@ class WrapTools(_BaseTools):
 
         클론할 수 없는 source(마켓 폴더 안 상대 경로 등)는 `skills: null`이다.
         git URL이면 GitHub이 아니어도 된다. 이미 설치된 플러그인은
-        `list_wrappable_skills`가 로컬에서 읽으므로 여기 올 필요가 없다.
+        `list_external_plugins`가 로컬에서 읽으므로 여기 올 필요가 없다.
 
-        받은 이름으로 `create_skill(kind="wrapped", source="<plugin_id>:<스킬>")`
-        를 만들 수 있다.
+        이미 설치된 플러그인의 에이전트 목록은 `list_external_plugins`가 함께
+        낸다 — 외부 에이전트를 워크플로 노드로 쓰려면 그 `agent_type`을
+        `create_agent(kind="external_agent", source=...)`에 준다.
         """
         from daedalus.model.plugin import plugin_cache, wrap_catalog
 
@@ -172,7 +173,7 @@ class WrapTools(_BaseTools):
                 break
         if target is None:
             raise ValueError(
-                f"카탈로그에 '{plugin_id}'가 없습니다 — list_wrappable_skills"
+                f"카탈로그에 '{plugin_id}'가 없습니다 — list_external_plugins"
                 "(include_unfetched=true)로 id를 확인하세요."
             )
         if target.has_files:
@@ -197,7 +198,7 @@ class WrapTools(_BaseTools):
                 "skills": None,
                 "note": (
                     "클론할 수 있는 저장소 주소가 선언에 없어 받아올 수 "
-                    "없습니다 — 설치 후 list_wrappable_skills로 확인하세요."
+                    "없습니다 — 설치 후 list_external_plugins로 확인하세요."
                 ),
             }
         return {
@@ -209,8 +210,7 @@ class WrapTools(_BaseTools):
                 for s in skills
             ],
             "note": (
-                "실물을 캐시에 받아 스킬을 읽었습니다 — source를 create_skill"
-                '(kind="wrapped", source=…)에 그대로 쓸 수 있습니다.'
+                "실물을 캐시에 받아 스킬을 읽었습니다."
             ),
         }
 
@@ -262,59 +262,15 @@ class WrapTools(_BaseTools):
             raise ValueError(f"등록되지 않은 폴더입니다: {path}. 현재 등록: {known}")
         return {"removed": path}
 
-    def set_wrapped_usage(
-        self, name: str, usage: str, force: bool = False
-    ) -> dict[str, Any]:
-        """랩핑 스킬의 용도를 바꾼다 — state ↔ reference (WP-WR), undo 가능.
-
-        최초 배치가 용도를 고정하지만 나중에 바꿀 수 있다. 지켜지는 불변식은
-        "**동시에** 두 용도로 쓰이지 않는다"이므로, 전환은 기존 배치를 걷어낸
-        뒤에만 성립한다 — 이미 놓여 있으면 무엇을 지워야 하는지 알리며
-        **거부**하고, `force=True`면 그 배치(참조 노드·워크플로 노드·연결
-        전이)를 함께 지우고 전환까지 **1 undo**로 묶는다. 전이가 말없이
-        사라지지 않도록 기본값이 거부인 것이다.
-
-        GUI 랩핑 편집기의 "용도를 …로 바꾸기" 버튼과 같은 실체
-        (`actions/wrapped_usage.change_wrapped_usage`).
-        """
-        from daedalus.view.actions.wrapped_usage import change_wrapped_usage
-
-        comp = self._find_component(name)
-        result = change_wrapped_usage(self._window, comp, usage, force=force)
-        return {"component": name, **result}
-
-    def set_wrapped_enabled(self, name: str, enabled: bool) -> dict[str, Any]:
-        """랩핑 스킬을 켜고 끈다 — **삭제의 대체재**(WP-WR), undo 가능.
-
-        랩핑 스킬은 `delete_component`로 지울 수 없다(사용자 확정 2026-09-07) —
-        소스·프론트매터·배선을 다시 입력하는 비용이 크고, 지우면 이 프로젝트가
-        그 외부 스킬을 한때 썼다는 사실 자체가 사라진다. 대신 이 스위치로 끈다.
-
-        끄면 빌드 산출에서 빠지고(state 용도는 SKILL.md 미산출, reference 용도는
-        consult 지시 미합류) 외부 플러그인 참조 판정에서도 제외된다 — 꺼둔 것은
-        쓰지 않는 것이다. **배치는 그대로 둔다**: 끄는 것과 캔버스에서 치우는
-        것은 다른 결정이고 전이가 말없이 사라지면 안 된다(용도 전환이 force를
-        요구하는 것과 같은 이유). 비활성인 채 배치가 남아 있으면
-        `disabled_wrapped_placed` 경고가 짚는다. 다시 켜면 즉시 되돌아온다.
-
-        GUI 랩핑 편집기의 [비활성화]/[활성화] 버튼과 같은 실체
-        (`actions/wrapped_usage.set_wrapped_enabled`).
-        """
-        from daedalus.view.actions.wrapped_usage import set_wrapped_enabled
-
-        comp = self._find_component(name)
-        result = set_wrapped_enabled(self._window, comp, enabled)
-        return {"component": name, **result}
-
     def set_external_plugins(self, plugins: list[str]) -> dict[str, Any]:
         """이 프로젝트가 사용하는 외부 플러그인 선언을 **통째로 교체**한다 —
         undo 가능 (SetAttrCmd).
 
-        원소는 `이름[@마켓]` 설치 식별자(`list_wrappable_skills`의 `plugin_id`).
+        원소는 `이름[@마켓]` 설치 식별자(`list_external_plugins`의 `plugin_id`).
         빌드가 이 선언에서 dependencies(MARKETPLACE)/enabledPlugins(LOCAL)를
-        자동 배선한다 — 랩핑 스킬 source는 배선에 쓰이지 않는다(선언이 단일
-        진실). 선언했는데 어떤 랩핑 스킬도 참조하지 않으면
-        `unused_external_plugin` 경고(의도적 활성화면 무시), 랩핑 스킬이
+        자동 배선한다 — 컴포넌트의 source는 배선에 쓰이지 않는다(선언이 단일
+        진실). 선언했는데 아무 컴포넌트도 참조하지 않으면
+        `unused_external_plugin` 경고(의도적 활성화면 무시), 컴포넌트의 source가
         미선언 플러그인을 가리키면 `undeclared_external_plugin` 경고가 난다.
         GUI 카탈로그 창의 플러그인 체크박스와 같은 저장소를 편집한다.
         """

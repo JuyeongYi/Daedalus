@@ -29,7 +29,7 @@ def tools(window):
     return DaedalusTools(window)
 
 
-@pytest.mark.parametrize("kind", ["procedural", "sync_fork", "async_fork", "wrapped"])
+@pytest.mark.parametrize("kind", ["procedural", "sync_fork", "async_fork"])
 def test_step_skills_are_placeable(tools, kind):
     tools.create_skill(f"s-{kind}", kind=kind)
     out = tools.place_component(f"s-{kind}", x=10, y=20)
@@ -77,41 +77,6 @@ def test_rejected_placement_leaves_no_node_and_no_undo_entry(tools, window):
 
 
 # ---------------------------------------------------------------------------
-# 용도 미정 랩핑 스킬 — GUI와 같게 "state"로 고정하고 1 undo로 묶는다
-# (사용자 확정 2026-09-18: 거부하지 않는다. 오늘 되던 배치를 깨지 않는다.)
-# ---------------------------------------------------------------------------
-
-def test_undecided_wrapped_placement_fixes_usage_to_state(tools, window):
-    tools.create_skill("w", kind="wrapped")
-    comp = next(s for s in window._project.skills if s.name == "w")
-    assert comp.config.usage == ""
-
-    out = tools.place_component("w", x=5, y=6)
-    assert out["usage_fixed"] == "state"
-    assert comp.config.usage == "state"
-
-
-def test_usage_fix_and_placement_are_one_undo(tools, window):
-    """따로 되돌리면 용도만 고정된 반쪽 상태가 남는다 — 캔버스 드롭과 같은 묶음."""
-    tools.create_skill("w", kind="wrapped")
-    comp = next(s for s in window._project.skills if s.name == "w")
-    tools.place_component("w", x=5, y=6)
-
-    tools.undo()
-    assert window._project_vm.state_vms == []
-    assert comp.config.usage == ""
-
-
-def test_already_fixed_wrapped_placement_says_nothing_about_usage(tools, window):
-    """이미 고정된 용도는 배치가 건드리지 않는다 — 응답에도 키가 없다."""
-    tools.create_skill("w", kind="wrapped", source="other@mkt:x", usage="state")
-    out = tools.place_component("w", x=0, y=0)
-    assert "usage_fixed" not in out
-    comp = next(s for s in window._project.skills if s.name == "w")
-    assert comp.config.usage == "state"
-
-
-# ---------------------------------------------------------------------------
 # 중복 배치 — 캔버스 드롭과 같은 조기 반환 게이트 (통합 리뷰 지적)
 # ---------------------------------------------------------------------------
 
@@ -130,12 +95,3 @@ def test_second_placement_is_rejected_and_points_at_move_state(tools, window):
     # 거절은 게이트에서 끝난다 — 노드도 undo 항목도 늘지 않는다.
     assert len(window._project_vm.state_vms) == 1
     assert len(stack.history) == before
-
-
-def test_second_placement_of_wrapped_does_not_refix_usage(tools, window):
-    """용도가 이미 state로 고정된 랩핑 스킬도 두 번째 배치는 막힌다."""
-    tools.create_skill("w", kind="wrapped")
-    tools.place_component("w", x=0, y=0)
-    with pytest.raises(ValueError, match="이미 노드"):
-        tools.place_component("w", x=50, y=50)
-    assert len(window._project_vm.state_vms) == 1

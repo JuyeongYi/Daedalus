@@ -274,7 +274,7 @@ def _mcp_tool_source_files() -> list[Path]:
 def test_mcp_tool_scope_covers_the_tool_modules():
     """스캔 대상 고정 — 파일이 빠지면 계약이 조용히 무력화된다."""
     names = {f.relative_to(DAEDALUS_ROOT.parent).as_posix() for f in _mcp_tool_source_files()}
-    assert "daedalus/mcp/tools/wrap.py" in names
+    assert "daedalus/mcp/tools/external.py" in names
     assert "daedalus/mcp/tools/props.py" in names
     assert len(names) > 10, f"mcp 스캔 대상이 비정상적으로 적다: {len(names)}"
 

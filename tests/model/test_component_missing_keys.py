@@ -6,7 +6,7 @@ REFACTOR_SPEC §2-d / §8 `test_component_missing_keys` 행. WP-4가 컴포넌�
 
 **왜 JSON 골든만으로는 부족한가.** 골든은 *키가 있는* 파일만 지킨다. 오늘
 `deser_plugin.py`는 `d.get("transfer_on", [])`로 **빈 목록**을 쓰는데
-`StepSkill`/`WrappedSkill`의 dataclass 기본값은 `[EventDef("done")]`이다 —
+`StepSkill`의 dataclass 기본값은 `[EventDef("done")]`이다 —
 선언형 엔진이 "키가 없으면 dataclass 기본값"으로만 떨어지면 키 없는 파일에
 출력 포트 `done`이 **발명**되고, `transfer_on_not_empty` 검증이 에러에서
 조용한 통과로 뒤집힌다(원칙 5 위반). 그 차이를 직접 잡는다.
@@ -23,7 +23,6 @@ from daedalus.model.plugin.skill import (
     AsyncForkSkill,
     ProceduralSkill,
     SyncForkSkill,
-    WrappedSkill,
 )
 from daedalus.model.serialize.deser import _Registry
 from daedalus.model.serialize.deser_plugin import _deser_agent, _deser_skill
@@ -41,7 +40,6 @@ _STEP_KINDS = {
     "procedural_skill": ProceduralSkill,
     "sync_fork_skill": SyncForkSkill,
     "async_fork_skill": AsyncForkSkill,
-    "wrapped_skill": WrappedSkill,
 }
 
 

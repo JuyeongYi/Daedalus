@@ -225,60 +225,6 @@ class AsyncForkSkillConfig(ForkSkillConfig):
 
 
 @dataclass
-class WrappedSkillConfig(SkillConfig):
-    """스킬 랩핑 (WP-WR) — 다른 플러그인 스킬의 절차 재사용.
-
-    ``source``가 핵심이다: ``<플러그인>:<스킬>`` 문자열 참조로, 본문의 정본은
-    그 스킬이고 랩퍼는 워크플로 위치·배선·프론트매터만 소유한다(사용자 확정 —
-    본문 수정 불가). 진입 의미론 tri-state는 ProceduralSkillConfig와 동일.
-
-    ``usage``(사용자 확정 2026-09-07): ""(미정) / "state" / "reference".
-    최초 배치 시 사용자가 고르면 **고정**된다 — 한 랩핑 스킬이 워크플로
-    단계와 참조 두 용도로 동시에 쓰이는 것을 막는다. state는 단일 배치 +
-    SKILL.md 산출(현행), reference는 참조 노드 복수 배치 + **산출 파일 없음**
-    (링크된 노드의 산출에 consult 지시만 합류). 배치 경로가 고정하는 파생
-    상태라 프론트매터로 나가지 않고 매트릭스에도 없다(set_component_field
-    거부). 구버전 파일(키 부재)은 "state"로 로드된다 — 그때는 state만 있었다.
-
-    ``enabled``(사용자 확정 2026-09-07 — "삭제가 불가능하게 해라. 삭제 대신
-    비활성화"): 랩핑 스킬은 **지울 수 없고** 이 스위치로 끈다. 소스·프론트매터·
-    배선을 다시 입력하는 비용이 큰 데다, 지우면 이 프로젝트가 그 외부 스킬을
-    한때 썼다는 사실 자체가 사라진다. `False`면 산출에서 빠지고(state 용도는
-    SKILL.md 미산출, reference 용도는 consult 지시 미합류) 외부 플러그인 배선
-    판정에서도 참조로 치지 않는다 — 꺼둔 것은 쓰지 않는 것이다. 구버전
-    파일(키 부재)은 True.
-    """
-    KIND: ClassVar[str] = "wrapped"
-    SERIALIZED_FIELDS: ClassVar[tuple[FieldSpec, ...]] = (
-        SkillConfig.SERIALIZED_FIELDS
-        + (
-            # `source`는 **RAW**다 — 저장 파일의 명시적 `null`이 그대로 들어오는
-            # 것이 오늘의 계약이고, 그 날것을 견디는 쪽은
-            # `WrappedSkill.external_source` 하나다(원칙 1).
-            FieldSpec("source", RAW),
-            # 키 부재는 구버전 파일 — 그때는 state 용도만 있었다.
-            FieldSpec("usage", STR, missing="state"),
-            FieldSpec("enabled", BOOL),
-            FieldSpec("disable_model_invocation", RAW),
-            FieldSpec("user_invocable", RAW),
-        )
-    )
-    #: ``usage``의 "참조 용도" 값. 판정하는 쪽이 리터럴을 복제하면 값이 바뀔 때
-    #: 한쪽만 고쳐져 조용히 어긋난다 — 선언은 값을 가진 클래스에 둔다.
-    USAGE_REFERENCE: ClassVar[str] = "reference"
-
-    source: str = ""
-    usage: str = ""
-    enabled: bool = True
-    disable_model_invocation: bool | None = None
-    user_invocable: bool | None = None
-
-    @property
-    def kind(self) -> str:
-        return self.KIND
-
-
-@dataclass
 class DeclarativeSkillConfig(SkillConfig):
     KIND: ClassVar[str] = "declarative"
     SERIALIZED_FIELDS: ClassVar[tuple[FieldSpec, ...]] = (

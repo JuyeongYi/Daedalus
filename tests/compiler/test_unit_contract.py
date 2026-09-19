@@ -45,7 +45,7 @@ from tests.data.golden.corpus import FILES_DIR, SKILL_FILES_DIR, build_synthetic
 
 #: 선언 순서 = 계획 순서 = 쓰기 순서. **순서가 계약이다.**
 _EXPECTED_UNIT_IDS: list[tuple[str, ...]] = [
-    (plan_kinds.SKILL, plan_kinds.WRAPPED_RUNNER),
+    (plan_kinds.SKILL,),
     (plan_kinds.AGENT,),
     (plan_kinds.SKILL_FILE,),
     (plan_kinds.HOOKS_JSON, plan_kinds.HOOK_SCRIPT),
@@ -62,7 +62,6 @@ _EXPECTED_UNIT_IDS: list[tuple[str, ...]] = [
 #: 복사 산출은 텍스트가 아니라 계상 대상이 아니다. 나머지 행은 구간을 밝힌다.
 _EXPECTED_TOKEN_KIND: dict[str, TokenKind] = {
     plan_kinds.SKILL: TokenKind.CONTEXT,
-    plan_kinds.WRAPPED_RUNNER: TokenKind.CONTEXT,
     plan_kinds.AGENT: TokenKind.CONTEXT,
     plan_kinds.WORKSPACE_RULE: TokenKind.CONTEXT,
     plan_kinds.GUIDE_WORKFLOW: TokenKind.CONTEXT,

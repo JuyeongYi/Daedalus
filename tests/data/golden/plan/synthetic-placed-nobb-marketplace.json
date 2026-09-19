@@ -37,18 +37,6 @@
       true
     ],
     [
-      "skills/wrapped-state/SKILL.md",
-      "skill",
-      "스킬 'wrapped-state'",
-      true
-    ],
-    [
-      "agents/wrapped-state.md",
-      "wrapped_runner",
-      "랩핑 스킬 'wrapped-state'의 실행 서브에이전트",
-      true
-    ],
-    [
       "agents/worker.md",
       "agent",
       "에이전트 'worker'",
@@ -134,8 +122,6 @@
     "skills/knowledge/SKILL.md",
     "skills/edge-helper/SKILL.md",
     "skills/ref-with-hooks/SKILL.md",
-    "skills/wrapped-state/SKILL.md",
-    "agents/wrapped-state.md",
     "agents/worker.md",
     "agents/fork-base.md",
     "hooks/hooks.json",

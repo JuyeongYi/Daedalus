@@ -37,7 +37,6 @@ class _ForkRules:
         fork_model_overrides_agent (경고)."""
         from daedalus.model.plugin.config import BUILTIN_FORK_AGENTS
         from daedalus.model.plugin.enums import ModelType
-        from daedalus.model.plugin.roles import BodySource
 
         declared = {
             p.partition("@")[0] for p in getattr(project, "external_plugins", None) or []
@@ -52,13 +51,9 @@ class _ForkRules:
             ))
 
         for skill in project.skills:
-            # fork 스킬 = 본문이 **자기 것**이면서 서브에이전트에서 도는 스킬.
-            # 랩핑 스킬도 서브에이전트(러너)에서 돌지만 본문 정본이 외부라
-            # `agent` 필드 자체가 없다 — 종전 `isinstance(ForkSkill)`과 같은 집합.
-            if not (
-                type(skill).RUNS_IN_SUBAGENT
-                and type(skill).BODY_SOURCE is BodySource.OWNED  # WRAPPED-ONLY
-            ):
+            # fork 스킬 = 서브에이전트에서 도는 스킬 — 스킬 종류 중 이 선언을
+            # 갖는 것은 fork 2종뿐이다(종전 `isinstance(ForkSkill)`과 같은 집합).
+            if not type(skill).RUNS_IN_SUBAGENT:
                 continue
             name = skill.delegated_agent_name() or ""
             target = fork_project_agent(skill, project)

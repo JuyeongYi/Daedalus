@@ -78,19 +78,20 @@ class ComponentEditor(QWidget):
         self._fm.content_changed.connect(lambda: self._on_model_changed(scope="content"))
         root_splitter.addWidget(self._fm)
 
-        # --- 중앙: 본문(SectionContentPanel) — wrapped는 원본 패널로 대체 ---
-        # WP-WR(사용자 확정): 랩핑 스킬은 본문 편집이 **아예 불가능**하다 —
-        # 정본은 config.source의 외부 스킬이고 컴파일이 인보크 지시를 생성한다.
-        # 비활성 편집기를 보여 주는 대신 원본 경로 + "원본 열기" 버튼만 둔다
-        # (프론트매터·연결선 정의는 좌/우 패널이 그대로 담당).
+        # --- 중앙: 본문(SectionContentPanel) — 정본이 외부면 원본 패널로 대체 ---
+        # 본문 정본이 외부인 종류(외부 플러그인 에이전트)는 본문 편집이
+        # **아예 불가능**하다 — 정본은 config.source가 가리키는 그 플러그인의
+        # 파일이고 우리 산출에는 위임 지시만 나간다. 비활성 편집기를 보여 주는
+        # 대신 원본 경로 + "원본 열기" 버튼만 둔다(프론트매터·연결선 정의는
+        # 좌/우 패널이 그대로 담당).
         from daedalus.model.plugin.skill import has_external_body
 
         self._content_panel: SectionContentPanel | None = None
-        self._wrapped_panel: _WrappedSourcePanel | None = None
+        self._external_panel: _ExternalSourcePanel | None = None
         if has_external_body(component):
-            self._wrapped_panel = _WrappedSourcePanel(component)
-            self._wrapped_panel.setMinimumWidth(_CENTER_MIN_W)
-            root_splitter.addWidget(self._wrapped_panel)
+            self._external_panel = _ExternalSourcePanel(component)
+            self._external_panel.setMinimumWidth(_CENTER_MIN_W)
+            root_splitter.addWidget(self._external_panel)
         else:
             self._content_panel = SectionContentPanel()
             self._content_panel.setMinimumWidth(_CENTER_MIN_W)
@@ -128,8 +129,8 @@ class ComponentEditor(QWidget):
 
         # Variable popup — 생성·위치 계산은 body_editor의 공용 헬퍼가 맡는다
         # (작업 폴더 문서 탭이 같은 함수를 부른다). variables_fn이라 열 때마다
-        # 컨텍스트·빌드 타깃 필터를 다시 적용한다. wrapped는 본문 편집기가
-        # 없으므로 팝업도 없다.
+        # 컨텍스트·빌드 타깃 필터를 다시 적용한다. 본문 정본이 외부인 종류는
+        # 본문 편집기가 없으므로 팝업도 없다.
         self._var_popup = None
         if self._content_panel is not None:
             self._var_popup = make_variable_popup(
@@ -176,32 +177,23 @@ class ComponentEditor(QWidget):
 
     def _on_model_changed(self, scope: str = "structure") -> None:
         from daedalus.view.viewmodel.project_vm import call_notify
-        if self._wrapped_panel is not None:
+        if self._external_panel is not None:
             # 프론트매터에서 source를 고치면 원본 패널 표시가 따라간다.
-            self._wrapped_panel.refresh()
+            self._external_panel.refresh()
         self.changed.emit()
         call_notify(self._on_notify_fn, scope)  # type: ignore[arg-type]
 
 
-class _WrappedSourcePanel(QWidget):
+class _ExternalSourcePanel(QWidget):
     """본문 정본이 **외부**인 컴포넌트의 중앙 패널 — 본문 편집기 대신 원본
     경로 표시 + "원본 열기" 버튼.
 
-    본문의 정본은 source가 가리키는 외부 스킬/에이전트이고 인보크 지시는
+    본문의 정본은 source가 가리키는 외부 플러그인의 파일이고 위임 지시는
     빌드가 생성한다 — 여기서 편집할 본문이라는 것 자체가 없다. 원본 해석은
-    `wrap_catalog.resolve_skill_file`(등록된 마켓플레이스 폴더 기준)이다.
+    `wrap_catalog.resolve_source_file`(등록된 마켓플레이스 폴더 기준)이다.
 
-    용도(`usage`)·활성(`enabled`) 두 스위치는 **그 스위치를 가진 종류에만**
-    그린다(오늘은 랩핑 스킬 하나 — `KindUI.has_enable_toggle`). 종류를
-    열거하지 않고 뷰 선언을 보는 이유는, 외부 정본을 갖는 새 종류(WP-9 외부
-    플러그인 에이전트)가 생겼을 때 **누르면 남의 필드를 건드리는 버튼**이
-    조용히 따라붙지 않게 하기 위해서다.
-
-    같은 이유로 **문구의 명사와 "원본 열기" 버튼도 선언에서 나온다**(WP-9 리뷰
-    반영). 스위치만 게이트하고 산문이 스킬로 굳어 있으면, 외부 에이전트
-    편집기가 "`플러그인[@마켓]:스킬`을 지정하세요"라고 **틀린 지시**를 하고,
-    카탈로그가 SKILL.md만 해소하는 탓에 버튼은 언제나 "찾지 못했습니다"만
-    돌려준다 — 둘 다 없는 사실을 말하는 UI다(원칙 5).
+    **문구의 명사는 선언에서 나온다**(WP-9 리뷰 반영) — 산문이 한 버킷으로
+    굳어 있으면 다른 버킷의 편집기가 **틀린 지시**를 한다(원칙 5).
     """
 
     def __init__(self, component, parent: QWidget | None = None) -> None:
@@ -210,45 +202,21 @@ class _WrappedSourcePanel(QWidget):
 
         from PySide6.QtWidgets import QLabel, QLineEdit, QPushButton, QVBoxLayout
 
-        from daedalus.model.plugin.wrap_catalog import can_resolve_source
-        from daedalus.view.kind_ui import ui_for
-
-        # 용도·활성 스위치를 가진 종류인가 (오늘은 랩핑 스킬 하나).
-        self._has_usage_switches = ui_for(component).has_enable_toggle
         # 정본이 무엇으로 불리는가 — 버킷이 답한다(스킬 산출 vs 에이전트 산출).
         self._noun = "에이전트" if component.BUCKET is Bucket.AGENTS else "스킬"
-        # 카탈로그가 원본 파일을 찾아 줄 수 있는 버킷인가.
-        self._can_open_source = can_resolve_source(component)
 
         lay = QVBoxLayout(self)
         lay.addStretch()
-        lay.addWidget(QLabel("본문 정본 (외부) — 인보크 지시는 빌드가 생성"))
+        lay.addWidget(QLabel("본문 정본 (외부) — 위임 지시는 빌드가 생성"))
         self._w_source = QLineEdit()
         self._w_source.setReadOnly(True)
         lay.addWidget(self._w_source)
-        # 용도 표시 (WP-WR) — 최초 배치가 고정하고 여기서 바꿀 수 없다
-        # (한 스킬 두 용도 금지, 사용자 확정 2026-09-07).
-        self._w_usage = QLabel("")
-        lay.addWidget(self._w_usage)
         self._btn_open = QPushButton("원본 열기")
         self._btn_open.setToolTip(
-            "등록된 마켓플레이스 폴더에서 원본 SKILL.md를 찾아 연다"
+            "등록된 마켓플레이스 폴더에서 원본 파일을 찾아 연다"
         )
         self._btn_open.clicked.connect(self.open_source)
-        self._btn_open.setVisible(self._can_open_source)
         lay.addWidget(self._btn_open)
-        # 용도 전환 (WP-WR) — 최초 배치가 고정하지만 **바꿀 길은 있어야 한다**
-        # (사용자 보고 2026-09-07). 배치가 남아 있으면 무엇이 지워지는지 묻는다.
-        self._btn_usage = QPushButton("")
-        self._btn_usage.clicked.connect(self.toggle_usage)
-        lay.addWidget(self._btn_usage)
-        # 활성/비활성 (WP-WR, 사용자 확정 2026-09-07) — 랩핑 스킬은 삭제할 수
-        # 없고 이 버튼이 그 대체재다. 배치는 건드리지 않는다.
-        self._btn_enabled = QPushButton("")
-        self._btn_enabled.clicked.connect(self.toggle_enabled)
-        lay.addWidget(self._btn_enabled)
-        for widget in (self._w_usage, self._btn_usage, self._btn_enabled):
-            widget.setVisible(self._has_usage_switches)
         self._w_status = QLabel("")
         self._w_status.setWordWrap(True)
         lay.addWidget(self._w_status)
@@ -263,98 +231,20 @@ class _WrappedSourcePanel(QWidget):
         source = self._source()
         if self._w_source.text() != source:
             self._w_source.setText(source)
-        usage = getattr(getattr(self._component, "config", None), "usage", "") or ""
-        usage_text = {
-            "state": "용도: 워크플로 단계 (State) — 최초 배치로 고정됨",
-            "reference": "용도: 참조 (Reference — 산출 파일 없음) — 최초 배치로 고정됨",
-        }.get(usage, "용도: 미정 — 최초 배치 시 State/Reference를 선택하면 고정됩니다")
-        if self._w_usage.text() != usage_text:
-            self._w_usage.setText(usage_text)
-        target = "state" if usage == "reference" else "reference"
-        label = {
-            "state": "용도를 워크플로 단계(State)로 바꾸기",
-            "reference": "용도를 참조(Reference)로 바꾸기",
-        }[target]
-        if self._btn_usage.text() != label:
-            self._btn_usage.setText(label)
-            self._btn_usage.setToolTip(
-                "이미 캔버스에 놓여 있으면 무엇이 함께 지워지는지 먼저 묻습니다 "
-                "— 전환은 그 배치를 걷어낸 뒤에만 성립합니다(한 스킬 두 용도 금지)."
-            )
-        enabled = bool(getattr(self._component.config, "enabled", True))
-        enabled_label = "비활성화" if enabled else "활성화"
-        if self._btn_enabled.text() != enabled_label:
-            self._btn_enabled.setText(enabled_label)
-            self._btn_enabled.setToolTip(
-                "랩핑 스킬은 삭제할 수 없습니다 — 대신 끄면 산출(SKILL.md·참조 "
-                "지시)과 외부 플러그인 참조 판정에서 빠집니다. 소스·프론트매터·"
-                "배치는 그대로 남아 언제든 되돌릴 수 있습니다."
-            )
         if not source:
             self._w_status.setText(
                 f"source가 비어 있습니다 — 좌측 프론트매터에서 외부 "
                 f"{self._noun} source를 `플러그인[@마켓]:이름` 형식으로 "
                 f"지정하세요."
             )
-        elif not self._can_open_source:
-            self._w_status.setText(
-                f"외부 {self._noun}의 원본 파일은 아직 열 수 없습니다 — "
-                f"카탈로그는 플러그인의 SKILL.md만 훑습니다. 정본은 그 "
-                f"플러그인이 소유하고, 우리 산출에는 부르는 쪽의 위임 지시만 "
-                f"나갑니다."
-            )
-        elif not enabled:
-            self._w_status.setText(
-                "비활성 상태입니다 — 이 스킬은 빌드 산출에 나가지 않습니다."
-            )
         elif self._w_status.text():
             self._w_status.setText("")
 
-    def toggle_usage(self) -> bool:
-        """현재 용도의 반대로 전환 (WP-WR). 배치가 남아 있으면 먼저 묻는다.
-
-        전환의 실체는 `actions/wrapped_usage.change_wrapped_usage` — MCP
-        `set_wrapped_usage`와 같은 함수다(표면마다 다른 규칙이면 안 된다).
-        """
-        from PySide6.QtWidgets import QMessageBox
-
-        from daedalus.view.actions.wrapped_usage import (
-            change_wrapped_usage,
-            describe_placements,
-            placement_counts,
-        )
-
-        window = self.window()
-        project = getattr(window, "_project", None)
-        if project is None:
-            self._w_status.setText("열린 프로젝트가 없습니다.")
-            return False
-        usage = getattr(self._component.config, "usage", "") or ""
-        target = "state" if usage == "reference" else "reference"
-        counts = placement_counts(project, self._component)
-        if any(counts.values()):
-            answer = QMessageBox.question(
-                self,
-                "용도 변경",
-                f"'{self._component.name}'의 배치({describe_placements(counts)})를 "
-                f"함께 지우고 {target}로 바꿉니다. 계속할까요?\n"
-                f"(한 번의 Ctrl+Z로 전부 되돌릴 수 있습니다.)",
-            )
-            if answer != QMessageBox.StandardButton.Yes:
-                return False
-        change_wrapped_usage(window, self._component, target, force=True)
-        self.refresh()
-        self._w_status.setText(
-            f"용도를 {target}로 바꿨습니다 — 편집 탭을 닫았다 열면 패널 구성이 "
-            f"바뀝니다(참조 용도는 출력 포트가 없습니다)."
-        )
-        return True
-
     def open_source(self) -> bool:
-        """원본 SKILL.md를 OS 기본 프로그램으로 연다. 찾으면 True."""
-        from daedalus.model.plugin.wrap_catalog import resolve_skill_file
+        """원본 파일을 OS 기본 프로그램으로 연다. 찾으면 True."""
+        from daedalus.model.plugin.wrap_catalog import resolve_source_file
 
-        md = resolve_skill_file(self._source())
+        md = resolve_source_file(self._component)
         if md is None:
             self._w_status.setText(
                 "원본을 찾지 못했습니다 — 도구 → 외부 플러그인 카탈로그에서 "
@@ -365,20 +255,4 @@ class _WrappedSourcePanel(QWidget):
         from PySide6.QtGui import QDesktopServices
 
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(md)))
-        return True
-
-    def toggle_enabled(self) -> bool:
-        """활성 ↔ 비활성 (WP-WR) — 실체는 `actions.wrapped_usage.
-        set_wrapped_enabled`이고 MCP `set_wrapped_enabled`와 같은 함수다."""
-        from daedalus.view.actions.wrapped_usage import set_wrapped_enabled
-
-        window = self.window()
-        if getattr(window, "_project", None) is None:
-            self._w_status.setText("열린 프로젝트가 없습니다.")
-            return False
-        enabled = bool(getattr(self._component.config, "enabled", True))
-        result = set_wrapped_enabled(window, self._component, not enabled)
-        self.refresh()
-        if result["enabled"]:
-            self._w_status.setText("활성화했습니다 — 다시 빌드 산출에 포함됩니다.")
         return True

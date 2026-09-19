@@ -8,7 +8,6 @@ from uuid import uuid4
 from daedalus.model.fsm.machine import StateMachine
 from daedalus.model.fsm.section import EventDef
 from daedalus.model.plugin.base import PluginComponent, WorkflowComponent
-from daedalus.model.plugin.placement import is_reference_placed
 from daedalus.model.plugin.roles import (
     BodySource,
     Bucket,
@@ -16,7 +15,6 @@ from daedalus.model.plugin.roles import (
     PlacementRole,
 )
 from daedalus.model.plugin.config import (
-    WrappedSkillConfig,
     AsyncForkSkillConfig,
     DeclarativeSkillConfig,
     ForkSkillConfig,
@@ -47,136 +45,18 @@ class Skill(PluginComponent, ABC):
     id: str = field(default_factory=lambda: uuid4().hex, compare=False, kw_only=True)
 
 
-@dataclass
-class WrappedSkill(Skill, WorkflowComponent):
-    """랩핑 스킬 (WP-WR) — 다른 플러그인 스킬을 워크플로 단계로 감싼다.
-
-    본문의 정본은 config.source가 가리키는 외부 스킬이다(런타임 참조 — 컴파일
-    산출은 "그 스킬을 따르라" 지시 + 우리 그래프 유도 단락). body 필드는
-    구조상 남지만 **항상 빈 값**이어야 한다 — 편집 UI가 잠그고 컴파일이
-    무시한다. 배치 규칙은 procedural과 동일(단일 배치 — no_duplicate_skill_ref).
-    같은 source를 여러 랩퍼가 감싸는 것은 정상이다(재사용은 랩퍼 복수로).
-
-    **능력 표면의 유일한 오버라이드 덩어리**다 — 용도(`usage`)·켜짐(`enabled`)
-    두 인스턴스 스위치를 가진 종류가 이것뿐이라서다. WP-10에서 이 클래스가
-    퇴역하면 인스턴스 훅 오버라이드는 전 컴포넌트에서 0이 된다.
-    """
-
-    KIND: ClassVar[str] = "wrapped_skill"
-    CONFIG_CLS: ClassVar[type[WrappedSkillConfig]] = WrappedSkillConfig
-    PLACEMENT: ClassVar[PlacementRole] = PlacementRole.STATE
-    BODY_SOURCE: ClassVar[BodySource] = BodySource.EXTERNAL
-    RUNS_IN_SUBAGENT: ClassVar[bool] = True
-
-    config: WrappedSkillConfig = field(default_factory=WrappedSkillConfig)
-    body: str = ""
-    transfer_on: list[EventDef] = field(
-        default_factory=lambda: [EventDef("done")]
-    )
-    call_agents: list[EventDef] = field(default_factory=list)
-
-    @property
-    def kind(self) -> str:
-        return self.KIND
-
-    # -- 인스턴스 훅 --
-    def effective_placement(self) -> PlacementRole:
-        """용도가 reference로 고정된 랩퍼는 참조 노드다(사용자 확정 2026-09-07).
-
-        미정("")은 state로 친다 — 최초 배치가 용도를 고정한다.
-        """
-        if self.config.usage == WrappedSkillConfig.USAGE_REFERENCE:
-            return PlacementRole.REFERENCE
-        return PlacementRole.STATE
-
-    def is_active(self) -> bool:
-        return bool(self.config.enabled)
-
-    def emits_output(self) -> bool:
-        """참조 용도는 파일을 내지 않는다 — 링크된 노드의 산출에 consult 지시로만 합류."""
-        return (
-            super().emits_output()
-            and self.effective_placement() is not PlacementRole.REFERENCE
-        )
-
-    def can_delete(self) -> tuple[bool, str | None]:
-        return (False, "랩핑 스킬이기 때문입니다")
-
-    # -- 형상 조회 --
-    def state_machines(self) -> list[StateMachine]:
-        return [self.fsm]
-
-    def output_ports(self) -> list[EventDef]:
-        return list(self.transfer_on)
-
-    def call_ports(self) -> list[EventDef]:
-        return list(self.call_agents)
-
-    # -- 참조 --
-    def external_plugin_refs(self) -> list[str]:
-        """꺼 둔 랩퍼는 참조로 치지 않는다 — 배선도 필요 없고 쓰는 것도 아니다.
-
-        형식이 깨진 source는 source 형식 검사 규칙의 소관이라 여기서 중복으로
-        짚지 않는다(오늘 `naming._check_external_plugins`와 같은 제외 규칙).
-
-        원문은 `external_source`로 읽는다 — 손상된 저장 파일의 non-str `source`
-        를 견디는 자리가 두 벌이면 한쪽만 터진다(원칙 1).
-        """
-        if not self.is_active():
-            return []
-        plugin_id, _, skill_name = (self.external_source or "").partition(":")
-        plugin_id = plugin_id.strip()
-        if not plugin_id or not skill_name.strip():
-            return []
-        return [plugin_id]
-
-    @property
-    def external_source(self) -> str | None:
-        """랩핑 스킬은 **항상** 외부 정본을 선언한다 — 값이 비었거나 손상돼도
-        `None`(= 이 종류엔 외부 정본이 없다)이 아니라 빈 문자열로 답한다.
-
-        `None`을 돌려주면 `_check_external_sources`가 "외부 정본이 없는 종류"로
-        보고 건너뛰어 `external_source_missing` 경고가 조용히 사라진다(원칙 5).
-        역직렬화는 `source`를 날것으로 싣는다(`deser_plugin._deser_config` —
-        `d.get("source", "")`라 저장 파일의 명시적 `null`이 그대로 들어온다).
-        """
-        source = self.config.source
-        return source if isinstance(source, str) else ""
-
-    def delegated_agent_name(self) -> str | None:
-        """랩퍼 본문은 **자기 이름의 러너 서브에이전트**가 실행한다(WP-WR)."""
-        return self.name
-
-
-def is_reference_usage(component: object) -> bool:
-    """참조처럼 배치되는 컴포넌트인가 — ReferenceSkill, 또는 용도가
-    reference로 고정된 WrappedSkill (WP-WR, 사용자 확정 2026-09-07).
-
-    캔버스 드롭·링크·에디터 패널·emit·검증이 전부 이 판정을 쓴다 — 표면마다
-    다른 판정을 들고 있으면 참조 노드로 놓이는데 산출은 파일을 만드는 식의
-    어긋남이 생긴다.
-
-    **한 줄 파사드다**(WP-2b): 실체는 `placement.is_reference_placed`이고
-    여기서는 그 판정에 용도 어휘의 이름을 붙일 뿐이다. 새 참조 종류는
-    `PLACEMENT` 선언만으로 이 판정에 합류한다 — 호출자 무수정.
-    """
-    return is_reference_placed(component)
-
-
 def has_external_body(component: object) -> bool:
     """본문의 **정본이 외부**에 있는가 — 본문 편집 잠금의 단일 판정.
 
-    랩핑 스킬의 본문은 산출에 절대 도달하지 않는다: 정본은 `config.source`가
-    가리키는 외부 플러그인의 SKILL.md이고, 컴파일은 그것을 인보크하라는 지시만
-    만든다(WP-WR, 사용자 확정 2026-09-07). 그래서 편집기는 본문 패널을 아예
-    만들지 않고(`view/editors/component_editor`), MCP 본문 쓰기 도구는
+    외부 플러그인 서브에이전트(`ExternalAgent`)의 본문은 우리 산출에 절대
+    도달하지 않는다: 정본은 `config.source`가 가리키는 그 플러그인의 파일이고,
+    우리 산출에는 부르는 쪽의 위임 지시만 나간다. 그래서 편집기는 본문 패널을
+    아예 만들지 않고(`view/editors/component_editor`), MCP 본문 쓰기 도구는
     거절한다(`mcp/tools/body`) — 두 표면이 **같은 판정**을 써야 "GUI는 막는데
     MCP는 조용히 성공"이 생기지 않는다(원칙 1·2).
 
     **한 줄 파사드다**(WP-2c D4): 실체는 종류가 아니라 `BODY_SOURCE` 선언이다.
-    본문 정본이 외부인 종류가 랩핑 스킬 하나가 아니게 되면(외부 플러그인
-    서브에이전트 등) 여기를 고치지 않고 선언을 고른다 — 종류로 물으면 새
-    종류의 본문이 **편집 가능한 채로 조용히 열린다**(원칙 5).
+    종류로 물으면 새 종류의 본문이 **편집 가능한 채로 조용히 열린다**(원칙 5).
 
     컴포넌트가 아닌 값(빈 노드의 `skill_ref` 등)이 섞여 들어오므로 선언 조회는
     `getattr` 폴백으로 관용한다 — 종전 `isinstance`와 같은 계약이다.

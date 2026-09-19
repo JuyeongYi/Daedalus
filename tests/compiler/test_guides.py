@@ -30,7 +30,6 @@ from daedalus.compiler.emit.guides import (
     workflow_guide_referenced,
     workflow_pointer_kind,
 )
-from daedalus.compiler.emit.wrapped import compile_wrapped_runner
 from daedalus.compiler.project_compiler import compile_project
 from daedalus.model.fsm.blackboard import Blackboard, DynamicClass, DynamicField
 from daedalus.model.fsm.event import CompletionEvent
@@ -38,10 +37,11 @@ from daedalus.model.fsm.machine import StateMachine
 from daedalus.model.fsm.state import SimpleState
 from daedalus.model.fsm.transition import Transition
 from daedalus.model.fsm.variable import FieldType
-from daedalus.model.plugin.agent import ForkAgent
-from daedalus.model.plugin.config import SyncForkSkillConfig, WrappedSkillConfig
+from daedalus.model.fsm.section import EventDef
+from daedalus.model.plugin.agent import ExternalAgent, ForkAgent
+from daedalus.model.plugin.config import ExternalAgentConfig, SyncForkSkillConfig
 from daedalus.model.plugin.enums import BuildTarget
-from daedalus.model.plugin.skill import SyncForkSkill, WrappedSkill
+from daedalus.model.plugin.skill import SyncForkSkill
 from daedalus.model.project import PluginProject
 
 from tests.compiler.builders import (
@@ -251,18 +251,6 @@ def test_fork_agent_gets_only_the_blackboard_pointer():
     assert f"Before you start, read `{_BB}`" in text
 
 
-def test_wrapped_runner_gets_no_pointer():
-    """랩핑 실행 서브에이전트는 포인터 대상이 아니다(블랙보드 단락도 없다)."""
-    wrapped = WrappedSkill(
-        fsm=StateMachine(name="w", initial_state=SimpleState(name="s"),
-                         states=[SimpleState(name="s")]),
-        name="wrap", description="Wrap it.",
-        config=WrappedSkillConfig(source="other:thing", usage="state"),
-    )
-    text = compile_wrapped_runner(wrapped)
-    assert "guides/" not in text
-
-
 def test_guide_pointer_line_is_none_without_project():
     a = make_procedural("a")
     assert guide_pointer_line(a, None) is None
@@ -376,11 +364,10 @@ def test_pointer_targets_are_exactly_the_components_that_get_a_file():
     project, _, _ = _placed_pair(blackboard=_blackboard())
     project.skills.append(_fork(agent="helper"))
     project.agents.append(ForkAgent(name="helper", description="H.", body="Work."))
-    project.skills.append(WrappedSkill(
-        fsm=StateMachine(name="ref", initial_state=SimpleState(name="s"),
-                         states=[SimpleState(name="s")]),
-        name="ref", description="A doc.",
-        config=WrappedSkillConfig(source="other:doc", usage="reference"),
+    project.agents.append(ExternalAgent(
+        name="ref", description="An external reviewer.",
+        config=ExternalAgentConfig(source="other:doc"),
+        transfer_on=[EventDef(name="done")],
     ))
 
     plan, errors, _ = _plan_outputs(project)
@@ -388,7 +375,7 @@ def test_pointer_targets_are_exactly_the_components_that_get_a_file():
     planned = [p.component for p in plan if p.kind in ("skill", "agent")]
     pointed = emitted_components(project)
     assert {id(c) for c in pointed} == {id(c) for c in planned}
-    # 참조 용도 랩핑 스킬은 양쪽 모두에서 빠진다(파일도, 포인터도 없다).
+    # 산출 파일이 없는 종류는 양쪽 모두에서 빠진다(파일도, 포인터도 없다).
     assert "ref" not in {c.name for c in pointed}
 
 

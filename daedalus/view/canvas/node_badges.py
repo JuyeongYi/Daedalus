@@ -98,14 +98,14 @@ def badges_for(component: object) -> list[tuple[str, str]]:
         return []
     result: list[tuple[str, str]] = []
 
-    # WP-WR — 본문의 정본이 외부에 있는 컴포넌트는 소스를 뱃지로 보인다
+    # 본문의 정본이 외부에 있는 컴포넌트는 소스를 뱃지로 보인다
     # (미지정도 표시 — 배치는 됐는데 소스가 빈 노드를 화면에서 바로 잡는다).
     # 종류가 아니라 `BODY_SOURCE` 선언이 답한다(WP-7 ②) — 종류로 물으면
     # 정본이 외부인 새 종류에 뱃지가 **조용히** 붙지 않는다.
     #
     # 아이콘·종류 이름도 선언에서 가져온다(WP-9 리뷰 반영): 술어만 종류 중립이고
-    # 문구가 랩핑 스킬로 굳어 있으면, 외부 플러그인 **에이전트** 노드가 캔버스에서
-    # 🔗 "랩핑 스킬"로 불린다(스멜 ⑤ — 두 번째 종류가 이 줄에 닿는 순간 드러났다).
+    # 문구가 한 종류로 굳어 있으면 다른 종류의 노드가 캔버스에서 틀린 이름으로
+    # 불린다(스멜 ⑤ — 두 번째 종류가 이 줄에 닿는 순간 드러났다).
     from daedalus.model.plugin.skill import has_external_body
 
     if has_external_body(component):

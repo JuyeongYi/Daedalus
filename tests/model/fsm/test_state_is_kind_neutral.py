@@ -3,7 +3,7 @@
 
 예전 `SimpleState.skill_ref`의 타입은 `StepSkill | DeclarativeSkill |
 AgentDefinition | None`이라는 **종류 열거 표**였는데, 배치 가능한
-`WrappedSkill`이 빠져 있어도 아무것도 실패하지 않았다 — 타입 주석뿐이라
+배치 가능한 종류가 빠져 있어도 아무것도 실패하지 않았다 — 타입 주석뿐이라
 런타임이 읽지 않는 표였고, 새 종류를 더한 사람에게 "여기도 고쳐라"라고
 말해 주는 장치가 없었다(카탈로그 M11 👻, 스멜 ⑤).
 
@@ -28,8 +28,8 @@ _STATE_PY = (
 FORBIDDEN_NAMES: frozenset[str] = frozenset({
     "Skill", "StepSkill", "ForkSkill", "Agent",
     "ProceduralSkill", "SyncForkSkill", "AsyncForkSkill", "DeclarativeSkill",
-    "TransferSkill", "ReferenceSkill", "WrappedSkill", "AgentDefinition",
-    "ForkAgent",
+    "TransferSkill", "ReferenceSkill", "AgentDefinition",
+    "ForkAgent", "ExternalAgent",
 })
 
 

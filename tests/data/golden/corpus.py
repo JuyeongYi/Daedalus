@@ -2,9 +2,8 @@
 """골든 코퍼스 — 리팩토링 안전망이 렌더하는 두 벌의 프로젝트 (WP-0).
 
 두 벌인 이유(REFACTOR_SPEC §8): 실사용 프로젝트 하나만으로는 산출 경로가
-0줄로 남는 종류가 있다 — dogfood(`project/daedalus_cc_plugin/`)의 랩핑 스킬
-9개는 **전부 usage=reference**라 `compile_wrapped_runner`·state 용도 랩핑
-스킬이 한 번도 돌지 않고, async fork 스킬도 없다.
+0줄로 남는 종류가 있다 — dogfood(`project/daedalus_cc_plugin/`)에는 async fork
+스킬도 fork 에이전트도 없다.
 
 ① **dogfood** — 실사용 프로젝트의 **동결 사본**(`dogfood.daedalus.json`).
    살아 있는 작업 사본(`project/daedalus_cc_plugin/.daedalus.json`)은 **읽지
@@ -19,9 +18,9 @@
    회귀로 오해하지 말 것 — 사용자가 그 작업 사본을 커밋하면 그때 다시 떠서
    출처를 git 이력으로 되돌리면 된다.
 
-② **synthetic** — 여기서 조립하는 합성 프로젝트. 10종 전부 ×
-   (배치/미배치) × (블랙보드 유/무) × 랩핑 스킬 3상태(state/reference/
-   enabled=False) × async fork × fork 에이전트 × **훅을 가진 ReferenceSkill**
+② **synthetic** — 여기서 조립하는 합성 프로젝트. 9종 전부 ×
+   (배치/미배치) × (블랙보드 유/무) × async fork × fork 에이전트 ×
+   **훅을 가진 ReferenceSkill**
    (D6 수정이 산출을 바꾸는 자리 — 골든 diff로 보이게 한다) ×
    **산출 파일이 없는 외부 플러그인 에이전트**(WP-9 — 계획에 행이 오르지 않고
    부르는 쪽 텍스트만 바뀌는 것을 골든이 증명한다).
@@ -32,7 +31,7 @@ builders를 고치면 골든이 따라 움직인다(사본을 두면 그 연결�
 컴포넌트 **조립**은 위임하지 않는다: builders의 팩토리 5종
 (`make_procedural`/`make_declarative`/`make_transfer`/`make_reference`/`make_agent`)은
 9종 중 5종만 덮고, 각자 고정된 config·body·포트를 갖는다. 이 코퍼스가 요구하는
-축(배치/미배치 · 블랙보드 유/무 · 랩핑 3상태 · async fork · fork 에이전트 ·
+축(배치/미배치 · 블랙보드 유/무 · async fork · fork 에이전트 ·
 훅을 가진 ReferenceSkill)은 그 고정값을 전부 덮어써야 해서, 위임하면 인자만
 늘고 읽기는 나빠진다. 그래서 여기서 직접 조립한다 — REFACTOR_SPEC §8의
 "builders.py로 조립한다"는 문장은 이 범위로 좁혀 읽는다.
@@ -65,7 +64,6 @@ from daedalus.model.plugin.config import (
     ReferenceSkillConfig,
     SyncForkSkillConfig,
     TransferSkillConfig,
-    WrappedSkillConfig,
 )
 from daedalus.model.plugin.enums import (
     AgentColor,
@@ -82,7 +80,6 @@ from daedalus.model.plugin.skill import (
     ReferenceSkill,
     SyncForkSkill,
     TransferSkill,
-    WrappedSkill,
 )
 from daedalus.model.plugin.workspace_doc import WorkspaceDoc
 from daedalus.model.project import PluginProject, ReferencePlacement
@@ -142,7 +139,6 @@ def _stamp_ids(project: PluginProject, prefix: str) -> PluginProject:
 
 # ─────────────────────────── 합성 코퍼스 ───────────────────────────
 
-_PLUGIN_SOURCE = "ext-pack:outer-skill"
 #: 외부 플러그인 **에이전트** 참조 (WP-9). 플러그인 id는 랩핑 스킬과 같은
 #: `ext-pack`이라 사용 선언(`external_plugins`)을 새로 늘리지 않는다 —
 #: 배선·경고 집합이 그대로여야 이 코퍼스가 보는 변화가 산출 텍스트뿐이다.
@@ -183,7 +179,7 @@ def _hook_library() -> list[HookDef]:
     `emitted_hooks`는 라이브러리 소유 훅을 `enabled` 스위치로 거르므로
     `enabled=False`인 훅은 전역 배출 경로로 들어오지 않는다. 그래서 이 훅의
     스크립트가 산출되는 유일한 길은 `hooks_needing_scripts`의 **스킬 루프**뿐이고,
-    오늘은 그 루프의 `is_reference_usage` 게이트가 참조 용도 스킬을 건너뛴다.
+    오늘은 그 루프의 배치 용도 게이트가 참조 스킬을 건너뛴다.
     D6(게이트 제거)이 들어오면 `ref-only.sh`가 새로 나타나 골든 해시가 움직인다 —
     `enabled=True`인 훅(guard-bash 등)만 참조하면 그 변화가 통째로 가려진다.
     """
@@ -278,34 +274,6 @@ def _components() -> dict[str, object]:
             body="# Contract\n\nReference body.\n",
             config=ReferenceSkillConfig(hooks={"guard-bash": {}, "ref-only": {}}),
         ),
-        "wrapped_state": WrappedSkill(
-            fsm=_skill_fsm("wrapped-state"),
-            name="wrapped-state",
-            description="Wraps an external skill as a workflow step",
-            when_to_use="the external procedure is the step",
-            config=WrappedSkillConfig(source=_PLUGIN_SOURCE, usage="state", enabled=True),
-            transfer_on=[EventDef("done")],
-        ),
-        "wrapped_reference": WrappedSkill(
-            fsm=_skill_fsm("wrapped-reference"),
-            name="wrapped-reference",
-            description="Wraps an external skill as a reference node",
-            when_to_use="the external document is consulted",
-            config=WrappedSkillConfig(
-                source=_PLUGIN_SOURCE, usage="reference", enabled=True,
-            ),
-            transfer_on=[EventDef("done")],
-        ),
-        "wrapped_disabled": WrappedSkill(
-            fsm=_skill_fsm("wrapped-off"),
-            name="wrapped-off",
-            description="Wrapped skill that is switched off",
-            when_to_use="never — it is disabled",
-            config=WrappedSkillConfig(
-                source="ext-pack:retired-skill", usage="state", enabled=False,
-            ),
-            transfer_on=[EventDef("done")],
-        ),
         "agent": AgentDefinition(
             fsm=_agent_fsm("worker"),
             name="worker",
@@ -357,10 +325,9 @@ def _place(project: PluginProject, parts: dict[str, object], *, blackboard: bool
     node_async = SimpleState(name="async-fork", skill_ref=parts["async_fork"])
     node_agent = SimpleState(name="worker", skill_ref=parts["agent"])
     node_reviewer = SimpleState(name="reviewer", skill_ref=parts["external_agent"])
-    node_wrapped = SimpleState(name="wrapped-state", skill_ref=parts["wrapped_state"])
     node_know = SimpleState(name="knowledge", skill_ref=parts["declarative"])
     graph.states += [
-        node_procedural, node_sync, node_async, node_agent, node_wrapped, node_know,
+        node_procedural, node_sync, node_async, node_agent, node_know,
         node_reviewer,
     ]
 
@@ -376,7 +343,7 @@ def _place(project: PluginProject, parts: dict[str, object], *, blackboard: bool
         source=node_sync, target=node_agent, trigger=CompletionEvent(name="failed"),
     ))
     graph.transitions.append(Transition(
-        source=node_async, target=node_wrapped, trigger=CompletionEvent(name="started"),
+        source=node_async, target=node_know, trigger=CompletionEvent(name="started"),
     ))
     graph.transitions.append(Transition(
         source=node_procedural, target=node_agent,
@@ -398,7 +365,7 @@ def _place(project: PluginProject, parts: dict[str, object], *, blackboard: bool
         trigger=CompletionEvent(name="approved"),
     ))
     graph.transitions.append(Transition(
-        source=node_reviewer, target=node_wrapped,
+        source=node_reviewer, target=node_know,
         trigger=CompletionEvent(name="changes"),
     ))
 
@@ -406,10 +373,6 @@ def _place(project: PluginProject, parts: dict[str, object], *, blackboard: bool
         ReferencePlacement(
             skill_name="ref-with-hooks", x=10.0, y=20.0,
             connected_states=["placed-procedural", "worker"],
-        ),
-        ReferencePlacement(
-            skill_name="wrapped-reference", x=30.0, y=40.0,
-            connected_states=["placed-procedural"],
         ),
     ]
 
@@ -424,7 +387,6 @@ def build_synthetic(*, placed: bool, blackboard: bool) -> PluginProject:
         skills=[
             parts["procedural"], parts["sync_fork"], parts["async_fork"],
             parts["declarative"], parts["transfer"], parts["reference"],
-            parts["wrapped_state"], parts["wrapped_reference"], parts["wrapped_disabled"],
         ],
         agents=[parts["agent"], parts["fork_agent"], parts["external_agent"]],
         hook_library=_hook_library(),
@@ -438,7 +400,7 @@ def build_synthetic(*, placed: bool, blackboard: bool) -> PluginProject:
             paths=["src/**/*.py"],
         )],
         mcp_server_defs={"golden-server": {"type": "http", "url": "http://127.0.0.1:9/mcp"}},
-        # "ext-pack"은 랩핑 스킬 source의 플러그인 id와 정확히 일치해 배선이
+        # "ext-pack"은 외부 에이전트 source의 플러그인 id와 정확히 일치해 배선이
         # 나가고, "spare-pack@golden-market"은 선언만 되어 있어
         # unused_external_plugin 경고를 태운다(경고 순서도 골든이다).
         external_plugins=["ext-pack", "spare-pack@golden-market"],

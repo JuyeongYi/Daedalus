@@ -72,7 +72,7 @@ def _draggable(section) -> bool:
 
 
 @pytest.mark.parametrize(
-    "kind", ["procedural", "sync_fork", "async_fork", "wrapped", "reference", "agent"]
+    "kind", ["procedural", "sync_fork", "async_fork", "reference", "agent"]
 )
 def test_canvas_placeable_items_stay_draggable(window, kind):
     """참조 스킬은 상태 노드는 못 되지만 참조 노드로 놓인다 — 드래그 가능."""

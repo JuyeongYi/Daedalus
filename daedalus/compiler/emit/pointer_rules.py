@@ -42,15 +42,15 @@ def _blackboard_guide_available(project) -> bool:
 def workflow_pointer_kind(component, project) -> str:
     """이 컴포넌트가 받는 워크플로 가이드 포인터 종류 — "" | "main" | "fork".
 
-    "main"은 **메인 대화에서 도는 배치 컴포넌트**다(배치된 절차형·선언형·state
-    용도 랩핑 스킬·워크플로 에이전트, placement가 있는 프로젝트의 전이 스킬).
+    "main"은 **메인 대화에서 도는 배치 컴포넌트**다(배치된 절차형·선언형
+    스킬·워크플로 에이전트, placement가 있는 프로젝트의 전이 스킬).
 
     fork 스킬은 "fork"다 — 가이드 2·3절("진행 기록을 이렇게 갱신하라", "current가
     다르면 사용자에게 확인하라")은 fork 자신의 "## Report"("진행 파일을 네가
     갱신하지 말라")와 정면으로 충돌하고, fork 서브에이전트는 사용자에게 되물을
     수도 없다. 그래서 보고 양식만 가리키는 전용 줄을 낸다.
 
-    fork 에이전트·참조 스킬·랩핑 실행 에이전트·미배치 스킬은 대상이 아니다("").
+    fork 에이전트·참조 스킬·미배치 스킬은 대상이 아니다("").
 
     **종류 쪽 판정은 절 적용 표의 `GuidePointerRule` 한 줄이다**(WP-6 — 종전에는
     `PLACEMENT`/`RUNS_IN_SUBAGENT`/`IS_FORK_BASE`를 여기서 다시 조합했다).
@@ -68,9 +68,9 @@ def workflow_pointer_kind(component, project) -> str:
     if not _graph_placements(component, project):
         return ""
     if is_reference_placed(component):
-        # 참조 노드는 스스로 워크플로를 진행시키지 않는다. 참조 용도 랩핑
-        # 스킬은 산출 파일도 없지만, D1 이전에 만든 `.ddpj`에는 state 노드로
-        # 박혀 있을 수 있어 여기까지 도달한다.
+        # 참조 노드는 스스로 워크플로를 진행시키지 않는다. 손으로 만든
+        # `.ddpj`에는 참조 스킬이 state 노드로 박혀 있을 수 있어 여기까지
+        # 도달한다.
         return ""
     return "fork" if rule is GuidePointerRule.FORK_IF_PLACED else "main"
 

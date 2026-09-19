@@ -31,12 +31,10 @@ from daedalus.compiler.emit import (
     compile_skill,
 )
 from daedalus.compiler.emit.guides import GUIDE_KINDS, compile_guide
-from daedalus.compiler.emit.wrapped import compile_wrapped_runner
 from daedalus.compiler.project_compiler import compile_project
 from daedalus.compiler.units import CompileContext, Planner
 from daedalus.compiler.workspace import render_rule
 from daedalus.model.plugin.roles import OutputLocation
-from daedalus.model.plugin.skill import WrappedSkill
 from daedalus.model.serialize import deserialize_project, serialize_project
 
 from tests.data.golden.corpus import DOGFOOD_JSON, iter_cases
@@ -71,11 +69,10 @@ def _rel(path: Path, root: Path) -> str:
 # ─────────────────────────── 공개 파사드 렌더 ───────────────────────────
 
 def facade_hashes() -> dict[str, str]:
-    """REFACTOR_SPEC §8이 지명한 공개 파사드 9종의 산출 텍스트 해시.
+    """REFACTOR_SPEC §8이 지명한 공개 파사드 8종의 산출 텍스트 해시.
 
     지명 목록과 실제 이름의 대응(전부 실존을 확인했다):
-    ``compile_skill`` · ``compile_agent`` · ``compile_wrapped_runner``
-    (``compiler.emit.wrapped``) · ``compile_hooks_json`` ·
+    ``compile_skill`` · ``compile_agent`` · ``compile_hooks_json`` ·
     ``compile_hook_scripts`` · ``compile_schemas_json`` ·
     ``compile_plugin_manifest`` · ``compile_guide``
     (``compiler.emit.guides``) · ``render_rule`` (``compiler.workspace``).
@@ -87,10 +84,6 @@ def facade_hashes() -> dict[str, str]:
             out[f"{prefix}/compile_skill/{skill.name}"] = _digest(
                 compile_skill(skill, project=project)
             )
-            if isinstance(skill, WrappedSkill):
-                out[f"{prefix}/compile_wrapped_runner/{skill.name}"] = _digest(
-                    compile_wrapped_runner(skill)
-                )
         for agent in project.agents:
             out[f"{prefix}/compile_agent/{agent.name}"] = (
                 _digest(compile_agent(agent, project))

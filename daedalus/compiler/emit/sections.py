@@ -11,7 +11,6 @@ from functools import singledispatch
 from daedalus.compiler.emit.common import (
     _graph_placements,
     delegate_to_phrase,
-    external_skill_name,
 )
 from daedalus.model.fsm.event import CompletionEvent
 from daedalus.model.fsm.guard import Guard
@@ -408,75 +407,6 @@ def _component_access_union(component, project) -> tuple[set[str], set[str]]:
     return reads, writes
 
 
-def linked_background_skills(component, project) -> list[tuple[str, str]]:
-    """이 컴포넌트의 배치 노드에 링크된 **참조 용도 랩핑 스킬** →
-    [(CC 명령 이름 `플러그인:스킬`, 랩퍼 description)] (WP-WR).
-
-    소비자가 둘이다 — 스킬 산출은 consult 지시 단락
-    (`_background_references_section`), 에이전트 산출은 `skills` 프론트매터
-    주입(`_agent_skills_list` — 외부 플러그인 스킬은 서브에이전트에서만 쓴다,
-    사용자 확정 2026-09-12). 판정을 한 곳에 둬야 둘이 같은 목록을 말한다.
-    비활성 랩퍼·source 형식 불일치는 빠진다. 명령 이름순 정렬 — 결정적.
-    ReferenceSkill(자체 산출이 있는 진짜 참조 문서)은 대상이 아니다.
-    """
-    if project is None:
-        return []
-    node_names = {
-        s.name for s in getattr(project.graph, "states", [])
-        if getattr(s, "skill_ref", None) is component
-    }
-    if not node_names:
-        return []
-    # **참조 노드로 쓰이는, 본문 정본이 외부인, 켜져 있는 스킬** — 세 능력
-    # 선언이 종전의 `kind == "wrapped_skill" and usage == "reference" and
-    # not disabled` 사다리를 그대로 대신한다(WP-2c). 자체 산출이 있는
-    # `ReferenceSkill`은 `BODY_SOURCE`가 OWNED라 자연 제외된다.
-    wrapped_refs = {
-        s.name: s for s in project.skills
-        if s.BODY_SOURCE is BodySource.EXTERNAL
-        and is_reference_placed(s)
-        and s.is_active()
-    }
-    entries: list[tuple[str, str]] = []
-    seen: set[str] = set()
-    for rp in getattr(project, "reference_placements", []) or []:
-        skill = wrapped_refs.get(rp.skill_name)
-        if skill is None or skill.name in seen:
-            continue
-        if not node_names & set(getattr(rp, "connected_states", []) or []):
-            continue
-        ext = external_skill_name(skill.external_source or "")
-        if not ext:
-            continue  # external_source_missing 소관 — 빈 지시를 내지 않는다
-        seen.add(skill.name)
-        entries.append((ext, skill.description))
-    entries.sort(key=lambda e: e[0])
-    return entries
-
-
-def _background_references_section(component, project) -> list[str]:
-    """링크된 참조 용도 랩핑 스킬 → consult 지시 단락 (WP-WR — 스킬 산출 전용).
-
-    참조 용도는 산출 파일이 없으므로 링크된 노드의 산출에 이 지시가 유일한
-    흔적이다. 에이전트는 이 단락 대신 `skills` 프론트매터로 주입받는다.
-    """
-    entries = linked_background_skills(component, project)
-    if not entries:
-        return []
-    lines = [
-        "## Background Skills",
-        (
-            "External skills linked to this step as background — invoke them "
-            "when their subject comes up (they are provided by plugins this "
-            "plugin depends on; no local copy exists):"
-        ),
-    ]
-    for name, description in entries:
-        suffix = f" — {description}" if description else ""
-        lines.append(f"- `/{name}`{suffix}")
-    return ["\n".join(lines)]
-
-
 def _blackboard_section(project, component) -> list[str]:
     """이 컴포넌트의 블랙보드 접근 선언 → '## Shared State (Blackboard)' 블록.
 
@@ -567,8 +497,7 @@ def _tool_shelf_section(project) -> list[str]:
 
 
 def _exits_section(events) -> list[str]:
-    """출구 목록 → "## Exits" 단락. 에이전트와 랩핑 스킬 실행 에이전트
-    (emit/wrapped.py)가 공유한다 — 호출자가 분기하는 규약이 같아야 한다."""
+    """출구 목록 → "## Exits" 단락 (에이전트 산출)."""
     if not events:
         return []
     lines = [

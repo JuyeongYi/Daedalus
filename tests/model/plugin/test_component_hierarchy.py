@@ -34,7 +34,6 @@ from daedalus.model.plugin.config import (
     StepSkillConfig,
     SyncForkSkillConfig,
     TransferSkillConfig,
-    WrappedSkillConfig,
 )
 from daedalus.model.plugin.kinds import KIND_REGISTRY
 from daedalus.model.plugin.field_matrix import (
@@ -52,7 +51,6 @@ from daedalus.model.plugin.skill import (
     StepSkill,
     SyncForkSkill,
     TransferSkill,
-    WrappedSkill,
 )
 
 
@@ -61,13 +59,12 @@ def _fsm(name: str = "m") -> StateMachine:
     return StateMachine(name=name, states=[s], initial_state=s)
 
 
-#: (클래스, 생성 kwargs) — 구체 컴포넌트 9종… 중 스킬 7종 + 에이전트 2종.
+#: 구체 컴포넌트 9종 — 스킬 6종 + 에이전트 3종.
 def _components() -> list[object]:
     return [
         ProceduralSkill(fsm=_fsm(), name="p", description="d"),
         SyncForkSkill(fsm=_fsm(), name="sf", description="d"),
         AsyncForkSkill(fsm=_fsm(), name="af", description="d"),
-        WrappedSkill(fsm=_fsm(), name="w", description="d"),
         TransferSkill(fsm=_fsm(), name="t", description="d"),
         DeclarativeSkill(name="dc", description="d"),
         ReferenceSkill(name="r", description="d"),
@@ -105,11 +102,11 @@ def test_concrete_classes_do_not_inherit_concrete_classes():
         AgentConfigBase,
     }
     concrete = [
-        ProceduralSkill, SyncForkSkill, AsyncForkSkill, WrappedSkill,
+        ProceduralSkill, SyncForkSkill, AsyncForkSkill,
         TransferSkill, DeclarativeSkill, ReferenceSkill,
         AgentDefinition, ForkAgent,
         ProceduralSkillConfig, SyncForkSkillConfig, AsyncForkSkillConfig,
-        WrappedSkillConfig, TransferSkillConfig, DeclarativeSkillConfig,
+        TransferSkillConfig, DeclarativeSkillConfig,
         ReferenceSkillConfig, AgentConfig, ForkAgentConfig,
     ]
     for cls in concrete:
@@ -131,10 +128,8 @@ def test_step_skill_covers_procedural_and_both_forks():
         assert isinstance(skill, StepSkill)
         assert isinstance(skill, ForkSkill)
         assert not isinstance(skill, ProceduralSkill)
-    # WrappedSkill은 단계지만 계열이 다르다(본문 정본이 외부).
-    assert not isinstance(
-        WrappedSkill(fsm=_fsm(), name="w", description="d"), StepSkill
-    )
+    # 참조 스킬은 단계가 아니다.
+    assert not isinstance(ReferenceSkill(name="r", description="d"), StepSkill)
 
 
 def test_fork_agent_is_agent_but_not_workflow_agent():
@@ -163,7 +158,7 @@ def test_dataclass_field_order_is_unchanged():
         "fsm", "name", "description", "when_to_use", "config", "body",
         "transfer_on", "call_agents", "id",
     ]
-    for cls in (ProceduralSkill, SyncForkSkill, AsyncForkSkill, WrappedSkill):
+    for cls in (ProceduralSkill, SyncForkSkill, AsyncForkSkill):
         assert list(inspect.signature(cls).parameters) == step_order, cls.__name__
     # 그래프 소유 필드 4종(execution_policy/reference_placements/graph_layout/
     # edge_layout)은 2026-09-19(WP-1 D8)에 퇴역했다 — 에이전트는 그래프에
@@ -219,7 +214,6 @@ _EXPECTED_KINDS = {
     "procedural_skill": "procedural",
     "sync_fork_skill": "sync_fork",
     "async_fork_skill": "async_fork",
-    "wrapped_skill": "wrapped",
     "transfer_skill": "transfer",
     "declarative_skill": "declarative",
     "reference_skill": "reference",
