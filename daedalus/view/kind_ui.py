@@ -33,7 +33,12 @@ from typing import Any
 
 from PySide6.QtGui import QColor
 
-from daedalus.model.plugin.agent import AgentDefinition, ExternalAgent, ForkAgent
+from daedalus.model.plugin.agent import (
+    AgentDefinition,
+    ExternalAgent,
+    ExternalForkAgent,
+    ForkAgent,
+)
 from daedalus.model.plugin.kinds import KIND_REGISTRY, spec_by_config_kind
 from daedalus.model.plugin.skill import (
     AsyncForkSkill,
@@ -205,6 +210,19 @@ KIND_UI: dict[str, KindUI] = {
         dialog_title="새 External Agent",
         editor_factory=_agent_editor,
         tab_prefix="🔌 ",
+    ),
+    # 외부 플러그인 에이전트를 **fork 실행 기반**으로 쓰는 역할(WP-EX). 같은
+    # 자톤에 fork 에이전트의 🧩를 겹쳐 "외부 + fork"를 한눈에 말한다 — 배치되지
+    # 않으므로 노드 스타일은 없다(ForkAgent와 같은 이유).
+    ExternalForkAgent.KIND: KindUI(
+        icon="🔌🧩",
+        section_label="🔌🧩 EXTERNAL FORK AGENTS",
+        section_color=QColor("#cc88bb"),
+        tab_label="🔌🧩",
+        node_style=None,
+        dialog_title="새 External Fork Agent",
+        editor_factory=_agent_editor,
+        tab_prefix="🔌🧩 ",
     ),
 }
 

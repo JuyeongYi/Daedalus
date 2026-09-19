@@ -953,7 +953,7 @@
         "disable_model_invocation": null,
         "user_invocable": null,
         "shell": "bash",
-        "agent": "hookify:conversation-analyzer"
+        "agent": "conversation-analyzer"
       },
       "fsm": {
         "id": "9259e361a335496fb55f17387a3d4235",
@@ -1474,6 +1474,20 @@
         "color": null
       },
       "body": "# 검증 분석가 — 읽고 해석하고 보고한다\n\n너는 Daedalus 프로젝트의 검증 결과를 해석하는 분석가다. 무엇을 할지(검증 절차·갈래 기준)는\n작업 지시로 따로 온다. 이 파일은 네 역할과 한계를 정한다.\n\n## 고치지 않는다\n\n그래프·본문·프론트매터를 직접 고치지 마라 — 편집 도구가 없는 것은 의도다. 고칠 것은\n\"무엇을, 왜\"로 정리해 블랙보드 `VerifyResult.blocking`에 적고, 그것을 고칠 단계로 넘긴다.\n검증 단계가 몰래 고치면 받는 쪽이 무엇이 바뀌었는지 모르고, 사용자의 undo 이력도 뒤섞인다.\n\n## 해석한다\n\n- 경고를 건수로 넘기지 마라. 규칙마다 \"왜 나왔고 무엇을 의미하는가\"를 한 줄로 적는다.\n- 프론트매터 키 케이싱·빌드 타깃 제약 같은 규격 판단은 미리 올라온 `cc-plugin-spec`을,\n  컴포넌트 종류·포트 의미론은 `daedalus-model`을 근거로 삼는다. 짐작으로 판단하지 마라.\n- 설계 결정이 필요한 경고(두 방향 중 선택)는 네가 고르지 말고 보고에 선택지를 적는다.\n\n## 보고한다\n\n작업 지시의 보고 양식(첫 줄 `EXIT: … / NEXT: …`)을 지킨다. 본문에는 에러·경고를 계열별로\n묶어 해석과 함께 적는다. 사용자에게 직접 묻지 마라 — 너는 서브에이전트라 보고를 받은\n메인 대화가 묻는다.\n"
+    },
+    {
+      "kind": "external_fork_agent",
+      "id": "d420a8c061eee00bb6b55dd22b415bb6",
+      "name": "conversation-analyzer",
+      "description": "External plugin agent used as a fork execution base (hookify:conversation-analyzer).",
+      "config": {
+        "kind": "external_fork_agent",
+        "model": "inherit",
+        "effort": null,
+        "hooks": null,
+        "source": "hookify:conversation-analyzer"
+      },
+      "body": ""
     }
   ],
   "reference_placements": [

@@ -22,30 +22,39 @@ KINDS: tuple[str, ...] = convert_family_kinds(StepSkill.CONVERT_FAMILY)
 
 
 def fork_agent_choices(project) -> list[tuple[str, str]]:
-    """fork 스킬이 고를 수 있는 에이전트 [(값, 설명)] — 순서: 내장 → 외부 → 프로젝트.
+    """fork 스킬이 고를 수 있는 에이전트 [(값, 설명)] — 순서: 내장 → 프로젝트.
 
-    세 종류뿐이다(사용자 확정): 내장, 사용 선언한 외부 플러그인의 에이전트,
-    프로젝트의 **fork 에이전트**. 워크플로 에이전트는 후보가 아니다 — 종류가
-    다르다(예전에는 "배치되지 않은 워크플로 에이전트"였는데, 그 판정은 배치를
-    지우면 조용히 겸직이 생겼다).
+    두 갈래뿐이다(**역할 고정**, 사용자 확정 2026-09-19): 내장
+    (`BUILTIN_FORK_AGENTS`)과 프로젝트에 **등록된** fork 실행 기반
+    (`IS_FORK_BASE` — 자체 `ForkAgent`와 외부 `ExternalForkAgent`).
+
+    예전에는 "사용 선언한 외부 플러그인의 에이전트"를 `플러그인:이름` **문자열**
+    후보로 흘려 넣었다. 그러면 같은 외부 에이전트가 어디서는 컴포넌트(그래프
+    노드)이고 어디서는 이름뿐인 문자열이라, 역할도 검증도 두 갈래가 됐다. 이제는
+    **먼저 컴포넌트로 등록**하고 그 이름을 고른다 — 산출의 `agent:`에 나가는
+    source 원문 해소는 `emit/common.agent_invocation_name`이 맡는다.
+
+    워크플로 에이전트는 후보가 아니다 — 종류가 다르다(예전에는 "배치되지 않은
+    워크플로 에이전트"였는데, 그 판정은 배치를 지우면 조용히 겸직이 생겼다).
     """
     from daedalus.model.plugin.config import BUILTIN_FORK_AGENTS
 
     rows = [(name, "내장 에이전트") for name in BUILTIN_FORK_AGENTS]
     if project is None:
         return rows
-    from daedalus.model.plugin.wrap_catalog import used_plugin_agents
-
-    for agent in used_plugin_agents(project):
-        note = "외부 플러그인 에이전트"
-        if agent.description:
-            note += f" — {agent.description}"
-        rows.append((agent.agent_type, note))
     # fork 스킬의 실행 기반이 될 수 있는가 — 종류가 아니라 선언이 답한다
-    # (WP-2d Q27: `IS_FORK_BASE`).
+    # (WP-2d Q27: `IS_FORK_BASE`). 설명은 **외부 정본 유무**가 가른다: 외부
+    # 기반은 우리가 파일을 내지 않으므로 어느 플러그인의 것인지가 보여야 한다.
     for agent in sorted(project.agents, key=lambda a: a.name):
-        if agent.IS_FORK_BASE:
-            rows.append((agent.name, "프로젝트 fork 에이전트"))
+        if not agent.IS_FORK_BASE:
+            continue
+        source = agent.external_source
+        note = (
+            f"외부 플러그인 fork 에이전트 — {source or '(source 미지정)'}"
+            if source is not None
+            else "프로젝트 fork 에이전트"
+        )
+        rows.append((agent.name, note))
     return rows
 
 
@@ -59,6 +68,17 @@ def validate_fork_agent(project, value: str) -> None:
             f"'{value}'은(는) 워크플로 에이전트라 fork 에이전트가 될 수 없습니다 — "
             f"워크플로 에이전트는 캔버스 노드이고 fork 에이전트는 fork 스킬의 실행 "
             f"기반입니다. fork 에이전트 종류로 새로 만들거나 다른 에이전트를 고르세요."
+        )
+    if ":" in value:
+        # `플러그인:이름` 원문을 직접 적은 경우 — 예전 후보 형식이다. 받아 주면
+        # 그 외부 에이전트가 컴포넌트로 등록되지 않은 채 산출에만 나가고,
+        # 사용 선언·역할 고정·검증이 전부 비켜 간다(원칙 5).
+        raise ValueError(
+            f"'{value}'은(는) 외부 플러그인 에이전트 원문입니다 — fork 실행 기반은 "
+            f"**먼저 등록**해야 고를 수 있습니다(레지스트리 🔌 탭 / "
+            f'create_agent(kind="external_fork_agent", source="{value}")). '
+            f"등록한 뒤 그 컴포넌트 이름을 고르세요. "
+            f"사용 가능: {', '.join(values)}"
         )
     raise ValueError(
         f"'{value}'은(는) 고를 수 있는 에이전트가 아닙니다(정확 일치 — 대소문자 "

@@ -23,6 +23,7 @@ from __future__ import annotations
 
 def make_component(
     window, kind: str, name: str, description: str = "", agent: str | None = None,
+    source: str | None = None,
 ):
     """모델 객체만 만든다(프로젝트에 넣지 않는다). 미지 종류는 ``None``.
 
@@ -35,6 +36,9 @@ def make_component(
     FSM 팩토리는 창의 `_make_fsm`/`_make_agent_fsm`을 쓴다 — 레지스트리 생성
     경로가 쓰는 것과 같은 팩토리여야 만들어진 물건이 같다. 어느 쪽을 쓸지는
     버킷 선언이 답한다.
+
+    `agent`·`source`는 **종류별 생성 인자**다(fork 스킬의 실행 기반 / 외부 정본
+    참조) — 그 종류가 쓸 수 없는 인자는 여기 오기 전에 호출자가 거절한다.
 
     `description`은 MCP `create_skill`/`create_agent`가 생성과 동시에 설명을
     받기 때문에 있다(S1 — 그쪽이 자체 팩토리 dict를 들고 있던 것을 여기로
@@ -53,13 +57,13 @@ def make_component(
         window._make_agent_fsm if spec.bucket is Bucket.AGENTS else window._make_fsm
     )
     return spec.component_cls.new(
-        name, description, fsm_factory=fsm_factory, agent=agent
+        name, description, fsm_factory=fsm_factory, agent=agent, source=source
     )
 
 
 def create_and_place(
     scene, window, kind: str, name: str, x: float, y: float, description: str = "",
-    agent: str | None = None,
+    agent: str | None = None, source: str | None = None,
 ) -> object | None:
     """컴포넌트를 만들고 (배치 대상이면) 그 좌표에 놓는다 — 1 undo 단위.
 
@@ -82,7 +86,9 @@ def create_and_place(
     project = window._project
     if project is None:
         return None
-    component = make_component(window, kind, name, description, agent=agent)
+    component = make_component(
+        window, kind, name, description, agent=agent, source=source
+    )
     if component is None:
         return None
 

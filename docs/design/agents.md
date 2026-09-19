@@ -1,11 +1,11 @@
-# 에이전트 — 세 종류, 본문 + 출력 포트 (WP-AF / WP-FK2 / WP-9)
+# 에이전트 — 네 종류, 본문 + 출력 포트 (WP-AF / WP-FK2 / WP-9 / WP-EX)
 
 > CLAUDE.md에서 이관한 설계 기록(2026-09-12, 원문 그대로). 코드와 어긋나면 코드가
 > 정본이다 — 발견 즉시 이 문서를 고친다. 색인은 루트 `CLAUDE.md`의 "설계 문서" 절.
 
 ## 에이전트 두 종류 (WP-FK2, 사용자 확정 2026-09-17)
 
-> 2026-09-19에 세 번째 종류 `ExternalAgent`가 붙었다 — 이 절의 두 종류 비교는 **우리가 파일을 내는** 에이전트 둘에 대한 것이고, 외부 플러그인 에이전트는 맨 아래 "## 외부 플러그인 에이전트" 절에 따로 있다.
+> 2026-09-19에 외부 플러그인 에이전트 2종(`ExternalAgent`·`ExternalForkAgent`)이 붙어 종류는 넷이다 — 이 절의 두 종류 비교는 **우리가 파일을 내는** 에이전트 둘에 대한 것이고, 외부 2종은 아래 "## 외부 플러그인 에이전트" 절에 따로 있다.
 
 `Agent(PluginComponent, ABC)`가 추상 부모이고 구체 종류는 둘이다 — 계층·config 표는 `plugin-model.md`.
 
@@ -30,7 +30,8 @@
   컴파일러는 뷰를 임포트할 수 없으므로(import 계약) 실체가 모델에 있어야 한다 —
   `compiler/emit/fork.fork_skills_using`은 이 함수를 재-export하는 얇은 껍데기다.
 - **검증:** 워크플로 에이전트를 fork 스킬의 `agent`로 지목하면 에러 `fork_agent_wrong_kind`(배치 여부 무관 —
-  퇴역한 `fork_agent_placed`는 배치를 봤다), 아무 fork 스킬도 부르지 않는 ForkAgent는 경고 `unused_fork_agent`.
+  퇴역한 `fork_agent_placed`는 배치를 봤다), 아무 fork 스킬도 부르지 않는 fork 실행 기반은 경고
+  `unused_fork_agent`(`IS_FORK_BASE` 선언이 대상을 정하므로 `ExternalForkAgent`도 함께 받는다).
   `fork_agent_isolation_ignored`는 필드 자체가 없어져 퇴역했다.
 
 ## 에이전트 — 본문 + 출력 포트 (WP-AF, 내부 FSM 퇴역)
@@ -99,21 +100,35 @@
   상태(SimpleState 등)가 있을 때만, "## Exits"는 transfer_on 기반(`_agent_outputs_section` — 완료 보고
   첫 줄에 출구 명시 지시 + description 병기)이며 **둘 다 워크플로 에이전트 전용**이다.
 
-## 외부 플러그인 에이전트 (`ExternalAgent`, WP-9)
+## 외부 플러그인 에이전트 — 역할 2종 (WP-9 / WP-EX)
 
-> 다른 플러그인이 소유한 서브에이전트를 **내 워크플로의 노드로** 쓴다.
-> `config.source = "플러그인[@마켓]:이름"`, 산출 파일 없음, 그래프 노드(포트 있음), 내부 FSM 없음.
+> 다른 플러그인이 소유한 서브에이전트를 쓰는 길은 둘이고, **등록 시점에 역할이
+> 고정된다**(사용자 확정 2026-09-19): 내 워크플로의 **그래프 노드**로 쓰거나
+> (`ExternalAgent`), fork 스킬의 **실행 기반**으로 쓰거나(`ExternalForkAgent`).
+> 둘 다 `config.source = "플러그인[@마켓]:이름"`이고 산출 파일이 없다.
 
-| | `ExternalAgent` (kind `external_agent`) |
-|---|---|
-| 뜻 | 설치된 다른 플러그인의 서브에이전트를 그래프 노드로 지목 |
-| 부르는 것 | 호출자의 `call_agents` 포트에서 나가는 전이 (워크플로 에이전트와 같다) |
-| fsm | **없다** — 그 에이전트의 절차는 남의 파일이다 |
-| transfer_on / call_agents / 배치 | 있다 (단일 배치 상태 노드) |
-| config | `ExternalAgentConfig` — **`source` 하나뿐**이고 `ComponentConfig` 직속이다 |
-| 산출 | **없다.** `OUTPUT_LOCATION=NONE` — emitter도 미리보기도 없다 |
-| 편집기 | AgentEditor(포트·호출자 패널) + 중앙은 본문 편집기 대신 원본 패널 |
-| 탭 접두 | 🔌 |
+| | `ExternalAgent` (kind `external_agent`) | `ExternalForkAgent` (kind `external_fork_agent`) |
+|---|---|---|
+| 뜻 | 그 서브에이전트를 **그래프 노드**로 지목 | 그 서브에이전트를 **fork 스킬의 실행 기반**으로 지목 |
+| 부르는 것 | 호출자의 `call_agents` 포트에서 나가는 전이 | `config.agent`로 지목한 fork 스킬 |
+| fsm | **없다** — 그 에이전트의 절차는 남의 파일이다 | **없다** |
+| transfer_on / call_agents / 배치 | 있다 (단일 배치 상태 노드) | **없다** — 결과 갈래는 부르는 fork 스킬의 보고 양식이 정한다 |
+| config | `ExternalAgentConfig` | `ExternalForkAgentConfig` — 둘 다 **`source` 하나뿐**이고 공통 추상 `ExternalSourceConfig`를 상속한다 |
+| 산출 | **없다.** `OUTPUT_LOCATION=NONE` — emitter도 미리보기도 없다 | **없다** (같다) |
+| 편집기 | AgentEditor(포트·호출자 패널) + 중앙은 본문 편집기 대신 원본 패널 | AgentEditor(🍴 사용하는 fork 스킬 패널) + 같은 원본 패널 |
+| 탭 접두 | 🔌 | 🔌🧩 |
+
+**역할 고정 (사용자 확정 2026-09-19).** 같은 `source`를 두 역할로, 또는 같은 역할로 두 번
+등록할 수 없다 — `external_source_role_conflict` **에러**이고 두 컴포넌트 모두를 짚는다
+(어느 하나만 지목하면 "이쪽이 옳다"는 거짓말이 된다). 역할 전환 액션도 없다: 지우고 다시
+만든다. 판정은 종류를 묻지 않고 `external_source` **원문 정확 일치**만 본다
+(`alpha@mkt:x` ≠ `alpha:x` — 설치 대상이 다를 수 있다). 빈/깨진 source는 제외한다
+(그쪽은 `external_source_missing` 소관이고, 편집 중인 빈 칸 둘을 충돌로 보고하면
+만들자마자 에러가 뜬다).
+
+**두 종류의 공통 구현은 `ExternalSourceMixin` 한 곳이다**(`external_source` ·
+`external_plugin_refs()` · 생성 시드의 `config`). 상속 순서까지가 계약이다 —
+`plugin-model.md`의 클래스 계층 절 참조.
 
 **왜 `Agent` 직속인가.** 종전 `compile_agent`의 `isinstance(agent, AgentDefinition)`
 하나가 "그래프 노드인가 = 내부 FSM이 있는가 = 파일을 내는가"를 한꺼번에 답했다.
@@ -168,8 +183,9 @@ external plugin agent on node `X` has no usable `source` …"*, 서술 자리(�
 | 규칙 | 등급 | 합류 경로 |
 |---|---|---|
 | `external_source_missing` | 경고 | `external_source`가 `None`이 아닌 컴포넌트 전부 — 빈 값·형식 불일치 |
-| `undeclared_external_plugin` | 경고 | `external_plugin_refs()` — `external_plugins` 미선언. fork 스킬의 같은 사실이 **에러**(`fork_agent_undeclared_plugin`)인 비대칭은 `docs/backlog.md`에 결정으로 기록돼 있다(등급의 단일 진실이 규칙 **이름**의 집합이라 종류별 등급은 규칙을 쪼개야 한다) |
-| `transfer_on_not_empty` | 에러 | `REQUIRES_OUTPUT_PORTS=True` |
+| `undeclared_external_plugin` | 경고 | `external_plugin_refs()` — `external_plugins` 미선언. **이제 이 한 갈래뿐이다**: 종전에 fork 스킬의 같은 사실을 에러로 짚던 `fork_agent_undeclared_plugin`은 WP-EX에서 퇴역했다(외부 에이전트도 컴포넌트로 등록되므로 같은 참조 경로를 탄다 — 등급 비대칭이 사라졌다) |
+| `external_source_role_conflict` | 에러 | `external_source` 원문이 같은 컴포넌트가 2개 이상 — 역할 고정 |
+| `transfer_on_not_empty` | 에러 | `REQUIRES_OUTPUT_PORTS=True` (`ExternalAgent`만 — fork 기반은 포트가 없다) |
 | `agent_chain_too_deep` | 에러 | `DELEGATION_TARGET=True` — callee로 체인 깊이에 **합류한다** |
 | `agent_calls_higher_model` | – | **건너뛴다** (아래) |
 
@@ -179,10 +195,28 @@ external plugin agent on node `X` has no usable `source` …"*, 서술 자리(�
 에이전트를 판정하는 셈이라 실체 없는 에러가 된다. 깊이 규칙에서는 빼지 않는다:
 그 노드를 거치는 체인은 **실제로** 한 계층 깊어진다.
 
-**MCP.** `create_agent(name, kind="external_agent")`가 어휘에서 **파생**되므로 도구를
-고치지 않아도 받는다(F10 패리티). source는
-`set_component_field(name, "source", "플러그인:이름")`으로 채운다 — 매트릭스의
-비-FIXED 행이라 setter가 자동으로 허용한다.
+**fork 실행 기반으로 쓸 때의 이름 해소.** fork 스킬의 `agent:`에 나가는 값은
+`compiler/emit/common.agent_invocation_name`이 정한다 — 지목된 프로젝트 에이전트가
+`external_source`를 가지면 **source 원문 그대로**(타깃 무관)이고, 그 밖의 프로젝트
+에이전트만 타깃별 이름(`<플러그인>:<이름>` / `<이름>`)이 된다. 원문이 비었거나 깨졌으면
+`general-purpose`로 떨어뜨리지 않고 **`agent:` 줄 자체를 생략한다** — 떨어뜨리면 산출이
+조용히 다른 에이전트를 지목하고 컴파일은 `external_source_missing` 경고만 낸 채 성공한다
+(그래프 노드 쪽 `delegation_target_name`과 같은 규약).
+
+**fork 후보에서 문자열은 퇴역했다.** 종전에는 사용 선언한 플러그인의 에이전트를
+`플러그인:이름` 문자열 후보로 fork 스킬에 직접 흘려 넣었다(`wrap_catalog.used_plugin_agents`).
+같은 외부 에이전트가 어디서는 컴포넌트이고 어디서는 이름뿐인 문자열이라 역할도 검증도 두
+갈래였다 — 이제 후보는 내장과 **등록된 `IS_FORK_BASE` 컴포넌트**뿐이고, 원문을 적으면
+거절하며 등록하는 법을 말한다. 구버전 파일은 `serialize.migrate.migrate_external_fork_agents`가
+원문마다 `ExternalForkAgent` 하나를 만들어 흡수한다(원칙 7 — 같은 원문을 여러 스킬이
+가리키면 컴포넌트는 하나다).
+
+**MCP.** `create_agent(name, kind=…)`의 어휘는 레지스트리 **파생**이라 두 종류 모두
+자동으로 받는다(F10 패리티). `source`는 생성 인자로 함께 줄 수 있고
+(`create_agent(kind="external_fork_agent", source="플러그인:이름")` — 등록과 정본 지목이
+1 undo), 나중에 `set_component_field(name, "source", …)`로도 바꾼다(매트릭스의 비-FIXED
+행이라 setter가 자동으로 허용한다). `source`를 가질 수 없는 종류에 주면 **거절**하고 어느
+종류가 그 인자를 받는지 말한다(`create_skill(fork_agent=)` 선례).
 
 ## 외부 플러그인 스킬 — 사용 경로는 하나 (WP-B, 2026-09-19)
 

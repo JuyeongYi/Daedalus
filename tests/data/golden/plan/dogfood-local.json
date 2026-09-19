@@ -288,10 +288,6 @@
     ],
     [
       "unused_external_plugin",
-      "hookify@claude-plugins-official"
-    ],
-    [
-      "unused_external_plugin",
       "plugin-dev@claude-plugins-official"
     ],
     [

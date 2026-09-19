@@ -329,8 +329,13 @@ AST로 강제) `emit/guides.py`의 `WORKFLOW_GUIDE_KIND`/`BLACKBOARD_GUIDE_KIND`
       FIXED) `fork_frontmatter_lines`는 `agent:` **이름 해소만** 한다. 기본값 `general-purpose`도 **명시 배출**한다
       (결정적·읽는 사람에게 분명). 프로젝트 에이전트는 MARKETPLACE `플러그인:이름` / LOCAL `이름`
       (`resolve_fork_agent_name` → `emit/common.agent_invocation_name`: 위임 대상 이름은 컴포넌트가
-      `delegated_agent_name()`으로 답하고 빌드 타깃이 접두를 정한다), 내장·외부는 저장된 문자열
+      `delegated_agent_name()`으로 답하고 빌드 타깃이 접두를 정한다), 내장 이름은 저장된 문자열
       그대로다(정확 일치).
+    - **등록된 외부 fork 에이전트(`ExternalForkAgent`, WP-EX)는 `source` 원문을 낸다 — 타깃 무관.**
+      우리 산출에 그 이름의 파일이 없고 CC가 설치된 플러그인에서 정확 일치로 찾기 때문이다
+      (19-b의 `delegation_target_name`과 같은 근거, 다른 질문). **원문이 비었거나 깨졌으면 `agent:`
+      줄 자체를 생략한다** — `general-purpose`로 떨어뜨리면 산출이 조용히 다른 에이전트를 지목하고
+      컴파일은 `external_source_missing` 경고만 낸 채 성공한다(원칙 5). 빈 값을 내지도 않는다.
     - `background`는 **배치 여부와 무관하게 항상** 나간다 — 동기 fork `false`, 비동기 fork `true`. 키를 빼면
       CC 기본값(백그라운드)으로 돌아 산출이 침묵한다. 키 순서는 enum 선언 순서라 `context` → `agent` → `background`.
     - **서브에이전트는 다음 단계를 시작하지도, 진행 기록을 쓰지도 않는다** — fork 에이전트가 `Explore`/`Plan`이면 상태 파일

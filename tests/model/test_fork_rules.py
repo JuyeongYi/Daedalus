@@ -7,9 +7,14 @@ from daedalus.model.fsm.pseudo import EntryPoint
 from daedalus.model.fsm.section import EventDef
 from daedalus.model.fsm.state import SimpleState
 from daedalus.model.fsm.transition import Transition
-from daedalus.model.plugin.agent import AgentDefinition, ForkAgent
+from daedalus.model.plugin.agent import (
+    AgentDefinition,
+    ExternalForkAgent,
+    ForkAgent,
+)
 from daedalus.model.plugin.config import (
     AgentConfig,
+    ExternalForkAgentConfig,
     ForkAgentConfig,
     SyncForkSkillConfig,
 )
@@ -63,11 +68,56 @@ def test_unknown_agent_is_error():
     assert found.get("fork_agent_missing") is False
 
 
-def test_undeclared_plugin_agent_is_error_declared_passes():
+def test_unregistered_plugin_agent_string_is_missing():
+    """`플러그인:이름` 원문을 그대로 적으면 **등록되지 않은 이름**이다 (WP-EX).
+
+    역할 고정 이후 외부 에이전트도 먼저 컴포넌트로 등록한다 — 등록하지 않은
+    이름은 자체 fork 에이전트를 잘못 적은 경우와 **똑같이** `fork_agent_missing`
+    이고, 종전의 별도 등급(`fork_agent_undeclared_plugin`)은 사라졌다.
+    """
     project = PluginProject(name="p", skills=[_fork("tools:reviewer")])
-    assert _found(project).get("fork_agent_undeclared_plugin") is False
+    found = _found(project)
+    assert found.get("fork_agent_missing") is False
+    assert "fork_agent_undeclared_plugin" not in found
+    # 사용 선언만으로는 달라지지 않는다 — 등록이 필요하다.
     project.external_plugins = ["tools@market"]
-    assert "fork_agent_undeclared_plugin" not in _found(project)
+    assert _found(project).get("fork_agent_missing") is False
+
+
+def _external_fork_agent(name: str, source: str) -> ExternalForkAgent:
+    return ExternalForkAgent(
+        name=name, description=f"{name}.",
+        config=ExternalForkAgentConfig(source=source),
+    )
+
+
+def test_registered_external_fork_agent_passes():
+    """등록한 외부 fork 에이전트를 이름으로 고르면 fork 규칙은 조용하다 (WP-EX).
+
+    남는 것은 **사용 선언** 한 갈래뿐이다 — 선언이 없으면
+    `undeclared_external_plugin` 경고이고, 선언하면 아무 경고도 없다.
+    """
+    project = PluginProject(
+        name="p",
+        skills=[_fork("critic")],
+        agents=[_external_fork_agent("critic", "tools@market:reviewer")],
+    )
+    found = _found(project)
+    assert not any(r.startswith("fork_") for r in found)
+    assert found.get("undeclared_external_plugin") is True
+    project.external_plugins = ["tools@market"]
+    found = _found(project)
+    assert not any(r.startswith("fork_") for r in found)
+    assert "undeclared_external_plugin" not in found
+    assert "unused_external_plugin" not in found
+
+
+def test_unused_external_fork_agent_warns():
+    """아무 fork 스킬도 부르지 않으면 자체 fork 에이전트와 같은 경고다."""
+    project = PluginProject(
+        name="p", agents=[_external_fork_agent("critic", "tools@market:reviewer")],
+    )
+    assert _found(project).get("unused_fork_agent") is True
 
 
 def test_workflow_agent_as_fork_agent_is_error():

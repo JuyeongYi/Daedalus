@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from daedalus.model.plugin.enums import SkillField
+from daedalus.model.plugin.enums import AgentField, SkillField
 from daedalus.model.plugin.kinds import config_kinds_in
 from daedalus.model.plugin.placement import is_canvas_placeable_role
 from daedalus.model.plugin.roles import Bucket
@@ -33,7 +33,8 @@ class PropsTools(FieldTools):
     #: **레지스트리에서 파생**한다(WP-3) — 손으로 적어 두면 새 종류가 GUI에는
     #: 있고 MCP에는 없는 상태가 되고, 그것이 곧 MCP 패리티 파손이다(원칙 2).
     _SKILL_KINDS = config_kinds_in(Bucket.SKILLS)
-    #: create_agent가 받는 종류 — 워크플로 에이전트 / fork 스킬의 실행 기반.
+    #: create_agent가 받는 종류 — 워크플로 에이전트 / fork 스킬의 실행 기반 /
+    #: 외부 플러그인 에이전트 2역할.
     _AGENT_KINDS = config_kinds_in(Bucket.AGENTS)
 
     @staticmethod
@@ -87,6 +88,7 @@ class PropsTools(FieldTools):
         x: float | None,
         y: float | None,
         agent: str | None = None,
+        source: str | None = None,
     ) -> bool:
         """컴포넌트를 만들고(좌표가 있으면) 캔버스에 놓는다. 배치 여부를 돌려준다.
 
@@ -102,7 +104,9 @@ class PropsTools(FieldTools):
 
         win = self._window
         if x is None and y is None:
-            component = make_component(win, kind, name, description, agent=agent)
+            component = make_component(
+                win, kind, name, description, agent=agent, source=source
+            )
             if component is None:  # pragma: no cover - 위에서 종류를 이미 검증한다
                 raise ValueError(f"알 수 없는 종류 '{kind}'.")
             win._register_component(component)
@@ -124,7 +128,7 @@ class PropsTools(FieldTools):
             )
         component = create_and_place(
             self._scene, win, kind, name, float(x), float(y), description,
-            agent=agent,
+            agent=agent, source=source,
         )
         if component is None:
             raise RuntimeError(f"'{name}'을(를) 만들지 못했습니다.")
@@ -148,10 +152,13 @@ class PropsTools(FieldTools):
         `background: true`로 보고가 작업 알림으로 온다. 2026-09-17).
 
         fork_agent: 설정에 `agent`를 가진 종류(sync_fork/async_fork) 전용 —
-        fork 에이전트(프론트매터 `agent`).
-        내장(general-purpose/Explore/Plan), 사용 선언한 외부 플러그인 에이전트
-        (`플러그인:이름`), 프로젝트의 **fork 에이전트** 중 하나(정확 일치).
-        생략하면 general-purpose. 절차형 ↔ fork 2종 전환은 `convert_skill`.
+        fork 에이전트(프론트매터 `agent`). 내장(general-purpose/Explore/Plan)
+        또는 프로젝트에 **등록된 fork 에이전트**의 이름 중 하나다(정확 일치).
+        다른 플러그인의 에이전트를 쓰려면 먼저
+        `create_agent(kind="external_fork_agent", source="플러그인:이름")`으로
+        등록하고 **그 컴포넌트 이름**을 준다 — 산출의 `agent:`에는 등록된
+        source 원문이 나간다. 생략하면 general-purpose.
+        절차형 ↔ fork 2종 전환은 `convert_skill`.
         에이전트에게 줄 지식도 전역 스킬로 만든다 — 전역 declarative와 에이전트
         노드에 링크된 reference는 컴파일 시 에이전트 skills 프론트매터에 자동
         합류된다(로컬 스킬은 퇴역, WP-RF-1c).
@@ -192,17 +199,28 @@ class PropsTools(FieldTools):
         x: float | None = None,
         y: float | None = None,
         kind: str = "agent",
+        source: str = "",
     ) -> dict[str, Any]:
         """에이전트를 만든다 — 별도 컨텍스트의 작업자.
 
         kind: "agent"(워크플로 에이전트 — 캔버스 노드) / "fork_agent"(fork
-        스킬의 실행 기반 — fsm·포트·배치 없음). fork 에이전트는 캔버스에
-        놓이지 않으므로 x/y를 주면 거절한다.
+        스킬의 실행 기반 — fsm·포트·배치 없음) / "external_agent"(다른
+        플러그인의 서브에이전트를 **그래프 노드**로) / "external_fork_agent"
+        (같은 것을 **fork 스킬의 실행 기반**으로). 캔버스에 놓이지 않는
+        종류에 x/y를 주면 거절한다.
+
+        source: 설정에 `source`를 가진 종류(external_agent/external_fork_agent)
+        전용 — 그 플러그인의 서브에이전트를 가리키는 `플러그인[@마켓]:이름`
+        원문이다(CC가 찾는 이름, 정확 일치). `list_external_plugins`의 에이전트
+        행 `agent_type`이 그 값이다. **역할은 등록 시점에 고정된다** — 같은
+        source를 두 종류로 등록하면 `external_source_role_conflict` 에러이고,
+        역할을 바꾸려면 지우고 다시 만든다(사용자 확정 2026-09-19).
 
         절차는 본문(set_component_body)에, 결과 분기는 출력 포트
         (set_transfer_on)에 서술한다. 워크플로 에이전트는 기본 출력 포트
         'done' 하나로 시작한다(fork 에이전트는 포트가 없다 — 결과 분기는
-        그를 부르는 fork 스킬의 보고 양식이 정한다).
+        그를 부르는 fork 스킬의 보고 양식이 정한다). 외부 종류는 본문이
+        없다(정본이 그 플러그인의 파일이고 우리는 산출 파일을 내지 않는다).
 
         x/y(G14): 함께 주면 만들자마자 그 좌표에 배치한다(1 undo 단위).
         """
@@ -211,9 +229,21 @@ class PropsTools(FieldTools):
                 f"알 수 없는 에이전트 종류 '{kind}'. "
                 f"사용 가능: {', '.join(self._AGENT_KINDS)}"
             )
+        if source:
+            self._reject_arg_the_kind_cannot_hold(
+                Bucket.AGENTS, kind, "source", AgentField.SOURCE.value,
+                "외부 정본 참조라는 개념이 없습니다",
+            )
         self._reject_duplicate_name(name)
-        placed = self._create_component(kind, name, description, x, y)
-        return {"created": name, "kind": kind, "placed": placed}
+        placed = self._create_component(
+            kind, name, description, x, y, source=source or None
+        )
+        out: dict[str, Any] = {"created": name, "kind": kind, "placed": placed}
+        # 외부 정본을 갖는 종류만 응답에 싣는다 — "그 설정에 `source`가 있는
+        # 종류"의 성질이지 종류 이름을 열거할 일이 아니다(create_skill 선례).
+        if AgentField.SOURCE.value in self._config_field_names(kind):
+            out["source"] = source
+        return out
 
     def convert_skill(self, name: str, to: str) -> dict[str, Any]:
         """절차형 ↔ 동기/비동기 fork 스킬 전환 — **1 undo** (2026-09-17).

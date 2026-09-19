@@ -16,6 +16,7 @@ from daedalus.model.plugin.config import (
     AsyncForkSkillConfig,
     DeclarativeSkillConfig,
     ExternalAgentConfig,
+    ExternalForkAgentConfig,
     ForkAgentConfig,
     ProceduralSkillConfig,
     ReferenceSkillConfig,
@@ -54,7 +55,7 @@ def _fsm(name: str = "m") -> StateMachine:
     return StateMachine(name=name, states=[s], initial_state=s)
 
 
-#: 구체 config 9종 — 종류마다 기본값과 다른 값을 넣어 왕복을 실제로 확인한다.
+#: 구체 config 10종 — 종류마다 기본값과 다른 값을 넣어 왕복을 실제로 확인한다.
 ALL_CONFIGS = [
     ProceduralSkillConfig(model=ModelType.OPUS, shell=SkillShell.POWERSHELL),
     SyncForkSkillConfig(agent="Explore", user_invocable=True),
@@ -73,6 +74,7 @@ ALL_CONFIGS = [
         color=AgentColor.CYAN,
     ),
     ExternalAgentConfig(source="ext:agent"),
+    ExternalForkAgentConfig(source="ext:fork-agent"),
 ]
 
 

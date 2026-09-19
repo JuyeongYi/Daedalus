@@ -4,9 +4,11 @@
 CC의 `context: fork` 스킬은 SKILL.md 본문을 작업 지시로 삼아 `agent` 서브에이전트를
 띄운다(실측, CC 2.1.268). 그래서 절차형과 달리:
 
-- `agent:`는 CC가 찾는 이름으로 낸다 — 프로젝트 에이전트는 마켓 빌드에서
-  `플러그인:이름`, LOCAL에서 `이름`. 내장·외부 에이전트는 저장된 문자열 그대로
-  (정확 일치라 틀리면 조용히 general-purpose로 돈다).
+- `agent:`는 CC가 찾는 이름으로 낸다 — 프로젝트 fork 에이전트는 마켓 빌드에서
+  `플러그인:이름`, LOCAL에서 `이름`. 등록된 **외부** fork 에이전트는 그 컴포넌트의
+  `source` 원문(`플러그인:이름`, 타깃 무관), 내장(`general-purpose` 등)은 저장된
+  문자열 그대로(정확 일치라 틀리면 조용히 general-purpose로 돈다). 해소 실체는
+  `common.agent_invocation_name` 하나다(WP-EX/WP-A).
 - `background`는 종류가 정한다(사용자 확정 2026-09-17): 동기 fork는 `false`,
   비동기 fork는 `true`. 매트릭스의 FIXED 값이라 배치 여부와 무관하게 **항상**
   배출된다 — 키가 없으면 CC 기본값(백그라운드)으로 돌아 산출이 침묵한다.
@@ -26,13 +28,14 @@ from daedalus.compiler.emit.frontmatter import _format_kv
 from daedalus.model.plugin.placement import fork_skills_using  # noqa: F401
 
 
-def resolve_fork_agent_name(skill, project) -> str:
-    """fork 스킬 `agent:`에 적을 이름 — **한 줄 파사드**(WP-2c).
+def resolve_fork_agent_name(skill, project) -> str | None:
+    """fork 스킬 `agent:`에 적을 이름 — **한 줄 파사드**(WP-2c). 없으면 `None`.
 
     실체는 `common.agent_invocation_name`이다: "누구에게 위임하는가"는
     컴포넌트가(`delegated_agent_name()`), "그 이름을 CC가 어떻게 부르는가"는
-    빌드 타깃이 답한다. fork 스킬이 위임 대상을 갖는 유일한 종류가 아니므로
-    해소 규칙이 fork 전용 모듈에만 있으면 다른 위임 자리에서 복제된다.
+    빌드 타깃(또는 외부 정본 원문)이 답한다. fork 스킬이 위임 대상을 갖는
+    유일한 종류가 아니므로 해소 규칙이 fork 전용 모듈에만 있으면 다른 위임
+    자리에서 복제된다.
     """
     return agent_invocation_name(skill, project)
 
@@ -42,8 +45,17 @@ def fork_frontmatter_lines(lines: list[str], skill, project) -> list[str]:
 
     하는 일은 `agent:` 이름 해소 하나다 — `context`·`background`는 매트릭스가
     FIXED로 낸다(값의 단일 진실이 표에 있다).
+
+    **이름이 없으면 그 줄을 지운다**(WP-EX): 등록된 외부 fork 에이전트의
+    source가 비었거나 깨진 경우다. 빈 `agent:`를 내면 CC가 조용히
+    general-purpose로 돌고, 이름을 지어내면 산출이 없는 에이전트를 지목한다 —
+    둘 다 거짓말이라 지시 자체를 빼고 `external_source_missing` 경고가 고칠
+    자리를 말하게 한다(원칙 5).
     """
-    resolved = _format_kv("agent", resolve_fork_agent_name(skill, project))
+    name = resolve_fork_agent_name(skill, project)
+    if name is None:
+        return [line for line in lines if not line.startswith("agent:")]
+    resolved = _format_kv("agent", name)
     return [resolved if line.startswith("agent:") else line for line in lines]
 
 

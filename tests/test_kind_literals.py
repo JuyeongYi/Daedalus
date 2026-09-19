@@ -7,8 +7,8 @@
 
 두 어휘를 따로 센다:
 
-① **컴포넌트 kind** 15종 — 컴포넌트 KIND 9 + config KIND 9에서 겹치는
-   `agent`/`fork_agent`/`external_agent` 3을 뺀 값. 최종 목표는 `model/serialize/migrate.py`
+① **컴포넌트 kind** 16종 — 컴포넌트 KIND 10 + config KIND 10에서 겹치는
+   `agent`/`fork_agent`/`external_agent`/`external_fork_agent` 4를 뺀 값. 최종 목표는 `model/serialize/migrate.py`
    한 파일(구버전 파일의 문자열을 해석하는 마이그레이션은 리터럴이 정본이다).
 
 ② **plan kind** 13종 — 산출 계획의 kind 문자열. `agent`/`skill`은 컴포넌트
@@ -35,10 +35,12 @@ from pathlib import Path
 _REPO = Path(__file__).resolve().parent.parent
 _SRC = _REPO / "daedalus"
 
-#: 컴포넌트 kind 9 + config kind 9 (겹치는 agent/fork_agent/external_agent 제외) = 15.
+#: 컴포넌트 kind 10 + config kind 10 (겹치는 agent/fork_agent/external_agent/
+#: external_fork_agent 제외) = 16.
 COMPONENT_KIND_LITERALS: frozenset[str] = frozenset({
     "procedural_skill", "sync_fork_skill", "async_fork_skill", "declarative_skill",
     "transfer_skill", "reference_skill", "agent", "fork_agent", "external_agent",
+    "external_fork_agent",
     "procedural", "sync_fork", "async_fork", "declarative", "transfer",
     "reference",
 })
@@ -246,8 +248,9 @@ def test_plan_kind_baseline_is_not_stale():
 #: (훅 핸들러 종류는 컴포넌트 종류가 아니다).
 _COMPONENT_BASES: frozenset[str] = frozenset({
     "PluginComponent", "Skill", "StepSkill", "ForkSkill", "Agent",
-    "WorkflowComponent", "ComponentConfig", "SkillConfig", "StepSkillConfig",
-    "ForkSkillConfig", "AgentConfigBase",
+    "WorkflowComponent", "ExternalSourceMixin",
+    "ComponentConfig", "SkillConfig", "StepSkillConfig",
+    "ForkSkillConfig", "AgentConfigBase", "ExternalSourceConfig",
 })
 
 
@@ -337,8 +340,8 @@ def test_declaration_scan_actually_sees_the_model_modules():
                 continue
             for _lineno, _form, literal in _kind_declarations(klass):
                 found.append(f"{klass.name}:{literal}")
-    # 컴포넌트 9종 + config 9종 = 18개의 선언이 있어야 한다.
-    assert len(found) == 18, found
+    # 컴포넌트 10종 + config 10종 = 20개의 선언이 있어야 한다.
+    assert len(found) == 20, found
 
 
 def test_allowed_files_exist():
@@ -350,7 +353,7 @@ def test_allowed_files_exist():
 
 def test_vocabulary_sizes_are_as_declared():
     """어휘 크기를 고정 — 종류가 늘면 여기서 먼저 걸려 래칫을 다시 재게 한다."""
-    assert len(COMPONENT_KIND_LITERALS) == 15
+    assert len(COMPONENT_KIND_LITERALS) == 16
     assert len(PLAN_KIND_LITERALS) == 13
 
 

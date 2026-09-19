@@ -29,6 +29,7 @@ from daedalus.model.plugin.agent import (
     Agent,
     AgentDefinition,
     ExternalAgent,
+    ExternalForkAgent,
     ForkAgent,
 )
 from daedalus.model.plugin.base import PluginComponent, WorkflowComponent
@@ -39,6 +40,8 @@ from daedalus.model.plugin.config import (
     ComponentConfig,
     DeclarativeSkillConfig,
     ExternalAgentConfig,
+    ExternalForkAgentConfig,
+    ExternalSourceConfig,
     ForkAgentConfig,
     ForkSkillConfig,
     ProceduralSkillConfig,
@@ -172,6 +175,19 @@ EXPECTED_DECLARATIONS: dict[type, dict[str, object]] = {
         "IS_FORK_BASE": False, "REQUIRES_OUTPUT_PORTS": True,
         "HAS_INTERNAL_FSM": False,
     },
+    # WP-EX — 같은 외부 정본을 **fork 실행 기반**으로 쓰는 역할. `ExternalAgent`
+    # 행과 갈리는 칸은 셋뿐이다: 배치되지 않고(NONE) 포트를 요구하지 않으며
+    # fork 기반이 될 수 있다. 역할이 선언 세 칸으로 표현된다는 것이 요점이다.
+    ExternalForkAgent: {
+        "KIND": "external_fork_agent", "CONFIG_CLS": ExternalForkAgentConfig,
+        "BUCKET": _A, "PLACEMENT": PlacementRole.NONE,
+        "OUTPUT_LOCATION": OutputLocation.NONE,
+        "BODY_SOURCE": BodySource.EXTERNAL,
+        "CONVERT_FAMILY": None, "DELEGATION_TARGET": True,
+        "RUNS_IN_SUBAGENT": True, "REPORTS_OUT_OF_BAND": False,
+        "IS_FORK_BASE": True, "REQUIRES_OUTPUT_PORTS": False,
+        "HAS_INTERNAL_FSM": False,
+    },
 }
 
 CONCRETE_COMPONENTS: tuple[type, ...] = tuple(EXPECTED_DECLARATIONS)
@@ -183,9 +199,11 @@ CONCRETE_CONFIGS: tuple[type, ...] = (
     ProceduralSkillConfig, SyncForkSkillConfig, AsyncForkSkillConfig,
     DeclarativeSkillConfig, TransferSkillConfig,
     ReferenceSkillConfig, AgentConfig, ForkAgentConfig, ExternalAgentConfig,
+    ExternalForkAgentConfig,
 )
 ABSTRACT_CONFIGS: tuple[type, ...] = (
     ComponentConfig, SkillConfig, StepSkillConfig, ForkSkillConfig, AgentConfigBase,
+    ExternalSourceConfig,
 )
 
 
@@ -420,6 +438,13 @@ def test_delete_and_delegation_hooks():
 
 def test_external_reference_hooks_match_the_wiring_rule():
     """`external_plugin_refs()`는 `naming._check_external_plugins`의 제외 규칙과 같다."""
+    # 두 외부 종류가 **같은 구현**(ExternalSourceMixin)을 쓴다 — 복제가 생기면
+    # 한쪽만 고치는 편집이 조용히 지나간다.
+    fork_base = ExternalForkAgent(name="x", description="d")
+    fork_base.config.source = "alpha@mkt:beta"
+    assert fork_base.external_plugin_refs() == ["alpha@mkt"]
+    assert fork_base.external_source == "alpha@mkt:beta"
+    assert ExternalForkAgent(name="y", description="").external_source == ""
     assert _external(source="alpha@mkt:beta").external_plugin_refs() == ["alpha@mkt"]
     assert _external(source="").external_plugin_refs() == []
     assert _external(source="alpha:").external_plugin_refs() == []
@@ -506,5 +531,13 @@ def test_new_refuses_to_guess_a_state_machine():
 def test_creation_defaults_do_not_leak_into_deserialisation():
     """생성 시드와 dataclass 기본값은 **다르다** — 파일에 키가 없으면 포트를 만들지 않는다."""
     assert AgentDefinition(fsm=_fsm(), name="a", description="").transfer_on == []
-    assert AgentDefinition.creation_defaults(name="a", agent=None)["transfer_on"]
-    assert PluginComponent.creation_defaults(name="x", agent=None) == {}
+    assert AgentDefinition.creation_defaults(
+        name="a", agent=None, source=None
+    )["transfer_on"]
+    assert PluginComponent.creation_defaults(
+        name="x", agent=None, source=None
+    ) == {}
+    # 외부 종류는 `source`를 생성 시드로 받는다 — 등록과 동시에 정본을 가리킨다.
+    seeded = ExternalForkAgent.new("x", source="pack:critic")
+    assert seeded.config.source == "pack:critic"
+    assert ExternalForkAgent.new("x").config.source == ""

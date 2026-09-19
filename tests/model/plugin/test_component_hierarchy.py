@@ -17,6 +17,8 @@ from daedalus.model.plugin.agent import (
     Agent,
     AgentDefinition,
     ExternalAgent,
+    ExternalForkAgent,
+    ExternalSourceMixin,
     ForkAgent,
 )
 from daedalus.model.plugin.base import PluginComponent
@@ -26,6 +28,9 @@ from daedalus.model.plugin.config import (
     AsyncForkSkillConfig,
     ComponentConfig,
     DeclarativeSkillConfig,
+    ExternalAgentConfig,
+    ExternalForkAgentConfig,
+    ExternalSourceConfig,
     ForkAgentConfig,
     ForkSkillConfig,
     ProceduralSkillConfig,
@@ -59,7 +64,7 @@ def _fsm(name: str = "m") -> StateMachine:
     return StateMachine(name=name, states=[s], initial_state=s)
 
 
-#: 구체 컴포넌트 9종 — 스킬 6종 + 에이전트 3종.
+#: 구체 컴포넌트 10종 — 스킬 6종 + 에이전트 4종.
 def _components() -> list[object]:
     return [
         ProceduralSkill(fsm=_fsm(), name="p", description="d"),
@@ -71,6 +76,7 @@ def _components() -> list[object]:
         AgentDefinition(fsm=_fsm(), name="a", description="d"),
         ForkAgent(name="fa", description="d"),
         ExternalAgent(name="ea", description="d"),
+        ExternalForkAgent(name="efa", description="d"),
     ]
 
 
@@ -87,7 +93,10 @@ def test_abstract_component_classes_reject_instantiation(cls):
 
 @pytest.mark.parametrize(
     "cls",
-    [ComponentConfig, SkillConfig, StepSkillConfig, ForkSkillConfig, AgentConfigBase],
+    [
+        ComponentConfig, SkillConfig, StepSkillConfig, ForkSkillConfig,
+        AgentConfigBase, ExternalSourceConfig,
+    ],
 )
 def test_abstract_config_classes_reject_instantiation(cls):
     with pytest.raises(TypeError):
@@ -97,17 +106,18 @@ def test_abstract_config_classes_reject_instantiation(cls):
 def test_concrete_classes_do_not_inherit_concrete_classes():
     """구체 클래스의 부모는 전부 추상이다 — fork가 절차형을 상속하던 관계가 갈라졌다."""
     abstract_bases = {
-        Skill, StepSkill, ForkSkill, Agent, PluginComponent,
+        Skill, StepSkill, ForkSkill, Agent, PluginComponent, ExternalSourceMixin,
         ComponentConfig, SkillConfig, StepSkillConfig, ForkSkillConfig,
-        AgentConfigBase,
+        AgentConfigBase, ExternalSourceConfig,
     }
     concrete = [
         ProceduralSkill, SyncForkSkill, AsyncForkSkill,
         TransferSkill, DeclarativeSkill, ReferenceSkill,
-        AgentDefinition, ForkAgent,
+        AgentDefinition, ForkAgent, ExternalAgent, ExternalForkAgent,
         ProceduralSkillConfig, SyncForkSkillConfig, AsyncForkSkillConfig,
         TransferSkillConfig, DeclarativeSkillConfig,
         ReferenceSkillConfig, AgentConfig, ForkAgentConfig,
+        ExternalAgentConfig, ExternalForkAgentConfig,
     ]
     for cls in concrete:
         for base in cls.__mro__[1:]:
@@ -176,6 +186,12 @@ def test_dataclass_field_order_is_unchanged():
         "name", "description", "config", "body", "transfer_on",
         "call_agents", "id",
     ]
+    # WP-EX — fork 실행 기반 역할. 포트가 없어 `ForkAgent`와 같은 순서다
+    # (부르는 것은 그래프가 아니라 fork 스킬이다). 믹스인을 앞에 섞어도
+    # 필드 순서가 흔들리지 않는다는 게이트이기도 하다.
+    assert list(inspect.signature(ExternalForkAgent).parameters) == [
+        "name", "description", "config", "body", "id",
+    ]
 
 
 def test_config_field_order_is_unchanged():
@@ -197,6 +213,12 @@ def test_config_field_order_is_unchanged():
     assert [f.name for f in dataclasses.fields(ForkAgentConfig)] == (
         agent_common + ["color"]
     )
+    # 외부 정본 2역할은 `AgentConfigBase`를 **상속하지 않는다** — 우리가
+    # 소유하는 값은 source 하나뿐이고 나머지는 그 플러그인 파일의 값이다.
+    for cls in (ExternalAgentConfig, ExternalForkAgentConfig):
+        assert [f.name for f in dataclasses.fields(cls)] == [
+            "model", "effort", "hooks", "source",
+        ]
 
 
 def test_id_is_kw_only_and_excluded_from_equality():
@@ -220,6 +242,7 @@ _EXPECTED_KINDS = {
     "agent": "agent",
     "fork_agent": "fork_agent",
     "external_agent": "external_agent",
+    "external_fork_agent": "external_fork_agent",
 }
 
 

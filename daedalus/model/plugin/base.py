@@ -213,6 +213,7 @@ class PluginComponent(ABC):
         *,
         fsm_factory: Callable[[str], StateMachine] | None = None,
         agent: str | None = None,
+        source: str | None = None,
     ) -> PluginComponent:
         """레지스트리 팔레트·MCP `create_*`·캔버스 드롭이 공유할 **유일한 생성 경로**.
 
@@ -237,12 +238,20 @@ class PluginComponent(ABC):
                     f"{cls.__name__}은(는) FSM이 필요합니다 — fsm_factory를 주세요."
                 )
             kwargs["fsm"] = fsm_factory(name)
-        kwargs.update(cls.creation_defaults(name=name, agent=agent))
+        kwargs.update(cls.creation_defaults(name=name, agent=agent, source=source))
         return cls(**kwargs)
 
     @classmethod
-    def creation_defaults(cls, *, name: str, agent: str | None) -> dict[str, Any]:
+    def creation_defaults(
+        cls, *, name: str, agent: str | None, source: str | None
+    ) -> dict[str, Any]:
         """**생성 시드** — dataclass 기본값과 다른 초기값 (기본 `{}`).
+
+        `agent`·`source`는 **종류별 생성 인자**다: 전자는 fork 스킬의 실행 기반,
+        후자는 외부 정본 참조다. 그 인자를 쓸 수 없는 종류는 조용히 무시하지
+        않고 **호출자가 먼저 거절한다**(MCP `create_skill(fork_agent=)`/
+        `create_agent(source=)` — 그 종류의 config에 필드가 없으면 이유와
+        선택지를 말한다).
 
         dataclass 기본값은 "파일에서 읽을 때 키가 없으면 무엇인가"를 말하고,
         이 표는 "사용자가 새로 만들 때 무엇으로 시작하는가"를 말한다. 둘은

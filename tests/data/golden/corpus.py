@@ -18,12 +18,14 @@
    회귀로 오해하지 말 것 — 사용자가 그 작업 사본을 커밋하면 그때 다시 떠서
    출처를 git 이력으로 되돌리면 된다.
 
-② **synthetic** — 여기서 조립하는 합성 프로젝트. 9종 전부 ×
+② **synthetic** — 여기서 조립하는 합성 프로젝트. 10종 전부 ×
    (배치/미배치) × (블랙보드 유/무) × async fork × fork 에이전트 ×
    **훅을 가진 ReferenceSkill**
    (D6 수정이 산출을 바꾸는 자리 — 골든 diff로 보이게 한다) ×
    **산출 파일이 없는 외부 플러그인 에이전트**(WP-9 — 계획에 행이 오르지 않고
-   부르는 쪽 텍스트만 바뀌는 것을 골든이 증명한다).
+   부르는 쪽 텍스트만 바뀌는 것을 골든이 증명한다) ×
+   **외부 fork 에이전트를 실행 기반으로 쓰는 fork 스킬**(WP-EX — 그 스킬의
+   `agent:`에 타깃과 무관하게 source 원문이 나가는 것을 골든이 고정한다).
 
 **`tests/compiler/builders.py`와의 관계.** FSM 형상은 builders가 **정본**이다 —
 `_skill_fsm`/`_agent_fsm`은 `make_linear_fsm`/`make_agent_fsm`에 위임하므로
@@ -53,12 +55,18 @@ from daedalus.model.fsm.section import EventDef
 from daedalus.model.fsm.state import SimpleState
 from daedalus.model.fsm.transition import Transition
 from daedalus.model.fsm.variable import FieldType
-from daedalus.model.plugin.agent import AgentDefinition, ExternalAgent, ForkAgent
+from daedalus.model.plugin.agent import (
+    AgentDefinition,
+    ExternalAgent,
+    ExternalForkAgent,
+    ForkAgent,
+)
 from daedalus.model.plugin.config import (
     AgentConfig,
     AsyncForkSkillConfig,
     DeclarativeSkillConfig,
     ExternalAgentConfig,
+    ExternalForkAgentConfig,
     ForkAgentConfig,
     ProceduralSkillConfig,
     ReferenceSkillConfig,
@@ -148,6 +156,11 @@ def _stamp_ids(project: PluginProject, prefix: str) -> PluginProject:
 #: 배선·경고 집합이 그대로여야 이 코퍼스가 보는 변화가 산출 텍스트뿐이다.
 _PLUGIN_AGENT_SOURCE = "ext-pack:reviewer"
 
+#: 외부 플러그인 에이전트를 **fork 실행 기반**으로 쓰는 쪽 (WP-EX). 같은
+#: 플러그인의 **다른** 에이전트다 — 같은 source를 두 역할로 등록하면
+#: `external_source_role_conflict` 에러라 코퍼스 자체가 게이트에 걸린다.
+_PLUGIN_FORK_AGENT_SOURCE = "ext-pack:critic"
+
 
 def _blackboard() -> Blackboard:
     return Blackboard(class_definitions=[
@@ -213,7 +226,7 @@ def _hook_library() -> list[HookDef]:
 
 
 def _components() -> dict[str, object]:
-    """9종 전수 + 랩핑 스킬 3상태. 이름은 산출 이름 규약을 통과한다."""
+    """10종 전수. 이름은 산출 이름 규약을 통과한다."""
     return {
         "procedural": ProceduralSkill(
             fsm=_skill_fsm("placed-procedural"),
@@ -311,6 +324,27 @@ def _components() -> dict[str, object]:
                 EventDef("changes", description="the reviewer wants changes"),
             ],
         ),
+        # WP-EX — 같은 플러그인의 에이전트를 **fork 실행 기반**으로 등록한 역할.
+        # 산출 파일은 없고(계획에 행이 오르지 않는다) 골든에 남기는 흔적은
+        # 아래 `external_fork` 스킬의 `agent:` 한 줄이다 — 타깃과 무관하게
+        # source 원문이 나간다.
+        "external_fork_agent": ExternalForkAgent(
+            name="ext-critic",
+            description="External plugin agent used as a fork execution base",
+            config=ExternalForkAgentConfig(source=_PLUGIN_FORK_AGENT_SOURCE),
+        ),
+        # 그 기반 위에서 도는 fork 스킬. **배치하지 않는다** — 이 행이 보여야
+        # 하는 것은 프론트매터의 이름 해소 하나이고, 배치하면 그래프 유도
+        # 단락의 변화가 그 한 줄을 덮는다.
+        "external_fork": SyncForkSkill(
+            fsm=_skill_fsm("ext-fork-step"),
+            name="ext-fork-step",
+            description="Delegates to an external plugin agent and waits",
+            when_to_use="the external reviewer must run as a fork",
+            config=SyncForkSkillConfig(agent="ext-critic"),
+            body="# Instructions\n\nDelegate to the external base.\n",
+            transfer_on=[EventDef("ok")],
+        ),
     }
 
 
@@ -391,8 +425,12 @@ def build_synthetic(*, placed: bool, blackboard: bool) -> PluginProject:
         skills=[
             parts["procedural"], parts["sync_fork"], parts["async_fork"],
             parts["declarative"], parts["transfer"], parts["reference"],
+            parts["external_fork"],
         ],
-        agents=[parts["agent"], parts["fork_agent"], parts["external_agent"]],
+        agents=[
+            parts["agent"], parts["fork_agent"], parts["external_agent"],
+            parts["external_fork_agent"],
+        ],
         hook_library=_hook_library(),
         blackboard=_blackboard() if blackboard else Blackboard(),
         claude_md=WorkspaceDoc(

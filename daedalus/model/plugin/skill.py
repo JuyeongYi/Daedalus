@@ -145,7 +145,9 @@ class ForkSkill(StepSkill, ABC):
         return self.config.agent
 
     @classmethod
-    def creation_defaults(cls, *, name: str, agent: str | None) -> dict[str, Any]:
+    def creation_defaults(
+        cls, *, name: str, agent: str | None, source: str | None
+    ) -> dict[str, Any]:
         """새 fork 스킬은 실행 기반을 **등록 전에** 채운다.
 
         undo/redo에 `agent`가 빈 중간 상태를 만들지 않기 위해서다

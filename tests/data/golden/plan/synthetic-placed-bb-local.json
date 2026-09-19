@@ -37,6 +37,12 @@
       true
     ],
     [
+      ".claude/skills/ext-fork-step/SKILL.md",
+      "skill",
+      "스킬 'ext-fork-step'",
+      true
+    ],
+    [
       ".claude/agents/worker.md",
       "agent",
       "에이전트 'worker'",
@@ -140,6 +146,7 @@
     ".claude/skills/knowledge/SKILL.md",
     ".claude/skills/edge-helper/SKILL.md",
     ".claude/skills/ref-with-hooks/SKILL.md",
+    ".claude/skills/ext-fork-step/SKILL.md",
     ".claude/agents/worker.md",
     ".claude/agents/fork-base.md",
     "hooks/scripts/guard-bash.sh",
