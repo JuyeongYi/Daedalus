@@ -111,17 +111,6 @@ class _Str:
 
 
 @dataclass(frozen=True)
-class _Bool:
-    """읽을 때만 bool로 — 0/1·"" 같은 손편집 값을 흡수한다."""
-
-    def encode(self, value: Any) -> Any:
-        return value
-
-    def decode(self, raw: Any) -> Any:
-        return bool(raw)
-
-
-@dataclass(frozen=True)
 class _StrOrDefault:
     """빈 값(``None``·``""``)이면 기본 문자열로 — "비워 두면 기본"이 계약인 필드."""
 
@@ -185,10 +174,6 @@ RAW: Codec = _Raw()
 LIST: Codec = _ListCopy()
 #: 읽을 때 문자열 강제.
 STR: Codec = _Str()
-#: 읽을 때 bool 강제.
-BOOL: Codec = _Bool()
-
-
 def STR_OR_DEFAULT(default: str) -> Codec:
     """빈 값이면 `default`로 읽는 문자열 코덱."""
     return _StrOrDefault(default)

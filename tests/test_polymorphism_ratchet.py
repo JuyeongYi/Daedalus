@@ -96,6 +96,11 @@ SHAPE_EXCLUDED_SUBJECTS: frozenset[str] = frozenset({"project", "cfg", "config",
 #: 레지스트리 패널 10·탭 열기 2·탭 접두 2·캔버스 드롭 1·위젯 표 선택 1을
 #: 걷었다(20 → 4). 남은 4는 레지스트리 조회 1(`kinds::spec_for` — 예정 면제)과
 #: 랩핑 전용 분기 3(`wrapped_usage` — WP-10이 클래스와 함께 지운다)이다.
+#: 마무리 커밋(2026-09-19)이 `model_effort`의 방어적 `config` 조회 3벌을
+#: `_config_of` 하나로 모으고 그 한 자리를 면제로 등재했다(21/10 → 18/9) —
+#: REFACTOR_SPEC §8 래칫 ②의 최종 목표 ≤20을 넘겼다. 남은 18 중
+#: `hook_panel`·`_base`의 `enabled` 3건은 `HookDef` 속성이라 스캐너 오탐이고,
+#: 진짜 잔여는 `frontmatter_panel` 6 · `component_editor` 3이다(backlog §7).
 #: 형상 getattr 래칷(②)은 WP-4가 건드리지 않았다 — 직렬화 경로의 남은 두 사이트
 #: (`deser.deserialize_project`의 `fsm`)는 프로젝트 그래프 2-pass 질문이지
 #: 컴포넌트 조립 질문이 아니라 여기서 죽지 않는다.
@@ -112,8 +117,8 @@ SHAPE_EXCLUDED_SUBJECTS: frozenset[str] = frozenset({"project", "cfg", "config",
 RATCHET: dict[str, int] = {
     "isinstance_sites": 1,
     "isinstance_files": 1,
-    "shape_attr_sites": 21,
-    "shape_attr_files": 10,
+    "shape_attr_sites": 18,
+    "shape_attr_files": 9,
     "fsm_isinstance_sites": 52,
     "fsm_isinstance_files": 11,
 }
@@ -122,7 +127,15 @@ RATCHET: dict[str, int] = {
 #: 리팩토링 종료 시점의 예정 면제는 `kinds::spec_for`와
 #: `deser_plugin::_coerce_config`(역직렬화 안전망) 둘이다.
 ISINSTANCE_EXEMPT: dict[str, str] = {}
-SHAPE_ATTR_EXEMPT: dict[str, str] = {}
+SHAPE_ATTR_EXEMPT: dict[str, str] = {
+    # 캔버스 우클릭의 입구라 인수에 컴포넌트가 아닌 것이 섞인다(빈 노드의
+    # `skill_ref=None`·의사 상태). 컴포넌트 **형상**을 묻는 자리가 아니라
+    # **컴포넌트인지부터 모르는** 자리라 방어적 조회가 맞다. 세 함수가 손으로
+    # 베끼던 같은 조회를 이 한 곳으로 모았다(원칙 1) — 철거 주체는 캔버스가
+    # skill_ref를 컴포넌트로 좁히는 WP다.
+    "view.actions.model_effort::_config_of":
+        "의사 상태·빈 노드까지 오는 자리의 방어적 조회 — 컴포넌트 형상 질문이 아니다",
+}
 FSM_ISINSTANCE_EXEMPT: dict[str, str] = {}
 
 

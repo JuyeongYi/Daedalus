@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton
 
+from daedalus.model.plugin.kinds import spec_by_config_kind
 from daedalus.view.kind_ui import switch_noun, ui_by_config_kind
 
 
@@ -38,7 +39,9 @@ def build_kind_switch_row(panel, component, kind: str) -> None:
         first = first or btn
     row.addStretch()
     panel._add_span_layout(row)
-    if kind in ("sync_fork", "async_fork"):
+    # 안내문의 술어는 kind 목록이 아니라 **선언**이다 — 본문이 서브에이전트
+    # 컨텍스트에서 도는 스킬만 도구를 자기가 정하지 못한다(원칙 1).
+    if spec_by_config_kind(kind).component_cls.RUNS_IN_SUBAGENT:
         hint = QLabel(
             "도구는 fork 에이전트가 정합니다. 모델·effort는 이 스킬 값이 이기고, "
             "비워 두면 fork 에이전트 값을 씁니다."

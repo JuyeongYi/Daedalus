@@ -10,6 +10,7 @@ import copy
 import dataclasses
 from typing import Any
 
+from daedalus.model.plugin.config import ProceduralSkillConfig
 from daedalus.model.plugin.kinds import convert_family_kinds, spec_by_config_kind
 from daedalus.model.plugin.skill import StepSkill
 
@@ -126,7 +127,8 @@ def convert_skill_kind(window, component, target: str) -> dict[str, Any]:
     # 필드 레이아웃이라 드롭이 없다.
     drop = (
         {"allowed_tools"}
-        if current == "procedural" and target != "procedural"
+        if current == ProceduralSkillConfig.KIND
+        and target != ProceduralSkillConfig.KIND
         else set()
     )
     common = {

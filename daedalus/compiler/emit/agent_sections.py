@@ -50,6 +50,7 @@ from daedalus.compiler.emit.sections import (  # noqa: F401 — _exits_section �
 from daedalus.model.fsm.pseudo import EntryPoint, ExitPoint
 from daedalus.model.fsm.state import CompositeState, SimpleState, State
 from daedalus.model.plugin.agent import AgentDefinition
+from daedalus.model.plugin.placement import is_reference_placed, placement_role_of
 from daedalus.model.plugin.roles import PlacementRole
 from daedalus.model.plugin.enums import (
     AgentField,
@@ -122,7 +123,7 @@ def _agent_skills_list(agent: AgentDefinition, project) -> list[str]:
         #    놓이는 종류는 그래프가 언제 쓸지 말하지만, 놓이지 않는 스킬은
         #    모델이 알아서 집어 쓰는 지식이라 서브에이전트에 통째로 실어 준다.
         for skill in getattr(project, "skills", []) or []:
-            if type(skill).PLACEMENT is PlacementRole.NONE:
+            if placement_role_of(skill) is PlacementRole.NONE:
                 auto.append(skill.name)
         # placement 노드 이름 집합 — 참조 링크(connected_states)는 노드 이름을 가리킨다
         node_names = {
@@ -134,7 +135,7 @@ def _agent_skills_list(agent: AgentDefinition, project) -> list[str]:
             # 2. 참조 노드로 **선언된** 스킬(참조 스킬).
             ref_names = {
                 s.name for s in project.skills
-                if type(s).PLACEMENT is PlacementRole.REFERENCE
+                if is_reference_placed(s)
             }
             for rp in getattr(project, "reference_placements", []) or []:
                 if rp.skill_name in ref_names and node_names & set(rp.connected_states):

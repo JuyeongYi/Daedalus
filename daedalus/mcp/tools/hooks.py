@@ -458,9 +458,18 @@ class HookTools(_BaseTools):
         **에이전트**는 LOCAL 빌드에서만 나간다(플러그인 서브에이전트의 hooks는
         CC가 무시한다). 플러그인 전역으로 켜는 것은 별개 스위치(`enabled`)다.
         """
+        from daedalus.model.plugin.field_matrix import component_supports_hooks
         from daedalus.view.commands.attr_commands import SetAttrCmd
 
         comp = self._find_component(name)
+        # 훅을 실을 자리가 있는 종류인가 — 판정은 프론트매터 매트릭스가 한다
+        # (`set_component_field`의 매트릭스 게이트와 같은 실체). 산출 파일이
+        # 없는 종류에 붙이면 저장·직렬화만 되고 컴파일에는 닿지 않는다.
+        if not component_supports_hooks(comp):
+            raise ValueError(
+                f"'{comp.kind}'에는 훅을 붙일 수 없습니다 — 산출 파일이 없어 "
+                f"프론트매터에 실릴 자리가 없습니다(정본은 외부 플러그인입니다)."
+            )
         # 9종 전부가 `config` 필드를 갖는다(기저가 선언한 형상) — "config가
         # 없는 컴포넌트" 분기는 도달할 수 없는 죽은 코드였다(WP-2d Q4).
         config = comp.config

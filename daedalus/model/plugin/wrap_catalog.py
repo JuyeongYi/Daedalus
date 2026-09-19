@@ -1,6 +1,10 @@
 # daedalus/model/plugin/wrap_catalog.py
 """외부 마켓플레이스 카탈로그 (WP-WR 2단계, D2) — 등록된 **마켓플레이스 폴더**에서
-외부 플러그인·스킬을 발견한다.
+외부 플러그인의 **스킬과 에이전트**를 발견한다.
+
+에이전트 발견(`_scan_agents` → `CataloguedPlugin.agents`)은 이 모듈 책임의 절반이다 —
+`ExternalAgent`의 `source`를 고르는 정본이 여기다(WP-9). 랩핑 스킬은 WP-10에서
+퇴역했고 모듈 이름의 `wrap`은 그 시절의 잔재다(개명은 `docs/backlog.md` §7).
 
 **파일시스템을 아는 모듈이다**(hook_store와 같은 지위) — 검증기·컴파일러는 이
 모듈을 임포트하지 않는다(그쪽은 파일시스템 무접근 순수성을 유지하고, 실존 검사가

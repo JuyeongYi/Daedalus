@@ -6,7 +6,6 @@ from typing import Any, ClassVar
 
 from daedalus.model.plugin.roles import Bucket
 from daedalus.model.plugin.serial_fields import (
-    BOOL,
     ENUM,
     ENUM_OPT,
     ENUM_OR_STR,

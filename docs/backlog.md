@@ -632,9 +632,6 @@ junction(폴더)·하드링크(파일)는 **무권한이지만 같은 볼륨 전
   모의 입력 실행 미리보기. 확인 필요: statusLine 명령에 `${CLAUDE_PROJECT_DIR}`가 주어지는지(문서 없음 — 실측),
   사용자 개인 statusLine을 덮는 단일 슬롯 문제(경고). 같은 김에 마켓 빌드의 **플러그인 `settings.json` 기본값
   배출**(`agent`·`subagentStatusLine`)도 미지원이다.
-- **외부 플러그인 에이전트 노드** — fork 스킬의 `agent:`로 외부 에이전트를 이미 쓸 수 있다(`플러그인:이름`). 노드가 여전히 필요한지부터 재검토한다. 필요하다면: 감쌀 수 없으므로 입력만 있는 노드(에이전트 호출 포트로만 진입, 나가는 전이
-  금지). 동기 호출(기본)과 백그라운드 실행 옵션, 카탈로그 `agents/*.md` 탐색, 사용 선언(`external_plugins`) 배선
-  재사용. 외부 에이전트는 우리 블랙보드를 모르므로 호출 포트 description이 유일한 입력 통로다.
 - **프로젝트 속성 다이얼로그가 CommandStack을 거치지 않는다** (2026-09-13 발견) — `project_properties.py`가
   `project.build_target` 등을 직접 대입한다. undo가 안 되고 notify가 없어, 빌드 타깃을 바꿔도 LOCAL 전용 탭
   표시·에이전트 편집기 잠금이 다음 갱신 전까지 옛 상태로 남을 수 있다. MCP `set_project_properties`와 같은 커맨드 경로로 합친다.
@@ -820,22 +817,18 @@ Tier 2다. 출발점은 2026-05 조사(ClaudeManager가 만든 plain 셸 스크�
 
 ## 7. 코드 위생 — 800줄 초과 (1,200 상한은 테스트가 강제)
 
-| 파일 | 줄 (2026-09-19 실측) |
+| 파일 | 줄 (2026-09-19 재실측 — 리팩토링 종료 시점) |
 |------|-----|
-| `view/app.py` | 1,102 |
-| `view/canvas/scene.py` | 992 |
 | `view/widgets/markdown/editor.py` | 928 |
+| `view/canvas/scene.py` | 879 |
 | `cli/blackboard.py` | 851 |
 
-- **`view/app.py` 분해 후보 (2026-09-18 리뷰)** — WP-FK2에서 `rebuild_component_frontmatter`가
-  붙어 1,102줄이 됐다(1,200 상한까지 98줄). 봉합선은 **탭·편집기 수명주기**다 —
-  `_open_component` · `_close_tab` · `_sync_tab_titles` · `rebuild_component_frontmatter` ·
-  `open_component_ports`를 `view/tabs.py`(가칭)로 옮기면 한 덩어리로 빠진다(이동만·동작 불변,
-  WP-RF 관례). WP-FK2가 끝난 2026-09-19에도 1,102줄 그대로다 — **`app.py`에 다음 기능을 넣기
-  전에 먼저 쪼갠다.**
-  `compiler/project_compiler.py`는 WP-C의 `plan.py` 분해로 676줄이 되어 목록에서 빠졌다.
-- **`view/canvas/scene.py` 분해 후보 (2026-09-19 리뷰)** — 992줄로 800줄 권고를 넘었고 1,200
-  상한까지 208줄이다. 한 파일이 세 책임을 겹쳐 든다(스멜 ①). 봉합선:
+`view/app.py`는 761줄로 내려가 목록에서 빠졌고(WP-RF-3e 분해 + 이후 이동),
+`compiler/project_compiler.py`도 371줄이다(WP-5의 `plan.py`/`units/` 분해). 리팩토링이
+만든 신규 모듈 중 800줄을 넘는 것은 없다 — 최대가 `emit/section_plan.py` 405줄이다.
+
+- **`view/canvas/scene.py` 분해 후보 (2026-09-19 리뷰)** — 879줄로 800줄 권고를 넘었고 1,200
+  상한까지 321줄이다. 한 파일이 세 책임을 겹쳐 든다(스멜 ①). 봉합선:
   ① **드롭 수용** — `drop_skill` · `drop_reference_skill`(레지스트리에서 들어오는 입구).
   (WP-10에서 랩핑 소스 드롭 3개가 사라져 이 덩어리가 작아졌다.)
   ② **배치·삭제 커맨드 조립** — `_create_state` · `_delete_state` · `_delete_transition` ·
@@ -846,20 +839,52 @@ Tier 2다. 출발점은 2026-05 조사(ClaudeManager가 만든 plain 셸 스크�
   `snapshot_drag_positions`) · 전이/참조 링크 드래그 3종.
   컨텍스트 메뉴는 이미 `canvas/context_menus.py`로 빠져 있어 얇은 위임만 남았다 — 같은 관례로
   옮기면 된다(이동만·동작 불변, 재-export 파사드, 기존 테스트 무수정). **`scene.py`에 다음
-  기능을 넣기 전에 먼저 쪼갠다** — `app.py`와 같은 게이트다.
+  기능을 넣기 전에 먼저 쪼갠다.**
 
-- **FSM 계층의 남은 구조 순회 `isinstance` 53건 (WP-11 이후, 2026-09-19 실측)** — 래칫 ③의 기준선이다.
-  걷은 것은 **종류를 묻는** 사다리 넷(상태 서술·훅 핸들러 폼·의사 상태·Tool 직렬화)이고, 남은 53은
+- **FSM 계층의 남은 구조 순회 `isinstance` 52건 (WP-11 이후, 2026-09-19 실측)** — 래칫 ③의 기준선이다.
+  걷은 것은 **종류를 묻는** 사다리 넷(상태 서술·훅 핸들러 폼·의사 상태·Tool 직렬화)이고, 남은 52는
   성격이 다르다: `walk.iter_states`·`machine_rules`·`ser`가 **합성 상태를 재귀로 내려가거나**
   FSM 값 객체를 저장 dict로 펴는 자리다. 폴리모픽 메서드로 옮기려면 `model/fsm/**`가 검증 어휘·
   컴파일러 어휘를 알아야 해서 경계 계약(fsm은 Claude 무관·최하위)을 깬다. 줄이려면 방문자
   (visitor) 도입이 선행돼야 하고, 그것은 **사용자 확정 대상**이다(설계 변경).
+- **래칫 ② 형상 getattr 잔여 18건 (2026-09-19 실측)** — 명세 목표 ≤20은 넘겼지만 0이 아니다.
+  잔여의 주인은 둘뿐이다: `view/editors/frontmatter_panel.py` 6건(272·420·483·548·667·748 —
+  폼이 컴포넌트의 `config`/`when_to_use`를 **필드 이름 문자열로** 뒤지는 자리)과
+  `view/editors/component_editor.py` 3건(151·228×2). 나머지는 성격이 다르다:
+  `hook_panel.py` 2 · `mcp/tools/_base.py` 1의 `enabled`는 **`HookDef` 속성**이라 컴포넌트
+  형상 질문이 아니고(스캐너 어휘 충돌), `model/serialize/deser.py` 2의 `fsm`은 프로젝트 그래프
+  2-pass 질문, `field_matrix.py`·`mcp/tools/query.py`·`project_rules/workflow.py`·
+  `view/canvas/node_badges.py` 각 1은 "컴포넌트인지부터 모르는" 입구의 방어적 조회다.
+  줄이려면 **편집기 폼이 `FieldRule`에서 접근자를 받는** 설계가 선행돼야 한다 — 그 WP가
+  잔여 9건(frontmatter_panel 6 + component_editor 3)을 소유한다.
+- **`wrap_catalog` 개명** — `WrappedSkill`은 WP-10에서 퇴역했고 MCP 쪽은 `tools/wrap.py` →
+  `tools/external.py`로 개명됐다. 남은 것은 `model/plugin/wrap_catalog.py`(609줄)와
+  `view/editors/wrap_catalog_dialog.py`다 — 실제 책임은 외부 플러그인의 **스킬과 에이전트**
+  카탈로그이고(`_scan_agents`가 `ExternalAgent`의 source 정본을 만든다) docstring은 고쳐
+  두었다. `external_catalog.py`/`external_catalog_dialog.py`로 옮기고 기존 경로를 재-export
+  파사드로 남기는 것이 WP-RF 관례다 — 이름만 바뀌는 커밋이라 따로 둔다.
 - **legacy `_describe_agent_fsm` 삭제 검토** — 에이전트 내부 FSM은 WP-AF에서 퇴역했고, 이 함수는
   구버전 파일의 실질 상태를 서술하는 잔재다. 삭제하면 그 산출이 사라지므로(구버전 프로젝트의
   설계가 본문에서 증발) **마이그레이션으로 본문에 흡수한 뒤** 지워야 한다 — 사용자 확정 대상.
   WP-11은 이 변형을 합치지 않고 별도 `singledispatch`로 두어 산출 바이트를 보존했다.
 
 ## 8. 테스트
+
+- **`tests/view/test_markdown_editor.py` 1,347줄 분해** — 파일 크기 게이트
+  (`tests/test_code_hygiene.py`)의 범위는 **`daedalus/` 생산 소스뿐**이라고 2026-09-19에
+  명문화했고(그 파일 docstring), 그래서 이 파일은 상한 밖이다. `tests/` 전체에서 800줄을
+  넘는 유일한 파일이다. 봉합선은 기능별이다 — 문법 강조 · 슬래시 메뉴 · TOC · 검색.
+- **사후 확정 대기 — 명세가 "사용자 확정 대상"으로 표시했으나 확정 기록 없이 구현된 4건**
+  (2026-09-19). 전부 커밋·출하됐고 되돌리는 것이 더 큰 변경이라 되돌리지 않되, 확정 표식을
+  지어내지도 않는다(CLAUDE.md 원칙 10). 확정을 받으면 `(사용자 확정 <날짜>)`를 해당 설계
+  문서에 붙이고 이 항목을 지운다:
+  ① 산출 없는 종류는 이름 게이트를 받지 않는다(`docs/design/agents.md`, `tests/compiler/test_gate.py`)
+  ② `WrappedSkill` 단방향 마이그레이션(`serialize/migrate.py` — 구버전 랩핑 스킬을 외부
+     에이전트/참조 스킬로 흡수, 되돌릴 수 없다)
+  ③ `AgentDefinition`의 퇴역 필드 4종 + `model/plugin/policy.py` 삭제(저장 파일의 4키가
+     단방향 드롭된다)
+  ④ `handle_node_moved`/`handle_waypoint_moved` 삭제 — `docs/design/editor.md`의 존치
+     결정을 뒤집은 것이다.
 
 - **클립보드 의존 테스트** — `tests/view/editors/test_hook_panel.py` 복사 테스트와
   `tests/view/test_mcp_info_dialog.py::test_copy_button_puts_snippet_on_clipboard`는 다른 프로세스가 Windows 클립보드를

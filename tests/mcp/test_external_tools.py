@@ -1,4 +1,4 @@
-# tests/mcp/test_wrap_tools.py
+# tests/mcp/test_external_tools.py
 """외부 플러그인 카탈로그 MCP 도구 (WP-WR D2) — GUI 카탈로그 창과의 패리티.
 
 list_external_plugins/list_marketplace_folders/add_marketplace_folder/
@@ -215,3 +215,40 @@ def test_fetch_plugin_skills_unknown_id_rejected(tools, marketplace):
     tools.add_marketplace_folder(str(marketplace), "mkt")
     with pytest.raises(ValueError, match="카탈로그에"):
         tools.fetch_plugin_skills("nope@mkt")
+
+
+# --- 외부 에이전트에는 훅을 붙일 수 없다 (프론트매터 매트릭스 게이트) ---
+
+
+def _external_agent(window, name="reviewer"):
+    from daedalus.model.plugin.agent import ExternalAgent
+    from daedalus.model.plugin.config import ExternalAgentConfig
+
+    agent = ExternalAgent(
+        name=name, description="d",
+        config=ExternalAgentConfig(source="alpha@mkt:review"),
+    )
+    window._project.agents.append(agent)
+    return agent
+
+
+def test_set_component_hooks_rejects_external_agent(tools, window):
+    """산출 파일이 없는 종류는 훅을 받지 않는다 — 조용한 no-op 대신 거절(원칙 5).
+
+    붙여 두면 저장·직렬화까지는 되지만 컴파일에는 닿지 않는다(프론트매터가
+    나갈 파일 자체가 없다). 판정의 실체는 `component_supports_hooks` 하나이고
+    GUI 폼도 같은 매트릭스를 읽는다.
+    """
+    agent = _external_agent(window)
+    tools.create_hook("guard", event="PreToolUse", command="echo hi")
+    with pytest.raises(ValueError, match="훅을 붙일 수 없습니다"):
+        tools.set_component_hooks("reviewer", ["guard"])
+    assert not (agent.config.hooks or {})
+
+
+def test_set_component_hooks_accepts_a_skill(tools):
+    """대조군 — `hooks` 행이 있는 종류는 그대로 받는다."""
+    tools.create_skill("step", kind="procedural")
+    tools.create_hook("guard", event="PreToolUse", command="echo hi")
+    out = tools.set_component_hooks("step", ["guard"])
+    assert out == {"component": "step", "hooks": ["guard"]}

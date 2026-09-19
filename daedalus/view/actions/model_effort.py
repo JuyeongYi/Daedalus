@@ -35,19 +35,30 @@ EFFORT_CHOICES: tuple[tuple[EffortLevel | None, str], ...] = (
 )
 
 
+def _config_of(component: object) -> object | None:
+    """컴포넌트의 설정 — **컴포넌트가 아니면** ``None``.
+
+    이 모듈의 입구는 캔버스 우클릭이라 인수에 컴포넌트가 아닌 것이 섞인다
+    (빈 노드의 `skill_ref=None`·의사 상태). "형상을 묻는" 자리가 아니라
+    **컴포넌트인지부터 모르는** 자리이므로 방어적 조회가 맞고, 그 조회는
+    세 함수가 손으로 베끼지 않고 여기 하나에 둔다(원칙 1).
+    """
+    return getattr(component, "config", None)
+
+
 def supports_model_effort(component: object) -> bool:
     """config에 두 필드가 있는가 — 스킬·에이전트 전부 True, 빈 노드는 False."""
-    config = getattr(component, "config", None)
+    config = _config_of(component)
     return config is not None and hasattr(config, MODEL_ATTR) and hasattr(config, EFFORT_ATTR)
 
 
 def current_model(component: object) -> ModelType | str | None:
-    config = getattr(component, "config", None)
+    config = _config_of(component)
     return getattr(config, MODEL_ATTR, None) if config is not None else None
 
 
 def current_effort(component: object) -> EffortLevel | None:
-    config = getattr(component, "config", None)
+    config = _config_of(component)
     return getattr(config, EFFORT_ATTR, None) if config is not None else None
 
 

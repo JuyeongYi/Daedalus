@@ -22,7 +22,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, ClassVar
+from typing import ClassVar
 
 from daedalus.compiler import plan_kinds
 from daedalus.compiler.emit.common import _join_blocks

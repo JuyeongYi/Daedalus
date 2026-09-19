@@ -256,6 +256,19 @@ def matrix_for(component: object) -> dict[Any, FieldRule]:
     )
 
 
+def component_supports_hooks(component: object) -> bool:
+    """이 컴포넌트에 훅을 붙일 수 있는가 — **매트릭스가 답한다**.
+
+    훅 참조는 산출 파일의 프론트매터로만 나간다. 그래서 산출 파일이 없는
+    종류(`ExternalAgent` — 정본이 외부 플러그인이다)에는 실릴 자리가 없고,
+    붙여 봐야 저장·직렬화만 되고 컴파일에는 닿지 않는 **조용한 no-op**이 된다
+    (원칙 5). 그 사실은 이미 매트릭스에 `hooks` 행의 유무로 적혀 있으므로
+    두 번째 표를 만들지 않고 여기서 파생시킨다 — GUI 폼(`matrix_for`)과
+    MCP `set_component_hooks`가 같은 답을 말한다(원칙 1·2).
+    """
+    return "hooks" in {field.value for field in matrix_for(component)}
+
+
 # CC는 **보안상 플러그인 서브에이전트의 이 필드들을 무시한다**(공식 sub-agents
 # 문서: "plugin subagents don't support the hooks, mcpServers, or permissionMode
 # frontmatter fields. These fields are ignored when loading agents from a plugin.").

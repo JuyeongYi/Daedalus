@@ -20,7 +20,7 @@
 **참조로 치는 것**(정적 트레이스의 알려진 구멍을 메운다):
   `ast.Name` · `ast.Attribute.attr` · import 별칭 · **문자열 디스패치 모듈
   (`STRING_DISPATCH_SOURCES`)의 문자열 상수**.
-  마지막 항목이 중요하다 — MCP 도구 76종은 `mcp/service.py`의 `TOOL_NAMES`
+  마지막 항목이 중요하다 — MCP 도구 전부(`TOOL_NAMES`)는 `mcp/service.py`의
   문자열 튜플에서 `getattr`로 디스패치된다. 다만 **그 모듈로 범위를 좁힌다**:
   문자열 상수를 `daedalus/` 전체에서 참조로 세면 이름이 우연히 겹치는 무관한
   리터럴(`add_parser("validate")`·`SimpleState(name="validate")` …)이 진짜
@@ -145,7 +145,7 @@ EXTERNAL_BASE_HIDDEN_BASELINE: frozenset[str] = frozenset({
 #: 이 파일들의 문자열 상수만 참조로 센다 — 범위를 넓히면 무관한 리터럴이
 #: 고아 심볼을 되살린다. 새 디스패치 표가 생기면 여기에 **명시로** 등재한다.
 STRING_DISPATCH_SOURCES: frozenset[str] = frozenset({
-    "mcp/service.py",   # TOOL_NAMES 튜플 → getattr 디스패치 (MCP 도구 76종)
+    "mcp/service.py",   # TOOL_NAMES 튜플 → getattr 디스패치 (MCP 도구 전부)
 })
 
 #: 파사드 → 핀 목록이 사는 테스트 파일과 변수 이름 (규칙 B).
@@ -368,7 +368,7 @@ def test_scanner_finds_the_known_survivors():
 
 
 def test_string_constants_count_as_references():
-    """문자열 디스패치를 참조로 세는지 — 안 세면 MCP 도구 76종이 전부 오탐이 된다."""
+    """문자열 디스패치를 참조로 세는지 — 안 세면 `TOOL_NAMES`의 도구가 전부 오탐이 된다."""
     dead = set(scan_unreferenced())
     assert "mcp.tools.canvas::CanvasTools.place_component" not in dead
     assert "mcp.tools.query::QueryTools.compile_check" not in dead

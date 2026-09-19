@@ -99,3 +99,62 @@ def test_registry_guide_has_a_section_for_every_kind(config_kind):
     headings = [ln for ln in text.splitlines() if ln.startswith("## ")]
     # fork 2종은 한 절이 둘을 함께 설명한다 — 제목에 라벨이 들어 있으면 된다.
     assert any(label in h for h in headings), f"'{label}' 절이 안내서 02에 없다"
+
+
+# ─────────────────── emitter 절 표 (compiler.md) ───────────────────
+#
+# 종류 표와 달리 이 표는 **순서가 곧 계약**이다 — 절 하나가 문서에만 남아 있으면
+# (WP-10에서 지운 `BACKGROUND_SKILLS`가 실제로 그랬다) 읽는 사람은 코드에 없는
+# 절을 기대한다. 행 수만 세는 그물로는 잡히지 않아 **시퀀스 등식**으로 고정한다.
+
+#: fork 2종 행의 축약 표기 — 바로 위 행에서 그 절만 뺀다는 뜻이다.
+_FORK_SHORTHAND = "위에서 RESUME 제외"
+
+
+def _emitter_kind_by_class_name() -> dict[str, str]:
+    """emitter 클래스 이름 → 컴포넌트 KIND (`EMITTERS` 등록에서 유도)."""
+    from daedalus.compiler.emit.emitters import EMITTERS
+
+    return {type(em).__name__: kind for kind, em in EMITTERS.items()}
+
+
+def test_compiler_md_section_table_matches_section_plans():
+    """`compiler.md`의 emitter 절 표 = `SECTION_PLANS`의 절 순서·양식·포인터 전수.
+
+    문서의 각 행이 **그 종류가 실제로 내는 절을 순서대로** 적고 있는지 본다.
+    행 수·절 이름·순서가 전부 계약이고, OUTCOME 양식과 가이드 포인터 열도 같은
+    선언에서 나오므로 함께 고정한다.
+    """
+    from daedalus.compiler.emit.section_plan import SECTION_PLANS
+
+    text = (_DOCS / "design" / "compiler.md").read_text(encoding="utf-8")
+    rows = _table_rows(text, "그래서 순서는 전역이 아니라 종류가 갖는다.")
+    by_name = _emitter_kind_by_class_name()
+    assert len(rows) == len(SECTION_PLANS), (
+        f"절 표 {len(rows)}행 ↔ 절 선언 {len(SECTION_PLANS)}종"
+    )
+
+    previous: tuple[str, ...] = ()
+    for row in rows:
+        cells = [c.strip() for c in row.strip("|").split("|")]
+        emitter_name = cells[0].strip("`")
+        kind = by_name.get(emitter_name)
+        assert kind is not None, f"문서에만 있는 emitter: {emitter_name}"
+        plan = SECTION_PLANS[kind]
+
+        if cells[1] == _FORK_SHORTHAND:
+            documented = tuple(s for s in previous if s != "RESUME")
+        else:
+            documented = tuple(part.strip() for part in cells[1].split("·"))
+        actual = tuple(s.name for s in plan.sections)
+        assert documented == actual, (
+            f"{emitter_name} 절 순서 문서={documented} 코드={actual}"
+        )
+        previous = actual
+
+        assert cells[2] in ("–", plan.outcome_style.name), (
+            f"{emitter_name} OUTCOME 양식 문서={cells[2]} 코드={plan.outcome_style.name}"
+        )
+        assert cells[3] == plan.guide_pointer.name, (
+            f"{emitter_name} 가이드 포인터 문서={cells[3]} 코드={plan.guide_pointer.name}"
+        )

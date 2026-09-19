@@ -97,9 +97,20 @@ KIND_DECLARATION_FILES: frozenset[str] = frozenset({
 #: `SKILL_FIELD_MATRIX`에서 파생되면서 `props.py`가 들고 있던 리터럴이 사라졌다.
 #: WP-10이 걷어낸 자리: 랩핑 스킬 전용 모듈(`view/actions/wrapped_usage`)과
 #: MCP·뷰의 `"wrapped"` 어휘가 클래스와 함께 사라졌다(20 → 13, 11 → 8파일).
+#: 마무리 커밋(2026-09-19)이 뷰에 남아 있던 **진짜 디스패치 둘**을 걷었다
+#: (13 → 9, 8 → 6파일): `kind_switch_row`의 `("sync_fork","async_fork")` 2 →
+#: `component_cls.RUNS_IN_SUBAGENT` 선언 조회, `fork_skill`의 `"procedural"` 2 →
+#: `ProceduralSkillConfig.KIND` 참조. 남은 9건은 **전부 어휘 충돌 오탐**이다 —
+#: MCP 응답 dict 키(`canvas.py` `transfer`/`reference`, `query.py`
+#: `transfer_skill`), 훅 핸들러 종류 `"agent"`(`model/plugin/hook.py`,
+#: `mcp/tools/hooks.py`), 변수 맥락 문자열(`variable_loader`), 카탈로그
+#: 다이얼로그의 자산 종류(`wrap_catalog_dialog`). 스펙 부록 A F4의 "디스패치
+#: 리터럴 1 파일(migrate)"은 **달성**됐고, 이 9는 스캐너가 같은 철자를 다른
+#: 어휘에서 보는 자리라 더 내려가지 않는다(plan kind 쪽 `"claude_md"`와 같은
+#: 전례 — 모듈 docstring "측정의 정직성").
 RATCHET: dict[str, int] = {
-    "component_kind_sites": 13,
-    "component_kind_files": 8,
+    "component_kind_sites": 9,
+    "component_kind_files": 6,
     "plan_kind_sites": 1,
     "plan_kind_files": 1,
 }

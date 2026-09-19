@@ -153,6 +153,12 @@
   `set_component_hooks`는 라이브러리에 없는 이름을 **거부**한다(오타가 컴파일까지 조용히 흘러가
   경고로만 드러나는 것을 막는다). `config.hooks`의 선언 기본값은 `{}`가 아니라 `None`이라,
   undo는 빈 dict가 아니라 None으로 되돌아간다.
+  **종류 게이트도 같은 결이다**(2026-09-19): 훅 참조는 산출 파일의 프론트매터로만 나가므로
+  산출 파일이 없는 종류(`ExternalAgent` — 정본이 외부 플러그인이다)에 붙이면 저장·직렬화만
+  되고 컴파일에는 닿지 않는 **조용한 no-op**이 된다. 판정은 `set_component_field`의 매트릭스
+  게이트와 같은 실체인 `field_matrix.component_supports_hooks(comp)` 하나다 — 매트릭스의
+  `hooks` 행 유무에서 파생하므로 GUI 폼(`matrix_for`)과 MCP가 같은 답을 말하고, 두 번째 표가
+  생기지 않는다(원칙 1·2·5).
   - **전역 훅 조회 + 프로젝트로 복사 (G7).** `get_project`의 `hooks` 구획에 `global_hooks`
     (이 프로젝트에서 가려지지 않은 전역 훅 개요, `_visible_global_hooks` — `HookLibraryPanel.
     _global_hooks`와 같은 판정)가 실린다. `copy_global_hook(name)`이 GUI "프로젝트로 복사"와

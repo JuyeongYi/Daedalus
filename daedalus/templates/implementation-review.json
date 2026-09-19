@@ -305,16 +305,7 @@
         "isolation": "none",
         "color": null
       },
-      "execution_policy": {
-        "mode": "fixed",
-        "count": 1,
-        "join": "all",
-        "join_count": null
-      },
       "body": "You implement exactly what `TaskSpec` describes — no more.\n\n1. Read `TaskSpec`. If `ReviewFindings` exists, read it too and treat its\n   blocking items as part of the spec.\n2. Make the change. Keep it as small as the acceptance criteria allow.\n3. Run whatever check the acceptance criteria name. If there is none you can run,\n   say so plainly rather than claiming success.\n4. Report what you changed, file by file, and which criteria you verified.\n\nIf the spec cannot be satisfied as written — it contradicts the codebase, or a\nprerequisite is missing — stop and exit through `blocked` with the reason. A\nhalf-finished change reported as done is worse than an honest block.",
-      "reference_placements": [],
-      "graph_layout": {},
-      "edge_layout": {},
       "transfer_on": [
         {
           "name": "implemented",
@@ -379,16 +370,7 @@
         "isolation": "none",
         "color": null
       },
-      "execution_policy": {
-        "mode": "fixed",
-        "count": 1,
-        "join": "all",
-        "join_count": null
-      },
       "body": "You review the change against `TaskSpec` and nothing else.\n\n1. Read `TaskSpec`. The acceptance criteria are the standard; your taste is not.\n2. Inspect the change. Separate what is *wrong* (blocking) from what you would\n   *prefer* (suggestion). Only blocking items may hold up approval.\n3. Write `ReviewFindings`: `verdict`, the blocking items, the suggestions, and\n   the round number (increment it if findings already exist).\n4. Exit through `approved` only when there are no blocking items left.\n\nDo not fix the code yourself. Reviewing and implementing in one pass loses the\nindependent check that this step exists for.",
-      "reference_placements": [],
-      "graph_layout": {},
-      "edge_layout": {},
       "transfer_on": [
         {
           "name": "approved",

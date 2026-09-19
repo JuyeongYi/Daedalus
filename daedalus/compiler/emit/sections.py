@@ -31,8 +31,7 @@ from daedalus.model.fsm.strategy import (
     ToolEvaluation,
 )
 from daedalus.model.fsm.walk import iter_states
-from daedalus.model.plugin.placement import is_reference_placed
-from daedalus.model.plugin.roles import BodySource, Bucket
+from daedalus.model.plugin.roles import Bucket
 from daedalus.model.plugin.skill import Skill, StepSkill
 
 

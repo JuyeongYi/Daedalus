@@ -299,16 +299,7 @@
         "isolation": "none",
         "color": null
       },
-      "execution_policy": {
-        "mode": "dynamic",
-        "count": 1,
-        "join": "all",
-        "join_count": null
-      },
       "body": "You answer **one** question from `ResearchPlan` and record what you found.\n\n1. Read the question you were given. Do not widen it.\n2. Gather evidence. Prefer primary sources; note the source for every claim you\n   record.\n3. Append to `Findings`: add the question to `answered`, one entry to `notes`,\n   and each source to `sources`. Append — never overwrite what another\n   investigator wrote.\n4. Report the answer in two or three sentences.\n\nIf the evidence is not there, add the question to `Findings.unanswered` with what\nyou did look at, and exit through `no-results`. An invented answer costs more\nthan a gap.",
-      "reference_placements": [],
-      "graph_layout": {},
-      "edge_layout": {},
       "transfer_on": [
         {
           "name": "findings-recorded",

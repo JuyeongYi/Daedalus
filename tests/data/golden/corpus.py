@@ -121,6 +121,10 @@ def _iter_stampable(project: PluginProject) -> Iterator[object]:
     yield from _iter_machine_objects(project.graph)
     for hook in project.hook_library:
         yield hook
+        # 핸들러도 `uuid4` 기본 id를 갖는다 — 빠뜨리면 합성 코퍼스의 직렬화
+        # JSON이 실행마다 흔들린다(모듈 docstring의 결정성 주장이 거짓이 된다).
+        # 핸들러 id는 어떤 산출에도 실리지 않아 컴파일 골든 해시는 그대로다.
+        yield from (hook.handlers or [])
     for tool in project.tool_shelf:
         yield tool
     if project.claude_md is not None:

@@ -98,12 +98,12 @@ python -m tests.data.golden.regen --refresh-dogfood   # 동결 사본 자체를 
 봐서는 안 보이기 때문이다 — WP-0 기준선이 없으면 "34"가 좋은 값인지 알 수 없다.
 표와 dict가 어긋나면 dict가 옳다.
 
-| 테스트 · 표 | 세는 것 | WP-0 기준선 (2026-09-19) | 현재 (WP-11 완료) |
+| 테스트 · 표 | 세는 것 | WP-0 기준선 (2026-09-19) | 현재 (리팩토링 종료 2026-09-19) |
 |---|---|---|---|
 | `tests/test_polymorphism_ratchet.py` `RATCHET` ① | 컴포넌트/설정 클래스 29종을 두 번째 인자로 갖는 `isinstance` | **111 사이트 / 34 파일** | **1 / 1** — compiler·serialize·mcp·view 전부 0(WP-4가 `ser.py` 11을, WP-6이 미리보기 분기 3을, WP-7이 뷰의 kind 표 여섯 벌을 `KIND_UI` 하나로, WP-10이 랩핑 전용 3을 클래스와 함께 걷었다). 남은 하나는 레지스트리 조회(`kinds::spec_for`) — §8이 예정한 면제다 |
-| 〃 ② | 컴포넌트 형상 속성 12종(`config`/`body`/`fsm`/`transfer_on`/`call_agents`/`when_to_use`/`usage`/`enabled`/`reference_placements`/`source`/`output_events`/`output_event_defs`)을 문자열로 묻는 `getattr`/`hasattr`. 첫 인자가 `project`/`cfg`/`config`/`doc`이면 제외(컴포넌트 형상이 아니다) | **123 사이트 / 41 파일** | **23 / 10** — WP-8이 MCP의 8건(`query.get_component` 6 + `fields` 2)을 능력 메서드(`comp.config`/`comp.body`/`state_machines()`/`output_ports()`/`call_ports()`)로, WP-7이 뷰의 kind 표를 걷었다(병합 후 재실측 — 두 가지의 감소분을 더하면 겹치는 자리를 두 번 센다). 남은 최대치는 `frontmatter_panel.py`·`component_editor.py` |
-| 〃 ③ (WP-11 신설) | **FSM 상태·전략·이벤트·훅 핸들러·Tool 클래스 35종**을 두 번째 인자로 갖는 `isinstance`. 컴포넌트 종류가 아니지만 같은 결함 형태(병렬 사다리)라 같은 규칙으로 감시한다 | **89 사이트 / 17 파일**(WP-11 직전 실측) | **53 / 12** — WP-11이 상태 서술 13·legacy 에이전트 변형 5·훅 핸들러 폼 10·의사 상태 5·Tool 직렬화 3을 걷었다. 남은 53은 **종류 질문이 아니라 구조 순회**다(합성 상태를 재귀로 내려가는 `walk`·`machine_rules`, FSM 값 객체를 저장 dict로 펴는 `ser`) — 폴리모픽 메서드로 옮기면 fsm 레이어가 컴파일러·검증 어휘를 알게 되어 경계 계약을 깬다 |
-| `tests/test_kind_literals.py` `RATCHET` ① | 컴포넌트 kind 15종이 `Compare` 피연산자·`dict` 키·`set`/`tuple`/`list` 원소로 쓰인 자리. 허용 파일 `model/serialize/migrate.py`(구버전 파일 문자열 해석이 정본)는 세지 않는다 | **157 사이트 / 26 파일** | **13 / 8** — WP-3이 레지스트리로(역직렬화·생성·전환·MCP 어휘·매트릭스 키), WP-4가 `deser_plugin`의 마지막 11을, WP-5가 쓰기 루프의 kind 사다리를, WP-7이 뷰의 kind 표 여섯 벌을, WP-8이 MCP 생성 인자 게이트와 `NO_PLACE_KINDS`를, WP-10이 랩핑 어휘를 흡수 |
+| 〃 ② | 컴포넌트 형상 속성 12종(`config`/`body`/`fsm`/`transfer_on`/`call_agents`/`when_to_use`/`usage`/`enabled`/`reference_placements`/`source`/`output_events`/`output_event_defs`)을 문자열로 묻는 `getattr`/`hasattr`. 첫 인자가 `project`/`cfg`/`config`/`doc`이면 제외(컴포넌트 형상이 아니다) | **123 사이트 / 41 파일** | **18 / 9** — WP-8이 MCP의 8건(`query.get_component` 6 + `fields` 2)을 능력 메서드(`comp.config`/`comp.body`/`state_machines()`/`output_ports()`/`call_ports()`)로, WP-7이 뷰의 kind 표를 걷었다(병합 후 재실측 — 두 가지의 감소분을 더하면 겹치는 자리를 두 번 센다). 마무리 커밋이 `model_effort`의 방어적 `config` 조회 3벌을 `_config_of` 하나로 모아 면제 1건으로 등재했다(21/10 → 18/9 — 명세 목표 ≤20 달성). 남은 최대치는 `frontmatter_panel.py` 6 · `component_editor.py` 3 |
+| 〃 ③ (WP-11 신설) | **FSM 상태·전략·이벤트·훅 핸들러·Tool 클래스 35종**을 두 번째 인자로 갖는 `isinstance`. 컴포넌트 종류가 아니지만 같은 결함 형태(병렬 사다리)라 같은 규칙으로 감시한다 | **89 사이트 / 17 파일**(WP-11 직전 실측) | **52 / 11** — WP-11이 상태 서술 13·legacy 에이전트 변형 5·훅 핸들러 폼 10·의사 상태 5·Tool 직렬화 3을 걷었다. 남은 52는 **종류 질문이 아니라 구조 순회**다(합성 상태를 재귀로 내려가는 `walk`·`machine_rules`, FSM 값 객체를 저장 dict로 펴는 `ser`) — 폴리모픽 메서드로 옮기면 fsm 레이어가 컴파일러·검증 어휘를 알게 되어 경계 계약을 깬다 |
+| `tests/test_kind_literals.py` `RATCHET` ① | 컴포넌트 kind 15종이 `Compare` 피연산자·`dict` 키·`set`/`tuple`/`list` 원소로 쓰인 자리. 허용 파일 `model/serialize/migrate.py`(구버전 파일 문자열 해석이 정본)는 세지 않는다 | **157 사이트 / 26 파일** | **9 / 6** — WP-3이 레지스트리로(역직렬화·생성·전환·MCP 어휘·매트릭스 키), WP-4가 `deser_plugin`의 마지막 11을, WP-5가 쓰기 루프의 kind 사다리를, WP-7이 뷰의 kind 표 여섯 벌을, WP-8이 MCP 생성 인자 게이트와 `NO_PLACE_KINDS`를, WP-10이 랩핑 어휘를 흡수. 마무리 커밋이 뷰에 남아 있던 **진짜 디스패치 둘**(`kind_switch_row`의 fork 2종 튜플 → `RUNS_IN_SUBAGENT`, `fork_skill`의 `"procedural"` → `ProceduralSkillConfig.KIND`)을 걷어 **디스패치 리터럴은 `migrate.py` 한 파일**만 남았다. 세는 9건은 전부 어휘 충돌 오탐(MCP 응답 키·훅 핸들러 종류 `"agent"`·변수 맥락 문자열) |
 | 〃 ② plan kind | plan kind 14종. `agent`/`skill`이 컴포넌트 어휘와 겹치므로 `compiler/**`·`mcp/tools/query.py`에서만 센다. 소유자는 `compiler/plan_kinds.py` 하나(허용 파일) | **22 사이트 / 3 파일** | **1 / 1** — WP-5가 쓰기 루프 사다리 12와 `token_report`의 kind 사본 2를 걷었다. 남은 1건은 `mcp/tools/query.py`의 응답 키 `"claude_md"`로 **계획 kind가 아닌 오탐**이라 더 내려가지 않는다 |
 
 ②의 속성 목록에 있는 `output_events`/`output_event_defs`는 **오늘 모델에 없는
@@ -115,8 +115,32 @@ python -m tests.data.golden.regen --refresh-dogfood   # 동결 사본 자체를 
 이기도 하다. 기준선에는 그런 자리도 섞여 있다. 래칫은 내려가기만 하면 되므로
 섞임이 계약을 약하게 할 뿐 틀리게 하지는 않는다 — 숫자를 줄이는 WP가 실제 자리를
 보고 판단한다. 면제는 줄 번호가 아니라 **`module::qualname`**으로 적는다(위아래
-편집만으로 면제가 엉뚱한 자리로 미끄러지지 않도록). 오늘 면제는 0건이고, 사라진
-자리를 면제가 붙잡고 있으면 테스트가 제거를 강제한다.
+편집만으로 면제가 엉뚱한 자리로 미끄러지지 않도록). 오늘 면제는 **1건**
+(`view.actions.model_effort::_config_of` — 의사 상태·빈 노드까지 오는 자리의
+방어적 조회)이고, 사라진 자리를 면제가 붙잡고 있으면 테스트가 제거를 강제한다.
+
+### 수용 시험 실측 (리팩토링 종료 2026-09-19)
+
+"새 종류 하나를 더하는 데 몇 파일을 만지는가"가 이 리팩토링의 목적이었다.
+**예측이 아니라 실측**을 남긴다 — 다음 종류의 예산이 명세의 낙관적인 수가
+아니라 아래 수에서 출발하도록.
+
+| 시험 | 예측 | 실측 | 초과분의 성격 |
+|---|---|---|---|
+| **F1** 새 종류 추가(`ExternalAgent`, WP-9 + 리뷰 반영) | 생산 5 파일, 컴파일러 편집 0 | **생산 18 파일**(그중 컴파일러 4: `emit/{common,sections,skill_sections,agent_sections}.py`) | 종류 등록·필드 어휘·매트릭스는 예측대로 5 파일이다. 나머지는 ① **위임 산문** — 외부 에이전트를 부르는 문장·단서가 emitter 4곳의 텍스트라 새 종류가 문장을 얻으려면 그 텍스트를 고쳐야 한다(절 표가 아니라 문구의 문제) ② **enum 어휘**(`AgentField.SOURCE` 신설) ③ **검증·뱃지·미리보기**가 "산출 없는 종류"를 처음 만난 자리 |
+| **F2** 종류 퇴역(`WrappedSkill`, WP-10 3커밋 + 리뷰 반영) | 19 터치 | **생산 62 파일**(삭제 2: `emit/wrapped.py`·`view/actions/wrapped_usage.py`), 문서·테스트 포함 **135 파일**(삭제 8) | 클래스·emitter·용도 스위치 삭제는 예측 규모다. 초과분은 ① **MCP 도구 재지정**(`wrap.py` → `external.py`) ② 랩핑을 근거로 들던 **주석·docstring 전수** ③ 마이그레이션(단방향 흡수)과 그 고정 테스트 |
+| **F5** 기존 스위트 편집 | 5건 | **51 파일**(`git diff --diff-filter=M tests/`) | 대부분은 래칫·패리티·골든 재생성의 파급이고, 단언을 느슨하게 한 편집은 없다 |
+
+파일 크기(F8, 신규 모듈은 <300줄 목표): `emit/section_plan.py` **405** ·
+`model/plugin/kinds.py` 271 · `view/kind_ui.py` 264 · `emit/emitters.py` 255 ·
+`model/plugin/serial_fields.py` 233 · `compiler/units/*` ≤219 ·
+`emit/pointer_rules.py` 94 · `compiler/preview.py` 92. `section_plan.py` 하나만
+목표를 넘는데, 그 405줄의 절반 이상이 **절 선언 표와 그 근거 주석**이라 쪼개면
+"한 종류의 산출 선언을 한눈에 본다"는 이 파일의 존재 이유가 사라진다 — 1,200
+상한과 800 권고 아래라 그대로 둔다. `daedalus/` 전체에서 800줄을 넘는 파일은
+`view/widgets/markdown/editor.py` 928 · `view/canvas/scene.py` 879 ·
+`cli/blackboard.py` 851 셋이고(`docs/backlog.md` §7), 리팩토링이 만든 파일은
+하나도 없다.
 
 ### 죽은 코드 게이트 (`tests/test_dead_code.py`)
 
@@ -237,7 +261,7 @@ daedalus/
 │   │   ├── roles.py        # 능력 표면의 어휘 — Bucket/PlacementRole/BodySource/OutputLocation (순수 enum, 아무것도 임포트하지 않는다).
 │   │   │                   #   plugin 패키지 임포트 방향의 뿌리: roles ← base ← config ← skill/agent
 │   │   ├── serial_fields.py# 설정 직렬화의 **필드 선언 어휘**(WP-4) — FieldSpec(name/codec/missing) + 코덱 8종
-│   │   │                   #   (RAW·LIST·STR·BOOL·STR_OR_DEFAULT·ENUM·ENUM_OPT·ENUM_OR_STR) + enum 헬퍼
+│   │   │                   #   (RAW·LIST·STR·STR_OR_DEFAULT·ENUM·ENUM_OPT·ENUM_OR_STR) + enum 헬퍼
 │   │   │                   #   `_to_enum`/`_enum_val`/`_enum_opt`의 **단일 진실**(serialize/deser_fsm·__init__이 이름으로 수입).
 │   │   │                   #   `missing`은 **키 부재값**이고 dataclass 기본값과 다를 수 있다 — `model` 부재→None(backlog D10),
 │   │   │                   #   `usage` 부재→"state". 센티널 `_USE_DEFAULT`면 그 키를 생성자에 아예 넘기지 않는다.
@@ -555,7 +579,7 @@ daedalus/
     ├── recent.py           # 최근 프로젝트 목록(WP-RP) — ~/.daedalus/recent.json 읽기/쓰기 (Qt 무관 순수 stdlib).
     │                       #   load/save/push/remove/clear + MAX_RECENT. 기록 실패는 삼킨다(endpoint.py와 같은 정책).
     │                       #   실존 검사는 하지 않는다 — 메뉴를 열 때마다 stat을 때리면 네트워크 드라이브에서 UI가 멈춘다.
-    ├── app.py              # 메인 윈도우 **골격** (WP-RF-3e 분해 후 — 줄 수는 `docs/backlog.md` §7 표가 단일 진실) — 독·메뉴 배선 + 프로젝트 수명주기.
+    ├── app.py              # 메인 윈도우 **골격** (WP-RF-3e 분해 후 761줄 — 800줄 권고 아래다) — 독·메뉴 배선 + 프로젝트 수명주기.
     │                       #   나머지는 협력 객체 7종에 위임(Mixin 아님 — 상속으로 섞으면 이름 충돌과 self의 정체가 흐려진다):
     │                       #   session_io.py / compile_actions.py / launch_actions.py / validation_actions.py /
     │                       #   graph_io.py / component_actions.py / editor_tabs.py (아래 각 항목).
