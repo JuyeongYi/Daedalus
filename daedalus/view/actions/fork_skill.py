@@ -14,10 +14,6 @@ from typing import Any
 #: 컴포넌트 정체성을 유지한 채 `__class__`만 바꿀 수 있다.
 KINDS: tuple[str, ...] = ("procedural", "sync_fork", "async_fork")
 
-#: 이 전환 가족의 선언값 — `StepSkill.CONVERT_FAMILY`와 같은 문자열이다.
-#: 클래스를 열거하는 대신 이 값으로 묻는다(WP-2d Q17).
-_STEP_FAMILY = "step"
-
 #: 종류 문자열 → (스킬 클래스 이름, config 클래스 이름). 실제 클래스는 순환
 #: 임포트를 피해 함수 안에서 해소한다.
 _KIND_CLASSES: dict[str, tuple[str, str]] = {
@@ -78,8 +74,15 @@ def skill_kind_of(component) -> str | None:
     "서로 전환 가능한가"는 컴포넌트가 `CONVERT_FAMILY`로 선언한다(WP-2d Q17) —
     클래스를 열거하면 같은 가족에 종류를 더할 때 여기를 빠뜨리고, 빠뜨리면
     전환 메뉴에서 조용히 사라진다.
+
+    비교값은 **선언에서 읽는다** — 문자열을 베껴 두면 가족 이름을 바꿀 때
+    여기만 남아 모든 단계 스킬이 "전환 불가"가 되고 메뉴가 조용히 사라진다.
+    컴포넌트가 아닌 값(`None` — 빈 노드의 skill_ref 등)은 예외가 아니라
+    "전환 대상이 아니다"로 답한다(`placement_role_of`와 같은 관용 계약).
     """
-    if component.CONVERT_FAMILY != _STEP_FAMILY:
+    from daedalus.model.plugin.skill import StepSkill
+
+    if getattr(component, "CONVERT_FAMILY", None) != StepSkill.CONVERT_FAMILY:
         return None
     return component.config.kind if component.config.kind in KINDS else None
 

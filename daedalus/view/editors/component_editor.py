@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
 )
 
 from daedalus.model.plugin.agent import Agent
+from daedalus.model.plugin.roles import Bucket
 from daedalus.model.plugin.skill import Skill
 from daedalus.view.editors.body_editor import (
     SectionContentPanel,
@@ -55,7 +56,9 @@ class ComponentEditor(QWidget):
 
         # 변수 팝업 컨텍스트 — 스킬은 풀 지원, 에이전트 .md는 루트 변수만
         # 인식한다(사용자 확정 매트릭스, variable_loader.variables_for).
-        var_context = "agent" if isinstance(component, Agent) else "skill"
+        # 맥락을 가르는 것은 종류가 아니라 **산출 버킷**이다(WP-2d Q25) —
+        # `component_actions`/MCP `delete_component`와 같은 술어를 쓴다.
+        var_context = "agent" if component.BUCKET is Bucket.AGENTS else "skill"
 
         root_lay = QHBoxLayout(self)
         root_lay.setContentsMargins(0, 0, 0, 0)

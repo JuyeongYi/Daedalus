@@ -152,11 +152,14 @@ class AgentEditor(QWidget):
 
         # fork 에이전트에는 포트도 그래프 도착 경로도 없다 — 부르는 것은 fork
         # 스킬이고 결과 분기는 그 스킬의 보고 양식이 정한다. 없는 필드를
-        # 그리려 들면 AttributeError다. 판정은 **클래스**로 한다 —
-        # hasattr는 유령 인스턴스 속성 하나에 속는다(원칙 1).
-        from daedalus.model.plugin.agent import AgentDefinition
+        # 그리려 들면 AttributeError다.
+        #
+        # **포트를 갖는 것은 "단일 배치되는 노드"다**(WP-2d) — 스킬 편집기와
+        # 같은 술어(`is_state_placeable`)를 쓴다. 종류를 열거하면 새 에이전트
+        # 종류가 포트 편집기를 조용히 잃는다(스킬 쪽에서 실제로 그랬다).
+        from daedalus.model.plugin.placement import is_state_placeable
 
-        self._is_workflow = isinstance(self._agent, AgentDefinition)
+        self._is_workflow = is_state_placeable(self._agent)
         self._transfer_on_panel = None
         self._call_agents_panel = None
         self._callers_panel = None
@@ -185,9 +188,11 @@ class AgentEditor(QWidget):
             right_widgets = [
                 self._transfer_on_panel, self._call_agents_panel, self._callers_panel,
             ]
-        else:
+        elif self._agent.IS_FORK_BASE:
             # fork 에이전트의 역참조는 그래프가 아니라 **fork 스킬의 agent
-            # 필드**다 — 호출자 목록의 자리를 이 목록이 대신한다.
+            # 필드**다 — 호출자 목록의 자리를 이 목록이 대신한다. 게이트는
+            # 선언(`IS_FORK_BASE`)이다 — "워크플로가 아니다"로 묶으면 배치도
+            # fork도 아닌 새 에이전트가 엉뚱한 패널을 받는다.
             self._fork_users_panel = _ForkUsersPanel(self._agent, self._project)
             right_widgets = [self._fork_users_panel]
 

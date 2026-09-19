@@ -65,6 +65,17 @@ def is_edge_placeable(component: object) -> bool:
     return placement_role_of(component) is PlacementRole.EDGE
 
 
+def is_reference_placed(component: object) -> bool:
+    """참조처럼 배치되는 컴포넌트인가 — 배치 역할이 ``REFERENCE``인가.
+
+    `is_state_placeable`/`is_edge_placeable`과 **같은 층의 이름**이다. 이
+    질문도 손으로 `placement_role_of(c) is PlacementRole.REFERENCE`를 적으면
+    표면마다 답이 갈린다(원칙 1) — `skill.is_reference_usage`는 이 함수의
+    한 줄 파사드이고, 실체는 여기 하나다.
+    """
+    return placement_role_of(component) is PlacementRole.REFERENCE
+
+
 def is_canvas_placeable(component: object) -> bool:
     """캔버스에 놓이는 컴포넌트인가 — 상태 노드 또는 참조 노드.
 

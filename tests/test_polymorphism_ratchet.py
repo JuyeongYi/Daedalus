@@ -60,8 +60,8 @@ SHAPE_EXCLUDED_SUBJECTS: frozenset[str] = frozenset({"project", "cfg", "config",
 #: 남은 view/MCP 사이트는 kind 표(레지스트리 패널·app 탭·에디터 위젯 맵)와
 #: 미리보기 분기로, 각각 WP-3/WP-6/WP-7/WP-8/WP-10이 소유한다.
 RATCHET: dict[str, int] = {
-    "isinstance_sites": 36,
-    "isinstance_files": 11,
+    "isinstance_sites": 34,
+    "isinstance_files": 9,
     "shape_attr_sites": 33,
     "shape_attr_files": 12,
 }

@@ -27,14 +27,15 @@ def _usage_escape_hatch(comp: Any) -> str:
     "wrapped_skill인데 랩핑 스킬은 포트를 갖는다고 적혀 있다"는 자기모순으로
     읽힌다 — 포트를 막는 것은 **종류가 아니라 이 인스턴스의 용도**다.
     """
-    from daedalus.model.plugin.placement import placement_role_of
-    from daedalus.model.plugin.roles import BodySource, PlacementRole
+    from daedalus.model.plugin.placement import is_reference_placed
+    from daedalus.model.plugin.roles import BodySource
 
     # 용도 스위치를 가진 종류는 오늘 랩핑 스킬 하나뿐이다 — 본문 정본이
     # 외부인 스킬(`BODY_SOURCE`)로 좁힌다. 참조 스킬(REFERENCE지만 정본이
     # 자기 것)에게 `set_wrapped_usage`를 권하면 없는 길을 가리킨다.
+    # 배치 역할 비교는 손으로 적지 않는다 — 이름 붙은 술어가 실체다(원칙 1).
     if (
-        placement_role_of(comp) is PlacementRole.REFERENCE
+        is_reference_placed(comp)
         and getattr(type(comp), "BODY_SOURCE", None) is BodySource.EXTERNAL
     ):
         name = getattr(comp, "name", "")

@@ -153,3 +153,21 @@ def test_workflow_agent_editor_has_no_fork_users_panel(qapp):
     editor = AgentEditor(_make_agent())
     assert editor._fork_users_panel is None
     assert editor._callers_panel is not None
+
+
+def test_agent_editor_port_panels_follow_the_placement_declaration(qapp):
+    """포트 패널 게이트는 **배치 선언**이다 — 종류 열거가 아니다 (WP-2d).
+
+    스킬 편집기와 같은 술어(`is_state_placeable`)를 쓴다. 종류로 물으면 새
+    에이전트 종류가 `PLACEMENT=STATE`를 선언해도 포트 편집기를 조용히 잃고,
+    GUI에서 `transfer_on`을 만들 길이 없어진다(스킬 쪽에서 실제로 났던 버그).
+    """
+    from daedalus.view.editors.agent_editor import AgentEditor
+    from daedalus.view.editors.skill_editor import _TransferOnPanel
+
+    workflow = AgentEditor(_make_agent())
+    assert len(workflow.findChildren(_TransferOnPanel)) == 2  # 출력 포트 + 호출 포트
+
+    fork_agent, project = _fork_project()
+    fork = AgentEditor(fork_agent, project=project)
+    assert fork.findChildren(_TransferOnPanel) == []

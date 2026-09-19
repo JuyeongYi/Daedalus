@@ -8,7 +8,7 @@ from uuid import uuid4
 from daedalus.model.fsm.machine import StateMachine
 from daedalus.model.fsm.section import EventDef
 from daedalus.model.plugin.base import PluginComponent, WorkflowComponent
-from daedalus.model.plugin.placement import placement_role_of
+from daedalus.model.plugin.placement import is_reference_placed
 from daedalus.model.plugin.roles import (
     BodySource,
     Bucket,
@@ -156,11 +156,11 @@ def is_reference_usage(component: object) -> bool:
     다른 판정을 들고 있으면 참조 노드로 놓이는데 산출은 파일을 만드는 식의
     어긋남이 생긴다.
 
-    **한 줄 파사드다**(WP-2b): 실체는 `component.effective_placement()`이고
-    여기서는 그 값에 이름을 붙일 뿐이다. 새 참조 종류는 `PLACEMENT` 선언만으로
-    이 판정에 합류한다 — 호출자 무수정.
+    **한 줄 파사드다**(WP-2b): 실체는 `placement.is_reference_placed`이고
+    여기서는 그 판정에 용도 어휘의 이름을 붙일 뿐이다. 새 참조 종류는
+    `PLACEMENT` 선언만으로 이 판정에 합류한다 — 호출자 무수정.
     """
-    return placement_role_of(component) is PlacementRole.REFERENCE
+    return is_reference_placed(component)
 
 
 def has_external_body(component: object) -> bool:

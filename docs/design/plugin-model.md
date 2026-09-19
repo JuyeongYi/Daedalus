@@ -191,23 +191,28 @@ no-op가 된다. 그래서 `PluginComponent`가 **선언(ClassVar) + 인스턴�
 
 ### 배치 가능 판정 (`model/plugin/placement.py`)
 
-**세 판정이다** — 앞 둘을 하나로 합치면 참조 스킬 경로가 죽는다.
+**네 판정이다** — 앞 둘을 하나로 합치면 참조 스킬 경로가 죽는다.
 
 | 함수 | 질문 | 실체 (WP-2b) | True |
 |------|------|------|------|
 | `is_state_placeable(c)` | 그래프에 **SimpleState 노드**로 놓을 수 있는가 | `c.effective_placement() is PlacementRole.STATE` | `StepSkill`(절차형·fork 2종), 용도가 reference가 **아닌** `WrappedSkill`, `AgentDefinition` |
 | `is_canvas_placeable(c)` | 캔버스에 놓을 수 있는가(상태 **또는** 참조 노드) | `effective_placement() in (STATE, REFERENCE)` | 위 + `is_reference_usage`(ReferenceSkill·용도 reference 랩핑) |
 | `is_edge_placeable(c)` | 전이 **엣지**에 붙는가 | `effective_placement() is PlacementRole.EDGE` | `TransferSkill` |
+| `is_reference_placed(c)` | **참조**처럼 배치되는가 | `effective_placement() is PlacementRole.REFERENCE` | `ReferenceSkill`, 용도가 reference인 `WrappedSkill` |
 
-**세 함수 모두 종류 목록을 갖지 않는다**(WP-2b) — 컴포넌트가 `PLACEMENT` ClassVar로 선언한 역할을
+**네 함수 모두 종류 목록을 갖지 않는다**(WP-2b) — 컴포넌트가 `PLACEMENT` ClassVar로 선언한 역할을
 `effective_placement()`가 인스턴스 상태와 합쳐 답하고, 여기서는 그 값에 이름만 붙인다. 새 종류는
-선언 한 줄로 세 판정에 합류한다. 비-컴포넌트(`None`·kind 문자열)를 관용하는 자리는
-`placement_role_of(c)` 하나이고 `skill.is_reference_usage`도 그것을 쓴다(관용 규칙 2벌 금지 — 원칙 1).
+선언 한 줄로 네 판정에 합류한다. 비-컴포넌트(`None`·kind 문자열)를 관용하는 자리는
+`placement_role_of(c)` 하나이고 나머지 셋은 그것을 쓴다(관용 규칙 2벌 금지 — 원칙 1).
+`skill.is_reference_usage`는 `is_reference_placed`의 **한 줄 파사드**다 — 용도 어휘(WP-WR)로 묻는
+호출자가 쓰는 이름이고, 배치 역할 비교를 손으로 적는 자리는 없어야 한다.
 
 **포트를 갖는가도 `is_state_placeable`이 답한다**(WP-2d) — 워크플로 단계로 한 번 놓이는 노드만
 출력 포트·에이전트 호출 포트를 선언할 의미가 있다. 스킬 편집기 포트 패널(거기에 **버킷=SKILLS** 게이트가
 더 붙는다 — 에이전트 포트 패널은 `AgentEditor`가 만들므로 둘 다 그리면 패널이 두 벌 생긴다)·MCP
-`set_transfer_on`/`add_agent_call`·캔버스 호출 엣지 판정이 전부 이 함수를 부른다. 같은 enum 비교를 손으로
+`set_transfer_on`/`add_agent_call`·캔버스 호출 엣지 판정이 전부 이 함수를 부른다. **에이전트 편집기의
+포트 패널 게이트도 같은 함수**다 — 거기서 종류(`AgentDefinition`)로 물으면 `PLACEMENT=STATE`를 선언한
+새 에이전트 종류가 포트 편집기를 조용히 잃는다. fork 사용자 목록 패널의 게이트는 `IS_FORK_BASE` 선언이다. 같은 enum 비교를 손으로
 적으면 표면마다 답이 갈린다(원칙 1).
 
 캔버스 드롭(`scene.py`)·레지스트리 드래그·"여기에 만들기"(`creation.NO_PLACE_KINDS`)·MCP `place_component`가
