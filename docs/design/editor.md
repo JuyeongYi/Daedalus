@@ -171,6 +171,36 @@
 - **위젯 클래스를 값으로 들지 않는다:** `editor_factory`는 호출 가능 객체이고
   편집기 임포트는 그 안에서 지연된다.
 
+## 레지스트리 도크의 탭 구성 — `view/panels/registry_panel.py` (WP-C)
+
+탭은 세 갈래이고 **전부 파생**이다(손으로 적은 탭 목록이 없다).
+
+1. **종류 섹션** — `config_kinds_in(SKILLS) + config_kinds_in(AGENTS)` 순서가 곧 탭
+   순서다(결정성). 섹션 하나가 종류 **여럿**을 담을 수 있다: `KindUI.section_group`이
+   같은 종류는 한 탭을 나눠 쓰고, 라벨·색·탭 라벨은 **선언 순서상 첫 멤버**의 행에서
+   온다(표를 하나 더 두지 않는다). 오늘 유일한 그룹은 🔌 EXTERNAL AGENTS(외부
+   그래프 노드 + 외부 fork 기반)다. `_section_of_kind`가 종류 → 섹션 배정표이고
+   `tests/view/test_component_mgmt_ui.py`가 "어느 종류도 갈 곳이 없지 않다"를 고정한다.
+2. **🔌 탭 하단의 미등록 목록** — 컴포넌트가 아닌 **카탈로그 항목**이다
+   (`view/panels/external_registry.UnregisteredAgentsList`). 담는 종류가 전부
+   `BODY_SOURCE=EXTERNAL`이고 버킷이 AGENTS인 섹션에만 붙는다(선언 파생).
+3. **🧷 EXTERNAL SKILLS 탭** — 종류 섹션 뒤에 하나 더 붙는 카탈로그 섹션
+   (`ExternalSkillsSection`). 컴포넌트가 아니므로 `_sections`에 들지 않는다.
+
+- **섹션 파생은 `__init__` 시점**이다 — 모듈 상수로 접으면 `KIND_UI` 행이 빠진 종류의
+  거절이 임포트 실패로 번져 이유를 잃는다(`test_registry_failure_is_loud`는 팔레트
+  **구축**이 그 종류 이름을 찍고 죽는지를 본다).
+- **"+"의 뜻이 갈린다** — 외부 정본만 담는 섹션은 이름을 물어 만들 수 없어
+  카탈로그 창을 열고(`catalog_requested`), 나머지는 종전대로 이름 다이얼로그
+  (`new_component_requested`)다. 판정은 `BODY_SOURCE` 선언이지 종류 목록이 아니다.
+- **패널은 실체를 들지 않는다** — 등록·추가는 시그널로 창에 올리고 창이
+  `view/actions/external_registration`을 부른다(MCP와 같은 함수). 목록을 무엇으로
+  채울지도 모델 함수가 답한다(`unregistered_plugin_agents`/`used_plugin_skill_refs`/
+  `skill_ref_users`).
+- **카탈로그 스캔은 캐시된다** — `set_project`(프로젝트 교체)와 `refresh_catalog`
+  (카탈로그 창 닫힘)에서만 `scan_catalog()`를 부르고 결과를 유도 함수에 주입한다.
+  `_rebuild`는 구조 notify마다 도므로 여기서 폴더를 훑으면 편집 중 화면이 멈춘다.
+
 ## 컴파일 미리보기 (A9-1) — 진입점 넷, 실체 하나
 
 "그래서 이게 어떤 파일로 나가는데?"를 여는 표면은 넷이다 — 캔버스 노드 우클릭

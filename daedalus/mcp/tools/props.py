@@ -15,7 +15,10 @@ from typing import Any
 
 from daedalus.model.plugin.enums import AgentField, SkillField
 from daedalus.model.plugin.kinds import config_kinds_in
-from daedalus.model.plugin.placement import is_canvas_placeable_role
+from daedalus.model.plugin.placement import (
+    is_canvas_placeable,
+    is_canvas_placeable_role,
+)
 from daedalus.model.plugin.roles import Bucket
 
 from .fields import FieldTools
@@ -80,6 +83,35 @@ class PropsTools(FieldTools):
             f"'{kind}'에는 {absent}. 사용 가능: {', '.join(owners) or '(없음)'}"
         )
 
+    @staticmethod
+    def _reject_placement_coords(
+        kind: str, x: float | None, y: float | None
+    ) -> None:
+        """좌표를 받을 수 있는 요청인가 — 아니면 **이유와 함께** 거절한다.
+
+        배치 가능성은 종류 목록이 아니라 **배치 역할 선언**이 답한다(P5) —
+        음성 목록(`NO_PLACE_KINDS`)은 `is_canvas_placeable`과 어긋나도
+        조용했다(WP-7 ②). 판정의 실체는 `model.plugin.placement` 하나이고,
+        여기서 enum 비교를 손으로 적으면 갈린다(원칙 1). 컴포넌트가 아직
+        없으므로(만들기 전에 거절한다) 역할을 받는 입구를 쓴다.
+
+        좌표가 둘 다 없으면 아무 말도 하지 않는다(배치하지 않는 생성).
+        """
+        from daedalus.model.plugin.kinds import spec_by_config_kind
+
+        if x is None and y is None:
+            return
+        if x is None or y is None:
+            raise ValueError(
+                "x와 y는 함께 주어야 합니다 — 한쪽만으로는 배치 좌표가 정해지지 않습니다."
+            )
+        role = spec_by_config_kind(kind).placement
+        if not is_canvas_placeable_role(role):
+            raise ValueError(
+                f"'{kind}' 종류는 캔버스에 노드로 배치되지 않습니다 "
+                f"({placement_role_prose(role)}) — x/y 없이 만드세요."
+            )
+
     def _create_component(
         self,
         kind: str,
@@ -99,7 +131,6 @@ class PropsTools(FieldTools):
         `create_and_place`의 `MacroCommand`로 묶여 **1 undo 단위**가 된다(G14) —
         캔버스 메뉴와 완전히 같은 경로다.
         """
-        from daedalus.model.plugin.kinds import spec_by_config_kind
         from daedalus.view.actions.creation import create_and_place, make_component
 
         win = self._window
@@ -111,21 +142,7 @@ class PropsTools(FieldTools):
                 raise ValueError(f"알 수 없는 종류 '{kind}'.")
             win._register_component(component)
             return False
-        if x is None or y is None:
-            raise ValueError(
-                "x와 y는 함께 주어야 합니다 — 한쪽만으로는 배치 좌표가 정해지지 않습니다."
-            )
-        # 배치 가능성은 종류 목록이 아니라 **배치 역할 선언**이 답한다(P5) —
-        # 음성 목록(`NO_PLACE_KINDS`)은 `is_canvas_placeable`과 어긋나도
-        # 조용했다(WP-7 ②). 판정의 실체는 `model.plugin.placement` 하나이고,
-        # 여기서 enum 비교를 손으로 적으면 갈린다(원칙 1). 컴포넌트가 아직
-        # 없으므로(만들기 전에 거절한다) 역할을 받는 입구를 쓴다.
-        role = spec_by_config_kind(kind).placement
-        if not is_canvas_placeable_role(role):
-            raise ValueError(
-                f"'{kind}' 종류는 캔버스에 노드로 배치되지 않습니다 "
-                f"({placement_role_prose(role)}) — x/y 없이 만드세요."
-            )
+        self._reject_placement_coords(kind, x, y)
         component = create_and_place(
             self._scene, win, kind, name, float(x), float(y), description,
             agent=agent, source=source,
@@ -213,8 +230,16 @@ class PropsTools(FieldTools):
         전용 — 그 플러그인의 서브에이전트를 가리키는 `플러그인[@마켓]:이름`
         원문이다(CC가 찾는 이름, 정확 일치). `list_external_plugins`의 에이전트
         행 `agent_type`이 그 값이다. **역할은 등록 시점에 고정된다** — 같은
-        source를 두 종류로 등록하면 `external_source_role_conflict` 에러이고,
-        역할을 바꾸려면 지우고 다시 만든다(사용자 확정 2026-09-19).
+        source가 이미 등록돼 있으면(종류가 같든 다르든) **거절**하고 어느
+        컴포넌트가 들고 있는지 말한다. 역할을 바꾸려면 지우고 다시 만든다
+        (사용자 확정 2026-09-19).
+
+        source를 주면 그 플러그인이 **아직 사용 선언되지 않았을 때 같은 요청에서
+        선언까지 한다**(레지스트리 🔌 탭 등록과 같은 실체 —
+        `actions/external_registration.register_external_agent`). 선언 없는
+        등록은 빌드가 dependencies/enabledPlugins를 내지 않아 런타임에 그
+        에이전트가 조용히 사라진다(원칙 5). 선언이 늘었으면 응답의
+        `declared_plugin`이 말한다. 생성 + 선언은 **1 undo 단위**다.
 
         절차는 본문(set_component_body)에, 결과 분기는 출력 포트
         (set_transfer_on)에 서술한다. 워크플로 에이전트는 기본 출력 포트
@@ -235,10 +260,38 @@ class PropsTools(FieldTools):
                 "외부 정본 참조라는 개념이 없습니다",
             )
         self._reject_duplicate_name(name)
+        if source:
+            # 등록의 실체는 레지스트리 🔌 탭과 **같은 액션 함수**다 — 자동 사용
+            # 선언·역할 고정 거절·1 undo 단위가 표면마다 갈리면 안 된다(원칙 1).
+            from daedalus.view.actions.external_registration import (
+                register_external_agent,
+            )
+
+            self._reject_placement_coords(kind, x, y)
+            declared_before = set(
+                getattr(self._project, "external_plugins", None) or []
+            )
+            component = register_external_agent(
+                self._window, source, kind, name=name, description=description,
+                scene=self._scene, x=x, y=y,
+            )
+            out: dict[str, Any] = {
+                "created": name,
+                "kind": kind,
+                "placed": is_canvas_placeable(component) and x is not None,
+                "source": source,
+            }
+            new_declared = [
+                p for p in (getattr(self._project, "external_plugins", None) or [])
+                if p not in declared_before
+            ]
+            if new_declared:
+                out["declared_plugin"] = new_declared[0]
+            return out
         placed = self._create_component(
-            kind, name, description, x, y, source=source or None
+            kind, name, description, x, y, source=None
         )
-        out: dict[str, Any] = {"created": name, "kind": kind, "placed": placed}
+        out = {"created": name, "kind": kind, "placed": placed}
         # 외부 정본을 갖는 종류만 응답에 싣는다 — "그 설정에 `source`가 있는
         # 종류"의 성질이지 종류 이름을 열거할 일이 아니다(create_skill 선례).
         if AgentField.SOURCE.value in self._config_field_names(kind):

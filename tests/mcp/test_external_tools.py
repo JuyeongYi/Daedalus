@@ -269,3 +269,62 @@ def test_set_component_hooks_accepts_a_skill(tools):
     tools.create_hook("guard", event="PreToolUse", command="echo hi")
     out = tools.set_component_hooks("step", ["guard"])
     assert out == {"component": "step", "hooks": ["guard"]}
+
+
+# ────────── WP-C: 에이전트 행의 등록 상태 (레지스트리 🔌 탭과의 패리티) ──────────
+
+
+@pytest.fixture
+def marketplace_with_agent(tmp_path):
+    """에이전트 1개짜리 플러그인 — 등록 표면의 모집단."""
+    plugin_dir = tmp_path / "agent-catalog" / "hookify"
+    meta = plugin_dir / ".claude-plugin"
+    meta.mkdir(parents=True)
+    (meta / "plugin.json").write_text(
+        json.dumps({"name": "hookify"}), encoding="utf-8"
+    )
+    agents = plugin_dir / "agents"
+    agents.mkdir()
+    (agents / "doctor.md").write_text(
+        "---\nname: doctor\ndescription: Doctors.\n---\n", encoding="utf-8"
+    )
+    return tmp_path / "agent-catalog"
+
+
+def test_agent_rows_report_the_registered_kind_and_name(
+    tools, marketplace_with_agent
+):
+    """`registered_as`/`registered_name` — GUI 🔌 탭이 회색으로 보여 주는 것과
+    같은 판정이다(쓸 수 있는 값은 읽을 수도 있어야 한다)."""
+    tools.add_marketplace_folder(str(marketplace_with_agent), "mkt")
+
+    def _row():
+        plugins = tools.list_external_plugins()["marketplace_folders"][0]["plugins"]
+        return plugins[0]["agents"][0]
+
+    row = _row()
+    assert row["agent_type"] == "hookify:doctor"
+    assert row["registered_as"] is None
+    assert row["registered_name"] is None
+    assert row["already_used"] is False
+
+    out = tools.create_agent(
+        "my-doctor", kind="external_fork_agent", source="hookify:doctor"
+    )
+    assert out["declared_plugin"] == "hookify"
+    row = _row()
+    assert row["registered_as"] == "external_fork_agent"
+    assert row["registered_name"] == "my-doctor"
+    assert row["already_used"] is True
+
+
+def test_registering_the_same_source_twice_is_refused(
+    tools, marketplace_with_agent
+):
+    """역할은 등록 시점에 고정된다 — 두 번째는 **거절**이고 이유를 말한다."""
+    tools.create_agent("a", kind="external_agent", source="hookify@mkt:doctor")
+    with pytest.raises(ValueError, match="이미"):
+        tools.create_agent(
+            "b", kind="external_fork_agent", source="hookify:doctor"
+        )
+    assert [a.name for a in tools._project.agents] == ["a"]

@@ -14,6 +14,10 @@ import copy
 from typing import Any
 
 from daedalus.model.fsm.section import Section, render_markdown
+from daedalus.model.plugin.names import (
+    external_ref_name_candidates,
+    free_component_name,
+)
 from daedalus.model.serialize.ser import FORMAT_VERSION
 
 
@@ -345,37 +349,6 @@ def needs_external_fork_agent_migration(data: dict) -> bool:
     return bool(_plugin_fork_refs(data))
 
 
-def _component_name_slug(text: str) -> str:
-    """임의 문자열을 컴포넌트 이름 규약(`^[a-z0-9][a-z0-9-]*$`)에 맞춘다.
-
-    소문자화 + 규약 밖 문자(콜론·밑줄·공백·대문자 …)를 `-`로, 연속 `-`는 하나로,
-    앞뒤 `-`는 제거. `hookify:Hook_Doctor` → `hook-doctor`. 규약을 어긴 이름을
-    만들면 마이그레이션이 `invalid_component_name` 경고를 **새로** 낸다(리뷰
-    2026-09-19 재현).
-    """
-    import re
-
-    slug = re.sub(r"[^a-z0-9-]+", "-", text.lower())
-    slug = re.sub(r"-{2,}", "-", slug).strip("-")
-    return slug
-
-
-def _free_component_name(taken: set[str], *candidates: str) -> str:
-    """이미 쓰이는 이름을 피해 후보 중 첫 자유 이름을 고른다(최후에는 접미 숫자).
-
-    이름이 겹치면 `duplicate_component_name` 에러가 되어 마이그레이션이 문제를
-    **새로** 만든다 — 그래서 여기서 피한다. 후보 순서가 곧 선호 순서다.
-    """
-    for candidate in candidates:
-        if candidate and candidate not in taken:
-            return candidate
-    stem = next((c for c in candidates if c), "external-fork-agent")
-    index = 2
-    while f"{stem}-{index}" in taken:
-        index += 1
-    return f"{stem}-{index}"
-
-
 def migrate_external_fork_agents(data: dict, warnings: list[str]) -> None:
     """fork 스킬의 `플러그인:이름` 원문 → `external_fork_agent` 컴포넌트 (제자리 변형).
 
@@ -388,8 +361,9 @@ def migrate_external_fork_agents(data: dict, warnings: list[str]) -> None:
     한 원문은 한 역할이고, 그 충돌은 로드 뒤 검증 에러로 사용자에게 드러나야
     한다(조용히 한쪽을 고르지 않는다, 원칙 5).
 
-    이름은 참조 이름 → `<플러그인>-<이름>` 순으로 자유로운 것을 고르되, 둘 다
-    컴포넌트 이름 규약으로 정규화한다(`_component_name_slug`).
+    이름은 등록 표면과 **같은 규칙**으로 짓는다 —
+    `plugin.names.external_ref_name_candidates`(참조 이름 → `<플러그인>-<이름>`,
+    둘 다 컴포넌트 이름 규약으로 정규화) + `free_component_name`.
     """
     import hashlib
 
@@ -412,12 +386,8 @@ def migrate_external_fork_agents(data: dict, warnings: list[str]) -> None:
     for skill, source in refs:
         name = registered.get(source)
         if name is None:
-            plugin, _, ref_name = source.partition(":")
-            bare_plugin = plugin.partition("@")[0].strip()
-            name = _free_component_name(
-                taken,
-                _component_name_slug(ref_name),
-                _component_name_slug(f"{bare_plugin}-{ref_name}"),
+            name = free_component_name(
+                taken, *external_ref_name_candidates(source)
             )
             taken.add(name)
             registered[source] = name

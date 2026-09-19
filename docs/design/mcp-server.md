@@ -216,6 +216,17 @@
   (원칙 1). `list_external_plugins`의 스킬 행에 `skill_ref`(넣을 이름 — `@마켓`을 뗀
   `플러그인:스킬`)와 `used_by`(그 참조를 가진 프로젝트 에이전트 이름 목록)가 실린다 — 쓸 수 있는
   값은 읽을 수도 있어야 한다(원칙 2). 상세는 `agents.md` "외부 플러그인 스킬" 절.
+- **등록 표면의 패리티 (WP-C, 2026-09-19).** `list_external_plugins`의 **에이전트 행**에
+  `registered_as`(`"external_agent"` / `"external_fork_agent"` / `null` — 그 정본을 등록한
+  컴포넌트의 종류)와 `registered_name`이 실린다. GUI 레지스트리 🔌 탭이 회색으로 보여 주는
+  "아직 등록되지 않았다"와 **같은 술어**(`wrap_catalog.registered_external_component`)이고,
+  마켓 표기만 다른 같은 정본을 다르게 세지 않는다. 등록 도구는 `create_agent(kind, source=)`
+  하나로 충분하고, 그 호출은 GUI 우클릭 등록과 **같은 액션 함수**
+  (`view/actions/external_registration.register_external_agent`)를 부른다 — 그래서 MCP로
+  등록해도 ① 이미 등록된 정본이면 **거절**(역할 고정) ② 미선언 플러그인이면 **같은 요청·같은
+  undo 단위에서 사용 선언**(응답의 `declared_plugin`)이 따라온다. 한쪽에만 자동 선언을 넣으면
+  GUI로 만든 프로젝트와 MCP로 만든 프로젝트가 다른 물건이 된다(원칙 1·2).
+  스킬 행의 `used_by`도 같은 모델 함수(`skill_ref_users`)를 쓴다.
 - **카탈로그 후보 조회 (G9):** `list_tool_candidates()` — 읽기 전용. ALLOWED_TOOLS/TOOLS/
   DISALLOWED_TOOLS TagInput이 보여주는 자동완성 목록과 **같은 산출**을 낸다
   (`catalogue_loader.candidate_strings` + `load_catalogue`를 GUI(`app._tool_candidates`)와
@@ -282,7 +293,7 @@
 | `create_skill` | `kind` | `config_kinds_in(Bucket.SKILLS)` **파생** — 오늘 `procedural` · `sync_fork` · `async_fork` · `declarative` · `transfer` · `reference`(선언 순서) |
 | `create_skill` | `fork_agent` | 설정에 `agent`를 가진 종류(오늘 `sync_fork`/`async_fork`) **전용** — 내장 fork 에이전트, `플러그인:이름`, 또는 프로젝트의 fork 에이전트 이름(정확 일치). 생략하면 `general-purpose` |
 | `create_agent` | `kind` | `config_kinds_in(Bucket.AGENTS)` 파생 — `agent`(워크플로 에이전트 — 캔버스 노드) · `fork_agent`(fork 스킬의 실행 기반 — fsm·포트·배치 없음) · `external_agent`(외부 플러그인 에이전트를 **노드로** — fsm·산출 파일 없음, 포트는 있다) · `external_fork_agent`(같은 것을 **fork 실행 기반으로** — 포트·배치·산출 파일 전부 없음). **어휘는 파생이라 WP-9·WP-EX 모두 이 목록을 손대지 않고 새 종류가 나타났다** |
-| `create_agent` | `source` | 설정에 `source`를 가진 종류(`external_agent`/`external_fork_agent`) 전용 생성 인자 — `플러그인[@마켓]:이름` 원문. 다른 종류에 주면 **거절**하고 어느 종류가 받는지 말한다(`create_skill(fork_agent=)` 선례 — 판정은 kind 목록이 아니라 **그 종류의 config 필드**가 한다). 등록과 정본 지목이 1 undo로 묶인다 |
+| `create_agent` | `source` | 설정에 `source`를 가진 종류(`external_agent`/`external_fork_agent`) 전용 생성 인자 — `플러그인[@마켓]:이름` 원문. 다른 종류에 주면 **거절**하고 어느 종류가 받는지 말한다(`create_skill(fork_agent=)` 선례 — 판정은 kind 목록이 아니라 **그 종류의 config 필드**가 한다). 등록·정본 지목·**미선언 플러그인의 사용 선언**이 1 undo로 묶인다(WP-C — 선언이 늘었으면 응답의 `declared_plugin`). 같은 정본이 이미 등록돼 있으면 **거절**한다(역할 고정) |
 | `convert_skill` | `to` | `procedural` · `sync_fork` · `async_fork` (3-way) |
 
 - **읽는 쪽과 쓰는 쪽의 철자가 다르다.** 조회(`get_project`의 스킬·에이전트 행, `get_component`,

@@ -61,27 +61,54 @@ def make_component(
     )
 
 
+def placement_cmds(scene, window, component, x: float, y: float) -> list:
+    """이 컴포넌트를 (x, y)에 놓는 커맨드들 — 놓이지 않는 종류면 빈 목록.
+
+    생성 경로가 여럿이어도(레지스트리 · 캔버스 · MCP · 🔌 탭 등록) **배치의
+    실체는 여기 하나**다. 참조로 배치되는 컴포넌트는 상태 노드가 아니라
+    **참조 노드**로 놓인다(캔버스 드롭과 같은 커맨드·같은 판정
+    `placement.is_reference_placed`).
+    """
+    from daedalus.model.fsm.state import SimpleState
+    from daedalus.model.plugin.placement import (
+        is_canvas_placeable,
+        is_reference_placed,
+    )
+    from daedalus.view.canvas.sync import sync_refs_to_model
+    from daedalus.view.commands.reference_commands import CreateRefCmd
+    from daedalus.view.commands.state_commands import CreateStateCmd
+    from daedalus.view.viewmodel.state_vm import ReferenceViewModel, StateViewModel
+
+    project = window._project
+    if project is None or not is_canvas_placeable(component):
+        return []
+    project_vm = scene._project_vm
+    if is_reference_placed(component):
+        rvm = ReferenceViewModel(model=component, x=x, y=y)
+        return [CreateRefCmd(
+            project_vm, rvm,
+            sync_fn=lambda: sync_refs_to_model(
+                project_vm, project.reference_placements
+            ),
+        )]
+    state = SimpleState(name=component.name, skill_ref=component)
+    vm = StateViewModel(model=state, x=x, y=y)
+    return [CreateStateCmd(project_vm, vm, fsm=project.graph)]
+
+
 def create_and_place(
     scene, window, kind: str, name: str, x: float, y: float, description: str = "",
     agent: str | None = None, source: str | None = None,
 ) -> object | None:
     """컴포넌트를 만들고 (배치 대상이면) 그 좌표에 놓는다 — 1 undo 단위.
 
-    참조로 배치되는 컴포넌트는 상태 노드가 아니라 **참조 노드**로 놓인다
-    (캔버스 드롭과 같은 커맨드·같은 판정 `placement.is_reference_placed`).
     어느 노드로도 놓이지 않는 종류는 만들기만 한다.
 
     캔버스 "여기에 만들기" 메뉴가 퇴역한 뒤로도 이 경로는 살아 있다 — MCP
     `create_skill(x, y)`가 좌표를 주면 여기로 온다.
     """
-    from daedalus.model.fsm.state import SimpleState
-    from daedalus.model.plugin.placement import is_reference_placed
-    from daedalus.view.canvas.sync import sync_refs_to_model
     from daedalus.view.commands.base import Command, MacroCommand
     from daedalus.view.commands.component_commands import CreateComponentCmd
-    from daedalus.view.commands.reference_commands import CreateRefCmd
-    from daedalus.view.commands.state_commands import CreateStateCmd
-    from daedalus.view.viewmodel.state_vm import ReferenceViewModel, StateViewModel
 
     project = window._project
     if project is None:
@@ -92,26 +119,9 @@ def create_and_place(
     if component is None:
         return None
 
-    project_vm = scene._project_vm
     children: list[Command] = [CreateComponentCmd(project, component)]
-
-    from daedalus.model.plugin.placement import is_canvas_placeable
-
-    if is_canvas_placeable(component):
-        if is_reference_placed(component):
-            rvm = ReferenceViewModel(model=component, x=x, y=y)
-            children.append(CreateRefCmd(
-                project_vm, rvm,
-                sync_fn=lambda: sync_refs_to_model(
-                    project_vm, project.reference_placements
-                ),
-            ))
-        else:
-            state = SimpleState(name=name, skill_ref=component)
-            vm = StateViewModel(model=state, x=x, y=y)
-            children.append(CreateStateCmd(project_vm, vm, fsm=project.graph))
-
-    project_vm.execute(
+    children.extend(placement_cmds(scene, window, component, x, y))
+    scene._project_vm.execute(
         MacroCommand(children, f"{kind} '{name}' 생성 + 배치")
     )
     return component
