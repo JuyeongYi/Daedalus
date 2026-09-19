@@ -187,6 +187,15 @@ class _RegistrySection(QWidget):
         # 미리보기 진입점이다.
         preview_action = menu.addAction("컴파일 미리보기…")
         if preview_action is not None:
+            from daedalus.compiler.preview import can_preview
+
+            # 산출 자리가 없는 종류만 비활성 — 참조 용도·비활성 랩핑 스킬은
+            # 파일이 나가지 않아도 미리보기 대상이다(compiler/preview.py).
+            preview_action.setEnabled(can_preview(comp))
+            if not can_preview(comp):
+                preview_action.setToolTip(
+                    "이 종류는 산출 파일이 없어 미리볼 것이 없습니다."
+                )
             preview_action.triggered.connect(lambda: self.preview_requested.emit(comp))
         # 랩핑 스킬은 삭제할 수 없다(WP-WR, 사용자 확정 2026-09-07) — 메뉴에
         # 아예 내지 않고 그 자리에 켜고 끄는 항목을 둔다. 눌러 봐야 거절당하는

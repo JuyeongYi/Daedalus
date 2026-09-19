@@ -129,6 +129,28 @@
   돌아오고 탭을 다시 열 때 문서가 새로 만들어진다 — 잃는 것은 본문 편집 이력뿐이다.
   닫힌 편집 탭도 undo로 다시 열리지는 않는다.
 
+## 컴파일 미리보기 (A9-1) — 진입점 셋, 실체 하나
+
+"그래서 이게 어떤 파일로 나가는데?"를 여는 표면은 셋이다 — 캔버스 노드 우클릭
+(`view/canvas/context_menus.add_component_actions_menu`), 레지스트리 우클릭
+(`view/panels/registry_panel` → `MainWindow._on_preview_component`), 프론트매터
+패널의 "미리보기" 버튼(`view/editors/frontmatter_panel`). 전이 스킬은 캔버스 노드가
+아니라 엣지에 붙어 placement 메뉴가 닿지 않으므로 엣지 컨텍스트 메뉴에도 항목이 있다
+(`view/canvas/scene.py`).
+
+**셋 다 같은 함수를 부른다** — `view/actions/preview.show_preview_dialog` →
+`compiler/preview.preview_component`. 텍스트·경로·토큰 구간의 실체는 컴파일러 쪽
+하나이고(WP-6), MCP `compile_preview`도 같은 함수다(MCP 패리티). 뷰에 남은 것은 Qt
+다이얼로그와 제목 문자열뿐이다: 제목의 파일명은 `compiler/preview.preview_path`가
+`OUTPUT_LOCATION`에서 유도한다(종전에는 `isinstance(component, Agent)`였다).
+
+**액션 비활성 판정도 공용이다** — `compiler/preview.can_preview(component)`. 잠그는
+대상은 산출 **자리**가 아예 없는 종류(`OUTPUT_LOCATION is NONE`)뿐이다.
+`emits_output()`으로 걸면 안 된다: 참조 용도·비활성 랩핑 스킬은 이번 빌드에 파일이
+나가지 않을 뿐 "무엇으로 컴파일되는가"는 볼 수 있고, 실사용 프로젝트의 랩핑 스킬이
+전부 그 경로다. `tests/compiler/test_preview.py`가 양방향으로 고정한다(진입점 셋이
+`can_preview`를 쓰고 `emits_output`을 쓰지 않음을 AST로 본다).
+
 ## 미저장 변경 확인
 
 편집 결과는 저장 전까지 **메모리에만** 있다. MCP로 편집하고 GUI를 그냥 닫아

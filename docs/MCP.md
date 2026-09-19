@@ -48,7 +48,7 @@ GUI가 켜지면 `127.0.0.1`에 Streamable HTTP로 뜬다.
 
 ### 조회 (19)
 
-`get_project` · `get_selection` · `focus_node` · `select_nodes` · `get_component` · `get_body_outline` · `get_body_section` · `get_history` · `validate_project` · `compile_preview` · `compile_check` · `get_hook` · `list_hook_events` · `list_hook_presets` · `hook_frontmatter_preview` · `list_component_fields` · `list_tool_candidates` · `list_recent_projects` · `list_project_templates`
+`get_project` · `get_selection` · `focus_node` · `select_nodes` · `get_component` · `get_body_outline` · `get_body_section` · `get_history` · `validate_project` · `compile_preview`(텍스트 + `path` + 토큰 추정 — GUI 미리보기와 같은 실체) · `compile_check` · `get_hook` · `list_hook_events` · `list_hook_presets` · `hook_frontmatter_preview` · `list_component_fields` · `list_tool_candidates` · `list_recent_projects` · `list_project_templates`
 
 조회는 **개요 ↔ 전문**으로 나뉜다. 목록을 주는 도구는 각 항목을 축약본으로 싣고, 전문은 그 하나를 지목하는 도구가 준다 — `get_body_outline` ↔ `get_body_section`이 원형이고, `get_project`의 훅 개요 ↔ `get_hook`(핸들러 스키마 + 스크립트 본문)이 같은 논리다. 프로젝트를 볼 때마다 셸 스크립트 전문을 통째로 실어 나르지 않기 위해서다.
 

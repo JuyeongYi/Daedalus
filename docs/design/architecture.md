@@ -170,6 +170,7 @@ WP-1 D9에서 삭제해 목록에서 빠졌다.
 | 테스트 | 고정하는 것 |
 |--------|-------------|
 | `tests/compiler/test_emit_import_acyclic.py` | `compiler/emit/*` 모듈 간 임포트 방향. **모듈 레벨 간선도, 함수 안 지연 임포트·`TYPE_CHECKING`까지 포함한 전체 간선도 비순환**이다(WP-6에서 `xfail(strict)` 제거). 방향: `common`(리프) → `{frontmatter, sections}` → `{fork, wrapped}` → `{skill_sections, agent_sections}` → `section_plan` → `pointer_rules` → `guides` → `emitters` → `{skill, agent}`. WP-6이 끊은 세 간선(`sections→wrapped`·`wrapped→agent`·`section_plan→emitters`)은 방향을 직접 고정해 되돌아오는 것을 막는다. **`TYPE_CHECKING` 임포트도 간선으로 센다** — 타입만 쓰더라도 "이 모듈이 저 모듈을 안다"는 사실은 같고, 눈감아 주면 모듈 지도가 거짓이 된다 |
+| `tests/compiler/test_preview.py` | **미리보기 단일 진입점**(WP-6) — 산출 파일이 없는 참조 용도·비활성 랩핑 스킬도 렌더되고(게이트를 `emits_output()`으로 걸면 사라지는 표면), `OUTPUT_LOCATION is NONE`인 종류는 `can_preview` 거짓 + `ValueError`. 진입점 셋이 **같은 판정**을 쓰는지 AST로 본다(`can_preview` 사용 / `emits_output` 미사용) |
 | `tests/compiler/test_emitters.py` | **표 구동 산출의 시끄러운 실패**(WP-6) — `emitter_for`/`plan_for_kind`/`provider_for`가 미지 값에 이유와 **등록 목록**을 말하는 ValueError를 내고, `output_path`는 산출 없는 자리를 거절한다. 표의 완결성도 양방향이다: 절 튜플의 모든 절에 provider가 있고(누락 = 단락이 조용히 사라짐) 모든 provider를 어느 종류든 쓴다(미사용 = 죽은 코드) |
 | `tests/test_kind_registry_parity.py` §3 | **`EMITTERS` ↔ `KIND_REGISTRY` 양방향**(WP-6) — 산출이 있는 종류마다 emitter 하나, `OUTPUT_LOCATION is NONE`인 종류에는 없음. `SECTION_PLANS` 키 집합도 같고 emitter의 `plan_kind`는 버킷과 짝이다 |
 | `tests/compiler/test_unit_contract.py` | **`CompileUnit` 계약**(WP-5) — 단위 id 유일·선언 순서 고정, 모든 계획 행이 `mode`/`phase`/`expands_root`/`token_kind`를 **선언**함(드라이버의 kind 튜플로 되돌아가지 않는다), `render()` 2회 동일(순수), `plan()`이 주입 경로 밖 파일을 읽지 않음(`Path.read_text` 감시 — 원칙 4), 파사드 계획 ⊂ 전체 계획이고 차집합이 정확히 `{files_tree}`, `OUTPUT_LOCATION`이 NONE인 컴포넌트는 예외 없이 건너뛰고 **이름 게이트도 받지 않음**(WP-9 선행 조건) |
@@ -396,6 +397,11 @@ daedalus/
 │   │   │                   #   가이드 본문에는 ${ROOT} 등 치환 변수를 쓰지 않는다(<SCHEMAS> 자리표시자)
 │   │   ├── hooks.py        #   compile_hooks_json/compile_hook_scripts (진행 상태 합성 훅 포함)
 │   │   └── manifest.py     #   compile_plugin_manifest/compile_schemas_json + 경로 변수 확장(expand_root_token)
+│   ├── preview.py          # **컴파일 미리보기의 단일 진입점**(WP-6) — preview_component(텍스트 + plan_kind +
+│   │                       #   token_kind + rel_path) · preview_path · can_preview. GUI 3곳과 MCP compile_preview가
+│   │                       #   같은 함수를 부른다(원칙 1·2 — 종전에는 표면마다 isinstance(comp, Agent)였다).
+│   │                       #   **산출 게이트를 거치지 않는다**: 참조 용도·비활성 랩핑 스킬도 렌더된다.
+│   │                       #   거절 대상은 OUTPUT_LOCATION이 NONE인 종류뿐(can_preview False + ValueError).
 │   ├── plan_kinds.py       # 산출 계획 kind 14종의 **유일한 소유자**(WP-5) — 리프 모듈(아무것도 임포트하지 않는다).
 │   │                       #   emit/guides.py의 WORKFLOW_GUIDE_KIND/BLACKBOARD_GUIDE_KIND/GUIDE_KINDS는 여기서 재-export한 것이다.
 │   │                       #   tests/test_kind_literals.py가 "리터럴은 이 파일에만"을 AST로 강제한다.

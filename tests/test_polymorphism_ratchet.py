@@ -60,14 +60,17 @@ SHAPE_EXCLUDED_SUBJECTS: frozenset[str] = frozenset({"project", "cfg", "config",
 #: WP-4가 `serialize/ser.py`도 0으로 비웠다(11 → 0 — `_ser_config` 사다리 8 +
 #: `_ser_skill`/`_ser_agent` 형상 가드 3이 `SERIALIZED_FIELDS` 선언과
 #: `component_fields`의 키 순서 표로 대체됐다).
-#: 남은 사이트는 kind 표(레지스트리 패널 10·app 탭 4)와 미리보기·wrapped 전용
-#: 분기로, 각각 WP-6/WP-7/WP-8/WP-10이 소유한다.
+#: WP-6이 미리보기 분기 3(`view/actions/preview`의 2 + `mcp/tools/query`의 1)을
+#: 없앴다 — 종류별 컴파일러 선택이 `compiler/preview.preview_component` 하나가
+#: 되면서 표면마다 `isinstance(comp, Agent)`를 묻던 자리가 사라졌다(23 → 20).
+#: 남은 사이트는 kind 표(레지스트리 패널·app 탭)와 wrapped 전용 분기로,
+#: 각각 WP-7/WP-8/WP-10이 소유한다.
 #: 형상 getattr 래칷(②)은 WP-4가 건드리지 않았다 — 직렬화 경로의 남은 두 사이트
 #: (`deser.deserialize_project`의 `fsm`)는 프로젝트 그래프 2-pass 질문이지
 #: 컴포넌트 조립 질문이 아니라 여기서 죽지 않는다.
 RATCHET: dict[str, int] = {
-    "isinstance_sites": 23,
-    "isinstance_files": 8,
+    "isinstance_sites": 20,
+    "isinstance_files": 6,
     "shape_attr_sites": 33,
     "shape_attr_files": 12,
 }

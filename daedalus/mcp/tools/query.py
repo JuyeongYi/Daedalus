@@ -431,38 +431,29 @@ class QueryTools(_BaseTools):
         `token_notice` 한 줄. 검증 경고가 아니라 **정보성 계기판**이다 —
         컴파일을 막지 않고 산출 텍스트도 바꾸지 않는다.
         """
-        from daedalus.compiler import plan_kinds
-        from daedalus.compiler.emit import compile_agent, compile_skill
-        from daedalus.compiler.token_report import TokenKind, TokenReport
-        from daedalus.model.plugin.agent import Agent
+        from daedalus.compiler.preview import preview_component
+        from daedalus.compiler.token_report import TokenReport
 
         comp = self._find_component(name)
-        project = self._project
-        # 에이전트 두 종류 모두 에이전트 컴파일러로 — fork 에이전트를 스킬
-        # 경로로 보내면 `_skill_kind_key`에서 예외가 난다(이유도 못 말한다).
-        is_agent = isinstance(comp, Agent)
-        if is_agent:
-            # 전역 훅(A1)까지 해소해 넘긴다 — LOCAL 빌드의 에이전트
-            # 프론트매터 hooks가 실제 컴파일과 같은 내용이어야 미리보기다.
-            text = compile_agent(
-                comp, project=project, resolved_hooks=self._window.resolved_hooks(),
-            )
-        else:
-            text = compile_skill(
-                comp, project=project, resolved_hooks=self._window.resolved_hooks(),
-            )
+        # 산출 텍스트·경로·계상 구간의 실체는 `compiler/preview.py` 하나다
+        # (GUI 미리보기와 **같은 함수** — 원칙 1·2). 종류별 컴파일러 선택도
+        # 거기서 emitter가 한다. 전역 훅(A1)까지 해소해 넘긴다 — LOCAL 빌드의
+        # 에이전트 프론트매터 hooks가 실제 컴파일과 같아야 미리보기다.
+        preview = preview_component(
+            comp, project=self._project,
+            resolved_hooks=self._window.resolved_hooks(),
+        )
+        text = preview.text
         report = TokenReport()
         # 미리보기는 컨텍스트 산출이다 — 실제 컴파일에서도 임계 판정 대상이라
-        # 같은 구간으로 센다(원칙 1). 계획 kind 문자열은 `plan_kinds`가 소유한다.
+        # 같은 구간으로 센다(원칙 1). 구간과 계획 kind는 emitter가 선언한다.
         entry = report.add(
-            comp.name,
-            plan_kinds.AGENT if is_agent else plan_kinds.SKILL,
-            text,
-            token_kind=TokenKind.CONTEXT,
+            comp.name, preview.plan_kind, text, token_kind=preview.token_kind,
         )
         return {
             "name": comp.name,
             "kind": self._component_kind(comp),
+            "path": str(preview.rel_path),
             "text": text,
             "chars": entry.chars,
             "tokens": entry.tokens,

@@ -567,9 +567,16 @@ class _FrontmatterPanel(QScrollArea):
         캔버스 우클릭 메뉴와 **같은 함수**를 부른다 — 여기서 산출을 따로
         만들거나 검증을 따로 돌리면 두 표면이 다른 답을 내게 된다.
         """
+        from daedalus.compiler.preview import can_preview
+
         row = QHBoxLayout()
         preview = QPushButton("미리보기")
         preview.setToolTip("이 컴포넌트가 어떤 파일로 나가는지 — 파일은 쓰지 않는다")
+        # 산출 자리가 없는 종류(`OUTPUT_LOCATION is NONE`)만 잠근다 — 참조 용도·
+        # 비활성 랩핑 스킬은 파일이 나가지 않아도 미리보기 대상이다.
+        if not can_preview(self._component):
+            preview.setEnabled(False)
+            preview.setToolTip("이 종류는 산출 파일이 없어 미리볼 것이 없습니다.")
         preview.clicked.connect(self._show_preview)
         row.addWidget(preview)
 

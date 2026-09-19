@@ -300,6 +300,12 @@
   ("## Invocation Contract")의 실체는 `model/plugin/placement.fork_skills_using` 하나다(원칙 1 —
   컴파일러는 뷰를 임포트할 수 없으므로 실체가 모델에 있어야 한다).
 - **`get_project`의 에이전트 행에 `kind`가 실린다.** 두 종류는 배치·포트·프론트매터 표가 달라
-  목록에서 구분되지 않으면 호출자가 잘못 배선한다. `compile_preview`도 두 종류 모두 에이전트
-  컴파일러로 보낸다(`isinstance(comp, Agent)`) — 스킬 경로로 새면 이유도 못 말하는 `TypeError`가
-  난다.
+  목록에서 구분되지 않으면 호출자가 잘못 배선한다. `compile_preview`는 종류별 컴파일러 선택을
+  **직접 하지 않는다**(WP-6) — GUI 미리보기와 **같은 함수** `compiler/preview.preview_component`를
+  부르고, 거기서 `emitter_for(component)`가 종류를 안다(원칙 1·2). 응답에 `path`(산출 루트 기준
+  상대 경로)가 함께 실리고, 토큰 계상 구간도 emitter가 선언한 것을 그대로 쓴다 — 미리보기가
+  실제 컴파일과 다른 구간으로 세면 계기판이 거짓말한다.
+- **미리보기에는 산출 게이트가 없다.** 참조 용도·비활성 랩핑 스킬은 컴파일 산출 파일이 없지만
+  `compile_preview`는 정상 렌더한다 — 질문이 "이 컴포넌트가 무엇으로 컴파일되는가"이지 "이번
+  빌드에 파일이 나가는가"가 아니기 때문이다. 거절하는 것은 산출 **자리**가 아예 없는 종류뿐이고
+  (`OUTPUT_LOCATION is NONE`), 그때는 등록된 종류 목록을 들려주는 `ValueError`가 난다(원칙 5).
