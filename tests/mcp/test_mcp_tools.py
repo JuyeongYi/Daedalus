@@ -203,7 +203,7 @@ def test_create_agent_has_default_output_port(tools, window):
     tools.create_agent("worker", description="작업자")
     agent = next(a for a in window._project.agents if a.name == "worker")
     assert [e.name for e in agent.transfer_on] == ["done"]
-    assert agent.output_events == ["done"]
+    assert [e.name for e in agent.output_ports()] == ["done"]
 
     tools.undo()
     assert not any(a.name == "worker" for a in window._project.agents)

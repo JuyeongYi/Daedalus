@@ -296,7 +296,6 @@ class QueryTools(_BaseTools):
         `delete_component`의 `still_referenced_by`는 지워야만 보이므로 조회의
         대체가 되지 않는다.
         """
-        from daedalus.model.plugin.agent import ForkAgent
         from daedalus.model.plugin.placement import fork_skills_using
 
         comp = self._find_component(name)
@@ -323,7 +322,8 @@ class QueryTools(_BaseTools):
                 for e in (getattr(comp, "call_agents", []) or [])
             ],
         }
-        if isinstance(comp, ForkAgent):
+        # fork 스킬의 실행 기반인가 — 선언이 답한다(WP-2d Q27).
+        if comp.IS_FORK_BASE:
             # 역참조 조회 — 목록의 실체는 model의 `fork_skills_using` 하나다
             # (편집기 패널·삭제 확인·산출 "## Invocation Contract"와 공용).
             info["used_by_fork_skills"] = fork_skills_using(comp, self._project)

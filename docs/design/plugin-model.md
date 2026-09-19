@@ -36,7 +36,8 @@ PluginComponent(ABC)                      base.py  (name, description, abstract 
 
 - `StepSkill`은 예전의 `ForkSkill ⊂ ProceduralSkill` 상속이 지탱하던 **"워크플로 단계 스킬"** 판정의 새 이름이다.
   `isinstance(x, StepSkill)` = "단계(fork 포함)", `isinstance(x, ProceduralSkill)` = "절차형만", `isinstance(x, ForkSkill)` = "fork 2종".
-  `(StepSkill, WrappedSkill)` 튜플이 "배치되는 스킬"을 묻는 자리에 쓰인다.
+  "배치되는 스킬인가"를 묻던 `(StepSkill, WrappedSkill)` 튜플은 **더 이상 쓰지 않는다**(WP-2d) —
+  `c.effective_placement() is PlacementRole.STATE`가 그 질문의 실체다(포트 패널·MCP 포트 도구 공용).
 - 에이전트 쪽도 **같은 축으로 두 판정**이다: "에이전트 컴포넌트 전반"(어느 리스트에 담는가 / 어느 컴파일러로
   보내는가 / 어느 매트릭스·에디터를 쓰는가)은 `Agent`, "그래프에 **배치된 노드**가 에이전트인가"(위임 문구·호출
   계약·캔버스·MCP 연결 규칙)는 `AgentDefinition`이다 — ForkAgent는 배치 불가라 후자에서 자연 제외된다.
@@ -129,7 +130,9 @@ no-op가 된다. 그래서 `PluginComponent`가 **선언(ClassVar) + 인스턴�
 **형상 조회.** `state_machines()` · `output_ports()` · `call_ports()` ·
 `known_outgoing_events()`. 기본은 전부 "없음"이고(`known_outgoing_events()`는 `None` =
 "이 종류는 집합을 정의하지 않는다" — 빈 집합과 다르다) 필드를 가진 클래스만 덮는다.
-`output_events`/`output_event_defs`는 `output_ports()`의 **한 줄 파사드**다.
+포트 조회 표면은 `output_ports()`/`call_ports()` 둘뿐이다 — 옛 `output_events`/
+`output_event_defs` 파사드는 WP-2d에서 캔버스(`node_item`)가 능력 메서드를 직접 부르게 되며
+소비자가 0이 되어 삭제했다(`tests/test_dead_code.py` 규칙 A).
 `StepSkill`은 호출 포트도 합법 이벤트 집합에 넣고 `AgentDefinition`은 넣지 않는
 비대칭이 남아 있다 — 오늘 `machine_rules`가 그렇게 동작하고, 넓히면 경고가 사라지는
 동작 변경이라 `docs/backlog.md`(D9)다.

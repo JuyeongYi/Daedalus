@@ -79,10 +79,6 @@ class WrappedSkill(Skill, WorkflowComponent):
     def kind(self) -> str:
         return self.KIND
 
-    @property
-    def output_events(self) -> list[str]:
-        return [e.name for e in self.output_ports()]
-
     # -- 인스턴스 훅 --
     def effective_placement(self) -> PlacementRole:
         """용도가 reference로 고정된 랩퍼는 참조 노드다(사용자 확정 2026-09-07).
@@ -221,11 +217,6 @@ class StepSkill(Skill, WorkflowComponent, ABC):
     )
     call_agents: list[EventDef] = field(default_factory=list)
 
-    @property
-    def output_events(self) -> list[str]:
-        """출력 포트 이름 목록 (StateNodeItem 호환) — `output_ports()`의 파사드."""
-        return [e.name for e in self.output_ports()]
-
     def state_machines(self) -> list[StateMachine]:
         return [self.fsm]
 
@@ -345,11 +336,6 @@ class TransferSkill(Skill, WorkflowComponent):
     @property
     def kind(self) -> str:
         return self.KIND
-
-    @property
-    def output_events(self) -> list[str]:
-        """항상 빈 목록 — 전이 스킬은 포트를 갖지 않는다(`output_ports()` 기본값)."""
-        return [e.name for e in self.output_ports()]
 
     def state_machines(self) -> list[StateMachine]:
         return [self.fsm]

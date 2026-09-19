@@ -47,7 +47,7 @@ def callers_of(agent: object, project) -> list[CallerRef]:
             continue  # 빈 노드에서 온 전이 — 가리킬 호출자가 없다
         port = getattr(getattr(trans, "trigger", None), "name", "") or ""
         description = ""
-        for event in getattr(caller, "call_agents", None) or []:
+        for event in caller.call_ports():
             if event.name == port:
                 description = (event.description or "").strip()
                 break

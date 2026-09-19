@@ -44,6 +44,8 @@ COMPONENT_CLASS_NAMES: frozenset[str] = frozenset({
 })
 
 # ── 컴포넌트 형상 속성 (§8 래칫 ② 목록 + output_events/output_event_defs) ──
+# `output_events`/`output_event_defs`는 WP-2d에서 모델에서 **삭제**됐다(소비자
+# 0). 목록에는 남겨 둔다 — 같은 우회로가 다시 생기면 즉시 걸려야 한다.
 SHAPE_ATTRS: frozenset[str] = frozenset({
     "config", "body", "fsm", "transfer_on", "call_agents", "when_to_use",
     "usage", "enabled", "reference_placements", "source",
@@ -53,13 +55,15 @@ SHAPE_ATTRS: frozenset[str] = frozenset({
 #: 첫 인자가 이것들이면 컴포넌트 형상 질문이 아니다(프로젝트/설정/문서 조회).
 SHAPE_EXCLUDED_SUBJECTS: frozenset[str] = frozenset({"project", "cfg", "config", "doc"})
 
-#: 실측 기준선 (2026-09-19, WP-2c 완료 — compiler 소비자 + D4 치환). **내리기만 한다.**
+#: 실측 기준선 (2026-09-19, WP-2d 완료 — view/MCP 소비자 치환). **내리기만 한다.**
 #: compiler 패키지의 컴포넌트 대상 isinstance·형상 getattr는 **둘 다 0**이다.
+#: 남은 view/MCP 사이트는 kind 표(레지스트리 패널·app 탭·에디터 위젯 맵)와
+#: 미리보기 분기로, 각각 WP-3/WP-6/WP-7/WP-8/WP-10이 소유한다.
 RATCHET: dict[str, int] = {
-    "isinstance_sites": 52,
-    "isinstance_files": 18,
-    "shape_attr_sites": 59,
-    "shape_attr_files": 24,
+    "isinstance_sites": 36,
+    "isinstance_files": 11,
+    "shape_attr_sites": 33,
+    "shape_attr_files": 12,
 }
 
 #: 정당한 잔존 사이트 — `module::qualname`. 면제는 **사유와 철거 주체**를 적는다.

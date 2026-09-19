@@ -136,7 +136,8 @@
   `connect_states`가 동일 규칙을 검사한다. 포트는 `add_agent_call(skill, event)`로 먼저 만든다.
   **호출 포트는 에이전트도 가진다**(2026-09-12 — CC 중첩 스폰 허용): 포트 도구 3종은 절차형
   스킬·state 용도 랩핑 스킬·에이전트를 받고, 판정의 단일 진실은
-  `PortTools._require_call_port_owner`다. 에이전트가 에이전트를 부르면 깊이·모델 티어 제약을
+  `PortTools._require_call_port_owner`다 — 술어는 **`c.effective_placement() is PlacementRole.STATE`**
+  (단일 배치 노드만 포트를 갖는다, WP-2d). `connect_states`의 `src_has_call_ports`도 같은 술어를 쓴다. 에이전트가 에이전트를 부르면 깊이·모델 티어 제약을
   검증이 에러로 짚는다(`agent_chain_too_deep`/`agent_calls_higher_model`).
   (계약 카드 자동 생성은 WP-CT로 퇴역 — 호출 계약은 컴파일이 그래프에서 유도한다.)
 - **에이전트 스코프(WP-RF-1c):** 도구의 `agent` 파라미터는 **시그니처째 제거**됐다(스키마 노출
@@ -282,14 +283,16 @@
   없이 깨지 않는다). **이미 배치된 컴포넌트도 거절한다** — 캔버스 드롭의 "이미 배치됨" 조기 반환과
   같은 가드다(없으면 MCP만 같은 스킬을 두 노드로 놓아 `no_duplicate_skill_ref`로 컴파일이 막힌다).
   캔버스는 조용히 무시하지만 MCP는 이유와 갈 곳(`move_state`)을 말한다.
-- **`connect_states`는 이 판정을 쓰지 않는다.** 도착이 에이전트인가는 `AgentDefinition`(워크플로
-  에이전트)으로 판정한다 — 배치 판정으로 갈아끼우면 스킬 대상에도 True가 되어 **모든 스킬 간
-  전이가 호출 포트를 요구**하게 된다. fork 에이전트는 노드가 될 수 없어 `_find_state_vm`에서
-  이미 걸린다.
-- **`set_transfer_on`은 fork 에이전트를 명시 거부한다.** `SetAttrCmd`가 `getattr(..., None)`
+- **`connect_states`는 이 판정을 쓰지 않는다.** 도착이 위임 대상인가는 컴포넌트의
+  `DELEGATION_TARGET` 선언으로 판정한다(WP-2d) — 배치 판정으로 갈아끼우면 스킬 대상에도 True가
+  되어 **모든 스킬 간 전이가 호출 포트를 요구**하게 된다. fork 에이전트는 선언상 위임 대상이지만
+  노드가 될 수 없어 `_find_state_vm`에서 이미 걸린다. 캔버스(`FsmScene.end_transition_drag`)가
+  같은 선언을 본다.
+- **`set_transfer_on`은 배치되지 않는 종류를 거부한다.** `SetAttrCmd`가 `getattr(..., None)`
   폴백이라 가드가 없으면 없는 필드가 인스턴스 속성으로 생기고 성공 응답이 돌아간 뒤 저장 한 번에
-  사라진다(원칙 5). 갈래는 그 fork 에이전트를 부르는 fork 스킬의 보고 양식이 정한다.
-  `_require_call_port_owner`도 같은 이유로 **워크플로** 에이전트만 받는다.
+  사라진다(원칙 5). 술어는 `_require_call_port_owner`와 **같다** —
+  `effective_placement() is PlacementRole.STATE`(WP-2d). 따라서 참조 용도 랩퍼·참조/배경/전이 스킬·
+  fork 에이전트가 한 문구로 걸린다. fork 에이전트의 갈래는 그것을 부르는 fork 스킬의 보고 양식이 정한다.
 - **역참조는 조회로도 보인다(패리티).** `get_component`가 fork 에이전트일 때
   `used_by_fork_skills`(이 에이전트를 실행 기반으로 쓰는 fork 스킬 이름)를 함께 싣는다 —
   편집기의 "사용하는 fork 스킬" 패널과 같은 목록이고, `delete_component`의

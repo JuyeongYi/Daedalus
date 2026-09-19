@@ -355,22 +355,24 @@ def test_shape_queries_match_the_fields_that_exist(cls):
     assert comp.output_ports() == list(getattr(comp, "transfer_on", []))
 
 
-def test_output_event_facades_read_the_ports():
-    """`output_events`/`output_event_defs`는 `output_ports()`의 한 줄 파사드다."""
+def test_output_ports_are_the_only_port_surface():
+    """포트 조회는 `output_ports()` 하나다 — 옛 `output_events`/
+    `output_event_defs` 파사드는 WP-2d에서 소비자가 사라져 삭제했다."""
     from daedalus.model.fsm.section import EventDef
 
     sk = ProceduralSkill(fsm=_fsm(), name="p", description="d")
     sk.transfer_on = [EventDef("ok"), EventDef("fail")]
-    assert sk.output_events == ["ok", "fail"]
+    assert [e.name for e in sk.output_ports()] == ["ok", "fail"]
 
     ag = AgentDefinition(fsm=_fsm(), name="a", description="d")
     ag.transfer_on = [EventDef("done")]
-    assert ag.output_events == ["done"]
-    assert ag.output_event_defs == [EventDef("done")]
-    assert ag.output_event_defs is not ag.transfer_on
+    assert ag.output_ports() == [EventDef("done")]
+    assert ag.output_ports() is not ag.transfer_on
 
     tr = TransferSkill(fsm=_fsm(), name="t", description="d")
-    assert tr.output_events == []
+    assert tr.output_ports() == []
+    for name in ("output_events", "output_event_defs"):
+        assert not hasattr(sk, name) and not hasattr(ag, name)
 
 
 def test_known_outgoing_events_keeps_the_agent_skill_asymmetry():

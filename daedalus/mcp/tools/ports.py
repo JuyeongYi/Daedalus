@@ -52,26 +52,22 @@ class PortTools(_BaseTools):
         분기가 여러 갈래인 노드는 여기에 갈래를 선언해야 캔버스 포트가 갈라지고,
         각 전이의 trigger로 어느 갈래인지 지정할 수 있다.
 
-        참조 용도로 고정된 랩핑 스킬은 거절한다(WP-WR) — 참조는 워크플로
-        단계가 아니라 출력 포트가 무의미하다. **fork 에이전트도 거절한다** —
-        `SetAttrCmd`가 `getattr(..., None)` 폴백이라 가드가 없으면 없는 필드가
-        인스턴스 속성으로 생기고 성공 응답이 돌아간 뒤 저장 한 번에 사라진다
-        (원칙 5 — 조용한 실패 금지).
+        **출력 포트를 갖는 것은 "단일 배치되는 노드"다**(WP-2d) — 워크플로
+        단계로 한 번 놓이는 컴포넌트만 갈래를 선언할 의미가 있다. 참조 용도로
+        고정된 랩핑 스킬·참조 스킬·배경 스킬·전이 스킬·fork 에이전트는 전부
+        여기서 걸린다. 가드가 없으면 `SetAttrCmd`의 `getattr(..., None)` 폴백
+        때문에 없는 필드가 인스턴스 속성으로 생기고, 성공 응답이 돌아간 뒤
+        저장 한 번에 사라진다(원칙 5 — 조용한 실패 금지).
         """
-        from daedalus.model.plugin.skill import WrappedSkill, is_reference_usage
+        from daedalus.model.plugin.roles import PlacementRole
         from daedalus.view.commands.attr_commands import SetAttrCmd
 
         comp = self._find_component(name)
-        if isinstance(comp, WrappedSkill) and is_reference_usage(comp):
+        if comp.effective_placement() is not PlacementRole.STATE:
             raise ValueError(
-                f"'{name}'은 참조 용도로 고정된 랩핑 스킬입니다 — 참조는 "
-                "워크플로 단계가 아니라 출력 포트를 갖지 않습니다."
-            )
-        if not hasattr(comp, "transfer_on"):
-            raise ValueError(
-                f"'{name}'은(는) 출력 포트를 갖지 않습니다 — fork 에이전트는 "
-                "fork 스킬의 실행 기반이라 갈래가 없습니다(갈래는 그 fork "
-                "스킬의 보고 양식이 정합니다)."
+                f"'{name}'({comp.kind})은(는) 출력 포트를 갖지 않습니다 — "
+                "출력 포트는 워크플로 단계로 배치되는 컴포넌트(단계 스킬·"
+                "state 용도 랩핑 스킬·워크플로 에이전트)만 갖습니다."
             )
         defs = self._make_event_defs(events)
         self._vm.execute(
@@ -92,10 +88,13 @@ class PortTools(_BaseTools):
         단계 스킬(절차형·fork 2종)·state 용도 랩핑 스킬·**워크플로 에이전트**
         (2026-09-12 — CC 중첩 스폰 허용)가 대상이다. 선언적/참조 스킬, 참조
         용도 랩퍼, fork 에이전트는 워크플로 단계가 아니라 호출 포트가 무의미하다.
-        """
-        from daedalus.model.plugin.skill import is_reference_usage
 
-        if not hasattr(comp, "call_agents") or is_reference_usage(comp):
+        판정은 출력 포트와 **같은 술어**다(WP-2d): 단일 배치되는 노드인가.
+        둘이 어긋나면 "출력 포트는 붙는데 호출 포트는 안 붙는" 종류가 생긴다.
+        """
+        from daedalus.model.plugin.roles import PlacementRole
+
+        if comp.effective_placement() is not PlacementRole.STATE:
             raise ValueError(
                 f"'{name}'에는 에이전트 호출 포트를 붙일 수 없습니다 — 단계 스킬"
                 f"(절차형·fork), state 용도 랩핑 스킬, 워크플로 에이전트만 가능합니다."

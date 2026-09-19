@@ -207,11 +207,16 @@ def add_component_actions_menu(scene, menu: QMenu, state_vm: StateViewModel) -> 
 # --- 에이전트 전용 (A9-4/5) ---
 
 def add_agent_actions_menu(scene, menu: QMenu, component: object) -> dict:
-    """에이전트 placement에만 붙는 항목 — 호출자 목록 / 출력 포트 편집."""
-    from daedalus.model.plugin.agent import AgentDefinition
+    """위임 대상 placement에만 붙는 항목 — 호출자 목록 / 출력 포트 편집.
+
+    "에이전트인가"를 클래스로 묻던 자리다(WP-2d Q9) — 위임 대상인지는
+    컴포넌트가 `DELEGATION_TARGET`으로 선언한다. 캔버스·MCP·검증이 같은
+    선언을 봐야 "메뉴는 뜨는데 연결은 거절"이 생기지 않는다.
+    """
     from daedalus.view.actions.agent_links import callers_of
 
-    if not isinstance(component, AgentDefinition):
+    # 호출자는 `add_component_actions_menu`뿐이고 거기서 None을 이미 걸렀다.
+    if not component.DELEGATION_TARGET:  # type: ignore[attr-defined]
         return {}
 
     dispatch: dict = {}

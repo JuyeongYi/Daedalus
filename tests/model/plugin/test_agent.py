@@ -39,8 +39,8 @@ def test_agent_has_transfer_on_output_ports():
     assert agent.transfer_on == []
 
 
-def test_agent_output_events_from_transfer_on():
-    """RF-1b — output_events는 transfer_on이 단일 진실 (ExitPoint 폴백 없음)."""
+def test_agent_output_ports_from_transfer_on():
+    """RF-1b — 출력 포트는 transfer_on이 단일 진실 (ExitPoint 폴백 없음)."""
     from daedalus.model.fsm.section import EventDef
 
     fsm = _make_agent_fsm()
@@ -48,10 +48,10 @@ def test_agent_output_events_from_transfer_on():
         fsm=fsm, name="A", description="d",
         transfer_on=[EventDef("success"), EventDef("error")],
     )
-    assert agent.output_events == ["success", "error"]
+    assert [e.name for e in agent.output_ports()] == ["success", "error"]
 
 
-def test_agent_output_events_ignore_fsm_exit_points():
+def test_agent_output_ports_ignore_fsm_exit_points():
     """FSM에 ExitPoint가 있어도 transfer_on이 비어 있으면 출력 포트도 없다 —
     v1 파일의 ExitPoint 승계는 로드 마이그레이션(serialize._migrate_v1) 소관."""
     entry = EntryPoint(name="entry")
@@ -61,11 +61,10 @@ def test_agent_output_events_ignore_fsm_exit_points():
         initial_state=entry, final_states=[exit_done],
     )
     agent = AgentDefinition(fsm=fsm, name="A", description="d")
-    assert agent.output_events == []
-    assert agent.output_event_defs == []
+    assert agent.output_ports() == []
 
 
-def test_agent_output_event_defs():
+def test_agent_output_ports_carry_event_defs():
     from daedalus.model.fsm.section import EventDef
 
     fsm = _make_agent_fsm()
@@ -73,7 +72,7 @@ def test_agent_output_event_defs():
         fsm=fsm, name="A", description="d",
         transfer_on=[EventDef("done", color="#44aa44")],
     )
-    defs = agent.output_event_defs
+    defs = agent.output_ports()
     assert len(defs) == 1
     assert defs[0].name == "done"
     assert defs[0].color == "#44aa44"

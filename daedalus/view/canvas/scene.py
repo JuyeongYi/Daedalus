@@ -20,7 +20,7 @@ from daedalus.model.fsm.event import CompletionEvent
 from daedalus.model.fsm.machine import StateMachine
 from daedalus.model.fsm.state import SimpleState
 from daedalus.model.fsm.transition import Transition
-from daedalus.model.plugin.agent import AgentDefinition
+from daedalus.model.plugin.roles import PlacementRole
 from daedalus.model.plugin.skill import TransferSkill
 from daedalus.view.canvas.draggable import DraggableItemMixin
 from daedalus.view.canvas.edge_item import TransitionEdgeItem, WaypointHandleItem
@@ -287,7 +287,10 @@ class FsmScene(QGraphicsScene):
                 event_name = self._connect_event or "done"
                 tgt_ref = getattr(tgt_vm.model, "skill_ref", None)
                 is_agent_call = self._connect_is_agent_call
-                tgt_is_agent = isinstance(tgt_ref, AgentDefinition)
+                # 위임 대상 노드인가 — 종류가 아니라 선언이 답한다(WP-2d Q9).
+                # MCP `connect_states`와 같은 술어여야 두 표면이 같은 그래프를
+                # 허용한다(원칙 1).
+                tgt_is_agent = tgt_ref is not None and tgt_ref.DELEGATION_TARGET
                 # 에이전트 노드 입력 ← call_agent 포트만 허용
                 if tgt_is_agent and not is_agent_call:
                     self._connecting = False
@@ -718,10 +721,17 @@ class FsmScene(QGraphicsScene):
         self._target_fsm = project.graph
 
     def _get_transfer_skills(self) -> list:
-        """프로젝트에서 TransferSkill 목록을 반환."""
+        """엣지에 붙는 배치 역할을 가진 스킬 목록 (WP-2d).
+
+        종류가 아니라 **배치 역할**로 묻는다 — MCP `_find_transfer_skill`과
+        같은 술어다.
+        """
         if self._project is None:
             return []
-        return [s for s in self._project.skills if isinstance(s, TransferSkill)]
+        return [
+            s for s in self._project.skills
+            if s.effective_placement() is PlacementRole.EDGE
+        ]
 
     def _create_and_assign_transfer_skill(self, tvm: TransitionViewModel) -> None:
         """새 TransferSkill을 생성하고 transition에 할당 (undo 가능)."""

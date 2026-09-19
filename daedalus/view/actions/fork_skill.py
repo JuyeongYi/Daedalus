@@ -14,6 +14,10 @@ from typing import Any
 #: 컴포넌트 정체성을 유지한 채 `__class__`만 바꿀 수 있다.
 KINDS: tuple[str, ...] = ("procedural", "sync_fork", "async_fork")
 
+#: 이 전환 가족의 선언값 — `StepSkill.CONVERT_FAMILY`와 같은 문자열이다.
+#: 클래스를 열거하는 대신 이 값으로 묻는다(WP-2d Q17).
+_STEP_FAMILY = "step"
+
 #: 종류 문자열 → (스킬 클래스 이름, config 클래스 이름). 실제 클래스는 순환
 #: 임포트를 피해 함수 안에서 해소한다.
 _KIND_CLASSES: dict[str, tuple[str, str]] = {
@@ -31,7 +35,6 @@ def fork_agent_choices(project) -> list[tuple[str, str]]:
     다르다(예전에는 "배치되지 않은 워크플로 에이전트"였는데, 그 판정은 배치를
     지우면 조용히 겸직이 생겼다).
     """
-    from daedalus.model.plugin.agent import ForkAgent
     from daedalus.model.plugin.config import BUILTIN_FORK_AGENTS
 
     rows = [(name, "내장 에이전트") for name in BUILTIN_FORK_AGENTS]
@@ -44,8 +47,10 @@ def fork_agent_choices(project) -> list[tuple[str, str]]:
         if agent.description:
             note += f" — {agent.description}"
         rows.append((agent.agent_type, note))
+    # fork 스킬의 실행 기반이 될 수 있는가 — 종류가 아니라 선언이 답한다
+    # (WP-2d Q27: `IS_FORK_BASE`).
     for agent in sorted(project.agents, key=lambda a: a.name):
-        if isinstance(agent, ForkAgent):
+        if agent.IS_FORK_BASE:
             rows.append((agent.name, "프로젝트 fork 에이전트"))
     return rows
 
@@ -68,13 +73,15 @@ def validate_fork_agent(project, value: str) -> None:
 
 
 def skill_kind_of(component) -> str | None:
-    """전환 대상 종류 — 절차형/fork 2종이 아니면 None. `config.kind`가 단일 진실."""
-    from daedalus.model.plugin.skill import StepSkill
+    """전환 대상 종류 — 전환 가족에 속하지 않으면 None. `config.kind`가 단일 진실.
 
-    if not isinstance(component, StepSkill):
+    "서로 전환 가능한가"는 컴포넌트가 `CONVERT_FAMILY`로 선언한다(WP-2d Q17) —
+    클래스를 열거하면 같은 가족에 종류를 더할 때 여기를 빠뜨리고, 빠뜨리면
+    전환 메뉴에서 조용히 사라진다.
+    """
+    if component.CONVERT_FAMILY != _STEP_FAMILY:
         return None
-    kind = getattr(getattr(component, "config", None), "kind", None)
-    return kind if kind in KINDS else None
+    return component.config.kind if component.config.kind in KINDS else None
 
 
 def convert_skill_kind(window, component, target: str) -> dict[str, Any]:

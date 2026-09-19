@@ -92,10 +92,12 @@ class StateNodeItem(DraggableItemMixin, QGraphicsItem):
         )
 
     def _event_defs(self) -> list[EventDef]:
-        """skill_ref에서 EventDef 목록 반환.
+        """skill_ref의 **출력 포트** EventDef 목록 (WP-2d).
 
-        AgentDefinition은 output_event_defs 프로퍼티를,
-        StepSkill(절차형·fork 2종)과 WrappedSkill은 transfer_on 필드를 사용한다.
+        종류마다 다른 속성(`output_event_defs` / `transfer_on`)을 `hasattr`로
+        더듬던 자리다. 그러면 포트를 다른 이름으로 노출하는 종류가 생길 때
+        캔버스에서 **포트 없는 노드**로 조용히 그려진다 — 이제 컴포넌트가
+        선언한 `output_ports()` 하나만 묻는다(기본 구현은 빈 목록).
         """
         model = self._state_vm.model
         if not hasattr(model, "skill_ref"):
@@ -103,11 +105,7 @@ class StateNodeItem(DraggableItemMixin, QGraphicsItem):
         ref = model.skill_ref  # type: ignore[union-attr]
         if ref is None:
             return []
-        if hasattr(ref, "output_event_defs"):
-            return list(ref.output_event_defs)  # type: ignore[union-attr]
-        if hasattr(ref, "transfer_on"):
-            return list(ref.transfer_on)  # type: ignore[union-attr]
-        return []
+        return ref.output_ports()
 
     def _call_agent_defs(self) -> list[EventDef]:
         """call_agents EventDef 목록. 서브에이전트 FSM에서는 비활성."""
@@ -117,26 +115,22 @@ class StateNodeItem(DraggableItemMixin, QGraphicsItem):
         if not hasattr(model, "skill_ref"):
             return []
         ref = model.skill_ref  # type: ignore[union-attr]
-        if ref is not None and hasattr(ref, "call_agents"):
-            return list(ref.call_agents)  # type: ignore[union-attr]
-        return []
+        if ref is None:
+            return []
+        return ref.call_ports()
 
     def is_agent_call_event(self, event_name: str) -> bool:
         """event_name이 call_agent 포트인지 판별."""
         return any(e.name == event_name for e in self._call_agent_defs())
 
     def _output_events(self) -> list[str]:
-        """출력 포트(transfer_on) 이름 목록 — 높이 계산·포트 라벨 렌더가 쓴다.
+        """출력 포트 이름 목록 — 높이 계산·포트 라벨 렌더가 쓴다.
 
-        EventDef가 필요하면 `_event_defs()`를 쓴다.
+        EventDef가 필요하면 `_event_defs()`를 쓴다 — 같은 `output_ports()`를
+        본다(이름만 뽑는 자리와 정의가 필요한 자리가 서로 다른 답을 하면
+        포트 수와 라벨이 어긋난다).
         """
-        model = self._state_vm.model
-        if not hasattr(model, "skill_ref"):
-            return []
-        ref = model.skill_ref  # type: ignore[union-attr]
-        if ref is not None and hasattr(ref, "output_events"):
-            return list(ref.output_events)  # type: ignore[union-attr]
-        return []
+        return [e.name for e in self._event_defs()]
 
     def set_ref_count(self, n: int) -> None:
         """하단 참조 포트 수 설정."""

@@ -60,7 +60,7 @@ class BodyDocumentRegistry:
         # 맨 QTextDocument를 그대로 넘기면 setDocument가 거부하고 편집기가 빈
         # 문서를 들게 된다("Document set does not support QPlainTextDocumentLayout").
         doc.setDocumentLayout(QPlainTextDocumentLayout(doc))
-        doc.setPlainText(str(getattr(component, "body", "") or ""))
+        doc.setPlainText(str(component.body or ""))
         # 초기 내용 주입이 undo 한 단계로 남으면 Ctrl+Z 한 번에 본문이 통째로
         # 비워진다 — 문서 생성 시점을 되돌릴 수 없는 바닥으로 만든다.
         doc.clearUndoRedoStacks()
@@ -87,7 +87,7 @@ class BodyDocumentRegistry:
         doc = self._documents.get(key)
         if doc is None:
             return
-        body = str(getattr(component, "body", "") or "")
+        body = str(component.body or "")
         if doc.toPlainText() == body:
             return
         doc.setPlainText(body)

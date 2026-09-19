@@ -167,14 +167,15 @@ class CanvasTools(_BaseTools):
         랩핑 스킬, 그리고 **에이전트**(2026-09-12 — CC 중첩 스폰 허용). 깊이·모델
         티어 제약은 검증이 짚는다(agent_chain_too_deep/agent_calls_higher_model).
 
-        도착이 에이전트인가는 **`AgentDefinition`**(워크플로 에이전트)으로
-        판정한다 — 배치 가능 판정(`is_state_placeable`)이 아니다. 그것으로
-        갈아끼우면 스킬 대상에도 True가 되어 **모든 스킬 간 전이가 호출 포트를
-        요구**하게 된다. fork 에이전트는 애초에 노드가 될 수 없어
-        `_find_state_vm`에서 "그런 노드가 없다"로 걸린다.
+        도착이 "위임 대상"인가는 컴포넌트의 `DELEGATION_TARGET` 선언으로
+        판정한다(WP-2d) — 배치 가능 판정(`is_state_placeable`)이 아니다.
+        그것으로 갈아끼우면 스킬 대상에도 True가 되어 **모든 스킬 간 전이가
+        호출 포트를 요구**하게 된다. fork 에이전트는 선언상 위임 대상이지만
+        애초에 노드가 될 수 없어 `_find_state_vm`에서 "그런 노드가 없다"로
+        먼저 걸린다.
         """
         from daedalus.model.fsm.transition import Transition
-        from daedalus.model.plugin.agent import AgentDefinition
+        from daedalus.model.plugin.roles import PlacementRole
         from daedalus.view.commands.transition_commands import CreateTransitionCmd
         from daedalus.view.viewmodel.state_vm import TransitionViewModel
 
@@ -183,12 +184,19 @@ class CanvasTools(_BaseTools):
         tgt = self._find_state_vm(target, vm)
         src_ref = getattr(src.model, "skill_ref", None)
         tgt_ref = getattr(tgt.model, "skill_ref", None)
-        # 호출 포트를 가질 수 있는가 — 판정은 PortTools._require_call_port_owner와
-        # 같은 기준(call_agents 필드 보유)이다.
-        src_has_call_ports = hasattr(src_ref, "call_agents")
+        # 호출 포트를 가질 수 있는가 — `PortTools._require_call_port_owner`와
+        # **같은 술어**(단일 배치 노드인가)를 쓴다. 예전에는 한쪽이 "call_agents
+        # 필드 보유", 다른 쪽이 거기에 참조 용도 제외까지 얹어 두 표면의 답이
+        # 달라질 수 있었다(원칙 1).
+        src_has_call_ports = (
+            src_ref is not None
+            and src_ref.effective_placement() is PlacementRole.STATE
+        )
+        # 이 노드로 가는 전이가 "위임"인가 — 종류가 아니라 선언이 답한다(Q9).
+        tgt_is_delegation = tgt_ref is not None and tgt_ref.DELEGATION_TARGET
 
         is_agent_call = False
-        if isinstance(tgt_ref, AgentDefinition):
+        if tgt_is_delegation:
             if not src_has_call_ports:
                 raise ValueError(
                     f"에이전트 '{target}'은 호출 포트를 가진 컴포넌트에서만 호출할 수 "
@@ -200,7 +208,7 @@ class CanvasTools(_BaseTools):
                     f'add_agent_call("{source}", "<포트명>") 으로 포트를 먼저 만들고 '
                     "trigger로 지정하세요."
                 )
-            ports = getattr(src_ref, "call_agents", [])
+            ports = src_ref.call_ports()
             if not any(e.name == trigger for e in ports):
                 have = ", ".join(e.name for e in ports) or "(없음)"
                 raise ValueError(
@@ -210,7 +218,7 @@ class CanvasTools(_BaseTools):
             is_agent_call = True
         elif trigger and src_has_call_ports:
             # call_agent 포트는 에이전트로만 나갈 수 있다 (캔버스와 같은 규칙)
-            if any(e.name == trigger for e in getattr(src_ref, "call_agents", [])):
+            if any(e.name == trigger for e in src_ref.call_ports()):
                 raise ValueError(
                     f"'{trigger}'는 에이전트 호출 포트입니다 — 에이전트가 아닌 "
                     f"'{target}'으로는 연결할 수 없습니다."
@@ -359,11 +367,16 @@ class CanvasTools(_BaseTools):
         ]
 
     def _find_transfer_skill(self, name: str) -> Any:
-        """이름으로 전역 TransferSkill을 찾는다 — 없으면 후보 나열 거부."""
-        from daedalus.model.plugin.skill import TransferSkill
+        """이름으로 전이 스킬을 찾는다 — 없으면 후보 나열 거부.
+
+        "전이 스킬인가"는 **엣지에 붙는 배치 역할인가**로 묻는다(WP-2d) —
+        캔버스 엣지 메뉴·검증과 같은 술어다.
+        """
+        from daedalus.model.plugin.roles import PlacementRole
 
         transfers = [
-            s for s in self._project.skills if isinstance(s, TransferSkill)
+            s for s in self._project.skills
+            if s.effective_placement() is PlacementRole.EDGE
         ]
         for skill in transfers:
             if skill.name == name:

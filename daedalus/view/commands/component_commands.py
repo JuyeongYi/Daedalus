@@ -65,9 +65,10 @@ class CreateComponentCmd(Command):
         if not any(c is self._component for c in bucket):
             bucket.append(self._component)
         # 블랙보드 스코핑 배선 — 생성 경로의 책임(app._register_component와 동일).
-        fsm = getattr(self._component, "fsm", None)
-        if fsm is not None and fsm.blackboard.parent is None:
-            fsm.blackboard.parent = self._project.blackboard
+        # FSM 보유 여부는 컴포넌트가 `state_machines()`로 말한다(WP-2d Q2).
+        for fsm in self._component.state_machines():
+            if fsm.blackboard.parent is None:
+                fsm.blackboard.parent = self._project.blackboard
 
     def undo(self) -> None:
         bucket = _bucket(self._project, self._component)
@@ -181,7 +182,8 @@ class _DetachComponentCmd(Command):
                     found.append(trans)
 
         for owner in list(self._project.skills) + list(self._project.agents):
-            _scan(getattr(owner, "fsm", None))
+            for sm in owner.state_machines():
+                _scan(sm)
         return found
 
     def execute(self) -> None:

@@ -74,7 +74,7 @@ def test_wrapped_skill_roundtrip():
     skill = loaded.skills[0]
     assert skill.kind == "wrapped_skill"
     assert skill.config.source == "other@mkt:code-review"
-    assert skill.output_events == ["done"]
+    assert [e.name for e in skill.output_ports()] == ["done"]
 
 
 def test_external_plugins_roundtrip():

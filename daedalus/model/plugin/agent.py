@@ -90,16 +90,6 @@ class AgentDefinition(Agent, WorkflowComponent):
     def kind(self) -> str:
         return self.KIND
 
-    @property
-    def output_events(self) -> list[str]:
-        """출력 포트 이름 목록 (StateNodeItem 호환) — `output_ports()`의 파사드."""
-        return [e.name for e in self.output_ports()]
-
-    @property
-    def output_event_defs(self) -> list[EventDef]:
-        """노드 포트 렌더링용 EventDef 목록 — `output_ports()`의 파사드."""
-        return self.output_ports()
-
     def state_machines(self) -> list[StateMachine]:
         return [self.fsm]
 

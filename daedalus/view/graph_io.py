@@ -85,7 +85,7 @@ class GraphIO:
         w._project_vm.reference_links.clear()
         skills_by_name = {s.name: s for s in w._project.skills}
         vms_by_name = {svm.model.name: svm for svm in w._project_vm.state_vms}
-        for rp in getattr(w._project, "reference_placements", None) or []:
+        for rp in w._project.reference_placements or []:
             ref_skill = skills_by_name.get(rp.skill_name)
             if ref_skill is None:
                 continue  # dangling_string_reference가 F7에서 짚는다

@@ -107,9 +107,9 @@ def current_entry_preset(component: object) -> EntryPreset | None:
     프리셋은 편의 지름길이지 표현 가능한 상태의 전부가 아니다. 그때는 메뉴에
     체크가 하나도 없고, 아무거나 고르면 그 세트로 정규화된다.
     """
-    config = getattr(component, "config", None)
-    if config is None or not supports_entry_presets(component):
+    if not supports_entry_presets(component):
         return None
+    config = component.config
     user = getattr(config, USER_INVOCABLE_ATTR, None)
     disable = getattr(config, DISABLE_MODEL_ATTR, None)
     for spec in ENTRY_PRESETS:
@@ -131,7 +131,7 @@ def is_user_entry(component: object) -> bool:
     """
     if not supports_entry_presets(component):
         return False
-    return getattr(getattr(component, "config", None), USER_INVOCABLE_ATTR, None) is True
+    return getattr(component.config, USER_INVOCABLE_ATTR, None) is True
 
 
 def apply_entry_preset(project_vm, component: object, preset: EntryPreset) -> bool:
@@ -148,9 +148,7 @@ def apply_entry_preset(project_vm, component: object, preset: EntryPreset) -> bo
 
     if not supports_entry_presets(component):
         return False
-    config = getattr(component, "config", None)
-    if config is None:
-        return False
+    config = component.config
 
     spec = spec_for(preset)
     targets = (

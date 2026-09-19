@@ -428,10 +428,10 @@ class HookTools(_BaseTools):
         from daedalus.view.commands.attr_commands import RemoveFromListCmd
 
         hook = self._find_hook(name)
+        # 훅 참조 목록은 컴포넌트가 `hook_refs()`로 말한다(WP-2d Q24) —
+        # 깨진 `hooks` 값(목록·문자열)도 거기서 "참조 없음"으로 흡수된다.
         referenced = [
-            getattr(comp, "name", "?")
-            for comp in self._components()
-            if name in (getattr(getattr(comp, "config", None), "hooks", {}) or {})
+            comp.name for comp in self._components() if name in comp.hook_refs()
         ]
         self._vm.execute(
             RemoveFromListCmd(
@@ -461,9 +461,9 @@ class HookTools(_BaseTools):
         from daedalus.view.commands.attr_commands import SetAttrCmd
 
         comp = self._find_component(name)
-        config = getattr(comp, "config", None)
-        if config is None:
-            raise ValueError(f"'{name}'에는 config가 없어 훅을 붙일 수 없습니다.")
+        # 9종 전부가 `config` 필드를 갖는다(기저가 선언한 형상) — "config가
+        # 없는 컴포넌트" 분기는 도달할 수 없는 죽은 코드였다(WP-2d Q4).
+        config = comp.config
 
         known = set(self._window.resolved_hooks())
         unknown = [h for h in hooks if h not in known]

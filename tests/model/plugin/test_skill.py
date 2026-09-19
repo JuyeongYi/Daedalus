@@ -62,10 +62,10 @@ def _make_fsm():
     return _SM(name="f", states=[s], initial_state=s)
 
 
-def test_procedural_skill_output_events_default():
+def test_procedural_skill_output_ports_default():
     fsm = _make_fsm()
     skill = ProceduralSkill(fsm=fsm, name="S", description="d")
-    assert skill.output_events == ["done"]
+    assert [e.name for e in skill.output_ports()] == ["done"]
 
 
 def test_procedural_skill_body_default():
@@ -81,14 +81,14 @@ def test_procedural_skill_transfer_on_default():
     assert skill.transfer_on[0].name == "done"
 
 
-def test_procedural_skill_output_events_via_property():
-    """output_events는 transfer_on에서 파생된 읽기 전용 프로퍼티."""
+def test_procedural_skill_output_ports_derive_from_transfer_on():
+    """출력 포트는 transfer_on에서 파생된 읽기 전용 복사본이다."""
     fsm = _make_fsm()
     skill = ProceduralSkill(
         fsm=fsm, name="S", description="d",
         transfer_on=[EventDef("done"), EventDef("error"), EventDef("retry")],
     )
-    assert skill.output_events == ["done", "error", "retry"]
+    assert [e.name for e in skill.output_ports()] == ["done", "error", "retry"]
 
 
 def test_declarative_skill_body_default():

@@ -610,6 +610,8 @@ daedalus/
     │                       #                              채워지는데 편집이 저장되지 않는" 반쪽 고장이 조용히 생겼다). **표의 줄 순서가 곧
     │                       #                              우선순위**다 — isinstance는 서브클래스에도 참이라 순서를 바꾸면 동작이 바뀐다.
     │                       #     transfer_on_panel.py   — _COLOR_PRESETS + _ColorPickerPopup + _EventCard + _TransferOnPanel
+    │                       #                              **포트 패널을 붙이는 게이트**(SkillEditor)는 `effective_placement() is STATE`다
+    │                       #                              (WP-2d) — 단일 배치 노드만 포트를 갖는다. MCP `ports.py`의 두 게이트와 같은 술어.
     │                       #     reference_link_panel.py— _ReferenceLinkPanel
     │                       #     kind_switch_row.py     — 절차형 ↔ 동기/비동기 fork **3-way** 전환 버튼·안내 행
     │                       #                              (build_kind_switch_row, 800줄 예산 때문에 분리)

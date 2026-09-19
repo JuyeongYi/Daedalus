@@ -254,26 +254,27 @@ class PropsTools(_BaseTools):
         `set_wrapped_enabled(name, false)`로 끄면 산출·배선에서 빠지고 소스와
         배치는 남아 언제든 되돌릴 수 있다.
         """
-        from daedalus.model.plugin.agent import Agent
-        from daedalus.model.plugin.config import AgentConfigBase
         from daedalus.model.plugin.placement import fork_skills_using
-        from daedalus.model.plugin.skill import Skill
+        from daedalus.model.plugin.roles import Bucket
 
         comp = self._find_component(name)
         project = self._project
 
+        # 누가 이 이름을 문자열로 들고 있는가(Q14) — 종류를 열거하는 대신
+        # **네임스페이스**(버킷)로 묻고, 설정이 무엇을 가리키는지는 설정이
+        # `name_refs()`로 말한다(WP-2d). 새 설정 종류가 이름 참조를 들면
+        # 여기 고치지 않아도 자동으로 잡힌다.
         still: list[str] = []
-        if isinstance(comp, Agent):
+        if comp.BUCKET is Bucket.AGENTS:
             # 역참조 목록의 실체는 model의 `fork_skills_using` 하나다 —
             # 화면(삭제 확인·"사용하는 fork 스킬")·산출과 같은 목록을 말한다.
             still.extend(
                 f"skill:{skill_name}.agent"
                 for skill_name in fork_skills_using(comp, project)
             )
-        if isinstance(comp, Skill):
+        else:
             for agent in project.agents:
-                cfg = getattr(agent, "config", None)
-                if isinstance(cfg, AgentConfigBase) and name in (cfg.skills or []):
+                if name in agent.config.name_refs(Bucket.SKILLS):
                     still.append(f"agent:{agent.name}.skills")
 
         kind = comp.kind
@@ -312,7 +313,9 @@ class PropsTools(_BaseTools):
         from daedalus.view.commands.attr_commands import SetAttrCmd
 
         comp = self._find_component(name)
-        old = getattr(comp, "when_to_use", "")
+        # `when_to_use`는 기저가 선언한 형상이다(에이전트는 기본값 "") —
+        # 문자열로 더듬을 필요가 없다(WP-2d Q4).
+        old = comp.when_to_use
         self._vm.execute(
             SetAttrCmd(
                 comp,

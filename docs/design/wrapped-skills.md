@@ -86,7 +86,9 @@
   문서 참조는 산출 파일이 있고 외부 참조는 없다).
 - **삭제 불가 — 대신 비활성화**(사용자 확정 2026-09-07): 랩핑 스킬은 **어느
   경로로도 지울 수 없다**(GUI 레지스트리·캔버스·MCP `delete_component` 전부
-  거절 — 실체는 `ComponentActions.delete_component`가 지나는 한 지점).
+  거절 — 실체는 `ComponentActions.delete_component`가 지나는 한 지점이고,
+  **무엇을 막을지는 컴포넌트의 `can_delete() -> (가능, 사유)`가 말한다**(WP-2d).
+  GUI는 사유를 다이얼로그로, MCP는 거절 메시지로 그대로 쓴다).
   소스·프론트매터·배선을 다시 입력하는 비용이 크고, 지우면 이 프로젝트가 그
   외부 스킬을 한때 썼다는 사실 자체가 사라진다. "쓰지 않는다"는
   `WrappedSkillConfig.enabled`(기본 True, 직렬화 왕복, 키 부재=True)로 말하고

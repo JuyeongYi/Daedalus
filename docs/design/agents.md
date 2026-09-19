@@ -39,8 +39,10 @@
   손실·버그 대부분이 이 표면에서 났고, 실사용 세션은 에이전트를 내부 FSM 없이 본문만으로 만들었다).
 - **살아남은 조각 = 출력 포트.** 프로젝트 그래프가 에이전트의 결과로 분기한다(과거 ExitPoint 이름이
   전이 trigger). `AgentDefinition.transfer_on: list[EventDef]`로 이관 — 스킬과 동일 필드·동일 편집
-  패널(_TransferOnPanel)·동일 캔버스 포트 렌더. `output_events`/`output_event_defs`는 transfer_on을
-  **단일 진실**로 읽는다 (legacy ExitPoint 폴백은 RF-1b에서 삭제 — v1 파일은 로드 시 마이그레이션).
+  패널(_TransferOnPanel)·동일 캔버스 포트 렌더. 포트 조회 표면은 능력 메서드 `output_ports()`
+  **하나**다 — 옛 `output_events`/`output_event_defs` 파사드는 캔버스가 `output_ports()`를 직접
+  부르게 되면서 소비자가 0이 되어 WP-2d에서 삭제했다 (legacy ExitPoint 폴백은 RF-1b에서 삭제 —
+  v1 파일은 로드 시 마이그레이션).
 - **마이그레이션:** v1 파일(transfer_on 키 부재)은 `serialize._migrate_v1`이 내부 FSM ExitPoint의
   이름·색을 승계한다(단방향, 경고 없음). fsm 필드 자체는 WorkflowComponent 계약상 남는다 — 신규
   에이전트는 EntryPoint 하나짜리 빈 기계(`app._make_agent_fsm`) + 기본 출력 포트 `done`.

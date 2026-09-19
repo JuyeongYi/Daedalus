@@ -23,7 +23,7 @@ from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QHBoxLayout, QWidget
 
 from daedalus.model.plugin.agent import Agent
-from daedalus.model.plugin.skill import Skill, StepSkill
+from daedalus.model.plugin.skill import Skill
 
 # --- 재-export 파사드 (분해 전 이름 그대로) -------------------------------
 from daedalus.view.editors.frontmatter_panel import (  # noqa: F401
@@ -64,18 +64,19 @@ class SkillEditor(QWidget):
         from daedalus.view.editors.component_editor import ComponentEditor
         from daedalus.view.panels.file_panel import SkillFilesPanel
 
-        from daedalus.model.plugin.skill import WrappedSkill, is_reference_usage
+        from daedalus.model.plugin.roles import PlacementRole
+        from daedalus.model.plugin.skill import is_reference_usage
 
         right_widgets: list[QWidget] = []
         # 입력 경로 편집 패널은 없다(WP-IP) — (출처, 트리거)가 경로를 특정하고,
         # 무엇을 넘기는지는 출처가 자기 출력 포트에 적는다.
-        # WrappedSkill도 워크플로 단계라 출력 포트·에이전트 호출을 procedural과
-        # 동일하게 갖는다(WP-WR — 본문만 외부 정본이지 배선은 우리 소유.
-        # 이 분기에서 빠져 있어 GUI에서 출력 추가가 불가능했다 — 사용자 보고).
-        # 단, **참조 용도로 고정된 wrapped는 제외** — 참조는 워크플로 단계가
-        # 아니라 포트가 무의미하다(사용자 확정 2026-09-07).
-        if (isinstance(component, (StepSkill, WrappedSkill))
-                and not is_reference_usage(component)):
+        # **포트를 갖는 것은 "단일 배치되는 노드"다**(WP-2d): 워크플로 단계로
+        # 한 번 놓이는 컴포넌트만 갈래를 선언할 의미가 있다. 종류를 열거하던
+        # 자리인데, 그러면 종류가 하나 늘 때마다 여기 빠뜨려 GUI에서 출력
+        # 추가가 불가능해진다(WrappedSkill이 실제로 그랬다 — 사용자 보고).
+        # 참조 용도로 고정된 wrapped·참조 스킬은 REFERENCE라 자동으로 빠진다
+        # (사용자 확정 2026-09-07).
+        if component.effective_placement() is PlacementRole.STATE:
             right_widgets.append(_TransferOnPanel(component.transfer_on, title="⇄ Transfer On"))
             right_widgets.append(
                 _TransferOnPanel(component.call_agents, title="🤖 Agent Call", default_color="#8a4a4a", multiline_desc=True)
@@ -90,8 +91,7 @@ class SkillEditor(QWidget):
         right_widgets.append(SkillFilesPanel(component))
 
         # 프론트매터 표 키 — **config.kind가 단일 진실**이다(컴파일러·MCP와 동일).
-        config = getattr(component, "config", None)
-        kind = getattr(config, "kind", None)
+        kind = component.config.kind
 
         self._editor = ComponentEditor(
             component,
