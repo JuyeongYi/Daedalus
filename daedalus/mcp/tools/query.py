@@ -30,7 +30,7 @@ class QueryTools(_BaseTools):
                 {
                     "node": model.name,
                     "component": getattr(ref, "name", None),
-                    "kind": self._component_kind(ref) if ref is not None else "empty",
+                    "kind": ref.kind if ref is not None else "empty",
                     "x": round(svm.x, 1),
                     "y": round(svm.y, 1),
                     "reads": list(getattr(model, "reads", []) or []),
@@ -138,7 +138,7 @@ class QueryTools(_BaseTools):
                 "skills": [
                     {
                         "name": s.name,
-                        "kind": self._component_kind(s),
+                        "kind": s.kind,
                         "description": s.description,
                     }
                     for s in project.skills
@@ -149,7 +149,7 @@ class QueryTools(_BaseTools):
                 "agents": [
                     {
                         "name": a.name,
-                        "kind": self._component_kind(a),
+                        "kind": a.kind,
                         "description": a.description,
                     }
                     for a in project.agents
@@ -227,7 +227,7 @@ class QueryTools(_BaseTools):
                         {
                             "node": model.name,
                             "component": getattr(ref, "name", None),
-                            "kind": self._component_kind(ref) if ref is not None else "empty",
+                            "kind": ref.kind if ref is not None else "empty",
                         }
                     )
                 elif isinstance(item, TransitionEdgeItem):
@@ -299,27 +299,29 @@ class QueryTools(_BaseTools):
         from daedalus.model.plugin.placement import fork_skills_using
 
         comp = self._find_component(name)
-        config = getattr(comp, "config", None)
-        body = str(getattr(comp, "body", "") or "")
+        # 형상은 **컴포넌트가 선언한다**(WP-2a 능력 표면) — 문자열로 더듬으면
+        # 오타 하나가 "그 종류에는 없는 형상"으로 조용히 번역된다.
+        config = comp.config
+        body = str(comp.body or "")
         truncated = len(body) > _MAX_BODY_PREVIEW
-        fsm = getattr(comp, "fsm", None)
+        machines = comp.state_machines()
 
         info: dict[str, Any] = {
             "name": comp.name,
-            "kind": self._component_kind(comp),
-            "description": getattr(comp, "description", ""),
-            "when_to_use": getattr(comp, "when_to_use", ""),
+            "kind": comp.kind,
+            "description": comp.description,
+            "when_to_use": comp.when_to_use,
             "body": body[:_MAX_BODY_PREVIEW],
             "body_truncated": truncated,
             "body_length": len(body),
             "transfer_on": [
                 {"name": e.name, "description": getattr(e, "description", "")}
-                for e in (getattr(comp, "transfer_on", []) or [])
+                for e in comp.output_ports()
             ],
             # 에이전트 호출 포트 — 에이전트로 가는 전이는 이 포트에서만 나갈 수 있다
             "call_agents": [
                 {"name": e.name, "description": getattr(e, "description", "")}
-                for e in (getattr(comp, "call_agents", []) or [])
+                for e in comp.call_ports()
             ],
         }
         # fork 스킬의 실행 기반인가 — 선언이 답한다(WP-2d Q27).
@@ -327,23 +329,26 @@ class QueryTools(_BaseTools):
             # 역참조 조회 — 목록의 실체는 model의 `fork_skills_using` 하나다
             # (편집기 패널·삭제 확인·산출 "## Invocation Contract"와 공용).
             info["used_by_fork_skills"] = fork_skills_using(comp, self._project)
-        if config is not None:
-            # 비기본값만 싣는다(Q3) — 선언 기본값과 같은 필드(대개 None 미지정)는
-            # list_component_fields가 이미 전체 상세(선택지·emit 위치 포함)를
-            # 주므로 여기서 vars() 전체를 다시 덤프하는 것은 중복 소음이다.
-            defaults = type(config)()
+        # 비기본값만 싣는다(Q3) — 선언 기본값과 같은 필드(대개 None 미지정)는
+        # list_component_fields가 이미 전체 상세(선택지·emit 위치 포함)를
+        # 주므로 여기서 vars() 전체를 다시 덤프하는 것은 중복 소음이다.
+        # config는 모든 컴포넌트 종류가 갖는다(기저 선언) — "없으면 생략"
+        # 분기는 도달하지 않는 죽은 가지였다.
+        defaults = type(config)()
 
-            def _cfg_val(v: Any) -> Any:
-                return getattr(v, "value", v)
+        def _cfg_val(v: Any) -> Any:
+            return getattr(v, "value", v)
 
-            info["config"] = {
-                key: _cfg_val(value)
-                for key, value in vars(config).items()
-                if not key.startswith("_")
-                and key != "id"
-                and _cfg_val(value) != _cfg_val(getattr(defaults, key, None))
-            }
-        if fsm is not None:
+        info["config"] = {
+            key: _cfg_val(value)
+            for key, value in vars(config).items()
+            if not key.startswith("_")
+            and key != "id"
+            and _cfg_val(value) != _cfg_val(getattr(defaults, key, None))
+        }
+        # 자체 FSM을 가진 종류만 이 절을 얻는다 — "몇 개를 갖는가"는
+        # `state_machines()`가 답한다(없는 종류는 빈 목록).
+        for fsm in machines:
             info["fsm"] = {
                 "states": [s.name for s in fsm.states],
                 "transitions": [
@@ -452,7 +457,7 @@ class QueryTools(_BaseTools):
         )
         return {
             "name": comp.name,
-            "kind": self._component_kind(comp),
+            "kind": comp.kind,
             "path": str(preview.rel_path),
             "text": text,
             "chars": entry.chars,

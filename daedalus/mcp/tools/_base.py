@@ -122,10 +122,6 @@ class _BaseTools:
         shadowed = {h.name for h in getattr(self._project, "hook_library", None) or []}
         return [h for h in load_global_hooks() if h.name not in shadowed]
 
-    @staticmethod
-    def _component_kind(comp: Any) -> str:
-        return str(comp.kind)
-
     def _reject_duplicate_name(self, name: str) -> None:
         if any(getattr(c, "name", None) == name for c in self._components()):
             raise ValueError(f"'{name}' 이름의 컴포넌트가 이미 있습니다.")

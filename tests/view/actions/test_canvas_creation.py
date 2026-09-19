@@ -12,11 +12,7 @@ from daedalus.model.plugin.skill import (
     SyncForkSkill,
 )
 from daedalus.model.project import PluginProject
-from daedalus.view.actions.creation import (
-    NO_PLACE_KINDS,
-    create_and_place,
-    make_component,
-)
+from daedalus.view.actions.creation import create_and_place, make_component
 from daedalus.view.app import MainWindow
 
 
@@ -90,7 +86,24 @@ def test_creates_reference_as_reference_node(window):
     assert window._project.reference_placements[0].skill_name == "doc"
 
 
-@pytest.mark.parametrize("kind", sorted(NO_PLACE_KINDS))
+def _non_canvas_kinds() -> list[str]:
+    """캔버스에 **아무 노드로도** 놓이지 않는 config 종류 — 선언에서 파생.
+
+    예전에는 `creation.NO_PLACE_KINDS`라는 음성 목록 상수가 이 사실을 따로
+    들고 있었다(WP-8에서 퇴역). 목록과 판정이 어긋나면 한쪽만 고친 날
+    조용히 엉뚱한 노드가 생긴다 — 이제 배치 역할 선언 하나가 답한다.
+    """
+    from daedalus.model.plugin.kinds import KIND_REGISTRY
+    from daedalus.model.plugin.roles import PlacementRole
+
+    return sorted(
+        spec.config_kind
+        for spec in KIND_REGISTRY.values()
+        if spec.placement not in (PlacementRole.STATE, PlacementRole.REFERENCE)
+    )
+
+
+@pytest.mark.parametrize("kind", _non_canvas_kinds())
 def test_no_place_kinds_are_created_only(window, kind):
     """declarative/transfer/fork_agent는 캔버스 노드가 아니다 — 만들기만 한다.
 
@@ -110,14 +123,26 @@ def test_no_place_kinds_are_created_only(window, kind):
 
 
 def test_no_place_kinds_match_canvas_placeable(window):
-    """음성 목록 상수와 양성 판정이 어긋나지 않는다(원칙 1)."""
+    """배치 역할 선언과 양성 판정이 어긋나지 않는다(원칙 1) — **양방향**."""
+    from daedalus.model.plugin.kinds import config_kinds_in
     from daedalus.model.plugin.placement import is_canvas_placeable
+    from daedalus.model.plugin.roles import Bucket
 
-    assert NO_PLACE_KINDS == frozenset({"declarative", "transfer", "fork_agent"})
-    for kind in NO_PLACE_KINDS:
+    non_canvas = _non_canvas_kinds()
+    assert non_canvas == ["declarative", "transfer", "fork_agent"] or set(
+        non_canvas
+    ) == {"declarative", "transfer", "fork_agent"}
+    for kind in non_canvas:
         comp = make_component(window, kind, f"probe-{kind}")
         assert comp is not None
         assert not is_canvas_placeable(comp)
+    # 반대 방향 — 선언이 STATE/REFERENCE인 종류는 전부 캔버스에 놓인다.
+    for kind in (*config_kinds_in(Bucket.SKILLS), *config_kinds_in(Bucket.AGENTS)):
+        if kind in non_canvas:
+            continue
+        comp = make_component(window, kind, f"ok-{kind}")
+        assert comp is not None
+        assert is_canvas_placeable(comp)
 
 
 def test_creation_is_one_undo_unit(window):

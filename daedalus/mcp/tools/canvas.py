@@ -17,6 +17,7 @@ from __future__ import annotations
 from typing import Any
 
 from ._base import _BaseTools
+from .placement_prose import kinds_with_placement, placement_role_prose
 
 
 class CanvasTools(_BaseTools):
@@ -56,11 +57,15 @@ class CanvasTools(_BaseTools):
                     f"'{comp.name}'은(는) 참조 용도라 상태 노드가 될 수 "
                     f"없습니다 — 참조 노드는 place_reference로 놓습니다."
                 )
+            # 거절 문구도 **배치 역할 선언**에서 파생한다(P5) — 종류 이름을
+            # 손으로 열거하면 새 종류가 생기는 날 문구가 거짓말을 한다(거절은
+            # 되는데 이유가 다른 종류의 설명이다).
+            role = comp.effective_placement()
+            others = ", ".join(kinds_with_placement(role))
             raise ValueError(
                 f"'{comp.name}'({comp.kind})은(는) 캔버스에 배치되지 않는 "
-                f"종류입니다 — 배경 스킬(declarative)·전이 스킬(transfer)은 "
-                f"그래프 노드가 아니고, fork 에이전트는 fork 스킬의 실행 "
-                f"기반이라 노드가 되지 않습니다."
+                f"종류입니다 — {placement_role_prose(role)}. 같은 배치 역할인 "
+                f"종류: {others or '(없음)'}."
             )
         # 이미 배치된 컴포넌트는 두 번 놓지 않는다 — 캔버스 드롭의 조기 반환과
         # 같은 가드다(`view/canvas/scene.py`). 없으면 MCP만 같은 스킬을 두 노드로
@@ -416,7 +421,7 @@ class CanvasTools(_BaseTools):
         comp = self._find_component(name)
         if not is_reference_usage(comp):
             raise ValueError(
-                f"'{name}'은 참조 문서가 아닙니다(현재 {self._component_kind(comp)}) — "
+                f"'{name}'은 참조 문서가 아닙니다(현재 {comp.kind}) — "
                 "일반 스킬·에이전트는 place_component로 배치하라(랩핑 스킬은 "
                 "생성 시 usage=\"reference\"로 고정해야 참조로 놓을 수 있다)."
             )

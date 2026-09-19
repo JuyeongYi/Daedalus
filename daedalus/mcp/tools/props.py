@@ -1,5 +1,5 @@
 # daedalus/mcp/tools/props.py
-"""컴포넌트 생성·속성 도구 — 생성/이름/설명/프론트매터 필드/프로젝트 속성 (WP-RF-3b).
+"""컴포넌트 생성·속성 도구 — 생성/이름/설명/프로젝트 속성 (WP-RF-3b · WP-8 ①).
 
 **계층: GUI 어댑터다 (WP-RF-2 명시).** core(model/compiler)가 아니라
 MainWindow·ProjectViewModel·CommandStack·body_documents 등 view 표면에 결합된
@@ -13,10 +13,12 @@ from __future__ import annotations
 
 from typing import Any
 
+from daedalus.model.plugin.enums import SkillField
 from daedalus.model.plugin.kinds import config_kinds_in
-from daedalus.model.plugin.roles import Bucket
+from daedalus.model.plugin.roles import Bucket, PlacementRole
 
 from .fields import FieldTools
+from .placement_prose import placement_role_prose
 
 
 class PropsTools(FieldTools):
@@ -32,6 +34,49 @@ class PropsTools(FieldTools):
     _SKILL_KINDS = config_kinds_in(Bucket.SKILLS)
     #: create_agent가 받는 종류 — 워크플로 에이전트 / fork 스킬의 실행 기반.
     _AGENT_KINDS = config_kinds_in(Bucket.AGENTS)
+
+    @staticmethod
+    def _config_field_names(kind: str) -> frozenset[str]:
+        """이 config 종류가 **실제로 가진** 필드 이름 (P3).
+
+        생성 인자(`fork_agent`/`source`/`usage`)가 어느 종류에 유효한지는
+        손으로 적은 kind 목록이 아니라 **그 종류의 config 클래스**가 답한다 —
+        목록을 따로 들면 새 종류가 인자를 갖고도 거절당하고(👻), 그 거절은
+        테스트도 컴파일도 실패시키지 않는다.
+        """
+        from dataclasses import fields as dataclass_fields
+
+        from daedalus.model.plugin.kinds import spec_by_config_kind
+
+        return frozenset(
+            f.name for f in dataclass_fields(spec_by_config_kind(kind).config_cls)
+        )
+
+    @classmethod
+    def _reject_arg_the_kind_cannot_hold(
+        cls, bucket: Bucket, kind: str, arg: str, field: str, absent: str
+    ) -> None:
+        """그 종류의 config에 없는 필드를 가리키는 생성 인자를 거절한다 (P3).
+
+        거절은 **이유와 선택지**를 말한다(원칙 5) — 어느 종류가 이 인자를 받는지는
+        레지스트리를 훑어 만든다. 순서는 선언 순서라 결정적이다.
+        """
+        from dataclasses import fields as dataclass_fields
+
+        from daedalus.model.plugin.kinds import KIND_REGISTRY
+
+        if field in cls._config_field_names(kind):
+            return
+        owners = [
+            spec.config_kind
+            for spec in KIND_REGISTRY.values()
+            if spec.bucket is bucket
+            and any(f.name == field for f in dataclass_fields(spec.config_cls))
+        ]
+        raise ValueError(
+            f"{arg}는 설정에 '{field}'를 가진 종류 전용입니다 — "
+            f"'{kind}'에는 {absent}. 사용 가능: {', '.join(owners) or '(없음)'}"
+        )
 
     def _create_component(
         self,
@@ -51,11 +96,8 @@ class PropsTools(FieldTools):
         `create_and_place`의 `MacroCommand`로 묶여 **1 undo 단위**가 된다(G14) —
         캔버스 메뉴와 완전히 같은 경로다.
         """
-        from daedalus.view.actions.creation import (
-            NO_PLACE_KINDS,
-            create_and_place,
-            make_component,
-        )
+        from daedalus.model.plugin.kinds import spec_by_config_kind
+        from daedalus.view.actions.creation import create_and_place, make_component
 
         win = self._window
         if x is None and y is None:
@@ -68,11 +110,13 @@ class PropsTools(FieldTools):
             raise ValueError(
                 "x와 y는 함께 주어야 합니다 — 한쪽만으로는 배치 좌표가 정해지지 않습니다."
             )
-        if kind in NO_PLACE_KINDS:
+        # 배치 가능성은 종류 목록이 아니라 **배치 역할 선언**이 답한다(P5) —
+        # 캔버스 노드가 되는 것은 STATE(상태 노드)와 REFERENCE(참조 노드)뿐이다.
+        role = spec_by_config_kind(kind).placement
+        if role not in (PlacementRole.STATE, PlacementRole.REFERENCE):
             raise ValueError(
                 f"'{kind}' 종류는 캔버스에 노드로 배치되지 않습니다 "
-                "(declarative는 배경 지식, transfer는 전이 위의 단계, "
-                "fork_agent는 fork 스킬의 실행 기반입니다) — x/y 없이 만드세요."
+                f"({placement_role_prose(role)}) — x/y 없이 만드세요."
             )
         component = create_and_place(
             self._scene, win, kind, name, float(x), float(y), description,
@@ -102,7 +146,8 @@ class PropsTools(FieldTools):
         sync는 `background: false`로 부른 쪽이 보고를 기다리고, async는
         `background: true`로 보고가 작업 알림으로 온다. 2026-09-17).
 
-        fork_agent: kind="sync_fork"/"async_fork" 전용 — fork 에이전트(프론트매터 `agent`).
+        fork_agent: 설정에 `agent`를 가진 종류(sync_fork/async_fork) 전용 —
+        fork 에이전트(프론트매터 `agent`).
         내장(general-purpose/Explore/Plan), 사용 선언한 외부 플러그인 에이전트
         (`플러그인:이름`), 프로젝트의 **fork 에이전트** 중 하나(정확 일치).
         생략하면 general-purpose. 절차형 ↔ fork 2종 전환은 `convert_skill`.
@@ -110,7 +155,8 @@ class PropsTools(FieldTools):
         노드에 링크된 reference는 컴파일 시 에이전트 skills 프론트매터에 자동
         합류된다(로컬 스킬은 퇴역, WP-RF-1c).
 
-        source(WP-WR): kind="wrapped" 전용 — `플러그인[@마켓]:스킬` 형식으로
+        source(WP-WR): 설정에 `source`를 가진 종류(wrapped) 전용 —
+        `플러그인[@마켓]:스킬` 형식으로
         감쌀 외부 스킬을 지정한다(`list_wrappable_skills`가 후보와 source
         문자열을 준다). source의 플러그인이 external_plugins에 미선언이면
         **선언까지 함께** 1 undo로 들어가고, x/y를 함께 주면 배치까지 같은
@@ -136,25 +182,29 @@ class PropsTools(FieldTools):
             raise ValueError(
                 f"알 수 없는 스킬 종류 '{kind}'. 사용 가능: {', '.join(self._SKILL_KINDS)}"
             )
-        if fork_agent and kind not in ("sync_fork", "async_fork"):
-            raise ValueError(
-                f"fork_agent는 kind='sync_fork'/'async_fork' 전용입니다 — '{kind}' 스킬은 "
-                "서브에이전트를 지정하지 않습니다(나머지 스킬은 fork·agent 지정 불가)."
-            )
         if fork_agent:
+            self._reject_arg_the_kind_cannot_hold(
+                Bucket.SKILLS, kind, "fork_agent", SkillField.AGENT.value,
+                "본문을 실행할 서브에이전트 개념이 없습니다",
+            )
             from daedalus.view.actions.fork_skill import validate_fork_agent
 
             validate_fork_agent(self._project, fork_agent)
-        if source and kind != "wrapped":
-            raise ValueError(
-                f"source는 kind='wrapped' 전용입니다 — '{kind}' 스킬에는 감쌀 "
-                "외부 스킬 개념이 없습니다."
+        if source:
+            self._reject_arg_the_kind_cannot_hold(
+                Bucket.SKILLS, kind, "source", SkillField.SOURCE.value,
+                "감쌀 외부 스킬 개념이 없습니다",
             )
-        if usage and not source:
-            raise ValueError(
-                "usage는 kind='wrapped'+source와 함께만 씁니다 — 용도는 랩핑 "
-                "스킬의 개념입니다(state/reference)."
+        if usage:
+            self._reject_arg_the_kind_cannot_hold(
+                Bucket.SKILLS, kind, "usage", "usage",
+                "용도 선택 개념이 없습니다",
             )
+            if not source:
+                raise ValueError(
+                    "usage는 source와 함께만 씁니다 — 용도는 랩핑 스킬이 감싼 "
+                    "외부 스킬을 어떻게 쓸지의 선택입니다(state/reference)."
+                )
         self._reject_duplicate_name(name)
         if source:
             if (x is None) != (y is None):
@@ -182,7 +232,9 @@ class PropsTools(FieldTools):
             kind, name, description, x, y, agent=fork_agent or None
         )
         out: dict[str, Any] = {"created": name, "kind": kind, "placed": placed}
-        if kind in ("sync_fork", "async_fork"):
+        # 실행 기반을 응답에 싣는 것은 "그 설정에 `agent`가 있는 종류"의
+        # 성질이다 — fork 2종을 이름으로 열거하던 자리(P3).
+        if SkillField.AGENT.value in self._config_field_names(kind):
             out["fork_agent"] = fork_agent or "general-purpose"
         return out
 
@@ -359,7 +411,7 @@ class PropsTools(FieldTools):
         comp = self._find_component(name)
         if not supports_entry_presets(comp):
             raise ValueError(
-                f"'{name}'({self._component_kind(comp)})에는 진입점 프리셋을 적용할 "
+                f"'{name}'({comp.kind})에는 진입점 프리셋을 적용할 "
                 "수 없습니다 — user_invocable/disable_model_invocation이 고정되어 "
                 "있거나(transfer/reference) 그 필드 자체가 없는 종류(에이전트)입니다."
             )

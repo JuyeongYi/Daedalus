@@ -71,8 +71,8 @@ SHAPE_EXCLUDED_SUBJECTS: frozenset[str] = frozenset({"project", "cfg", "config",
 RATCHET: dict[str, int] = {
     "isinstance_sites": 20,
     "isinstance_files": 6,
-    "shape_attr_sites": 33,
-    "shape_attr_files": 12,
+    "shape_attr_sites": 25,
+    "shape_attr_files": 11,
 }
 
 #: 정당한 잔존 사이트 — `module::qualname`. 면제는 **사유와 철거 주체**를 적는다.

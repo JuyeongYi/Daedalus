@@ -117,13 +117,12 @@ class FieldTools(_BaseTools):
         from daedalus.model.plugin.field_matrix import matrix_for
 
         comp = self._find_component(name)
-        config = getattr(comp, "config", None)
-        if config is None:
-            raise ValueError(f"'{name}'에는 config가 없습니다.")
-
         # 표를 고르는 규칙의 실체는 model의 `matrix_for` 하나다 — 조용한
         # 빈 dict 폴백(예전 버그)도, 이유를 못 말하는 맨 첨자도 쓰지 않는다.
+        # config가 없으면 `matrix_for`가 이름과 클래스를 찍고 거절하므로
+        # 여기서 형상을 문자열로 더듬지 않는다(WP-8 — 래칫 ②).
         matrix = matrix_for(comp)
+        config = comp.config
 
         hints = self._config_field_types(config)
         out: list[dict[str, Any]] = []
@@ -145,7 +144,7 @@ class FieldTools(_BaseTools):
             if isinstance(base, type) and issubclass(base, enum.Enum):
                 entry["choices"] = [str(m.value) for m in base]
             out.append(entry)
-        return {"component": comp.name, "kind": self._component_kind(comp), "fields": out}
+        return {"component": comp.name, "kind": comp.kind, "fields": out}
 
     def set_component_field(
         self, name: str, field: str, value: Any
@@ -162,14 +161,20 @@ class FieldTools(_BaseTools):
         위임된다 — "기본값과 같은 값을 못 박는 것"과 다르다. Optional로 선언되지
         않은 필드에 null을 주면 거절한다.
 
+        **설정 가능한 필드 = 그 종류의 매트릭스에서 FIXED가 아닌 행**(P4).
+        FIXED 행(fork의 `context`/`background`, transfer·reference의
+        `user_invocable` 등)은 종류가 값을 정하고 컴파일러가 강제 배출하므로,
+        config에 기록해도 산출에 도달하지 않는다 — 조용한 no-op 대신 **이유를
+        말하며 거절**한다(원칙 5).
+
         description / when_to_use / hooks는 전용 도구를 쓴다.
         """
+        from daedalus.model.plugin.enums import FieldVisibility
+        from daedalus.model.plugin.field_matrix import matrix_for
         from daedalus.view.commands.attr_commands import SetAttrCmd
 
         comp = self._find_component(name)
-        config = getattr(comp, "config", None)
-        if config is None:
-            raise ValueError(f"'{name}'에는 config가 없습니다.")
+        config = comp.config
         if field == "hooks":
             raise ValueError("훅 참조는 set_component_hooks를 쓰세요.")
         if field == "usage":
@@ -178,12 +183,24 @@ class FieldTools(_BaseTools):
                 "배치(또는 create_skill의 usage 인자)가 고정하며, 한 스킬 두 "
                 "용도는 금지입니다(WP-WR). 바꾸려면 스킬을 지우고 다시 만드세요."
             )
-        if not hasattr(config, field):
+        # 허용 판정은 **매트릭스 한 곳**에서 나온다(P4). 예전에는 "config에
+        # 속성이 있는가"만 물어서, 매트릭스에 없는 필드(fork의 allowed_tools —
+        # fork에서는 에이전트 도구가 이긴다)나 종류가 고정하는 필드까지 받아
+        # 저장하고는 산출에서 조용히 사라졌다.
+        rule = {fld.value: r for fld, r in matrix_for(comp).items()}.get(field)
+        if rule is not None and rule.visibility is FieldVisibility.FIXED:
+            fixed = getattr(rule.fixed_value, "value", rule.fixed_value)
+            raise ValueError(
+                f"'{comp.kind}'의 '{field}'는 종류가 값을 고정하는 필드라 "
+                f"설정할 수 없습니다(고정값: {fixed!r}) — 값을 바꾸려면 종류를 "
+                f"바꿉니다(convert_skill)."
+            )
+        if rule is None or not hasattr(config, field):
             known = [
                 f["field"] for f in self.list_component_fields(name)["fields"]
             ]
             raise ValueError(
-                f"'{self._component_kind(comp)}'에는 '{field}' 필드가 없습니다. "
+                f"'{comp.kind}'에는 '{field}' 필드가 없습니다. "
                 f"사용 가능: {', '.join(known)}"
             )
 

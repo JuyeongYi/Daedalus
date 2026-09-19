@@ -11,12 +11,10 @@
 """
 from __future__ import annotations
 
-#: 캔버스에 **아무 노드로도 놓이지 않는** 종류. 판정의 실체는
-#: `model.plugin.placement.is_canvas_placeable`이고 이 상수는 그 음성 목록의
-#: 문자열 표현이다(생성 다이얼로그가 kind 문자열만 들고 있는 자리 전용) —
-#: 어긋나지 않음을 테스트가 고정한다. reference는 여기 없다: 상태 노드는
-#: 못 되지만 **참조 노드로는 놓인다**.
-NO_PLACE_KINDS: frozenset[str] = frozenset({"declarative", "transfer", "fork_agent"})
+# (NO_PLACE_KINDS 퇴역 — WP-8. "캔버스에 아무 노드로도 놓이지 않는 종류"의
+#  음성 목록을 문자열로 들고 있던 상수다. 마지막 소비자였던 MCP
+#  `create_skill(x, y)`가 배치 역할 선언(`KindSpec.placement`)을 직접 읽게
+#  되면서 소비자가 0이 됐다 — 같은 사실을 두 곳에서 말하지 않는다.)
 
 # (CREATABLE_KINDS는 "여기에 만들기" 빈 캔버스 메뉴(A9-9)와 함께 퇴역 —
 #  이름을 정확히 타이핑해야 해서 쓰기 어려웠다(사용자 확정). 생성 표면은
@@ -159,7 +157,7 @@ def create_and_place(
     참조 **용도**의 컴포넌트는 상태 노드가 아니라 **참조 노드**로 놓인다
     (캔버스 드롭과 같은 커맨드·같은 판정 `is_reference_usage`). 종류로 묻던
     옛 분기(`isinstance(..., ReferenceSkill)`)는 참조 용도 랩핑 스킬을
-    state 노드로 놓았다. `NO_PLACE_KINDS`는 만들기만 한다.
+    state 노드로 놓았다. 어느 노드로도 놓이지 않는 종류는 만들기만 한다.
 
     캔버스 "여기에 만들기" 메뉴가 퇴역한 뒤로도 이 경로는 살아 있다 — MCP
     `create_skill(x, y)`가 좌표를 주면 여기로 온다.
