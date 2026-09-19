@@ -74,6 +74,8 @@ def _migrate_v1(data: dict, warnings: list[str]) -> dict:
     # 반드시 1-c **뒤**다 — 1-c가 만든 fork 스킬도 대상이고, 그 스킬에는
     # "이전 산출" 이력이 없어 미배치 경고를 내지 않는다.
     migrate_fork_split(data, warnings, skip_warning_for=converted)
+    # 1-e) 랩핑 스킬 퇴역 → 외부 에이전트 / 참조 스킬 / 드롭 (2026-09-19).
+    migrate_wrapped_retirement(data, warnings)
 
     # 2)+3) 컴포넌트 공통 — 본문 평탄화 + 경로 변수 치환 + 퇴역 키 드롭
     def _migrate_component(d: dict) -> None:
@@ -303,6 +305,144 @@ def migrate_fork_split(
         warnings.append(
             f"에이전트 '{a.get('name', '?')}'을(를) fork 에이전트 종류로 이관했습니다."
         )
+
+
+#: 퇴역한 랩핑 스킬의 컴포넌트 kind / config kind (2026-09-19 — 단방향 흡수).
+_WRAPPED_SKILL_KIND = "wrapped_skill"
+
+#: 랩핑 스킬 config에만 있던 키 — 참조 스킬로 이관할 때 떤다(퇴역 개념의 잔재
+#: 를 새 종류에 남기지 않는다 — 원칙 7).
+_WRAPPED_ONLY_CONFIG_KEYS: tuple[str, ...] = (
+    "source", "usage", "enabled", "disable_model_invocation",
+)
+
+
+def needs_wrapped_retirement_migration(data: dict) -> bool:
+    """랩핑 스킬이 남아 있는가 (format 2 파일 게이트 — 내용 스니핑).
+
+    랩핑 스킬 퇴역(2026-09-19) 이전에 저장된 format 2 파일은 format이 같아도
+    내용이 다르다(`needs_fork_split_migration` 선례).
+    """
+    return any(
+        s.get("kind") == _WRAPPED_SKILL_KIND
+        for s in data.get("skills", []) or []
+    )
+
+
+def migrate_wrapped_retirement(data: dict, warnings: list[str]) -> None:
+    """랩핑 스킬 퇴역 → 외부 에이전트 / 참조 스킬 / 드롭 (제자리 변형, 2026-09-19).
+
+    랩핑 스킬은 "외부 플러그인의 **스킬**을 워크플로 단계로 감싸는" 종류였고,
+    그 일을 `ExternalAgent`(외부 플러그인 서브에이전트를 그래프 노드로)와
+    `ReferenceSkill`(자체 본문을 가진 참조 문서)이 나눠 받는다. 용도(`usage`)가
+    무엇으로 갈지를 가른다 — 최초 배치가 고정하던 그 값이 곧 "이 랩퍼가
+    단계였는가 참고 자료였는가"의 기록이기 때문이다.
+
+    - `enabled == False` → **드롭**(경고 1건). 꺼 둔 랩퍼는 산출에도 배선에도
+      나가지 않았으므로 이관할 산출이 없다. 참조 배치도 함께 걷는다(남기면
+      가리킬 대상이 없는 배치가 된다).
+    - `usage == "reference"` → `reference_skill`. 본문 정본이 외부라는 사실은
+      표현할 자리가 없어지므로 **본문 첫 줄에 원문 source를 남긴다** — 조용히
+      잃지 않는다(원칙 5). 랩핑 전용 config 키와 fsm·포트는 뗀다.
+    - 그 밖(= `state`, 미정 `""`, 키 부재) → `external_agent`. `source`는 그대로
+      옮기고 `transfer_on`/`call_agents`는 승계한다(그래프 배선이 그 포트
+      이름으로 이어져 있다). 내부 FSM은 외부 에이전트에 없는 개념이라 드롭한다.
+
+    **안정 id를 보존**하므로 그래프의 `skill_ref`가 그대로 이어진다 — 스킬
+    목록에서 에이전트 목록으로 옮겨 가도 역직렬화는 id로 해소한다.
+    """
+    skills = data.get("skills")
+    if not isinstance(skills, list):
+        return
+    agents = data.get("agents")
+    if not isinstance(agents, list):
+        agents = []
+        data["agents"] = agents
+
+    kept: list[dict] = []
+    promoted: list[dict] = []
+    dropped_names: set[str] = set()
+    for s in skills:
+        if not isinstance(s, dict) or s.get("kind") != _WRAPPED_SKILL_KIND:
+            kept.append(s)
+            continue
+        cfg = s.get("config")
+        cfg = dict(cfg) if isinstance(cfg, dict) else {}
+        name = s.get("name", "?")
+        source = cfg.get("source") or ""
+        # 키 부재는 구버전 파일 — 그때는 state 용도만 있었다. 미정("")도 state다
+        # (`WrappedSkill.effective_placement`의 종전 판정).
+        usage = cfg.get("usage") or "state"
+        if not cfg.get("enabled", True):
+            dropped_names.add(name)
+            warnings.append(
+                f"비활성 랩핑 스킬 '{name}'을(를) 드롭했습니다 — 랩핑 스킬은 "
+                f"퇴역한 개념이고, 꺼 둔 랩퍼는 산출·배선 어디에도 나가지 "
+                f"않았습니다."
+            )
+            continue
+        if usage == "reference":
+            kept.append(_wrapped_to_reference_skill(s, cfg, source))
+            warnings.append(
+                f"랩핑 스킬 '{name}'을(를) 참조 스킬로 이관했습니다 — 본문 "
+                f"첫 줄에 원본 source를 남겼습니다(정본이 외부라는 사실은 "
+                f"더 이상 모델에 없습니다)."
+            )
+            continue
+        promoted.append(_wrapped_to_external_agent(s, source))
+        warnings.append(
+            f"랩핑 스킬 '{name}'을(를) 외부 플러그인 에이전트로 이관했습니다 — "
+            f"source '{source}'가 이제 **에이전트** 이름을 가리키므로 "
+            f"`플러그인[@마켓]:에이전트` 형식이 맞는지 확인하세요."
+        )
+
+    data["skills"] = kept
+    agents.extend(promoted)
+    if dropped_names:
+        data["reference_placements"] = [
+            rp for rp in data.get("reference_placements", []) or []
+            if rp.get("skill_name") not in dropped_names
+        ]
+
+
+def _wrapped_to_reference_skill(s: dict, cfg: dict, source: str) -> dict:
+    """랩핑 스킬 dict → 참조 스킬 dict (같은 id·이름·프론트매터)."""
+    out = dict(s)
+    out["kind"] = "reference_skill"
+    for key in _WRAPPED_ONLY_CONFIG_KEYS:
+        cfg.pop(key, None)
+    cfg["kind"] = "reference"
+    out["config"] = cfg
+    # 참조 스킬에는 FSM도 포트도 없다 — 키를 남기면 역직렬화가 조용히 무시하고
+    # 왕복에서 사라진다(퇴역 개념의 잔재).
+    for key in ("fsm", "transfer_on", "call_agents"):
+        out.pop(key, None)
+    body = out.get("body") or ""
+    if source:
+        line = f"Source: `{source}`"
+        out["body"] = f"{line}\n\n{body}" if body.strip() else f"{line}\n"
+    return out
+
+
+def _wrapped_to_external_agent(s: dict, source: str) -> dict:
+    """랩핑 스킬 dict → 외부 에이전트 dict (같은 id — 그래프 배선 보존).
+
+    config는 새로 짠다: 외부 에이전트가 소유하는 값은 `source` 하나이고
+    (`ExternalAgentConfig`), 랩퍼의 프론트매터 값들은 **우리가 만들지 않는
+    파일**의 값이라 옮길 자리가 없다.
+    """
+    out: dict = {
+        "kind": "external_agent",
+        "name": s.get("name", ""),
+        "description": s.get("description", ""),
+        "config": {"kind": "external_agent", "source": source},
+        "body": "",
+        "transfer_on": list(s.get("transfer_on", []) or []),
+        "call_agents": list(s.get("call_agents", []) or []),
+    }
+    if s.get("id"):
+        out["id"] = s["id"]
+    return out
 
 
 def _promote_local_skills(data: dict, warnings: list[str]) -> None:

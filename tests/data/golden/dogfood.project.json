@@ -774,553 +774,166 @@
       }
     },
     {
-      "kind": "wrapped_skill",
+      "kind": "reference_skill",
       "id": "cf52117325c5407bb0f4c0bafa26c4f3",
       "name": "claude-md-guide",
       "description": "외부 배경 지식 — CLAUDE.md 품질 기준(claude-md-improver). 작업 폴더 문서를 쓸 때 무엇이 좋은 CLAUDE.md인지 참고한다.",
       "when_to_use": "",
-      "body": "",
+      "body": "Source: `claude-md-management@claude-plugins-official:claude-md-improver`\n",
       "config": {
-        "kind": "wrapped",
+        "kind": "reference",
         "model": "inherit",
         "effort": null,
         "hooks": null,
         "argument_hint": null,
         "allowed_tools": [],
         "paths": null,
-        "source": "claude-md-management@claude-plugins-official:claude-md-improver",
-        "usage": "reference",
-        "enabled": true,
-        "disable_model_invocation": null,
         "user_invocable": null
-      },
-      "fsm": {
-        "id": "e30824f204514e388c6785915ed74473",
-        "name": "claude-md-guide_fsm",
-        "states": [
-          {
-            "kind": "simple",
-            "id": "0f57475ac28f441dbdb02573def826f6",
-            "name": "start",
-            "on_entry_start": [],
-            "on_entry": [],
-            "on_entry_end": [],
-            "on_exit_start": [],
-            "on_exit": [],
-            "on_exit_end": [],
-            "on_active": [],
-            "custom_events": {},
-            "inputs": [],
-            "outputs": [],
-            "reads": [],
-            "writes": [],
-            "skill_ref": null
-          }
-        ],
-        "transitions": [],
-        "initial_state": "0f57475ac28f441dbdb02573def826f6",
-        "final_states": [],
-        "blackboard": {
-          "class_definitions": [],
-          "variables": {}
-        }
-      },
-      "transfer_on": [
-        {
-          "name": "done",
-          "color": "#4488ff",
-          "description": ""
-        }
-      ],
-      "call_agents": []
+      }
     },
     {
-      "kind": "wrapped_skill",
+      "kind": "reference_skill",
       "id": "eed048cb96064441b69faf34fdd4a805",
       "name": "skill-authoring-guide",
       "description": "외부 배경 지식 — 스킬 저작 규범(plugin-dev:skill-development). 본문·description·점진 공개를 어떻게 쓰는지 참고한다.",
       "when_to_use": "",
-      "body": "",
+      "body": "Source: `plugin-dev@claude-plugins-official:skill-development`\n",
       "config": {
-        "kind": "wrapped",
+        "kind": "reference",
         "model": "inherit",
         "effort": null,
         "hooks": null,
         "argument_hint": null,
         "allowed_tools": [],
         "paths": null,
-        "source": "plugin-dev@claude-plugins-official:skill-development",
-        "usage": "reference",
-        "enabled": true,
-        "disable_model_invocation": null,
         "user_invocable": null
-      },
-      "fsm": {
-        "id": "f695e9eb20a847469cd22d91933461e3",
-        "name": "skill-authoring-guide_fsm",
-        "states": [
-          {
-            "kind": "simple",
-            "id": "92f9c488c876449e990d4014356c877d",
-            "name": "start",
-            "on_entry_start": [],
-            "on_entry": [],
-            "on_entry_end": [],
-            "on_exit_start": [],
-            "on_exit": [],
-            "on_exit_end": [],
-            "on_active": [],
-            "custom_events": {},
-            "inputs": [],
-            "outputs": [],
-            "reads": [],
-            "writes": [],
-            "skill_ref": null
-          }
-        ],
-        "transitions": [],
-        "initial_state": "92f9c488c876449e990d4014356c877d",
-        "final_states": [],
-        "blackboard": {
-          "class_definitions": [],
-          "variables": {}
-        }
-      },
-      "transfer_on": [
-        {
-          "name": "done",
-          "color": "#4488ff",
-          "description": ""
-        }
-      ],
-      "call_agents": []
+      }
     },
     {
-      "kind": "wrapped_skill",
+      "kind": "reference_skill",
       "id": "5df0ce8bda354a24b0d545da759b4838",
       "name": "skill-eval-guide",
       "description": "외부 배경 지식 — 스킬 품질·평가(skill-creator). description 트리거 정확도와 eval로 본문 품질을 재는 방법을 참고한다.",
       "when_to_use": "",
-      "body": "",
+      "body": "Source: `skill-creator@claude-plugins-official:skill-creator`\n",
       "config": {
-        "kind": "wrapped",
+        "kind": "reference",
         "model": "inherit",
         "effort": null,
         "hooks": null,
         "argument_hint": null,
         "allowed_tools": [],
         "paths": null,
-        "source": "skill-creator@claude-plugins-official:skill-creator",
-        "usage": "reference",
-        "enabled": true,
-        "disable_model_invocation": null,
         "user_invocable": null
-      },
-      "fsm": {
-        "id": "353b8de9e8c9499bb3fe2a50be2715f6",
-        "name": "skill-eval-guide_fsm",
-        "states": [
-          {
-            "kind": "simple",
-            "id": "46faa863fbb2410990d2105519322e97",
-            "name": "start",
-            "on_entry_start": [],
-            "on_entry": [],
-            "on_entry_end": [],
-            "on_exit_start": [],
-            "on_exit": [],
-            "on_exit_end": [],
-            "on_active": [],
-            "custom_events": {},
-            "inputs": [],
-            "outputs": [],
-            "reads": [],
-            "writes": [],
-            "skill_ref": null
-          }
-        ],
-        "transitions": [],
-        "initial_state": "46faa863fbb2410990d2105519322e97",
-        "final_states": [],
-        "blackboard": {
-          "class_definitions": [],
-          "variables": {}
-        }
-      },
-      "transfer_on": [
-        {
-          "name": "done",
-          "color": "#4488ff",
-          "description": ""
-        }
-      ],
-      "call_agents": []
+      }
     },
     {
-      "kind": "wrapped_skill",
+      "kind": "reference_skill",
       "id": "382c2823a3734c05924262436d3ea715",
       "name": "mcp-integration-guide",
       "description": "외부 배경 지식 — 플러그인 MCP 배선(plugin-dev:mcp-integration). 서버 유형·.mcp.json·경로 변수 규약을 참고한다.",
       "when_to_use": "",
-      "body": "",
+      "body": "Source: `plugin-dev@claude-plugins-official:mcp-integration`\n",
       "config": {
-        "kind": "wrapped",
+        "kind": "reference",
         "model": "inherit",
         "effort": null,
         "hooks": null,
         "argument_hint": null,
         "allowed_tools": [],
         "paths": null,
-        "source": "plugin-dev@claude-plugins-official:mcp-integration",
-        "usage": "reference",
-        "enabled": true,
-        "disable_model_invocation": null,
         "user_invocable": null
-      },
-      "fsm": {
-        "id": "bf826ff106764eb8a7bf12e3493a52e3",
-        "name": "mcp-integration-guide_fsm",
-        "states": [
-          {
-            "kind": "simple",
-            "id": "c89d71cdf9de44229c2a7dd896689e2b",
-            "name": "start",
-            "on_entry_start": [],
-            "on_entry": [],
-            "on_entry_end": [],
-            "on_exit_start": [],
-            "on_exit": [],
-            "on_exit_end": [],
-            "on_active": [],
-            "custom_events": {},
-            "inputs": [],
-            "outputs": [],
-            "reads": [],
-            "writes": [],
-            "skill_ref": null
-          }
-        ],
-        "transitions": [],
-        "initial_state": "c89d71cdf9de44229c2a7dd896689e2b",
-        "final_states": [],
-        "blackboard": {
-          "class_definitions": [],
-          "variables": {}
-        }
-      },
-      "transfer_on": [
-        {
-          "name": "done",
-          "color": "#4488ff",
-          "description": ""
-        }
-      ],
-      "call_agents": []
+      }
     },
     {
-      "kind": "wrapped_skill",
+      "kind": "reference_skill",
       "id": "38ffc4f1f2704ea1a197d9f5d30095e6",
       "name": "automation-recommender-guide",
       "description": "외부 배경 지식 — 자동화 추천(claude-code-setup). 어떤 훅·스킬·MCP·서브에이전트가 이 코드베이스에 맞는지 판단이 서지 않을 때 참고한다.",
       "when_to_use": "",
-      "body": "",
+      "body": "Source: `claude-code-setup@claude-plugins-official:claude-automation-recommender`\n",
       "config": {
-        "kind": "wrapped",
+        "kind": "reference",
         "model": "inherit",
         "effort": null,
         "hooks": null,
         "argument_hint": null,
         "allowed_tools": [],
         "paths": null,
-        "source": "claude-code-setup@claude-plugins-official:claude-automation-recommender",
-        "usage": "reference",
-        "enabled": true,
-        "disable_model_invocation": null,
         "user_invocable": null
-      },
-      "fsm": {
-        "id": "775dcd0f1a794b5a819bb16d0f5893e9",
-        "name": "automation-recommender-guide_fsm",
-        "states": [
-          {
-            "kind": "simple",
-            "id": "138be706652043a38ae7aca12497befa",
-            "name": "start",
-            "on_entry_start": [],
-            "on_entry": [],
-            "on_entry_end": [],
-            "on_exit_start": [],
-            "on_exit": [],
-            "on_exit_end": [],
-            "on_active": [],
-            "custom_events": {},
-            "inputs": [],
-            "outputs": [],
-            "reads": [],
-            "writes": [],
-            "skill_ref": null
-          }
-        ],
-        "transitions": [],
-        "initial_state": "138be706652043a38ae7aca12497befa",
-        "final_states": [],
-        "blackboard": {
-          "class_definitions": [],
-          "variables": {}
-        }
-      },
-      "transfer_on": [
-        {
-          "name": "done",
-          "color": "#4488ff",
-          "description": ""
-        }
-      ],
-      "call_agents": []
+      }
     },
     {
-      "kind": "wrapped_skill",
+      "kind": "reference_skill",
       "id": "323fcfe0f51b4a7ea4dcfd6a53b1741a",
       "name": "hookify-rules-guide",
       "description": "외부 배경 지식 — hookify 규칙 문법(hookify:writing-rules). 원치 않는 행동을 막는 훅 규칙을 어떻게 쓰는지 참고한다.",
       "when_to_use": "",
-      "body": "",
+      "body": "Source: `hookify@claude-plugins-official:writing-rules`\n",
       "config": {
-        "kind": "wrapped",
+        "kind": "reference",
         "model": "inherit",
         "effort": null,
         "hooks": null,
         "argument_hint": null,
         "allowed_tools": [],
         "paths": null,
-        "source": "hookify@claude-plugins-official:writing-rules",
-        "usage": "reference",
-        "enabled": true,
-        "disable_model_invocation": null,
         "user_invocable": null
-      },
-      "fsm": {
-        "id": "bf14200cdf09448596865cb93c70717a",
-        "name": "hookify-rules-guide_fsm",
-        "states": [
-          {
-            "kind": "simple",
-            "id": "a75698aa3c5742c487389d8431c97e11",
-            "name": "start",
-            "on_entry_start": [],
-            "on_entry": [],
-            "on_entry_end": [],
-            "on_exit_start": [],
-            "on_exit": [],
-            "on_exit_end": [],
-            "on_active": [],
-            "custom_events": {},
-            "inputs": [],
-            "outputs": [],
-            "reads": [],
-            "writes": [],
-            "skill_ref": null
-          }
-        ],
-        "transitions": [],
-        "initial_state": "a75698aa3c5742c487389d8431c97e11",
-        "final_states": [],
-        "blackboard": {
-          "class_definitions": [],
-          "variables": {}
-        }
-      },
-      "transfer_on": [
-        {
-          "name": "done",
-          "color": "#4488ff",
-          "description": ""
-        }
-      ],
-      "call_agents": []
+      }
     },
     {
-      "kind": "wrapped_skill",
+      "kind": "reference_skill",
       "id": "1d6a895ff416418b8bc256044bee6070",
       "name": "hook-authoring-guide",
       "description": "외부 배경 지식 — CC 훅 저작(plugin-dev:hook-development). 이벤트 종류·matcher 제약·프롬프트 훅 API를 참고한다.",
       "when_to_use": "",
-      "body": "",
+      "body": "Source: `plugin-dev@claude-plugins-official:hook-development`\n",
       "config": {
-        "kind": "wrapped",
+        "kind": "reference",
         "model": "inherit",
         "effort": null,
         "hooks": null,
         "argument_hint": null,
         "allowed_tools": [],
         "paths": null,
-        "source": "plugin-dev@claude-plugins-official:hook-development",
-        "usage": "reference",
-        "enabled": true,
-        "disable_model_invocation": null,
         "user_invocable": null
-      },
-      "fsm": {
-        "id": "bc53502a8c3c4511a62132952402d642",
-        "name": "hook-authoring-guide_fsm",
-        "states": [
-          {
-            "kind": "simple",
-            "id": "530da020083b4439a5eeddcd82bfb108",
-            "name": "start",
-            "on_entry_start": [],
-            "on_entry": [],
-            "on_entry_end": [],
-            "on_exit_start": [],
-            "on_exit": [],
-            "on_exit_end": [],
-            "on_active": [],
-            "custom_events": {},
-            "inputs": [],
-            "outputs": [],
-            "reads": [],
-            "writes": [],
-            "skill_ref": null
-          }
-        ],
-        "transitions": [],
-        "initial_state": "530da020083b4439a5eeddcd82bfb108",
-        "final_states": [],
-        "blackboard": {
-          "class_definitions": [],
-          "variables": {}
-        }
-      },
-      "transfer_on": [
-        {
-          "name": "done",
-          "color": "#4488ff",
-          "description": ""
-        }
-      ],
-      "call_agents": []
+      }
     },
     {
-      "kind": "wrapped_skill",
+      "kind": "reference_skill",
       "id": "dadf05d8f629474a9c35b7d9aaac81a4",
       "name": "agent-authoring-guide",
       "description": "외부 배경 지식 — 서브에이전트 저작(plugin-dev:agent-development). 시스템 프롬프트·트리거 조건·도구 지정 규범을 참고한다.",
       "when_to_use": "",
-      "body": "",
+      "body": "Source: `plugin-dev@claude-plugins-official:agent-development`\n",
       "config": {
-        "kind": "wrapped",
+        "kind": "reference",
         "model": "inherit",
         "effort": null,
         "hooks": null,
         "argument_hint": null,
         "allowed_tools": [],
         "paths": null,
-        "source": "plugin-dev@claude-plugins-official:agent-development",
-        "usage": "reference",
-        "enabled": true,
-        "disable_model_invocation": null,
         "user_invocable": null
-      },
-      "fsm": {
-        "id": "16807eb6d46a4bb0b70a99a824bdf450",
-        "name": "agent-authoring-guide_fsm",
-        "states": [
-          {
-            "kind": "simple",
-            "id": "e182869a0d8440dbb297a7506a556556",
-            "name": "start",
-            "on_entry_start": [],
-            "on_entry": [],
-            "on_entry_end": [],
-            "on_exit_start": [],
-            "on_exit": [],
-            "on_exit_end": [],
-            "on_active": [],
-            "custom_events": {},
-            "inputs": [],
-            "outputs": [],
-            "reads": [],
-            "writes": [],
-            "skill_ref": null
-          }
-        ],
-        "transitions": [],
-        "initial_state": "e182869a0d8440dbb297a7506a556556",
-        "final_states": [],
-        "blackboard": {
-          "class_definitions": [],
-          "variables": {}
-        }
-      },
-      "transfer_on": [
-        {
-          "name": "done",
-          "color": "#4488ff",
-          "description": ""
-        }
-      ],
-      "call_agents": []
+      }
     },
     {
-      "kind": "wrapped_skill",
+      "kind": "reference_skill",
       "id": "12883bfee4ed4acca64d2be557808bc9",
       "name": "plugin-structure-guide",
       "description": "외부 배경 지식 — 플러그인 구조·매니페스트(plugin-dev:plugin-structure). 디렉토리 배치·plugin.json·자동 발견 규약을 참고한다.",
       "when_to_use": "",
-      "body": "",
+      "body": "Source: `plugin-dev@claude-plugins-official:plugin-structure`\n",
       "config": {
-        "kind": "wrapped",
+        "kind": "reference",
         "model": "inherit",
         "effort": null,
         "hooks": null,
         "argument_hint": null,
         "allowed_tools": [],
         "paths": null,
-        "source": "plugin-dev@claude-plugins-official:plugin-structure",
-        "usage": "reference",
-        "enabled": true,
-        "disable_model_invocation": null,
         "user_invocable": null
-      },
-      "fsm": {
-        "id": "3186a5523fc343da98222f7f02832272",
-        "name": "plugin-structure-guide_fsm",
-        "states": [
-          {
-            "kind": "simple",
-            "id": "2653e3a4d5334008915fab94dc144170",
-            "name": "start",
-            "on_entry_start": [],
-            "on_entry": [],
-            "on_entry_end": [],
-            "on_exit_start": [],
-            "on_exit": [],
-            "on_exit_end": [],
-            "on_active": [],
-            "custom_events": {},
-            "inputs": [],
-            "outputs": [],
-            "reads": [],
-            "writes": [],
-            "skill_ref": null
-          }
-        ],
-        "transitions": [],
-        "initial_state": "2653e3a4d5334008915fab94dc144170",
-        "final_states": [],
-        "blackboard": {
-          "class_definitions": [],
-          "variables": {}
-        }
-      },
-      "transfer_on": [
-        {
-          "name": "done",
-          "color": "#4488ff",
-          "description": ""
-        }
-      ],
-      "call_agents": []
+      }
     },
     {
       "kind": "sync_fork_skill",

@@ -79,6 +79,60 @@
       true
     ],
     [
+      ".claude/skills/claude-md-guide/SKILL.md",
+      "skill",
+      "스킬 'claude-md-guide'",
+      true
+    ],
+    [
+      ".claude/skills/skill-authoring-guide/SKILL.md",
+      "skill",
+      "스킬 'skill-authoring-guide'",
+      true
+    ],
+    [
+      ".claude/skills/skill-eval-guide/SKILL.md",
+      "skill",
+      "스킬 'skill-eval-guide'",
+      true
+    ],
+    [
+      ".claude/skills/mcp-integration-guide/SKILL.md",
+      "skill",
+      "스킬 'mcp-integration-guide'",
+      true
+    ],
+    [
+      ".claude/skills/automation-recommender-guide/SKILL.md",
+      "skill",
+      "스킬 'automation-recommender-guide'",
+      true
+    ],
+    [
+      ".claude/skills/hookify-rules-guide/SKILL.md",
+      "skill",
+      "스킬 'hookify-rules-guide'",
+      true
+    ],
+    [
+      ".claude/skills/hook-authoring-guide/SKILL.md",
+      "skill",
+      "스킬 'hook-authoring-guide'",
+      true
+    ],
+    [
+      ".claude/skills/agent-authoring-guide/SKILL.md",
+      "skill",
+      "스킬 'agent-authoring-guide'",
+      true
+    ],
+    [
+      ".claude/skills/plugin-structure-guide/SKILL.md",
+      "skill",
+      "스킬 'plugin-structure-guide'",
+      true
+    ],
+    [
       ".claude/skills/sdfsdf/SKILL.md",
       "skill",
       "스킬 'sdfsdf'",
@@ -195,6 +249,15 @@
     ".claude/skills/workspace-docs/SKILL.md",
     ".claude/skills/session-wrap/SKILL.md",
     ".claude/skills/scope-freeze/SKILL.md",
+    ".claude/skills/claude-md-guide/SKILL.md",
+    ".claude/skills/skill-authoring-guide/SKILL.md",
+    ".claude/skills/skill-eval-guide/SKILL.md",
+    ".claude/skills/mcp-integration-guide/SKILL.md",
+    ".claude/skills/automation-recommender-guide/SKILL.md",
+    ".claude/skills/hookify-rules-guide/SKILL.md",
+    ".claude/skills/hook-authoring-guide/SKILL.md",
+    ".claude/skills/agent-authoring-guide/SKILL.md",
+    ".claude/skills/plugin-structure-guide/SKILL.md",
     ".claude/skills/sdfsdf/SKILL.md",
     ".claude/agents/graph-surgeon.md",
     ".claude/agents/body-writer.md",
@@ -215,6 +278,26 @@
   ],
   "copied_files": [],
   "findings": [
+    [
+      "unused_external_plugin",
+      "claude-code-setup@claude-plugins-official"
+    ],
+    [
+      "unused_external_plugin",
+      "claude-md-management@claude-plugins-official"
+    ],
+    [
+      "unused_external_plugin",
+      "hookify@claude-plugins-official"
+    ],
+    [
+      "unused_external_plugin",
+      "plugin-dev@claude-plugins-official"
+    ],
+    [
+      "unused_external_plugin",
+      "skill-creator@claude-plugins-official"
+    ],
     [
       "missing_mcp_server_def",
       "daedalus"

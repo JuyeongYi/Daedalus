@@ -172,10 +172,6 @@ def test_project_with_every_component_kind_roundtrips():
                 fsm=_fsm(), name="af", description="d",
                 config=AsyncForkSkillConfig(agent="Plan"),
             ),
-            WrappedSkill(
-                fsm=_fsm(), name="w", description="d",
-                config=WrappedSkillConfig(source="ext:s", usage="state"),
-            ),
             TransferSkill(fsm=_fsm(), name="t", description="d"),
             DeclarativeSkill(name="dc", description="d"),
             ReferenceSkill(name="r", description="d"),

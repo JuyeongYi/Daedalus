@@ -79,6 +79,60 @@
       true
     ],
     [
+      "skills/claude-md-guide/SKILL.md",
+      "skill",
+      "스킬 'claude-md-guide'",
+      true
+    ],
+    [
+      "skills/skill-authoring-guide/SKILL.md",
+      "skill",
+      "스킬 'skill-authoring-guide'",
+      true
+    ],
+    [
+      "skills/skill-eval-guide/SKILL.md",
+      "skill",
+      "스킬 'skill-eval-guide'",
+      true
+    ],
+    [
+      "skills/mcp-integration-guide/SKILL.md",
+      "skill",
+      "스킬 'mcp-integration-guide'",
+      true
+    ],
+    [
+      "skills/automation-recommender-guide/SKILL.md",
+      "skill",
+      "스킬 'automation-recommender-guide'",
+      true
+    ],
+    [
+      "skills/hookify-rules-guide/SKILL.md",
+      "skill",
+      "스킬 'hookify-rules-guide'",
+      true
+    ],
+    [
+      "skills/hook-authoring-guide/SKILL.md",
+      "skill",
+      "스킬 'hook-authoring-guide'",
+      true
+    ],
+    [
+      "skills/agent-authoring-guide/SKILL.md",
+      "skill",
+      "스킬 'agent-authoring-guide'",
+      true
+    ],
+    [
+      "skills/plugin-structure-guide/SKILL.md",
+      "skill",
+      "스킬 'plugin-structure-guide'",
+      true
+    ],
+    [
       "skills/sdfsdf/SKILL.md",
       "skill",
       "스킬 'sdfsdf'",
@@ -189,6 +243,15 @@
     "skills/workspace-docs/SKILL.md",
     "skills/session-wrap/SKILL.md",
     "skills/scope-freeze/SKILL.md",
+    "skills/claude-md-guide/SKILL.md",
+    "skills/skill-authoring-guide/SKILL.md",
+    "skills/skill-eval-guide/SKILL.md",
+    "skills/mcp-integration-guide/SKILL.md",
+    "skills/automation-recommender-guide/SKILL.md",
+    "skills/hookify-rules-guide/SKILL.md",
+    "skills/hook-authoring-guide/SKILL.md",
+    "skills/agent-authoring-guide/SKILL.md",
+    "skills/plugin-structure-guide/SKILL.md",
     "skills/sdfsdf/SKILL.md",
     "agents/graph-surgeon.md",
     "agents/body-writer.md",
@@ -208,6 +271,26 @@
   ],
   "copied_files": [],
   "findings": [
+    [
+      "unused_external_plugin",
+      "claude-code-setup@claude-plugins-official"
+    ],
+    [
+      "unused_external_plugin",
+      "claude-md-management@claude-plugins-official"
+    ],
+    [
+      "unused_external_plugin",
+      "hookify@claude-plugins-official"
+    ],
+    [
+      "unused_external_plugin",
+      "plugin-dev@claude-plugins-official"
+    ],
+    [
+      "unused_external_plugin",
+      "skill-creator@claude-plugins-official"
+    ],
     [
       "mcp_agent_in_marketplace_build",
       "graph-surgeon"

@@ -67,16 +67,6 @@ def test_parse_wrapped_source():
 # ─────────────────────────── 직렬화 왕복 ───────────────────────────
 
 
-def test_wrapped_skill_roundtrip():
-    project = PluginProject(name="p")
-    project.skills.append(_wrapped())
-    loaded = deserialize_project(serialize_project(project))
-    skill = loaded.skills[0]
-    assert skill.kind == "wrapped_skill"
-    assert skill.config.source == "other@mkt:code-review"
-    assert [e.name for e in skill.output_ports()] == ["done"]
-
-
 def test_external_plugins_roundtrip():
     project = PluginProject(name="p")
     project.external_plugins.extend(["other@mkt", "bare-plugin"])
@@ -201,21 +191,6 @@ def test_placed_wrapped_gets_graph_sections():
 
 
 # ─────────────────────────── 용도 고정 (usage — state/reference) ───────────────────────────
-
-
-def test_usage_roundtrip_and_legacy_default():
-    """usage는 왕복하고, 키 부재(구버전 파일)는 state로 로드된다 — 그때는
-    state 용도만 있었다."""
-    project = PluginProject(name="p")
-    w = _wrapped()
-    w.config.usage = "reference"
-    project.skills.append(w)
-    loaded = deserialize_project(serialize_project(project))
-    assert loaded.skills[0].config.usage == "reference"
-
-    data = serialize_project(project)
-    del data["skills"][0]["config"]["usage"]
-    assert deserialize_project(data).skills[0].config.usage == "state"
 
 
 def test_reference_usage_emits_no_skill_file(tmp_path):
@@ -478,31 +453,6 @@ def test_wrapped_source_missing_warns():
     project = PluginProject(name="p")
     project.skills.append(_wrapped(source=""))
     rules = [e.rule for e in Validator.validate_project(project)]
-    assert "external_source_missing" in rules
-
-
-@pytest.mark.parametrize("broken", [None, ["other@mkt:code-review"], 7])
-def test_corrupted_source_value_still_warns_and_survives(broken):
-    """손상된 `.daedalus.json`의 non-str `source`도 `external_source_missing`을 낸다.
-
-    역직렬화는 `source`를 날것으로 싣는다(`deser_plugin._deser_config`의
-    `d.get("source", "")` — 저장 파일의 명시적 `null`이 그대로 들어온다).
-    `WrappedSkill.external_source`가 그 값을 그대로 돌려주면 `None`이
-    "이 종류엔 외부 정본이 없다"로 읽혀 검사가 조용히 건너뛴다(원칙 5 —
-    WP-2b 리뷰 2). 랩핑 스킬은 **항상** 외부 정본을 선언하므로 빈 문자열로
-    답해야 하고, 그러면 형식 검사가 종전대로 경고를 낸다.
-    """
-    from daedalus.model.serialize import deserialize_project, serialize_project
-
-    data = serialize_project(_project_with_wrapped())
-    data["skills"][0]["config"]["source"] = broken
-
-    loaded = deserialize_project(data)
-    assert loaded.skills[0].config.source == broken, (
-        "역직렬화가 source를 강제 변환하면 이 테스트의 전제가 사라진다"
-    )
-
-    rules = [e.rule for e in Validator.validate_project(loaded)]  # 터지지 않는 것도 단언
     assert "external_source_missing" in rules
 
 

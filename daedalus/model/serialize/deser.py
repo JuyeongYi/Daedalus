@@ -35,8 +35,10 @@ from daedalus.model.serialize.migrate import (
     _promote_local_skills,
     migrate_fork_split,
     migrate_skill_context,
+    migrate_wrapped_retirement,
     needs_fork_split_migration,
     needs_skill_context_migration,
+    needs_wrapped_retirement_migration,
 )
 from daedalus.model.serialize.ser import FORMAT_VERSION
 
@@ -120,6 +122,12 @@ def deserialize_project(
         if needs_fork_split_migration(data):
             data = copy.deepcopy(data)
             migrate_fork_split(data, reg.warnings, skip_warning_for=converted)
+        # 랩핑 스킬 퇴역(2026-09-19) 이전에 저장된 format 2 파일 — 내용 스니핑.
+        # 반드시 fork 분리 **뒤**다: 두 마이그레이션은 서로 다른 종류를 보지만
+        # 경고 순서가 곧 사용자가 읽는 순서라 선언 순서를 고정한다.
+        if needs_wrapped_retirement_migration(data):
+            data = copy.deepcopy(data)
+            migrate_wrapped_retirement(data, reg.warnings)
     else:
         raise ValueError(
             f"지원하지 않는 파일 형식 버전: {fmt!r} "
