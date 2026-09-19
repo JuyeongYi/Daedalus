@@ -1,12 +1,16 @@
 """WP-L: tool_shelf 직렬화 라운드트립 + 미지 kind 명시 실패."""
 from __future__ import annotations
 
+import dataclasses
+import inspect
 import json
 
 import pytest
 
 from daedalus.model.plugin.enums import SkillShell
 from daedalus.model.plugin.tool import (
+    TOOL_KIND_BY_NAME,
+    TOOL_KINDS,
     BuiltinTool,
     MCPTool,
     Tool,
@@ -74,3 +78,50 @@ def test_ser_tool_unknown_kind_raises():
 def test_deser_tool_unknown_kind_raises():
     with pytest.raises(ValueError, match="역직렬화 미지원 Tool kind"):
         _deser_tool({"kind": "weird", "name": "x", "description": "y"})
+
+
+# ─────────────────── 종류 레지스트리 계약 (WP-11) ───────────────────
+
+
+def _concrete_tool_classes() -> set[type]:
+    found: set[type] = set()
+    stack = [Tool]
+    while stack:
+        for sub in stack.pop().__subclasses__():
+            if sub in found:
+                continue
+            found.add(sub)
+            stack.append(sub)
+    return {c for c in found if not inspect.isabstract(c) and c.__module__.startswith("daedalus.")}
+
+
+def test_tool_kinds_cover_every_concrete_tool_class():
+    """등록 표와 실제 클래스 집합은 **양방향으로** 같다 — 빠뜨리면 로드가 죽는다."""
+    assert {spec.cls for spec in TOOL_KINDS} == _concrete_tool_classes()
+
+
+def test_tool_kind_tag_matches_the_instance_kind():
+    """표의 kind 태그와 인스턴스의 `kind`는 같은 사실이다(짝 계약)."""
+    for spec in TOOL_KINDS:
+        assert spec.cls(name="n", description="d").kind == spec.kind
+
+
+def test_tool_kind_extra_fields_are_real_dataclass_fields():
+    """선언한 고유 키가 실제 필드인지 — 오타는 저장 시점에야 터지면 늦다."""
+    for spec in TOOL_KINDS:
+        names = {f.name for f in dataclasses.fields(spec.cls)}
+        for field_spec in spec.fields:
+            assert field_spec.name in names, f"{spec.kind}: {field_spec.name}"
+
+
+def test_tool_kind_by_name_is_read_only():
+    """표를 런타임에 고쳐 종류를 몰래 늘리는 일이 없게 한다."""
+    with pytest.raises(TypeError):
+        TOOL_KIND_BY_NAME["x"] = None  # type: ignore[index]
+
+
+def test_missing_optional_keys_fall_back_to_dataclass_defaults():
+    """키 부재 = dataclass 기본값 — 기본값을 직렬화 쪽에 복제하지 않는다."""
+    tool = _deser_tool({"kind": "user", "name": "n", "description": "d"})
+    assert tool.body == ""
+    assert tool.shell is SkillShell.BASH

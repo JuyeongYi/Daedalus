@@ -34,7 +34,7 @@ class GraphIO:
         닿는 전이(구버전 파일의 시작 전이 포함)도 VM이 없으므로 자연히 스킵된다
         (경고 없음). 에이전트 캔버스는 이 WP의 영향을 받지 않는다.
         """
-        from daedalus.model.fsm.pseudo import EntryPoint
+        from daedalus.model.fsm.pseudo import ENTRY_POINT_KIND
         from daedalus.view.viewmodel.state_vm import StateViewModel, TransitionViewModel
 
         w = self._w
@@ -46,7 +46,7 @@ class GraphIO:
         w._project_vm.state_vms.clear()
         w._project_vm.transition_vms.clear()
 
-        placements = [s for s in graph.states if not isinstance(s, EntryPoint)]
+        placements = [s for s in graph.states if s.kind != ENTRY_POINT_KIND]
 
         saved = w._project.graph_layout  # 키: state.id (안정 식별자)
         x = 0.0

@@ -17,14 +17,8 @@ from daedalus.model.fsm.section import EventDef
 from daedalus.model.plugin.agent import Agent, AgentDefinition
 from daedalus.model.plugin.kinds import spec_by_config_kind, spec_by_kind
 from daedalus.model.plugin.roles import Bucket
-from daedalus.model.plugin.enums import SkillShell
 from daedalus.model.plugin.hook import HookDef, HookEvent
-from daedalus.model.plugin.tool import (
-    BuiltinTool,
-    MCPTool,
-    Tool,
-    UserDefinedTool,
-)
+from daedalus.model.plugin.tool import TOOL_KIND_BY_NAME, Tool
 from daedalus.model.plugin.workspace_doc import WorkspaceDoc
 from daedalus.model.project import ReferencePlacement
 from daedalus.model.serialize.component_fields import deser_component
@@ -220,28 +214,24 @@ def _deser_hook(d: dict) -> HookDef:
 # ── tool shelf ──
 
 def _deser_tool(d: dict) -> Tool:
+    """저장 dict → Tool. 종류 행(`TOOL_KINDS`)이 클래스와 고유 키를 함께 준다 (WP-11).
+
+    키가 없으면 dataclass 기본값이다 — `FieldSpec.read`가 "생성자에 넘기지
+    않는다"로 그것을 표현한다(기본값을 여기서 복제하면 선언과 두 벌이 된다).
+    """
     kind = d.get("kind")
-    name = d.get("name", "")
-    desc = d.get("description", "")
-    tid = d.get("id") or _new_id()
-    tool: Tool
-    if kind == "builtin":
-        tool = BuiltinTool(
-            name=name, description=desc, id=tid,
-            allowed_arguments_note=d.get("allowed_arguments_note", ""),
-        )
-    elif kind == "mcp":
-        tool = MCPTool(
-            name=name, description=desc, id=tid,
-            server=d.get("server", ""), tool_name=d.get("tool_name", ""),
-        )
-    elif kind == "user":
-        tool = UserDefinedTool(
-            name=name, description=desc, id=tid,
-            body=d.get("body", ""),
-            shell=_to_enum(SkillShell, d.get("shell"), SkillShell.BASH),
-        )
-    else:
+    spec = TOOL_KIND_BY_NAME.get(kind or "")
+    if spec is None:
         # 조용한 강등은 데이터 손실을 은폐한다 — 명시 실패 (State 패턴과 동일).
         raise ValueError(f"역직렬화 미지원 Tool kind: {kind!r}")
-    return tool
+    kwargs: dict = {}
+    for field_spec in spec.fields:
+        present, value = field_spec.read(d)
+        if present:
+            kwargs[field_spec.name] = value
+    return spec.cls(
+        name=d.get("name", ""),
+        description=d.get("description", ""),
+        id=d.get("id") or _new_id(),
+        **kwargs,
+    )

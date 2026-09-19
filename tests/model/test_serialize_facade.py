@@ -84,7 +84,6 @@ _PRE_SPLIT_ATTRS = [
     "_EVAL_BUILDERS",
     "_EXEC_BUILDERS",
     "_KNOWN_STATE_KINDS",
-    "_KNOWN_TOOL_KINDS",
     "_Registry",
     "_apply_state_common",
     "_deser_action",
