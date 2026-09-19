@@ -20,6 +20,7 @@ fork 스킬 목록만 낸다(`_fork_base_contract_section`). 그래프 유도 �
 from __future__ import annotations
 
 
+from functools import singledispatch
 from typing import Any
 
 from daedalus.compiler.emit.common import (
@@ -44,10 +45,11 @@ from daedalus.compiler.emit.sections import (  # noqa: F401 — _exits_section �
     _mcp_servers_from_tools,
     _ordered_states,
     _transition_condition,
+    _unguarded_is_else,
     linked_background_skills,
 )
-from daedalus.model.fsm.pseudo import ChoiceState, ExitPoint
-from daedalus.model.fsm.state import CompositeState, SimpleState
+from daedalus.model.fsm.pseudo import EntryPoint, ExitPoint
+from daedalus.model.fsm.state import CompositeState, SimpleState, State
 from daedalus.model.plugin.agent import AgentDefinition
 from daedalus.model.plugin.roles import PlacementRole
 from daedalus.model.plugin.enums import (
@@ -461,6 +463,55 @@ def _agent_delegation_section(agent: AgentDefinition, project=None) -> list[str]
 
 
 
+@singledispatch
+def _describe_legacy_step(state: State) -> str:
+    """legacy 에이전트 내부 FSM의 상태 한 줄 **꼬리 문구** (WP-11).
+
+    스킬 산출의 `sections._describe_step`과 **일부러 다르다** — 여기에는
+    Parallel/Choice/Terminate 분기가 없고 CompositeState 문구에
+    "(runs in its own context)"가 붙지 않는다. 합치면 구버전 프로젝트의
+    에이전트 산출 바이트가 바뀐다(REFACTOR_SPEC §0-a — 합치지 않는다).
+    """
+    return "."
+
+
+@_describe_legacy_step.register(SimpleState)
+def _(state: SimpleState) -> str:
+    action = _describe_node_action(state)
+    return f": {action}." if action else "."
+
+
+@_describe_legacy_step.register(CompositeState)
+def _(state: CompositeState) -> str:
+    return f": delegate to agent `{state.name}`."
+
+
+@singledispatch
+def _legacy_extra_marks(state: State) -> list[str]:
+    """start/end 표지 뒤에 덧붙는 종류별 표지. 폴백은 없음."""
+    return []
+
+
+@_legacy_extra_marks.register(ExitPoint)
+def _(state: ExitPoint) -> list[str]:
+    return ["exit"]
+
+
+@singledispatch
+def _is_substantive_state(state: State) -> bool:
+    """실질 상태인가 — 표지(entry/exit)만 든 FSM은 서술할 내용이 없다.
+
+    폴백 True가 옳다: 새 상태 종류는 기본적으로 "서술할 것이 있는" 쪽이다.
+    """
+    return True
+
+
+@_is_substantive_state.register(EntryPoint)
+@_is_substantive_state.register(ExitPoint)
+def _(state: State) -> bool:
+    return False
+
+
 def _describe_agent_fsm(agent: AgentDefinition) -> list[str]:
     """에이전트 내부 FSM 절차 단락 — **legacy 전용** (WP-AF).
 
@@ -476,14 +527,10 @@ def _describe_agent_fsm(agent: AgentDefinition) -> list[str]:
     방어 가드: states 비어 있음 / initial_state=None인 불완전 FSM은 생략
     (게이트가 먼저 거부하지만 compile_agent 직접 호출 경로 보호).
     """
-    from daedalus.model.fsm.pseudo import EntryPoint as _Entry
-
     sm = agent.fsm
     if not sm.states or sm.initial_state is None:
         return []
-    if not any(
-        not isinstance(s, (_Entry, ExitPoint)) for s in sm.states
-    ):
+    if not any(_is_substantive_state(s) for s in sm.states):
         return []
     blocks: list[str] = ["## Internal Workflow"]
     blocks.append(
@@ -499,20 +546,13 @@ def _describe_agent_fsm(agent: AgentDefinition) -> list[str]:
             marks.append("start")
         if id(state) in final_ids:
             marks.append("end")
-        if isinstance(state, ExitPoint):
-            marks.append("exit")
+        marks.extend(_legacy_extra_marks(state))
         mark_str = f" ({', '.join(marks)})" if marks else ""
         head = f"{idx}. **{state.name}**{mark_str}"
-        if isinstance(state, SimpleState):
-            action = _describe_node_action(state)
-            head += f": {action}." if action else "."
-        elif isinstance(state, CompositeState):
-            head += f": delegate to agent `{state.name}`."
-        else:
-            head += "."
+        head += _describe_legacy_step(state)
         head += _describe_access(state)
         lines.append(head)
-        is_choice = isinstance(state, ChoiceState)
+        is_choice = _unguarded_is_else(state)
         for t in sm.transitions:
             if t.source is state:
                 cond = _transition_condition(t)

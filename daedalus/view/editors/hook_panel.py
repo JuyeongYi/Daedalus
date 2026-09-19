@@ -28,10 +28,8 @@ from PySide6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QMessageBox,
-    QPlainTextEdit,
     QPushButton,
     QScrollArea,
-    QSpinBox,
     QSplitter,
     QVBoxLayout,
     QWidget,
@@ -42,18 +40,15 @@ from daedalus.model.plugin.hook import (
     HOOK_HANDLER_TYPES,
     MATCHER_EVENTS,
     UNDOCUMENTED_EVENTS,
-    AgentHook,
     CommandHook,
     HookDef,
     HookEvent,
-    HookShell,
-    HttpHook,
-    McpToolHook,
-    PromptHook,
     mcp_matcher_matches_nothing,
 )
 from daedalus.model.plugin.hook_presets import BUILTIN_HOOK_PRESETS, preset_copy
-from daedalus.model.plugin.variables import ROOT_TOKEN
+from daedalus.view.editors.hook_handler_form import (  # noqa: F401 — 재-export 파사드
+    _HandlerForm,
+)
 
 
 def event_label(event: HookEvent) -> str:
@@ -64,224 +59,6 @@ def event_label(event: HookEvent) -> str:
     if event in UNDOCUMENTED_EVENTS:
         suffix.append("미문서화")
     return f"{event.value}  ({', '.join(suffix)})" if suffix else event.value
-
-
-class _HandlerForm(QWidget):
-    """선택된 핸들러 하나의 폼. 타입이 바뀌면 통째로 다시 만든다.
-
-    타입별 필드가 제각각이라 한 폼에 전부 늘어놓으면 무엇이 이 타입에 유효한지
-    알 수 없다 — 해당 타입의 필드만 보여준다.
-    """
-
-    def __init__(
-        self,
-        handler: Any,
-        on_changed: Callable[[], None],
-        parent: QWidget | None = None,
-    ) -> None:
-        # 부모를 반드시 받는다: 부모 없는 QWidget은 **최상위 윈도우**라, 레이아웃에
-        # 붙기 전 한 프레임 동안 빈 창이 깜빡인다(핸들러를 전환할 때마다 보였다).
-        super().__init__(parent)
-        self._handler = handler
-        self._on_changed = on_changed
-        self._loading = True
-
-        # QFormLayout을 위젯에 직접 걸면 남는 세로 공간이 행들에 균등 배분돼
-        # 한 줄짜리 입력이 제멋대로 늘어난다. VBox로 감싸고 끝에 스트레치를 둬서
-        # 폼은 자기 크기만 쓰고 남는 공간은 스트레치가 흡수하게 한다.
-        outer = QVBoxLayout(self)
-        outer.setContentsMargins(0, 0, 0, 0)
-        lay = QFormLayout()
-        lay.setContentsMargins(0, 0, 0, 0)
-        lay.setLabelAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        lay.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
-        outer.addLayout(lay)
-
-        self._build_type_fields(lay)
-
-        # --- 공통 (스키마의 다섯 변종 전부가 받는다) ---
-        self._timeout = QSpinBox()
-        self._timeout.setRange(0, 86400)
-        self._timeout.setSpecialValueText("(지정 없음)")
-        self._timeout.setValue(handler.timeout or 0)
-        self._timeout.valueChanged.connect(self._save)
-        lay.addRow("timeout(초)", self._timeout)
-
-        self._condition = QLineEdit(handler.condition)
-        self._condition.setPlaceholderText("if — permission-rule 문법 필터 (예: Bash(git *))")
-        self._condition.textChanged.connect(self._save)
-        lay.addRow("if", self._condition)
-
-        self._status = QLineEdit(handler.status_message)
-        self._status.setPlaceholderText("statusMessage — 실행 중 표시할 문구")
-        self._status.textChanged.connect(self._save)
-        lay.addRow("statusMessage", self._status)
-
-        outer.addStretch()
-        self._loading = False
-
-    def set_script_ref(self, text: str) -> None:
-        """command 훅의 스크립트 산출 경로 미리보기를 갱신한다 (WP-HS).
-
-        `${ROOT}/` 접두는 모든 훅에서 같아서 폭만 먹는다 — 떼고 보여주고 전체
-        경로는 툴팁에 남긴다. 사용자가 실제로 알고 싶은 것은 파일명이다.
-        """
-        label = getattr(self, "_script_ref", None)
-        if label is None:
-            return
-        prefix = f"{ROOT_TOKEN}/"
-        short = text[len(prefix):] if text.startswith(prefix) else text
-        label.setText(short)
-        label.setToolTip(text)
-
-    # ── 타입별 필드 ──
-
-    def _build_type_fields(self, lay: QFormLayout) -> None:
-        h = self._handler
-
-        if isinstance(h, CommandHook):
-            # 커맨드는 아무리 짧아도 파일로 나간다(WP-HS) — 여기 쓴 내용이
-            # hooks/scripts/<이름>으로 저장되고 hooks.json에는 경로만 남는다.
-            self._script = QPlainTextEdit(h.script)
-            self._script.setMinimumHeight(120)
-            self._script.textChanged.connect(self._save)
-            lay.addRow("스크립트 *", self._script)
-
-            self._script_name = QLineEdit(h.script_name)
-            self._script_name.setPlaceholderText("파일명(확장자 제외) — 비우면 훅 이름")
-            self._script_name.textChanged.connect(self._save)
-            lay.addRow("파일명", self._script_name)
-
-            self._script_ref = QLabel()
-            self._script_ref.setStyleSheet("color: #888;")
-            # 줄바꿈을 켜면 좁은 패널에서 두 줄이 되는데 QFormLayout 행 높이가
-            # 한 줄 기준이라 아래쪽이 잘린다. 한 줄로 두고 긴 부분은 툴팁에 넘긴다.
-            self._script_ref.setWordWrap(False)
-            self._script_ref.setTextInteractionFlags(
-                Qt.TextInteractionFlag.TextSelectableByMouse
-            )
-            lay.addRow("경로", self._script_ref)
-
-            self._args = QLineEdit(" ".join(h.args))
-            self._args.setPlaceholderText("args — 공백 구분 (exec 형태로 넘길 때만)")
-            self._args.textChanged.connect(self._save)
-            lay.addRow("args", self._args)
-
-            self._shell = QComboBox()
-            for shell in HookShell:
-                self._shell.addItem(shell.value or "(기본)", shell)
-            self._shell.setCurrentIndex(list(HookShell).index(h.shell))
-            self._shell.currentIndexChanged.connect(self._save)
-            lay.addRow("shell", self._shell)
-
-            self._run_async = QCheckBox("async — 블로킹하지 않고 실행")
-            self._run_async.setChecked(h.run_async)
-            self._run_async.toggled.connect(self._save)
-            lay.addRow("", self._run_async)
-
-            self._async_rewake = QCheckBox("asyncRewake — 종료 코드 2로 깨우기")
-            self._async_rewake.setChecked(h.async_rewake)
-            self._async_rewake.toggled.connect(self._save)
-            lay.addRow("", self._async_rewake)
-
-        elif isinstance(h, (PromptHook, AgentHook)):
-            self._prompt = QPlainTextEdit(h.prompt)
-            self._prompt.setFixedHeight(72)
-            self._prompt.textChanged.connect(self._save)
-            lay.addRow("prompt *", self._prompt)
-
-            self._model = QLineEdit(h.model)
-            self._model.setPlaceholderText("model — 비우면 빠른 모델")
-            self._model.textChanged.connect(self._save)
-            lay.addRow("model", self._model)
-
-            if isinstance(h, PromptHook):
-                self._continue_on_block = QCheckBox("continueOnBlock — 차단돼도 계속")
-                self._continue_on_block.setChecked(h.continue_on_block)
-                self._continue_on_block.toggled.connect(self._save)
-                lay.addRow("", self._continue_on_block)
-
-        elif isinstance(h, HttpHook):
-            self._url = QLineEdit(h.url)
-            self._url.setPlaceholderText("https://...")
-            self._url.textChanged.connect(self._save)
-            lay.addRow("url *", self._url)
-
-            self._headers = QPlainTextEdit(
-                "\n".join(f"{k}: {v}" for k, v in h.headers.items())
-            )
-            self._headers.setFixedHeight(56)
-            self._headers.setPlaceholderText("한 줄에 하나: Name: value")
-            self._headers.textChanged.connect(self._save)
-            lay.addRow("headers", self._headers)
-
-            self._env = QLineEdit(" ".join(h.allowed_env_vars))
-            self._env.setPlaceholderText("allowedEnvVars — 공백 구분")
-            self._env.textChanged.connect(self._save)
-            lay.addRow("allowedEnvVars", self._env)
-
-        elif isinstance(h, McpToolHook):
-            self._server = QLineEdit(h.server)
-            self._server.textChanged.connect(self._save)
-            lay.addRow("server *", self._server)
-
-            self._tool = QLineEdit(h.tool)
-            self._tool.textChanged.connect(self._save)
-            lay.addRow("tool *", self._tool)
-
-            self._input = QPlainTextEdit(
-                "\n".join(f"{k}: {v}" for k, v in h.tool_input.items())
-            )
-            self._input.setFixedHeight(56)
-            self._input.setPlaceholderText("input — 한 줄에 하나: key: value")
-            self._input.textChanged.connect(self._save)
-            lay.addRow("input", self._input)
-
-    # ── 저장 ──
-
-    @staticmethod
-    def _parse_pairs(text: str) -> dict[str, str]:
-        out: dict[str, str] = {}
-        for line in text.splitlines():
-            if ":" not in line:
-                continue
-            key, _, value = line.partition(":")
-            key = key.strip()
-            if key:
-                out[key] = value.strip()
-        return out
-
-    def _save(self) -> None:
-        if self._loading:
-            return
-        h = self._handler
-        tv = self._timeout.value()
-        h.timeout = None if tv == 0 else tv
-        h.condition = self._condition.text()
-        h.status_message = self._status.text()
-
-        if isinstance(h, CommandHook):
-            h.script = self._script.toPlainText()
-            h.script_name = self._script_name.text()
-            h.args = self._args.text().split()
-            h.shell = self._shell.currentData()
-            h.run_async = self._run_async.isChecked()
-            h.async_rewake = self._async_rewake.isChecked()
-        elif isinstance(h, (PromptHook, AgentHook)):
-            h.prompt = self._prompt.toPlainText()
-            h.model = self._model.text()
-            if isinstance(h, PromptHook):
-                h.continue_on_block = self._continue_on_block.isChecked()
-        elif isinstance(h, HttpHook):
-            h.url = self._url.text()
-            h.headers = self._parse_pairs(self._headers.toPlainText())
-            h.allowed_env_vars = self._env.text().split()
-        elif isinstance(h, McpToolHook):
-            h.server = self._server.text()
-            h.tool = self._tool.text()
-            h.tool_input = self._parse_pairs(self._input.toPlainText())
-
-        self._on_changed()
 
 
 class HookLibraryPanel(QWidget):

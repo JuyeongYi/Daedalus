@@ -155,7 +155,6 @@ from daedalus.model.plugin.serial_fields import _enum_opt, _enum_val
 from daedalus.model.serialize.ser import (
     FORMAT_VERSION,
     _KNOWN_STATE_KINDS,
-    _KNOWN_TOOL_KINDS,
     _ser_action,
     _ser_actions,
     _ser_agent,

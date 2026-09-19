@@ -7,7 +7,13 @@ from PySide6.QtCore import QPointF, QRectF, Qt
 from PySide6.QtGui import QBrush, QColor, QFont, QPainter, QPen
 from PySide6.QtWidgets import QGraphicsItem, QStyleOptionGraphicsItem, QWidget
 
-from daedalus.model.fsm.pseudo import EntryPoint, ExitPoint
+from functools import singledispatch
+
+from daedalus.model.fsm.pseudo import (
+    ENTRY_POINT_KIND,
+    EXIT_POINT_KIND,
+    ExitPoint,
+)
 from daedalus.model.fsm.section import EventDef
 from daedalus.view.canvas.draggable import DraggableItemMixin
 from daedalus.view.canvas.node_badges import badges_for, state_access_badges
@@ -24,11 +30,28 @@ _PORT_PAD = 12.0
 #: 종류별 스타일은 `view/kind_ui.KIND_UI`의 `node_style`이 소유한다(WP-7 ②) —
 #: 예전에는 두 사실이 한 dict에 섞여 있어 새 종류가 빠져도 **빈 노드와 구분되지
 #: 않는 기본 스타일**로 조용히 그려졌다(랩핑 스킬 회귀, 사용자 보고 2026-09-07).
+#: 키는 **상태의 `kind`**다 — 모델이 스스로 말하는 종류 식별자라 뷰가 클래스를
+#: 열거할 필요가 없다(WP-11: `isinstance(model, ExitPoint)` 사다리 소멸).
 _PSEUDO_STYLE: dict[str | None, tuple[str, str, str, str]] = {
-    "entry_point":       ("#1a1a3a", "#4488ff", "▶ ENTRY",     ""),
-    "exit_point":        ("#2a1a1a", "#cc6666", "⏹ EXIT",      ""),
+    ENTRY_POINT_KIND:    ("#1a1a3a", "#4488ff", "▶ ENTRY",     ""),
+    EXIT_POINT_KIND:     ("#2a1a1a", "#cc6666", "⏹ EXIT",      ""),
     None:                ("#1a1a2a", "#334466", "STATE",        ""),
 }
+
+
+@singledispatch
+def _pseudo_border(model: object, fallback: str) -> str:
+    """의사 상태의 외곽선 색 — 색을 **모델이 들고 있는** 종류만 표를 덮어쓴다.
+
+    폴백(표의 색)이 옳다: 색 필드가 없는 종류는 표가 정한 색으로 그린다.
+    """
+    return fallback
+
+
+@_pseudo_border.register(ExitPoint)
+def _(model: ExitPoint, fallback: str) -> str:
+    # v1 출력 포트 표지의 잔재 — 포트 색을 사용자가 정할 수 있었다.
+    return model.color
 
 # 유저 발동 진입점(user_invocable 명시 true — 🚪 뱃지와 같은 기준)의 테두리 색.
 # 종류 색(배경·헤더 글자)은 그대로 두고 **외곽선만** 바꾼다 — "어디서 사용자가
@@ -143,10 +166,10 @@ class StateNodeItem(DraggableItemMixin, QGraphicsItem):
         return self._port_y(i, n)
 
     def _is_entry_point(self) -> bool:
-        return isinstance(self._state_vm.model, EntryPoint)
+        return self._state_vm.model.kind == ENTRY_POINT_KIND
 
     def _is_exit_point(self) -> bool:
-        return isinstance(self._state_vm.model, ExitPoint)
+        return self._state_vm.model.kind == EXIT_POINT_KIND
 
     def _sync_height(self) -> None:
         new_h = self._height()
@@ -173,11 +196,10 @@ class StateNodeItem(DraggableItemMixin, QGraphicsItem):
             return
 
         model = self._state_vm.model
-        if isinstance(model, ExitPoint):
-            bg_str, _, header_label, icon = _PSEUDO_STYLE["exit_point"]
-            border_str = model.color
-        elif isinstance(model, EntryPoint):
-            bg_str, border_str, header_label, icon = _PSEUDO_STYLE["entry_point"]
+        pseudo = _PSEUDO_STYLE.get(model.kind)
+        if pseudo is not None:
+            bg_str, border_str, header_label, icon = pseudo
+            border_str = _pseudo_border(model, border_str)
         else:
             # 종류 스타일의 단일 진실은 `KIND_UI[kind].node_style`이다 — 상태
             # 노드가 아닌 종류(전이·참조·fork 에이전트)는 None이고, 그때만 빈

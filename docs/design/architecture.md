@@ -98,10 +98,11 @@ python -m tests.data.golden.regen --refresh-dogfood   # 동결 사본 자체를 
 봐서는 안 보이기 때문이다 — WP-0 기준선이 없으면 "34"가 좋은 값인지 알 수 없다.
 표와 dict가 어긋나면 dict가 옳다.
 
-| 테스트 · 표 | 세는 것 | WP-0 기준선 (2026-09-19) | 현재 (WP-8 완료) |
+| 테스트 · 표 | 세는 것 | WP-0 기준선 (2026-09-19) | 현재 (WP-11 완료) |
 |---|---|---|---|
 | `tests/test_polymorphism_ratchet.py` `RATCHET` ① | 컴포넌트/설정 클래스 29종을 두 번째 인자로 갖는 `isinstance` | **111 사이트 / 34 파일** | **4 / 2** — compiler·serialize·mcp·view 전부 0(WP-4가 `ser.py` 11을, WP-6이 미리보기 분기 3을, WP-7이 뷰의 kind 표 여섯 벌을 `KIND_UI` 하나로 모았다). 남은 4는 레지스트리 조회 1(`kinds::spec_for`)과 랩핑 전용 3(`wrapped_usage` — WP-10) |
 | 〃 ② | 컴포넌트 형상 속성 12종(`config`/`body`/`fsm`/`transfer_on`/`call_agents`/`when_to_use`/`usage`/`enabled`/`reference_placements`/`source`/`output_events`/`output_event_defs`)을 문자열로 묻는 `getattr`/`hasattr`. 첫 인자가 `project`/`cfg`/`config`/`doc`이면 제외(컴포넌트 형상이 아니다) | **123 사이트 / 41 파일** | **23 / 10** — WP-8이 MCP의 8건(`query.get_component` 6 + `fields` 2)을 능력 메서드(`comp.config`/`comp.body`/`state_machines()`/`output_ports()`/`call_ports()`)로, WP-7이 뷰의 kind 표를 걷었다(병합 후 재실측 — 두 가지의 감소분을 더하면 겹치는 자리를 두 번 센다). 남은 최대치는 `frontmatter_panel.py`·`component_editor.py` |
+| 〃 ③ (WP-11 신설) | **FSM 상태·전략·이벤트·훅 핸들러·Tool 클래스 35종**을 두 번째 인자로 갖는 `isinstance`. 컴포넌트 종류가 아니지만 같은 결함 형태(병렬 사다리)라 같은 규칙으로 감시한다 | **89 사이트 / 17 파일**(WP-11 직전 실측) | **53 / 12** — WP-11이 상태 서술 13·legacy 에이전트 변형 5·훅 핸들러 폼 10·의사 상태 5·Tool 직렬화 3을 걷었다. 남은 53은 **종류 질문이 아니라 구조 순회**다(합성 상태를 재귀로 내려가는 `walk`·`machine_rules`, FSM 값 객체를 저장 dict로 펴는 `ser`) — 폴리모픽 메서드로 옮기면 fsm 레이어가 컴파일러·검증 어휘를 알게 되어 경계 계약을 깬다 |
 | `tests/test_kind_literals.py` `RATCHET` ① | 컴포넌트 kind 16종이 `Compare` 피연산자·`dict` 키·`set`/`tuple`/`list` 원소로 쓰인 자리. 허용 파일 `model/serialize/migrate.py`(구버전 파일 문자열 해석이 정본)는 세지 않는다 | **157 사이트 / 26 파일** | **20 / 11** — WP-3이 레지스트리로(역직렬화·생성·전환·MCP 어휘·매트릭스 키), WP-4가 `deser_plugin`의 마지막 11을, WP-5가 쓰기 루프의 `skill`/`agent`/`wrapped_runner` 사다리를, WP-7이 뷰의 kind 표 여섯 벌을, WP-8이 MCP 생성 인자 게이트와 `NO_PLACE_KINDS`를 흡수 |
 | 〃 ② plan kind | plan kind 14종. `agent`/`skill`이 컴포넌트 어휘와 겹치므로 `compiler/**`·`mcp/tools/query.py`에서만 센다. 소유자는 `compiler/plan_kinds.py` 하나(허용 파일) | **22 사이트 / 3 파일** | **1 / 1** — WP-5가 쓰기 루프 사다리 12와 `token_report`의 kind 사본 2를 걷었다. 남은 1건은 `mcp/tools/query.py`의 응답 키 `"claude_md"`로 **계획 kind가 아닌 오탐**이라 더 내려가지 않는다 |
 
@@ -255,7 +256,10 @@ daedalus/
 │   │   │                   #   placement_role_of(비-컴포넌트 관용의 단일 진실) + fork 역참조 fork_skills_using(config.name_refs(AGENTS) 기반).
 │   │   │                   #   캔버스 드롭·레지스트리 드래그·creation·MCP place_component·에이전트 편집기·삭제 확인·
 │   │   │                   #   MCP still_referenced_by/used_by_fork_skills·컴파일러 fork 계약이 전부 여기를 부른다(원칙 1)
-│   │   ├── tool.py         # Tool(ABC) + BuiltinTool/MCPTool/UserDefinedTool (tool_shelf 도구 단일 진실)
+│   │   ├── tool.py         # Tool(ABC) + BuiltinTool/MCPTool/UserDefinedTool (tool_shelf 도구 단일 진실) +
+│   │   │                   #   **TOOL_KINDS 레지스트리**(WP-11) — kind 태그·클래스·종류 고유 FieldSpec 한 행. 직렬화 양쪽이 이 표를
+│   │   │                   #   읽는다(종전엔 _KNOWN_TOOL_KINDS 집합 + _ser_tool isinstance 사다리 + _deser_tool kind 사다리 세 벌).
+│   │   │                   #   `KIND` ClassVar는 두지 않는다 — 그것은 kinds.py 종류 레지스트리의 등록 표식이고 Tool은 대상이 아니다
 │   │   ├── hook.py         # HookDef + HookEvent(CC 9종) (hook_library 훅 단일 진실)
 │   │   ├── hook_presets.py # BUILTIN_HOOK_PRESETS (복사용 훅 템플릿) + preset_copy(핸들러까지 깊은 복사)
 │   │   ├── hook_store.py  # 전역 훅 저장소(A1) — ~/.daedalus/hooks/*.json 로더. global_hooks_dir/load_global_hooks/
@@ -371,11 +375,14 @@ daedalus/
 │   │   │                   #   parse_wrapped_source·external_skill_name(WP-6: 순수 문자열 파싱이라 리프로 — sections↔wrapped 순환 해소)
 │   │   ├── frontmatter.py  #   YAML 표기(_yaml_scalar/_yaml_list/_yaml_block_lines) + 스킬 프론트매터(_frontmatter_lines_skill)·_compose_description
 │   │   ├── sections.py     #   공용 단락 — 가드/트리거·FSM 절차 서술(_describe_fsm)·요구 환경 MCP(referenced_mcp_servers)·블랙보드(_blackboard_section)·tool_shelf·
+│   │   │                   #   서술 디스패치는 singledispatch 셋(WP-11): _describe_evaluation(전략)·_describe_trigger(이벤트)·
+│   │   │                   #   _describe_step(상태) + _unguarded_is_else(ChoiceState의 else 관례). 기저 폴백이 옳은 자리라 레지스트리가 아니다.
 │   │   │                   #   _exits_section("## Exits" — 에이전트와 랩핑 러너가 공유한다, WP-6: wrapped→agent 순환 해소)
 │   │   ├── skill_sections.py #   스킬 전용 단락 빌더 — 다음 단계·작업 재개(WP-RS)·진입 맥락(WP-IC)·진행 기록 잔여.
 │   │   │                   #   조립 분기는 능력 선언만 본다(WP-2c) — 컴포넌트 대상 isinstance 0
 │   │   ├── agent_sections.py #   에이전트 전용 단락 빌더 — 프론트매터(skills 합류·LOCAL hooks/mcpServers)·호출 계약(종류별)·
-│   │   │                   #   위임·요구 환경·내부 워크플로(legacy)·출구(_exits_section)
+│   │   │                   #   위임·요구 환경·내부 워크플로(legacy)·출구(_exits_section). legacy 상태 서술은 별도 singledispatch
+│   │   │                   #   (_describe_legacy_step/_legacy_extra_marks/_is_substantive_state) — 스킬판과 **일부러 다른 문구**라 합치지 않는다(WP-11)
 │   │   ├── section_plan.py #   **절 적용 표**(WP-6) — SectionId 18종 · 종류별 **순서 있는** 절 튜플(SECTION_PLANS: 절 순서
 │   │   │                   #   + OutcomeStyle + GuidePointerRule) · SECTION_PROVIDERS(절 → 빌더, 없으면 ValueError) ·
 │   │   │                   #   assemble_blocks. 전역 절 순서 하나로는 두 산출을 못 만든다(스킬 REQUIREMENTS↔에이전트 SETTINGS_NOTE).
@@ -736,6 +743,11 @@ daedalus/
     ├── editors/            # 속성 편집기 (skill + 그 분해 패널 3종(frontmatter_panel/transfer_on_panel/reference_link_panel),
     │                       #   agent, hook, body, body_documents, component, variable_loader, catalogue_loader, field_widgets,
     │                       #   field_adapters, kind_matrix, kind_switch_row, project_properties, blackboard_editor, workspace_editor)
+    │                       # hook_handler_form(WP-11): 훅 핸들러 한 개의 폼 — hook_panel.py(859줄, 위생 경계 초과)에서 분리했다.
+    │                       #   타입별 **필드 구성**과 **저장**이 같은 다섯 분기를 두 벌 갖고 있어 한쪽만 고치면 "폼에는 보이는데
+    │                       #   저장되지 않는" 조용한 실패가 됐다 → build_type_fields/save_type_fields 두 singledispatch.
+    │                       #   등록 누락은 tests/view/editors/test_hook_handler_form.py가 HOOK_HANDLER_TYPES와 양방향 대조해 잡는다.
+    │                       #   `_HandlerForm`은 hook_panel이 같은 객체로 재-export한다(기존 임포트 경로 보존).
     │                       # skill_editor(WP-RF): 구 단일 모듈(1,172줄 — 프론트매터 폼·출력 포트 카드·참조 링크 세 책임)을 형제
     │                       #   모듈 3개로 분해(이동만·동작 불변). skill_editor.py에는 SkillEditor만 남고 **재-export 파사드**로
     │                       #   `from …skill_editor import _FrontmatterPanel` 등 기존 언더스코어 임포트 경로가 전부 무수정 동작한다

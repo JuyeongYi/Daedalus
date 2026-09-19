@@ -6,6 +6,8 @@ tool_shelf 참조 단락.
 """
 from __future__ import annotations
 
+from functools import singledispatch
+
 from daedalus.compiler.emit.common import (
     _graph_placements,
     delegate_to_phrase,
@@ -38,23 +40,44 @@ from daedalus.model.plugin.skill import Skill, StepSkill
 # ─────────────────────────── 가드/트리거 서술 ───────────────────────────
 
 
+@singledispatch
 def _describe_evaluation(ev: EvaluationStrategy) -> str:
-    """EvaluationStrategy를 사람이 읽는 한 줄 조건으로."""
-    if isinstance(ev, LLMEvaluation):
-        return f"LLM judgment ({ev.prompt})" if ev.prompt else "LLM judgment"
-    if isinstance(ev, ToolEvaluation):
-        cond = f" (success when: {ev.success_condition})" if ev.success_condition else ""
-        tool = ev.tool or "tool"
-        return f"result of running `{tool}`{cond}"
-    if isinstance(ev, MCPEvaluation):
-        return f"result of MCP `{ev.server}.{ev.tool}`"
-    if isinstance(ev, ExpressionEvaluation):
-        return f"expression `{ev.expression}`" if ev.expression else "expression"
-    if isinstance(ev, CompositeEvaluation):
-        op = " AND " if ev.operator == "and" else " OR "
-        inner = op.join(_describe_evaluation(c) for c in ev.children)
-        return f"({inner})" if inner else "compound condition"
+    """EvaluationStrategy를 사람이 읽는 한 줄 조건으로 (WP-11 — 전략별 등록).
+
+    기저 폴백 ``"condition"``이 **옳다**: 산문은 "조건이 있다"는 사실만 말해도
+    산출이 깨지지 않고, 모르는 전략에서 터지면 컴파일 전체가 죽는다. 그래서
+    명시 레지스트리가 아니라 `singledispatch`다(REFACTOR_SPEC §5 ②).
+    """
     return "condition"
+
+
+@_describe_evaluation.register(LLMEvaluation)
+def _(ev: LLMEvaluation) -> str:
+    return f"LLM judgment ({ev.prompt})" if ev.prompt else "LLM judgment"
+
+
+@_describe_evaluation.register(ToolEvaluation)
+def _(ev: ToolEvaluation) -> str:
+    cond = f" (success when: {ev.success_condition})" if ev.success_condition else ""
+    tool = ev.tool or "tool"
+    return f"result of running `{tool}`{cond}"
+
+
+@_describe_evaluation.register(MCPEvaluation)
+def _(ev: MCPEvaluation) -> str:
+    return f"result of MCP `{ev.server}.{ev.tool}`"
+
+
+@_describe_evaluation.register(ExpressionEvaluation)
+def _(ev: ExpressionEvaluation) -> str:
+    return f"expression `{ev.expression}`" if ev.expression else "expression"
+
+
+@_describe_evaluation.register(CompositeEvaluation)
+def _(ev: CompositeEvaluation) -> str:
+    op = " AND " if ev.operator == "and" else " OR "
+    inner = op.join(_describe_evaluation(c) for c in ev.children)
+    return f"({inner})" if inner else "compound condition"
 
 
 def _describe_guard(guard: Guard | None) -> str:
@@ -63,13 +86,20 @@ def _describe_guard(guard: Guard | None) -> str:
     return _describe_evaluation(guard.evaluation)
 
 
+@singledispatch
 def _describe_trigger(trigger: object) -> str:
-    if trigger is None:
-        return ""
+    """전이 트리거를 사람이 읽는 문구로 (WP-11 — 이벤트 종류별 등록).
+
+    폴백이 `None`도 받는다 — 이름 없는 대상은 빈 문구이고, 트리거가 없다는
+    사실과 이름을 못 읽었다는 사실의 산문이 같기 때문이다.
+    """
     name = getattr(trigger, "name", "")
-    if isinstance(trigger, CompletionEvent):
-        return f"completion event `{name}`"
     return f"event `{name}`" if name else ""
+
+
+@_describe_trigger.register(CompletionEvent)
+def _(trigger: CompletionEvent) -> str:
+    return f"completion event `{trigger.name}`"
 
 
 def _describe_access(state: State) -> str:
@@ -108,6 +138,65 @@ def _transition_condition(t) -> str:
 def _state_label(state: State) -> str:
     """상태 노드를 가리키는 표지 — 이름 + 종류 표식."""
     return state.name
+
+
+@singledispatch
+def _describe_step(state: State) -> str:
+    """상태 노드 한 줄의 **꼬리 문구** — 번호·이름·표지 뒤에 붙는 부분.
+
+    기저 폴백 ``"."``가 옳다(모르는 상태 종류는 이름만 말하고 넘어간다) —
+    그래서 명시 레지스트리가 아니라 `singledispatch`다(REFACTOR_SPEC §5 ①).
+    에이전트 legacy 산출은 **일부러 다른 문구**를 쓰므로 합치지 않는다
+    (`agent_sections._describe_legacy_step`, §0-a).
+    """
+    return "."
+
+
+@_describe_step.register(SimpleState)
+def _(state: SimpleState) -> str:
+    action = _describe_node_action(state)
+    return f": {action}." if action else "."
+
+
+@_describe_step.register(CompositeState)
+def _(state: CompositeState) -> str:
+    return f": delegate to agent `{state.name}` (runs in its own context)."
+
+
+@_describe_step.register(ParallelState)
+def _(state: ParallelState) -> str:
+    regs = ", ".join(r.name for r in state.regions)
+    return f": run {regs} in parallel ({_describe_join(state)})."
+
+
+@_describe_step.register(ChoiceState)
+def _(state: ChoiceState) -> str:
+    return ": evaluate the conditions and branch immediately — do not stop here."
+
+
+@_describe_step.register(TerminateState)
+def _(state: TerminateState) -> str:
+    return ": stop the workflow here."
+
+
+@_describe_step.register(EntryPoint)
+@_describe_step.register(ExitPoint)
+def _(state: State) -> str:
+    return f" — pseudo state ({state.kind})."
+
+
+@singledispatch
+def _unguarded_is_else(state: State) -> bool:
+    """무가드 출구 전이를 `[else]`로 적는 종류인가 (ChoiceState의 else 관례).
+
+    폴백 False가 옳다 — 분기 상태가 아니면 무가드 전이는 그냥 무조건 전이다.
+    """
+    return False
+
+
+@_unguarded_is_else.register(ChoiceState)
+def _(state: ChoiceState) -> bool:
+    return True
 
 
 def _describe_node_action(state: SimpleState) -> str:
@@ -204,32 +293,13 @@ def _fsm_procedure_blocks(sm: StateMachine) -> list[str]:
         mark_str = f" ({', '.join(marks)})" if marks else ""
 
         head = f"{idx}. **{_state_label(state)}**{mark_str}"
-        if isinstance(state, SimpleState):
-            action = _describe_node_action(state)
-            if action:
-                head += f": {action}."
-            else:
-                head += "."
-        elif isinstance(state, CompositeState):
-            head += f": delegate to agent `{state.name}` (runs in its own context)."
-        elif isinstance(state, ParallelState):
-            regs = ", ".join(r.name for r in state.regions)
-            join_note = _describe_join(state)
-            head += f": run {regs} in parallel ({join_note})."
-        elif isinstance(state, ChoiceState):
-            head += ": evaluate the conditions and branch immediately — do not stop here."
-        elif isinstance(state, TerminateState):
-            head += ": stop the workflow here."
-        elif isinstance(state, (EntryPoint, ExitPoint)):
-            head += f" — pseudo state ({state.kind})."
-        else:
-            head += "."
+        head += _describe_step(state)
         head += _describe_access(state)
         lines.append(head)
 
         # 나가는 전이 — 출구 조건
         outgoing = [t for t in sm.transitions if t.source is state]
-        is_choice = isinstance(state, ChoiceState)
+        is_choice = _unguarded_is_else(state)
         for t in outgoing:
             cond = _transition_condition(t)
             # ChoiceState 무가드 전이 = else 분기 (관례)

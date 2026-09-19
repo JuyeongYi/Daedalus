@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Mapping
 from dataclasses import dataclass, field
+from types import MappingProxyType
 from uuid import uuid4
 
 from daedalus.model.plugin.base import PluginComponent
 from daedalus.model.plugin.enums import SkillShell
+from daedalus.model.plugin.serial_fields import ENUM, RAW, FieldSpec
 
 
 @dataclass
@@ -85,3 +88,50 @@ class UserDefinedTool(Tool):
     @property
     def kind(self) -> str:
         return "user"
+
+
+# ─────────────────────────── 종류 레지스트리 (WP-11) ───────────────────────────
+
+
+@dataclass(frozen=True)
+class ToolKindSpec:
+    """Tool 한 종류의 **저장 계약** — kind 태그 · 클래스 · 종류 고유 필드.
+
+    종전에는 이 한 사실이 세 벌로 흩어져 있었다: `ser._KNOWN_TOOL_KINDS`(집합),
+    `_ser_tool`의 isinstance 사다리, `_deser_tool`의 kind 문자열 사다리. 셋 중
+    하나만 고치면 그 필드는 저장은 되고 로드는 안 되거나(또는 그 반대) **조용히**
+    사라진다. 이제 등록 지점은 `TOOL_KINDS` 한 튜플이고 직렬화 양쪽이 이것을
+    읽는다 — 컴포넌트 config의 `SERIALIZED_FIELDS`와 같은 규약이다.
+
+    **`KIND` ClassVar를 클래스에 두지 않는 이유**: `PluginComponent`의 `KIND`는
+    종류 레지스트리(`kinds.py`)의 등록 표식이고, `Tool`은 그 레지스트리의 대상이
+    아니다(`tests/model/plugin/test_registry_discovery.py`가 `Tool` 계열에
+    `KIND`가 **없음**을 못 박는다 — 있으면 도구가 스킬 팔레트에 새어 나온다).
+    그래서 kind 태그는 클래스 밖, 이 표 안에 있다.
+    """
+
+    kind: str
+    cls: type[Tool]
+    fields: tuple[FieldSpec, ...]
+
+
+#: 등록 지점. 새 Tool 서브클래스는 **여기 한 줄**이면 저장·로드가 함께 따라온다.
+#: `tests/model/test_serialize_tool.py`가 구체 서브클래스 집합과 양방향으로 맞춘다.
+TOOL_KINDS: tuple[ToolKindSpec, ...] = (
+    ToolKindSpec("builtin", BuiltinTool, (
+        FieldSpec("allowed_arguments_note", RAW),
+    )),
+    ToolKindSpec("mcp", MCPTool, (
+        FieldSpec("server", RAW),
+        FieldSpec("tool_name", RAW),
+    )),
+    ToolKindSpec("user", UserDefinedTool, (
+        FieldSpec("body", RAW),
+        FieldSpec("shell", ENUM(SkillShell, SkillShell.BASH)),
+    )),
+)
+
+#: kind 태그 → 행. 조회 실패는 조용한 강등이 아니라 호출자의 명시 에러다(원칙 5).
+TOOL_KIND_BY_NAME: Mapping[str, ToolKindSpec] = MappingProxyType(
+    {spec.kind: spec for spec in TOOL_KINDS}
+)

@@ -4,6 +4,13 @@ from dataclasses import dataclass
 
 from daedalus.model.fsm.state import State
 
+#: 의사 상태의 `kind` 값 — **선언이 한 곳**이어야 종류를 묻는 쪽(캔버스 스타일·
+#: 프로젝트 캔버스 제외 규칙)이 문자열을 손으로 베끼지 않는다. 종전에는 그 질문을
+#: 전부 `isinstance(s, EntryPoint)`로 했는데, 그러면 뷰·직렬화가 모델 클래스를
+#: 직접 수입하고 새 의사 상태마다 사다리가 한 칸씩 길어진다(WP-11).
+ENTRY_POINT_KIND = "entry_point"
+EXIT_POINT_KIND = "exit_point"
+
 
 @dataclass(eq=False)
 class ChoiceState(State):
@@ -40,7 +47,7 @@ class EntryPoint(State):
 
     @property
     def kind(self) -> str:
-        return "entry_point"
+        return ENTRY_POINT_KIND
 
 
 @dataclass(eq=False)
@@ -50,4 +57,4 @@ class ExitPoint(State):
 
     @property
     def kind(self) -> str:
-        return "exit_point"
+        return EXIT_POINT_KIND

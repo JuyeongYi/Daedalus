@@ -45,7 +45,7 @@ from daedalus.model.fsm.variable import Variable
 from daedalus.model.plugin.agent import Agent
 from daedalus.model.plugin.base import PluginComponent
 from daedalus.model.plugin.hook import HookDef
-from daedalus.model.plugin.tool import BuiltinTool, MCPTool, Tool, UserDefinedTool
+from daedalus.model.plugin.tool import TOOL_KIND_BY_NAME, Tool
 from daedalus.model.project import PluginProject, ReferencePlacement
 from daedalus.model.serialize.component_fields import ser_component
 
@@ -139,29 +139,26 @@ def _ser_hook(h: HookDef) -> dict:
 
 # ── tool shelf ──
 
-# 직렬화가 인지하는 Tool kind 전체 — 새 Tool 서브클래스 추가 시 여기와
-# _ser_tool/_deser_tool 분기를 함께 갱신해야 한다 (미등록 시 명시 에러).
-_KNOWN_TOOL_KINDS = {"builtin", "mcp", "user"}
-
-
 def _ser_tool(t: Tool) -> dict:
+    """Tool → 저장 dict. 종류 고유 키는 `TOOL_KINDS` 선언에서 나온다 (WP-11).
+
+    종전의 isinstance 사다리는 `_deser_tool`의 kind 사다리와 **짝이 맞는지를
+    아무도 검사하지 않는** 두 번째 표였다. 이제 둘 다 같은 행을 읽는다.
+    """
     d: dict[str, Any] = {
         "kind": t.kind,
         "id": t.id,
         "name": t.name,
         "description": t.description,
     }
-    if t.kind not in _KNOWN_TOOL_KINDS:
+    spec = TOOL_KIND_BY_NAME.get(t.kind)
+    if spec is None:
         raise TypeError(
             f"직렬화 미지원 Tool kind: {t.kind!r} ({type(t).__name__}) — "
-            "ser.py의 _KNOWN_TOOL_KINDS/_ser_tool과 deser.py의 _deser_tool에 분기를 추가하라"
+            "model/plugin/tool.py의 TOOL_KINDS에 행을 추가하라"
         )
-    if isinstance(t, BuiltinTool):
-        d["allowed_arguments_note"] = t.allowed_arguments_note
-    elif isinstance(t, MCPTool):
-        d.update(server=t.server, tool_name=t.tool_name)
-    elif isinstance(t, UserDefinedTool):
-        d.update(body=t.body, shell=t.shell.value)
+    for field_spec in spec.fields:
+        d[field_spec.name] = field_spec.codec.encode(getattr(t, field_spec.name))
     return d
 
 
