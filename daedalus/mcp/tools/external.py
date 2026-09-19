@@ -58,13 +58,29 @@ class ExternalTools(_BaseTools):
         플러그인이 동봉한 에이전트 — `agent_type`(`플러그인:이름`)이 CC가 찾는 이름이고,
         그대로 `create_agent(kind="external_agent", source=...)`에 쓴다(정확 일치 —
         틀리면 조용히 범용 에이전트로 돈다).
+
+        **스킬 행의 `skill_ref`**(`source`에서 `@마켓`을 뗀 `플러그인:스킬`)가
+        외부 플러그인 스킬을 쓰는 유일한 경로다(WP-B, 사용자 확정 2026-09-19) —
+        fork 에이전트(`kind="fork_agent"`)의 `set_component_field(name, "skills",
+        [...])`에 그대로 넣는다. `used_by`는 지금 그 참조를 `config.skills`에
+        가진 이 프로젝트의 에이전트 이름 목록이다(쓸 수 있는 값은 읽을 수도
+        있어야 한다는 패리티 원칙).
         폴더가 없으면 `add_marketplace_folder`로 먼저 등록한다.
         """
         from daedalus.model.plugin import wrap_catalog
+        from daedalus.model.plugin.config import normalize_external_skill_ref
 
         project = self._project
         used_sources = wrap_catalog.project_external_sources(project)
         declared = set(getattr(project, "external_plugins", None) or [])
+        # 참조 수집은 config에 묻고(종류 불문), 키는 CC가 찾는 bare 형식으로
+        # 정규화한다 — `@마켓`이 붙은 참조도 같은 스킬을 쓰는 것으로 센다(그
+        # 표기 자체는 검증 경고 `external_skill_ref_marketplace`가 짚는다).
+        skill_ref_users: dict[str, list[str]] = {}
+        for agent in getattr(project, "agents", None) or []:
+            for ref in agent.config.external_skill_refs():
+                key = normalize_external_skill_ref(ref)
+                skill_ref_users.setdefault(key, []).append(agent.name)
         folders_out: list[dict[str, Any]] = []
         unfetched_total = 0
         for folder, plugins in wrap_catalog.scan_catalog():
@@ -107,7 +123,8 @@ class ExternalTools(_BaseTools):
                             "name": s.name,
                             "description": s.description,
                             "source": s.source,
-                            "already_used": s.source in used_sources,
+                            "skill_ref": s.skill_ref,
+                            "used_by": sorted(skill_ref_users.get(s.skill_ref, [])),
                         }
                         for s in p.skills
                     ],

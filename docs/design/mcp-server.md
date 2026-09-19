@@ -207,6 +207,15 @@
   `mcp/tools/fields.py` — `props.py`가 693줄 두 책임이라 WP-8에서 갈라 나왔다), 잘못된 enum 값은
   선택지를 나열하며 **거부**한다(조용히 문자열이 들어가면 컴파일 산출이 이상해질 때까지 안 드러난다).
   `hooks`는 `set_component_hooks`로 안내하며 거절한다.
+- **`skills`는 거절 대신 경고로 안내한다 (WP-B, 2026-09-19).** 에이전트 `skills` 필드는 외부
+  플러그인 스킬 참조(`플러그인:스킬`)를 받을 수 있다 — 미선언 플러그인을 가리켜도 **거절하지
+  않는다**(형식은 유효하고 사용자가 곧 `set_external_plugins`로 선언할 수도 있다). 대신 응답에
+  `warning`을 실어 미선언 플러그인 id를 말한다 — 실체는 `comp.external_plugin_refs()`(config의
+  것을 합친 컴포넌트 판정)와 `external_plugin_id_declared`(bare/`@마켓` 완화, `model/plugin/
+  config.py`) 하나이고, 프로젝트 검증의 `undeclared_external_plugin`과 **같은 술어**를 쓴다
+  (원칙 1). `list_external_plugins`의 스킬 행에 `skill_ref`(넣을 이름 — `@마켓`을 뗀
+  `플러그인:스킬`)와 `used_by`(그 참조를 가진 프로젝트 에이전트 이름 목록)가 실린다 — 쓸 수 있는
+  값은 읽을 수도 있어야 한다(원칙 2). 상세는 `agents.md` "외부 플러그인 스킬" 절.
 - **카탈로그 후보 조회 (G9):** `list_tool_candidates()` — 읽기 전용. ALLOWED_TOOLS/TOOLS/
   DISALLOWED_TOOLS TagInput이 보여주는 자동완성 목록과 **같은 산출**을 낸다
   (`catalogue_loader.candidate_strings` + `load_catalogue`를 GUI(`app._tool_candidates`)와

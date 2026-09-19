@@ -95,6 +95,25 @@ def test_tool_candidate_provider_registered(qapp):
         set_tool_candidate_provider(None)
 
 
+# 에이전트 SKILLS TagInput 후보 (WP-B, 2026-09-19) — 프로젝트 스킬 이름 + 사용
+# 선언한 외부 플러그인의 스킬 `플러그인:스킬`. 위 도구 후보 provider와 같은 패턴.
+
+
+def test_skill_candidate_provider_default_empty(qapp):
+    from daedalus.view.widgets.tag_input import get_skill_candidates, set_skill_candidate_provider
+    set_skill_candidate_provider(None)
+    assert get_skill_candidates() == []
+
+
+def test_skill_candidate_provider_registered(qapp):
+    from daedalus.view.widgets.tag_input import get_skill_candidates, set_skill_candidate_provider
+    set_skill_candidate_provider(lambda: ["local-skill", "alpha:review"])
+    try:
+        assert get_skill_candidates() == ["local-skill", "alpha:review"]
+    finally:
+        set_skill_candidate_provider(None)
+
+
 # 훅 이름 후보 — 구 preset_picker.py에서 옮겨 온 제공자(항목 4).
 # 체크리스트 위젯(HookPresetPicker)이 TagInput으로 대체되면서 그 모듈에 남은 것이
 # 이 제공자뿐이라, 후보를 실제로 쓰는 위젯 옆으로 옮겼다.

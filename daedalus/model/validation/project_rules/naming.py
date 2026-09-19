@@ -93,33 +93,46 @@ class _NamingRules:
         않고(산출에 안 나가므로 배선이 필요 없고 쓰는 것도 아니다), 형식이
         깨진 source는 `external_source_missing` 소관이라 빈 목록을 답한다.
 
-        매칭은 설치 식별자 정확 일치다(``alpha@mkt`` != ``alpha`` — 마켓이
-        다르면 다른 설치 대상이다).
+        **매칭 정책은 하나다 — `config.plugin_ids_match`** (2026-09-19 리뷰로
+        단일화): 정확 일치, 또는 **한쪽만 bare**일 때 bare 이름 일치. 양쪽 다
+        마켓을 달고 다르면(``alpha@mkt1`` vs ``alpha@mkt2``) 불일치다. 완화가
+        필요한 이유는 카탈로그가 마켓 표기를 비대칭으로 내기 때문이다 —
+        선언은 ``플러그인@마켓``, `ExternalAgent.source`의 `agent_type`과
+        ``skills``의 `skill_ref`는 CC가 찾는 이름 그대로 bare ``플러그인:이름``.
+        참조의 출처로 정책을 가르지 않는다(원칙 1).
         """
-        declared = {
-            str(p).strip()
-            for p in getattr(project, "external_plugins", None) or []
-            if str(p).strip()
-        }
+        from daedalus.model.plugin.config import (
+            declared_external_plugin_ids,
+            external_plugin_id_declared,
+            plugin_ids_match,
+        )
+
+        declared = declared_external_plugin_ids(project)
         referenced: set[str] = set()
         errors: list[ValidationError] = []
+
+        def undeclared(comp, plugin_id: str) -> ValidationError:
+            return ValidationError(
+                rule="undeclared_external_plugin",
+                message=(
+                    f"'{comp.name}'이(가) 사용 선언되지 않은 플러그인 "
+                    f"'{plugin_id}'를 가리킵니다 — external_plugins에 없으면 "
+                    f"빌드가 dependencies/enabledPlugins를 배선하지 않아 "
+                    f"런타임에 그것을 찾지 못합니다. 카탈로그 창에서 "
+                    f"플러그인을 체크하거나 set_external_plugins로 선언하세요."
+                ),
+                source=comp.name,
+                subject=comp,
+            )
+
         for comp in [*getattr(project, "skills", []), *getattr(project, "agents", [])]:
             for plugin_id in comp.external_plugin_refs():
                 referenced.add(plugin_id)
-                if plugin_id not in declared:
-                    errors.append(ValidationError(
-                        rule="undeclared_external_plugin",
-                        message=(
-                            f"'{comp.name}'이(가) 사용 선언되지 않은 플러그인 "
-                            f"'{plugin_id}'를 가리킵니다 — external_plugins에 없으면 "
-                            f"빌드가 dependencies/enabledPlugins를 배선하지 않아 "
-                            f"런타임에 그것을 찾지 못합니다. 카탈로그 창에서 "
-                            f"플러그인을 체크하거나 set_external_plugins로 선언하세요."
-                        ),
-                        source=comp.name,
-                        subject=comp,
-                    ))
-        for plugin_id in sorted(declared - referenced):
+                if not external_plugin_id_declared(plugin_id, declared):
+                    errors.append(undeclared(comp, plugin_id))
+        for plugin_id in sorted(declared):
+            if any(plugin_ids_match(plugin_id, ref) for ref in referenced):
+                continue
             errors.append(ValidationError(
                 rule="unused_external_plugin",
                 message=(
@@ -196,6 +209,42 @@ class _NamingRules:
                 path=("project",),
             )]
         return []
+
+    @staticmethod
+    def _check_external_skill_refs(project) -> list[ValidationError]:
+        """external_skill_ref_marketplace — 에이전트 ``skills``의 외부 스킬 참조에
+        ``@마켓``이 붙어 있으면 경고 (WP-B 리뷰 반영, 2026-09-19).
+
+        CC는 fork 에이전트 ``skills:``의 외부 스킬을 마켓 표기 **없는**
+        ``플러그인:스킬``로 찾는다(실측, CC 2.1.278). 산출은 원문 그대로 나가므로
+        붙인 표기는 런타임에 조용히 해소되지 않는다 — 원칙 5. 판정의 실체는
+        `config.external_skill_ref_has_marketplace` 하나다(참조 수집은
+        `config.external_skill_refs()` — 종류를 묻지 않는다. 모든 컴포넌트는
+        `config`를 갖는다 — `PluginComponent.hook_refs`의 무조건 접근 선례).
+        """
+        from daedalus.model.plugin.config import (
+            external_skill_ref_has_marketplace,
+            normalize_external_skill_ref,
+        )
+
+        errors: list[ValidationError] = []
+        for comp in [*getattr(project, "skills", []), *getattr(project, "agents", [])]:
+            for ref in comp.config.external_skill_refs():
+                if not external_skill_ref_has_marketplace(ref):
+                    continue
+                errors.append(ValidationError(
+                    rule="external_skill_ref_marketplace",
+                    message=(
+                        f"'{comp.name}'의 skills 참조 '{ref}'에 마켓 표기가 있습니다 — "
+                        f"CC는 fork 에이전트 skills:의 외부 스킬을 "
+                        f"'{normalize_external_skill_ref(ref)}'로 찾습니다(마켓 없음, 실측). "
+                        f"산출은 원문 그대로 나가 런타임에 해소되지 않으니 "
+                        f"@마켓을 떼세요."
+                    ),
+                    source=comp.name,
+                    subject=comp,
+                ))
+        return errors
 
     @staticmethod
     def _check_dangling_string_references(project) -> list[ValidationError]:

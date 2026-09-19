@@ -184,6 +184,69 @@ external plugin agent on node `X` has no usable `source` …"*, 서술 자리(�
 `set_component_field(name, "source", "플러그인:이름")`으로 채운다 — 매트릭스의
 비-FIXED 행이라 setter가 자동으로 허용한다.
 
+## 외부 플러그인 스킬 — 사용 경로는 하나 (WP-B, 2026-09-19)
+
+**사용자 확정 (2026-09-19).** 외부 플러그인 **스킬**을 쓰는 길은 하나뿐이다 —
+**프로젝트 fork 에이전트의 `skills:` 프론트매터**에 `플러그인:스킬`을 적는
+것. 참조 노드로 끌어오거나, 워크플로 단계로 감싸거나, 선언형으로 흉내 내는
+경로는 없다(랩핑 스킬 퇴역과 같은 결정 — WP-10). 근거는 실측이다:
+`plugin-model.md`의 실측 표 "fork 에이전트 `skills:`의 외부 플러그인 스킬"
+행(CC 2.1.278, 2026-09-19) — fork 에이전트에 `skills: [플러그인:스킬]`을
+적으면 그 본문이 서브에이전트 첫 user 메시지에 **Read 호출 없이 전문으로**
+실린다. 외부 플러그인 **에이전트**(WP-9 `ExternalAgent`)와는 참조 표현이
+다르다 — 에이전트는 그래프 노드(`source`), 스킬은 문자열 목록 항목이다.
+
+**판정의 실체는 하나, `model/plugin/config.is_external_skill_ref(name)`** —
+콜론이 있으면 외부 참조다. 프로젝트 컴포넌트 이름은
+`^[a-z0-9][a-z0-9-]*$`라 콜론을 가질 수 없어 오검출이 없다. `AgentConfigBase`
+(`AgentConfig`·`ForkAgentConfig` 공유)의 두 갈래 계약:
+
+- `name_refs(Bucket.SKILLS)`는 **프로젝트 스킬 참조만** 돌려준다(외부 참조
+  제외) — 안 그러면 `dangling_string_reference`가 "그 이름의 스킬이
+  프로젝트에 없다"고 오탐하고, `rename_ref`가 무관한 문자열을 건드릴 뻔한다.
+- `external_skill_refs()`는 외부 참조 **원문**(`플러그인:스킬`) 목록이고,
+  `external_plugin_refs()`는 그 플러그인 부분을 **적힌 그대로** 돌려준다(`@마켓`을
+  떼지 않는다 — 떼면 검증이 그 표기를 볼 수 없다). `PluginComponent.
+  external_plugin_refs()`의 **기본 구현이 config에 위임**하므로 `AgentDefinition`·
+  `ForkAgent`는 아무것도 오버라이드하지 않는다(새 에이전트 종류도 자동 합류).
+  `ExternalAgent`만 자기 `source`를 읽는 오버라이드를 갖는다.
+
+**매칭 정책은 하나다 — `config.plugin_ids_match` (2026-09-19 리뷰로 단일화).**
+정확 일치, 또는 **한쪽만 bare**일 때 bare 이름 일치. 양쪽 다 마켓을 달고
+다르면(`alpha@mkt1` vs `alpha@mkt2`) 불일치다. 완화가 필요한 이유는 카탈로그
+자신이 마켓 표기를 비대칭으로 내기 때문이다 — 선언(`external_plugins`)은
+`플러그인@마켓`인데 `CataloguedAgent.agent_type`과 `CataloguedSkill.skill_ref`는
+CC가 찾는 이름 그대로 bare `플러그인:이름`이다. 표준 경로(카탈로그 체크 →
+`agent_type`을 `source`로 / `skill_ref`를 `skills`에)를 따르기만 한 프로젝트에
+경고가 뜨면 안 된다(원칙 5). 종전 "`ExternalAgent.source`는 정확 일치"
+정책은 그 비대칭을 오탐하는 버그였고(`test_bare_source_matches_marketplace_
+declaration`이 고정), 참조의 **출처**로 정책을 가르던 중간안(WP-B 초안)은 같은
+사실을 두 정책으로 말한 셈이라 걷었다(원칙 1). `_check_external_plugins`
+(`naming.py`)는 `comp.external_plugin_refs()` 한 목록을 이 술어로 대조한다.
+
+**`@마켓`이 붙은 스킬 참조는 경고다 — `external_skill_ref_marketplace`.** CC는
+fork 에이전트 `skills:`의 외부 스킬을 마켓 표기 없는 이름으로 찾는다(실측).
+`beta@mkt:lint`는 선언 `beta@mkt`와 맞아 배선 경고는 없지만 산출이 원문
+그대로 나가 런타임에 조용히 해소되지 않으므로, `_check_external_skill_refs`가
+정규형(`normalize_external_skill_ref` → `beta:lint`)을 제시하며 짚는다.
+GUI 후보(`used_plugin_skill_refs`)와 MCP `skill_ref`는 항상 정규형을 내므로
+손으로 친 참조만 여기 걸린다.
+
+**산출은 그대로다.** `_agent_skills_list`(compiler/emit/agent_sections.py)는
+`config.skills` 항목을 그대로 프론트매터에 낸다 — 외부 참조도 로컬 이름도
+구분 없이 원문 그대로(변경 없음 — `tests/compiler/test_external_plugins.py`의
+산출 테스트가 두 빌드 타깃에서 고정한다).
+
+**GUI·MCP 패리티.** 에이전트 편집기 SKILLS TagInput은 프로젝트 스킬 이름 +
+사용 선언한 플러그인의 스킬(`플러그인:스킬`, `wrap_catalog.
+used_plugin_skill_refs(project)`)을 자동완성 후보로 준다(`app.set_project`가
+`tag_input.set_skill_candidate_provider` 등록). MCP `set_component_field(name,
+"skills", [...])`는 미선언 플러그인 참조를 **거절하지 않고** 응답에
+`warning`을 싣는다(형식은 유효하고 사용자가 곧 선언할 수도 있다 — 원칙 5는
+"조용한 실패 금지"이지 "선제적 거절"이 아니다). `list_external_plugins`의
+스킬 행에 `skill_ref`(넣을 이름)와 `used_by`(그 참조를 가진 프로젝트 에이전트
+이름 목록 — 참조는 정규형으로 대조)가 실린다 — 쓸 수 있는 값은 읽을 수도 있어야 한다(원칙 2).
+
 ## 외부 플러그인 카탈로그 (D2 — WP-WR에서 이관, WP-10)
 
 > 종전 `wrapped-skills.md`의 카탈로그 절이다. 랩핑 스킬이 퇴역해도 카탈로그·사용

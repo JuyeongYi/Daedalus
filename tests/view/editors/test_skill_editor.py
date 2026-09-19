@@ -478,6 +478,24 @@ def test_agent_tools_and_disallowed_tools_get_dynamic_candidates(qapp):
         set_tool_candidate_provider(None)
 
 
+def test_agent_skills_tag_input_gets_dynamic_candidates(qapp):
+    """SKILLS TagInput은 프로젝트 스킬 + 외부 플러그인 스킬 참조 후보를 받는다
+    (WP-B, 2026-09-19) — 외부 플러그인 스킬의 유일한 사용 경로다."""
+    from daedalus.model.plugin.enums import AgentField
+    from daedalus.view.editors.skill_editor import _FrontmatterPanel
+    from daedalus.view.widgets.tag_input import set_skill_candidate_provider
+
+    set_skill_candidate_provider(lambda: ["local-skill", "alpha:review"])
+    try:
+        comp = _make_agent()
+        panel = _FrontmatterPanel(comp)
+        widget = panel._field_widgets.get(AgentField.SKILLS)
+        assert widget is not None
+        assert widget.get_candidates() == ["local-skill", "alpha:review"]
+    finally:
+        set_skill_candidate_provider(None)
+
+
 def test_paths_tag_input_does_not_get_tool_candidates(qapp):
     """PATHS는 도구 권한 문자열이 아니므로 도구 후보를 받지 않는다."""
     from daedalus.model.plugin.enums import SkillField

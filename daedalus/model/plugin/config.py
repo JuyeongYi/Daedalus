@@ -26,6 +26,74 @@ from daedalus.model.plugin.enums import (
 )
 
 
+def is_external_skill_ref(name: str) -> bool:
+    """``config.skills`` 항목이 **외부 플러그인 스킬** 참조인가 — ``플러그인:스킬``.
+
+    콜론이 있으면 외부 참조다(WP-B, 사용자 확정 2026-09-19 — 외부 플러그인
+    스킬의 사용 경로는 fork 에이전트 ``skills:`` 프론트매터 하나뿐이다).
+    프로젝트 컴포넌트 이름은 ``^[a-z0-9][a-z0-9-]*$``라 콜론을 가질 수 없으므로
+    오검출이 없다. ``@마켓``은 붙이지 않는다 — CC가 fork 에이전트 ``skills:``로
+    프리로드하는 이름이 그 형식이다(실측, CC 2.1.278 — `plugin-model.md`).
+    """
+    return ":" in name
+
+
+def bare_plugin_id(plugin_id: str) -> str:
+    """설치 식별자(``플러그인[@마켓]``)에서 ``@마켓``을 뗀 플러그인 이름."""
+    return plugin_id.partition("@")[0]
+
+
+def plugin_ids_match(a: str, b: str) -> bool:
+    """설치 식별자 둘이 같은 플러그인을 가리키는가 — **매칭 정책의 단일 진실**.
+
+    정확 일치, 또는 **한쪽만 bare**일 때 bare 이름 일치다. 양쪽 다 마켓을
+    달고 있으면 정확 일치만 인정한다(``alpha@mkt1`` ≠ ``alpha@mkt2`` — 다른
+    설치 대상). 완화가 필요한 이유는 카탈로그 자신이 마켓 표기를 **비대칭**으로
+    내기 때문이다: 선언(`external_plugins`)은 ``플러그인@마켓``이고, 에이전트
+    `agent_type`·스킬 `skill_ref`는 CC가 찾는 이름 그대로 ``플러그인:이름``
+    (bare)이다(WP-9·WP-B 실측). 그 표준 경로를 따르기만 해도 경고가 뜨면
+    안 된다(원칙 5 — 경고는 진짜 불일치에만). 참조의 출처(``source``냐
+    ``skills`` 항목이냐)로 정책을 가르지 않는다(원칙 1, 2026-09-19 리뷰).
+    """
+    if a == b:
+        return True
+    if "@" in a and "@" in b:
+        return False
+    return bare_plugin_id(a) == bare_plugin_id(b)
+
+
+def external_plugin_id_declared(plugin_id: str, declared: set[str]) -> bool:
+    """``plugin_id``가 선언 집합의 어느 항목과 `plugin_ids_match`하는가."""
+    return any(plugin_ids_match(plugin_id, d) for d in declared)
+
+
+def declared_external_plugin_ids(project) -> set[str]:
+    """`project.external_plugins` 선언을 공백 정리한 집합 (빈 항목 제외)."""
+    return {
+        str(p).strip()
+        for p in getattr(project, "external_plugins", None) or []
+        if str(p).strip()
+    }
+
+
+def external_skill_ref_has_marketplace(ref: str) -> bool:
+    """외부 스킬 참조의 플러그인 부분에 ``@마켓``이 붙어 있는가.
+
+    CC는 fork 에이전트 ``skills:``의 외부 스킬을 마켓 표기 **없는** 이름으로
+    찾는다(실측, CC 2.1.278). 붙이면 산출은 원문 그대로 나가고 런타임에
+    조용히 해소되지 않으므로 검증이 짚는다(`external_skill_ref_marketplace`).
+    """
+    return is_external_skill_ref(ref) and "@" in ref.partition(":")[0]
+
+
+def normalize_external_skill_ref(ref: str) -> str:
+    """외부 스킬 참조를 CC가 찾는 형식 ``플러그인:스킬``(bare)로 정규화한다."""
+    plugin_id, sep, skill_name = ref.partition(":")
+    if not sep:
+        return ref
+    return f"{bare_plugin_id(plugin_id.strip())}:{skill_name.strip()}"
+
+
 @dataclass
 class ComponentConfig(ABC):
     """플러그인 컴포넌트 공통 설정 + **이름 참조 계약** (REFACTOR_SPEC §2-c).
@@ -103,6 +171,23 @@ class ComponentConfig(ABC):
     def rename_ref(self, namespace: Bucket, old: str, new: str) -> None:
         """``namespace``의 이름 ``old``를 ``new``로 **제자리** 치환 (기본 무동작)."""
         return None
+
+    def external_skill_refs(self) -> list[str]:
+        """이 설정의 **외부 플러그인 스킬 참조**(``플러그인:스킬`` 원문) 목록 (기본 없음).
+
+        `AgentConfigBase`만 오버라이드한다(``skills`` 항목, WP-B).
+        """
+        return []
+
+    def external_plugin_refs(self) -> list[str]:
+        """이 설정이 배선을 요구하는 외부 플러그인 설치 id 목록 (기본 없음).
+
+        `PluginComponent.external_plugin_refs()`의 기본 구현이 이것을 그대로
+        돌려준다 — 컴포넌트가 다른 외부 정본(`ExternalAgent.source`)을 가지면
+        그 클래스가 오버라이드한다. 매칭 정책은 출처와 무관하게 하나다
+        (`plugin_ids_match`).
+        """
+        return []
 
 
 @dataclass
@@ -276,14 +361,45 @@ class AgentConfigBase(ComponentConfig, ABC):
     memory: MemoryScope | None = None
 
     def name_refs(self, namespace: Bucket) -> list[str]:
-        """``skills``는 **스킬** 이름 참조 목록이다."""
+        """``skills``는 **프로젝트 스킬** 이름 참조 목록이다 — 외부 플러그인
+        참조(``플러그인:스킬``, WP-B)는 **제외**한다.
+
+        포함시키면 프로젝트에 그 이름의 스킬이 없다는 이유로
+        `dangling_string_reference`가 오탐하고, `rename_ref`가 무관한
+        문자열을 건드릴 뻔한다(콜론 때문에 실제로는 안 맞지만 판단 자체가
+        틀린 자리에 있으면 안 된다 — 원칙 1). 배선 필요 여부는
+        `external_plugin_refs()`가 대신 답한다.
+        """
         if namespace is Bucket.SKILLS and isinstance(self.skills, list):
-            return list(self.skills)
+            return [s for s in self.skills if not is_external_skill_ref(s)]
         return []
 
     def rename_ref(self, namespace: Bucket, old: str, new: str) -> None:
         if namespace is Bucket.SKILLS and isinstance(self.skills, list):
             self.skills = [new if s == old else s for s in self.skills]
+
+    def external_skill_refs(self) -> list[str]:
+        """``skills`` 항목 중 외부 플러그인 스킬 참조(``플러그인:스킬``) 원문.
+
+        형식이 깨진 참조(플러그인 부분이 비었거나 스킬 이름이 없음)는
+        건너뛴다 — CC가 못 찾으면 조용히 무시하는 실패이고, 이 종류의 참조에는
+        `external_source_missing`류의 전용 경고가 없다(참조는 콜론 유무로만
+        외부/내부를 가른다).
+        """
+        refs: list[str] = []
+        for s in self.skills if isinstance(self.skills, list) else []:
+            if not is_external_skill_ref(s):
+                continue
+            plugin_id, _, skill_name = s.partition(":")
+            if plugin_id.strip() and skill_name.strip():
+                refs.append(s)
+        return refs
+
+    def external_plugin_refs(self) -> list[str]:
+        """외부 스킬 참조가 가리키는 플러그인 설치 id — 참조에 적힌 **원문 그대로**
+        (``@마켓``을 떼지 않는다 — 떼면 `external_skill_ref_marketplace` 경고와
+        어긋난 사실을 검증이 못 본다). 선언과의 대조는 `plugin_ids_match`."""
+        return [ref.partition(":")[0].strip() for ref in self.external_skill_refs()]
 
 
 @dataclass

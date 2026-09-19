@@ -531,7 +531,7 @@ background를 지정할 수 없다.
 | fork 에이전트 설정 | `skills:` 프리로드·`maxTurns`는 **적용**, `isolation: worktree`는 **적용되지 않는다** (CC 2.1.268 실측 2026-09-13 → **CC 2.1.274 재실측 2026-09-18에서 동일** — 아래 재실측 기록). 그래서 `ForkAgentConfig`에 `isolation` 필드가 없고 경고 `fork_agent_isolation_ignored`는 퇴역했다 |
 | 내장 이름 | `general-purpose` / `Explore` / `Plan` (`statusline-setup`도 있으나 후보에서 뺀다) |
 | 도구 0개 에이전트 | 이 환경에 없는 도구만 준 에이전트로는 fork가 아무 일도 하지 못했다 |
-| fork 에이전트 `skills:`의 **외부 플러그인 스킬** | **프리로드된다** (CC 2.1.278 실측 2026-09-19). `context: fork` 스킬 → `agent: probe-agent`(프로젝트 `.claude/agents/`, `skills: [localknow, frontend-design:frontend-design]`) 체인에서 서브에이전트 전사(`<세션>/subagents/*.jsonl`)의 첫 user 메시지에 로컬 스킬 본문(고유 토큰)과 플러그인 스킬 본문(`# Frontend Design` 이하 전문)이 **둘 다 실려 있었다** — Read 호출 없음. 이름은 `플러그인:스킬`과 맨 `스킬` **두 형식 모두** 해소됐다(플러그인이 `enabledPlugins`로 켜져 있을 때). 그래서 외부 플러그인 **스킬**의 사용 경로는 "fork 스킬 → 프로젝트 fork 에이전트 → 그 에이전트의 `skills:`" 하나로 둔다(사용자 확정 2026-09-19 — 참조 노드·감싸기 없음). 프로브: 스크래치패드 `forkprobeA`/`forkprobeB` |
+| fork 에이전트 `skills:`의 **외부 플러그인 스킬** | **프리로드된다** (CC 2.1.278 실측 2026-09-19). `context: fork` 스킬 → `agent: probe-agent`(프로젝트 `.claude/agents/`, `skills: [localknow, frontend-design:frontend-design]`) 체인에서 서브에이전트 전사(`<세션>/subagents/*.jsonl`)의 첫 user 메시지에 로컬 스킬 본문(고유 토큰)과 플러그인 스킬 본문(`# Frontend Design` 이하 전문)이 **둘 다 실려 있었다** — Read 호출 없음. 이름은 `플러그인:스킬`과 맨 `스킬` **두 형식 모두** 해소됐다(플러그인이 `enabledPlugins`로 켜져 있을 때). 그래서 외부 플러그인 **스킬**의 사용 경로는 "fork 스킬 → 프로젝트 fork 에이전트 → 그 에이전트의 `skills:`" 하나로 둔다(사용자 확정 2026-09-19 — 참조 노드·감싸기 없음). 프로브: 스크래치패드 `forkprobeA`/`forkprobeB`. 구현(WP-B)은 `agents.md` "외부 플러그인 스킬 — 사용 경로는 하나" 절 참조 — 판정 함수·매칭 정책·GUI/MCP 패리티가 거기 있다 |
 
 **isolation 재실측 (CC 2.1.274, 2026-09-18 — 원칙 8: 공식 문서 뒷받침이 없는 유일한 항목이라, 되돌리기
 비싼 결정(매트릭스 행·config 필드 삭제)을 얹기 전에 현재 설치 버전에서 다시 쟀다)**

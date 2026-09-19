@@ -735,6 +735,12 @@ Tier 2다. 출발점은 2026-05 조사(ClaudeManager가 만든 plain 셸 스크�
   (`compiler.md` 정책 21번). 워크플로 개념·진행 기록·재개 규칙도 같은 방식으로 `workflow.md`에 모였다.
 - **Region 확장** — 리전별 우선순위, 취소 정책, 동기화 포인트.
 
+- **코드 위생 (WP-B 리뷰, 2026-09-19)**: `view/editors/frontmatter_panel.py`가 794줄로 800줄 경계에
+  닿았다 — 다음 기능 추가 전에 분해 검토. `external_plugins` 선언 집합 계산 관용구가
+  `compiler/emit/manifest.py`·`model/plugin/wrap_catalog.py`(×2)·`validation/project_rules/fork.py`에
+  남아 있다(`config.declared_external_plugin_ids`로 통일 후보 — `naming.py`·`mcp/tools/fields.py`는 이미
+  그것을 쓴다).
+
 ## 5. 기능 잔여
 
 - **외부 플러그인 에이전트를 에이전트 체인 규칙에 넣을지 (WP-10에서 보존한 좁힘)**.

@@ -4,7 +4,9 @@
 배선의 단일 진실은 **`PluginProject.external_plugins` 사용 선언**이다(사용자
 확정 2026-09-06) — 컴포넌트의 `source`는 배선에 쓰이지 않고, 선언·참조의
 어긋남은 검증 경고 2종(`undeclared_external_plugin`/`unused_external_plugin`)이
-짚는다. 외부 정본을 선언하는 종류는 오늘 `ExternalAgent` 하나다(WP-9).
+짚는다. 외부 정본을 선언하는 종류는 `ExternalAgent`(WP-9, source 정확 일치)와
+에이전트 `config.skills`의 외부 플러그인 스킬 참조(WP-B, `플러그인:스킬` —
+마켓 표기 없는 bare 완화)다. 두 경로는 매칭 정책이 다르다 — 아래 참조.
 
 WP-10 이전에는 이 파일이 `test_wrapped_skill.py`였고 같은 배선을 랩핑 스킬로
 태웠다 — 랩핑 스킬 퇴역 후에도 배선·검증은 그대로이므로 종류만 바꿔 남긴다.
@@ -13,13 +15,15 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from daedalus.compiler.emit.common import parse_external_source
 from daedalus.compiler.emit.manifest import compile_plugin_manifest
 from daedalus.model.fsm.machine import StateMachine
 from daedalus.model.fsm.pseudo import EntryPoint
 from daedalus.model.fsm.section import EventDef
-from daedalus.model.plugin.agent import ExternalAgent
-from daedalus.model.plugin.config import ExternalAgentConfig
+from daedalus.model.plugin.agent import AgentDefinition, ExternalAgent
+from daedalus.model.plugin.config import AgentConfig, ExternalAgentConfig
 from daedalus.model.plugin.enums import BuildTarget
 from daedalus.model.project import PluginProject
 from daedalus.model.serialize import deserialize_project, serialize_project
@@ -278,11 +282,24 @@ def test_unused_external_plugin_warns():
     assert all(e.is_warning for e in issues if e.rule == "unused_external_plugin")
 
 
-def test_marketplace_mismatch_is_both_warnings():
-    """alpha@mkt 선언 ↔ alpha 참조는 다른 설치 대상 — 양쪽 경고."""
+def test_bare_source_matches_marketplace_declaration():
+    """카탈로그의 `agent_type`은 bare(`alpha:skill`)이고 선언은 `alpha@mkt`다 —
+    표준 경로를 따르기만 한 프로젝트에 경고가 뜨면 안 된다(2026-09-19 리뷰:
+    종전 "정확 일치" 테스트가 고정하던 동작은 카탈로그의 비대칭을 오탐하는
+    버그였다)."""
     project = PluginProject(name="p")
     project.agents.append(_external(source="alpha:skill"))
     project.external_plugins.append("alpha@mkt")
+    rules = [e.rule for e in Validator.validate_project(project)]
+    assert "undeclared_external_plugin" not in rules
+    assert "unused_external_plugin" not in rules
+
+
+def test_cross_marketplace_mismatch_is_both_warnings():
+    """양쪽 다 마켓을 달고 다르면 다른 설치 대상 — 완화 없이 양쪽 경고."""
+    project = PluginProject(name="p")
+    project.agents.append(_external(source="alpha@mkt1:skill"))
+    project.external_plugins.append("alpha@mkt2")
     rules = [e.rule for e in Validator.validate_project(project)]
     assert "undeclared_external_plugin" in rules
     assert "unused_external_plugin" in rules
@@ -298,3 +315,82 @@ def test_same_source_multiple_components_is_normal():
     assert not [e for e in issues if not e.is_warning]
     assert "external_source_missing" not in [e.rule for e in issues]
     assert "undeclared_external_plugin" not in [e.rule for e in issues]
+
+
+# ─── WP-B: 외부 플러그인 스킬 참조(`config.skills`의 `플러그인:스킬`) ───
+#
+# 이 참조는 `config.external_plugin_refs()`가 내고 `PluginComponent`의 기본
+# 구현이 그대로 위임한다 — CC가 fork 에이전트 `skills:`로 외부 스킬을
+# 프리로드할 때는 마켓 표기를 쓰지 않으므로(실측, CC 2.1.278) bare 이름과
+# `플러그인@마켓` 선언이 맞아야 한다. 매칭 정책은 `ExternalAgent.source`와
+# 같다(`plugin_ids_match` — 한쪽만 bare면 완화).
+
+
+def _agent_with_skills(name: str = "worker", skills=()) -> AgentDefinition:
+    entry = EntryPoint(name="entry")
+    fsm = StateMachine(name=f"{name}-fsm", states=[entry], initial_state=entry)
+    return AgentDefinition(
+        fsm=fsm, name=name, description="d",
+        config=AgentConfig(skills=list(skills)),
+        transfer_on=[EventDef(name="done")],
+    )
+
+
+def test_external_skill_ref_matches_marketplace_qualified_declaration():
+    """bare 스킬 참조 `alpha:review`는 `alpha@mkt` 선언과 맞는다(WP-B) —
+    `ExternalAgent.source`와 반대로 마켓 완화를 받는다."""
+    project = PluginProject(name="p")
+    project.agents.append(_agent_with_skills(skills=["alpha:review"]))
+    project.external_plugins.append("alpha@mkt")
+    issues = Validator.validate_project(project)
+    rules = [e.rule for e in issues]
+    assert "undeclared_external_plugin" not in rules
+    assert "unused_external_plugin" not in rules
+
+
+def test_external_skill_ref_undeclared_plugin_warns():
+    project = PluginProject(name="p")
+    project.agents.append(_agent_with_skills(skills=["alpha:review"]))
+    rules = [e.rule for e in Validator.validate_project(project)]
+    assert "undeclared_external_plugin" in rules
+    # 외부 참조는 프로젝트 스킬 이름이 아니다 — dangling으로 오탐하지 않는다.
+    assert "dangling_string_reference" not in rules
+
+
+def test_external_skill_ref_with_marketplace_suffix_warns():
+    """`beta@mkt:lint`는 CC가 못 찾는 형식 — 선언과는 맞아도 전용 경고가 뜬다."""
+    project = PluginProject(name="p")
+    project.agents.append(_agent_with_skills(skills=["beta@mkt:lint"]))
+    project.external_plugins.append("beta@mkt")
+    issues = Validator.validate_project(project)
+    rules = [e.rule for e in issues]
+    assert "external_skill_ref_marketplace" in rules
+    assert "undeclared_external_plugin" not in rules
+    assert all(e.is_warning for e in issues if e.rule == "external_skill_ref_marketplace")
+    assert "beta:lint" in next(
+        e.message for e in issues if e.rule == "external_skill_ref_marketplace"
+    )
+
+
+@pytest.mark.parametrize("target", [BuildTarget.LOCAL, BuildTarget.MARKETPLACE])
+def test_external_skill_ref_is_emitted_verbatim_in_agent_frontmatter(target):
+    """`skills:` 프론트매터는 외부 참조를 원문 그대로 낸다 — 두 타깃 모두."""
+    from daedalus.compiler.emit import compile_agent
+
+    project = PluginProject(name="p", build_target=target)
+    agent = _agent_with_skills(skills=["alpha:review"])
+    project.agents.append(agent)
+    project.external_plugins.append("alpha@mkt")
+    text = compile_agent(agent, project)
+    frontmatter = text.split("---")[1]
+    assert "alpha:review" in frontmatter
+
+
+def test_local_skill_name_in_agent_skills_is_not_an_external_ref():
+    """콜론 없는 이름은 프로젝트 스킬 참조다 — dangling_string_reference가
+    보되 external 규칙은 침묵한다(스킬이 실제로 없을 때만 dangling이 뜬다)."""
+    project = PluginProject(name="p")
+    project.agents.append(_agent_with_skills(skills=["missing-local-skill"]))
+    rules = [e.rule for e in Validator.validate_project(project)]
+    assert "dangling_string_reference" in rules
+    assert "undeclared_external_plugin" not in rules

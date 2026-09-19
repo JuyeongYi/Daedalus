@@ -56,6 +56,7 @@ _WARN_RULES = frozenset({
     "external_source_missing",  # 외부 정본 참조(source) 형식 불일치
     "unused_external_plugin",  # WP-WR — 선언·미참조
     "undeclared_external_plugin",  # WP-WR — 참조·미선언
+    "external_skill_ref_marketplace",  # WP-B — skills 외부 참조에 @마켓
     "external_plugin_no_marketplace",  # WP-WR — 아래 _EXTERNALLY_EMITTED_RULES
     "invalid_component_name",
     "dangling_tool_ref",
