@@ -63,6 +63,54 @@ AST로 강제) `emit/guides.py`의 `WORKFLOW_GUIDE_KIND`/`BLACKBOARD_GUIDE_KIND`
 새 산출을 더하는 사람은 **단위 하나와 `UNITS` 한 줄**을 쓴다 — 드라이버·게이트·토큰 리포트는
 고치지 않는다.
 
+## 컴포넌트 산출 — `ComponentEmitter` 9개 + 절 적용 표 (WP-6)
+
+**종류 하나 = emitter 하나다.** 종전에는 `compile_skill`/`compile_agent` 두 함수가 종류를
+열거하는 if 사다리로 프론트매터·절 순서·산출 파일 개수를 한꺼번에 결정했다. 절 하나를 더하려면
+두 함수를 읽고 "이 조건이 어느 종류를 뜻하는지"를 매번 역산해야 했다. 이제는
+
+- **무엇을 내는가**(파일 0..N개·`OutputLocation`·계획 kind) → `ComponentEmitter.outputs()`
+- **프론트매터** → `frontmatter_block()`
+- **어떤 절을 어떤 순서로** → `section_plan.SECTION_PLANS`의 종류별 **순서 있는 튜플**
+- **절 하나의 실체** → `section_plan.SECTION_PROVIDERS[SectionId]`
+
+로 갈려 있고, `compile_skill`/`compile_agent`은 `emitter_for(c).render(c, project, resolved_hooks)`
+**파사드**다. `EMITTERS`는 `KIND_REGISTRY`와 양방향 패리티다 — 산출이 있는 종류마다 emitter가
+정확히 하나이고 `OUTPUT_LOCATION is NONE`인 종류에는 없다(`tests/test_kind_registry_parity.py`).
+빠뜨린 종류·빠뜨린 절 provider는 **ValueError + 등록 목록**으로 시끄럽게 멈춘다(원칙 5).
+
+**전역 절 순서 하나로는 두 산출을 만들 수 없다** — 스킬은 `REQUIREMENTS`가 `BLACKBOARD` 뒤,
+에이전트는 `SETTINGS_NOTE`가 `BLACKBOARD` 앞이다. 그래서 순서는 전역이 아니라 종류가 갖는다.
+
+| emitter | 절 순서 (프론트매터 뒤) | OUTCOME 양식 | 가이드 포인터 |
+|---|---|---|---|
+| `ProceduralEmitter` | RESUME · ENTRY_CONTEXT · BODY · FSM_PROCEDURE · TOOL_SHELF · BLACKBOARD · BACKGROUND_SKILLS · REQUIREMENTS_MCP · OUTCOME | NEXT_STEPS | MAIN_IF_PLACED |
+| `SyncForkEmitter` | 위에서 RESUME 제외 | FORK_REPORT_SYNC | FORK_IF_PLACED |
+| `AsyncForkEmitter` | 위에서 RESUME 제외 | FORK_REPORT_ASYNC | FORK_IF_PLACED |
+| `DeclarativeEmitter` | RESUME · ENTRY_CONTEXT · BODY · BACKGROUND_SKILLS · REQUIREMENTS_MCP · OUTCOME | NEXT_STEPS | MAIN_IF_PLACED |
+| `TransferEmitter` | BODY · TRANSFER_PROGRESS · BACKGROUND_SKILLS · REQUIREMENTS_MCP · OUTCOME | NEXT_STEPS | MAIN_IF_ANY_PLACEMENT |
+| `ReferenceEmitter` | BODY · BACKGROUND_SKILLS · REQUIREMENTS_MCP · OUTCOME | NEXT_STEPS | NONE |
+| `WrappedEmitter` | RESUME · ENTRY_CONTEXT · BODY · DELEGATED_PROCEDURE · BLACKBOARD · BACKGROUND_SKILLS · REQUIREMENTS_WRAPPED · OUTCOME | NEXT_STEPS | MAIN_IF_PLACED |
+| `WorkflowAgentEmitter` | BODY · CALL_CONTRACT · DELEGATION · SETTINGS_NOTE · INTERNAL_WORKFLOW · EXITS · TOOL_SHELF · BLACKBOARD | – | MAIN_IF_PLACED |
+| `ForkAgentEmitter` | BODY · FORK_BASE_CONTRACT · SETTINGS_NOTE · TOOL_SHELF · BLACKBOARD | – | NONE |
+
+- **절 튜플에 없는 종류는 provider가 아예 돌지 않는다** — 종전 조립 분기의 배치 클래스 튜플이
+  튜플 자체로 대체됐다. provider는 오늘의 조건식을 그대로 감싸고, 낼 것이 없으면 빈 목록
+  (= 절 생략)을 돌려준다.
+- **OUTCOME은 provider 하나다** — "다음 단계"·fork "## Report"·"## Finishing Up" 셋은 같은 갈래
+  목록에서 나오고 서로 배타적이다. 나누면 placement·outgoing 계산이 세 벌이 된다.
+- **`WrappedEmitter`만 산출이 둘이다**(SKILL.md + `agents/<랩퍼>.md` 실행 서브에이전트, WP-WR).
+  러너는 절 표를 거치지 않는 손수 조립기(`compile_wrapped_runner`)를 **축자 호출**한다 —
+  가이드 포인터가 붙지 않는 것이 오늘의 산출이고, 그 누락은 backlog D8이다.
+- **프론트매터 제외도 종류가 정한다** — 랩핑 스킬의 `model`/`effort`는 실행 에이전트 쪽으로 가므로
+  `WrappedEmitter.frontmatter_skip`이 뺀다(종전 `frontmatter.py`의 `kind_key == "wrapped"` 하드코딩).
+- **emitter는 경로를 조립하지 않는다** — `EmittedFile`은 `OutputLocation`과 이름까지만 말하고
+  `<cc>/skills/<n>/SKILL.md` 조립은 `units/paths.output_path`가 한다. `emit`은 `units`보다
+  아래층이라(`units.context`가 `emit`을 임포트한다) 반대 방향 간선은 패키지 순환이 된다.
+- **`emit/` 안의 임포트 방향**은 `tests/compiler/test_emit_import_acyclic.py`가 함수 안 지연 임포트까지
+  포함해 비순환으로 강제한다: `common → {frontmatter, sections, wrapped, fork} → {skill_sections,
+  agent_sections} → section_plan → pointer_rules → guides → emitters → {skill, agent}`.
+
 **출력 구조 (CC 플러그인 규약, `project.build_target == MARKETPLACE` — 기본):**
 - `<out>/.claude-plugin/plugin.json` — 플러그인 매니페스트 (MARKETPLACE에서 항상 생성 — 이게 없으면 산출 디렉토리를 CC 플러그인으로 설치할 수 없다)
 - `<out>/skills/<skill-name>/SKILL.md` — 산출되는 스킬 전부 (Declarative/Reference도 SKILL.md. 용도 reference 랩핑 스킬은 파일 없음 — WP-WR)
@@ -90,7 +138,7 @@ AST로 강제) `emit/guides.py`의 `WORKFLOW_GUIDE_KIND`/`BLACKBOARD_GUIDE_KIND`
     ③ **`transfer_skill_reused`는 특별 규칙이 아니다** — 하나의 상태가 두 자리에 동시에 있을 수 없다는 점에서 `no_duplicate_skill_ref`와 **같은 논리**다. 규칙 메시지가 그 논리와 대안(같은 지침이 여러 전이에 필요하면 Declarative 스킬로 만들어 각 전이 스킬이 참조)을 함께 담는다.
     ④ **진행 기록 정합:** TransferSkill의 "## Progress Record"는 "You are a step on the transition itself, not a position in the workflow: leave `current` … record what happened … in `note`"라고 못 박는다. `current`의 단위는 **플러그인 FSM(프로젝트 그래프 배치)의 위치**인데(WP-RS) T는 배치가 아니라 엣지 위의 단계이므로 `current`를 소유하지 않는다 — 출발 스킬이 "set `current` to the next target"이라 말하는 것과 이 지시가 정확히 짝을 이룬다(T가 자기를 `current`에 쓰면 두 지시가 충돌한다).
 
-6-b. **다음 단계 (project.graph 기반)**: `compile_skill(skill, project=...)`이 `project.graph`에서 그 스킬 placement(skill_ref identity 일치)의 outgoing 전이를 모아 SKILL.md 본문 끝에 **`## Next Steps`** 단락을 배출한다(버그 2 — 인보크/전이 문구 누락 해소). 형식(산출은 영어 — A12): 스킬 타깃은 ``- [<조건>] → invoke skill `<skill>` ``, 에이전트 타깃은 ``delegate to agent `X` `` + **그 에이전트 placement의 outgoing을 한 단계 인라인**(``after the agent returns: [<조건>] → invoke skill `C` `` — 에이전트는 별도 컨텍스트라 자기 .md에 호출자 지침을 담을 수 없으므로 호출자 스킬 쪽에 후속 지시를 둔다). 조건은 `_transition_condition`(트리거+가드) 재사용, 무가드·무트리거 전이는 `always`. outgoing 0개면 단락 생략. **에이전트 .md에는 다음 단계 단락 없음**(스킬 + project 인수 있을 때만). EntryPoint outgoing(시작 스킬)은 v1에서 스킬별 단락에 영향 없음.
+6-b. **다음 단계 (project.graph 기반)**: OUTCOME 절(`compile_skill(skill, project=...)`)이 `project.graph`에서 그 스킬 placement(skill_ref identity 일치)의 outgoing 전이를 모아 SKILL.md 본문 끝에 **`## Next Steps`** 단락을 배출한다(버그 2 — 인보크/전이 문구 누락 해소). 형식(산출은 영어 — A12): 스킬 타깃은 ``- [<조건>] → invoke skill `<skill>` ``, 에이전트 타깃은 ``delegate to agent `X` `` + **그 에이전트 placement의 outgoing을 한 단계 인라인**(``after the agent returns: [<조건>] → invoke skill `C` `` — 에이전트는 별도 컨텍스트라 자기 .md에 호출자 지침을 담을 수 없으므로 호출자 스킬 쪽에 후속 지시를 둔다). 조건은 `_transition_condition`(트리거+가드) 재사용, 무가드·무트리거 전이는 `always`. outgoing 0개면 단락 생략. **에이전트 .md에는 다음 단계 단락 없음**(스킬 + project 인수 있을 때만). EntryPoint outgoing(시작 스킬)은 v1에서 스킬별 단락에 영향 없음.
 7. **에이전트**: `emit==FRONTMATTER`만 프론트매터,
    SETTINGS(hooks/mcp_servers)는 **MARKETPLACE 빌드에서만** `## Requirements` 언급으로 나간다. `config.tools`의 `mcp__<server>__` 접두에서
    추출한 서버 이름(WP-TM, 11번 항목과 동일 규칙)도 `mcp_servers` 선언과 합쳐(중복 제거·이름순) 같은 `MCP servers connected: …` 줄에 담는다 — 별도 단락을 추가하지 않는다.
@@ -101,9 +149,10 @@ AST로 강제) `emit/guides.py`의 `WORKFLOW_GUIDE_KIND`/`BLACKBOARD_GUIDE_KIND`
    "호출 파라미터" 본문 단락과 그것을 만들던 `_invocation_section_agent`(항상 빈 목록을 돌려주던 죽은 코드)는 **삭제됐고**,
    남아 있던 `FieldEmit.INVOCATION` 멤버도 퇴역했다(WP-0c).
 
-7-b. **에이전트 종류별 본문 (WP-FK2 C2)**: `compile_agent`는 `is_workflow = type(agent).PLACEMENT is PlacementRole.STATE`
-   **하나로 갈린다**(WP-2c — 종전의 `isinstance(agent, AgentDefinition)`) — fork 에이전트(`ForkAgent`)는 `PLACEMENT=NONE`이고
-   fsm도 출력 포트도 배치도 없으므로 그래프 유도 단락을 가드 없이 부르면 없는 필드를 역참조해 죽는다.
+7-b. **에이전트 종류별 본문 (WP-FK2 C2)**: 두 종류의 본문 구성은 **절 적용 표가 가른다**(WP-6 —
+   종전의 `is_workflow` 분기, 그 전에는 `isinstance(agent, AgentDefinition)`) — fork 에이전트(`ForkAgent`)는
+   `PLACEMENT=NONE`이고 fsm도 출력 포트도 배치도 없으므로, 그래프 유도 절이 그 종류의 튜플에 아예 없다
+   (있으면 없는 필드를 역참조해 죽는다).
    - **워크플로 에이전트**: 본문 → "## Invocation Contract"(`_call_contract_section` — 그래프 도착 전이) → "## Delegation" → "## Requirements" →
      "## Internal Workflow"(legacy FSM) → "## Exits" → tool_shelf → 블랙보드. **fork 실행 기반 줄은 나오지 않는다** — 워크플로 에이전트는
      fork 에이전트가 될 수 없다(검증 `fork_agent_wrong_kind`).

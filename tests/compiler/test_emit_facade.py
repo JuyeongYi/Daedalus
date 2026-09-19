@@ -13,7 +13,9 @@ import daedalus.compiler.emit as emit
 # 분해 직전 emit.py의 dir() 스냅샷 (dunder 제외) — 2026-08-17 실측.
 # 이후 **실제로 삭제된** 이름은 여기서도 뺀다(파사드가 죽은 코드를 붙잡고 있으면
 # 안 된다): substitute_local_file_refs/_LOCAL_FILE_REF_FROM/_LOCAL_FILE_REF_TO는
-# 프로덕션 호출이 0이 되어 2026-09-06에 제거됐다.
+# 프로덕션 호출이 0이 되어 2026-09-06에 제거됐다. _skill_kind_key는 WP-6에서
+# 제거됐다 — 하던 일(매트릭스 부재를 이유와 함께 거절)은 `_frontmatter_lines_skill`
+# 안의 `matrix_for(skill)`가 그대로 한다(같은 호출의 사본이었다).
 _PRE_SPLIT_ATTRS = [
     "AGENT_FIELD_MATRIX",
     "AgentDefinition",
@@ -117,7 +119,6 @@ _PRE_SPLIT_ATTRS = [
     "_script_text",
     "_settings_note_agent",
     "_should_emit_progress_hook",
-    "_skill_kind_key",
     "_state_label",
     "_tool_shelf_section",
     "_transition_condition",

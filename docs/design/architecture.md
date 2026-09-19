@@ -364,11 +364,19 @@ daedalus/
 │   │   ├── sections.py     #   공용 단락 — 가드/트리거·FSM 절차 서술(_describe_fsm)·요구 환경 MCP(referenced_mcp_servers)·블랙보드(_blackboard_section)·tool_shelf
 │   │   ├── skill_sections.py #   스킬 전용 단락 빌더 — 다음 단계·작업 재개(WP-RS)·진입 맥락(WP-IC)·진행 기록 잔여.
 │   │   │                   #   조립 분기는 능력 선언만 본다(WP-2c) — 컴포넌트 대상 isinstance 0
-│   │   ├── skill.py        #   SKILL.md 조립의 공개 진입점 compile_skill + skill_sections 재-export 파사드(WP-6, 이동만).
-│   │   │                   #   빌더가 아래층·파사드가 위층인 이유는 절 표(section_plan)가 빌더를 임포트하기 때문이다
 │   │   ├── agent_sections.py #   에이전트 전용 단락 빌더 — 프론트매터(skills 합류·LOCAL hooks/mcpServers)·호출 계약(종류별)·
 │   │   │                   #   위임·요구 환경·내부 워크플로(legacy)·출구(_exits_section)
-│   │   ├── agent.py        #   에이전트 .md 조립의 공개 진입점 compile_agent + agent_sections 재-export 파사드(WP-6, 이동만)
+│   │   ├── section_plan.py #   **절 적용 표**(WP-6) — SectionId 18종 · 종류별 **순서 있는** 절 튜플(SECTION_PLANS: 절 순서
+│   │   │                   #   + OutcomeStyle + GuidePointerRule) · SECTION_PROVIDERS(절 → 빌더, 없으면 ValueError) ·
+│   │   │                   #   assemble_blocks. 전역 절 순서 하나로는 두 산출을 못 만든다(스킬 REQUIREMENTS↔에이전트 SETTINGS_NOTE).
+│   │   │                   #   emitters.py를 임포트하지 않는다(TYPE_CHECKING 전용) — 순환 금지
+│   │   ├── emitters.py     #   **kind별 ComponentEmitter 9개**(WP-6) — SkillEmitter/AgentEmitter → 구체 9.
+│   │   │                   #   outputs()(EmittedFile 선언 — 경로 조립은 units/paths.py), frontmatter_block(),
+│   │   │                   #   render()(assemble_blocks + 가이드 포인터 후처리). EMITTERS/emitter_for(없으면 ValueError) +
+│   │   │                   #   compile_skill/compile_agent. WrappedEmitter만 산출 2개(SKILL.md + 러너) — 러너는 절 표를
+│   │   │                   #   거치지 않는 축자 호출(가이드 포인터 없음 = 오늘의 바이트, backlog D8)
+│   │   ├── skill.py        #   compile_skill 파사드 + skill_sections/wrapped 재-export (기존 임포트 경로 보존)
+│   │   ├── agent.py        #   compile_agent 파사드 + agent_sections 재-export
 │   │   ├── wrapped.py      #   랩핑 스킬 산출 — 위임 절차 단락 + 실행 서브에이전트(compile_wrapped_runner/needs_runner_agent/parse_wrapped_source)
 │   │   ├── fork.py         #   fork 스킬 산출(2종, 2026-09-17) — resolve_fork_agent_name(common.agent_invocation_name 파사드)/
 │   │   │                   #   fork_frontmatter_lines(agent: 이름 해소만 — context·background는 매트릭스 FIXED)/

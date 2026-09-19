@@ -16,9 +16,14 @@ WP-RF-3a: 구 단일 모듈 ``compiler/emit.py``를 패키지로 분해했다 (�
   frontmatter.py — 프론트매터 렌더 (YAML 스칼라/리스트/블록 + 스킬 프론트매터)
   sections.py    — 공용 단락 (가드/트리거·FSM 절차 서술·요구 환경(MCP)·
                    블랙보드·tool_shelf)
-  skill.py       — SKILL.md 조립 (다음 단계·작업 재개·진입 맥락 + compile_skill)
-  agent.py       — 에이전트 .md 조립 (출구·호출 계약(종류별)·skills 합류
-                   + compile_agent)
+  skill_sections.py — 스킬 전용 단락 빌더 (다음 단계·작업 재개·진입 맥락)
+  agent_sections.py — 에이전트 전용 단락 빌더 (프론트매터 줄·호출 계약·위임·출구)
+  section_plan.py — 절 적용 표 (SectionId · 종류별 절 튜플 · SECTION_PROVIDERS ·
+                   assemble_blocks)
+  emitters.py    — kind별 ComponentEmitter 9개 (EMITTERS/emitter_for) +
+                   compile_skill/compile_agent
+  skill.py       — compile_skill 파사드 + skill_sections 재-export
+  agent.py       — compile_agent 파사드 + agent_sections 재-export
   guides.py      — 공통 안내 파일 (guides/<플러그인>/workflow.md·blackboard.md
                    + 컴포넌트 산출의 포인터 1줄)
   hooks.py       — hooks.json·훅 스크립트 (compile_hooks_json/compile_hook_scripts)
@@ -159,7 +164,6 @@ from daedalus.compiler.emit.skill import (
     _progress_update_note,
     _resume_preamble_section,
     _transfer_progress_note,
-    _skill_kind_key,
     compile_skill,
 )
 from daedalus.compiler.emit.agent import (
