@@ -26,7 +26,8 @@ from daedalus.model.fsm.strategy import (
     ToolEvaluation,
 )
 from daedalus.model.fsm.walk import iter_states
-from daedalus.model.plugin.roles import BodySource, Bucket, PlacementRole
+from daedalus.model.plugin.placement import is_reference_placed
+from daedalus.model.plugin.roles import BodySource, Bucket
 from daedalus.model.plugin.skill import Skill, StepSkill
 
 
@@ -360,7 +361,7 @@ def linked_background_skills(component, project) -> list[tuple[str, str]]:
     wrapped_refs = {
         s.name: s for s in project.skills
         if s.BODY_SOURCE is BodySource.EXTERNAL
-        and s.effective_placement() is PlacementRole.REFERENCE
+        and is_reference_placed(s)
         and s.is_active()
     }
     entries: list[tuple[str, str]] = []

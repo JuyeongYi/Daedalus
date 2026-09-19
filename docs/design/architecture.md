@@ -87,18 +87,19 @@ python -m tests.data.golden.regen --refresh-dogfood   # 동결 사본 자체를 
 **내리기만** 한다 — 올리는 커밋은 리뷰가 거부한다. 기준선이 실측보다 크게 남아
 있어도 실패한다(래칫은 조여야 의미가 있다).
 
-**현재 값은 이 표가 아니라 테스트의 `RATCHET` dict가 정본이다** — 아래 "WP-0
-기준선" 열은 리팩토링을 시작할 때의 실측이고, 각 WP가 숫자를 내릴 때는
+**정본은 이 표가 아니라 테스트의 `RATCHET` dict다.** 각 WP는 숫자를 내릴 때
 `tests/test_polymorphism_ratchet.py`/`tests/test_kind_literals.py`의 dict를 같은
-커밋에서 함께 내린다(`*_baseline_is_not_stale` 테스트가 강제). 이 문서는 숫자를
-따라 고치지 않는다 — 그러면 두 곳이 어긋난다.
+커밋에서 내리고(`*_baseline_is_not_stale` 테스트가 등치를 강제), 아래 "현재" 열도
+같은 커밋에서 갱신한다. 두 열을 함께 두는 이유는 **어디까지 왔는지**가 숫자 하나만
+봐서는 안 보이기 때문이다 — WP-0 기준선이 없으면 "34"가 좋은 값인지 알 수 없다.
+표와 dict가 어긋나면 dict가 옳다.
 
-| 테스트 · 표 | 세는 것 | WP-0 기준선 (2026-09-19) |
-|---|---|---|
-| `tests/test_polymorphism_ratchet.py` `RATCHET` ① | 컴포넌트/설정 클래스 29종을 두 번째 인자로 갖는 `isinstance` | **111 사이트 / 34 파일** |
-| 〃 ② | 컴포넌트 형상 속성 12종(`config`/`body`/`fsm`/`transfer_on`/`call_agents`/`when_to_use`/`usage`/`enabled`/`reference_placements`/`source`/`output_events`/`output_event_defs`)을 문자열로 묻는 `getattr`/`hasattr`. 첫 인자가 `project`/`cfg`/`config`/`doc`이면 제외(컴포넌트 형상이 아니다) | **123 사이트 / 41 파일** |
-| `tests/test_kind_literals.py` `RATCHET` ① | 컴포넌트 kind 16종이 `Compare` 피연산자·`dict` 키·`set`/`tuple`/`list` 원소로 쓰인 자리. 허용 파일 `model/serialize/migrate.py`(구버전 파일 문자열 해석이 정본)는 세지 않는다 | **157 사이트 / 26 파일** |
-| 〃 ② plan kind | plan kind 14종. `agent`/`skill`이 컴포넌트 어휘와 겹치므로 `compiler/**`·`mcp/tools/query.py`에서만 센다. 최종 소유자는 WP-5가 신설할 `compiler/plan_kinds.py` 하나 | **22 사이트 / 3 파일** |
+| 테스트 · 표 | 세는 것 | WP-0 기준선 (2026-09-19) | 현재 (WP-3 완료) |
+|---|---|---|---|
+| `tests/test_polymorphism_ratchet.py` `RATCHET` ① | 컴포넌트/설정 클래스 29종을 두 번째 인자로 갖는 `isinstance` | **111 사이트 / 34 파일** | **34 / 9** — compiler는 0. 남은 최대치는 `serialize/ser.py` 11(WP-4)·`registry_panel.py` 10(WP-7) |
+| 〃 ② | 컴포넌트 형상 속성 12종(`config`/`body`/`fsm`/`transfer_on`/`call_agents`/`when_to_use`/`usage`/`enabled`/`reference_placements`/`source`/`output_events`/`output_event_defs`)을 문자열로 묻는 `getattr`/`hasattr`. 첫 인자가 `project`/`cfg`/`config`/`doc`이면 제외(컴포넌트 형상이 아니다) | **123 사이트 / 41 파일** | **33 / 12** (WP-7·WP-8이 다음 주인) |
+| `tests/test_kind_literals.py` `RATCHET` ① | 컴포넌트 kind 16종이 `Compare` 피연산자·`dict` 키·`set`/`tuple`/`list` 원소로 쓰인 자리. 허용 파일 `model/serialize/migrate.py`(구버전 파일 문자열 해석이 정본)는 세지 않는다 | **157 사이트 / 26 파일** | **94 / 21** — WP-3이 레지스트리로 흡수(역직렬화·생성·전환·MCP 어휘·매트릭스 키) |
+| 〃 ② plan kind | plan kind 14종. `agent`/`skill`이 컴포넌트 어휘와 겹치므로 `compiler/**`·`mcp/tools/query.py`에서만 센다. 최종 소유자는 WP-5가 신설할 `compiler/plan_kinds.py` 하나 | **22 사이트 / 3 파일** | **22 / 3**(무변 — WP-5 소관) |
 
 ②의 속성 목록에 있는 `output_events`/`output_event_defs`는 **오늘 모델에 없는
 이름**이다(WP-2d가 `output_ports()`/`call_ports()`로 걷어냈다). 목록에 남겨 두는
@@ -231,7 +232,8 @@ daedalus/
 │   │                   #   (WP-2b 이후 **한 줄 파사드** — effective_placement()/is_active()가 실체)
 │   │   │                   #   + 종류별 능력 선언(KIND/CONFIG_CLS/PLACEMENT/…)과 오버라이드. 인스턴스 훅을 덮는 유일한 클래스가 WrappedSkill이다
 │   │   ├── agent.py        # Agent(ABC) → AgentDefinition(워크플로 — 캔버스 노드) / ForkAgent(fork 스킬 실행 기반, WP-FK2)
-│   │   ├── placement.py    # 배치 역할 판정 **네 개**(is_state_placeable=포트 소유 판정 겸임/is_canvas_placeable/is_edge_placeable/is_reference_placed — 실체는 effective_placement()) +
+│   │   ├── placement.py    # 배치 역할 판정 **네 개**(is_state_placeable=포트 소유 판정 겸임/is_canvas_placeable/is_edge_placeable/is_reference_placed — 실체는 effective_placement()).
+│   │   │                   #   enum 비교를 손으로 적는 자리는 없다 — 참조 배치 질문은 compiler/emit(guides·sections)·validation(naming)까지 전부 is_reference_placed다 +
 │   │   │                   #   placement_role_of(비-컴포넌트 관용의 단일 진실) + fork 역참조 fork_skills_using(config.name_refs(AGENTS) 기반).
 │   │   │                   #   캔버스 드롭·레지스트리 드래그·creation·MCP place_component·에이전트 편집기·삭제 확인·
 │   │   │                   #   MCP still_referenced_by/used_by_fork_skills·컴파일러 fork 계약이 전부 여기를 부른다(원칙 1)

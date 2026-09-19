@@ -83,7 +83,8 @@ class _NamingRules:
         reference 용도인데 그래프 상태 배치가 있거나, state(또는 미정)
         용도인데 참조 배치가 있으면 어긋남이다.
         """
-        from daedalus.model.plugin.roles import BodySource, PlacementRole
+        from daedalus.model.plugin.placement import is_reference_placed
+        from daedalus.model.plugin.roles import BodySource
 
         errors: list[ValidationError] = []
         ref_placed = {
@@ -102,7 +103,7 @@ class _NamingRules:
                 continue
             as_state = id(skill) in state_placed
             as_ref = skill.name in ref_placed
-            as_reference_usage = skill.effective_placement() is PlacementRole.REFERENCE
+            as_reference_usage = is_reference_placed(skill)
             if as_reference_usage and as_state:
                 errors.append(ValidationError(
                     rule="wrapped_usage_conflict",

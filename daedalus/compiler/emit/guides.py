@@ -32,7 +32,7 @@ from daedalus.compiler.emit.common import (
     _join_blocks,
     emitted_components,
 )
-from daedalus.model.plugin.placement import is_edge_placeable
+from daedalus.model.plugin.placement import is_edge_placeable, is_reference_placed
 from daedalus.model.plugin.roles import BodySource, Bucket, PlacementRole
 from daedalus.model.plugin.variables import ROOT_TOKEN
 
@@ -116,7 +116,7 @@ def workflow_pointer_kind(component, project) -> str:
         return "main"
     if not _graph_placements(component, project):
         return ""
-    if component.effective_placement() is PlacementRole.REFERENCE:
+    if is_reference_placed(component):
         # 참조 노드는 스스로 워크플로를 진행시키지 않는다. 참조 용도 랩핑
         # 스킬은 산출 파일도 없지만, D1 이전에 만든 `.ddpj`에는 state 노드로
         # 박혀 있을 수 있어 여기까지 도달한다.
@@ -147,7 +147,7 @@ def blackboard_pointer_wanted(component, project) -> bool:
     """
     if not _blackboard_guide_available(project):
         return False
-    if component.effective_placement() is PlacementRole.REFERENCE:
+    if is_reference_placed(component):
         return False
     return (
         component.BUCKET is Bucket.AGENTS
