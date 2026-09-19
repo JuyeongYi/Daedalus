@@ -275,7 +275,7 @@ def test_scanner_sees_the_known_hotspots():
     # 비운다 — 아직 남은 집중 지점으로 교체한다(단언 수는 그대로다.
     # 표적을 지우면 스캐너가 조용히 0을 세도 통과한다).
     assert "view.panels.registry_panel" in modules
-    assert "view.app" in modules
+    assert "view.editor_tabs" in modules
     shape_modules = {module for module, _l, _q, _w in scan_shape_attrs()}
     # WP-2b가 `model.project`를, WP-2c가 `compiler.emit.sections`를 비웠다 —
     # 같은 이유로 남은 집중 지점(WP-2d·WP-7 소관)으로 교체한다.

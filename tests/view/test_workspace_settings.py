@@ -306,10 +306,11 @@ def test_prewarm_not_scheduled_for_hidden_window(qapp):
 
 def test_prewarm_builds_editor_when_visible(qapp, monkeypatch):
     """창이 보이면 유휴 타이머가 설정 위젯을 미리 구축한다."""
-    import daedalus.view.app as app_module
+    import daedalus.view.editor_tabs as tabs_module
     from daedalus.view.app import MainWindow
 
-    monkeypatch.setattr(app_module, "_SETTINGS_PREWARM_MS", 0)
+    # 프리웜 지연 상수는 탭 배선(EditorTabs)이 소유한다 (WP-7 ①).
+    monkeypatch.setattr(tabs_module, "_SETTINGS_PREWARM_MS", 0)
     window = MainWindow()
     window.load_project(PluginProject(name="p", build_target=BuildTarget.LOCAL))
     window.show()  # offscreen에서도 showEvent가 돈다

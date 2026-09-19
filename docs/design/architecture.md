@@ -42,7 +42,8 @@ GUI는 PySide6 노드 에디터(`view/`), 앱 내장 MCP 서버(`mcp/`)가 CC와
 | `compiler/workspace.py`·`wiring.py`·`token_report.py` | CLAUDE.md 구역 병합·rules 렌더 · `.mcp.json`/settings 병합 · 토큰 리포트(표시 전용, 계상 구간은 `TokenKind`) |
 | `mcp/` | 앱 내장 MCP 서버 — `tools/`(도메인 믹스인), `service.py`(HTTP 수명주기), `invoker.py`(메인 스레드 마샬링) |
 | `cli/` | `daedalus-bb` — 블랙보드 read/init/write/validate/list + progress |
-| `view/app.py` | MainWindow **골격** — 실체는 협력 객체 6종(`session_io`/`compile_actions`/`launch_actions`/`validation_actions`/`graph_io`/`component_actions`)에 있고 창에는 한 줄 위임만 |
+| `view/app.py` | MainWindow **골격** — 실체는 협력 객체 7종(`session_io`/`compile_actions`/`launch_actions`/`validation_actions`/`graph_io`/`component_actions`/`editor_tabs`)에 있고 창에는 한 줄 위임만 |
+| `view/editor_tabs.py` | `EditorTabs(window)` — 고정 탭 6개 구축 + 컴포넌트 편집 탭 수명주기(열기·닫기·제목 동기화·프론트매터 재구축) + 탭 전환의 undo 스택 배선. 탭 인덱스 상수·`_tab_prefix`의 소유자 |
 | `view/actions/` | **UI 무관 편집 액션** — 캔버스 메뉴·에디터·MCP가 공유하는 기능의 실체 |
 | `view/canvas/`·`commands/`·`editors/`·`panels/`·`viewmodel/`·`widgets/` | 노드 캔버스 · undo 커맨드 · 속성 편집기 · 독 패널 · VM(notify 채널) · 공용 위젯(마크다운 에디터 패키지, TagInput) |
 
@@ -535,10 +536,10 @@ daedalus/
     ├── recent.py           # 최근 프로젝트 목록(WP-RP) — ~/.daedalus/recent.json 읽기/쓰기 (Qt 무관 순수 stdlib).
     │                       #   load/save/push/remove/clear + MAX_RECENT. 기록 실패는 삼킨다(endpoint.py와 같은 정책).
     │                       #   실존 검사는 하지 않는다 — 메뉴를 열 때마다 stat을 때리면 네트워크 드라이브에서 UI가 멈춘다.
-    ├── app.py              # 메인 윈도우 **골격** (WP-RF-3e 분해 후 — 줄 수는 `docs/backlog.md` §7 표가 단일 진실) — 탭·독·메뉴 배선 + 컴포넌트 편집 진입.
-    │                       #   나머지는 협력 객체 6종에 위임(Mixin 아님 — 상속으로 섞으면 이름 충돌과 self의 정체가 흐려진다):
+    ├── app.py              # 메인 윈도우 **골격** (WP-RF-3e 분해 후 — 줄 수는 `docs/backlog.md` §7 표가 단일 진실) — 독·메뉴 배선 + 프로젝트 수명주기.
+    │                       #   나머지는 협력 객체 7종에 위임(Mixin 아님 — 상속으로 섞으면 이름 충돌과 self의 정체가 흐려진다):
     │                       #   session_io.py / compile_actions.py / launch_actions.py / validation_actions.py /
-    │                       #   graph_io.py / component_actions.py (아래 각 항목).
+    │                       #   graph_io.py / component_actions.py / editor_tabs.py (아래 각 항목).
     │                       #   **협력 객체가 실체이고 MainWindow에는 같은 이름의 한 줄 위임 메서드만 남는다** — 테스트와 MCP 도구가
     │                       #   window._save_to_path(...)처럼 윈도우의 내부 메서드를 직접 부르기 때문이다(tests/view/test_app_collaborators.py가 고정).
     │                       #   **위임은 한 방향이다** — 협력 객체끼리·자기 자신의 후속 단계는 self.update_title()처럼 협력 객체 쪽을
@@ -555,8 +556,8 @@ daedalus/
     │                       # 컴포넌트 생성·이름 변경·삭제는 component_actions.py로 이관(아래 항목) — 창에는 한 줄 위임만.
     │                       # 탭 구조(WP-BB/WP-HK/WP-WD): 0=프로젝트 FSM 캔버스, 1=블랙보드(BlackboardPanel), 2=훅 라이브러리(HookLibraryPanel),
     │                       #   3=CLAUDE.md 구역(ClaudeMdPanel), 4=규칙(RulesPanel), 5=작업 폴더 설정(WorkspaceSettingsPanel — WP-WS)
-    │                       #   — 상주·닫기 불가 고정 6개. _close_tab이 여섯 인덱스를
-    │                       #   모두 거부하고, load_project의 탭 정리 루프는 _LAST_FIXED_TAB_INDEX 다음부터 닫는다.
+    │                       #   — 상주·닫기 불가 고정 6개. **실체는 editor_tabs.py**(WP-7 ①, 아래 항목) — 창에는 한 줄 위임만.
+    │                       #   _close_tab이 여섯 인덱스를 모두 거부하고, load_project의 탭 정리 루프는 _LAST_FIXED_TAB_INDEX 다음부터 닫는다.
     │                       #   **LOCAL 전용 탭 표시(WP-WS)**: 탭 3·4·5는 빌드 타깃이 LOCAL일 때만 보인다 —
     │                       #   _refresh_target_dependent_tabs가 setTabVisible로 **숨긴다**(제거 아님 — 인덱스가
     │                       #   보존돼야 고정 탭 체계·_open_tabs가 흔들리지 않는다). set_project와
@@ -566,6 +567,15 @@ daedalus/
     │                       #   markdown_editor.set_files_root_provider(lambda: self._file_panel.files_root())를 등록.
     │                       # 미저장 변경: _dirty 플래그 + _mark_dirty/mark_clean/confirm_discard_changes.
     │                       #   상세는 "미저장 변경 확인" 개념 섹션 참조.
+    ├── editor_tabs.py      # EditorTabs(window) — **탭 배선**(WP-7 ① — app.py 1,072줄 선분해, 이동만).
+    │                       #   setup_central(QTabWidget + 고정 탭 6개 + FsmScene 생성 + notify 리스너 등록)/
+    │                       #   schedule_settings_prewarm(WP-WS 유휴 프리웜, isVisible 가드)/on_project_vm_changed(레지스트리 dim +
+    │                       #     상주 패널 refresh_external + 탭 제목·표시 재동기)/refresh_target_dependent_tabs(LOCAL 전용 탭 setTabVisible)/
+    │                       #   sync_tab_titles/open_component(SkillEditor·AgentEditor 탭)/rebuild_component_frontmatter(종류 전환 후 폼 재생성)/
+    │                       #   open_component_ports(A9-5)/close_tab/on_tab_changed(활성 undo 스택 전환)/on_scene_selection/update_undo_redo/undo/redo.
+    │                       #   **탭 인덱스 상수(_FSM_TAB_INDEX … _FIXED_TAB_INDEXES·_LOCAL_ONLY_TAB_INDEXES·_LAST_FIXED_TAB_INDEX)와
+    │                       #   _tab_prefix의 소유자**다 — app.py가 **같은 객체**를 재-export한다(테스트·validation_actions가 app 경로로 임포트).
+    │                       #   상태(_tabs/_open_tabs/_fsm_scene/고정 패널)는 계속 윈도우 소유이고 self._w.<attr>로 읽고 쓴다.
     ├── session_io.py       # SessionIO(window) — 저장/열기/최근 목록/패키지(.ddpj) (WP-RF-3e에서 app.py로부터 추출).
     │                       # 프로젝트 패키지(WP-PK): 열기/저장이 **폴더** 단위. open_project_dialog(폴더 선택)/open_file_dialog(구버전 파일 직접)/
     │                       #   save_project_as(폴더 선택 — 형식이 새 형식으로 바뀌는 유일한 지점)/export_package_dialog/import_package_dialog.
@@ -604,7 +614,8 @@ daedalus/
     ├── validation_actions.py  # ValidationActions(window) — F7 검증 + 결과 항목 → 노드 포커스 (WP-RF-3e에서 추출).
     │                       #   run_validation(Validator.validate_project → ValidationPanel + dock 표시)/show_validation_dock(컴파일 경로와 공용)/
     │                       #   find_validation_dock/on_validation_item_activated → focus_in_project_canvas | focus_in_agent_tab.
-    │                       #   탭 인덱스 상수(_FSM_TAB_INDEX)는 app.py 소유라 **메서드 안에서 지역 임포트**한다(최상단이면 순환 임포트).
+    │                       #   탭 인덱스 상수(_FSM_TAB_INDEX)는 app.py가 editor_tabs.py에서 재-export한 것이라 **메서드 안에서 지역
+    │                       #   임포트**한다(최상단이면 순환 임포트).
     ├── graph_io.py         # GraphIO(window) — 프로젝트 그래프 ↔ 캔버스 VM 왕복 (app.py로부터 추출).
     │                       #   load_project_graph(project.graph + graph_layout/edge_layout → state_vms/transition_vms/
     │                       #     reference_vms/reference_links 재구성 + notify. WP-EP: EntryPoint와 그에 닿는 전이는 VM을 만들지 않는다)/

@@ -129,6 +129,23 @@
   돌아오고 탭을 다시 열 때 문서가 새로 만들어진다 — 잃는 것은 본문 편집 이력뿐이다.
   닫힌 편집 탭도 undo로 다시 열리지는 않는다.
 
+## 탭 배선 — `view/editor_tabs.py` (WP-7 ①)
+
+- **역할:** 고정 탭 6개(0 FSM 캔버스 · 1 블랙보드 · 2 훅 · 3 CLAUDE.md · 4 규칙 · 5 설정) 구축과
+  컴포넌트 편집 탭의 수명주기(열기·닫기·제목 동기화·종류 전환 후 폼 재생성·포트 포커스),
+  그리고 탭 전환이 좌우하는 활성 undo 스택 배선이 `EditorTabs(window)` 하나에 모인다.
+  `MainWindow`의 협력 객체다(Mixin 아님 — `session_io`/`component_actions`와 같은 관례).
+- **왜 나왔나:** `app.py`가 1,072줄로 분해 예산(~800줄)을 넘겼고, 탭에 관한 것이 한 덩어리로
+  떨어져 나올 수 있었다(코드 위생 — "기능을 더하기 전에 먼저 쪼갠다"). WP-7 ②가 여기에
+  `KIND_UI` 조회를 얹는다.
+- **소유·위임:** 탭 인덱스 상수(`_FSM_TAB_INDEX` … `_FIXED_TAB_INDEXES`·`_LOCAL_ONLY_TAB_INDEXES`·
+  `_LAST_FIXED_TAB_INDEX`)와 `_tab_prefix`의 **소유자는 이 모듈**이고, `app.py`는 **같은 객체**를
+  재-export한다(테스트·`validation_actions`가 `daedalus.view.app` 경로로 임포트해 왔다 — 복제하면
+  두 벌이 되어 인덱스가 갈린다). 창에는 `_open_component`/`_close_tab` 등 한 줄 위임만 남는다 —
+  테스트와 MCP 도구가 창의 내부 메서드를 직접 부른다.
+- **상태의 단일 진실은 계속 윈도우다**(`_tabs`/`_open_tabs`/`_fsm_scene`/고정 패널들) —
+  협력 객체는 복제하지 않고 `self._w.<attr>`로 직접 읽고 쓴다.
+
 ## 컴파일 미리보기 (A9-1) — 진입점 넷, 실체 하나
 
 "그래서 이게 어떤 파일로 나가는데?"를 여는 표면은 넷이다 — 캔버스 노드 우클릭

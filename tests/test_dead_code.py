@@ -129,9 +129,9 @@ EXTERNAL_BASE_HIDDEN_BASELINE: frozenset[str] = frozenset({
     "view.widgets.lifecycle_picker::HookLifecycleScene.item_for",
     "view.widgets.tag_input::TagInput.get_candidates",
     # ── override가 아니다 — 문자열 `getattr` 동적 호출(디스패치 표 밖) ──
-    # surface_commands.py:52 `getattr(window, "rebuild_component_frontmatter")`
-    "view.app::MainWindow.rebuild_component_frontmatter",
-    # app.py:948 `getattr(editor, "rebuild_frontmatter")`
+    # (`MainWindow.rebuild_component_frontmatter`는 WP-7 ①에서 `EditorTabs`
+    #  위임이 되며 정적 소비자가 생겨 이 목록에서 빠졌다.)
+    # editor_tabs.py `getattr(editor, "rebuild_frontmatter")`
     "view.editors.component_editor::ComponentEditor.rebuild_frontmatter",
     # ── override도 동적 호출도 아니다 — 귀속 WP가 정해진 잔재 ──
     # (`handle_node_moved`/`handle_waypoint_moved`는 WP-1 D9에서 삭제됐다 —
