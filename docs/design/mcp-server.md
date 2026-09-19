@@ -186,7 +186,12 @@
   필드(fork의 `allowed_tools` — fork에서는 에이전트 도구가 이긴다)와 ② 종류가 고정하는 FIXED
   필드(transfer·reference의 `user_invocable` 등)를 받아 저장하고는 산출에서 조용히 버렸다. 지금은
   둘 다 이유를 말하며 거절한다(FIXED는 고정값과 `convert_skill`을, 나머지는 그 종류의 필드
-  목록을). 대상 필드 집합은
+  목록을). **거절의 "사용 가능" 목록은 setter가 실제로 받는 이름만** 싣는다 — FIXED 행과 전용 도구
+  필드를 빼지 않으면 같은 호출이 거절할 이름을 선택지로 내놓는다(원칙 5는 이유와 **선택지**를 요구한다).
+  전용 도구로 안내하며 거절하는 필드는 셋이다: `hooks`→`set_component_hooks`, `usage`→
+  `change_wrapped_usage`, `enabled`→`set_wrapped_enabled`. `enabled`는 `WrappedSkillConfig`의
+  dataclass 필드지만 매트릭스 행이 없어 P4 게이트가 "필드가 없습니다"로 거절하게 됐던 자리다 —
+  사실도 아니고 갈 곳도 못 말하므로 포인터 분기를 두었다(WP-8 리뷰 반영). 대상 필드 집합은
   `model/plugin/field_matrix.matrix_for(component)`가 고른다(WP-FK2) — 키는 `component.config.kind`
   이고, 컴파일러·편집기가 부르는 것과 **같은 함수**다. 맨 첨자는 kind가 표와 어긋나는 날 앱을
   죽이고 `.get(kind, {})`는 조용한 빈 폼을 내므로, 어느 종류가 어느 표에 없는지 말하는

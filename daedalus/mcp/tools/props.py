@@ -15,7 +15,8 @@ from typing import Any
 
 from daedalus.model.plugin.enums import SkillField
 from daedalus.model.plugin.kinds import config_kinds_in
-from daedalus.model.plugin.roles import Bucket, PlacementRole
+from daedalus.model.plugin.placement import role_is_canvas_placeable
+from daedalus.model.plugin.roles import Bucket
 
 from .fields import FieldTools
 from .placement_prose import placement_role_prose
@@ -110,10 +111,12 @@ class PropsTools(FieldTools):
             raise ValueError(
                 "x와 y는 함께 주어야 합니다 — 한쪽만으로는 배치 좌표가 정해지지 않습니다."
             )
-        # 배치 가능성은 종류 목록이 아니라 **배치 역할 선언**이 답한다(P5) —
-        # 캔버스 노드가 되는 것은 STATE(상태 노드)와 REFERENCE(참조 노드)뿐이다.
+        # 배치 가능성은 종류 목록이 아니라 **배치 역할 선언**이 답한다(P5).
+        # 판정의 실체는 `model.plugin.placement` 하나다 — 여기서 enum 비교를
+        # 손으로 적으면 `is_canvas_placeable`과 갈린다(원칙 1). 컴포넌트가
+        # 아직 없으므로(만들기 전에 거절한다) 역할을 받는 입구를 쓴다.
         role = spec_by_config_kind(kind).placement
-        if role not in (PlacementRole.STATE, PlacementRole.REFERENCE):
+        if not role_is_canvas_placeable(role):
             raise ValueError(
                 f"'{kind}' 종류는 캔버스에 노드로 배치되지 않습니다 "
                 f"({placement_role_prose(role)}) — x/y 없이 만드세요."

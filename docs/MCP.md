@@ -90,10 +90,13 @@ GUI가 켜지면 `127.0.0.1`에 Streamable HTTP로 뜬다.
   (보고가 나중에 작업 알림으로 온다). 이 차이를 만드는 `background` 프론트매터는 종류가 정하므로
   `list_component_fields`에 나오지 않고 `set_component_field`로도 바꿀 수 없다 — 바꾸려면
   `convert_skill`로 종류를 바꾼다.
-- **설정 가능한 필드는 `list_component_fields`가 주는 목록 그대로다.** 종류가 값을 고정하는 필드
-  (`context`·`background`, transfer·reference의 `user_invocable` 등)와 그 종류의 표에 없는 필드
-  (fork의 `allowed_tools`)는 **거절한다** — 받아 두고 산출에서 조용히 버리면 "설정했는데 아무 일도
-  일어나지 않는" 상태가 된다. 거절은 고정값과 갈 곳(`convert_skill`)을 말한다.
+- **설정 가능한 필드는 `list_component_fields` 목록에서 `visibility: fixed` 행을 뺀 나머지다.**
+  종류가 값을 고정하는 필드(`context`·`background`, transfer·reference의 `user_invocable` 등)와
+  그 종류의 표에 없는 필드(fork의 `allowed_tools`)는 **거절한다** — 받아 두고 산출에서 조용히
+  버리면 "설정했는데 아무 일도 일어나지 않는" 상태가 된다. 거절은 고정값과 갈
+  곳(`convert_skill`)을 말하고, 이름을 잘못 준 경우의 "사용 가능" 목록에는 **실제로 설정되는
+  이름만** 실린다. 전용 도구가 있는 셋은 그 도구로 안내한다: `hooks`→`set_component_hooks`,
+  `usage`→`change_wrapped_usage`, `enabled`→`set_wrapped_enabled`.
 - **생성 인자는 그 종류가 그 설정을 가질 때만 받는다.** `fork_agent`/`source`/`usage`를 다른 종류에
   주면 거절하며 **받을 수 있는 종류를 함께 말한다**.
 - **fork 에이전트는 캔버스에 놓이지 않는다.** `create_agent(kind="fork_agent")`에 `x`·`y`를 주면

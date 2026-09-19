@@ -94,12 +94,12 @@ def _non_canvas_kinds() -> list[str]:
     조용히 엉뚱한 노드가 생긴다 — 이제 배치 역할 선언 하나가 답한다.
     """
     from daedalus.model.plugin.kinds import KIND_REGISTRY
-    from daedalus.model.plugin.roles import PlacementRole
+    from daedalus.model.plugin.placement import role_is_canvas_placeable
 
     return sorted(
         spec.config_kind
         for spec in KIND_REGISTRY.values()
-        if spec.placement not in (PlacementRole.STATE, PlacementRole.REFERENCE)
+        if not role_is_canvas_placeable(spec.placement)
     )
 
 
@@ -129,9 +129,7 @@ def test_no_place_kinds_match_canvas_placeable(window):
     from daedalus.model.plugin.roles import Bucket
 
     non_canvas = _non_canvas_kinds()
-    assert non_canvas == ["declarative", "transfer", "fork_agent"] or set(
-        non_canvas
-    ) == {"declarative", "transfer", "fork_agent"}
+    assert set(non_canvas) == {"declarative", "transfer", "fork_agent"}
     for kind in non_canvas:
         comp = make_component(window, kind, f"probe-{kind}")
         assert comp is not None

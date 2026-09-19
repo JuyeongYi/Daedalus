@@ -157,17 +157,61 @@ def test_field_on_config_but_not_in_the_matrix_is_refused(tools, window):
 
 
 def test_settable_fields_are_exactly_the_non_fixed_matrix_rows(tools):
-    """`list_component_fields`가 주는 목록과 setter의 허용 집합이 같다(원칙 1)."""
+    """setter가 실제로 받는 집합 == 매트릭스 비-FIXED 행 − 전용 도구 필드.
+
+    멤버십 두 개만 보면 setter가 FIXED 행을 전부 받아도 통과한다 — 목록을
+    **돌려서** 실제 허용 집합을 재고 집합 동등으로 고정한다(원칙 1).
+    """
     from daedalus.model.plugin.enums import FieldVisibility
+    from daedalus.mcp.tools.fields import _DEDICATED_TOOL_FIELDS
 
     tools.create_skill("scout", kind="sync_fork")
+    rows = tools.list_component_fields("scout")["fields"]
     listed = {
-        f["field"]
-        for f in tools.list_component_fields("scout")["fields"]
-        if f["visibility"] != FieldVisibility.FIXED.value
+        f["field"] for f in rows if f["visibility"] != FieldVisibility.FIXED.value
     }
-    # 전용 도구로 안내하는 두 필드(hooks·usage)를 빼면 나머지는 전부 설정된다.
     assert "agent" in listed and "allowed_tools" not in listed
+
+    accepted = set()
+    for row in rows:
+        field = row["field"]
+        try:
+            # 현재 값을 그대로 다시 넣는다 — 허용 여부만 재고 상태는 바꾸지 않는다.
+            tools.set_component_field("scout", field, row["current"])
+        except ValueError:
+            continue
+        accepted.add(field)
+    assert accepted == listed - _DEDICATED_TOOL_FIELDS
+
+
+def test_rejection_offers_only_fields_that_can_actually_be_set(tools):
+    """거절이 내놓는 "사용 가능" 선택지는 전부 실제로 설정된다(원칙 5).
+
+    예전에는 `list_component_fields`를 그대로 흘려서 같은 호출이 거절하는
+    FIXED 행(`disable_model_invocation` 등)과 전용 도구 필드까지 선택지로
+    제시했다 — 이유는 맞고 선택지가 틀린 거절이다.
+    """
+    tools.create_skill("xfer", kind="transfer")
+    with pytest.raises(ValueError) as excinfo:
+        tools.set_component_field("xfer", "nope", 1)
+    offered = [
+        part.strip()
+        for part in str(excinfo.value).split("사용 가능:")[-1].split(",")
+        if part.strip()
+    ]
+    assert offered
+    current = {
+        f["field"]: f["current"] for f in tools.list_component_fields("xfer")["fields"]
+    }
+    for field in offered:
+        tools.set_component_field("xfer", field, current[field])
+
+
+def test_wrapped_enabled_points_at_its_dedicated_tool(tools):
+    """`enabled`는 매트릭스 행이 없지만 "필드가 없다"가 아니라 **포인터**다."""
+    tools.create_skill("w", kind="wrapped", source="other@mkt:s")
+    with pytest.raises(ValueError, match="set_wrapped_enabled"):
+        tools.set_component_field("w", "enabled", False)
 
 
 # --- P5: 배치 거절 문구는 배치 역할에서 파생 -------------------------------

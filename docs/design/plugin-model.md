@@ -277,7 +277,9 @@ WP-4가 통째로 지웠다 — `_deser_config`가 `spec_by_config_kind(kind).co
 
 캔버스 드롭(`scene.py`)·레지스트리 드래그·MCP `place_component`/`create_skill(x, y)`가 전부 이것을
 부른다(음성 목록 3벌 → 양성 판정, 원칙 1 — 마지막 음성 목록 `creation.NO_PLACE_KINDS`는 WP-8에서
-퇴역했고, MCP의 좌표 거절은 `KindSpec.placement` 선언을 직접 읽는다). `DeclarativeSkill`·`TransferSkill`·`ForkAgent`는 False다.
+퇴역했다). 컴포넌트가 아직 없는 자리(생성 인자의 kind 문자열, `KindSpec.placement`를 훑는 테스트)는
+**같은 판정의 다른 입구** `role_is_canvas_placeable(role)`을 부른다 — `is_canvas_placeable`은 그
+한 줄 위의 파사드이고, `STATE`/`REFERENCE` 비교를 손으로 베껴 적는 표면은 없다. `DeclarativeSkill`·`TransferSkill`·`ForkAgent`는 False다.
 같은 모듈의 `fork_skills_using(agent, project)`는 **fork 역참조의 단일 진실**이다 —
 필터는 `name in s.config.name_refs(Bucket.AGENTS)`(Q14)라 종류 이름을 묻지 않는다 —
 `delegated_agent_name()`(Q33)을 쓰면 랩핑 스킬이 **자기 이름의 러너**를 답해 에이전트와 동명인 랩퍼가

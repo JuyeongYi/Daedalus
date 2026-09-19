@@ -4,13 +4,13 @@
 **두 판정이다.** 하나로 합치면 참조 스킬 경로가 죽는다:
 
 - `is_state_placeable` — 그래프에 **SimpleState 노드**로 놓을 수 있는가.
-- `is_canvas_placeable` — 캔버스에 끌어놓거나 "여기에 만들기"로 놓을 수 있는가
-  (상태 노드 **또는** 참조 노드로).
+- `is_canvas_placeable` — 캔버스에 놓을 수 있는가(상태 노드 **또는** 참조 노드로).
+  컴포넌트가 아직 없는 자리(생성 인자의 kind 문자열·레지스트리 선언)에서는
+  역할만 아는 `role_is_canvas_placeable`을 부른다 — 같은 실체의 두 입구다.
 - `is_edge_placeable` — 전이 엣지에 붙는가(전이 스킬).
 
-캔버스 드롭·레지스트리 드래그·"여기에 만들기"·MCP `place_component`가 전부
-여기를 부른다 — 음성 목록(NO_PLACE_KINDS 등)을 표면마다 따로 들고 있으면
-어긋난다(원칙 1).
+캔버스 드롭·레지스트리 드래그·MCP `place_component`/`create_skill(x, y)`가
+전부 여기를 부른다 — 같은 enum 비교를 표면마다 손으로 적으면 어긋난다(원칙 1).
 
 **판정의 실체는 컴포넌트 자신이다**(WP-2b). 여기 있는 것은 "어떤 배치 역할이
 무슨 이름으로 불리는가"라는 어휘 번역뿐이고, 종류 목록은 없다 — 새 종류는
@@ -76,13 +76,25 @@ def is_reference_placed(component: object) -> bool:
     return placement_role_of(component) is PlacementRole.REFERENCE
 
 
+def role_is_canvas_placeable(role: PlacementRole) -> bool:
+    """이 **배치 역할**이 캔버스 노드가 되는가 — 상태 노드 또는 참조 노드.
+
+    컴포넌트 인스턴스가 아직 없는 자리에서 쓴다: MCP `create_skill(x, y)`는
+    kind 문자열만 들고 "만들기 전에" 거절해야 하고(만들고 나서 못 놓는다고
+    하면 이름만 남는다), 레지스트리 선언(`KindSpec.placement`)을 훑는 테스트도
+    마찬가지다. `is_canvas_placeable`의 본문을 손으로 베껴 쓰면 STATE/REFERENCE
+    비교가 표면마다 갈린다(원칙 1) — 실체는 이 한 줄이다.
+    """
+    return role in (PlacementRole.STATE, PlacementRole.REFERENCE)
+
+
 def is_canvas_placeable(component: object) -> bool:
     """캔버스에 놓이는 컴포넌트인가 — 상태 노드 또는 참조 노드.
 
     `is_state_placeable`과 **다른 질문**이다: 참조 스킬은 상태 노드가 될 수
     없지만 캔버스에는 참조 노드로 놓인다(레지스트리에서 드래그 가능).
     """
-    return placement_role_of(component) in (PlacementRole.STATE, PlacementRole.REFERENCE)
+    return role_is_canvas_placeable(placement_role_of(component))
 
 
 def fork_skills_using(agent, project) -> list[str]:

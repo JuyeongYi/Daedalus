@@ -24,6 +24,11 @@ from daedalus.model.plugin.enums import SkillField
 
 from ._base import _BaseTools
 
+#: 매트릭스 행이 있어도(또는 config 필드가 있어도) `set_component_field`가
+#: 받지 않고 **전용 도구로 안내**하는 필드. 거절 문구의 "사용 가능" 목록도
+#: 같은 집합을 뺀다 — 설정되지 않는 이름을 선택지로 내놓으면 안 된다(원칙 5).
+_DEDICATED_TOOL_FIELDS: frozenset[str] = frozenset({"hooks", "usage", "enabled"})
+
 
 class FieldTools(_BaseTools):
     """프론트매터 필드 조회·편집 — 표를 고르는 규칙은 model의 `matrix_for` 하나다."""
@@ -167,7 +172,8 @@ class FieldTools(_BaseTools):
         config에 기록해도 산출에 도달하지 않는다 — 조용한 no-op 대신 **이유를
         말하며 거절**한다(원칙 5).
 
-        description / when_to_use / hooks는 전용 도구를 쓴다.
+        description / when_to_use / hooks / usage / enabled는 전용 도구를 쓴다 —
+        거절이 그 도구 이름을 말한다.
         """
         from daedalus.model.plugin.enums import FieldVisibility
         from daedalus.model.plugin.field_matrix import matrix_for
@@ -183,6 +189,15 @@ class FieldTools(_BaseTools):
                 "배치(또는 create_skill의 usage 인자)가 고정하며, 한 스킬 두 "
                 "용도는 금지입니다(WP-WR). 바꾸려면 스킬을 지우고 다시 만드세요."
             )
+        if field == "enabled" and hasattr(config, "enabled"):
+            # 매트릭스에 `enabled` 행이 없는 것은 "그런 필드가 없어서"가 아니라
+            # **전용 도구가 있어서**다(랩핑 스킬 활성/비활성). "필드가 없습니다"로
+            # 거절하면 사실과 다르고 갈 곳도 알려주지 못한다(원칙 5) —
+            # hooks·usage와 같은 층의 포인터 분기다.
+            raise ValueError(
+                "랩핑 스킬의 활성/비활성은 set_wrapped_enabled를 쓰세요 — "
+                "배선·산출 반영이 함께 1 undo로 들어갑니다."
+            )
         # 허용 판정은 **매트릭스 한 곳**에서 나온다(P4). 예전에는 "config에
         # 속성이 있는가"만 물어서, 매트릭스에 없는 필드(fork의 allowed_tools —
         # fork에서는 에이전트 도구가 이긴다)나 종류가 고정하는 필드까지 받아
@@ -196,8 +211,14 @@ class FieldTools(_BaseTools):
                 f"바꿉니다(convert_skill)."
             )
         if rule is None or not hasattr(config, field):
+            # **선택지는 실제로 설정되는 것만** 말한다(원칙 5). 예전에는
+            # `list_component_fields`를 그대로 흘려서, 같은 호출이 거절하는
+            # FIXED 행과 전용 도구 필드까지 "사용 가능"으로 내놓았다.
             known = [
-                f["field"] for f in self.list_component_fields(name)["fields"]
+                f["field"]
+                for f in self.list_component_fields(name)["fields"]
+                if f["visibility"] != FieldVisibility.FIXED.value
+                and f["field"] not in _DEDICATED_TOOL_FIELDS
             ]
             raise ValueError(
                 f"'{comp.kind}'에는 '{field}' 필드가 없습니다. "
