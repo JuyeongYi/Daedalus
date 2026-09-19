@@ -68,7 +68,19 @@ def preview_component(component, project=None, resolved_hooks=None) -> Preview:
     `project`를 주면 그래프에서 유도하는 단락(다음 단계·진입 맥락·호출 계약·
     블랙보드)까지 포함된 **실제와 같은** 산출이 된다 — 주지 않으면 컴포넌트
     자체만으로 만들 수 있는 부분만 나온다.
+
+    산출 자리가 없는 종류는 **여기서** 거절한다(WP-9 리뷰 반영). GUI 진입점 셋은
+    `can_preview()`로 메뉴를 흐리지만 MCP `compile_preview`는 그 게이트가 없어,
+    거절 이유가 "emitter 등록이 빠졌다"는 내부 사정으로 들렸다 — 표면마다 다른
+    이유를 말하지 않도록 게이트도 판정도 이 함수 하나가 갖는다(원칙 1·2·5).
     """
+    if not can_preview(component):
+        raise ValueError(
+            f"'{component.kind}'는 산출 파일이 없어 미리볼 것이 없습니다 — 이 "
+            f"노드의 정본은 외부에 있고, 우리 산출에 남는 흔적은 이 노드를 "
+            f"부르는 쪽(스킬·에이전트)의 위임 지시입니다. 그 컴포넌트를 "
+            f"미리보세요."
+        )
     emitter = emitter_for(component)
     ctx = CompileContext.build(project, dry_run=True)
     return Preview(

@@ -145,6 +145,15 @@ below from its report"*.
 질문**이라 한 함수로 묶지 않는다 — 묶으면 위임 대상이 없는 종류가
 `general-purpose`로 답한다.
 
+**source가 깨졌으면 이름을 지어내지 않는다** (WP-9 리뷰 반영). `source`가 비었거나
+`플러그인:이름` 형식이 아니면 `delegation_target_name`이 **`None`**이고, 산출은 이름
+대신 고칠 자리를 말한다 — 지시 자리는 `delegate_to_phrase`의 *"cannot delegate — the
+external plugin agent on node `X` has no usable `source` …"*, 서술 자리(진입 맥락)는
+`delegation_source_label`의 *"the external plugin agent on node `X`"*다. 종전에는
+`source or name`이라 노드 이름(`critic`)이나 플러그인 id(`review-pack`)가 위임 지시에
+그대로 실렸고, 둘 다 CC가 못 찾는 이름이라 **없는 에이전트를 지목한 산출**이 나갔다 —
+`external_source_missing`은 경고라 컴파일이 성공하기 때문이다(원칙 5).
+
 **이름 게이트를 받지 않는다.** 산출 파일이 없으므로 CC 파일명 규약
 (`^[a-z0-9][a-z0-9-]*$`)을 따를 이유가 없다 — 그 이름은 남의 플러그인이 지은 것이라
 우리가 고칠 수 없고, 게이트를 걸면 남의 작명 때문에 컴파일이 통째로 막힌다
@@ -156,7 +165,7 @@ below from its report"*.
 | 규칙 | 등급 | 합류 경로 |
 |---|---|---|
 | `external_source_missing` | 경고 | `external_source`가 `None`이 아닌 컴포넌트 전부 — 빈 값·형식 불일치 |
-| `undeclared_external_plugin` | 경고 | `external_plugin_refs()` — `external_plugins` 미선언 |
+| `undeclared_external_plugin` | 경고 | `external_plugin_refs()` — `external_plugins` 미선언. fork 스킬의 같은 사실이 **에러**(`fork_agent_undeclared_plugin`)인 비대칭은 `docs/backlog.md`에 결정으로 기록돼 있다(등급의 단일 진실이 규칙 **이름**의 집합이라 종류별 등급은 규칙을 쪼개야 한다) |
 | `transfer_on_not_empty` | 에러 | `REQUIRES_OUTPUT_PORTS=True` |
 | `agent_chain_too_deep` | 에러 | `DELEGATION_TARGET=True` — callee로 체인 깊이에 **합류한다** |
 | `agent_calls_higher_model` | – | **건너뛴다** (아래) |

@@ -212,14 +212,24 @@ def test_mcp_create_vocabulary_includes_it():
 # ── 컴파일: 산출 0개 ─────────────────────────────────────────────────────
 
 def test_it_has_no_emitter_and_no_preview():
+    """미리보기 거절은 **사용자의 말**로 한다 — emitter 등록은 우리 사정이다.
+
+    GUI는 `can_preview`로 메뉴를 흐리지만 MCP `compile_preview`에는 흐릴 메뉴가
+    없다 — 게이트가 `preview_component` 안에 없으면 그 표면만 "emitter가 없다"는
+    내부 사정을 이유로 말한다(원칙 2·5, WP-9 리뷰).
+    """
     agent = _external()
     assert "external_agent" not in EMITTERS
     assert not agent.emits_output()
     assert not can_preview(agent)
     with pytest.raises(ValueError, match="external_agent"):
         emitter_for(agent)
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError) as exc:
         preview_component(agent)
+    message = str(exc.value)
+    assert "external_agent" in message
+    assert "산출 파일이 없어" in message and "부르는 쪽" in message
+    assert "emitter" not in message
 
 
 def test_compile_produces_no_file_for_it(tmp_path):
@@ -241,6 +251,60 @@ def test_caller_names_it_by_source_and_says_it_knows_nothing(tmp_path):
     assert "knows neither this workflow nor the blackboard" in text
     # 노드 이름으로 부르면 CC가 그 서브에이전트를 찾지 못한다.
     assert "delegate to agent `critic`" not in text
+
+
+def test_a_broken_source_names_no_agent_at_all(tmp_path):
+    """부를 이름이 없으면 **이름을 지어내지 않는다** (WP-9 리뷰 — 정정).
+
+    종전에는 `source or name`이라 빈 source면 노드 이름(`critic`), 콜론 없는
+    source면 플러그인 id(`review-pack`)가 위임 지시에 그대로 실렸다. 둘 다 CC가
+    찾을 수 없는 이름인데 `external_source_missing`은 **경고**라 컴파일이
+    성공하므로, 없는 에이전트를 지목하는 산출이 그대로 나갔다(원칙 5).
+    """
+    from daedalus.compiler.emit import compile_agent, compile_skill
+
+    for broken in ("", "   ", "review-pack", "review-pack:"):
+        project, skill, _agent = _project(agent=_external(source=broken))
+        text = compile_skill(skill, project=project)
+        assert "cannot delegate" in text
+        assert "has no usable `source`" in text
+        assert "on node `critic`" in text
+        # 없는 이름을 어느 형태로도 적지 않는다.
+        assert "delegate to agent `" not in text
+
+        agent_project, caller = _agent_caller_project(_external(source=broken))
+        agent_text = compile_agent(caller, agent_project)
+        assert "cannot delegate" in agent_text
+        assert "delegate to agent `" not in agent_text
+
+    # 그래도 컴파일은 성공한다(경고 1건) — 편집 중일 수 있다.
+    project, _skill, _agent = _project(agent=_external(source=""))
+    result = compile_project(project, tmp_path)
+    assert result.ok, [e.message for e in result.errors]
+    assert "external_source_missing" in {e.rule for e in result.warnings}
+
+
+def test_entry_context_of_a_broken_source_points_at_the_node():
+    """진입 맥락은 지시가 아니라 서술이라 문구가 다르다 — 그래도 이름은 없다."""
+    from daedalus.compiler.emit import compile_skill
+
+    agent = _external(source="")
+    project, skill, _agent = _project(agent=agent)
+    after = _caller("wrapup")
+    project.skills.append(after)
+    node_after = SimpleState(name=after.name, skill_ref=after)
+    project.graph.states.append(node_after)
+    node_agent = next(
+        s for s in project.graph.states
+        if getattr(s, "skill_ref", None) is agent
+    )
+    project.graph.transitions.append(Transition(
+        source=node_agent, target=node_after,
+        trigger=CompletionEvent(name="approved"),
+    ))
+    text = compile_skill(after, project=project)
+    assert "entered after the external plugin agent on node `critic` returned" in text
+    assert "entered after agent `critic`" not in text
 
 
 def test_agent_delegation_section_carries_the_same_name_and_note():
@@ -345,6 +409,39 @@ def test_it_still_counts_toward_the_nesting_depth():
 def test_body_writes_are_rejected():
     """본문 정본이 외부인 종류는 MCP 본문 쓰기를 거절한다 (D4와 같은 술어)."""
     assert has_external_body(_external())
+
+
+def test_the_canvas_badge_does_not_call_it_a_wrapped_skill():
+    """뱃지 문구·아이콘도 **선언**에서 나온다 (WP-9 리뷰 — 스멜 ⑤).
+
+    술어(`has_external_body`)만 종류 중립이고 문구가 랩핑 스킬로 굳어 있으면,
+    외부 플러그인 **에이전트** 노드가 캔버스에서 🔗 "랩핑 스킬"로 불린다.
+    """
+    pytest.importorskip("PySide6")
+    from daedalus.view.canvas.node_badges import badges_for
+
+    (icon, tooltip), = badges_for(_external())
+    assert icon == "🔌"
+    assert "랩핑 스킬" not in tooltip
+    assert "EXTERNAL AGENTS" in tooltip and _SOURCE in tooltip
+
+
+def test_the_editor_panel_speaks_of_an_agent_not_a_skill():
+    """편집기 산문과 "원본 열기" 버튼도 종류를 따라간다 (WP-9 리뷰).
+
+    카탈로그는 플러그인의 `skills/<이름>/SKILL.md`만 해소한다 — 에이전트에
+    버튼을 남겨 두면 누를 때마다 "찾지 못했습니다"만 내놓는다(조용한 실패).
+    """
+    pytest.importorskip("PySide6")
+    from PySide6.QtWidgets import QApplication
+
+    from daedalus.view.editors.component_editor import _WrappedSourcePanel
+
+    QApplication.instance() or QApplication([])
+    panel = _WrappedSourcePanel(_external(source=""))
+    assert "에이전트" in panel._w_status.text()
+    assert "스킬" not in panel._w_status.text()
+    assert panel._btn_open.isHidden()
 
 
 def test_editable_fields_are_name_description_source():

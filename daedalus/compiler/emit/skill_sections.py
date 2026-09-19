@@ -17,8 +17,8 @@ from __future__ import annotations
 
 from daedalus.compiler.emit.common import (
     _graph_placements,
-    delegation_target_name,
-    external_delegation_suffix,
+    delegate_to_phrase,
+    delegation_source_label,
 )
 from daedalus.compiler.emit.sections import _transition_condition
 from daedalus.model.fsm.machine import StateMachine
@@ -72,11 +72,9 @@ def _next_step_invoke_line(transition, sm: StateMachine) -> str | None:
     # "이 노드로 가는 것이 위임인가"는 대상이 선언한다(`DELEGATION_TARGET`, Q9).
     if ref.DELEGATION_TARGET:
         # 노드를 부르는 이름은 그 노드가 정한다(WP-9) — 정본이 외부인
-        # 에이전트는 `플러그인:이름` 원문이 CC가 찾는 이름이다.
-        line = (
-            f"{prefix}delegate to agent `{delegation_target_name(ref)}`"
-            f"{external_delegation_suffix(ref)}"
-        )
+        # 에이전트는 `플러그인:이름` 원문이 CC가 찾는 이름이고, 그 원문이
+        # 깨졌으면 이름을 지어내는 대신 고칠 자리를 말한다.
+        line = f"{prefix}{delegate_to_phrase(ref)}"
         # 에이전트 placement의 outgoing을 한 단계 인라인 (별도 컨텍스트라 호출자
         # 쪽에 후속 지시를 둔다 — 에이전트 .md는 호출자 지침을 담을 수 없음).
         inline_parts: list[str] = []
@@ -309,10 +307,7 @@ def _entry_item_line(t, project) -> str:
     cond = _transition_condition(t)
     cond_str = f" [{cond}]" if cond else ""
     if ref is not None and ref.DELEGATION_TARGET:
-        line = (
-            f"- entered after agent `{delegation_target_name(ref)}` "
-            f"returned{cond_str}"
-        )
+        line = f"- entered after {delegation_source_label(ref)} returned{cond_str}"
         delegators = sorted({
             getattr(getattr(tr.source, "skill_ref", None), "name", "")
             for tr in getattr(project.graph, "transitions", [])

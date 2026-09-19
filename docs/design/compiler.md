@@ -298,6 +298,16 @@ AST로 강제) `emit/guides.py`의 `WORKFLOW_GUIDE_KIND`/`BLACKBOARD_GUIDE_KIND`
     두 물건이 된다(원칙 1). **본문을 누가 실행하는가**를 묻는 `agent_invocation_name`(20번,
     fork 스킬의 `config.agent`)과는 다른 질문이라 한 함수로 묶지 않는다: 묶으면 위임 대상이
     없는 종류가 `general-purpose`로 답한다.
+    **프로젝트 에이전트로 가는 위임은 빌드 타깃과 무관하게 맨 이름을 낸다** — 같은 마켓 빌드에서
+    fork 스킬 프론트매터는 `agent: <프로젝트>:<이름>`(20번 `agent_invocation_name`)인데 위임 산문은
+    `delegate to agent \`<이름>\``이다. 종전부터 그랬고 골든이 고정한다(패리티가 아니라 비대칭이다 —
+    `docs/backlog.md` "위임 이름 접두 비대칭").
+    **부를 이름이 없으면 지어내지 않는다**(리뷰 반영): `source`가 비었거나 `플러그인:이름` 형식이
+    아니면 `delegation_target_name`이 `None`이고, 지시 자리는 `delegate_to_phrase`가 내는 *"cannot
+    delegate — the external plugin agent on node `X` has no usable `source` …"*가, 서술 자리(진입
+    맥락)는 `delegation_source_label`이 내는 *"the external plugin agent on node `X`"*가 대신한다.
+    종전에는 `source or name`이라 노드 이름·플러그인 id가 그대로 실려 **없는 에이전트**를 지목했다 —
+    컴파일은 `external_source_missing` 경고만 내고 성공하므로 그 거짓말이 산출에 그대로 나갔다.
     산출 파일이 없는 종류(`OUTPUT_LOCATION is NONE`)로 가는 위임에는
     `external_delegation_suffix`가 `EXTERNAL_DELEGATION_NOTE`를 붙인다 — *"external plugin
     agent — it knows neither this workflow nor the blackboard: put everything it needs in the

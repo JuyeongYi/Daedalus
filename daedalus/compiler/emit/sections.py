@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from daedalus.compiler.emit.common import (
     _graph_placements,
-    delegation_target_name,
+    delegate_to_phrase,
     external_skill_name,
 )
 from daedalus.model.fsm.event import CompletionEvent
@@ -120,7 +120,8 @@ def _describe_node_action(state: SimpleState) -> str:
     if ref is None:
         return ""
     if getattr(ref, "DELEGATION_TARGET", False):
-        return f"delegate to agent `{delegation_target_name(ref)}`"
+        # 단서 없이 한 줄만 내던 종전 산출을 보존한다(`note=False`).
+        return delegate_to_phrase(ref, note=False)
     # 스킬 참조
     name = getattr(ref, "name", "")
     return f"use skill `{name}`"

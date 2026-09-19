@@ -75,11 +75,12 @@ def test_preview_of_disabled_wrapped_still_renders():
 class _NoOutputKind:
     """`OUTPUT_LOCATION is NONE`인 종류의 대역 (WP-9 `ExternalAgent`의 선행 조건).
 
-    오늘 그런 종류는 없다 — 계약을 **먼저** 못 박아 두지 않으면, 생겼을 때
-    진입점이 눌러도 아무 일이 없는 메뉴 항목을 보여 주게 된다.
+    계약을 **먼저** 못 박아 두지 않으면, 그런 종류가 생겼을 때 진입점이 눌러도
+    아무 일이 없는 메뉴 항목을 보여 주게 된다.
     """
 
     OUTPUT_LOCATION = OutputLocation.NONE
+    kind = "no_output_kind"
     name = "external-thing"
 
 
@@ -88,9 +89,21 @@ def test_a_kind_without_an_output_location_cannot_be_previewed():
 
 
 def test_preview_component_of_an_unpreviewable_kind_says_why():
+    """거절 이유는 **사용자의 말**이어야 한다 — emitter 등록은 우리 사정이다.
+
+    게이트가 `preview_component` 안에 있어야 GUI(메뉴 흐리기)와 MCP
+    (`compile_preview`)가 같은 이유를 말한다(원칙 2·5). 종전에는 MCP만
+    `emitter_for`의 "산출 emitter가 없는 컴포넌트 종류입니다 — 등록: …"를
+    받아, 내부 등록 누락처럼 읽혔다(WP-9 리뷰).
+    """
     with pytest.raises(ValueError) as exc:
         preview_component(_NoOutputKind())
-    assert "emitter" in str(exc.value)
+    message = str(exc.value)
+    assert "no_output_kind" in message
+    assert "산출 파일이 없어" in message
+    # 대안을 말한다 — "부르는 쪽을 미리보라".
+    assert "부르는 쪽" in message
+    assert "emitter" not in message
 
 
 # ── 경로 ──────────────────────────────────────────────────────────────
