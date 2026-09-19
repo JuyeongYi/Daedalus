@@ -96,11 +96,11 @@ python -m tests.data.golden.regen --refresh-dogfood   # 동결 사본 자체를 
 봐서는 안 보이기 때문이다 — WP-0 기준선이 없으면 "34"가 좋은 값인지 알 수 없다.
 표와 dict가 어긋나면 dict가 옳다.
 
-| 테스트 · 표 | 세는 것 | WP-0 기준선 (2026-09-19) | 현재 (WP-4 완료) |
+| 테스트 · 표 | 세는 것 | WP-0 기준선 (2026-09-19) | 현재 (WP-8 완료) |
 |---|---|---|---|
-| `tests/test_polymorphism_ratchet.py` `RATCHET` ① | 컴포넌트/설정 클래스 29종을 두 번째 인자로 갖는 `isinstance` | **111 사이트 / 34 파일** | **23 / 8** — compiler·serialize 둘 다 0(WP-4가 `ser.py` 11을 걷었다). 남은 최대치는 `registry_panel.py` 10(WP-7)·`app.py` 4(WP-7) |
-| 〃 ② | 컴포넌트 형상 속성 12종(`config`/`body`/`fsm`/`transfer_on`/`call_agents`/`when_to_use`/`usage`/`enabled`/`reference_placements`/`source`/`output_events`/`output_event_defs`)을 문자열로 묻는 `getattr`/`hasattr`. 첫 인자가 `project`/`cfg`/`config`/`doc`이면 제외(컴포넌트 형상이 아니다) | **123 사이트 / 41 파일** | **33 / 12**(WP-4 무변 — WP-7·WP-8이 다음 주인) |
-| `tests/test_kind_literals.py` `RATCHET` ① | 컴포넌트 kind 16종이 `Compare` 피연산자·`dict` 키·`set`/`tuple`/`list` 원소로 쓰인 자리. 허용 파일 `model/serialize/migrate.py`(구버전 파일 문자열 해석이 정본)는 세지 않는다 | **157 사이트 / 26 파일** | **80 / 18** — WP-3이 레지스트리로(역직렬화·생성·전환·MCP 어휘·매트릭스 키), WP-4가 `deser_plugin`의 마지막 11을, WP-5가 쓰기 루프의 `skill`/`agent`/`wrapped_runner` 사다리를 흡수 |
+| `tests/test_polymorphism_ratchet.py` `RATCHET` ① | 컴포넌트/설정 클래스 29종을 두 번째 인자로 갖는 `isinstance` | **111 사이트 / 34 파일** | **20 / 6** — compiler·serialize·mcp 전부 0(WP-4가 `ser.py` 11을, WP-6이 미리보기 분기 3을 걷었다). 남은 사이트는 전부 view의 kind 표와 wrapped 분기로 WP-7·WP-10이 소유한다 |
+| 〃 ② | 컴포넌트 형상 속성 12종(`config`/`body`/`fsm`/`transfer_on`/`call_agents`/`when_to_use`/`usage`/`enabled`/`reference_placements`/`source`/`output_events`/`output_event_defs`)을 문자열로 묻는 `getattr`/`hasattr`. 첫 인자가 `project`/`cfg`/`config`/`doc`이면 제외(컴포넌트 형상이 아니다) | **123 사이트 / 41 파일** | **25 / 11** — WP-8이 MCP의 8건(`query.get_component` 6 + `fields` 2)을 능력 메서드(`comp.config`/`comp.body`/`state_machines()`/`output_ports()`/`call_ports()`)로 걷었다. 남은 최대치는 `frontmatter_panel.py`·`component_editor.py`(WP-7) |
+| `tests/test_kind_literals.py` `RATCHET` ① | 컴포넌트 kind 16종이 `Compare` 피연산자·`dict` 키·`set`/`tuple`/`list` 원소로 쓰인 자리. 허용 파일 `model/serialize/migrate.py`(구버전 파일 문자열 해석이 정본)는 세지 않는다 | **157 사이트 / 26 파일** | **70 / 16** — WP-3이 레지스트리로(역직렬화·생성·전환·MCP 어휘·매트릭스 키), WP-4가 `deser_plugin`의 마지막 11을, WP-5가 쓰기 루프의 `skill`/`agent`/`wrapped_runner` 사다리를, WP-8이 MCP 생성 인자 게이트와 `NO_PLACE_KINDS`를 흡수 |
 | 〃 ② plan kind | plan kind 14종. `agent`/`skill`이 컴포넌트 어휘와 겹치므로 `compiler/**`·`mcp/tools/query.py`에서만 센다. 소유자는 `compiler/plan_kinds.py` 하나(허용 파일) | **22 사이트 / 3 파일** | **1 / 1** — WP-5가 쓰기 루프 사다리 12와 `token_report`의 kind 사본 2를 걷었다. 남은 1건은 `mcp/tools/query.py`의 응답 키 `"claude_md"`로 **계획 kind가 아닌 오탐**이라 더 내려가지 않는다 |
 
 ②의 속성 목록에 있는 `output_events`/`output_event_defs`는 **오늘 모델에 없는
@@ -504,9 +504,16 @@ daedalus/
 │   │   │                   #     _hook_detail(전문 = 개요 + 핸들러 CC 스키마 + 스크립트 본문)은 get_hook과 편집 결과에서만
 │   │   ├── body.py         #   본문(set_component_body/get_body_outline/get_body_section/set_body_section — WP-BU/WP-BO 경로)
 │   │   │                   #     쓰기 두 도구는 `_reject_external_body` → `skill.has_external_body`(= BODY_SOURCE 선언, GUI 본문 잠금과 같은 판정)로 거절
-│   │   ├── props.py        #   생성·속성(create_skill/create_agent/rename_component/description/when_to_use/field/project_properties/set_mcp_server_def).
+│   │   ├── props.py        #   생성·속성(create_skill/create_agent/convert_skill/rename_component/delete_component/description/
+│   │   │                   #     when_to_use/entry_preset/project_properties/set_mcp_server_def).
 │   │   │                   #     팩토리는 actions/creation.make_component 직호출(S1 — 자체 dict 2벌 폐기),
-│   │   │                   #     create_skill/create_agent의 x·y는 create_and_place로 생성+배치 1 undo(G14)
+│   │   │                   #     create_skill/create_agent의 x·y는 create_and_place로 생성+배치 1 undo(G14).
+│   │   │                   #     생성 인자(fork_agent/source/usage)의 유효 종류는 spec_by_config_kind(kind).config_cls의
+│   │   │                   #     dataclass 필드가 답한다(WP-8 P3 — kind 목록 손수 열거 폐기), 좌표 거절은 spec.placement
+│   │   ├── fields.py       #   프론트매터 필드(list_component_fields/set_component_field) — props.py에서 분해(WP-8 ①).
+│   │   │                   #     PropsTools의 기저라 도구 표면은 그대로. 설정 허용 = matrix_for 비-FIXED 행(WP-8 P4)
+│   │   ├── placement_prose.py # 배치 거절 문구 — PlacementRole 4행 표 + kinds_with_placement(레지스트리 조회).
+│   │   │                   #     canvas.place_component와 props의 좌표 거절이 같은 문장을 쓴다(WP-8 P5, 원칙 1)
 │   │   ├── wrap.py         #   외부 플러그인 카탈로그(WP-WR D2) — list_wrappable_skills/list_marketplace_folders/
 │   │   │                   #     add_marketplace_folder/remove_marketplace_folder(홈 파일 — undo 비대상)/
 │   │   │                   #     set_external_plugins(프로젝트 사용 선언 — undo). 실체는 model/plugin/wrap_catalog +
@@ -638,9 +645,11 @@ daedalus/
     │   ├── fork_skill.py   #   fork 스킬(2026-09-13) — fork_agent_choices(fork 에이전트 후보 세 종류)/validate_fork_agent/skill_kind_of/
     │   │                   #     KINDS(3-way: procedural/sync_fork/async_fork)/convert_skill_kind(대상 config 클래스
     │   │                   #     기준 필드 복사, config·__class__ 교체 + resync_bracket을 묶어 1 undo). 피커·캔버스 메뉴·MCP 공용 실체
-    │   ├── creation.py     #   생성+배치 — NO_PLACE_KINDS(= model/plugin/placement.is_canvas_placeable의 음성 거울
-    │   │                   #     상수 — 판정의 실체는 placement 쪽이고 레지스트리·캔버스도 그 함수를 부른다)/create_wrapped_skill(WP-WR —
+    │   ├── creation.py     #   생성+배치 — create_wrapped_skill(WP-WR —
     │   │                   #     생성+선언+배치 1 undo, WRAPPED_SOURCE_MIME_PREFIX)/
+    │   │                   #     (NO_PLACE_KINDS 퇴역, WP-8: 비배치 종류의 음성 목록 상수였다. 마지막 소비자였던 MCP가
+    │   │                   #      배치 역할 선언(KindSpec.placement)을 직접 읽게 되면서 소비자 0 — 판정의 실체는
+    │   │                   #      model/plugin/placement.is_canvas_placeable 하나다)/
     │   │                   #     ("여기에 만들기" 빈 캔버스 메뉴(A9-9)·CREATABLE_KINDS는 퇴역 — 정확한 이름 타이핑 요구, 사용자 확정)/
     │   │                   #     make_component(창의 _make_fsm 재사용 — 레지스트리와 같은 물건이어야 한다)/create_and_place.
     │   │                   #     생성(CreateComponentCmd)+배치(CreateStateCmd 또는 CreateRefCmd)를 MacroCommand로 묶어 1 undo 단위.
