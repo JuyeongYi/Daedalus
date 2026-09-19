@@ -7,8 +7,11 @@
   - `_PlannedOutput` — 계획된 산출물 1건(상대 경로가 충돌 키).
   - `_plan_outputs` — 전역 스킬·에이전트·스킬 파일·훅·스키마·작업 폴더 문서·
     매니페스트의 산출 경로 집합 + 이름 규약/경로 충돌/훅 스크립트 이름 게이트.
-  - `_iter_tree_files`/`_is_link_like` — 트리 열거 규칙(복사 계획과 실제 복사가
-    같은 규칙을 쓰도록 여기 둔다).
+경로·이름 규약과 트리 열거 규칙(`_OUTPUT_NAME_RE`/`SKILL_FILES_DIRNAME`/
+`_skill_dir_name`/`_hook_script_name_conflicts`/`_iter_tree_files`/`_is_link_like`)은
+**`compiler/units/paths.py`로 옮겼다**(WP-5, 이동만) — 계획과 실제 쓰기가 같은
+규칙을 봐야 하는 것들이고, 앞으로 산출 단위들이 함께 쓴다. 여기서 **같은 객체**를
+재-export하므로(복제가 아니다) 계획과 쓰기의 판정은 하나다.
 
 ``project_compiler``가 전부 재-export하므로 기존 임포트 경로
 (`from daedalus.compiler.project_compiler import SKILL_FILES_DIRNAME` 등)는
@@ -16,19 +19,15 @@
 """
 from __future__ import annotations
 
-import os
-import re
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
 from daedalus.compiler.emit import (
-    _collect_referenced_hook_names,
     _is_local_build,
     compile_hook_scripts,
     compile_hooks_json,
     compile_schemas_json,
     emits_output_file,
-    hook_library,
 )
 from daedalus.compiler.emit.guides import (
     BLACKBOARD_GUIDE_KIND,
@@ -38,25 +37,18 @@ from daedalus.compiler.emit.guides import (
     workflow_guide_referenced,
 )
 from daedalus.compiler.emit.wrapped import needs_runner_agent
+from daedalus.compiler.units.paths import (  # noqa: F401 — 재-export 파사드
+    SKILL_FILES_DIRNAME,
+    _hook_script_name_conflicts,
+    _is_link_like,
+    _iter_tree_files,
+    _OUTPUT_NAME_RE,
+    _skill_dir_name,
+)
 from daedalus.compiler.workspace import has_manual_frontmatter
 from daedalus.model.plugin.hook import HOOK_SCRIPT_DIR
 from daedalus.model.validation import ValidationError
 
-
-# CC 플러그인 산출물 이름 규약 — Validator._COMPONENT_NAME_RE와 동일 패턴.
-# 검증기에서는 경고(편집 중)지만 컴파일 게이트에서는 에러로 승격한다.
-_OUTPUT_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
-
-# 스킬별 동봉 파일 소스 디렉토리명 (WP-SF) — <프로젝트 폴더>/skill-files/<스킬 산출
-# 디렉토리명>/… 이 그 스킬의 SKILL.md **옆으로** 복사된다. 공용 files/와 분리한
-# 이유: files/는 통째로 <out>/files/로 가는 규칙이라, 섞으면 스킬 파일이 양쪽에
-# 이중 산출된다. 참조 토큰은 `${CLAUDE_SKILL_DIR}/<상대경로>` — CC 공식 변수로
-# 마켓플레이스/로컬 동일 동작이라 ${ROOT} 같은 타깃 중립화가 필요 없다.
-SKILL_FILES_DIRNAME = "skill-files"
-
-
-def _skill_dir_name(skill_name: str) -> str:
-    return skill_name
 
 
 @dataclass
@@ -69,52 +61,6 @@ class _PlannedOutput:
     component: object                # 컴파일 대상 (skill/agent)
     script_name: str = ""            # hook_script일 때 파일명 (WP-HS)
     src_path: Path | None = None     # skill_file일 때 복사 원본 (WP-SF)
-
-
-def _hook_script_name_conflicts(project, resolved_hooks=None) -> list[ValidationError]:
-    """서로 다른 훅이 같은 스크립트 파일명으로 슬러그되면 에러 (duplicate_hook_script).
-
-    훅 이름은 사용자가 자유롭게 쓰지만 파일명은 ``_slug``를 거친다 — '`run tests`'와
-    '`run-tests`'는 이름이 다른데 파일명이 `run-tests.sh` 하나로 겹친다.
-    ``compile_hook_scripts``는 먼저 선언된 훅을 남기고 뒤의 것을 조용히 버리므로,
-    게이트가 없으면 **훅 하나가 아무 말 없이 사라진 산출물**이 나간다.
-
-    산출 경로 충돌(``compile_output_path_conflict``)이 잡지 못하는 이유가 그것이다 —
-    드롭이 계획 이전에 일어나 계획에는 경로가 하나만 올라온다. 그래서 계획을 세우기
-    전에 라이브러리 쪽에서 판정한다.
-
-    같은 훅 안의 파일명 중복은 대상이 아니다(``script_files``가 번호로 유일화한다).
-    """
-    library = hook_library(project, resolved_hooks)
-    referenced = set(_collect_referenced_hook_names(project))
-
-    owners: dict[str, str] = {}          # 파일명 → 먼저 점유한 훅 이름
-    conflicts: dict[str, list[str]] = {}  # 파일명 → 충돌한 훅 이름들(선언 순서)
-    for hook in library:
-        if hook.name not in referenced:
-            continue
-        for filename, _body in hook.script_files():
-            first = owners.get(filename)
-            if first is None:
-                owners[filename] = hook.name
-            elif first != hook.name:
-                conflicts.setdefault(filename, [first]).append(hook.name)
-
-    return [
-        ValidationError(
-            rule="duplicate_hook_script",
-            message=(
-                f"훅 스크립트 파일명 '{filename}'이 충돌합니다: "
-                f"{', '.join(repr(n) for n in names)}. 훅 이름이 파일명으로 바뀔 때 "
-                f"같은 이름이 되어, 그대로 진행하면 먼저 선언된 훅의 스크립트만 "
-                f"남고 나머지는 조용히 사라집니다 — 훅 이름을 조정하거나 핸들러에 "
-                f"script_name을 지정하세요."
-            ),
-            source=filename,
-            subject=project,
-        )
-        for filename, names in conflicts.items()
-    ]
 
 
 def _plan_outputs(
@@ -392,28 +338,3 @@ def _plan_outputs(
             seen[item.rel_path] = item
 
     return plan, errors, warnings
-
-
-def _iter_tree_files(root: Path) -> list[Path]:
-    """root 트리의 파일을 정렬 순회로 열거한다 (WP-SF — 복사 계획용).
-
-    ``_copy_files_tree``와 같은 규칙: 심볼릭 링크/정션은 디렉토리든 파일이든
-    제외한다(따라가면 트리 밖 내용이 산출물로 샌다).
-    """
-    files: list[Path] = []
-    for walk_root, dirnames, filenames in os.walk(root, followlinks=False):
-        root_path = Path(walk_root)
-        dirnames[:] = sorted(d for d in dirnames if not _is_link_like(root_path / d))
-        for filename in sorted(filenames):
-            src = root_path / filename
-            if not _is_link_like(src):
-                files.append(src)
-    return files
-
-
-def _is_link_like(path: Path) -> bool:
-    """심볼릭 링크 또는 Windows 정션이면 True — files/ 복사에서 제외 대상."""
-    if path.is_symlink():
-        return True
-    isjunction = getattr(os.path, "isjunction", None)
-    return bool(isjunction and isjunction(path))
