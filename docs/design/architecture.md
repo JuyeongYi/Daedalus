@@ -362,9 +362,13 @@ daedalus/
 │   │   │                   #   emits_output_file(component.emits_output() 파사드)/agent_invocation_name(위임 대상 이름 해소 — 빌드 타깃별)
 │   │   ├── frontmatter.py  #   YAML 표기(_yaml_scalar/_yaml_list/_yaml_block_lines) + 스킬 프론트매터(_frontmatter_lines_skill)·_compose_description
 │   │   ├── sections.py     #   공용 단락 — 가드/트리거·FSM 절차 서술(_describe_fsm)·요구 환경 MCP(referenced_mcp_servers)·블랙보드(_blackboard_section)·tool_shelf
-│   │   ├── skill.py        #   SKILL.md 조립 — 다음 단계·작업 재개(WP-RS)·진입 맥락(WP-IC) + compile_skill.
+│   │   ├── skill_sections.py #   스킬 전용 단락 빌더 — 다음 단계·작업 재개(WP-RS)·진입 맥락(WP-IC)·진행 기록 잔여.
 │   │   │                   #   조립 분기는 능력 선언만 본다(WP-2c) — 컴포넌트 대상 isinstance 0
-│   │   ├── agent.py        #   에이전트 .md 조립 — 프론트매터(skills 합류·LOCAL hooks/mcpServers)·호출 계약·출구 + compile_agent
+│   │   ├── skill.py        #   SKILL.md 조립의 공개 진입점 compile_skill + skill_sections 재-export 파사드(WP-6, 이동만).
+│   │   │                   #   빌더가 아래층·파사드가 위층인 이유는 절 표(section_plan)가 빌더를 임포트하기 때문이다
+│   │   ├── agent_sections.py #   에이전트 전용 단락 빌더 — 프론트매터(skills 합류·LOCAL hooks/mcpServers)·호출 계약(종류별)·
+│   │   │                   #   위임·요구 환경·내부 워크플로(legacy)·출구(_exits_section)
+│   │   ├── agent.py        #   에이전트 .md 조립의 공개 진입점 compile_agent + agent_sections 재-export 파사드(WP-6, 이동만)
 │   │   ├── wrapped.py      #   랩핑 스킬 산출 — 위임 절차 단락 + 실행 서브에이전트(compile_wrapped_runner/needs_runner_agent/parse_wrapped_source)
 │   │   ├── fork.py         #   fork 스킬 산출(2종, 2026-09-17) — resolve_fork_agent_name(common.agent_invocation_name 파사드)/
 │   │   │                   #   fork_frontmatter_lines(agent: 이름 해소만 — context·background는 매트릭스 FIXED)/
