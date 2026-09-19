@@ -176,8 +176,16 @@ def has_external_body(component: object) -> bool:
     만들지 않고(`view/editors/component_editor`), MCP 본문 쓰기 도구는
     거절한다(`mcp/tools/body`) — 두 표면이 **같은 판정**을 써야 "GUI는 막는데
     MCP는 조용히 성공"이 생기지 않는다(원칙 1·2).
+
+    **한 줄 파사드다**(WP-2c D4): 실체는 종류가 아니라 `BODY_SOURCE` 선언이다.
+    본문 정본이 외부인 종류가 랩핑 스킬 하나가 아니게 되면(외부 플러그인
+    서브에이전트 등) 여기를 고치지 않고 선언을 고른다 — 종류로 물으면 새
+    종류의 본문이 **편집 가능한 채로 조용히 열린다**(원칙 5).
+
+    컴포넌트가 아닌 값(빈 노드의 `skill_ref` 등)이 섞여 들어오므로 선언 조회는
+    `getattr` 폴백으로 관용한다 — 종전 `isinstance`와 같은 계약이다.
     """
-    return isinstance(component, WrappedSkill)
+    return getattr(component, "BODY_SOURCE", None) is BodySource.EXTERNAL
 
 
 @dataclass

@@ -91,8 +91,10 @@
   전이까지 `MacroCommand`로 묶어 1 undo 단위. **본문(`set_component_body`)만 예외적으로 컴포넌트의
   QTextDocument에 적용**하는데, 우회가 아니라 본문 전용 undo 스택(WP-BU)에 정확히 올리는 경로다.
   본문 쓰기 두 도구(`set_component_body`/`set_body_section`)는 **정본이 외부인 컴포넌트를
-  거절**한다 — `model.plugin.skill.has_external_body`(랩핑 스킬)로 묻고, GUI가 본문 편집기를
-  아예 만들지 않는 것과 **같은 판정**이다(원칙 1·2). 허용하면 "썼는데 산출에 없는" 조용한
+  거절**한다 — `model.plugin.skill.has_external_body`로 묻고, GUI가 본문 편집기를
+  아예 만들지 않는 것과 **같은 판정**이다(원칙 1·2). 그 함수는 종류가 아니라 능력 선언
+  `BODY_SOURCE is BodySource.EXTERNAL`을 본다(WP-2c D4) — 본문 정본이 외부인 종류가
+  늘면 거절이 자동으로 합류한다(종류로 물으면 새 종류의 본문이 조용히 열린다). 허용하면 "썼는데 산출에 없는" 조용한
   no-op이 된다(원칙 5).
 - **포트·분기 의미론(WP-CE):** `set_transfer_on`(출력 포트)/`set_transition`(기존 전이의
   trigger·guard)/`connect_states`의 trigger·guard 인자.

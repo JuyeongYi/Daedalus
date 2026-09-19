@@ -37,7 +37,7 @@ class BodyTools(_BaseTools):
 
         comp = self._find_component(name)
         self._reject_external_body(comp)
-        old = str(getattr(comp, "body", "") or "")
+        old = str(comp.body or "")
         doc = body_documents.registry().document_for(comp)
 
         cursor = QTextCursor(doc)
@@ -149,14 +149,15 @@ class BodyTools(_BaseTools):
         산출에 없는" 조용한 no-op이 된다(원칙 2 패리티 · 원칙 5).
 
         판정의 실체는 모델의 `has_external_body` 하나다 — GUI 잠금과 여기가
-        같은 함수를 부른다. WP-2c에서 그 함수 본문이
-        `BODY_SOURCE is BodySource.EXTERNAL`로 바뀐다(지금은 그 선언이 없다).
+        같은 함수를 부르고, 그 함수는 종류가 아니라 능력 선언
+        `BODY_SOURCE is BodySource.EXTERNAL`을 본다(WP-2c D4). 그래서 본문
+        정본이 외부인 종류가 늘어도 이 거절은 자동으로 합류한다.
         """
         from daedalus.model.plugin.skill import has_external_body
 
         if not has_external_body(comp):
             return
-        source = str(getattr(comp.config, "source", "") or "") or "(source 미지정)"
+        source = str(comp.external_source or "") or "(source 미지정)"
         raise ValueError(
             f"'{comp.name}'은(는) 랩핑 스킬이라 본문을 쓸 수 없습니다 — 본문의 "
             f"정본은 외부 플러그인 스킬 '{source}'이고, 컴파일은 그것을 "
@@ -176,4 +177,4 @@ class BodyTools(_BaseTools):
         doc = body_documents.registry().peek(comp)
         if doc is not None:
             return doc.toPlainText()
-        return str(getattr(comp, "body", "") or "")
+        return str(comp.body or "")

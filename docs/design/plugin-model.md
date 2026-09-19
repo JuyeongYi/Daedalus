@@ -160,7 +160,7 @@ no-op가 된다. 그래서 `PluginComponent`가 **선언(ClassVar) + 인스턴�
 무관한 참조를 오갱신한다. 오버라이드는 `ForkSkillConfig`(`agent` → AGENTS)와
 `AgentConfigBase`(`skills` → SKILLS) 둘뿐이고, 그 사실 자체를 테스트가 양방향으로 고정한다.
 
-> **오늘의 상태(WP-2c 2/3).** **model·compiler 두 계층의 호출자가 전부 이
+> **오늘의 상태(WP-2c 완료).** **model·compiler 두 계층의 호출자가 전부 이
 > 표면을 쓴다** — 배치 판정(`placement.*`·`is_reference_usage`), 검증 규칙의
 > 술어(`REQUIRES_OUTPUT_PORTS`·`known_outgoing_events()`·`IS_FORK_BASE`·
 > `external_source`/`external_plugin_refs()`·`hook_refs()`·`config.name_refs`),
@@ -168,8 +168,7 @@ no-op가 된다. 그래서 `PluginComponent`가 **선언(ClassVar) + 인스턴�
 > `fsm.SimpleState.skill_ref`의 타입, 그리고 컴파일러의 산출 판정
 > (`emits_output_file` = `emits_output()` 파사드)·포인터 판정·절 적용 게이트·
 > 위임 대상 이름 해소(`agent_invocation_name`). model 계층에 남은 컴포넌트 대상
-> `isinstance`는 `serialize/ser.py`의 직렬화 사다리(WP-4가 철거)와
-> `skill.has_external_body`(WP-2c 3/3이 `BODY_SOURCE`로 치환) 둘뿐이고,
+> `isinstance`는 `serialize/ser.py`의 직렬화 사다리(WP-4가 철거) **하나뿐**이고,
 > **compiler 계층에는 하나도 없다** — 형상 `getattr`도 0이다.
 >
 > **능력 표면에는 소비자 없는 메서드가 없다.** WP-2a가 표면을 선언하면서
@@ -178,7 +177,8 @@ no-op가 된다. 그래서 `PluginComponent`가 **선언(ClassVar) + 인스턴�
 > 하나도 없다(남은 4건은 계약 레지스트리·테스트 봉합선이라 성격이 다르다).
 > 같은 규칙이 **파사드에도** 적용된다: `is_disabled_wrapped`는 WP-2c에서 마지막
 > 호출자가 사라져 **삭제**했다(`is_active()`가 실체다). `is_reference_usage`·
-> `has_external_body`는 view/MCP 호출자가 남아 있어 한 줄 파사드로 산다.
+> `has_external_body`는 view/MCP 호출자가 남아 있어 한 줄 파사드로 살고, 둘 다
+> 본문이 능력 호출 한 줄이다(`effective_placement()` / `BODY_SOURCE`).
 >
 > view·MCP 호출자 정리는 WP-2d가 맡는다.
 >

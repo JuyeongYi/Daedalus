@@ -53,25 +53,19 @@ SHAPE_ATTRS: frozenset[str] = frozenset({
 #: 첫 인자가 이것들이면 컴포넌트 형상 질문이 아니다(프로젝트/설정/문서 조회).
 SHAPE_EXCLUDED_SUBJECTS: frozenset[str] = frozenset({"project", "cfg", "config", "doc"})
 
-#: 실측 기준선 (2026-09-19, WP-2c 2/3 — compiler 계층 치환 완료). **내리기만 한다.**
+#: 실측 기준선 (2026-09-19, WP-2c 완료 — compiler 소비자 + D4 치환). **내리기만 한다.**
 #: compiler 패키지의 컴포넌트 대상 isinstance·형상 getattr는 **둘 다 0**이다.
 RATCHET: dict[str, int] = {
     "isinstance_sites": 52,
     "isinstance_files": 18,
-    "shape_attr_sites": 61,
-    "shape_attr_files": 25,
+    "shape_attr_sites": 59,
+    "shape_attr_files": 24,
 }
 
 #: 정당한 잔존 사이트 — `module::qualname`. 면제는 **사유와 철거 주체**를 적는다.
 #: 리팩토링 종료 시점의 예정 면제는 `kinds::spec_for`와
 #: `deser_plugin::_coerce_config`(역직렬화 안전망) 둘이다.
-ISINSTANCE_EXEMPT: dict[str, str] = {
-    # WP-1 D4 — 본문 정본이 외부인가. 능력 선언 `BODY_SOURCE`(WP-2a)가 아직
-    # 없어 종류로 묻는다. **WP-2c 3/3이 이 함수 본문을
-    # `BODY_SOURCE is BodySource.EXTERNAL`로 바꾸고 이 면제를 지운다.**
-    "model.plugin.skill::has_external_body":
-        "본문 편집 잠금(GUI)·MCP 본문 쓰기 거절의 공유 판정 — WP-2c가 철거",
-}
+ISINSTANCE_EXEMPT: dict[str, str] = {}
 SHAPE_ATTR_EXEMPT: dict[str, str] = {}
 
 

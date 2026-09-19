@@ -111,8 +111,8 @@
   — kind별 명시 부재는 test_field_matrix의 `_KIND_ABSENT_FIELDS`가 계약으로
   고정.
   **MCP도 같은 판정으로 거절한다**(원칙 2 패리티): `set_component_body`·
-  `set_body_section`은 `skill.has_external_body(component)`가 참이면
-  ValueError로 이유(정본 source)와 대안을 말한다. GUI 잠금과 MCP 거절이
+  `set_body_section`은 `skill.has_external_body(component)`(= `BODY_SOURCE is
+  EXTERNAL`, WP-2c D4)가 참이면 ValueError로 이유(정본 source)와 대안을 말한다. GUI 잠금과 MCP 거절이
   같은 함수를 부르지 않으면 "GUI는 막는데 MCP는 조용히 성공하고 산출에는
   없는" 상태가 된다(원칙 1·5).
 - **외부 플러그인 카탈로그(D2)**: `model/plugin/wrap_catalog.py`가 발견의
