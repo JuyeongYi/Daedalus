@@ -49,7 +49,13 @@ from daedalus.view.editors.transfer_on_panel import (  # noqa: F401
 
 
 class SkillEditor(QWidget):
-    """스킬/에이전트 편집기 — ComponentEditor + 타입별 우측 패널."""
+    """**스킬** 편집기 — ComponentEditor + 능력에 따른 우측 패널.
+
+    생산 경로에서 에이전트는 `AgentEditor`가 맡는다(`app._open_component`).
+    여기에 에이전트를 넘겨도 터지지는 않지만 **포트 패널은 붙지 않는다** —
+    그 패널은 AgentEditor가 따로 만들기 때문에, 둘 다 그리면 같은 목록을
+    가리키는 패널이 두 벌 생긴다.
+    """
 
     skill_changed = Signal()
 
@@ -64,7 +70,8 @@ class SkillEditor(QWidget):
         from daedalus.view.editors.component_editor import ComponentEditor
         from daedalus.view.panels.file_panel import SkillFilesPanel
 
-        from daedalus.model.plugin.roles import PlacementRole
+        from daedalus.model.plugin.placement import is_state_placeable
+        from daedalus.model.plugin.roles import Bucket
         from daedalus.model.plugin.skill import is_reference_usage
 
         right_widgets: list[QWidget] = []
@@ -76,7 +83,9 @@ class SkillEditor(QWidget):
         # 추가가 불가능해진다(WrappedSkill이 실제로 그랬다 — 사용자 보고).
         # 참조 용도로 고정된 wrapped·참조 스킬은 REFERENCE라 자동으로 빠진다
         # (사용자 확정 2026-09-07).
-        if component.effective_placement() is PlacementRole.STATE:
+        # 버킷 게이트는 **이 편집기가 맡는 표면**을 긋는다 — 에이전트도
+        # PLACEMENT=STATE이지만 그 포트 패널은 AgentEditor가 만든다.
+        if component.BUCKET is Bucket.SKILLS and is_state_placeable(component):
             right_widgets.append(_TransferOnPanel(component.transfer_on, title="⇄ Transfer On"))
             right_widgets.append(
                 _TransferOnPanel(component.call_agents, title="🤖 Agent Call", default_color="#8a4a4a", multiline_desc=True)

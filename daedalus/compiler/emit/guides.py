@@ -32,6 +32,7 @@ from daedalus.compiler.emit.common import (
     _join_blocks,
     emitted_components,
 )
+from daedalus.model.plugin.placement import is_edge_placeable
 from daedalus.model.plugin.roles import BodySource, Bucket, PlacementRole
 from daedalus.model.plugin.variables import ROOT_TOKEN
 
@@ -109,7 +110,7 @@ def workflow_pointer_kind(component, project) -> str:
     """
     if not _workflow_guide_available(project):
         return ""
-    if component.effective_placement() is PlacementRole.EDGE:
+    if is_edge_placeable(component):
         # 엣지 스킬은 그래프 노드가 아니다 — 진행 파일을 만드는 배치 스킬이
         # 하나라도 있으면(위 게이트) 지침이 고아가 아니다.
         return "main"

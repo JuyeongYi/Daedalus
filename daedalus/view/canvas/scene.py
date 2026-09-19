@@ -20,7 +20,7 @@ from daedalus.model.fsm.event import CompletionEvent
 from daedalus.model.fsm.machine import StateMachine
 from daedalus.model.fsm.state import SimpleState
 from daedalus.model.fsm.transition import Transition
-from daedalus.model.plugin.roles import PlacementRole
+from daedalus.model.plugin.placement import is_edge_placeable
 from daedalus.model.plugin.skill import TransferSkill
 from daedalus.view.canvas.draggable import DraggableItemMixin
 from daedalus.view.canvas.edge_item import TransitionEdgeItem, WaypointHandleItem
@@ -728,10 +728,7 @@ class FsmScene(QGraphicsScene):
         """
         if self._project is None:
             return []
-        return [
-            s for s in self._project.skills
-            if s.effective_placement() is PlacementRole.EDGE
-        ]
+        return [s for s in self._project.skills if is_edge_placeable(s)]
 
     def _create_and_assign_transfer_skill(self, tvm: TransitionViewModel) -> None:
         """새 TransferSkill을 생성하고 transition에 할당 (undo 가능)."""

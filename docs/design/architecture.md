@@ -87,12 +87,22 @@ python -m tests.data.golden.regen --refresh-dogfood   # 동결 사본 자체를 
 **내리기만** 한다 — 올리는 커밋은 리뷰가 거부한다. 기준선이 실측보다 크게 남아
 있어도 실패한다(래칫은 조여야 의미가 있다).
 
-| 테스트 · 표 | 세는 것 | 2026-09-19 실측 |
+**현재 값은 이 표가 아니라 테스트의 `RATCHET` dict가 정본이다** — 아래 "WP-0
+기준선" 열은 리팩토링을 시작할 때의 실측이고, 각 WP가 숫자를 내릴 때는
+`tests/test_polymorphism_ratchet.py`/`tests/test_kind_literals.py`의 dict를 같은
+커밋에서 함께 내린다(`*_baseline_is_not_stale` 테스트가 강제). 이 문서는 숫자를
+따라 고치지 않는다 — 그러면 두 곳이 어긋난다.
+
+| 테스트 · 표 | 세는 것 | WP-0 기준선 (2026-09-19) |
 |---|---|---|
 | `tests/test_polymorphism_ratchet.py` `RATCHET` ① | 컴포넌트/설정 클래스 29종을 두 번째 인자로 갖는 `isinstance` | **111 사이트 / 34 파일** |
 | 〃 ② | 컴포넌트 형상 속성 12종(`config`/`body`/`fsm`/`transfer_on`/`call_agents`/`when_to_use`/`usage`/`enabled`/`reference_placements`/`source`/`output_events`/`output_event_defs`)을 문자열로 묻는 `getattr`/`hasattr`. 첫 인자가 `project`/`cfg`/`config`/`doc`이면 제외(컴포넌트 형상이 아니다) | **123 사이트 / 41 파일** |
 | `tests/test_kind_literals.py` `RATCHET` ① | 컴포넌트 kind 16종이 `Compare` 피연산자·`dict` 키·`set`/`tuple`/`list` 원소로 쓰인 자리. 허용 파일 `model/serialize/migrate.py`(구버전 파일 문자열 해석이 정본)는 세지 않는다 | **157 사이트 / 26 파일** |
 | 〃 ② plan kind | plan kind 14종. `agent`/`skill`이 컴포넌트 어휘와 겹치므로 `compiler/**`·`mcp/tools/query.py`에서만 센다. 최종 소유자는 WP-5가 신설할 `compiler/plan_kinds.py` 하나 | **22 사이트 / 3 파일** |
+
+②의 속성 목록에 있는 `output_events`/`output_event_defs`는 **오늘 모델에 없는
+이름**이다(WP-2d가 `output_ports()`/`call_ports()`로 걷어냈다). 목록에 남겨 두는
+것은 재발 감시용이다 — 같은 사실을 다시 속성으로 노출하면 래칫이 올라가 실패한다.
 
 측정의 정직성: 짧은 kind 이름은 다른 어휘와 충돌한다 — `"agent"`는 훅 핸들러
 종류·변수 컨텍스트·plan kind이기도 하고 `"reference"`는 랩핑 스킬의 `usage` 값
@@ -221,7 +231,7 @@ daedalus/
 │   │                   #   (WP-2b 이후 **한 줄 파사드** — effective_placement()/is_active()가 실체)
 │   │   │                   #   + 종류별 능력 선언(KIND/CONFIG_CLS/PLACEMENT/…)과 오버라이드. 인스턴스 훅을 덮는 유일한 클래스가 WrappedSkill이다
 │   │   ├── agent.py        # Agent(ABC) → AgentDefinition(워크플로 — 캔버스 노드) / ForkAgent(fork 스킬 실행 기반, WP-FK2)
-│   │   ├── placement.py    # 배치 가능 판정 **두 개**(is_state_placeable/is_canvas_placeable — 실체는 effective_placement()) +
+│   │   ├── placement.py    # 배치 역할 판정 **세 개**(is_state_placeable=포트 소유 판정 겸임/is_canvas_placeable/is_edge_placeable — 실체는 effective_placement()) +
 │   │   │                   #   placement_role_of(비-컴포넌트 관용의 단일 진실) + fork 역참조 fork_skills_using(config.name_refs(AGENTS) 기반).
 │   │   │                   #   캔버스 드롭·레지스트리 드래그·creation·MCP place_component·에이전트 편집기·삭제 확인·
 │   │   │                   #   MCP still_referenced_by/used_by_fork_skills·컴파일러 fork 계약이 전부 여기를 부른다(원칙 1)

@@ -36,7 +36,8 @@ from daedalus.compiler.emit.frontmatter import (
     _yaml_scalar,
 )
 from daedalus.model.plugin.enums import AgentField, ModelType
-from daedalus.model.plugin.roles import BodySource, Bucket, PlacementRole
+from daedalus.model.plugin.placement import is_state_placeable
+from daedalus.model.plugin.roles import BodySource, Bucket
 from daedalus.model.plugin.skill import WrappedSkill
 
 
@@ -88,7 +89,7 @@ def needs_runner_agent(component: object) -> bool:
     if getattr(component, "BODY_SOURCE", None) is not BodySource.EXTERNAL:
         return False
     return (
-        component.effective_placement() is PlacementRole.STATE
+        is_state_placeable(component)
         and component.is_active()
         and bool(external_skill_name(component.external_source or ""))
     )

@@ -120,6 +120,19 @@ def test_skill_editor_agent_smoke(qapp):
     assert isinstance(editor, QWidget)
 
 
+def test_skill_editor_does_not_draw_agent_port_panels(qapp):
+    """에이전트에는 포트 패널을 붙이지 않는다 — AgentEditor의 몫이다.
+
+    에이전트도 `PLACEMENT=STATE`라 배치 판정만으로 게이트를 걸면 여기서도
+    포트 패널이 만들어지고, 잘못 배선되면(WP-7 editor_factory 표) 같은
+    `transfer_on` 목록을 가리키는 패널이 두 벌 그려진다.
+    """
+    from daedalus.view.editors.skill_editor import SkillEditor, _TransferOnPanel
+    assert SkillEditor(_make_agent()).findChild(_TransferOnPanel) is None
+    # 스킬 쪽은 그대로 붙는다 (게이트가 너무 좁아지지 않았음을 같이 고정).
+    assert SkillEditor(_make_procedural()).findChild(_TransferOnPanel) is not None
+
+
 def test_skill_editor_changed_signal_exists(qapp):
     from daedalus.view.editors.skill_editor import SkillEditor
     comp = _make_procedural()

@@ -167,15 +167,15 @@ class CanvasTools(_BaseTools):
         랩핑 스킬, 그리고 **에이전트**(2026-09-12 — CC 중첩 스폰 허용). 깊이·모델
         티어 제약은 검증이 짚는다(agent_chain_too_deep/agent_calls_higher_model).
 
-        도착이 "위임 대상"인가는 컴포넌트의 `DELEGATION_TARGET` 선언으로
-        판정한다(WP-2d) — 배치 가능 판정(`is_state_placeable`)이 아니다.
-        그것으로 갈아끼우면 스킬 대상에도 True가 되어 **모든 스킬 간 전이가
-        호출 포트를 요구**하게 된다. fork 에이전트는 선언상 위임 대상이지만
-        애초에 노드가 될 수 없어 `_find_state_vm`에서 "그런 노드가 없다"로
-        먼저 걸린다.
+        **두 질문을 다른 술어로 묻는다.** 출발이 호출 포트를 가질 수 있는가는
+        `is_state_placeable`(단일 배치 노드인가 — 포트 도구와 같은 실체)이고,
+        도착이 "위임 대상"인가는 `DELEGATION_TARGET` 선언이다(WP-2d). 도착에도
+        배치 판정을 쓰면 스킬 대상에도 True가 되어 **모든 스킬 간 전이가 호출
+        포트를 요구**하게 된다. fork 에이전트는 선언상 위임 대상이지만 애초에
+        노드가 될 수 없어 `_find_state_vm`에서 "그런 노드가 없다"로 먼저 걸린다.
         """
         from daedalus.model.fsm.transition import Transition
-        from daedalus.model.plugin.roles import PlacementRole
+        from daedalus.model.plugin.placement import is_state_placeable
         from daedalus.view.commands.transition_commands import CreateTransitionCmd
         from daedalus.view.viewmodel.state_vm import TransitionViewModel
 
@@ -188,10 +188,7 @@ class CanvasTools(_BaseTools):
         # **같은 술어**(단일 배치 노드인가)를 쓴다. 예전에는 한쪽이 "call_agents
         # 필드 보유", 다른 쪽이 거기에 참조 용도 제외까지 얹어 두 표면의 답이
         # 달라질 수 있었다(원칙 1).
-        src_has_call_ports = (
-            src_ref is not None
-            and src_ref.effective_placement() is PlacementRole.STATE
-        )
+        src_has_call_ports = is_state_placeable(src_ref)
         # 이 노드로 가는 전이가 "위임"인가 — 종류가 아니라 선언이 답한다(Q9).
         tgt_is_delegation = tgt_ref is not None and tgt_ref.DELEGATION_TARGET
 
@@ -372,12 +369,9 @@ class CanvasTools(_BaseTools):
         "전이 스킬인가"는 **엣지에 붙는 배치 역할인가**로 묻는다(WP-2d) —
         캔버스 엣지 메뉴·검증과 같은 술어다.
         """
-        from daedalus.model.plugin.roles import PlacementRole
+        from daedalus.model.plugin.placement import is_edge_placeable
 
-        transfers = [
-            s for s in self._project.skills
-            if s.effective_placement() is PlacementRole.EDGE
-        ]
+        transfers = [s for s in self._project.skills if is_edge_placeable(s)]
         for skill in transfers:
             if skill.name == name:
                 return skill

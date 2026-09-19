@@ -6,6 +6,7 @@
 - `is_state_placeable` — 그래프에 **SimpleState 노드**로 놓을 수 있는가.
 - `is_canvas_placeable` — 캔버스에 끌어놓거나 "여기에 만들기"로 놓을 수 있는가
   (상태 노드 **또는** 참조 노드로).
+- `is_edge_placeable` — 전이 엣지에 붙는가(전이 스킬).
 
 캔버스 드롭·레지스트리 드래그·"여기에 만들기"·MCP `place_component`가 전부
 여기를 부른다 — 음성 목록(NO_PLACE_KINDS 등)을 표면마다 따로 들고 있으면
@@ -45,8 +46,23 @@ def is_state_placeable(component: object) -> bool:
     False: `DeclarativeSkill`(PLACEMENT=NONE)·`TransferSkill`(EDGE)·
     `ReferenceSkill`(REFERENCE — 참조 노드는 별도 경로)·`ForkAgent`(NONE —
     fork 스킬이 부르는 실행 기반이라 그래프 노드가 아니다).
+
+    **"포트를 갖는가"도 같은 질문이다**(WP-2d): 워크플로 단계로 한 번 놓이는
+    노드만 출력 포트·에이전트 호출 포트를 선언할 의미가 있다. 편집기 포트
+    패널·MCP 포트 도구·캔버스 호출 판정이 전부 이 함수를 부른다 — 손으로
+    같은 enum 비교를 적으면 표면마다 답이 갈린다(원칙 1).
     """
     return placement_role_of(component) is PlacementRole.STATE
+
+
+def is_edge_placeable(component: object) -> bool:
+    """전이 **엣지**에 붙는 컴포넌트인가 — 오늘 `TransferSkill` 하나.
+
+    캔버스 엣지 메뉴·MCP `_find_transfer_skill`·컴파일러의 전이 스킬 단락이
+    같은 목록을 말해야 하므로 실체는 여기다. "종류가 TransferSkill인가"가
+    아니라 **배치 역할이 EDGE인가**를 묻는다.
+    """
+    return placement_role_of(component) is PlacementRole.EDGE
 
 
 def is_canvas_placeable(component: object) -> bool:

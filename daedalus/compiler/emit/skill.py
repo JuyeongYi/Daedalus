@@ -30,6 +30,7 @@ from daedalus.compiler.emit.wrapped import (  # noqa: F401 — parse_wrapped_sou
     parse_wrapped_source,
 )
 from daedalus.model.fsm.machine import StateMachine
+from daedalus.model.plugin.placement import is_edge_placeable
 from daedalus.model.plugin.roles import BodySource, Bucket, PlacementRole
 from daedalus.model.plugin.variables import ROOT_TOKEN
 from daedalus.model.plugin.skill import Skill
@@ -466,7 +467,7 @@ def compile_skill(
     # 진행 파일을 만드는 배치 스킬이 하나도 없는 프로젝트에서는 고아 지시가
     # 되므로 placement 존재를 게이트로 건다 (리뷰 지적 ②).
     if (
-        skill.effective_placement() is PlacementRole.EDGE
+        is_edge_placeable(skill)
         and project is not None
         and _graph_placements_any(project)
     ):

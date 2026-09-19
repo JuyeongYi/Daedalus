@@ -37,7 +37,7 @@ PluginComponent(ABC)                      base.py  (name, description, abstract 
 - `StepSkill`은 예전의 `ForkSkill ⊂ ProceduralSkill` 상속이 지탱하던 **"워크플로 단계 스킬"** 판정의 새 이름이다.
   `isinstance(x, StepSkill)` = "단계(fork 포함)", `isinstance(x, ProceduralSkill)` = "절차형만", `isinstance(x, ForkSkill)` = "fork 2종".
   "배치되는 스킬인가"를 묻던 `(StepSkill, WrappedSkill)` 튜플은 **더 이상 쓰지 않는다**(WP-2d) —
-  `c.effective_placement() is PlacementRole.STATE`가 그 질문의 실체다(포트 패널·MCP 포트 도구 공용).
+  `placement.is_state_placeable(c)`가 그 질문의 실체다(포트 패널·MCP 포트 도구 공용).
 - 에이전트 쪽도 **같은 축으로 두 판정**이다: "에이전트 컴포넌트 전반"(어느 리스트에 담는가 / 어느 컴파일러로
   보내는가 / 어느 매트릭스·에디터를 쓰는가)은 `Agent`, "그래프에 **배치된 노드**가 에이전트인가"(위임 문구·호출
   계약·캔버스·MCP 연결 규칙)는 `AgentDefinition`이다 — ForkAgent는 배치 불가라 후자에서 자연 제외된다.
@@ -191,20 +191,27 @@ no-op가 된다. 그래서 `PluginComponent`가 **선언(ClassVar) + 인스턴�
 
 ### 배치 가능 판정 (`model/plugin/placement.py`)
 
-**두 판정이다** — 하나로 합치면 참조 스킬 경로가 죽는다.
+**세 판정이다** — 앞 둘을 하나로 합치면 참조 스킬 경로가 죽는다.
 
 | 함수 | 질문 | 실체 (WP-2b) | True |
 |------|------|------|------|
 | `is_state_placeable(c)` | 그래프에 **SimpleState 노드**로 놓을 수 있는가 | `c.effective_placement() is PlacementRole.STATE` | `StepSkill`(절차형·fork 2종), 용도가 reference가 **아닌** `WrappedSkill`, `AgentDefinition` |
 | `is_canvas_placeable(c)` | 캔버스에 놓을 수 있는가(상태 **또는** 참조 노드) | `effective_placement() in (STATE, REFERENCE)` | 위 + `is_reference_usage`(ReferenceSkill·용도 reference 랩핑) |
+| `is_edge_placeable(c)` | 전이 **엣지**에 붙는가 | `effective_placement() is PlacementRole.EDGE` | `TransferSkill` |
 
-**두 함수 모두 종류 목록을 갖지 않는다**(WP-2b) — 컴포넌트가 `PLACEMENT` ClassVar로 선언한 역할을
+**세 함수 모두 종류 목록을 갖지 않는다**(WP-2b) — 컴포넌트가 `PLACEMENT` ClassVar로 선언한 역할을
 `effective_placement()`가 인스턴스 상태와 합쳐 답하고, 여기서는 그 값에 이름만 붙인다. 새 종류는
-선언 한 줄로 두 판정에 합류한다. 비-컴포넌트(`None`·kind 문자열)를 관용하는 자리는
+선언 한 줄로 세 판정에 합류한다. 비-컴포넌트(`None`·kind 문자열)를 관용하는 자리는
 `placement_role_of(c)` 하나이고 `skill.is_reference_usage`도 그것을 쓴다(관용 규칙 2벌 금지 — 원칙 1).
 
+**포트를 갖는가도 `is_state_placeable`이 답한다**(WP-2d) — 워크플로 단계로 한 번 놓이는 노드만
+출력 포트·에이전트 호출 포트를 선언할 의미가 있다. 스킬 편집기 포트 패널(거기에 **버킷=SKILLS** 게이트가
+더 붙는다 — 에이전트 포트 패널은 `AgentEditor`가 만들므로 둘 다 그리면 패널이 두 벌 생긴다)·MCP
+`set_transfer_on`/`add_agent_call`·캔버스 호출 엣지 판정이 전부 이 함수를 부른다. 같은 enum 비교를 손으로
+적으면 표면마다 답이 갈린다(원칙 1).
+
 캔버스 드롭(`scene.py`)·레지스트리 드래그·"여기에 만들기"(`creation.NO_PLACE_KINDS`)·MCP `place_component`가
-전부 이것을 부른다(음성 목록 3벌 → 양성 판정 2개, 원칙 1). `DeclarativeSkill`·`TransferSkill`·`ForkAgent`는 False다.
+전부 이것을 부른다(음성 목록 3벌 → 양성 판정, 원칙 1). `DeclarativeSkill`·`TransferSkill`·`ForkAgent`는 False다.
 같은 모듈의 `fork_skills_using(agent, project)`는 **fork 역참조의 단일 진실**이다 —
 필터는 `name in s.config.name_refs(Bucket.AGENTS)`(Q14)라 종류 이름을 묻지 않는다 —
 `delegated_agent_name()`(Q33)을 쓰면 랩핑 스킬이 **자기 이름의 러너**를 답해 에이전트와 동명인 랩퍼가

@@ -160,6 +160,30 @@ def test_reference_usage_rejects_transfer_on(tools):
         tools.set_transfer_on("bg", [{"name": "done"}])
 
 
+def test_reference_usage_rejection_names_the_way_out(tools):
+    """거절은 **이유와 빠져나갈 길**을 말한다(원칙 5).
+
+    종류 이름(`wrapped_skill`)만 돌려주면 "랩핑 스킬은 포트를 갖는다"는 설명과
+    자기모순으로 읽힌다 — 막는 것은 종류가 아니라 이 인스턴스의 용도다.
+    """
+    tools.create_skill("bg", kind="wrapped", source="other@mkt:x", usage="reference")
+    for call in (
+        lambda: tools.set_transfer_on("bg", [{"name": "done"}]),
+        lambda: tools.add_agent_call("bg", "ask"),
+    ):
+        with pytest.raises(ValueError, match="참조 용도") as exc:
+            call()
+        assert 'set_wrapped_usage("bg", "state")' in str(exc.value)
+
+
+def test_reference_skill_rejection_has_no_wrapped_escape_hatch(tools):
+    """참조 스킬은 용도 스위치가 없다 — 없는 길을 가리키면 안 된다."""
+    tools.create_skill("ref", kind="reference")
+    with pytest.raises(ValueError, match="출력 포트") as exc:
+        tools.set_transfer_on("ref", [{"name": "done"}])
+    assert "set_wrapped_usage" not in str(exc.value)
+
+
 def test_usage_field_not_directly_settable(tools):
     tools.create_skill("w", kind="wrapped", source="other@mkt:x")
     with pytest.raises(ValueError, match="최초 배치"):

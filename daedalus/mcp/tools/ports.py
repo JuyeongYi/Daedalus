@@ -20,6 +20,31 @@ from typing import Any
 from ._base import _BaseTools
 
 
+def _usage_escape_hatch(comp: Any) -> str:
+    """포트 거절에 덧붙이는 **빠져나갈 길** — 지금 참조 용도인 컴포넌트에만.
+
+    거절은 이유와 대안을 함께 말해야 한다(원칙 5). 종류 이름만 돌려주면
+    "wrapped_skill인데 랩핑 스킬은 포트를 갖는다고 적혀 있다"는 자기모순으로
+    읽힌다 — 포트를 막는 것은 **종류가 아니라 이 인스턴스의 용도**다.
+    """
+    from daedalus.model.plugin.placement import placement_role_of
+    from daedalus.model.plugin.roles import BodySource, PlacementRole
+
+    # 용도 스위치를 가진 종류는 오늘 랩핑 스킬 하나뿐이다 — 본문 정본이
+    # 외부인 스킬(`BODY_SOURCE`)로 좁힌다. 참조 스킬(REFERENCE지만 정본이
+    # 자기 것)에게 `set_wrapped_usage`를 권하면 없는 길을 가리킨다.
+    if (
+        placement_role_of(comp) is PlacementRole.REFERENCE
+        and getattr(type(comp), "BODY_SOURCE", None) is BodySource.EXTERNAL
+    ):
+        name = getattr(comp, "name", "")
+        return (
+            f" 이 컴포넌트는 지금 **참조 용도**로 고정돼 있습니다 — "
+            f'set_wrapped_usage("{name}", "state")로 바꾸면 포트를 가질 수 있습니다.'
+        )
+    return ""
+
+
 class PortTools(_BaseTools):
     """포트 (출력 이벤트 / 에이전트 호출 포트)."""
 
@@ -59,15 +84,16 @@ class PortTools(_BaseTools):
         때문에 없는 필드가 인스턴스 속성으로 생기고, 성공 응답이 돌아간 뒤
         저장 한 번에 사라진다(원칙 5 — 조용한 실패 금지).
         """
-        from daedalus.model.plugin.roles import PlacementRole
+        from daedalus.model.plugin.placement import is_state_placeable
         from daedalus.view.commands.attr_commands import SetAttrCmd
 
         comp = self._find_component(name)
-        if comp.effective_placement() is not PlacementRole.STATE:
+        if not is_state_placeable(comp):
             raise ValueError(
                 f"'{name}'({comp.kind})은(는) 출력 포트를 갖지 않습니다 — "
                 "출력 포트는 워크플로 단계로 배치되는 컴포넌트(단계 스킬·"
                 "state 용도 랩핑 스킬·워크플로 에이전트)만 갖습니다."
+                + _usage_escape_hatch(comp)
             )
         defs = self._make_event_defs(events)
         self._vm.execute(
@@ -92,12 +118,13 @@ class PortTools(_BaseTools):
         판정은 출력 포트와 **같은 술어**다(WP-2d): 단일 배치되는 노드인가.
         둘이 어긋나면 "출력 포트는 붙는데 호출 포트는 안 붙는" 종류가 생긴다.
         """
-        from daedalus.model.plugin.roles import PlacementRole
+        from daedalus.model.plugin.placement import is_state_placeable
 
-        if comp.effective_placement() is not PlacementRole.STATE:
+        if not is_state_placeable(comp):
             raise ValueError(
                 f"'{name}'에는 에이전트 호출 포트를 붙일 수 없습니다 — 단계 스킬"
                 f"(절차형·fork), state 용도 랩핑 스킬, 워크플로 에이전트만 가능합니다."
+                + _usage_escape_hatch(comp)
             )
         return comp
 

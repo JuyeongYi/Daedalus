@@ -100,7 +100,7 @@ class WrappedSkill(Skill, WorkflowComponent):
         )
 
     def can_delete(self) -> tuple[bool, str | None]:
-        return (False, "랩핑 스킬은 지울 수 없습니다 — 비활성화로 끕니다.")
+        return (False, "랩핑 스킬이기 때문입니다")
 
     # -- 형상 조회 --
     def state_machines(self) -> list[StateMachine]:

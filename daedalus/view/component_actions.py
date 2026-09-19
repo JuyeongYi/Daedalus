@@ -168,7 +168,7 @@ class ComponentActions:
         if not deletable:
             QMessageBox.information(
                 w, "삭제할 수 없음",
-                f"'{comp_name}': {reason}\n\n"
+                f"'{comp_name}'은(는) 삭제할 수 없습니다 — {reason}.\n\n"
                 f"대신 비활성화하면 산출과 배선에서 빠집니다 — 스킬 편집기의 "
                 f"[비활성화] 버튼을 쓰세요. 소스·프론트매터·배선을 다시 "
                 f"입력하지 않고 언제든 되돌릴 수 있습니다.",
@@ -263,7 +263,7 @@ class ComponentActions:
         if not deletable:
             raise ValueError(
                 f"'{getattr(component, 'name', '')}'은(는) 삭제할 수 없습니다 — "
-                f"{reason} 비활성화(set_wrapped_enabled / 스킬 편집기의 "
+                f"{reason}. 비활성화(set_wrapped_enabled / 스킬 편집기의 "
                 f"[비활성화])하면 산출과 배선에서 빠지고 언제든 되돌릴 수 "
                 f"있습니다."
             )

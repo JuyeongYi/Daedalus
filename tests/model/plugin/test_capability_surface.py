@@ -404,7 +404,10 @@ def test_delete_and_delegation_hooks():
         True, None
     )
     blocked, reason = _wrapped().can_delete()
-    assert blocked is False and reason and "비활성화" in reason
+    # 사유는 **절**이다 — 판정("삭제할 수 없습니다")과 대안 안내는 호출자가
+    # 소유한다. 모델이 완결 문장을 돌려주면 두 계층이 같은 말을 이어 붙인다.
+    assert blocked is False and reason == "랩핑 스킬이기 때문입니다"
+    assert "삭제할 수 없" not in reason and "비활성화" not in reason
 
     fork = SyncForkSkill(fsm=_fsm(), name="f", description="")
     fork.config.agent = "worker"

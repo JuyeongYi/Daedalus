@@ -231,8 +231,7 @@ class _WorkflowRules:
         순회 범위는 프로젝트 그래프 + 각 스킬/에이전트 FSM(재귀)이다 —
         `dangling_tool_ref`/블랙보드 규칙과 같은 범위.
         """
-        from daedalus.model.plugin.placement import placement_role_of
-        from daedalus.model.plugin.roles import PlacementRole
+        from daedalus.model.plugin.placement import is_edge_placeable
 
         # id(스킬) → (스킬, [경로 표지…]) — 어디에 붙었는지 알려 줘야 고칠 수 있다.
         uses: dict[int, tuple[object, list[str]]] = {}
@@ -241,7 +240,7 @@ class _WorkflowRules:
             def _visit(trans) -> None:
                 # 전이에 붙는 종류 = 배치 역할이 EDGE인 종류다(Q5).
                 ref = getattr(trans, "skill_ref", None)
-                if placement_role_of(ref) is not PlacementRole.EDGE:
+                if not is_edge_placeable(ref):
                     return
                 entry = uses.setdefault(id(ref), (ref, []))
                 src = getattr(getattr(trans, "source", None), "name", "?")
@@ -303,7 +302,8 @@ class _WorkflowRules:
         고쳐야 하는지 알린다. **명시 `False`만 통과한다.**
         """
         from daedalus.model.fsm.state import SimpleState
-        from daedalus.model.plugin.roles import BodySource, Bucket, PlacementRole
+        from daedalus.model.plugin.placement import is_state_placeable
+        from daedalus.model.plugin.roles import BodySource, Bucket
 
         graph = getattr(project, "graph", None)
         if graph is None:
@@ -325,7 +325,7 @@ class _WorkflowRules:
             # 프론트매터를 내지만 이 규칙의 대상이 아니었다.
             if skill is None or not (
                 type(skill).BUCKET is Bucket.SKILLS
-                and skill.effective_placement() is PlacementRole.STATE
+                and is_state_placeable(skill)
                 and type(skill).BODY_SOURCE is BodySource.OWNED  # WRAPPED-ONLY
             ):
                 continue
