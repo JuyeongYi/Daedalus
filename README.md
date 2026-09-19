@@ -50,12 +50,15 @@ uv tool uninstall daedalus
 ### 개발 설치
 
 ```bash
-git submodule update --init                          # external/ 서브모듈
 pip install -e ".[dev]"
-pip install -e external/QClaudeCodeSettingEditorWidget
 ```
 
-서브모듈의 editable 설치는 위에서 받은 배포판 위젯을 **덮는다**(나중에 설치한 쪽이 이긴다). 위젯을 함께 고칠 때 필요한 순서다.
+위젯을 함께 고칠 때는 그 저장소를 **따로** 클론해 editable로 덮어 설치한다(나중에 설치한 쪽이 이긴다):
+
+```bash
+git clone https://github.com/JuyeongYi/QClaudeCodeSettingEditorWidget.git ../QClaudeCodeSettingEditorWidget
+pip install -e ../QClaudeCodeSettingEditorWidget
+```
 
 ## 실행
 
@@ -80,13 +83,13 @@ python -m pytest tests/ -q
 
 - 저장소: <https://github.com/JuyeongYi/QClaudeCodeSettingEditorWidget>
 - 배포 이름: `qclaudecodesettingeditorwidget` / 임포트도 같은 이름
-- 저장소 안 위치: `external/QClaudeCodeSettingEditorWidget` (git 서브모듈)
+- 이 저장소에는 **포함되지 않는다** — `pyproject.toml`의 git URL 의존성(`main` 추적)으로만 참조한다(서브모듈 편입은 2026-09-20에 걷었다).
 
-**없어도 앱은 정상 동작한다.** 설정 탭이 안내 자리 표시자로 바뀔 뿐이고 나머지 기능은 영향을 받지 않는다. 서브모듈을 초기화하지 않은 클론에서 GUI를 띄우면 이 상태가 된다.
+**없어도 앱은 정상 동작한다.** 설정 탭이 안내 자리 표시자로 바뀔 뿐이고 나머지 기능은 영향을 받지 않는다. 위젯 패키지가 설치되지 않은 환경에서 GUI를 띄우면 이 상태가 된다.
 
 **훅 설정은 이 위젯으로 편집하지 않는다.** 훅의 정본은 훅 라이브러리 탭이고, 설정 쪽에서 중복 편집하면 진실이 둘이 된다 — 위젯이 훅 카테고리를 제외하고, 저장·베이크·MCP 세 층이 각각 방어한다.
 
-**함정 — 서브모듈 SHA와 배포 의존성은 별개다.** `pyproject.toml`의 참조는 위젯의 `main`을 추적하고 서브모듈은 특정 커밋에 고정돼 있다. 서브모듈을 올렸다고 해서 `uv tool install`이 같은 커밋을 받는다는 보장이 없으므로, 위젯을 갱신할 때는 배포 설치도 최신을 받는지 확인해야 한다.
+**함정 — 의존성은 `main`을 추적한다.** 잠금 파일(`uv.lock`)이 고정한 커밋과 위젯 `main`의 최신은 다를 수 있다. 위젯을 갱신했으면 잠금을 다시 만들고(`uv lock --upgrade-package qclaudecodesettingeditorwidget`) 배포 설치가 그 커밋을 받는지 확인한다.
 
 ## 아키텍처
 

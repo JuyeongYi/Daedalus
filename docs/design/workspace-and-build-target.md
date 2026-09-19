@@ -117,8 +117,9 @@ LOCAL 플러그인이 설치 대상 작업 폴더에 남기는 **항상 컨텍�
 LOCAL 플러그인이 설치 대상 작업 폴더의 설정 파일(`.claude/settings.json` 기본 또는
 `settings.local.json` — 아래 "베이크")에 베이크하는
 설정이다(permissions.deny 등 — 훅 차단보다 강한 선언적 강제의 자리). 보류됐던
-WP-WS를 사용자가 별도 리포로 만든 **QClaudeCodeSettingEditorWidget**(external/
-서브모듈, SchemaStore 스키마 구동 — 전 키 자동 생성)이 UI를 채우며 재개했다.
+WP-WS를 사용자가 별도 리포로 만든 **QClaudeCodeSettingEditorWidget**(`pyproject.toml`
+git URL 의존성 — 서브모듈 편입은 2026-09-20에 걷었다, SchemaStore 스키마 구동 — 전 키
+자동 생성)이 UI를 채우며 재개했다.
 
 - **모델**: `PluginProject.workspace_settings: dict`(JSON 호환, 직렬화 왕복, 키
   부재→빈 dict). **hooks 키는 두지 않는다** — 훅 정본은 hook_library다. 편집
@@ -132,7 +133,7 @@ WP-WS를 사용자가 별도 리포로 만든 **QClaudeCodeSettingEditorWidget**
   스위트가 60초 → 타임아웃으로 폭주했다(실측). 첫 탭 진입 멈춤은 **유휴
   프리웜**(app._schedule_settings_prewarm — 창이 보이고 _SETTINGS_PREWARM_MS 뒤
   구축)이 흡수한다. isVisible 가드가 핵심 — 창을 안 띄우는 테스트에서는 절대
-  발동하지 않는다. 위젯 미설치(서브모듈 미초기화)면 안내 자리 표시자.
+  발동하지 않는다. 위젯 패키지 미설치면 안내 자리 표시자.
 - **베이크**: LOCAL 컴파일이 `wire_workspace(extra_settings=)`로 설정 파일에 **깊은 병합** —
   산출 파일은 빌드 시 선택한다(사용자 확정): `.claude/settings.json`(기본, 공유) 또는
   `.claude/settings.local.json`(개인). `compile_project(settings_filename=)` ←

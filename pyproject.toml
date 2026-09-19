@@ -13,10 +13,9 @@ dependencies = [
     # 1.x(FastMCP)와 2.x(MCPServer) 양쪽을 service._server_factory가 흡수한다.
     "mcp>=1.9",
     "uvicorn>=0.30",
-    # 작업 폴더 설정 편집 위젯 (WP-WS) — uv tool install 등 배포 설치가 GitHub에서
-    # 함께 받는다. 개발 환경은 external/ 서브모듈의 editable 설치가 이것을 덮는다
-    # (나중에 설치한 쪽이 이긴다). 서브모듈 SHA와 이 참조(main 추적)는 별개라
-    # 서브모듈을 올릴 때 배포도 최신을 받는지 확인할 것.
+    # 작업 폴더 설정 편집 위젯 (WP-WS) — 별도 저장소를 git URL로 참조한다(main 추적).
+    # 서브모듈 편입은 2026-09-20에 걷었다(사용자 확정): 이 저장소는 위젯을 포함하지
+    # 않고, 위젯을 함께 고칠 때만 그 저장소를 따로 클론해 editable로 덮어 설치한다.
     "qclaudecodesettingeditorwidget @ git+https://github.com/JuyeongYi/QClaudeCodeSettingEditorWidget.git",
 ]
 
