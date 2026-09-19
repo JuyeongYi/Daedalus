@@ -19,10 +19,12 @@
    회귀로 오해하지 말 것 — 사용자가 그 작업 사본을 커밋하면 그때 다시 떠서
    출처를 git 이력으로 되돌리면 된다.
 
-② **synthetic** — 여기서 조립하는 합성 프로젝트. 9종 전부 ×
+② **synthetic** — 여기서 조립하는 합성 프로젝트. 10종 전부 ×
    (배치/미배치) × (블랙보드 유/무) × 랩핑 스킬 3상태(state/reference/
    enabled=False) × async fork × fork 에이전트 × **훅을 가진 ReferenceSkill**
-   (D6 수정이 산출을 바꾸는 자리 — 골든 diff로 보이게 한다).
+   (D6 수정이 산출을 바꾸는 자리 — 골든 diff로 보이게 한다) ×
+   **산출 파일이 없는 외부 플러그인 에이전트**(WP-9 — 계획에 행이 오르지 않고
+   부르는 쪽 텍스트만 바뀌는 것을 골든이 증명한다).
 
 **`tests/compiler/builders.py`와의 관계.** FSM 형상은 builders가 **정본**이다 —
 `_skill_fsm`/`_agent_fsm`은 `make_linear_fsm`/`make_agent_fsm`에 위임하므로
@@ -52,11 +54,12 @@ from daedalus.model.fsm.section import EventDef
 from daedalus.model.fsm.state import SimpleState
 from daedalus.model.fsm.transition import Transition
 from daedalus.model.fsm.variable import FieldType
-from daedalus.model.plugin.agent import AgentDefinition, ForkAgent
+from daedalus.model.plugin.agent import AgentDefinition, ExternalAgent, ForkAgent
 from daedalus.model.plugin.config import (
     AgentConfig,
     AsyncForkSkillConfig,
     DeclarativeSkillConfig,
+    ExternalAgentConfig,
     ForkAgentConfig,
     ProceduralSkillConfig,
     ReferenceSkillConfig,
@@ -140,6 +143,10 @@ def _stamp_ids(project: PluginProject, prefix: str) -> PluginProject:
 # ─────────────────────────── 합성 코퍼스 ───────────────────────────
 
 _PLUGIN_SOURCE = "ext-pack:outer-skill"
+#: 외부 플러그인 **에이전트** 참조 (WP-9). 플러그인 id는 랩핑 스킬과 같은
+#: `ext-pack`이라 사용 선언(`external_plugins`)을 새로 늘리지 않는다 —
+#: 배선·경고 집합이 그대로여야 이 코퍼스가 보는 변화가 산출 텍스트뿐이다.
+_PLUGIN_AGENT_SOURCE = "ext-pack:reviewer"
 
 
 def _blackboard() -> Blackboard:
@@ -222,7 +229,11 @@ def _components() -> dict[str, object]:
                 "bundled ${CLAUDE_SKILL_DIR}/readme.txt, then do the work.\n"
             ),
             transfer_on=[EventDef("done", description="finished the step")],
-            call_agents=[EventDef("ask-worker", description="needs the worker agent")],
+            call_agents=[
+                EventDef("ask-worker", description="needs the worker agent"),
+                # WP-9 — 외부 플러그인 에이전트로 가는 호출 포트.
+                EventDef("ask-reviewer", description="needs the external reviewer"),
+            ],
         ),
         "sync_fork": SyncForkSkill(
             fsm=_skill_fsm("sync-fork"),
@@ -315,6 +326,19 @@ def _components() -> dict[str, object]:
             config=ForkAgentConfig(model=ModelType.OPUS, color=AgentColor.GREEN),
             body="# instruction\n\nRun the delegated task.\n",
         ),
+        # WP-9 — 산출 파일이 **없는** 종류. 계획에 행이 오르지 않고
+        # `agents/reviewer.md`도 나오지 않는다. 이 컴포넌트가 골든에 남기는
+        # 흔적은 전부 **부르는 쪽 텍스트**다(에이전트의 "## Delegation",
+        # 도착 스킬들의 "## Entry Context").
+        "external_agent": ExternalAgent(
+            name="reviewer",
+            description="External plugin agent used as a workflow node",
+            config=ExternalAgentConfig(source=_PLUGIN_AGENT_SOURCE),
+            transfer_on=[
+                EventDef("approved", description="the reviewer signed off"),
+                EventDef("changes", description="the reviewer wants changes"),
+            ],
+        ),
     }
 
 
@@ -332,10 +356,12 @@ def _place(project: PluginProject, parts: dict[str, object], *, blackboard: bool
     node_sync = SimpleState(name="sync-fork", skill_ref=parts["sync_fork"])
     node_async = SimpleState(name="async-fork", skill_ref=parts["async_fork"])
     node_agent = SimpleState(name="worker", skill_ref=parts["agent"])
+    node_reviewer = SimpleState(name="reviewer", skill_ref=parts["external_agent"])
     node_wrapped = SimpleState(name="wrapped-state", skill_ref=parts["wrapped_state"])
     node_know = SimpleState(name="knowledge", skill_ref=parts["declarative"])
     graph.states += [
         node_procedural, node_sync, node_async, node_agent, node_wrapped, node_know,
+        node_reviewer,
     ]
 
     graph.transitions.append(Transition(source=start, target=node_procedural))
@@ -355,6 +381,25 @@ def _place(project: PluginProject, parts: dict[str, object], *, blackboard: bool
     graph.transitions.append(Transition(
         source=node_procedural, target=node_agent,
         trigger=CompletionEvent(name="ask-worker"),
+    ))
+    # WP-9 — **외부 플러그인 에이전트**에게 위임한다. 호출자는 절차형 스킬이다:
+    # 에이전트를 호출자로 두면 `AgentDefinition.known_outgoing_events()`가 호출
+    # 포트를 빼는 비대칭(backlog D9) 때문에 `trigger_unknown_event` 오탐이
+    # 골든에 섞여, 이 코퍼스가 보여야 할 산출 텍스트 변화가 가려진다.
+    graph.transitions.append(Transition(
+        source=node_procedural, target=node_reviewer,
+        trigger=CompletionEvent(name="ask-reviewer"),
+    ))
+    # 외부 에이전트의 두 갈래는 **부르는 쪽이 보고를 읽고 고른다**. 도착
+    # 노드는 둘 다 이미 incoming을 가진 것으로 골라 `mid_chain_user_invocable`
+    # 집합을 건드리지 않는다 — 이 코퍼스가 보여야 하는 것은 산출 텍스트다.
+    graph.transitions.append(Transition(
+        source=node_reviewer, target=node_know,
+        trigger=CompletionEvent(name="approved"),
+    ))
+    graph.transitions.append(Transition(
+        source=node_reviewer, target=node_wrapped,
+        trigger=CompletionEvent(name="changes"),
     ))
 
     project.reference_placements = [
@@ -381,7 +426,7 @@ def build_synthetic(*, placed: bool, blackboard: bool) -> PluginProject:
             parts["declarative"], parts["transfer"], parts["reference"],
             parts["wrapped_state"], parts["wrapped_reference"], parts["wrapped_disabled"],
         ],
-        agents=[parts["agent"], parts["fork_agent"]],
+        agents=[parts["agent"], parts["fork_agent"], parts["external_agent"]],
         hook_library=_hook_library(),
         blackboard=_blackboard() if blackboard else Blackboard(),
         claude_md=WorkspaceDoc(

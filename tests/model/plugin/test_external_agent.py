@@ -243,6 +243,23 @@ def test_caller_names_it_by_source_and_says_it_knows_nothing(tmp_path):
     assert "delegate to agent `critic`" not in text
 
 
+def test_agent_delegation_section_carries_the_same_name_and_note():
+    """에이전트 쪽 "## Delegation"도 같은 이름·같은 단서를 쓴다 (원칙 1).
+
+    스킬의 "## Next Steps"와 에이전트의 "## Delegation"이 다른 이름을 말하면
+    같은 노드가 표면마다 다르게 불린다 — 판정의 실체는
+    `emit/common.delegation_target_name` 하나다.
+    """
+    from daedalus.compiler.emit import compile_agent
+
+    agent = _external()
+    project, caller = _agent_caller_project(agent)
+    text = compile_agent(caller, project)
+    assert f"delegate to agent `{_SOURCE}`" in text
+    assert "knows neither this workflow nor the blackboard" in text
+    assert "delegate to agent `critic`" not in text
+
+
 def test_its_name_is_not_subject_to_the_output_name_gate(tmp_path):
     """산출 파일이 없으면 CC 파일명 규약을 따를 이유가 없다 (§2-g 부수 효과).
 
