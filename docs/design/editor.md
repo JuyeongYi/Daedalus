@@ -156,7 +156,7 @@
   `tab_labels`·`_rebuild` isinstance 사다리·`_TYPE_STYLE`·`_COMPONENT_TITLES`·
   `KIND_LABELS`/`KIND_NOUNS`/`_KIND_TOOLTIPS`·편집기 클래스 전수 열거·`_tab_prefix`·
   `NO_PLACE_KINDS`). 표가 여럿이면 새 종류는 예외 없이 **조용히** 빠진다 — 아이콘
-  없는 행, **빈 상태와 구분되지 않는 회색 노드**(랩핑 스킬이 실제로 겪었다,
+  없는 행, **빈 상태와 구분되지 않는 회색 노드**(한 종류가 실제로 겪었다,
   사용자 보고 2026-09-07), 열리지 않는 편집 탭.
 - **거절은 시끄럽다:** `ui_for(component)`는 표에 없는 종류에 **이름과 등록된 종류
   목록을 담은 ValueError**를 낸다(원칙 5). `tests/test_registry_failure_is_loud.py`가
@@ -169,8 +169,7 @@
 - **자동 생성 금지:** 모델 레지스트리를 순회해 기본값을 만들어 주면 "UI가 없는
   종류"가 회색 기본 스타일로 조용히 그려진다 — 없애려는 바로 그 실패 양식이다.
 - **위젯 클래스를 값으로 들지 않는다:** `editor_factory`/`first_placement_prompt`는
-  호출 가능 객체이고 편집기 임포트는 그 안에서 지연된다. 랩핑 용도 팝업 자체는
-  `FsmScene._ask_wrapped_usage`에 남는다 — 헤드리스 테스트의 몽키패치 봉합선이다.
+  호출 가능 객체이고 편집기 임포트는 그 안에서 지연된다.
 
 ## 컴파일 미리보기 (A9-1) — 진입점 넷, 실체 하나
 
@@ -189,8 +188,8 @@
 
 **액션 비활성 판정도 공용이다** — `compiler/preview.can_preview(component)`. 잠그는
 대상은 산출 **자리**가 아예 없는 종류(`OUTPUT_LOCATION is NONE`)뿐이다.
-`emits_output()`으로 걸면 안 된다: 참조 용도·비활성 랩핑 스킬은 이번 빌드에 파일이
-나가지 않을 뿐 "무엇으로 컴파일되는가"는 볼 수 있고, 실사용 프로젝트의 랩핑 스킬이
+`emits_output()`으로 걸면 안 된다: 이번 빌드에 파일이
+나가지 않는 컴포넌트도 "무엇으로 컴파일되는가"는 볼 수 있고, 실사용 프로젝트의 컴포넌트가
 전부 그 경로다. `tests/compiler/test_preview.py`가 양방향으로 고정한다(진입점 **넷
 전부**가 `can_preview`를 쓰고 `emits_output`을 쓰지 않음을 AST로 본다 —
 `_PREVIEW_ENTRY_POINTS`의 파일 수가 이 절의 진입점 수와 같아야 한다).

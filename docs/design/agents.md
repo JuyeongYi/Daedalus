@@ -50,7 +50,7 @@
   에이전트는 EntryPoint 하나짜리 빈 기계(`app._make_agent_fsm`) + 기본 출력 포트 `done`.
 - **로컬 스킬 퇴역 완결 (WP-RF-1c):** `AgentDefinition.skills` 필드째 삭제. 에이전트에게 줄
   지식은 전역 스킬로 — 컴파일이 skills 프론트매터에 자동 합류시킨다(WP-AS: 전역 DeclarativeSkill
-  전부 + 그 에이전트 placement에 링크된 ReferenceSkill + 링크된 참조 용도 랩핑 스킬(`플러그인:스킬`, WP-WR)
+  전부 + 그 에이전트 placement에 링크된 ReferenceSkill
   + config.skills 수동 선언 순, 중복 제거.
   `emit._agent_skills_list`). v1 파일의 로컬 스킬은 로드 시 **전역 스킬로 승격**된다
   (`_promote_local_skills` — `_migrate_v1` 1-b 단계가 호출. 이름 충돌 시 `<agent>--<name>`으로
@@ -92,7 +92,7 @@
   `SetAttrCmd`의 `getattr(..., None)` 폴백 때문에, 거부하지 않으면 없는 필드가 인스턴스 속성으로 생기고
   성공 응답이 돌아간 뒤 저장 한 번에 사라진다). 워크플로 에이전트는 기본 포트 done으로 시작한다.
   호출 포트 도구(`add_agent_call`/`set_agent_calls`/`remove_agent_call`)는 절차형·fork 스킬·state 용도
-  랩핑 스킬·**워크플로 에이전트**를 받는다(판정의 단일 진실은 `PortTools._require_call_port_owner`).
+  **워크플로 에이전트**·외부 플러그인 에이전트를 받는다(판정의 단일 진실은 `PortTools._require_call_port_owner`).
   `get_project`의 에이전트 행과 `get_component`가 `kind`를 싣고, fork 에이전트에는
   `used_by_fork_skills`가 함께 실린다(원칙 2 — GUI의 새 조회에 대응하는 읽기).
 - **컴파일:** 종류별 본문 조립은 `compiler.md` 7-b번. "## Internal Workflow"는 legacy FSM에 실질
@@ -180,3 +180,114 @@ external plugin agent on node `X` has no usable `source` …"*, 서술 자리(�
 고치지 않아도 받는다(F10 패리티). source는
 `set_component_field(name, "source", "플러그인:이름")`으로 채운다 — 매트릭스의
 비-FIXED 행이라 setter가 자동으로 허용한다.
+
+## 외부 플러그인 카탈로그 (D2 — WP-WR에서 이관, WP-10)
+
+> 종전 `wrapped-skills.md`의 카탈로그 절이다. 랩핑 스킬이 퇴역해도 카탈로그·사용
+> 선언·실물 캐시는 그대로 살아 있다 — 이제 그 소비자가 `ExternalAgent`다.
+
+- **발견의 단일 진실은 `model/plugin/wrap_catalog.py`**다(파일시스템을 아는 모듈 —
+  hook_store 지위. 검증기·컴파일러는 임포트 금지, 필요하면 호출자 주입).
+  **마켓플레이스 폴더** 등록은 전역 `~/.daedalus/external_marketplaces.json`
+  (`marketplaces_file` — 테스트는 conftest `_isolate_external_marketplaces`가 격리),
+  발견은 폴더 밑 깊이 4까지 `.claude-plugin/plugin.json` 탐색 +
+  `skills/*/SKILL.md`(스킬 이름의 단일 진실은 **디렉토리명**) + 동봉 `.mcp.json`/
+  `plugin.json`의 `mcpServers` 키(`CataloguedPlugin.mcp_servers`) + 동봉 에이전트
+  `agents/**/*.md`(`CataloguedPlugin.agents` — 이름은 프론트매터 `name` 또는 파일명
+  이고 하위 폴더는 콜론으로 잇는다. `agent_type`=`플러그인:이름`은 CC가 정확 일치로
+  찾는 이름이라 사람이 조립하지 않고 이 값을 쓴다. 사용 선언분만 거르는 단일 진실은
+  `used_plugin_agents`). 마켓 이름 해소: 등록 시 명시 > 폴더
+  `.claude-plugin/marketplace.json`의 name > bare.
+- **"이 프로젝트가 이미 쓰는 source"의 단일 진실은 `project_external_sources`**다 —
+  창의 ✔와 MCP `list_external_plugins`의 `already_used`가 같은 함수를 부른다
+  (원칙 1·2). 종류도 버킷도 묻지 않고 `external_source`만 보므로 외부 정본을 갖는
+  새 종류는 선언 한 줄로 합류한다.
+- **원본 파일 해소는 버킷이 규약을 고른다** — `resolve_source_file(component)`가
+  스킬이면 `skills/<이름>/SKILL.md`, 에이전트면 `agents/<이름>.md`를 찾는다.
+  편집기의 "원본 열기" 버튼이 쓴다.
+- **GUI 창**은 도구 메뉴 "외부 플러그인 카탈로그..."(`view/editors/
+  wrap_catalog_dialog`) — 폴더→플러그인→스킬·에이전트 트리, **플러그인 체크 = 이
+  프로젝트에서 사용 선언**(`external_plugins`에 SetAttrCmd — undo·저장 왕복),
+  ✔ = 이미 이 프로젝트가 쓰는 source. 체크 토글의 트리 재구성은
+  `singleShot(0, self, refresh)`로 미룬다(itemChanged를 쏜 아이템을 같은 호출에서
+  `clear()`로 파괴하면 간헐 access violation — 실측. 수신 컨텍스트 덕에 닫힌
+  다이얼로그에 발화하지 않는다). **이 창의 동작은 등록·선언뿐이다**(사용자 확정 —
+  배선은 빌드 소관이라 생성 버튼 없음).
+- **실물의 출처는 세 곳, 기준은 "설치했는가"가 아니라 "실물을 읽었는가"**
+  (사용자 확정 2026-09-07): 마켓플레이스는 `marketplace.json`에 플러그인을 **선언**만
+  하고 실물은 따로 온다(실측: 공식 마켓 291개 선언 / 저장소 동봉 40개).
+  `CataloguedPlugin.files_from`이 출처를 말한다 — `"marketplace"`(저장소 동봉) /
+  `"installed"`(**CC가 설치** — `~/.claude/plugins/cache/<마켓>/<이름>/<버전>/`,
+  `cc_installed_dirs()`가 `installed_plugins.json`에서 읽는다) / `"cache"`(우리가
+  클론) / `""`(못 읽음). `has_files` property가 그 판정이고, 어디서 왔든 스킬은
+  `_scan_skills` 하나가 읽는다.
+  - **마켓 저장소만 훑던 것이 버그였다**(사용자 보고) — CC는 마켓 저장소가 아니라
+    별도 캐시에 푸므로, 사용자가 **실제로 설치한** 플러그인이 "미설치"로 나왔다.
+  - 못 읽으면 `skills=[]`·`agents=[]`이라 종류를 지목할 수는 없지만 **사용 선언은
+    지금도 된다**: plugin_id만 있으면 빌드가 dependencies/enabledPlugins를 내고
+    설치는 CC가 한다. 매니페스트 없는 실물도 정상이다(스킬 없이 LSP·훅만 주는
+    플러그인 — 실측 pyright-lsp).
+  - 표면: 카탈로그 창은 아이콘으로 가르고(🧩 읽음 / ⬇ 받아야 함) 못 읽은 것은
+    "⋯ 스킬 미확인 (N)" **접힌 그룹**으로 묶는다. MCP는
+    `list_external_plugins(include_unfetched=False)`가 읽은 것만 + `unfetched_count`
+    로 나머지를 알리고 각 항목에 `files_from`을 싣는다.
+  - **창의 펼침 상태는 재구성을 견딘다** — 체크마다 트리를 다시 그려 폴더가 접히던
+    것을 고쳤다(사용자 보고). 체크 토글은 트리를 건드리지 않고 상태 문구의 개수만
+    갱신하며(`_update_status_counts` — 모델 재스캔이 아니라 **화면을 센다**), 펼침은
+    plugin_id·폴더 경로 키 집합으로 복원한다.
+- **미설치 플러그인 실물 캐시**(사용자 확정 2026-09-07): `model/plugin/
+  plugin_cache.py`가 선언 `source`로 저장소를 **얕게 클론**해 캐시에 두고, 스킬
+  스캔은 `wrap_catalog._scan_skills`를 **그대로 재사용**한다. 그래서 이름뿐 아니라
+  **설명(SKILL.md 프론트매터)까지** 나오고, 같은 스킬을 어디서 읽었느냐에 따라
+  목록이 달라질 여지가 없다.
+  - **`git clone --branch`가 아니라 init + `fetch --depth 1`**이다 — 선언에는 커밋
+    SHA가 흔한데 `--branch`는 태그·브랜치만 받는다. `sha`가 있으면 `ref`보다
+    우선한다(태그는 옮겨 달릴 수 있고 SHA는 불변이라 캐시 키로 안전).
+  - **언제 인터넷에 나가는가 — 사용자가 그 플러그인을 지목했을 때만이다.**
+    카탈로그를 열거나 새로고침하는 것만으로는 절대 받지 않는다(291개 일괄 클론은
+    디스크도 시간도 감당할 수 없다). 캐시 폴더 이름에 ref가 들어가므로 같은 버전은
+    다시 받지 않고 버전이 바뀌면 새 폴더로 받는다.
+  - 실패하면 받다 만 폴더를 **지운다** — 남기면 다음 호출이 그것을 "이미 받은 것"
+    으로 보고 빈 디렉토리를 스캔한다. git 부재는 stack trace 대신 안내 문구.
+  - 클론할 주소가 없는 source(마켓 폴더 안 상대 경로 등)는 `None`을 돌려주고
+    "설치 후 확인"으로 안내한다. git URL이면 **GitHub이 아니어도 된다**.
+  - **받아 온 결과는 창이 아니라 카탈로그가 들고 있다**: `discover_plugins`가 매
+    스캔마다 `cached_path`(**절대 받지 않는 조회 전용**)로 캐시를 확인하므로, 받은
+    실물은 설치본과 완전히 같은 경로로 실린다.
+  - 표면: 카탈로그 창 "스킬 목록 받아오기" 버튼(이 창에서 인터넷에 나가는 유일한
+    지점 — 클론 중 대기 커서) / MCP `fetch_plugin_skills(plugin_id, refresh=False)` —
+    실물이 이미 있으면 그 자리에서 읽어 받지 않는다. 테스트는 `_shallow_clone`을
+    몽키패치해 **호출 횟수까지** 센다(언제 받느냐가 이 기능의 계약이다).
+- **외부 플러그인의 MCP 서버 활용**: 사용 선언된 플러그인의 `mcp_servers`가
+  ① 에이전트 MCP_SERVERS TagInput 자동완성 후보(`tag_input.
+  set_mcp_server_candidate_provider` — app.set_project가 `used_plugin_mcp_servers
+  (project) ∪ mcp_server_defs` 등록. **tools 후보에는 넣지 않는다** — 개별 도구 목록
+  미지원, 사용자 확정) ② LOCAL 컴파일 주입 `compile_project(provided_server_names=)`
+  (compile_inputs 합류 — 플러그인 활성화가 서버를 가져오므로
+  `missing_mcp_server_def` 대상에서 제외)로 쓰인다.
+- **MCP 짝**(패리티): `list_external_plugins`(plugin_id·used·mcp_servers·skills·
+  agents·already_used)/`fetch_plugin_skills`/`list_marketplace_folders`/
+  `add_marketplace_folder`/`remove_marketplace_folder`(홈 설정 파일 — undo 비대상)/
+  `set_external_plugins`(선언 통째 교체 — undo 가능). `get_project` meta에
+  `external_plugins`.
+
+## 랩핑 스킬 퇴역 (WP-10, 2026-09-19)
+
+`WrappedSkill`(외부 플러그인의 **스킬**을 워크플로 단계로 감싸는 종류)은 사라졌다.
+그 일은 두 갈래로 나뉜다 — 워크플로 단계로 쓰던 것은 `ExternalAgent`(외부
+서브에이전트를 노드로), 참고 자료로 쓰던 것은 `ReferenceSkill`(자체 본문을 가진
+참조 문서)이다. 외부 **스킬**은 이제 감싸지 않는다: 플러그인을 사용 선언하면 CC가
+그 스킬들을 네이티브로 로드하므로 우리가 대신 인보크할 이유가 없다.
+
+저장 파일은 `serialize.migrate.migrate_wrapped_retirement`가 **단방향으로 흡수**한다
+(원칙 7 — 호환 잔재를 모델에 남기지 않는다):
+
+| 옛 상태 | 새 종류 | 비고 |
+|---|---|---|
+| `usage == "state"`(미정·키 부재 포함) | `external_agent` | `source`·`transfer_on`·`call_agents` 승계, fsm 드롭. **source가 이제 에이전트 이름을 가리킨다**는 경고 1건 |
+| `usage == "reference"` | `reference_skill` | 본문 첫 줄에 `Source: \`<source>\``를 남긴다(정본이 외부라는 사실을 조용히 잃지 않는다) |
+| `enabled == False` | 드롭 | 산출에도 배선에도 나가지 않던 것이라 이관할 산출이 없다. 참조 배치도 함께 걷는다 |
+
+**안정 id를 보존**하므로 그래프의 `skill_ref`가 스킬 목록 → 에이전트 목록 이동을
+그대로 따라온다. 변환 규칙과 경고 문구는 `tests/model/test_migrate_wrapped_retirement.py`
+가 고정한다.

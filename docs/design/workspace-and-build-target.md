@@ -152,7 +152,7 @@ WP-WS를 사용자가 별도 리포로 만든 **QClaudeCodeSettingEditorWidget**
   밖**이라는 것이 정확한 이유다). 참고로 plugin-dev의 `plugin-settings`
   스킬이 문서화하는 `.claude/<플러그인>.local.md` 설정 패턴은 **공식 문서에
   없다**(비공식 관습) — 그것을 배경 지식으로 들이면 존재하지 않는 표면을
-  설계하게 되므로 랩핑 대상에서 제외한다.
+  설계하게 되므로 대상에서 제외한다.
 - **MCP**: `get_workspace_settings`/`set_workspace_settings`(통째 교체,
   SetAttrCmd로 undo, hooks 키 거부) — 패리티 원칙에 따라 같은 WP에서 동반.
 - **위젯 수명 함정(테스트)**: 위젯의 0ms 디바운스(`singleShot(0, _flush_change)`)가

@@ -11,7 +11,7 @@
 | 결정 대기 — 설계 완료 | §1-1 A5 컴파일 분할 | 결정 D1~D7 |
 | 〃 | §1-2 A1 평가 루프 | 결정 D1~D9, early access 스펙 |
 | 〃 | §1-3 WP-LK 스토어 빌드 + 링크 | 잔존 의문 U2~U8 |
-| 결정 대기 — 제안 단계 | §2 fork 후속(랩핑 실행 에이전트 합치기) · reference 랩핑의 스킬 링크 예외 · statusLine 도구 · 외부 에이전트 노드 · 컴포넌트 도입문 2차 호이스트 · `get_project` 축약 기본값 | 사용자 결정 |
+| 결정 대기 — 제안 단계 | §2 fork 후속 · statusLine 도구 · 컴포넌트 도입문 2차 호이스트 · `get_project` 축약 기본값 · 외부 에이전트를 에이전트 체인 규칙에 넣을지 | 사용자 결정 |
 | 규격 정정 후속 | §5 스킬 훅 — 지운 참조 복구 여부 · 중복 실행 미실측 | 사용자 확인 |
 | 컴파일러 Tier 2 | §3 도구·스크립트 실행 래퍼, 외부 오케스트레이터 | 설계 전 |
 | 보류 | §4 기존 플러그인 임포트 · 블랙보드 단락 rules 이관 · Region 확장 | 개시 미정 |
@@ -618,17 +618,15 @@ junction(폴더)·하드링크(파일)는 **무권한이지만 같은 볼륨 전
 ## 2. 결정 대기 — 제안 단계
 
 - **fork 스킬 후속** (fork 2종·fork 에이전트 종류는 2026-09-17 구현 완료 — 정본은
-  `docs/design/plugin-model.md` "fork 스킬 2종 + fork 에이전트"). 남은 항목은 둘뿐이다:
-  ① 랩핑 스킬 실행 에이전트를 fork 방식으로 합치기 — 보류(실행 에이전트는 생성물이라 fork 에이전트 후보 세 종류에 들지
-  않고, 2026-09-12 확정 "model/effort는 실행 에이전트로"와 부딪힌다). fork 도그푸딩 뒤 다시 본다.
+  `docs/design/plugin-model.md` "fork 스킬 2종 + fork 에이전트"). 남은 항목은 하나다
+  (① 랩핑 스킬 실행 에이전트 합치기는 **WP-10에서 소멸** — 랩핑 스킬이 퇴역하며 실행 에이전트라는
+  생성물 자체가 사라졌다):
   ② 외부 플러그인 에이전트가 그 플러그인에 실제로 있는지는 검증하지 않는다(검증기는 파일시스템 무접근 —
   카탈로그 주입 인자가 필요). MCP·피커는 카탈로그로 거른다. 내장 `statusline-setup`이 후보에 없는 것은
   사용자 확정(세 이름만)이라 항목이 아니다.
   **해소됨(2026-09-17/18):** 전환 후 편집 탭이 스스로 다시 구성되지 않던 문제는
   `view/commands/surface_commands.resync_bracket`이 전환 매크로 양 끝에서 프론트매터 폼·레지스트리를
   다시 그리면서 사라졌다(undo에도 걸린다).
-- **참조 용도 랩핑 스킬이 스킬 노드에 링크된 경우** — 외부 스킬은 서브에이전트에서만 쓴다는 원칙(2026-09-12)의
-  예외로 둘지(현행: 메인 컨텍스트 consult 지시), 상담용 서브에이전트를 합성할지.
 - **statusLine 스크립트 도구** — `statusLine`은 LOCAL 전용이다(플러그인 루트 `settings.json`의 허용 키는
   `agent`/`subagentStatusLine`뿐). 스크립트 본문을 모델에 두고 산출 + settings 베이크, MCP는 입력 JSON 스키마 조회 +
   모의 입력 실행 미리보기. 확인 필요: statusLine 명령에 `${CLAUDE_PROJECT_DIR}`가 주어지는지(문서 없음 — 실측),
@@ -661,7 +659,7 @@ junction(폴더)·하드링크(파일)는 **무권한이지만 같은 볼륨 전
      `current` 인계 3단 규약을 함께 낸다),
      `Agent` 도구 없는데 호출 포트(위임 지시가 나가지만 혼자 처리), `Bash` 없는데 블랙보드 CLI 지시,
      `tools: []`(체크만 하고 비움)는 키가 생략돼 **전 도구 상속**, 에이전트 `skills`에 프리로드되지 않는 스킬(전이 스킬·
-     disable-model 선언형·참조 용도/비활성 랩핑)이 들어가도 무경고.
+     disable-model 선언형)이 들어가도 무경고.
   5. **빈 컴포넌트 무경고** — 설명·본문·when_to_use가 빈 스킬도 통과·산출되고, 캔버스에 없는 빈 스킬도 설치된다.
      빈 출력 포트 설명은 Next Steps에 설명 없는 갈래를 만든다.
   6. **MARKETPLACE 빌드는 MCP 서버 정의를 싣지 않는데 경고가 없다** — `missing_mcp_server_def`는 LOCAL 배선에서만 나온다.
@@ -699,7 +697,7 @@ junction(폴더)·하드링크(파일)는 **무권한이지만 같은 볼륨 전
   CLI·규칙이다. **남은 도입문 J~S는 이번 범위 밖**으로 뒀다 — 각 1~2문장이고 컴포넌트 고유 정보(포트 이름·
   호출자 목록·외부 스킬 이름)와 한 문장 안에서 엮여 있어, 떼려면 문장을 쪼개야 한다. 후보:
   `## Invocation Contract`·`## Delegation`·`## Exits`·`## Output Events`·`## Next Steps`·
-  `## Reference: Tool Shelf`·`## Background Skills`·랩핑 실행 에이전트 본문(`emit/wrapped.py`).
+  `## Reference: Tool Shelf`.
   착수 전제: 토큰 리포트로 실측 절감폭을 재고(지금 가이드 둘은 ≈1,800토큰 — workflow 1,400 / blackboard 400), 고유 정보와 일반형이 한 문장에
   섞이지 않게 문구를 먼저 다시 쓴다.
 - **MCP `get_project`의 축약 기본값** — 지금은 `sections` 생략 시 전체를 돌려준다. 축약 구획을 기본으로 바꿀지.
@@ -742,16 +740,13 @@ Tier 2다. 출발점은 2026-05 조사(ClaudeManager가 만든 plain 셸 스크�
 
 ## 5. 기능 잔여
 
-- **랩핑 스킬의 실행 서브에이전트 산출에 가이드 포인터가 없다 (D8 — 2026-09-19 실측, WP-6이 봉인)**.
-  랩핑 스킬은 파일을 둘 낸다(SKILL.md + `agents/<이름>.md` 실행 서브에이전트). 앞의 것은 절 표를
-  거치면서 공통 안내 파일 포인터(`guides/<플러그인>/workflow.md`·`blackboard.md` 1줄)를 받지만,
-  뒤의 것(`compiler/emit/wrapped.compile_wrapped_runner`)은 표를 거치지 않는 **손수 조립기**라
-  포인터가 붙지 않는다. 실행 서브에이전트도 워크플로 안에서 도는 컨텍스트이므로 포인터를 받는
-  것이 맞지만, WP-6은 **동작 불변 리팩토링**이라 고치면 산출 바이트가 바뀐다 —
-  `WrappedEmitter.render`가 `RUNNER_PAYLOAD` 행에서 종전 함수를 축자 호출하는 것으로 **봉인**했다
-  (`docs/design/compiler.md` WP-6 절). 고치는 대신 **WP-10(WrappedSkill 퇴역)에서 조립기가 클래스와
-  함께 사라지는 것**이 계획이다. 그 전에 고치려면 골든(`tests/data/golden/*.sha256`)을 같은
-  커밋에서 재생성해야 한다.
+- **외부 플러그인 에이전트를 에이전트 체인 규칙에 넣을지 (WP-10에서 보존한 좁힘)**.
+  `validation/project_rules/workflow._agent_call_edges`의 caller 집합은 `RUNS_IN_SUBAGENT`이면서
+  `BODY_SOURCE is OWNED`인 노드다 — 외부 플러그인 에이전트는 서브에이전트에서 돌지만 **제외**된다
+  (랩핑 스킬 시절의 좁힘을 그대로 보존했다). 넓히면 그 노드를 거치는 체인의
+  `agent_chain_too_deep` 깊이가 한 단계 깊어지고, `agent_calls_higher_model`이 **우리가 적어 본
+  `config.model`**(어디로도 나가지 않는 값)으로 남의 에이전트를 판정한다. 깊이만 넓히고 모델
+  비교는 빼는 것이 옳아 보이지만, 경고가 늘어나는 동작 변경이라 사용자 확정 대상이다.
 - **`config.model` 키 부재가 `None`으로 로드된다 (D10 — 2026-09-19 실측, WP-4가 보존)**.
   `ComponentConfig.model`의 선언 기본값은 `ModelType.INHERIT`인데, 저장 파일에 `model` 키가
   없으면 `None`이 들어온다(종전 `_deser_config`의 `_to_enum(ModelType, None, None)`, 오늘은
@@ -772,9 +767,6 @@ Tier 2다. 출발점은 2026-05 조사(ClaudeManager가 만든 plain 셸 스크�
   설계 보존을 위해 실질 상태가 있으면 `## Internal Workflow` 단락을 여전히 배출한다. 즉 지울
   수단이 없는 채로 산출에만 나온다. 권고는 **컴파일러가 무시하게 하고 마이그레이션이 legacy
   상태를 정리**하는 쪽(퇴역 개념의 잔재 제거 — 편집 표면을 다시 여는 것은 방향이 거꾸로다).
-- **WP-WR 2단계 잔여** — 에디터 소스 콤보·본문 미리보기, `dangling_wrapped_source`(카탈로그 실존 검사 — 소스 부재는
-  게이트 에러가 아니라 경고, 호출자 주입), `wrapped_source_has_workflow`(소스 본문에 우리 자동 헤딩이 보이면 이중
-  지시 경고), 소스 스킬이 `disable-model-invocation: true`면 실행 에이전트에 주입도 직접 인보크도 안 된다는 경고.
 - **종료 경로 크래시 — WP-E에서 미룬 항목 (재현 조건 미기록)** — WP-E 리뷰에서 창을 닫는 중의
   크래시가 언급됐지만 재현 조건이 커밋 메시지에도 설계 문서에도 남지 않았다. **코드가 보여 주는
   사실만** 적는다: `ProjectViewModel`의 리스너 등록이 창 수명과 짝이 맞지 않는다.
@@ -806,14 +798,7 @@ Tier 2다. 출발점은 2026-05 조사(ClaudeManager가 만든 plain 셸 스크�
   찾는 이름인지 **실측이 없다** — 산문은 프론트매터 키가 아니라 사람·모델이 읽는 지시라 맨
   이름으로도 동작할 수 있다(원칙 8: 규격은 근거를 남긴다). 실측 후 한쪽으로 맞추면 골든이
   바뀌므로 같은 커밋에서 재생성한다. `docs/design/compiler.md` 정책 19-b가 이 비대칭을 명시한다.
-- **외부 에이전트 원본 파일 열기 (WP-9 리뷰)**. `wrap_catalog.resolve_skill_file`은 플러그인의
-  `skills/<이름>/SKILL.md`만 해소한다 — 정본이 외부인 **에이전트**의 원본(`agents/<이름>.md`
-  추정)은 못 찾는다. 그래서 편집기의 "원본 열기" 버튼은 `can_resolve_source()`(버킷 판정)가
-  거짓인 컴포넌트에서 **감춰진다**(누를 때마다 "찾지 못했습니다"만 내놓는 버튼은 조용한
-  실패다). 카탈로그는 이미 `CataloguedAgent`로 플러그인 에이전트를 발견하므로 파일 경로
-  해소만 더하면 되지만, 외부 플러그인의 에이전트 파일 배치를 **실측하지 않았다**(원칙 8).
-- **컴파일 미리보기 비모달화** — 지금은 모달(`view/actions/preview.py`의 `exec()`)이라 편집하며 나란히 못 본다. 랩핑
-  스킬의 실행 에이전트 산출도 미리보기에 아직 없다.
+- **컴파일 미리보기 비모달화** — 지금은 모달(`view/actions/preview.py`의 `exec()`)이라 편집하며 나란히 못 본다.
 - **참조 하이라이트** — 2초 뒤 `clearSelection()`이 사용자 선택까지 지운다(`canvas/context_menus.py`). 별도 이펙트
   아이템으로 교체 후보.
 - **호출 계약 줄 길이** — 포트 설명 + transfer 설명 + 전제 지시가 한 줄이라 항목 많은 에이전트에서 길다.
@@ -851,9 +836,8 @@ Tier 2다. 출발점은 2026-05 조사(ClaudeManager가 만든 plain 셸 스크�
   `compiler/project_compiler.py`는 WP-C의 `plan.py` 분해로 676줄이 되어 목록에서 빠졌다.
 - **`view/canvas/scene.py` 분해 후보 (2026-09-19 리뷰)** — 992줄로 800줄 권고를 넘었고 1,200
   상한까지 208줄이다. 한 파일이 세 책임을 겹쳐 든다(스멜 ①). 봉합선:
-  ① **드롭 수용** — `drop_skill` · `drop_wrapped_source` · `_ask_wrapped_usage` ·
-  `_place_wrapped_fixing_usage` · `drop_reference_skill`(레지스트리에서 들어오는 입구,
-  용도 질문 모달이 붙어 테스트 봉합선이기도 하다).
+  ① **드롭 수용** — `drop_skill` · `drop_reference_skill`(레지스트리에서 들어오는 입구).
+  (WP-10에서 랩핑 소스 드롭 3개가 사라져 이 덩어리가 작아졌다.)
   ② **배치·삭제 커맨드 조립** — `_create_state` · `_delete_state` · `_delete_transition` ·
   `_create_and_assign_transfer_skill` · 참조 노드/링크 생성·삭제(전부 CommandStack 경유라
   씬 그리기와 섞일 이유가 없다).

@@ -20,7 +20,7 @@ MCP 편집은 GUI 편집과 **같은 커맨드 스택**을 거친다. 그래서 
 
 **③ 본문 편집도 에디터 안으로 들어간다.**
 
-`set_component_body` / `set_body_section`은 모델에 값을 대입하는 것이 아니라 그 컴포넌트의 `QTextDocument`에 적용된다. 에디터가 열려 있으면 타이핑하듯 반영되고, 본문 전용 undo 스택에 정확히 올라간다. 랩핑 스킬처럼 **본문 정본이 외부**인 컴포넌트는 두 도구가 거절한다 — 본문이 산출에 나가지 않으므로 성공을 돌려주면 조용한 no-op이다(GUI도 본문 편집기를 만들지 않는다).
+`set_component_body` / `set_body_section`은 모델에 값을 대입하는 것이 아니라 그 컴포넌트의 `QTextDocument`에 적용된다. 에디터가 열려 있으면 타이핑하듯 반영되고, 본문 전용 undo 스택에 정확히 올라간다. 외부 플러그인 에이전트처럼 **본문 정본이 외부**인 컴포넌트는 두 도구가 거절한다 — 본문이 산출에 나가지 않으므로 성공을 돌려주면 조용한 no-op이다(GUI도 본문 편집기를 만들지 않는다).
 
 ## 연결
 
@@ -75,15 +75,14 @@ GUI가 켜지면 `127.0.0.1`에 Streamable HTTP로 뜬다.
 
 | 도구 | 파라미터 | 받는 값 |
 |------|----------|---------|
-| `create_skill` | `kind` | `procedural` · `sync_fork` · `async_fork` · `declarative` · `transfer` · `reference` · `wrapped` |
+| `create_skill` | `kind` | `procedural` · `sync_fork` · `async_fork` · `declarative` · `transfer` · `reference` |
 | `create_skill` | `fork_agent` | 설정에 `agent`를 가진 종류(`sync_fork`/`async_fork`) 전용 — 내장 fork 에이전트, `플러그인:이름`, 또는 프로젝트의 fork 에이전트 이름. 생략하면 `general-purpose` |
-| `create_skill` | `source` / `usage` | 설정에 `source`/`usage`를 가진 종류(`wrapped`) 전용 — `usage`는 `source`와 함께만 |
 | `create_agent` | `kind` | `agent`(워크플로 에이전트 — 캔버스 노드) · `fork_agent`(fork 스킬의 실행 기반) · `external_agent`(다른 플러그인의 에이전트를 노드로 — 산출 파일 없음. `source`는 `set_component_field(name, "source", "플러그인:이름")`으로 채운다) |
 | `convert_skill` | `to` | `procedural` · `sync_fork` · `async_fork` |
 
 - **읽는 쪽 `kind`는 철자가 다르다.** 조회 응답(`get_project`의 스킬·에이전트 행, `get_component`,
   `get_canvas`의 노드)은 **클래스 철자**를 말한다 — `procedural_skill` · `sync_fork_skill` ·
-  `async_fork_skill` · `declarative_skill` · `transfer_skill` · `reference_skill` · `wrapped_skill` ·
+  `async_fork_skill` · `declarative_skill` · `transfer_skill` · `reference_skill` ·
   `agent` · `fork_agent` · `external_agent`. 쓰는 쪽 파라미터는 위 표의 **짧은 형**(`procedural` · `sync_fork` …)이다.
   **목록은 레지스트리에서 파생**이라 새 종류는 도구를 고치지 않아도 나타난다(F10 패리티).
   조회 값을 그대로 `create_skill(kind=)`에 넣으면 거절된다.
@@ -97,7 +96,6 @@ GUI가 켜지면 `127.0.0.1`에 Streamable HTTP로 뜬다.
   버리면 "설정했는데 아무 일도 일어나지 않는" 상태가 된다. 거절은 고정값과 갈
   곳(`convert_skill`)을 말하고, 이름을 잘못 준 경우의 "사용 가능" 목록에는 **실제로 설정되는
   이름만** 실린다. 전용 도구가 있는 셋은 그 도구로 안내한다: `hooks`→`set_component_hooks`,
-  `usage`→`change_wrapped_usage`, `enabled`→`set_wrapped_enabled`.
 - **생성 인자는 그 종류가 그 설정을 가질 때만 받는다.** `fork_agent`/`source`/`usage`를 다른 종류에
   주면 거절하며 **받을 수 있는 종류를 함께 말한다**.
 - **fork 에이전트는 캔버스에 놓이지 않는다.** `create_agent(kind="fork_agent")`에 `x`·`y`를 주면
@@ -108,7 +106,7 @@ GUI가 켜지면 `127.0.0.1`에 Streamable HTTP로 뜬다.
   "사용하는 fork 스킬" 패널과 같은 목록이다. `get_project`의 에이전트 행에는 `kind`가 실린다.
 - **`place_component`는 배치되지 않는 종류를 거절하되 갈 곳을 말한다** — 참조 용도는
   `place_reference`로. 거절 문구는 그 종류의 **배치 역할**(상태 노드 / 참조 노드 / 전이 위 / 없음)을
-  설명하고 같은 역할인 종류를 함께 나열한다. 용도를 아직 정하지 않은 랩핑 스킬을 주면 GUI와 같게 `state`로 고정하고
+  설명하고 같은 역할인 종류를 함께 나열한다. 이미 배치된 컴포넌트를 다시 주면
   (고정 + 배치가 1 undo) 응답에 `usage_fixed`를 실어 알린다. **이미 배치된 컴포넌트는 거절한다** —
   같은 스킬을 두 번 놓으면 프로젝트가 컴파일되지 않는다(`no_duplicate_skill_ref`). 옮기려면
   `move_state`를 쓴다.
@@ -121,7 +119,7 @@ LOCAL 빌드가 설치 대상 작업 폴더에 남기는 `.claude/CLAUDE.md` 구
 
 ### 외부 플러그인 카탈로그 (8)
 
-`list_wrappable_skills` · `fetch_plugin_skills` · `list_marketplace_folders` · `add_marketplace_folder` · `remove_marketplace_folder` · `set_external_plugins` · `set_wrapped_usage` · `set_wrapped_enabled`
+`list_external_plugins` · `fetch_plugin_skills` · `list_marketplace_folders` · `add_marketplace_folder` · `remove_marketplace_folder` · `set_external_plugins`
 
 다른 플러그인의 스킬을 워크플로 단계로 감쌀 때 쓴다. **`fetch_plugin_skills`만 인터넷에 나간다** — 사용자가 그 플러그인을 지목했을 때만이고, 카탈로그를 열거나 새로고침하는 것만으로는 절대 받지 않는다.
 

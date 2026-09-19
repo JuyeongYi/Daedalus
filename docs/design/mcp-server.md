@@ -135,7 +135,7 @@
   call_agent 포트는 에이전트로만). 같은 조작인데 경로에 따라 결과가 달라지면 협업 도구로 실격이라
   `connect_states`가 동일 규칙을 검사한다. 포트는 `add_agent_call(skill, event)`로 먼저 만든다.
   **호출 포트는 에이전트도 가진다**(2026-09-12 — CC 중첩 스폰 허용): 포트 도구 3종은 절차형
-  스킬·state 용도 랩핑 스킬·에이전트를 받고, 판정의 단일 진실은
+  스킬·에이전트를 받고, 판정의 단일 진실은
   `PortTools._require_call_port_owner`다 — 술어는 **`c.effective_placement() is PlacementRole.STATE`**
   (단일 배치 노드만 포트를 갖는다, WP-2d). `connect_states`의 `src_has_call_ports`도 같은 술어를 쓴다. 에이전트가 에이전트를 부르면 깊이·모델 티어 제약을
   검증이 에러로 짚는다(`agent_chain_too_deep`/`agent_calls_higher_model`).
@@ -188,10 +188,10 @@
   둘 다 이유를 말하며 거절한다(FIXED는 고정값과 `convert_skill`을, 나머지는 그 종류의 필드
   목록을). **거절의 "사용 가능" 목록은 setter가 실제로 받는 이름만** 싣는다 — FIXED 행과 전용 도구
   필드를 빼지 않으면 같은 호출이 거절할 이름을 선택지로 내놓는다(원칙 5는 이유와 **선택지**를 요구한다).
-  전용 도구로 안내하며 거절하는 필드는 셋이다: `hooks`→`set_component_hooks`, `usage`→
-  `change_wrapped_usage`, `enabled`→`set_wrapped_enabled`. `enabled`는 `WrappedSkillConfig`의
-  dataclass 필드지만 매트릭스 행이 없어 P4 게이트가 "필드가 없습니다"로 거절하게 됐던 자리다 —
-  사실도 아니고 갈 곳도 못 말하므로 포인터 분기를 두었다(WP-8 리뷰 반영). 대상 필드 집합은
+  전용 도구로 안내하며 거절하는 필드는 오늘 `hooks`(→`set_component_hooks`) 하나다 — 종전
+  `usage`/`enabled` 포인터는 랩핑 스킬과 함께 퇴역했다(WP-10). 그 분기의 규칙은 남는다:
+  **매트릭스 행이 없는데 dataclass 필드이기는 한** 값은 "필드가 없습니다"가 아니라 전용 도구를
+  가리키며 거절한다(사실도 아니고 갈 곳도 못 말하는 거절 금지 — WP-8 리뷰 반영). 대상 필드 집합은
   `model/plugin/field_matrix.matrix_for(component)`가 고른다(WP-FK2) — 키는 `component.config.kind`
   이고, 컴파일러·편집기가 부르는 것과 **같은 함수**다. 맨 첨자는 kind가 표와 어긋나는 날 앱을
   죽이고 `.get(kind, {})`는 조용한 빈 폼을 내므로, 어느 종류가 어느 표에 없는지 말하는
@@ -264,15 +264,14 @@
 
 | 도구 | 파라미터 | 받는 값 |
 |------|----------|---------|
-| `create_skill` | `kind` | `config_kinds_in(Bucket.SKILLS)` **파생** — 오늘 `procedural` · `sync_fork` · `async_fork` · `declarative` · `transfer` · `reference` · `wrapped`(선언 순서) |
+| `create_skill` | `kind` | `config_kinds_in(Bucket.SKILLS)` **파생** — 오늘 `procedural` · `sync_fork` · `async_fork` · `declarative` · `transfer` · `reference`(선언 순서) |
 | `create_skill` | `fork_agent` | 설정에 `agent`를 가진 종류(오늘 `sync_fork`/`async_fork`) **전용** — 내장 fork 에이전트, `플러그인:이름`, 또는 프로젝트의 fork 에이전트 이름(정확 일치). 생략하면 `general-purpose` |
-| `create_skill` | `source` / `usage` | 설정에 `source`/`usage`를 가진 종류(오늘 `wrapped`) **전용**. `usage`는 `source`와 함께만 |
 | `create_agent` | `kind` | `config_kinds_in(Bucket.AGENTS)` 파생 — `agent`(워크플로 에이전트 — 캔버스 노드) · `fork_agent`(fork 스킬의 실행 기반 — fsm·포트·배치 없음) · `external_agent`(외부 플러그인 에이전트를 노드로 — fsm·산출 파일 없음, 포트는 있다). **WP-9은 이 도구를 한 줄도 고치지 않았다** — 어휘가 파생이라 새 종류가 그대로 나타난다 |
 | `convert_skill` | `to` | `procedural` · `sync_fork` · `async_fork` (3-way) |
 
 - **읽는 쪽과 쓰는 쪽의 철자가 다르다.** 조회(`get_project`의 스킬·에이전트 행, `get_component`,
   `get_canvas`의 노드)는 `comp.kind` — 즉 **클래스 철자**(`procedural_skill` · `sync_fork_skill` ·
-  `async_fork_skill` · `declarative_skill` · `transfer_skill` · `reference_skill` · `wrapped_skill` ·
+  `async_fork_skill` · `declarative_skill` · `transfer_skill` · `reference_skill` ·
   `agent` · `fork_agent`)를 싣고, 쓰는 쪽 파라미터는 위 표의 **짧은 형**을 받는다. 판정의 실체가
   다르기 때문이다 — 읽는 쪽은 모델이 스스로 말하는 `kind` 프로퍼티(원칙 1), 쓰는 쪽은 도구의
   생성 어휘(`_SKILL_KINDS` = `config_kinds_in(Bucket.SKILLS)`)다. 둘을 섞어 넣으면 거절된다(조용히
@@ -297,7 +296,7 @@
 - **`place_component`는 배치 게이트를 가진다(A4).** 판정의 실체는
   `model/plugin/placement.is_state_placeable` 하나이고 캔버스 드롭·레지스트리 드래그·"여기에
   만들기"와 공용이다. 거부는 **갈 곳을 말한다** — 참조 용도는 `place_reference`, declarative·
-  transfer·fork_agent는 "배치되지 않는 종류". 용도 미정 랩핑 스킬은 **거부하지 않고** GUI와 같게
+  transfer·fork_agent는 "배치되지 않는 종류"다. 이미 배치된 컴포넌트를 다시 주면
   usage를 `"state"`로 고정하고(캔버스는 물어서 고정한다) 고정+배치를 `MacroCommand` **1 undo**로
   묶은 뒤 응답에 `usage_fixed: "state"`를 싣는다(오케스트레이터 확정 2026-09-18 — 오늘 되던 배치를 이유
   없이 깨지 않는다). **이미 배치된 컴포넌트도 거절한다** — 캔버스 드롭의 "이미 배치됨" 조기 반환과
@@ -325,7 +324,7 @@
   부르고, 거기서 `emitter_for(component)`가 종류를 안다(원칙 1·2). 응답에 `path`(산출 루트 기준
   상대 경로)가 함께 실리고, 토큰 계상 구간도 emitter가 선언한 것을 그대로 쓴다 — 미리보기가
   실제 컴파일과 다른 구간으로 세면 계기판이 거짓말한다.
-- **미리보기에는 산출 게이트가 없다.** 참조 용도·비활성 랩핑 스킬은 컴파일 산출 파일이 없지만
+- **미리보기에는 산출 게이트가 없다.** 이번 빌드에 파일이 나가지 않는 컴포넌트도
   `compile_preview`는 정상 렌더한다 — 질문이 "이 컴포넌트가 무엇으로 컴파일되는가"이지 "이번
   빌드에 파일이 나가는가"가 아니기 때문이다. 거절하는 것은 산출 **자리**가 아예 없는 종류뿐이고
   (`OUTPUT_LOCATION is NONE`), 그때는 **그 종류에 산출 파일이 없다는 사실과 대안**("이 노드의

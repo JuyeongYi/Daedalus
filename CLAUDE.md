@@ -66,8 +66,7 @@ pytest는 `python -m pytest`로 실행한다 (`pytest` 직접 실행 시 command
 | `architecture.md` | 컴파일러 패턴·경계 계약·요약 모듈 지도 + 파일 단위 상세 지도(각 모듈의 책임·분해 이력·테스트 봉합선) |
 | `plugin-model.md` | 스킬 **7종**·에이전트 2종 표와 클래스 계층, 배치 가능 판정, fork 스킬 2종(sync/async)·fork 에이전트 종류·3-way 전환·마이그레이션·실측, `SKILL_FIELD_MATRIX`/`AGENT_FIELD_MATRIX`/`matrix_for`/`FieldRule`, `FieldType`, 진입 의미론 tri-state + 진입점 프리셋(A8), config 계층 |
 | `fsm-model.md` | CompositeState/Region/조인, FSM+블랙보드 하이브리드, body·Section·EventDef, 입력 포트 퇴역(WP-IP), `PluginProject.graph`(EntryPoint 격하 WP-EP), CompletionEvent, 전략 패턴, 안정 ID + 직렬화·마이그레이션 |
-| `agents.md` | 에이전트 **두 종류**(워크플로/fork, WP-FK2), 내부 FSM 퇴역(WP-AF), 출력 포트, 로컬 스킬 승격, 그래프 유도 호출 계약(WP-CT) |
-| `wrapped-skills.md` | 외부 플러그인 스킬 랩핑(WP-WR) — 서브에이전트 강제 산출, 사용 선언 배선, 용도 state/reference, 비활성화, 카탈로그·클론 캐시 |
+| `agents.md` | 에이전트 **세 종류**(워크플로/fork/외부 플러그인, WP-FK2·WP-9), 내부 FSM 퇴역(WP-AF), 출력 포트, 로컬 스킬 승격, 그래프 유도 호출 계약(WP-CT), 외부 플러그인 카탈로그·클론 캐시, 랩핑 스킬 퇴역 마이그레이션(WP-10) |
 | `blackboard.md` | 최상위 블랙보드·JSON Schema 매핑, 상태 reads/writes 접근 선언(WP-BB), `daedalus-bb` CLI 계약(WP-BB1) |
 | `workspace-and-build-target.md` | 빌드 타깃(WP-TG), 작업 폴더 문서 `.claude/CLAUDE.md` 구역·rules `paths:`(WP-WD/A13), 작업 폴더 설정 베이크(WP-WS) |
 | `editor.md` | 본문 부분 접근(WP-BO), 엣지 경유점(WP-ER), 드래그 이동(WP-DM), 본문 undo 스택(WP-BU), 삭제 커맨드(A2), 미저장 변경 확인 |
@@ -136,8 +135,8 @@ dataclass(값 동등성, unhashable) 유지 — 컬렉션 멤버십에는 list/`
 - 루트 `tests/conftest.py` autouse 픽스처가 격리한다: `MainWindow.confirm_discard_changes`(항상
   True — 확인 다이얼로그가 뜨면 헤드리스 스위트가 멈춘다), 전역 훅 폴더, 사용자 템플릿 폴더, 외부
   마켓플레이스 등록 파일. 실제 홈 디렉토리를 읽는 테스트를 만들지 않는다.
-- `_new_project`를 부르는 테스트는 `SessionIO.exec_new_project_dialog`를 스텁한다. 캔버스 wrapped
-  드롭은 `FsmScene._ask_wrapped_usage`, 플러그인 클론은 `plugin_cache._shallow_clone`이 봉합선이다.
+- `_new_project`를 부르는 테스트는 `SessionIO.exec_new_project_dialog`를 스텁한다. 플러그인
+  클론은 `plugin_cache._shallow_clone`이 봉합선이다.
 - MainWindow는 MCP 서버를 자동 기동하지 않는다(`__main__.main`만 기동 — 테스트가 창을 수십 개 만든다).
   작업 폴더 설정 위젯은 지연 생성이다(즉시 만들면 스위트가 타임아웃).
 - 캔버스 드래그 검증은 **release 완료 후 vm 좌표로** 한다(드래그 도중·`item.pos()` 단언은 고장을

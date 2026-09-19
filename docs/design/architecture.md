@@ -34,7 +34,7 @@ GUI는 PySide6 노드 에디터(`view/`), 앱 내장 MCP 서버(`mcp/`)가 CC와
 | `model/serialize/` | 모델↔JSON(format 2, 안정 ID) — `component_fields`(리프)←`ser`←`migrate`←`deser_fsm`←`deser_plugin`←`deser` 단방향, `__init__`은 재-export 파사드 |
 | `model/validation/` | Validator — `machine_rules` + `project_rules/`(그룹 믹스인), 등급은 `severity.WARNING_RULES` |
 | `model/package.py`·`outline.py`·`templates.py` | 폴더=프로젝트/`.ddpj` · 본문 아웃라인 파생 인덱스 · 시작 템플릿 |
-| `compiler/emit/` | 모델 → 텍스트(SKILL.md/agent .md/hooks/manifest/schemas, 랩핑 실행 에이전트 `wrapped.py`). 재-export 파사드 |
+| `compiler/emit/` | 모델 → 텍스트(SKILL.md/agent .md/hooks/manifest/schemas). 재-export 파사드 |
 | `compiler/units/` | **컴파일 참여자** — 산출 종류 하나 = `CompileUnit` 하나(WP-5). 계약(`base`/`context`/`gate`/`sink`/`paths`) + 단위 12개(`components`/`hooks`/`docs`/`trees`/`install`) + `registry`(선언 순서 `UNITS`·`UNIT_BY_ID`·`Planner`) |
 | `compiler/plan_kinds.py` | 산출 계획 kind 문자열의 **유일한 소유자**(리프 — 아무것도 임포트하지 않는다) |
 | `compiler/plan.py` | 계획 파사드 — `_plan_outputs`/`_PlannedOutput`/경로 헬퍼를 `units/`의 **같은 객체**로 재-export |
@@ -58,7 +58,7 @@ GUI는 PySide6 노드 에디터(`view/`), 앱 내장 MCP 서버(`mcp/`)가 CC와
 
 | 파일 | 무엇 |
 |------|------|
-| `corpus.py` | **코퍼스 2벌.** ① `dogfood.daedalus.json` — 실사용 프로젝트 `project/daedalus_cc_plugin/`의 **동결 사본**(살아 있는 작업 사본은 테스트가 읽지 않는다 — 사용자가 편집하면 골든이 무작위로 깨진다) ② 합성 프로젝트 — 9종 전부 × 배치/미배치 × 블랙보드 유/무 × 랩핑 스킬 3상태(state/reference/`enabled=False`) × async fork × fork 에이전트 × **훅을 가진 ReferenceSkill**. 실사용 코퍼스만으로는 `compile_wrapped_runner`·state 용도 랩핑 스킬·async fork가 0줄 커버라 두 벌이다. `_stamp_ids`가 uuid4 기본값을 결정적 id로 덮는다. FSM 형상은 `tests/compiler/builders.py`(`make_linear_fsm`/`make_agent_fsm`)에 위임한다 — 컴포넌트 **조립**은 위임하지 않는다(builders의 팩토리 5종은 9종 중 5종만 덮고 config·body·포트가 고정이라, 이 코퍼스의 축을 태우려면 전부 덮어써야 한다) |
+| `corpus.py` | **코퍼스 2벌.** ① `dogfood.daedalus.json` — 실사용 프로젝트 `project/daedalus_cc_plugin/`의 **동결 사본**(살아 있는 작업 사본은 테스트가 읽지 않는다 — 사용자가 편집하면 골든이 무작위로 깨진다) ② 합성 프로젝트 — 9종 전부 × 배치/미배치 × 블랙보드 유/무 × async fork × fork 에이전트 × 외부 플러그인 에이전트 × **훅을 가진 ReferenceSkill**. 실사용 코퍼스만으로는 async fork·fork 에이전트가 0줄 커버라 두 벌이다. `_stamp_ids`가 uuid4 기본값을 결정적 id로 덮는다. FSM 형상은 `tests/compiler/builders.py`(`make_linear_fsm`/`make_agent_fsm`)에 위임한다 — 컴포넌트 **조립**은 위임하지 않는다(builders의 팩토리 5종은 9종 중 5종만 덮고 config·body·포트가 고정이라, 이 코퍼스의 축을 태우려면 전부 덮어써야 한다) |
 | `trees/` | 복사 계획(`files_tree`/`skill_file`)을 태우는 **ASCII 전용** 픽스처. `.gitattributes`의 `-text`로 줄바꿈 정규화를 막는다 — 복사 바이트가 그대로 sha256에 들어간다 |
 | `render.py` | 계산 쪽 **한 곳** — 테스트가 보는 것과 regen이 쓰는 것이 어긋날 수 없다(원칙 1) |
 | `store.py` | 저장 형식 — `*.sha256`(`sha256sum` 형식, 키 정렬) · `plan/<코퍼스>-<타깃>.json` · `dogfood.project.json` |
@@ -66,7 +66,7 @@ GUI는 PySide6 노드 에디터(`view/`), 앱 내장 MCP 서버(`mcp/`)가 CC와
 
 | 테스트 | 고정하는 것 |
 |--------|-------------|
-| `tests/compiler/test_golden_outputs.py` | 공개 파사드 9종(`compile_skill`/`compile_agent`/`compile_wrapped_runner`/`compile_hooks_json`/`compile_hook_scripts`/`compile_schemas_json`/`compile_plugin_manifest`/`compile_guide`/`render_rule`)과 `compile_project`가 쓴 **모든 파일**의 sha256. 파사드 9종이 전부 최소 1건의 산출을 냈는지도 함께 본다 |
+| `tests/compiler/test_golden_outputs.py` | 공개 파사드 8종(`compile_skill`/`compile_agent`/`compile_hooks_json`/`compile_hook_scripts`/`compile_schemas_json`/`compile_plugin_manifest`/`compile_guide`/`render_rule`)과 `compile_project`가 쓴 **모든 파일**의 sha256. 파사드 8종이 전부 최소 1건의 산출을 냈는지도 함께 본다 |
 | `tests/compiler/test_plan_order_golden.py` | 계획·쓰기 **순서** — `plan`(행마다 `rel_path`/`kind`/`label`/`exclusive`) / `written` / `copied_files` / `errors+warnings(rule, source)` / 게이트 실패 시 `skipped`. 기존 스위트는 순서를 거의 `set`으로만 비교해 "내용은 같은데 순서가 달라졌다"가 조용히 통과한다. 계획은 **파사드가 아니라 `Planner`로** 뽑는다(WP-5) — 파사드에는 `out_dir`/`files_dir`가 없어 `files_tree` 행이 보이지 않는다 |
 | `tests/model/test_golden_project_json.py` | 동결 사본의 로드→저장 바이트 + 왕복 안정성(두 번째 저장도 같다) |
 | `tests/model/test_fork_split_migration.py` | fork 2종 분리 마이그레이션의 **실물 표본**도 같은 동결 사본을 읽는다 — 살아 있는 작업 사본을 읽으면 깨끗한 체크아웃에서 스위트가 깨진다(구버전 내용이 없다) |
@@ -100,10 +100,10 @@ python -m tests.data.golden.regen --refresh-dogfood   # 동결 사본 자체를 
 
 | 테스트 · 표 | 세는 것 | WP-0 기준선 (2026-09-19) | 현재 (WP-11 완료) |
 |---|---|---|---|
-| `tests/test_polymorphism_ratchet.py` `RATCHET` ① | 컴포넌트/설정 클래스 29종을 두 번째 인자로 갖는 `isinstance` | **111 사이트 / 34 파일** | **4 / 2** — compiler·serialize·mcp·view 전부 0(WP-4가 `ser.py` 11을, WP-6이 미리보기 분기 3을, WP-7이 뷰의 kind 표 여섯 벌을 `KIND_UI` 하나로 모았다). 남은 4는 레지스트리 조회 1(`kinds::spec_for`)과 랩핑 전용 3(`wrapped_usage` — WP-10) |
+| `tests/test_polymorphism_ratchet.py` `RATCHET` ① | 컴포넌트/설정 클래스 29종을 두 번째 인자로 갖는 `isinstance` | **111 사이트 / 34 파일** | **1 / 1** — compiler·serialize·mcp·view 전부 0(WP-4가 `ser.py` 11을, WP-6이 미리보기 분기 3을, WP-7이 뷰의 kind 표 여섯 벌을 `KIND_UI` 하나로, WP-10이 랩핑 전용 3을 클래스와 함께 걷었다). 남은 하나는 레지스트리 조회(`kinds::spec_for`) — §8이 예정한 면제다 |
 | 〃 ② | 컴포넌트 형상 속성 12종(`config`/`body`/`fsm`/`transfer_on`/`call_agents`/`when_to_use`/`usage`/`enabled`/`reference_placements`/`source`/`output_events`/`output_event_defs`)을 문자열로 묻는 `getattr`/`hasattr`. 첫 인자가 `project`/`cfg`/`config`/`doc`이면 제외(컴포넌트 형상이 아니다) | **123 사이트 / 41 파일** | **23 / 10** — WP-8이 MCP의 8건(`query.get_component` 6 + `fields` 2)을 능력 메서드(`comp.config`/`comp.body`/`state_machines()`/`output_ports()`/`call_ports()`)로, WP-7이 뷰의 kind 표를 걷었다(병합 후 재실측 — 두 가지의 감소분을 더하면 겹치는 자리를 두 번 센다). 남은 최대치는 `frontmatter_panel.py`·`component_editor.py` |
 | 〃 ③ (WP-11 신설) | **FSM 상태·전략·이벤트·훅 핸들러·Tool 클래스 35종**을 두 번째 인자로 갖는 `isinstance`. 컴포넌트 종류가 아니지만 같은 결함 형태(병렬 사다리)라 같은 규칙으로 감시한다 | **89 사이트 / 17 파일**(WP-11 직전 실측) | **53 / 12** — WP-11이 상태 서술 13·legacy 에이전트 변형 5·훅 핸들러 폼 10·의사 상태 5·Tool 직렬화 3을 걷었다. 남은 53은 **종류 질문이 아니라 구조 순회**다(합성 상태를 재귀로 내려가는 `walk`·`machine_rules`, FSM 값 객체를 저장 dict로 펴는 `ser`) — 폴리모픽 메서드로 옮기면 fsm 레이어가 컴파일러·검증 어휘를 알게 되어 경계 계약을 깬다 |
-| `tests/test_kind_literals.py` `RATCHET` ① | 컴포넌트 kind 16종이 `Compare` 피연산자·`dict` 키·`set`/`tuple`/`list` 원소로 쓰인 자리. 허용 파일 `model/serialize/migrate.py`(구버전 파일 문자열 해석이 정본)는 세지 않는다 | **157 사이트 / 26 파일** | **20 / 11** — WP-3이 레지스트리로(역직렬화·생성·전환·MCP 어휘·매트릭스 키), WP-4가 `deser_plugin`의 마지막 11을, WP-5가 쓰기 루프의 `skill`/`agent`/`wrapped_runner` 사다리를, WP-7이 뷰의 kind 표 여섯 벌을, WP-8이 MCP 생성 인자 게이트와 `NO_PLACE_KINDS`를 흡수 |
+| `tests/test_kind_literals.py` `RATCHET` ① | 컴포넌트 kind 15종이 `Compare` 피연산자·`dict` 키·`set`/`tuple`/`list` 원소로 쓰인 자리. 허용 파일 `model/serialize/migrate.py`(구버전 파일 문자열 해석이 정본)는 세지 않는다 | **157 사이트 / 26 파일** | **13 / 8** — WP-3이 레지스트리로(역직렬화·생성·전환·MCP 어휘·매트릭스 키), WP-4가 `deser_plugin`의 마지막 11을, WP-5가 쓰기 루프의 kind 사다리를, WP-7이 뷰의 kind 표 여섯 벌을, WP-8이 MCP 생성 인자 게이트와 `NO_PLACE_KINDS`를, WP-10이 랩핑 어휘를 흡수 |
 | 〃 ② plan kind | plan kind 14종. `agent`/`skill`이 컴포넌트 어휘와 겹치므로 `compiler/**`·`mcp/tools/query.py`에서만 센다. 소유자는 `compiler/plan_kinds.py` 하나(허용 파일) | **22 사이트 / 3 파일** | **1 / 1** — WP-5가 쓰기 루프 사다리 12와 `token_report`의 kind 사본 2를 걷었다. 남은 1건은 `mcp/tools/query.py`의 응답 키 `"claude_md"`로 **계획 kind가 아닌 오탐**이라 더 내려가지 않는다 |
 
 ②의 속성 목록에 있는 `output_events`/`output_event_defs`는 **오늘 모델에 없는
@@ -111,7 +111,7 @@ python -m tests.data.golden.regen --refresh-dogfood   # 동결 사본 자체를 
 것은 재발 감시용이다 — 같은 사실을 다시 속성으로 노출하면 래칫이 올라가 실패한다.
 
 측정의 정직성: 짧은 kind 이름은 다른 어휘와 충돌한다 — `"agent"`는 훅 핸들러
-종류·변수 컨텍스트·plan kind이기도 하고 `"reference"`는 랩핑 스킬의 `usage` 값
+종류·변수 컨텍스트·plan kind이기도 하고 `"reference"`는 스킬 종류 어휘
 이기도 하다. 기준선에는 그런 자리도 섞여 있다. 래칫은 내려가기만 하면 되므로
 섞임이 계약을 약하게 할 뿐 틀리게 하지는 않는다 — 숫자를 줄이는 WP가 실제 자리를
 보고 판단한다. 면제는 줄 번호가 아니라 **`module::qualname`**으로 적는다(위아래
@@ -172,8 +172,8 @@ WP-1 D9에서 삭제해 목록에서 빠졌다.
 
 | 테스트 | 고정하는 것 |
 |--------|-------------|
-| `tests/compiler/test_emit_import_acyclic.py` | `compiler/emit/*` 모듈 간 임포트 방향. **모듈 레벨 간선도, 함수 안 지연 임포트·`TYPE_CHECKING`까지 포함한 전체 간선도 비순환**이다(WP-6에서 `xfail(strict)` 제거). 방향: `common`(리프) → `{frontmatter, sections}` → `{fork, wrapped}` → `{skill_sections, agent_sections}` → `section_plan` → `pointer_rules` → `guides` → `emitters` → `{skill, agent}`. WP-6이 끊은 세 간선(`sections→wrapped`·`wrapped→agent`·`section_plan→emitters`)은 방향을 직접 고정해 되돌아오는 것을 막는다. **`TYPE_CHECKING` 임포트도 간선으로 센다** — 타입만 쓰더라도 "이 모듈이 저 모듈을 안다"는 사실은 같고, 눈감아 주면 모듈 지도가 거짓이 된다 |
-| `tests/compiler/test_preview.py` | **미리보기 단일 진입점**(WP-6) — 산출 파일이 없는 참조 용도·비활성 랩핑 스킬도 렌더되고(게이트를 `emits_output()`으로 걸면 사라지는 표면), `OUTPUT_LOCATION is NONE`인 종류는 `can_preview` 거짓 + `ValueError`. 진입점 셋이 **같은 판정**을 쓰는지 AST로 본다(`can_preview` 사용 / `emits_output` 미사용) |
+| `tests/compiler/test_emit_import_acyclic.py` | `compiler/emit/*` 모듈 간 임포트 방향. **모듈 레벨 간선도, 함수 안 지연 임포트·`TYPE_CHECKING`까지 포함한 전체 간선도 비순환**이다(WP-6에서 `xfail(strict)` 제거). 방향: `common`(리프) → `{frontmatter, sections}` → `fork` → `{skill_sections, agent_sections}` → `section_plan` → `pointer_rules` → `guides` → `emitters` → `{skill, agent}`. WP-6이 끊은 간선 `section_plan→emitters`는 방향을 직접 고정해 되돌아오는 것을 막는다(`wrapped` 모듈이 걸려 있던 두 간선은 WP-10에서 그 모듈과 함께 사라졌다). **`TYPE_CHECKING` 임포트도 간선으로 센다** — 타입만 쓰더라도 "이 모듈이 저 모듈을 안다"는 사실은 같고, 눈감아 주면 모듈 지도가 거짓이 된다 |
+| `tests/compiler/test_preview.py` | **미리보기 단일 진입점**(WP-6) — 이번 빌드에 파일이 나가지 않는 컴포넌트도 렌더되고(게이트를 `emits_output()`으로 걸면 사라지는 표면), `OUTPUT_LOCATION is NONE`인 종류는 `can_preview` 거짓 + `ValueError`. 진입점 셋이 **같은 판정**을 쓰는지 AST로 본다(`can_preview` 사용 / `emits_output` 미사용) |
 | `tests/compiler/test_emitters.py` | **표 구동 산출의 시끄러운 실패**(WP-6) — `emitter_for`/`plan_for_kind`/`provider_for`가 미지 값에 이유와 **등록 목록**을 말하는 ValueError를 내고, `output_path`는 산출 없는 자리를 거절한다. 표의 완결성도 양방향이다: 절 튜플의 모든 절에 provider가 있고(누락 = 단락이 조용히 사라짐) 모든 provider를 어느 종류든 쓴다(미사용 = 죽은 코드) |
 | `tests/test_kind_registry_parity.py` §3 | **`EMITTERS` ↔ `KIND_REGISTRY` 양방향**(WP-6) — 산출이 있는 종류마다 emitter 하나, `OUTPUT_LOCATION is NONE`인 종류에는 없음. `SECTION_PLANS` 키 집합도 같고 emitter의 `plan_kind`는 버킷과 짝이다 |
 | `tests/compiler/test_unit_contract.py` | **`CompileUnit` 계약**(WP-5) — 단위 id 유일·선언 순서 고정, 모든 계획 행이 `mode`/`phase`/`expands_root`/`token_kind`를 **선언**함(드라이버의 kind 튜플로 되돌아가지 않는다), `render()` 2회 동일(순수), `plan()`이 주입 경로 밖 파일을 읽지 않음(`Path.read_text` 감시 — 원칙 4), 파사드 계획 ⊂ 전체 계획이고 차집합이 정확히 `{files_tree}`, `OUTPUT_LOCATION`이 NONE인 컴포넌트는 예외 없이 건너뛰고 **이름 게이트도 받지 않음**(WP-9 선행 조건) |
@@ -232,7 +232,7 @@ daedalus/
 │   │   │                   #   tests/model/plugin/test_serialize_symmetry.py가 fields(cls) 이름 집합과의 등치를 강제(M8 소멸)
 │   │   │                   # ComponentConfig(ABC) → SkillConfig(ABC) → StepSkillConfig(ABC) → ProceduralSkillConfig /
 │   │   │                   #   ForkSkillConfig(ABC, +BUILTIN_FORK_AGENTS) → SyncForkSkillConfig·AsyncForkSkillConfig,
-│   │   │                   #   WrappedSkillConfig, DeclarativeSkillConfig, TransferSkillConfig, ReferenceSkillConfig,
+│   │   │                   #   DeclarativeSkillConfig, TransferSkillConfig, ReferenceSkillConfig,
 │   │   │                   #   AgentConfigBase(ABC) → AgentConfig(+background·isolation)·ForkAgentConfig
 │   │   ├── roles.py        # 능력 표면의 어휘 — Bucket/PlacementRole/BodySource/OutputLocation (순수 enum, 아무것도 임포트하지 않는다).
 │   │   │                   #   plugin 패키지 임포트 방향의 뿌리: roles ← base ← config ← skill/agent
@@ -246,9 +246,9 @@ daedalus/
 │   │   │                   #   인스턴스 훅 effective_placement/is_active/emits_output/can_delete·형상 조회·참조·new()/creation_defaults()),
 │   │   │                   #   WorkflowComponent(ABC) — fsm **필드 홀더. 메서드 금지**(MRO에서 PluginComponent 기본 구현에 가려진다)
 │   │   ├── skill.py        # Skill(ABC) → StepSkill(ABC) → ProceduralSkill / ForkSkill(ABC) → SyncForkSkill·AsyncForkSkill(2026-09-17),
-│   │   │                   #   WrappedSkill, DeclarativeSkill, TransferSkill, ReferenceSkill + is_reference_usage/has_external_body
+│   │   │                   #   DeclarativeSkill, TransferSkill, ReferenceSkill + has_external_body
 │   │                   #   (WP-2b 이후 **한 줄 파사드** — effective_placement()/is_active()가 실체)
-│   │   │                   #   + 종류별 능력 선언(KIND/CONFIG_CLS/PLACEMENT/…)과 오버라이드. 인스턴스 훅을 덮는 유일한 클래스가 WrappedSkill이다
+│   │   │                   #   + 종류별 능력 선언(KIND/CONFIG_CLS/PLACEMENT/…). 인스턴스 훅을 덮는 클래스는 WP-10 이후 0이다
 │   │   ├── agent.py        # Agent(ABC) → AgentDefinition(워크플로 — 캔버스 노드) / ForkAgent(fork 스킬 실행 기반, WP-FK2)
 │   │   │                   #   / ExternalAgent(외부 플러그인 에이전트를 노드로 — 산출 파일 없음, WP-9)
 │   │   ├── placement.py    # 배치 역할 판정 **네 개**(is_state_placeable=포트 소유 판정 겸임/is_canvas_placeable/is_edge_placeable/is_reference_placed — 실체는 effective_placement()).
@@ -372,12 +372,12 @@ daedalus/
 │   │   │                   #   emits_output_file(component.emits_output() 파사드)/agent_invocation_name(본문을 실행하는 서브에이전트 이름 — 빌드 타깃별)/
 │   │   │                   #   delegation_target_name(그래프 노드에게 위임할 때의 이름 — 깨진 source는 None)·delegate_to_phrase/delegation_source_label
 │   │   │                   #   (지시·서술 자리의 문구, 이름이 없으면 지어내지 않는다)·external_delegation_suffix·EXTERNAL_DELEGATION_NOTE(WP-9)/
-│   │   │                   #   parse_wrapped_source·external_skill_name(WP-6: 순수 문자열 파싱이라 리프로 — sections↔wrapped 순환 해소)
+│   │   │                   #   parse_external_source(순수 문자열 파싱이라 리프로 — 함수 안 지연 임포트 금지)
 │   │   ├── frontmatter.py  #   YAML 표기(_yaml_scalar/_yaml_list/_yaml_block_lines) + 스킬 프론트매터(_frontmatter_lines_skill)·_compose_description
 │   │   ├── sections.py     #   공용 단락 — 가드/트리거·FSM 절차 서술(_describe_fsm)·요구 환경 MCP(referenced_mcp_servers)·블랙보드(_blackboard_section)·tool_shelf·
 │   │   │                   #   서술 디스패치는 singledispatch 셋(WP-11): _describe_evaluation(전략)·_describe_trigger(이벤트)·
 │   │   │                   #   _describe_step(상태) + _unguarded_is_else(ChoiceState의 else 관례). 기저 폴백이 옳은 자리라 레지스트리가 아니다.
-│   │   │                   #   _exits_section("## Exits" — 에이전트와 랩핑 러너가 공유한다, WP-6: wrapped→agent 순환 해소)
+│   │   │                   #   _exits_section("## Exits" — 에이전트 산출)
 │   │   ├── skill_sections.py #   스킬 전용 단락 빌더 — 다음 단계·작업 재개(WP-RS)·진입 맥락(WP-IC)·진행 기록 잔여.
 │   │   │                   #   조립 분기는 능력 선언만 본다(WP-2c) — 컴포넌트 대상 isinstance 0
 │   │   ├── agent_sections.py #   에이전트 전용 단락 빌더 — 프론트매터(skills 합류·LOCAL hooks/mcpServers)·호출 계약(종류별)·
@@ -390,11 +390,10 @@ daedalus/
 │   │   ├── emitters.py     #   **kind별 ComponentEmitter 9개**(WP-6) — SkillEmitter/AgentEmitter → 구체 9.
 │   │   │                   #   outputs()(EmittedFile 선언 — 경로 조립은 units/paths.py), frontmatter_block(),
 │   │   │                   #   render()(assemble_blocks + 가이드 포인터 후처리). EMITTERS/emitter_for(없으면 ValueError) +
-│   │   │                   #   compile_skill/compile_agent. WrappedEmitter만 산출 2개(SKILL.md + 러너) — 러너는 절 표를
+│   │   │                   #   compile_skill/compile_agent. 오늘은 모든 종류가 산출 1개이고, `outputs()`가
 │   │   │                   #   거치지 않는 축자 호출(가이드 포인터 없음 = 오늘의 바이트, backlog D8)
-│   │   ├── skill.py        #   compile_skill 파사드 + skill_sections/wrapped 재-export (기존 임포트 경로 보존)
+│   │   ├── skill.py        #   compile_skill 파사드 + skill_sections 재-export (기존 임포트 경로 보존)
 │   │   ├── agent.py        #   compile_agent 파사드 + agent_sections 재-export
-│   │   ├── wrapped.py      #   랩핑 스킬 산출 — 위임 절차 단락 + 실행 서브에이전트(compile_wrapped_runner/needs_runner_agent/parse_wrapped_source)
 │   │   ├── fork.py         #   fork 스킬 산출(2종, 2026-09-17) — resolve_fork_agent_name(common.agent_invocation_name 파사드)/
 │   │   │                   #   fork_frontmatter_lines(agent: 이름 해소만 — context·background는 매트릭스 FIXED)/
 │   │   │                   #   fork_report_section("## Report", 종류별 도입·async 선행 조건)/
@@ -412,7 +411,7 @@ daedalus/
 │   ├── preview.py          # **컴파일 미리보기의 단일 진입점**(WP-6) — preview_component(텍스트 + plan_kind +
 │   │                       #   token_kind + rel_path) · preview_path · can_preview. GUI 3곳과 MCP compile_preview가
 │   │                       #   같은 함수를 부른다(원칙 1·2 — 종전에는 표면마다 isinstance(comp, Agent)였다).
-│   │                       #   **산출 게이트를 거치지 않는다**: 참조 용도·비활성 랩핑 스킬도 렌더된다.
+│   │                       #   **산출 게이트를 거치지 않는다**: 이번 빌드에 파일이 나가지 않아도 렌더된다.
 │   │                       #   거절 대상은 OUTPUT_LOCATION이 NONE인 종류뿐 — can_preview False이고,
 │   │                       #   preview_component가 **먼저 그 게이트를 확인해** "산출 파일이 없어 미리볼 것이
 │   │                       #   없다, 부르는 쪽을 미리보라"는 ValueError를 낸다(WP-9 리뷰: MCP는 can_preview를
@@ -529,12 +528,11 @@ daedalus/
 │   │   │                   #     PropsTools의 기저라 도구 표면은 그대로. 설정 허용 = matrix_for 비-FIXED 행(WP-8 P4)
 │   │   ├── placement_prose.py # 배치 거절 문구 — PlacementRole 4행 표 + kinds_with_placement(레지스트리 조회).
 │   │   │                   #     canvas.place_component와 props의 좌표 거절이 같은 문장을 쓴다(WP-8 P5, 원칙 1)
-│   │   ├── wrap.py         #   외부 플러그인 카탈로그(WP-WR D2) — list_wrappable_skills/list_marketplace_folders/
-│   │   │                   #     add_marketplace_folder/remove_marketplace_folder(홈 파일 — undo 비대상)/
+│   │   ├── external.py     #   외부 플러그인 카탈로그(WP-WR D2, WP-10 개명) — list_external_plugins/fetch_plugin_skills/
+│   │   │                   #     list_marketplace_folders/add_marketplace_folder/remove_marketplace_folder(홈 파일 — undo 비대상)/
 │   │   │                   #     set_external_plugins(프로젝트 사용 선언 — undo). 실체는 model/plugin/wrap_catalog +
-│   │   │                   #     actions/creation.create_wrapped_skill(GUI 카탈로그 창과 공유)
-│   │   │                   #     **GUI 다이얼로그 모듈은 임포트하지 않는다**(D7) — 이미 랩핑된 source 판정은
-│   │   │                   #     wrap_catalog.project_wrapped_sources(카탈로그 창과 같은 함수).
+│   │   │                   #     **GUI 다이얼로그 모듈은 임포트하지 않는다**(D7) — 이미 쓰는 source 판정은
+│   │   │                   #     wrap_catalog.project_external_sources(카탈로그 창과 같은 함수).
 │   │   │                   #     게이트: test_import_contracts::test_mcp_does_not_import_gui_dialog_modules
 │   │   └── workspace.py    #   작업 폴더 문서(WP-WD) — list_workspace_docs/get_workspace_doc/set_claude_md/create_rule/
 │   │                       #     set_rule_body/set_rule_paths(A13)/rename_rule/delete_rule. 본문은 BodyTools와 같은
@@ -601,8 +599,8 @@ daedalus/
     │                       #   icon(레지스트리 행) / section_label·section_color(섹션) / tab_label(탭) / node_style(캔버스 상태 노드,
     │                       #   None=상태 노드가 아니다) / dialog_title(이름 입력) / editor_factory(편집 탭 위젯 — **호출 가능 객체**,
     │                       #   위젯 클래스를 값으로 들지 않고 안에서 지연 임포트) / tab_prefix(에이전트 🤖·🧩) /
-    │                       #   switch_label·switch_tooltip(종류 전환, CONVERT_FAMILY가 있는 종류만) / has_enable_toggle(랩핑) /
-    │                       #   first_placement_prompt(최초 배치 질문 — 랩핑 용도. 팝업 자체는 FsmScene._ask_wrapped_usage 봉합선).
+    │                       #   switch_label·switch_tooltip(종류 전환, CONVERT_FAMILY가 있는 종류만).
+    │                       #   (has_enable_toggle·first_placement_prompt 훅은 WP-10에서 값을 주는 종류가 0이 되어 삭제)
     │                       #   조회는 ui_for(component)/ui_by_kind/ui_by_config_kind + DIALOG_TITLES·switch_noun.
     │                       #   **미지 종류는 이유와 선택지를 말하는 ValueError**다 — 예전에는 표에서 빠진 종류가 아이콘 없는 행·
     │                       #   빈 상태와 구분되지 않는 회색 노드·열리지 않는 탭으로 **조용히** 나타났다(👻).
@@ -675,15 +673,11 @@ daedalus/
     │   │                   #     파일은 쓰지 않는다. 산출은 **원문 그대로** 보인다(렌더하면 프론트매터가 사라진다).
     │   ├── model_effort.py #   모델/effort 지정(A9-2) — MODEL_CHOICES/EFFORT_CHOICES(표시 순서 단일 진실) + set_model/set_effort.
     │   │                   #     새로 만드는 것은 UI가 아니라 **쓰기 경로의 단일 진실**이다(에디터 콤보와 같은 SetAttrCmd 경로).
-    │   ├── wrapped_usage.py#   랩핑 용도 전환(WP-WR) — change_wrapped_usage/placement_counts/describe_placements.
-    │   │                   #     배치 없으면 SetAttrCmd 하나, 있으면 거부(force면 _canvas_cleanup_commands로 정리 + 전환 1 undo).
-    │   │                   #     GUI 버튼과 MCP set_wrapped_usage의 공용 실체
     │   ├── fork_skill.py   #   fork 스킬(2026-09-13) — fork_agent_choices(fork 에이전트 후보 세 종류)/validate_fork_agent/skill_kind_of/
     │   │                   #     KINDS(3-way: procedural/sync_fork/async_fork)/convert_skill_kind(대상 config 클래스
     │   │                   #     기준 필드 복사, config·__class__ 교체 + resync_bracket을 묶어 1 undo). 피커·캔버스 메뉴·MCP 공용 실체
     │   ├── creation.py     #   생성+배치 — (NO_PLACE_KINDS 음성 목록은 WP-7 ②/WP-8에서 삭제됐다: 만들기 전 거절은
-    │   │                   #     placement.is_canvas_placeable_role(spec.placement) — 선언 하나가 두 판정을 함께 답한다)/create_wrapped_skill(WP-WR —
-    │   │                   #     생성+선언+배치 1 undo, WRAPPED_SOURCE_MIME_PREFIX)/
+    │   │                   #     placement.is_canvas_placeable_role(spec.placement) — 선언 하나가 두 판정을 함께 답한다)/
     │   │                   #     (NO_PLACE_KINDS 퇴역, WP-8: 비배치 종류의 음성 목록 상수였다. 마지막 소비자였던 MCP가
     │   │                   #      배치 역할 선언(KindSpec.placement)을 직접 읽게 되면서 소비자 0 — 판정의 실체는
     │   │                   #      model/plugin/placement.is_canvas_placeable 하나다)/

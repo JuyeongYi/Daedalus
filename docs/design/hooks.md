@@ -54,7 +54,7 @@ CC의 구조는 **3단**이다: 이벤트 → 그룹(matcher + 핸들러 목록)
   Same shape as settings.json `hooks`."). 로컬 스킬과 **플러그인 스킬 모두** 실제로 돈다(실측 —
   플러그인 서브에이전트의 hooks가 무시되는 것과 다르다). 그래서 **두 빌드 타깃 모두** SKILL.md
   프론트매터에 settings.json 모양의 3단 블록으로 낸다 — 실체는 `emit.hooks.component_hook_groups`로
-  에이전트 프론트매터와 공용이다. `SKILL_FIELD_MATRIX`의 HOOKS는 절차형·랩핑·선언형·전이 O, 참조 D.
+  에이전트 프론트매터와 공용이다. `SKILL_FIELD_MATRIX`의 HOOKS는 절차형·선언형·전이 O, 참조 D.
   - **2026-09-07의 "스킬에는 훅을 걸 수 없다"는 틀린 판단이었다.** 그때 만든 `skill_hooks_ignored`
     경고와 MCP `set_component_hooks`의 스킬 거부는 삭제했다. 당시의 이름 목록 표기(`hooks: [a, b]`)는
     규격 모양이 아니었으므로 되살리지 않았다.

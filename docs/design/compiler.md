@@ -30,7 +30,7 @@ AST로 강제) `emit/guides.py`의 `WORKFLOW_GUIDE_KIND`/`BLACKBOARD_GUIDE_KIND`
 
 | # | 단위 | plan kind (= 단위 id) | 모드 | phase | 경로 | `${ROOT}` | token | `exclusive` | 계획 조건 |
 |---|---|---|---|---|---|---|---|---|---|
-| 1 | `ComponentUnit(SKILLS)` | `skill`, `wrapped_runner` | TEXT | WRITE | `<cc>/skills/<n>/SKILL.md`, `<cc>/agents/<n>.md` | ✔ | CONTEXT | ✔ | `c.emits_output()` (+ `needs_runner_agent`) |
+| 1 | `ComponentUnit(SKILLS)` | `skill` | TEXT | WRITE | `<cc>/skills/<n>/SKILL.md` | ✔ | CONTEXT | ✔ | `c.emits_output()` |
 | 2 | `ComponentUnit(AGENTS)` | `agent` | TEXT | WRITE | `<cc>/agents/<n>.md` | ✔ | CONTEXT | ✔ | `c.emits_output()` |
 | 3 | `SkillFilesUnit` | `skill_file` | COPY_FILE | WRITE | `<cc>/skills/<d>/<rel>` | – | – | ✔ | `skill_files_dir.is_dir()` ∧ 폴더명이 산출 스킬 이름과 일치 |
 | 4 | `HooksUnit` | `hooks_json`(MARKET만), `hook_script` | TEXT | WRITE | `hooks/hooks.json`, `hooks/scripts/<f>` | ✘ | TOTAL_ONLY | ✔ | `compile_hooks_json(...) is not None` — **계획 단계에서 1회 렌더해 `payload`에 메모** |
@@ -90,7 +90,6 @@ AST로 강제) `emit/guides.py`의 `WORKFLOW_GUIDE_KIND`/`BLACKBOARD_GUIDE_KIND`
 | `DeclarativeEmitter` | RESUME · ENTRY_CONTEXT · BODY · BACKGROUND_SKILLS · REQUIREMENTS_MCP · OUTCOME | NEXT_STEPS | MAIN_IF_PLACED |
 | `TransferEmitter` | BODY · TRANSFER_PROGRESS · BACKGROUND_SKILLS · REQUIREMENTS_MCP · OUTCOME | NEXT_STEPS | MAIN_IF_ANY_PLACEMENT |
 | `ReferenceEmitter` | BODY · BACKGROUND_SKILLS · REQUIREMENTS_MCP · OUTCOME | NEXT_STEPS | NONE |
-| `WrappedEmitter` | RESUME · ENTRY_CONTEXT · BODY · DELEGATED_PROCEDURE · BLACKBOARD · BACKGROUND_SKILLS · REQUIREMENTS_WRAPPED · OUTCOME | NEXT_STEPS | MAIN_IF_PLACED |
 | `WorkflowAgentEmitter` | BODY · CALL_CONTRACT · DELEGATION · SETTINGS_NOTE · INTERNAL_WORKFLOW · EXITS · TOOL_SHELF · BLACKBOARD | – | MAIN_IF_PLACED |
 | `ForkAgentEmitter` | BODY · FORK_BASE_CONTRACT · SETTINGS_NOTE · TOOL_SHELF · BLACKBOARD | – | NONE |
 
@@ -108,24 +107,23 @@ AST로 강제) `emit/guides.py`의 `WORKFLOW_GUIDE_KIND`/`BLACKBOARD_GUIDE_KIND`
   검사하지 않으므로(`serialize/deser_fsm.py`), 손편집·구버전 `.ddpj`에서 전이 스킬이 상태 노드에
   박혀 있으면 게이트 없이는 같은 파일이 '## Progress Record'와 정반대의 지시를 함께 낸다
   (`tests/compiler/test_emitters.py`).
-- **`WrappedEmitter`만 산출이 둘이다**(SKILL.md + `agents/<랩퍼>.md` 실행 서브에이전트, WP-WR).
-  러너는 절 표를 거치지 않는 손수 조립기(`compile_wrapped_runner`)를 **축자 호출**한다 —
+- **한 컴포넌트가 파일을 여럿 내는 종류는 오늘 없다**(WP-10에서 랩핑 러너가 사라졌다).
+  `outputs()`가 목록을 돌려주는 계약은 남는다 — 다시 생기면 그 종류 한 곳만 고친다.
+  (종전 러너는 절 표를 거치지 않는 손수 조립기를 **축자 호출**했다 —
   가이드 포인터가 붙지 않는 것이 오늘의 산출이고, 그 누락은 backlog D8이다.
-- **프론트매터 제외도 종류가 정한다** — 랩핑 스킬의 `model`/`effort`는 실행 에이전트 쪽으로 가므로
-  `WrappedEmitter.frontmatter_skip`이 뺀다(종전 `frontmatter.py`의 `kind_key == "wrapped"` 하드코딩).
 - **emitter는 경로를 조립하지 않는다** — `EmittedFile`은 `OutputLocation`과 이름까지만 말하고
   `<cc>/skills/<n>/SKILL.md` 조립은 `units/paths.output_path`가 한다. `emit`은 `units`보다
   아래층이라(`units.context`가 `emit`을 임포트한다) 반대 방향 간선은 패키지 순환이 된다.
 - **`emit/` 안의 임포트 방향**은 `tests/compiler/test_emit_import_acyclic.py`가 함수 안 지연 임포트와
   `TYPE_CHECKING` 블록까지 포함해 비순환으로 강제한다: `common`(리프) → `{frontmatter, sections}` →
-  `{fork, wrapped}` → `{skill_sections, agent_sections}` → `section_plan` → `pointer_rules` →
+  `fork` → `{skill_sections, agent_sections}` → `section_plan` → `pointer_rules` →
   `guides` → `emitters` → `{skill, agent}`. 포인터 **판정**(`pointer_rules` — 절 표의
   `GuidePointerRule`을 읽는다)과 포인터 **문구**(`guides.guide_pointer_line`)가 다른 파일인 이유가
   그것이다(한 파일이면 `guides → section_plan → … → guides` 순환).
 
 **출력 구조 (CC 플러그인 규약, `project.build_target == MARKETPLACE` — 기본):**
 - `<out>/.claude-plugin/plugin.json` — 플러그인 매니페스트 (MARKETPLACE에서 항상 생성 — 이게 없으면 산출 디렉토리를 CC 플러그인으로 설치할 수 없다)
-- `<out>/skills/<skill-name>/SKILL.md` — 산출되는 스킬 전부 (Declarative/Reference도 SKILL.md. 용도 reference 랩핑 스킬은 파일 없음 — WP-WR)
+- `<out>/skills/<skill-name>/SKILL.md` — 산출되는 스킬 전부 (Declarative/Reference도 SKILL.md)
 - `<out>/agents/<agent-name>.md` — 에이전트 **두 종류 모두**(워크플로 에이전트·fork 에이전트, `project.agents` 순회)
 - `<out>/guides/<플러그인>/workflow.md`·`blackboard.md` — **공통 안내 파일**(WP-FK2 C3, 정책 21번). 루트 직하·플러그인 네임스페이스·`files/` 밖. 포인터가 1개 이상 나갈 때만 산출한다(고아 파일 없음)
 
@@ -182,7 +180,7 @@ AST로 강제) `emit/guides.py`의 `WORKFLOW_GUIDE_KIND`/`BLACKBOARD_GUIDE_KIND`
    말없이 사라진 산출물이 나간다. 경로 충돌 게이트(②)로는 못 잡는다: 드롭이 계획보다 먼저 일어나 계획에는 경로가 하나만
    올라오기 때문이다. 그래서 계획 수립 전에 라이브러리 쪽에서 판정한다(같은 훅 안의 중복은 `script_files`가 번호로 유일화하므로 대상 아님).
 9. **plugin.json 매니페스트**: `compile_plugin_manifest(project)`가 `project.name`/`description`/`version`으로 `.claude-plugin/plugin.json`을 무조건 생성한다. 키 순서 `name`→`description`(빈 문자열이면 키 생략)→`version`.
-10. **블랙보드 단락 (WP-BB / WP-FK2 C3)**: `_blackboard_section(project, component)`이 "## Shared State (Blackboard)" 단락을 배출한다 — 단계 스킬(fork 2종 포함)의 tool_shelf 단락 뒤·"Next Steps" 앞, state 용도 랩핑 스킬, 그리고 에이전트 `.md`(두 종류) 본문 마지막.
+10. **블랙보드 단락 (WP-BB / WP-FK2 C3)**: `_blackboard_section(project, component)`이 "## Shared State (Blackboard)" 단락을 배출한다 — 단계 스킬(fork 2종 포함)의 tool_shelf 단락 뒤·"Next Steps" 앞, 그리고 에이전트 `.md`(워크플로·fork) 본문 마지막.
     **총론·CLI 사용법·규칙은 여기 없다** — 스킬마다 글자 하나 다르지 않게 반복되던 문장이라 `guides/<플러그인>/blackboard.md`로 뺐다(정책 21번). 여기 남는 것은 이 컴포넌트에만 해당하는 사실뿐이다: "This skill/agent reads: …" / "writes: …" 한두 줄 + 그 접근이 닿는 클래스의 `state/<플러그인>/<Class>.json` 파일 목록(description 병기).
     **return이 셋이다** — ① 블랙보드 `class_definitions`가 0개 ② 접근 선언(자체 FSM 재귀 + 그래프 placement의 reads/writes) 합집합이 비었다 → **둘 다 단락 자체를 생략**한다(가이드가 이미 전부 말하고 있어 덧붙일 고유 정보가 없다) ③ 본문. 예전의 "합집합이 비면 전 클래스 일반 안내" 폴백은 없어졌다.
     `component`는 **필수 위치 인자**다 — 기본값 None을 남기면 "컴포넌트를 빠뜨린 호출 = 단락이 통째로 사라짐"이 아무 말 없이 성립한다(원칙 5).
@@ -190,7 +188,7 @@ AST로 강제) `emit/guides.py`의 `WORKFLOW_GUIDE_KIND`/`BLACKBOARD_GUIDE_KIND`
 11. **`## Requirements` 자동 언급 (WP-TM)**: `_mcp_servers_from_tools(tools)`가 도구 문자열 목록에서 `mcp__<server>__` 접두의 서버 이름 집합을 추출한다(이름순 정렬 — 결정적). 스킬은 `skill.config.allowed_tools`를 스캔해 서버가 있으면(local 여부·project 인수 여부와 무관) `## Next Steps` 단락 앞에 신규 `## Requirements` 단락(`_mcp_requirement_section_skill`)을 배출한다(없으면 단락 생략). 에이전트는 `config.tools`에서 추출한 서버를 기존 SETTINGS `## Requirements` 단락(`_settings_note_agent`, 7번 항목)의 `mcp_servers` 선언과 합쳐 하나의 `MCP servers connected: …` 줄로 병합한다(중복 없음).
 12. **작업 재개 (WP-RS / WP-FK2 C3)** — 저장 단위는 **플러그인 FSM(프로젝트 그래프 배치)의 위치**다(스킬 내부 FSM 상태는 다루지 않음 — 사용자 확정 설계). 규약 파일 `state/__progress__.json` — **최상위 키가 플러그인 이름**이고 그 아래에 항목(`current`/`completed`/`note`/`prev`/`updated`)이 온다(WP-NS/D13. `prev`는 WP-IC에서 추가된 직전 출처 스킬 이름). 파일은 `state/` 루트에 **하나로 남는다** — 블랙보드가 `state/<플러그인>/`로 갈라지는 것과 다른 이유는, 워크스페이스 전체를 한눈에 보는 것이 이 파일의 목적이고 스키마 밖 규약 파일이라 클래스 순회 대상도 아니기 때문이다. **갱신은 `daedalus-bb progress` 서브커맨드가 전담한다** — 공유 파일의 병합을 산문으로 시키면 모델이 한 번만 놓쳐도 남의 진행 기록이 통째로 사라진다.
     **규약의 산문(파일 구조·옵션 전부·exit 3의 뜻·수동 폴백·`note`에 갈래를 적는 이유·전이 스킬이 `current`를 소유하지 않는다는 규칙)은 워크플로 가이드 2절로 갔다**(정책 21번). 컴포넌트 산출에 남는 것은 **그 컴포넌트의 이름이 들어가는 줄**뿐이다.
-    - **재개 프리앰블**: 프로젝트 그래프에 배치된 `ProceduralSkill`·`DeclarativeSkill`·state 용도 `WrappedSkill`(미배치·에이전트 .md 제외, **fork 2종 제외** — 서브에이전트는 재개 판단을 하지 않는다, 정책 20번)에 한해 `_resume_preamble_section`이 프론트매터·포인터 직후·본문 앞에 "## Resuming Work"를 배출한다. 잔여는 두 문장이다: `Run <cli> read first; this skill is <name>. Follow the resume rules in the workflow guide.` + `If it exits 3 (no entry for this plugin yet), this invocation is the start: <cli> set --current <name>.` **exit 3의 조건절을 잔여에 남긴다** — 조건을 떼고 명령만 남기면 가이드 3절의 일반형("항목이 없으면 지금 불린 스킬이 시작점이다")과 워크플로 중간 스킬의 `--current <나>` 기록이 충돌한다. placement 판정은 "Next Steps"(6-b번)와 같은 `_graph_placements`(skill_ref identity)를 공유한다.
+    - **재개 프리앰블**: 프로젝트 그래프에 배치된 `ProceduralSkill`·`DeclarativeSkill`(미배치·에이전트 .md 제외, **fork 2종 제외** — 서브에이전트는 재개 판단을 하지 않는다, 정책 20번)에 한해 `_resume_preamble_section`이 프론트매터·포인터 직후·본문 앞에 "## Resuming Work"를 배출한다. 잔여는 두 문장이다: `Run <cli> read first; this skill is <name>. Follow the resume rules in the workflow guide.` + `If it exits 3 (no entry for this plugin yet), this invocation is the start: <cli> set --current <name>.` **exit 3의 조건절을 잔여에 남긴다** — 조건을 떼고 명령만 남기면 가이드 3절의 일반형("항목이 없으면 지금 불린 스킬이 시작점이다")과 워크플로 중간 스킬의 `--current <나>` 기록이 충돌한다. placement 판정은 "Next Steps"(6-b번)와 같은 `_graph_placements`(skill_ref identity)를 공유한다.
     - **다음 단계 갱신 규칙**: 배치 스킬의 "## Next Steps" 끝에 `_progress_update_note(project)`가 합류한다 — **명령 1줄**(`set --completed <this skill> --current <next target> --prev <this skill> --note "<branch> — <handoff>"`) + 한 절(`If the branch delegates to an agent, run this twice — see the workflow guide.`). 에이전트 위임 갈래의 2회 갱신 단서를 **잔여에 남기는** 이유: 규칙을 통째로 가이드로 보내면 갈래 줄 바로 아래의 단일 템플릿이 그대로 실행돼 위임 갈래에서 조용히 한 번만 갱신된다.
     - **비동기 fork 인계 규약**: 그 스킬의 outgoing 갈래가 `AsyncForkSkill`을 가리키면 진행 명령 뒤에 `_async_fork_handoff_note` 1줄이 더 붙는다(`--current <that fork> --note "awaiting background fork"` — 정책 20번의 3단 규약 ①단계).
     - **터미널 배치**: **placement의 실제 outgoing 전이가 0개**인 배치는 "Next Steps" 대신 `_progress_terminal_section`이 "## Finishing Up"(자신을 `completed`에 추가 + `current`를 `"done"`으로) **명령 1줄**을 배출한다. 판정은 "다음 단계 문구 생성 실패"가 아니다 — outgoing 타깃이 빈 상태(skill_ref=None)뿐이라 문구가 안 나와도 터미널이 아니며 이때는 아무 단락도 배출하지 않는다.
@@ -199,7 +197,7 @@ AST로 강제) `emit/guides.py`의 `WORKFLOW_GUIDE_KIND`/`BLACKBOARD_GUIDE_KIND`
 12-a. **종류를 묻는 자리의 술어 (WP-2c)**: 산출 조립의 분기는 **컴포넌트 클래스가 아니라 능력 선언**을 본다 — 컴파일러에
     남은 컴포넌트 대상 `isinstance`는 0이다. 대응표: "산출 파일을 내는가"=`emits_output()`(파사드 `emits_output_file`) ·
     "fork 스킬인가"=`BUCKET is SKILLS ∧ RUNS_IN_SUBAGENT ∧ BODY_SOURCE is OWNED` · "단계 스킬인가"=`PLACEMENT is STATE ∧
-    BODY_SOURCE is OWNED` · "랩핑 스킬인가"=`BODY_SOURCE is EXTERNAL` · "전이 스킬인가"=`effective_placement() is EDGE` ·
+    BODY_SOURCE is OWNED` · "정본이 외부인가"=`BODY_SOURCE is EXTERNAL` · "전이 스킬인가"=`effective_placement() is EDGE` ·
     "참조 노드인가"=`effective_placement() is REFERENCE` · "위임 대상인가"=`DELEGATION_TARGET` · "보고가 늦게 오는가"=
     `REPORTS_OUT_OF_BAND` · "배경 지식 스킬인가"=`PLACEMENT is NONE` · "워크플로 에이전트인가"=`PLACEMENT is STATE` ·
     "훅을 무엇을 참조하는가"=`hook_refs()` · "FSM이 있는가"=`state_machines()` · "포트가 무엇인가"=`output_ports()`/`call_ports()`.
@@ -212,7 +210,7 @@ AST로 강제) `emit/guides.py`의 `WORKFLOW_GUIDE_KIND`/`BLACKBOARD_GUIDE_KIND`
     두 벌의 상태 서술은 **일부러 다르다**(§0-a) — 합치면 구버전 에이전트 산출 바이트가 바뀐다. `tests/compiler/test_state_prose_dispatch.py`가
     폴백의 옳음과 두 문구가 다르다는 사실을 함께 고정한다.
 
-13. **진입 맥락 + 호출 계약 (WP-IC/WP-IP/WP-CT)**: 배치된 전역 `StepSkill`(절차형·fork 2종)·`DeclarativeSkill`·state 용도 `WrappedSkill`에서 incoming 전이가 1개 이상이면, `_entry_context_section`이 "## Resuming Work" 프리앰블 뒤·본문 앞에 "## Entry Context" 단락을 배출한다. **도입은 한 문장이다** — `Check \`prev\` and the branch in \`note\`, then follow the matching entry below.`(예전의 5문장 도입 — 어디서 읽는가·여러 갈래를 어떻게 가르는가·에이전트 위임 뒤의 `prev` — 은 워크플로 가이드 4절로 갔다. 진행 파일을 직접 읽으라는 지시도 함께 사라져 CLI 경로로 통일됐다).
+13. **진입 맥락 + 호출 계약 (WP-IC/WP-IP/WP-CT)**: 배치된 전역 `StepSkill`(절차형·fork 2종)·`DeclarativeSkill`에서 incoming 전이가 1개 이상이면, `_entry_context_section`이 "## Resuming Work" 프리앰블 뒤·본문 앞에 "## Entry Context" 단락을 배출한다. **도입은 한 문장이다** — `Check \`prev\` and the branch in \`note\`, then follow the matching entry below.`(예전의 5문장 도입 — 어디서 읽는가·여러 갈래를 어떻게 가르는가·에이전트 위임 뒤의 `prev` — 은 워크플로 가이드 4절로 갔다. 진행 파일을 직접 읽으라는 지시도 함께 사라져 CLI 경로로 통일됐다).
     항목은 출처 이름순으로 한 줄씩이다: `- entered from \`X\` [조건]`(+ 출처의 transfer_on description 병기, 전이 스킬 수행 완료 문구 합류). 출처가 **워크플로 에이전트**면 `- entered after agent \`X\` returned` + 위임 스킬 이름 병기(규약상 `prev`에는 에이전트가 아니라 위임 스킬이 남는다), **비동기 fork**면 `- entered when background fork \`X\` reported`(그 fork가 다음 단계를 부른 것이 아니라, 보고를 받은 메인이 시작시켰다). 동기 fork는 일반 출처와 문구가 같다. 포트 그룹 헤딩 없음, 그래프에서만 유도(WP-IP). incoming 0개 배치·미배치는 산출 변화 없음.
     `compile_agent`의 "## Invocation Contract"는 종류가 가른다 — 워크플로 에이전트는 `_call_contract_section`이 프로젝트 그래프의 incoming 호출 전이에서 유도하고(WP-CT — 수동 카드 없음), fork 에이전트는 `_fork_base_contract_section`이 자기를 실행 기반으로 쓰는 fork 스킬 줄만 낸다(7-b번).
 14. **files/ 복사 + dangling_file_ref 경고 (WP-FR)**: `files_dir`가 실존 디렉토리면(게이트 통과 시에만) `_copy_files_tree`가 `<out>/files/`로 정렬 순회 복사한다(결정적, 심볼릭 링크 미추종 — 디렉토리는 재귀 안 함·파일은 복사 안 함). 기존 `<out>/files/`는 복사 전 삭제(out 전체가 아니라 files/만). 복사된 파일 경로는 `CompileResult.copied_files`에 담긴다. `files_dir`가 주어지면(실존 여부 무관) `_scan_dangling_file_refs`가 스킬·에이전트 body에서 `${CLAUDE_PLUGIN_ROOT}/files/<경로>` 참조 토큰을 스캔해 files_dir에 실존하지 않으면 `dangling_file_ref` 경고를 `CompileResult.warnings`에 추가한다(게이트 차단 아님). `files_dir` 생략(None) 시 복사·스캔 모두 생략되어 기존 산출 파일/문자열이 완전히 불변(하위 호환).
@@ -249,7 +247,7 @@ AST로 강제) `emit/guides.py`의 `WORKFLOW_GUIDE_KIND`/`BLACKBOARD_GUIDE_KIND`
       1토큰. 두 구간으로 나눈 이유는 산출의 자동 단락이 영어여도 사용자 값(body/description)은 한국어일
       수 있고, 한 구간으로 뭉치면 그 부분을 3배 가까이 과소평가하기 때문이다. 자릿수 감각용(±20% 수준).
     - **임계 `DEFAULT_FILE_TOKEN_THRESHOLD = 5000`은 파일당**이고 `TokenKind.CONTEXT`로 선언된
-      행(skill/agent/wrapped_runner/workspace_rule/claude_md/가이드 2종)에만 적용한다 — `schemas.json`/`hooks.json`/`plugin.json`은 CC가 설정으로
+      행(skill/agent/workspace_rule/claude_md/가이드 2종)에만 적용한다 — `schemas.json`/`hooks.json`/`plugin.json`은 CC가 설정으로
       읽을 뿐 대화 컨텍스트에 실리지 않으므로 합계에는 넣되 임계로 재지 않는다. 5000의 근거: SKILL.md는
       스킬이 걸릴 때마다 통째로 실리고, Anthropic 스킬 저작 지침의 "500줄 안쪽" 권고 ≈ 20,000자 ≈
       5,000토큰이다(새 규범이 아니라 기존 권고의 토큰 환산).
@@ -405,7 +403,7 @@ AST로 강제) `emit/guides.py`의 `WORKFLOW_GUIDE_KIND`/`BLACKBOARD_GUIDE_KIND`
       않는다. 그래서 경로 자리에는 `<SCHEMAS>` 자리표시자를 쓰고 "너를 보낸 스킬/에이전트 파일에 적힌
       `--schemas <경로>`를 그대로 쓰라"고 말한다.
     - **그 대가로, 포인터를 받은 컴포넌트 산출에는 확장되는 실제 경로를 가진 명령이 최소 1줄 남는다.**
-      배치된 단계 스킬은 진행 명령(`_progress_cli`)이 이미 그 역할을 하지만 에이전트 두 종류·랩핑 실행
+      배치된 단계 스킬은 진행 명령(`_progress_cli`)이 이미 그 역할을 하지만 에이전트 종류들
       에이전트·미배치 스킬에는 진행 명령이 없다 — 그럴 때 포인터 줄에 `State CLI: \`daedalus-bb --schemas
       ${ROOT}/schemas/<플러그인>.json …\`` 한 줄을 덧붙인다. 판정은 **조립된 블록에서 직접** 한다(`--schemas
       ${ROOT}/schemas/` 접두가 이미 있는가) — 컴포넌트 종류로 다시 유도하면 산출과 판정이 언젠가 어긋난다.
@@ -413,14 +411,13 @@ AST로 강제) `emit/guides.py`의 `WORKFLOW_GUIDE_KIND`/`BLACKBOARD_GUIDE_KIND`
 
       | 대상 | workflow.md | blackboard.md |
       |---|---|---|
-      | 배치된 절차형·state 용도 랩핑 스킬 | ✅ 일반(`Before you start, read …`) | ✅ 클래스 1개 이상일 때 |
+      | 배치된 절차형 스킬 | ✅ 일반(`Before you start, read …`) | ✅ 클래스 1개 이상일 때 |
       | 배치된 선언형 | ✅ 일반 | — (단계 스킬이 아니다 — 정책 10번) |
       | 배치된 워크플로 에이전트 | ✅ 일반 | ✅ |
       | placement가 1개 이상인 프로젝트의 전이 스킬 | ✅ 일반 | — (단계 스킬이 아니다) |
       | 배치된 fork 스킬(sync/async) | ✅ **fork 전용 줄** — `section "Fork reports"`만 가리키고 "진행 기록과 재개 규칙은 메인 대화의 것이지 네 것이 아니다"라고 말한다 | ✅ |
       | fork 에이전트 | — | ✅ |
-      | 미배치 스킬·용도 reference 랩핑 | — | 단계 스킬이면 ✅ (reference 랩핑은 —) |
-      | 랩핑 실행 에이전트 | — | — (`compile_wrapped_runner`가 `_insert_guide_pointer`를 부르지 않는다) |
+      | 미배치 스킬 | — | 단계 스킬이면 ✅ |
 
       fork를 일반 포인터 대상에 넣으면 가이드 2·3절이 fork 자신의 "## Report"와 정면으로 충돌한다 — 컴파일러가
       fork에서 "## Resuming Work"를 **일부러** 빼는 근거를 포인터가 도로 들여오는 셈이고, fork 서브에이전트는
