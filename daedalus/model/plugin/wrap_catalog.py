@@ -68,6 +68,20 @@ class CataloguedSkill:
     description: str
     source: str  # "플러그인[@마켓]:스킬" — 외부 정본 참조 원문 표기
 
+    @property
+    def skill_ref(self) -> str:
+        """fork 에이전트 ``skills:``에 넣을 이름 — ``source``에서 ``@마켓``을
+        뗀 ``플러그인:스킬`` (WP-B, 2026-09-19).
+
+        CC가 fork 에이전트의 ``skills:`` 프론트매터로 외부 플러그인 스킬을
+        프리로드할 때 찾는 이름은 마켓 표기가 없는 bare 이름이다(실측,
+        CC 2.1.278 — `plugin-model.md` 실측 표).
+        """
+        plugin_id, sep, skill_name = self.source.partition(":")
+        if not sep:
+            return self.source
+        return f"{plugin_id.partition('@')[0]}:{skill_name}"
+
 
 @dataclass
 class CataloguedAgent:
@@ -611,3 +625,29 @@ def used_plugin_agents(project) -> list[CataloguedAgent]:
                 for agent in plugin.agents:
                     found.setdefault(agent.agent_type, agent)
     return [found[key] for key in sorted(found)]
+
+
+def used_plugin_skill_refs(project) -> list[str]:
+    """사용 선언한 외부 플러그인의 스킬 참조(``플러그인:스킬``) 목록 (이름순).
+
+    fork 에이전트 ``skills`` TagInput 후보의 단일 진실이다(WP-B, 2026-09-19)
+    — 프로젝트 스킬 이름과 나란히 놓이는 두 번째 후보 소스다. `used_plugin_
+    agents`와 같은 선언 판정을 쓴다: 선언하지 않은 플러그인의 스킬은 후보에
+    넣지 않는다(활성화되지 않으면 CC가 못 찾아 조용히 로드하지 않는다).
+    파일시스템을 읽으므로 검증기·컴파일러는 부르지 않고 호출 환경(GUI
+    app.set_project)이 주입한다.
+    """
+    declared = {
+        str(p).strip()
+        for p in getattr(project, "external_plugins", None) or []
+        if str(p).strip()
+    }
+    if not declared:
+        return []
+    refs: set[str] = set()
+    for _folder, plugins in scan_catalog():
+        for plugin in plugins:
+            if plugin.plugin_id in declared:
+                for skill in plugin.skills:
+                    refs.add(skill.skill_ref)
+    return sorted(refs)

@@ -458,6 +458,15 @@ class _FrontmatterPanel(QScrollArea):
             servers = get_mcp_server_candidates()
             if servers:
                 widget.set_candidates(servers)
+        elif fld is AgentField.SKILLS and isinstance(widget, TagInput):
+            # 프로젝트 스킬 이름 + 사용 선언한 외부 플러그인의 스킬
+            # `플러그인:스킬` (WP-B — app.set_project가 provider 등록). 외부
+            # 플러그인 스킬의 사용 경로는 이 필드 하나뿐이다(참조 노드·
+            # 감싸기 없음, 사용자 확정 2026-09-19).
+            from daedalus.view.widgets.tag_input import get_skill_candidates
+            skills = get_skill_candidates()
+            if skills:
+                widget.set_candidates(skills)
 
     @staticmethod
     def _read_widget_value(fld: SkillField | AgentField, widget: QWidget) -> object:

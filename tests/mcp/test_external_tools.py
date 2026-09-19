@@ -110,6 +110,23 @@ def test_used_flag_follows_declaration(tools, marketplace):
     assert plugins[0]["used"] is True
 
 
+def test_skill_entries_carry_skill_ref_and_used_by(tools, marketplace):
+    """`skill_ref`(WP-B)는 fork 에이전트 skills:에 넣을 마켓 없는 이름이고,
+    `used_by`는 그 참조를 config.skills에 가진 에이전트 이름 목록이다
+    (원칙 2 — 쓸 수 있는 값은 읽을 수도 있어야 한다)."""
+    tools.add_marketplace_folder(str(marketplace), "mkt")
+    tools.set_external_plugins(["alpha@mkt"])
+    tools.create_agent("helper", kind="fork_agent")
+    tools.set_component_field("helper", "skills", ["alpha:review"])
+
+    plugins = tools.list_external_plugins()["marketplace_folders"][0]["plugins"]
+    by_name = {s["name"]: s for s in plugins[0]["skills"]}
+    assert by_name["review"]["skill_ref"] == "alpha:review"
+    assert by_name["review"]["used_by"] == ["helper"]
+    assert by_name["lint"]["skill_ref"] == "alpha:lint"
+    assert by_name["lint"]["used_by"] == []
+
+
 def test_get_project_meta_lists_external_plugins(tools):
     tools.set_external_plugins(["alpha@mkt"])
     out = tools.get_project(sections=["meta"])

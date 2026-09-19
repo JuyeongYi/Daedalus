@@ -397,6 +397,21 @@ class MainWindow(QMainWindow):
             return sorted(names)
 
         set_mcp_server_candidate_provider(_mcp_server_candidates)
+        # 에이전트 SKILLS TagInput 후보 (WP-B) — 프로젝트 스킬 이름 ∪ 사용
+        # 선언한 외부 플러그인의 스킬 `플러그인:스킬`. 외부 플러그인 스킬의
+        # 사용 경로는 이 필드 하나뿐이다(참조 노드·감싸기 없음, 사용자 확정
+        # 2026-09-19 — `docs/superpowers/specs/2026-09-19-external-plugin-
+        # registration.md` §0).
+        from daedalus.view.widgets.tag_input import set_skill_candidate_provider
+
+        def _skill_candidates(p=project) -> list[str]:
+            from daedalus.model.plugin.wrap_catalog import used_plugin_skill_refs
+
+            names = {s.name for s in getattr(p, "skills", None) or []}
+            names.update(used_plugin_skill_refs(p))
+            return sorted(names)
+
+        set_skill_candidate_provider(_skill_candidates)
         # fork 에이전트 피커 후보 (2026-09-13) — MCP 검증과 같은 함수.
         from daedalus.view.actions.fork_skill import fork_agent_choices
         from daedalus.view.widgets.tag_input import set_fork_agent_choice_provider

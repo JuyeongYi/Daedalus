@@ -120,7 +120,7 @@ LOCAL 빌드가 설치 대상 작업 폴더에 남기는 `.claude/CLAUDE.md` 구
 
 `list_external_plugins` · `fetch_plugin_skills` · `list_marketplace_folders` · `add_marketplace_folder` · `remove_marketplace_folder` · `set_external_plugins`
 
-외부 플러그인 카탈로그를 훑고 사용 선언할 때 쓴다 — 선언한 플러그인의 에이전트는 `ExternalAgent` 노드로 부른다. **`fetch_plugin_skills`만 인터넷에 나간다** — 사용자가 그 플러그인을 지목했을 때만이고, 카탈로그를 열거나 새로고침하는 것만으로는 절대 받지 않는다.
+외부 플러그인 카탈로그를 훑고 사용 선언할 때 쓴다 — 선언한 플러그인의 에이전트는 `ExternalAgent` 노드로 부른다. **선언한 플러그인의 스킬은 fork 에이전트의 `skills`로 쓴다** — 스킬 행의 `skill_ref`(`@마켓`을 뗀 `플러그인:스킬`)를 `set_component_field(name, "skills", [...])`에 그대로 넣는다(외부 플러그인 스킬의 유일한 사용 경로, WP-B 사용자 확정 2026-09-19). 같은 행의 `used_by`가 지금 그 참조를 쓰는 프로젝트 에이전트 이름을 말한다. **`fetch_plugin_skills`만 인터넷에 나간다** — 사용자가 그 플러그인을 지목했을 때만이고, 카탈로그를 열거나 새로고침하는 것만으로는 절대 받지 않는다.
 
 ### 세션 (7)
 

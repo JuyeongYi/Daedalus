@@ -273,6 +273,26 @@ def get_mcp_server_candidates() -> list[str]:
     return []
 
 
+# 에이전트 SKILLS TagInput 후보 (WP-B, 2026-09-19) — 프로젝트 스킬 이름 +
+# 사용 선언한 외부 플러그인의 스킬 `플러그인:스킬`(wrap_catalog.
+# used_plugin_skill_refs). app.set_project가 등록한다. 위 provider들과 같은
+# 패턴·같은 스냅샷 규약(생성 시점 1회 조회).
+_SKILL_CANDIDATE_PROVIDER: Callable[[], list[str]] | None = None
+
+
+def set_skill_candidate_provider(provider: Callable[[], list[str]] | None) -> None:
+    """SKILLS TagInput이 표시할 스킬 이름 목록 제공자를 등록한다."""
+    global _SKILL_CANDIDATE_PROVIDER
+    _SKILL_CANDIDATE_PROVIDER = provider
+
+
+def get_skill_candidates() -> list[str]:
+    """등록된 제공자에서 현재 스킬 이름 후보 목록을 가져온다 (없으면 빈 목록)."""
+    if _SKILL_CANDIDATE_PROVIDER is not None:
+        return list(_SKILL_CANDIDATE_PROVIDER())
+    return []
+
+
 # fork 에이전트 후보 (2026-09-13) — [(값, 설명)]. app.set_project가
 # `actions/fork_skill.fork_agent_choices`를 등록한다. 위 provider들과 같은 규약.
 _FORK_AGENT_PROVIDER: Callable[[], list[tuple[str, str]]] | None = None

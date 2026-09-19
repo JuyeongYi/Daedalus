@@ -233,3 +233,33 @@ def test_bool_field_accepts_real_boolean(tools):
 def test_bool_field_rejects_garbage_string(tools):
     with pytest.raises(ValueError, match="불리언"):
         tools.set_component_field("init", "user_invocable", "maybe")
+
+
+# --- WP-B: 외부 플러그인 스킬 참조 (`skills`의 `플러그인:스킬`) ---
+
+
+def test_skills_accepts_external_plugin_ref_without_declaration(tools):
+    """미선언 플러그인이어도 거절하지 않는다 — 응답에 경고만 싣는다."""
+    out = tools.set_component_field("worker", "skills", ["alpha:review"])
+    assert out["new"] == ["alpha:review"]
+    assert "alpha" in out["warning"]
+    assert _config(tools, "worker").skills == ["alpha:review"]
+
+
+def test_skills_external_ref_matches_marketplace_declaration_no_warning(tools):
+    """`alpha@mkt` 선언 뒤에는 bare 참조 `alpha:review`에 경고가 없다(WP-B 완화)."""
+    tools.set_external_plugins(["alpha@mkt"])
+    out = tools.set_component_field("worker", "skills", ["alpha:review"])
+    assert "warning" not in out
+
+
+def test_skills_local_name_has_no_external_warning(tools):
+    """콜론 없는 이름은 외부 참조가 아니다 — 경고가 없다."""
+    out = tools.set_component_field("worker", "skills", ["some-local-skill"])
+    assert "warning" not in out
+
+
+def test_fork_agent_skills_also_warns_on_undeclared_plugin(tools):
+    tools.create_agent("helper", kind="fork_agent")
+    out = tools.set_component_field("helper", "skills", ["beta:lint"])
+    assert "beta" in out["warning"]

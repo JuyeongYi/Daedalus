@@ -7,9 +7,13 @@ from daedalus.model.plugin.config import (
     ProceduralSkillConfig,
     DeclarativeSkillConfig,
     AgentConfig,
+    ForkAgentConfig,
     TransferSkillConfig,
     ForkSkillConfig,
+    external_plugin_id_declared,
+    is_external_skill_ref,
 )
+from daedalus.model.plugin.roles import Bucket
 from daedalus.model.plugin.enums import (
     ModelType,
     EffortLevel,
@@ -157,5 +161,58 @@ def test_transfer_skill_config_defaults():
     assert cfg.user_invocable is False
     assert not hasattr(cfg, "context")
     assert cfg.shell == SkillShell.BASH
+
+
+# --- WP-B: 외부 플러그인 스킬 참조 (플러그인:스킬, 사용자 확정 2026-09-19) ---
+
+
+def test_is_external_skill_ref_by_colon():
+    assert is_external_skill_ref("alpha:review") is True
+    assert is_external_skill_ref("local-skill") is False
+    assert is_external_skill_ref("") is False
+
+
+def test_external_plugin_id_declared_exact_and_bare():
+    assert external_plugin_id_declared("alpha", {"alpha"}) is True
+    assert external_plugin_id_declared("alpha", {"alpha@mkt"}) is True
+    assert external_plugin_id_declared("alpha@mkt", {"alpha"}) is True
+    assert external_plugin_id_declared("alpha", {"beta@mkt"}) is False
+    assert external_plugin_id_declared("alpha", set()) is False
+
+
+def test_agent_config_base_name_refs_excludes_external_skill_refs():
+    """`config.skills`의 name_refs(SKILLS)는 프로젝트 스킬 이름만 — 외부
+    참조(콜론 포함)는 dangling_string_reference 오탐을 막기 위해 뺀다."""
+    cfg = AgentConfig(skills=["local-a", "alpha:review", "local-b"])
+    assert cfg.name_refs(Bucket.SKILLS) == ["local-a", "local-b"]
+    assert cfg.name_refs(Bucket.AGENTS) == []
+
+
+def test_agent_config_base_external_plugin_refs_extracts_bare_plugin_id():
+    cfg = AgentConfig(skills=["local-a", "alpha:review", "beta@mkt:lint"])
+    assert cfg.external_plugin_refs() == ["alpha", "beta@mkt"]
+
+
+def test_agent_config_base_external_plugin_refs_skips_malformed():
+    """빈 플러그인 부분·빈 스킬 이름은 형식이 깨진 참조라 건너뛴다."""
+    cfg = AgentConfig(skills=[":review", "alpha:", "ok:skill"])
+    assert cfg.external_plugin_refs() == ["ok"]
+
+
+def test_agent_config_base_external_plugin_refs_ignores_empty_skills():
+    cfg = AgentConfig()
+    assert cfg.external_plugin_refs() == []
+
+
+def test_fork_agent_config_shares_external_plugin_refs():
+    """`ForkAgentConfig`도 `AgentConfigBase`를 상속하므로 같은 메서드를 쓴다."""
+    cfg = ForkAgentConfig(skills=["alpha:review"])
+    assert cfg.external_plugin_refs() == ["alpha"]
+
+
+def test_component_config_default_external_plugin_refs_is_empty():
+    """스킬 config는 이 메서드를 오버라이드하지 않는다 — 기본값 그대로."""
+    cfg = ProceduralSkillConfig()
+    assert cfg.external_plugin_refs() == []
 
 

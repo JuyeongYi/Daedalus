@@ -26,6 +26,33 @@ from daedalus.model.plugin.enums import (
 )
 
 
+def is_external_skill_ref(name: str) -> bool:
+    """``config.skills`` 항목이 **외부 플러그인 스킬** 참조인가 — ``플러그인:스킬``.
+
+    콜론이 있으면 외부 참조다(WP-B, 사용자 확정 2026-09-19 — 외부 플러그인
+    스킬의 사용 경로는 fork 에이전트 ``skills:`` 프론트매터 하나뿐이다).
+    프로젝트 컴포넌트 이름은 ``^[a-z0-9][a-z0-9-]*$``라 콜론을 가질 수 없으므로
+    오검출이 없다. ``@마켓``은 붙이지 않는다 — CC가 fork 에이전트 ``skills:``로
+    프리로드하는 이름이 그 형식이다(실측, CC 2.1.278 — `plugin-model.md`).
+    """
+    return ":" in name
+
+
+def external_plugin_id_declared(plugin_id: str, declared: set[str]) -> bool:
+    """설치 식별자 매칭 — 정확 일치 또는 bare(``@마켓`` 제외) 일치.
+
+    외부 스킬 참조(``플러그인:스킬``)의 플러그인 부분은 마켓 표기가 없는
+    bare 이름이다 — 선언이 ``플러그인@마켓``이어도 이 완화로 맞는다
+    (`validation/project_rules/fork.py`의 ``declared = {p.partition("@")[0]
+    for p in ...}`` 선례와 같은 판단). 양쪽 다 bare로 낮춰 비교하므로
+    ``plugin_id``에 ``@마켓``이 섞여 들어와도(수동 입력) 대칭적으로 맞는다.
+    """
+    if plugin_id in declared:
+        return True
+    bare = plugin_id.partition("@")[0]
+    return bare in declared or bare in {d.partition("@")[0] for d in declared}
+
+
 @dataclass
 class ComponentConfig(ABC):
     """플러그인 컴포넌트 공통 설정 + **이름 참조 계약** (REFACTOR_SPEC §2-c).
@@ -103,6 +130,20 @@ class ComponentConfig(ABC):
     def rename_ref(self, namespace: Bucket, old: str, new: str) -> None:
         """``namespace``의 이름 ``old``를 ``new``로 **제자리** 치환 (기본 무동작)."""
         return None
+
+    def external_plugin_refs(self) -> list[str]:
+        """이 설정이 요구하는 외부 플러그인 설치 id 목록 (기본 없음).
+
+        `AgentConfigBase`만 오버라이드한다(``skills``의 외부 스킬 참조, WP-B) —
+        `ExternalAgentConfig`의 ``source``는 **여기 합류하지 않는다**.
+        `_check_external_plugins`가 두 매칭 정책(정확 일치 / bare 완화)을
+        가르는 신호가 바로 이 기본값 유무다: 이 메서드가 낸 id만 bare
+        완화를 받는다 — CC가 fork 에이전트 `skills:`로 외부 스킬을 찾을 때는
+        마켓 표기를 아예 쓰지 않아(실측) 그 참조에 항상 시장 정보가 없지만,
+        `ExternalAgent.source`는 사용자가 마켓 유무를 **직접 선택**하므로
+        bare와 `@마켓` 선언은 진짜 다른 설치 대상이다(정확 일치 유지).
+        """
+        return []
 
 
 @dataclass
@@ -276,14 +317,41 @@ class AgentConfigBase(ComponentConfig, ABC):
     memory: MemoryScope | None = None
 
     def name_refs(self, namespace: Bucket) -> list[str]:
-        """``skills``는 **스킬** 이름 참조 목록이다."""
+        """``skills``는 **프로젝트 스킬** 이름 참조 목록이다 — 외부 플러그인
+        참조(``플러그인:스킬``, WP-B)는 **제외**한다.
+
+        포함시키면 프로젝트에 그 이름의 스킬이 없다는 이유로
+        `dangling_string_reference`가 오탐하고, `rename_ref`가 무관한
+        문자열을 건드릴 뻔한다(콜론 때문에 실제로는 안 맞지만 판단 자체가
+        틀린 자리에 있으면 안 된다 — 원칙 1). 배선 필요 여부는
+        `external_plugin_refs()`가 대신 답한다.
+        """
         if namespace is Bucket.SKILLS and isinstance(self.skills, list):
-            return list(self.skills)
+            return [s for s in self.skills if not is_external_skill_ref(s)]
         return []
 
     def rename_ref(self, namespace: Bucket, old: str, new: str) -> None:
         if namespace is Bucket.SKILLS and isinstance(self.skills, list):
             self.skills = [new if s == old else s for s in self.skills]
+
+    def external_plugin_refs(self) -> list[str]:
+        """``skills``의 외부 플러그인 스킬 참조(``플러그인:스킬``)가 가리키는
+        플러그인 설치 id 목록 (WP-B).
+
+        형식이 깨진 참조(플러그인 부분이 비었거나 스킬 이름이 없음)는
+        건너뛴다 — CC가 못 찾으면 조용히 무시하는 실패이고, 이 종류의 참조에는
+        `external_source_missing`류의 전용 경고가 없다(참조는 콜론 유무로만
+        외부/내부를 가른다).
+        """
+        refs: list[str] = []
+        for s in self.skills if isinstance(self.skills, list) else []:
+            if not is_external_skill_ref(s):
+                continue
+            plugin_id, _, skill_name = s.partition(":")
+            plugin_id = plugin_id.strip()
+            if plugin_id and skill_name.strip():
+                refs.append(plugin_id)
+        return refs
 
 
 @dataclass

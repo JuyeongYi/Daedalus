@@ -20,7 +20,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from daedalus.model.plugin.enums import SkillField
+from daedalus.model.plugin.enums import AgentField, SkillField
 
 from ._base import _BaseTools
 
@@ -174,6 +174,11 @@ class FieldTools(_BaseTools):
 
         description / when_to_use / hooks / usage / enabled는 전용 도구를 쓴다 —
         거절이 그 도구 이름을 말한다.
+
+        **`skills`는 외부 플러그인 참조(`플러그인:스킬`, WP-B)를 받는다** —
+        선언 안 된 플러그인이어도 **거절하지 않는다**(형식은 유효하고 사용자가
+        곧 선언할 수도 있다). 대신 응답에 `warning`을 실어 미선언 플러그인
+        id를 말한다 — 검증(`undeclared_external_plugin`)이 같은 사실을 짚는다.
         """
         from daedalus.model.plugin.enums import FieldVisibility
         from daedalus.model.plugin.field_matrix import matrix_for
@@ -227,9 +232,41 @@ class FieldTools(_BaseTools):
                 script=f'set_component_field("{name}", "{field}", ...)',
             )
         )
-        return {
+        out: dict[str, Any] = {
             "component": comp.name,
             "field": field,
             "old": getattr(old, "value", old),
             "new": getattr(coerced, "value", coerced),
         }
+        if field == AgentField.SKILLS.value:
+            warning = self._undeclared_external_skill_plugins_warning(comp)
+            if warning:
+                out["warning"] = warning
+        return out
+
+    def _undeclared_external_skill_plugins_warning(self, comp: Any) -> str | None:
+        """`skills`에 방금 들어간 외부 참조 중 미선언 플러그인이 있으면 경고 문구.
+
+        실체는 `comp.external_plugin_refs()`(config의 것을 합친 컴포넌트
+        판정, WP-B) 하나다 — 프로젝트 검증의 `undeclared_external_plugin`과
+        같은 술어를 쓴다(`external_plugin_id_declared` — bare/`@마켓` 완화).
+        """
+        from daedalus.model.plugin.config import external_plugin_id_declared
+
+        declared = {
+            str(p).strip()
+            for p in getattr(self._project, "external_plugins", None) or []
+            if str(p).strip()
+        }
+        missing = sorted({
+            plugin_id
+            for plugin_id in comp.external_plugin_refs()
+            if not external_plugin_id_declared(plugin_id, declared)
+        })
+        if not missing:
+            return None
+        return (
+            f"선언되지 않은 외부 플러그인 참조: {', '.join(missing)} — "
+            f"set_external_plugins로 선언하지 않으면 빌드가 dependencies/"
+            f"enabledPlugins를 배선하지 않아 런타임에 그 스킬을 찾지 못합니다."
+        )

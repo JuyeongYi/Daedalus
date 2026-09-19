@@ -20,6 +20,7 @@ from daedalus.model.plugin.wrap_catalog import (
     scan_catalog,
     used_plugin_agents,
     used_plugin_mcp_servers,
+    used_plugin_skill_refs,
 )
 
 
@@ -285,6 +286,37 @@ def test_used_plugin_agents_filters_by_declaration(tmp_path):
     assert used_plugin_agents(SimpleNamespace(external_plugins=[])) == []
     project = SimpleNamespace(external_plugins=["beta@m"])
     assert [a.agent_type for a in used_plugin_agents(project)] == ["beta:worker"]
+
+
+# ────────── WP-B: 외부 플러그인 스킬 참조 (fork 에이전트 skills:, 2026-09-19) ──────────
+
+
+def test_catalogued_skill_ref_strips_marketplace():
+    """`skill_ref`는 fork 에이전트 skills:에 넣을 이름 — `@마켓`을 뗀 형태다."""
+    from daedalus.model.plugin.wrap_catalog import CataloguedSkill
+
+    s = CataloguedSkill(name="review", description="d", source="alpha@mkt:review")
+    assert s.skill_ref == "alpha:review"
+
+
+def test_catalogued_skill_ref_bare_source_unchanged():
+    from daedalus.model.plugin.wrap_catalog import CataloguedSkill
+
+    s = CataloguedSkill(name="review", description="d", source="alpha:review")
+    assert s.skill_ref == "alpha:review"
+
+
+def test_used_plugin_skill_refs_filters_by_declaration(tmp_path):
+    """사용 선언한 플러그인의 스킬만 `플러그인:스킬`로 나온다 — 마켓 표기 없이."""
+    from types import SimpleNamespace
+
+    _make_plugin(tmp_path, "alpha", skills=["review", "lint"])
+    _make_plugin(tmp_path, "beta", skills=["scan"])
+    add_marketplace(str(tmp_path), "mkt")
+
+    assert used_plugin_skill_refs(SimpleNamespace(external_plugins=[])) == []
+    project = SimpleNamespace(external_plugins=["alpha@mkt"])
+    assert used_plugin_skill_refs(project) == ["alpha:lint", "alpha:review"]
 
 
 def _make_marketplace(root, name, declared):
