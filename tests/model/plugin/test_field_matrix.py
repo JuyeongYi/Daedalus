@@ -285,24 +285,42 @@ def test_field_matrix_is_pyqt_free():
 # WP-H: AGENT_FIELD_MATRIX + FieldEmit 신설
 # ---------------------------------------------------------------------------
 
-def test_agent_field_matrix_completeness():
-    """워크플로 에이전트 표에 AgentField 전 멤버가 키로 존재해야 한다."""
+# 에이전트 kind별 **명시적 부재** 필드 — 스킬 쪽 `_KIND_ABSENT_FIELDS`와 같은 규약이다.
+# 부재는 여기 등재된 것만 허용한다 — 등재 없는 누락은 실수다.
+_AGENT_KIND_ABSENT_FIELDS = {
+    # 워크플로 에이전트는 전 필드를 갖는다 — SOURCE만 외부 에이전트 전용이다(WP-9).
+    "agent": {AgentField.SOURCE},
+    # background는 fork 스킬 종류가 정하고 isolation은 fork 실행에 적용되지
+    # 않는다(실측 2026-09-13) — 없는 필드를 두면 걸어 둔 제약이 조용히 사라진다.
+    "fork_agent": {
+        AgentField.SOURCE, AgentField.BACKGROUND, AgentField.ISOLATION,
+    },
+    # 외부 플러그인 에이전트(WP-9)는 **산출 파일이 없다** — 프론트매터가 나갈
+    # 자리 자체가 없으므로 우리가 쓸 수 없는 필드를 두지 않는다.
+    "external_agent": set(AgentField) - {
+        AgentField.NAME, AgentField.DESCRIPTION, AgentField.SOURCE,
+    },
+}
+
+
+def test_agent_matrix_all_kinds_have_all_fields():
+    """모든 에이전트 kind가 전 AgentField를 커버한다 — 명시 부재 목록 제외."""
     from daedalus.model.plugin.field_matrix import AGENT_FIELD_MATRIX
-    for af in AgentField:
-        assert af in AGENT_FIELD_MATRIX["agent"], f"agent 표에 {af} 누락"
+    assert set(AGENT_FIELD_MATRIX) == set(_AGENT_KIND_ABSENT_FIELDS)
+    for kind, rules in AGENT_FIELD_MATRIX.items():
+        absent = _AGENT_KIND_ABSENT_FIELDS[kind]
+        assert set(rules) == set(AgentField) - absent, f"{kind} 필드 집합 불일치"
 
 
-def test_fork_agent_matrix_drops_background_and_isolation():
-    """fork 에이전트 표 = 워크플로 표 − {background, isolation}.
+def test_external_agent_matrix_emits_nothing():
+    """산출 파일이 없는 종류는 **배출 행을 하나도 갖지 않는다** (WP-9).
 
-    백그라운드 여부는 fork 스킬 종류가 정하고, isolation은 fork 실행에 적용되지
-    않는다(실측 2026-09-13) — 없는 필드를 두면 걸어 둔 제약이 조용히 사라진다.
+    표에 FRONTMATTER/BODY/SETTINGS 행을 남기면 편집기와 MCP `set_component_field`가
+    값을 받아 놓고 아무 일도 하지 않는다(원칙 5).
     """
     from daedalus.model.plugin.field_matrix import AGENT_FIELD_MATRIX
-    assert set(AGENT_FIELD_MATRIX) == {"agent", "fork_agent"}
-    assert set(AGENT_FIELD_MATRIX["fork_agent"]) == set(
-        AGENT_FIELD_MATRIX["agent"]
-    ) - {AgentField.BACKGROUND, AgentField.ISOLATION}
+    rules = AGENT_FIELD_MATRIX["external_agent"]
+    assert {rule.emit for rule in rules.values()} == {FieldEmit.NONE}
 
 
 def test_max_turns_background_isolation_are_frontmatter():
@@ -320,10 +338,14 @@ def test_max_turns_background_isolation_are_frontmatter():
 
 
 def test_agent_field_matrix_emit_settings():
-    """HOOKS/MCP_SERVERS의 emit은 SETTINGS이어야 한다."""
+    """HOOKS/MCP_SERVERS의 emit은 SETTINGS이어야 한다 (가진 종류 전수)."""
     from daedalus.model.plugin.field_matrix import AGENT_FIELD_MATRIX
     for kind, rules in AGENT_FIELD_MATRIX.items():
         for af in (AgentField.HOOKS, AgentField.MCP_SERVERS):
+            if af not in rules:
+                # 부재는 `_AGENT_KIND_ABSENT_FIELDS`가 이미 전수 고정한다.
+                assert af in _AGENT_KIND_ABSENT_FIELDS[kind]
+                continue
             assert rules[af].emit == FieldEmit.SETTINGS, (
                 f"{kind}/{af} emit이 SETTINGS이 아님: {rules[af].emit!r}"
             )
@@ -337,6 +359,10 @@ def test_agent_field_matrix_emit_frontmatter():
         AgentField.MAX_TURNS, AgentField.BACKGROUND, AgentField.ISOLATION,
     }
     for kind, rules in AGENT_FIELD_MATRIX.items():
+        # 산출 파일이 없는 종류는 배출 행이 없다 —
+        # `test_external_agent_matrix_emits_nothing`이 그쪽을 전수 고정한다.
+        if {rule.emit for rule in rules.values()} == {FieldEmit.NONE}:
+            continue
         for af, rule in rules.items():
             if af in non_frontmatter:
                 continue
@@ -368,8 +394,13 @@ def test_skill_matrix_other_fields_emit_frontmatter():
 
 
 def test_agent_field_frontmatter_key_kebab_case():
-    """AgentField 전 멤버의 frontmatter_key가 kebab-case여야 한다."""
+    """AgentField 전 멤버의 frontmatter_key가 camelCase여야 한다 — SOURCE는 None."""
+    # SOURCE(WP-9)는 프론트매터 키가 아니다 — 외부 플러그인 에이전트는 산출
+    # 파일 자체가 없고, 내면 CC가 모르는 키라 조용히 무시된다(SkillField와 같은 규약).
+    assert AgentField.SOURCE.frontmatter_key is None
     for af in AgentField:
+        if af is AgentField.SOURCE:
+            continue
         key = af.frontmatter_key
         assert key is not None, f"{af} frontmatter_key가 None"
         assert "_" not in key, f"{af} frontmatter_key에 underscore 잔존: {key!r}"

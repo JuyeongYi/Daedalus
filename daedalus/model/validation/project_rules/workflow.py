@@ -170,7 +170,7 @@ class _WorkflowRules:
         성립하지 않는다. 티어 표의 단일 진실은 `model/plugin/enums.MODEL_TIER`.
         """
         from daedalus.model.plugin.enums import MODEL_TIER, ModelType
-        from daedalus.model.plugin.roles import Bucket
+        from daedalus.model.plugin.roles import Bucket, OutputLocation
         from daedalus.model.validation.project_rules.fork import fork_project_agent
 
         def effective_model(component):
@@ -192,6 +192,12 @@ class _WorkflowRules:
 
         errors: list[ValidationError] = []
         for src, _tgt, caller, callee, port in _agent_call_edges(project):
+            # 산출 파일이 없는 에이전트(외부 플러그인 서브에이전트 — WP-9)는
+            # **자기 모델을 소유하지 않는다**: 그 프론트매터는 남의 플러그인이
+            # 쓴 것이고 우리 `config.model`은 어디로도 나가지 않는다. 티어를
+            # 비교하면 우리가 적어 본 값으로 남의 에이전트를 판정하는 셈이다.
+            if type(callee).OUTPUT_LOCATION is OutputLocation.NONE:
+                continue
             caller_model, callee_model = effective_model(caller), effective_model(callee)
             caller_tier, callee_tier = tier(caller_model), tier(callee_model)
             if caller_tier is None or callee_tier is None:

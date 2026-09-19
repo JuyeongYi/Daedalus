@@ -78,13 +78,14 @@ GUI가 켜지면 `127.0.0.1`에 Streamable HTTP로 뜬다.
 | `create_skill` | `kind` | `procedural` · `sync_fork` · `async_fork` · `declarative` · `transfer` · `reference` · `wrapped` |
 | `create_skill` | `fork_agent` | 설정에 `agent`를 가진 종류(`sync_fork`/`async_fork`) 전용 — 내장 fork 에이전트, `플러그인:이름`, 또는 프로젝트의 fork 에이전트 이름. 생략하면 `general-purpose` |
 | `create_skill` | `source` / `usage` | 설정에 `source`/`usage`를 가진 종류(`wrapped`) 전용 — `usage`는 `source`와 함께만 |
-| `create_agent` | `kind` | `agent`(워크플로 에이전트 — 캔버스 노드) · `fork_agent`(fork 스킬의 실행 기반) |
+| `create_agent` | `kind` | `agent`(워크플로 에이전트 — 캔버스 노드) · `fork_agent`(fork 스킬의 실행 기반) · `external_agent`(다른 플러그인의 에이전트를 노드로 — 산출 파일 없음. `source`는 `set_component_field(name, "source", "플러그인:이름")`으로 채운다) |
 | `convert_skill` | `to` | `procedural` · `sync_fork` · `async_fork` |
 
 - **읽는 쪽 `kind`는 철자가 다르다.** 조회 응답(`get_project`의 스킬·에이전트 행, `get_component`,
   `get_canvas`의 노드)은 **클래스 철자**를 말한다 — `procedural_skill` · `sync_fork_skill` ·
   `async_fork_skill` · `declarative_skill` · `transfer_skill` · `reference_skill` · `wrapped_skill` ·
-  `agent` · `fork_agent`. 쓰는 쪽 파라미터는 위 표의 **짧은 형**(`procedural` · `sync_fork` …)이다.
+  `agent` · `fork_agent` · `external_agent`. 쓰는 쪽 파라미터는 위 표의 **짧은 형**(`procedural` · `sync_fork` …)이다.
+  **목록은 레지스트리에서 파생**이라 새 종류는 도구를 고치지 않아도 나타난다(F10 패리티).
   조회 값을 그대로 `create_skill(kind=)`에 넣으면 거절된다.
 - **fork 스킬은 두 종류다.** `sync_fork`는 서브에이전트를 기다리고, `async_fork`는 기다리지 않는다
   (보고가 나중에 작업 알림으로 온다). 이 차이를 만드는 `background` 프론트매터는 종류가 정하므로

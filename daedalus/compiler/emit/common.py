@@ -17,6 +17,7 @@ from enum import Enum
 from typing import Any
 
 from daedalus.model.plugin.config import ComponentConfig
+from daedalus.model.plugin.roles import OutputLocation
 
 
 def _enum_value(v: Any) -> Any:
@@ -165,6 +166,45 @@ def agent_invocation_name(component, project) -> str:
     if _is_local_build(project):
         return agent
     return f"{getattr(project, 'name', '')}:{agent}"
+
+
+# ───────────────────── 그래프 노드에게 위임할 때 쓰는 이름 ─────────────────────
+
+
+def delegation_target_name(component) -> str:
+    """그래프에서 **이 노드에게 위임**할 때 CC가 찾는 이름 (WP-9).
+
+    정본이 외부인 노드(외부 플러그인 서브에이전트)는 `플러그인[@마켓]:이름`
+    원문이 곧 그 이름이다 — 우리 산출에는 그 이름의 파일이 없고, CC는 설치된
+    플러그인에서 정확 일치로 찾는다. 그 밖에는 컴포넌트 이름 그대로다.
+
+    `agent_invocation_name`과 묻는 것이 다르다: 그쪽은 "이 컴포넌트의 **본문**을
+    누가 실행하는가"(fork 스킬의 `agent` 필드)이고, 여기는 "이 **노드 자신**을
+    어떻게 부르는가"다. 한 함수로 묶으면 워크플로 에이전트가
+    `general-purpose`로 답한다(위임 대상이 없는 종류의 폴백).
+    """
+    return component.external_source or component.name
+
+
+#: 외부 플러그인 서브에이전트에게 위임할 때 호출자 산출에 붙는 단서 (WP-9).
+#:
+#: 이 에이전트는 **우리 플러그인이 만든 파일이 아니다** — 워크플로도 블랙보드도
+#: 진행 기록 규약도 모른다. 그래서 ① 필요한 맥락을 전부 프롬프트에 담고
+#: ② 결과 기록은 호출자가 직접 하며 ③ 어느 갈래로 이어질지도 호출자가 보고를
+#: 읽고 고른다. 이 문장이 없으면 부르는 쪽이 "출력 포트 이름으로 끝내라"를
+#: 그대로 지시하고, 외부 에이전트는 그 규약을 모른 채 다르게 답한다.
+EXTERNAL_DELEGATION_NOTE = (
+    "external plugin agent — it knows neither this workflow nor the blackboard: "
+    "put everything it needs in the prompt, record the result yourself, and pick "
+    "the branch below from its report"
+)
+
+
+def external_delegation_suffix(component) -> str:
+    """위임 지시 뒤에 붙는 외부 에이전트 단서 — 해당 없으면 빈 문자열."""
+    if type(component).OUTPUT_LOCATION is not OutputLocation.NONE:
+        return ""
+    return f" ({EXTERNAL_DELEGATION_NOTE})"
 
 
 # ─────────────────────────── 프로젝트 그래프 placement ───────────────────────────

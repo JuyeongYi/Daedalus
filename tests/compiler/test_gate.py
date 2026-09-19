@@ -286,3 +286,41 @@ def test_skipped_labels_are_exactly_the_exclusive_plan(tmp_path):
     assert [item.kind for item in plan if not item.exclusive] == [
         "files_tree", "local_wiring", "claude_md",
     ]
+
+
+def test_components_without_an_output_file_skip_the_name_gate(tmp_path):
+    """산출 파일이 없는 종류의 이름은 게이트 대상이 **아니다** (WP-9).
+
+    `ComponentUnit.plan`이 emitter 조회보다 **앞에** `emits_output()` 게이트를
+    두는 것의 부수 효과다(REFACTOR_SPEC §2-g). 외부 플러그인 에이전트의 이름은
+    그 플러그인이 지은 것이라 우리가 고칠 수 없고, CC 파일명 규약을 따라야 할
+    파일 자체가 없다 — 게이트를 걸면 남의 작명 때문에 컴파일이 통째로 막힌다.
+
+    같은 이름을 가진 **워크플로** 에이전트는 여전히 거부된다는 것을 함께 건다 —
+    면제가 "산출 없음"에서 오는 것이지 "에이전트라서"가 아님을 고정한다.
+    """
+    from daedalus.model.fsm.section import EventDef
+    from daedalus.model.plugin.agent import ExternalAgent
+    from daedalus.model.plugin.config import ExternalAgentConfig
+
+    external = ExternalAgent(
+        name="Critic Reviewer",  # 공백 + 대문자
+        description="외부 플러그인의 리뷰어",
+        config=ExternalAgentConfig(source="review-pack:critic"),
+        transfer_on=[EventDef(name="done")],
+    )
+    project = PluginProject(name="p", external_plugins=["review-pack"])
+    project.agents.append(external)
+    result = compile_project(project, tmp_path)
+    named = [e for e in result.errors if e.rule == "compile_invalid_component_name"]
+    assert not named, [e.source for e in named]
+
+    from tests.compiler.builders import make_agent
+
+    project.agents.append(make_agent("Critic Reviewer"))
+    result = compile_project(project, tmp_path)
+    sources = {
+        e.source for e in result.errors
+        if e.rule == "compile_invalid_component_name"
+    }
+    assert sources == {"Critic Reviewer"}

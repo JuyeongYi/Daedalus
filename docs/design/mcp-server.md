@@ -267,7 +267,7 @@
 | `create_skill` | `kind` | `config_kinds_in(Bucket.SKILLS)` **파생** — 오늘 `procedural` · `sync_fork` · `async_fork` · `declarative` · `transfer` · `reference` · `wrapped`(선언 순서) |
 | `create_skill` | `fork_agent` | 설정에 `agent`를 가진 종류(오늘 `sync_fork`/`async_fork`) **전용** — 내장 fork 에이전트, `플러그인:이름`, 또는 프로젝트의 fork 에이전트 이름(정확 일치). 생략하면 `general-purpose` |
 | `create_skill` | `source` / `usage` | 설정에 `source`/`usage`를 가진 종류(오늘 `wrapped`) **전용**. `usage`는 `source`와 함께만 |
-| `create_agent` | `kind` | `config_kinds_in(Bucket.AGENTS)` 파생 — `agent`(워크플로 에이전트 — 캔버스 노드) · `fork_agent`(fork 스킬의 실행 기반 — fsm·포트·배치 없음) |
+| `create_agent` | `kind` | `config_kinds_in(Bucket.AGENTS)` 파생 — `agent`(워크플로 에이전트 — 캔버스 노드) · `fork_agent`(fork 스킬의 실행 기반 — fsm·포트·배치 없음) · `external_agent`(외부 플러그인 에이전트를 노드로 — fsm·산출 파일 없음, 포트는 있다). **WP-9은 이 도구를 한 줄도 고치지 않았다** — 어휘가 파생이라 새 종류가 그대로 나타난다 |
 | `convert_skill` | `to` | `procedural` · `sync_fork` · `async_fork` (3-way) |
 
 - **읽는 쪽과 쓰는 쪽의 철자가 다르다.** 조회(`get_project`의 스킬·에이전트 행, `get_component`,

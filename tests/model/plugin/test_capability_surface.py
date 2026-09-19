@@ -25,7 +25,12 @@ import pytest
 
 from daedalus.compiler.emit.common import emits_output_file
 from daedalus.model.fsm.machine import StateMachine
-from daedalus.model.plugin.agent import Agent, AgentDefinition, ForkAgent
+from daedalus.model.plugin.agent import (
+    Agent,
+    AgentDefinition,
+    ExternalAgent,
+    ForkAgent,
+)
 from daedalus.model.plugin.base import PluginComponent, WorkflowComponent
 from daedalus.model.plugin.config import (
     AgentConfig,
@@ -33,6 +38,7 @@ from daedalus.model.plugin.config import (
     AsyncForkSkillConfig,
     ComponentConfig,
     DeclarativeSkillConfig,
+    ExternalAgentConfig,
     ForkAgentConfig,
     ForkSkillConfig,
     ProceduralSkillConfig,
@@ -161,6 +167,19 @@ EXPECTED_DECLARATIONS: dict[type, dict[str, object]] = {
         "IS_FORK_BASE": True, "REQUIRES_OUTPUT_PORTS": False,
         "HAS_INTERNAL_FSM": False,
     },
+    # WP-9 — 이 행이 능력 표면의 수용 시험이다: 그래프 노드(STATE)이면서
+    # 산출 파일이 없고(NONE) 본문 정본이 외부다. 종전 boolean 하나로는
+    # 표현되지 않던 조합이 세 칸으로 갈렸다.
+    ExternalAgent: {
+        "KIND": "external_agent", "CONFIG_CLS": ExternalAgentConfig,
+        "BUCKET": _A, "PLACEMENT": PlacementRole.STATE,
+        "OUTPUT_LOCATION": OutputLocation.NONE,
+        "BODY_SOURCE": BodySource.EXTERNAL,
+        "CONVERT_FAMILY": None, "DELEGATION_TARGET": True,
+        "RUNS_IN_SUBAGENT": True, "REPORTS_OUT_OF_BAND": False,
+        "IS_FORK_BASE": False, "REQUIRES_OUTPUT_PORTS": True,
+        "HAS_INTERNAL_FSM": False,
+    },
 }
 
 CONCRETE_COMPONENTS: tuple[type, ...] = tuple(EXPECTED_DECLARATIONS)
@@ -171,7 +190,7 @@ ABSTRACT_COMPONENTS: tuple[type, ...] = (
 CONCRETE_CONFIGS: tuple[type, ...] = (
     ProceduralSkillConfig, SyncForkSkillConfig, AsyncForkSkillConfig,
     WrappedSkillConfig, DeclarativeSkillConfig, TransferSkillConfig,
-    ReferenceSkillConfig, AgentConfig, ForkAgentConfig,
+    ReferenceSkillConfig, AgentConfig, ForkAgentConfig, ExternalAgentConfig,
 )
 ABSTRACT_CONFIGS: tuple[type, ...] = (
     ComponentConfig, SkillConfig, StepSkillConfig, ForkSkillConfig, AgentConfigBase,
@@ -205,10 +224,26 @@ def _instance(cls: type):
 
 # ── 1. 선언이 전수인가 ──────────────────────────────────────────────────
 
+def test_expected_declarations_cover_every_registered_kind():
+    """이 표는 **레지스트리 전수**다 — 한 종류만 빠져도 그 칸들이 감시 밖이 된다.
+
+    표를 손으로 유지하는 것은 의도지만(선언을 파생으로 만들면 자기 자신을
+    증명한다), **집합이 같은지**는 여기서 묶는다.
+    """
+    from daedalus.model.plugin.kinds import KIND_REGISTRY
+
+    assert set(CONCRETE_COMPONENTS) == {
+        spec.component_cls for spec in KIND_REGISTRY.values()
+    }
+    assert set(CONCRETE_CONFIGS) == {
+        spec.config_cls for spec in KIND_REGISTRY.values()
+    }
+
+
 @pytest.mark.parametrize("cls", CONCRETE_COMPONENTS, ids=lambda c: c.__name__)
 @pytest.mark.parametrize("name", CLASSVAR_NAMES)
 def test_every_concrete_class_declares_every_capability(cls, name):
-    """구체 9종 × 선언 13개 = 117칸이 전부 채워져 있다(상속 포함)."""
+    """구체 10종 × 선언 13개 = 130칸이 전부 채워져 있다(상속 포함)."""
     assert hasattr(cls, name), f"{cls.__name__}에 {name} 선언이 없다"
     assert getattr(cls, name) == EXPECTED_DECLARATIONS[cls][name]
 

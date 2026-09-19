@@ -388,6 +388,37 @@ class ForkAgentConfig(AgentConfigBase):
 
 
 @dataclass
+class ExternalAgentConfig(ComponentConfig):
+    """외부 플러그인 서브에이전트 설정 (WP-9) — 우리가 소유하는 값은 `source` 하나다.
+
+    **`AgentConfigBase`를 상속하지 않는다.** tools·skills·permission_mode·color·
+    max_turns 따위는 전부 **그 플러그인이 소유한 파일**의 값이다. 우리 쪽에
+    칸을 만들어 두면 사용자가 채워 넣고도 아무 일이 일어나지 않는다 — 산출
+    파일이 없으니 배출될 자리 자체가 없다(원칙 5: 조용한 no-op 금지).
+
+    기저의 `model`/`effort`/`hooks`는 상속되지만 `AGENT_FIELD_MATRIX`의
+    `external_agent` 행에 없어 편집기·MCP가 노출하지 않는다 — 같은 이유다.
+
+    `source`는 ``플러그인[@마켓]:에이전트`` 원문이고, 이것이 곧 **CC가 그
+    서브에이전트를 찾는 이름**이다(정확 일치). 형식 검사는
+    `validation.project_rules.naming._check_external_sources`가,
+    사용 선언 검사는 `_check_external_plugins`가 맡는다 — 둘 다 종류를 묻지
+    않고 `external_source`/`external_plugin_refs()`만 본다.
+    """
+
+    KIND: ClassVar[str] = "external_agent"
+    SERIALIZED_FIELDS: ClassVar[tuple[FieldSpec, ...]] = (
+        ComponentConfig.SERIALIZED_FIELDS + (FieldSpec("source", STR),)
+    )
+
+    source: str = ""
+
+    @property
+    def kind(self) -> str:
+        return self.KIND
+
+
+@dataclass
 class TransferSkillConfig(SkillConfig):
     """전이 엣지 전용 스킬 설정. user_invocable은 항상 False (UI 노출 불필요)."""
 

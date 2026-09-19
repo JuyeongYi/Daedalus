@@ -60,4 +60,5 @@ AGENT_FIELD_WIDGETS: dict[AgentField, type[QWidget]] = {
     AgentField.BACKGROUND:       QCheckBox,
     AgentField.ISOLATION:        AgentIsolationComboBox,
     AgentField.MCP_SERVERS:      TagInput,
+    AgentField.SOURCE:           QLineEdit,  # WP-9 — plugin@marketplace:agent
 }

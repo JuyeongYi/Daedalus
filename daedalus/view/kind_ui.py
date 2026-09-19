@@ -33,7 +33,7 @@ from typing import Any
 
 from PySide6.QtGui import QColor
 
-from daedalus.model.plugin.agent import AgentDefinition, ForkAgent
+from daedalus.model.plugin.agent import AgentDefinition, ExternalAgent, ForkAgent
 from daedalus.model.plugin.kinds import KIND_REGISTRY, spec_by_config_kind
 from daedalus.model.plugin.skill import (
     AsyncForkSkill,
@@ -231,6 +231,20 @@ KIND_UI: dict[str, KindUI] = {
         dialog_title="새 Fork Agent",
         editor_factory=_agent_editor,
         tab_prefix="🧩 ",
+    ),
+    # 외부 플러그인 에이전트(WP-9)도 배치되면 플러그인 FSM의 상태라 헤더는
+    # AGENT지만, **정본이 외부에 있고 산출 파일이 없다**는 것이 한눈에 보여야 한다 —
+    # 에이전트 계열의 붉은색과 구분되는 자톤 + 플러그 아이콘. 랩핑 스킬이 이 행이
+    # 없어 회색 기본 노드로 그려졌던 회귀(2026-09-07)를 다시 내지 않기 위해 반드시 둔다.
+    ExternalAgent.KIND: KindUI(
+        icon="🔌",
+        section_label="🔌 EXTERNAL AGENTS",
+        section_color=QColor("#cc88bb"),
+        tab_label="🔌",
+        node_style=("#2a1a26", "#8a4a7a", "AGENT", "🔌"),
+        dialog_title="새 External Agent",
+        editor_factory=_agent_editor,
+        tab_prefix="🔌 ",
     ),
 }
 

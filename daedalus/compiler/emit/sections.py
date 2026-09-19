@@ -6,7 +6,11 @@ tool_shelf 참조 단락.
 """
 from __future__ import annotations
 
-from daedalus.compiler.emit.common import _graph_placements, external_skill_name
+from daedalus.compiler.emit.common import (
+    _graph_placements,
+    delegation_target_name,
+    external_skill_name,
+)
 from daedalus.model.fsm.event import CompletionEvent
 from daedalus.model.fsm.guard import Guard
 from daedalus.model.fsm.machine import StateMachine
@@ -116,7 +120,7 @@ def _describe_node_action(state: SimpleState) -> str:
     if ref is None:
         return ""
     if getattr(ref, "DELEGATION_TARGET", False):
-        return f"delegate to agent `{ref.name}`"
+        return f"delegate to agent `{delegation_target_name(ref)}`"
     # 스킬 참조
     name = getattr(ref, "name", "")
     return f"use skill `{name}`"

@@ -1,9 +1,11 @@
-# 에이전트 — 두 종류, 본문 + 출력 포트 (WP-AF / WP-FK2)
+# 에이전트 — 세 종류, 본문 + 출력 포트 (WP-AF / WP-FK2 / WP-9)
 
 > CLAUDE.md에서 이관한 설계 기록(2026-09-12, 원문 그대로). 코드와 어긋나면 코드가
 > 정본이다 — 발견 즉시 이 문서를 고친다. 색인은 루트 `CLAUDE.md`의 "설계 문서" 절.
 
 ## 에이전트 두 종류 (WP-FK2, 사용자 확정 2026-09-17)
+
+> 2026-09-19에 세 번째 종류 `ExternalAgent`가 붙었다 — 이 절의 두 종류 비교는 **우리가 파일을 내는** 에이전트 둘에 대한 것이고, 외부 플러그인 에이전트는 맨 아래 "## 외부 플러그인 에이전트" 절에 따로 있다.
 
 `Agent(PluginComponent, ABC)`가 추상 부모이고 구체 종류는 둘이다 — 계층·config 표는 `plugin-model.md`.
 
@@ -96,3 +98,76 @@
 - **컴파일:** 종류별 본문 조립은 `compiler.md` 7-b번. "## Internal Workflow"는 legacy FSM에 실질
   상태(SimpleState 등)가 있을 때만, "## Exits"는 transfer_on 기반(`_agent_outputs_section` — 완료 보고
   첫 줄에 출구 명시 지시 + description 병기)이며 **둘 다 워크플로 에이전트 전용**이다.
+
+## 외부 플러그인 에이전트 (`ExternalAgent`, WP-9)
+
+> 다른 플러그인이 소유한 서브에이전트를 **내 워크플로의 노드로** 쓴다.
+> `config.source = "플러그인[@마켓]:이름"`, 산출 파일 없음, 그래프 노드(포트 있음), 내부 FSM 없음.
+
+| | `ExternalAgent` (kind `external_agent`) |
+|---|---|
+| 뜻 | 설치된 다른 플러그인의 서브에이전트를 그래프 노드로 지목 |
+| 부르는 것 | 호출자의 `call_agents` 포트에서 나가는 전이 (워크플로 에이전트와 같다) |
+| fsm | **없다** — 그 에이전트의 절차는 남의 파일이다 |
+| transfer_on / call_agents / 배치 | 있다 (단일 배치 상태 노드) |
+| config | `ExternalAgentConfig` — **`source` 하나뿐**이고 `ComponentConfig` 직속이다 |
+| 산출 | **없다.** `OUTPUT_LOCATION=NONE` — emitter도 미리보기도 없다 |
+| 편집기 | AgentEditor(포트·호출자 패널) + 중앙은 본문 편집기 대신 원본 패널 |
+| 탭 접두 | 🔌 |
+
+**왜 `Agent` 직속인가.** 종전 `compile_agent`의 `isinstance(agent, AgentDefinition)`
+하나가 "그래프 노드인가 = 내부 FSM이 있는가 = 파일을 내는가"를 한꺼번에 답했다.
+이 종류는 **노드이면서 내부 FSM도 산출 파일도 없다** — boolean 하나로는 표현할 수
+없는 조합이고, 그것을 `PLACEMENT`/`HAS_INTERNAL_FSM`/`OUTPUT_LOCATION` 세 선언으로
+쪼갠 것이 능력 표면(`plugin-model.md`)의 값이다. 덕분에 계획·가이드 포인터·훅
+스크립트·미리보기·포트 패널이 **한 줄도 고쳐지지 않고** 옳게 답한다.
+
+**왜 config가 `ComponentConfig` 직속인가.** tools·skills·permission_mode·color·
+max_turns는 전부 그 플러그인이 소유한 파일의 값이다. 우리 쪽에 칸을 만들면 사용자가
+채워 넣고도 아무 일이 일어나지 않는다 — 산출 파일이 없으니 배출될 자리 자체가 없다
+(원칙 5). 기저의 `model`/`effort`/`hooks`는 상속되지만 매트릭스 행이 없어 편집기·MCP가
+노출하지 않는다.
+
+**갈래는 부르는 쪽이 판정한다.** 외부 에이전트는 우리 워크플로도 블랙보드도 진행
+기록 규약도 모르므로 "어느 출력 포트로 끝났는지"를 스스로 말할 수 없다. 그래서
+`transfer_on`은 *그 에이전트가 선언하는 출구*가 아니라 **호출자가 보고를 읽고 고르는
+갈래**다. 호출자 산출("## Next Steps" / 에이전트의 "## Delegation")은 그 사실을 함께
+싣는다 — `compiler/emit/common.EXTERNAL_DELEGATION_NOTE`:
+*"external plugin agent — it knows neither this workflow nor the blackboard: put
+everything it needs in the prompt, record the result yourself, and pick the branch
+below from its report"*.
+
+**부르는 이름은 `source` 원문이다.** 우리 산출에는 그 이름의 파일이 없고 CC는 설치된
+플러그인에서 **정확 일치**로 찾는다. 판정의 실체는
+`compiler/emit/common.delegation_target_name(component)` 하나이고, "다음 단계"·"진입
+맥락"·FSM 절차 서술·에이전트 "## Delegation"이 전부 그것을 부른다. 본문을 누가
+실행하는가를 묻는 `agent_invocation_name`(fork 스킬의 `config.agent`)과는 **다른
+질문**이라 한 함수로 묶지 않는다 — 묶으면 위임 대상이 없는 종류가
+`general-purpose`로 답한다.
+
+**이름 게이트를 받지 않는다.** 산출 파일이 없으므로 CC 파일명 규약
+(`^[a-z0-9][a-z0-9-]*$`)을 따를 이유가 없다 — 그 이름은 남의 플러그인이 지은 것이라
+우리가 고칠 수 없고, 게이트를 걸면 남의 작명 때문에 컴파일이 통째로 막힌다
+(`ComponentUnit.plan`의 `emits_output()` 게이트가 emitter 조회보다 앞에 있는 부수 효과,
+`tests/compiler/test_gate.py`가 고정).
+
+**검증(종류를 묻는 규칙은 하나도 없다).**
+
+| 규칙 | 등급 | 합류 경로 |
+|---|---|---|
+| `external_source_missing` | 경고 | `external_source`가 `None`이 아닌 컴포넌트 전부 — 빈 값·형식 불일치 |
+| `undeclared_external_plugin` | 경고 | `external_plugin_refs()` — `external_plugins` 미선언 |
+| `transfer_on_not_empty` | 에러 | `REQUIRES_OUTPUT_PORTS=True` |
+| `agent_chain_too_deep` | 에러 | `DELEGATION_TARGET=True` — callee로 체인 깊이에 **합류한다** |
+| `agent_calls_higher_model` | – | **건너뛴다** (아래) |
+
+`_check_agent_calls_higher_model`은 `OUTPUT_LOCATION is NONE`인 callee를 건너뛴다
+(WP-9에서 추가한 한 줄). 그 에이전트의 모델은 남의 플러그인 파일이 정하고 우리
+`config.model`은 어디로도 나가지 않는다 — 비교하면 우리가 적어 본 값으로 남의
+에이전트를 판정하는 셈이라 실체 없는 에러가 된다. 깊이 규칙에서는 빼지 않는다:
+그 노드를 거치는 체인은 **실제로** 한 계층 깊어진다.
+
+**MCP.** `create_agent(name, kind="external_agent")`가 어휘에서 **파생**되므로 도구를
+고치지 않아도 받는다(F10 패리티). source는
+`set_component_field(name, "source", "플러그인:이름")`으로 채운다 — 매트릭스의
+비-FIXED 행이라 setter가 자동으로 허용한다.
