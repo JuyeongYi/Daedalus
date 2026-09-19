@@ -30,17 +30,9 @@ from daedalus.compiler.emit.wrapped import (  # noqa: F401 — parse_wrapped_sou
     parse_wrapped_source,
 )
 from daedalus.model.fsm.machine import StateMachine
+from daedalus.model.plugin.roles import BodySource, Bucket, PlacementRole
 from daedalus.model.plugin.variables import ROOT_TOKEN
-from daedalus.model.plugin.agent import AgentDefinition
-from daedalus.model.plugin.skill import (
-    AsyncForkSkill,
-    DeclarativeSkill,
-    ForkSkill,
-    StepSkill,
-    WrappedSkill,
-    Skill,
-    TransferSkill,
-)
+from daedalus.model.plugin.skill import Skill
 
 
 # ─────────────────────────── 프로젝트 그래프: 다음 단계 ───────────────────────────
@@ -87,7 +79,8 @@ def _next_step_invoke_line(transition, sm: StateMachine) -> str | None:
         return None
     name = getattr(ref, "name", "")
     prefix = _transfer_prefix(transition)
-    if isinstance(ref, AgentDefinition):
+    # "이 노드로 가는 것이 위임인가"는 대상이 선언한다(`DELEGATION_TARGET`, Q9).
+    if ref.DELEGATION_TARGET:
         line = f"{prefix}delegate to agent `{name}`"
         # 에이전트 placement의 outgoing을 한 단계 인라인 (별도 컨텍스트라 호출자
         # 쪽에 후속 지시를 둔다 — 에이전트 .md는 호출자 지침을 담을 수 없음).
@@ -95,7 +88,7 @@ def _next_step_invoke_line(transition, sm: StateMachine) -> str | None:
         for t in sm.transitions:
             if t.source is target_state:
                 tgt_ref = getattr(t.target, "skill_ref", None)
-                if tgt_ref is None or isinstance(tgt_ref, AgentDefinition):
+                if tgt_ref is None or tgt_ref.DELEGATION_TARGET:
                     continue
                 tgt_name = getattr(tgt_ref, "name", "")
                 cond = _next_step_condition(t)
@@ -125,9 +118,13 @@ _ASYNC_FORK_BRANCH_SUFFIX = (
 
 
 def _invoke_phrase(ref, name: str) -> str:
-    """skill_ref 종류별 인보크 지시 문구."""
+    """skill_ref 인보크 지시 문구 — 보고가 뒤늦게 오는 종류만 접미가 붙는다.
+
+    술어는 `REPORTS_OUT_OF_BAND` 선언이다(Q20) — "비동기 fork인가"가 아니라
+    "결과가 작업 알림으로 뒤늦게 오는가"가 이 문장이 묻는 것이다.
+    """
     phrase = f"invoke skill `{name}`"
-    if isinstance(ref, AsyncForkSkill):
+    if ref.REPORTS_OUT_OF_BAND:
         phrase += _ASYNC_FORK_BRANCH_SUFFIX
     return phrase
 
@@ -143,9 +140,7 @@ def _next_steps_section(component, project) -> list[str]:
     if not placements:
         return []
     graph = project.graph
-    events_by_name = {
-        e.name: e for e in getattr(component, "transfer_on", None) or []
-    }
+    events_by_name = {e.name: e for e in component.output_ports()}
     lines: list[str] = []
     for placement in placements:
         for t in graph.transitions:
@@ -223,7 +218,7 @@ def _async_fork_targets(component, project) -> list[str]:
         for t in getattr(graph, "transitions", None) or []
         if id(t.source) in placement_ids
         for ref in (getattr(t.target, "skill_ref", None),)
-        if isinstance(ref, AsyncForkSkill)
+        if ref is not None and ref.REPORTS_OUT_OF_BAND
     }
     return sorted(names - {""})
 
@@ -318,7 +313,7 @@ def _entry_item_line(t, project) -> str:
     name = getattr(ref, "name", "") or t.source.name
     cond = _transition_condition(t)
     cond_str = f" [{cond}]" if cond else ""
-    if isinstance(ref, AgentDefinition):
+    if ref is not None and ref.DELEGATION_TARGET:
         line = f"- entered after agent `{name}` returned{cond_str}"
         delegators = sorted({
             getattr(getattr(tr.source, "skill_ref", None), "name", "")
@@ -328,7 +323,7 @@ def _entry_item_line(t, project) -> str:
         if delegators:
             names = ", ".join(f"`{d}`" for d in delegators)
             line += f" (`prev` holds the delegating skill here — {names})"
-    elif isinstance(ref, AsyncForkSkill):
+    elif ref is not None and ref.REPORTS_OUT_OF_BAND:
         line = f"- entered when background fork `{name}` reported{cond_str}"
     else:
         line = f"- entered from `{name}`{cond_str}"
@@ -336,7 +331,7 @@ def _entry_item_line(t, project) -> str:
     # (WP-IP: 인터페이스 선언은 값을 만드는 쪽에만 — 호출 계약(WP-CT)과 같은 원칙).
     trig_name = getattr(getattr(t, "trigger", None), "name", "")
     if trig_name and ref is not None:
-        for ev in getattr(ref, "transfer_on", None) or []:
+        for ev in ref.output_ports():
             if ev.name == trig_name and (ev.description or "").strip():
                 line += f" — {ev.description.strip()}"
                 break
@@ -418,7 +413,14 @@ def compile_skill(
     """
     kind_key = _skill_kind_key(skill)
     fm_lines = _frontmatter_lines_skill(skill, kind_key)
-    is_fork = isinstance(skill, ForkSkill)
+    # fork 스킬 = **본문이 우리 것이면서 서브에이전트에서 도는 스킬**. 종류를
+    # 열거하지 않는다 — 랩핑 스킬도 서브에이전트에서 돌지만 본문의 정본이
+    # 외부라(`BODY_SOURCE`) fork 산출 규약(보고가 지시가 된다)을 받지 않는다.
+    is_fork = (
+        skill.BUCKET is Bucket.SKILLS
+        and skill.RUNS_IN_SUBAGENT
+        and skill.BODY_SOURCE is BodySource.OWNED
+    )
     if is_fork:
         fm_lines = fork_frontmatter_lines(fm_lines, skill, project)
     # 스킬 훅 — 스킬이 활성인 동안만 걸린다(2026-09-13 실측: 플러그인 스킬도 동작).
@@ -438,9 +440,12 @@ def compile_skill(
     # Declarative 포함 이유: 배치되면 "다음 단계"를 받는데 갱신 규칙이 빠지면
     # 그 노드에서 진행 사슬이 끊긴다 (리뷰 지적 ①).
     progress_placements: list = []
-    if (
-        project is not None
-        and isinstance(skill, (StepSkill, DeclarativeSkill, WrappedSkill))
+    # 진행 사슬에 끼는 것은 **그래프 노드로 놓이는 종류**다(C10 — 종전의 배치
+    # 클래스 튜플). 엣지 스킬(전이)·참조 노드 스킬은 자기 placement가 없어
+    # 재개 프리앰블·진입 맥락의 대상이 아니다.
+    if project is not None and type(skill).PLACEMENT not in (
+        PlacementRole.EDGE,
+        PlacementRole.REFERENCE,
     ):
         progress_placements = _graph_placements(skill, project)
     if progress_placements:
@@ -453,7 +458,7 @@ def compile_skill(
         blocks.extend(_entry_context_section(skill, project))
 
     # 본문(body)
-    body_block = _body_block(getattr(skill, "body", ""))
+    body_block = _body_block(skill.body)
     if body_block is not None:
         blocks.append(body_block)
 
@@ -461,7 +466,7 @@ def compile_skill(
     # 진행 파일을 만드는 배치 스킬이 하나도 없는 프로젝트에서는 고아 지시가
     # 되므로 placement 존재를 게이트로 건다 (리뷰 지적 ②).
     if (
-        isinstance(skill, TransferSkill)
+        skill.effective_placement() is PlacementRole.EDGE
         and project is not None
         and _graph_placements_any(project)
     ):
@@ -472,13 +477,18 @@ def compile_skill(
     # 외부 스킬은 메인 컨텍스트에서 직접 인보크하지 않는다). FSM 절차·tool_shelf는
     # 없다(본문의 정본이 소스라 여기서 만들 절차가 없다). 블랙보드 단락은
     # placement reads/writes 기반이라 유지.
-    if isinstance(skill, WrappedSkill):
+    if skill.BODY_SOURCE is BodySource.EXTERNAL:
         blocks.extend(_wrapped_procedure_section(skill))
         if project is not None:
             blocks.extend(_blackboard_section(project, skill))
 
-    # 단계 스킬(절차형·fork 2종) — FSM 절차 + tool_shelf
-    if isinstance(skill, StepSkill):
+    # 단계 스킬(절차형·fork 2종) = 상태 노드로 놓이면서 본문이 우리 것인 스킬 —
+    # FSM 절차 + tool_shelf. 랩핑 스킬은 본문 정본이 외부라 만들 절차가 없고,
+    # 전이/참조/선언형은 상태 노드가 아니다.
+    if (
+        type(skill).PLACEMENT is PlacementRole.STATE
+        and skill.BODY_SOURCE is BodySource.OWNED
+    ):
         blocks.extend(_describe_fsm(skill.fsm, skill))
         if project is not None:
             blocks.extend(_tool_shelf_section(project))
@@ -492,7 +502,7 @@ def compile_skill(
     # 요구 환경(MCP 서버 자동 언급) — allowed_tools의 mcp__ 접두에서 추출.
     # project 유무와 무관(스킬 자체 config만 참조), "다음 단계" 단락 앞.
     # WrappedSkill은 소스 플러그인 의존까지 합쳐 전용 단락으로(헤딩 중복 방지).
-    if isinstance(skill, WrappedSkill):
+    if skill.BODY_SOURCE is BodySource.EXTERNAL:
         blocks.extend(_wrapped_requirements_section(skill))
     else:
         blocks.extend(_mcp_requirement_section_skill(skill))
@@ -516,7 +526,7 @@ def compile_skill(
                 _progress_cli(project),
                 next_blocks[-1] if next_blocks else "",
                 terminal=not has_outgoing,
-                background=isinstance(skill, AsyncForkSkill),
+                background=skill.REPORTS_OUT_OF_BAND,
                 skill_name=skill.name,
             ))
         elif next_blocks:

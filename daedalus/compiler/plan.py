@@ -40,7 +40,6 @@ from daedalus.compiler.emit.guides import (
 from daedalus.compiler.emit.wrapped import needs_runner_agent
 from daedalus.compiler.workspace import has_manual_frontmatter
 from daedalus.model.plugin.hook import HOOK_SCRIPT_DIR
-from daedalus.model.plugin.skill import Skill
 from daedalus.model.validation import ValidationError
 
 
@@ -181,11 +180,12 @@ def _plan_outputs(
 
     # 전역 스킬
     for skill in project.skills:
-        # 산출 파일 보유 판정의 실체는 `emit.common.emits_output_file` 하나다
-        # (원칙 1) — 참조 용도 wrapped와 비활성 랩핑 스킬을 제외한다(둘 다 WP-WR
-        # 사용자 확정 2026-09-07). 같은 함수를 `emit/guides.py`의 포인터 판정이
-        # 쓰므로 "계획에 오른 집합"과 "포인터 판정 대상 집합"이 어긋날 수 없다.
-        if not isinstance(skill, Skill) or not emits_output_file(skill):
+        # 산출 파일 보유 판정의 실체는 컴포넌트의 `emits_output()` 하나다
+        # (원칙 1 — `emits_output_file`은 그 한 줄 파사드다). 참조 용도 wrapped와
+        # 비활성 랩핑 스킬이 여기서 빠진다(둘 다 WP-WR 사용자 확정 2026-09-07).
+        # `emit/guides.py`의 포인터 판정이 같은 함수를 쓰므로 "계획에 오른 집합"과
+        # "포인터 판정 대상 집합"이 어긋날 수 없다.
+        if not emits_output_file(skill):
             continue
         label = f"스킬 '{skill.name}'"
         check_name(skill.name, label, skill)

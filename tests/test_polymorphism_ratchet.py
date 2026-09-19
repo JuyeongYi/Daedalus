@@ -53,12 +53,13 @@ SHAPE_ATTRS: frozenset[str] = frozenset({
 #: 첫 인자가 이것들이면 컴포넌트 형상 질문이 아니다(프로젝트/설정/문서 조회).
 SHAPE_EXCLUDED_SUBJECTS: frozenset[str] = frozenset({"project", "cfg", "config", "doc"})
 
-#: 실측 기준선 (2026-09-19, WP-2c 1/3 — emit 공용 판정 치환 직후). **내리기만 한다.**
+#: 실측 기준선 (2026-09-19, WP-2c 2/3 — compiler 계층 치환 완료). **내리기만 한다.**
+#: compiler 패키지의 컴포넌트 대상 isinstance·형상 getattr는 **둘 다 0**이다.
 RATCHET: dict[str, int] = {
-    "isinstance_sites": 71,
-    "isinstance_files": 22,
-    "shape_attr_sites": 68,
-    "shape_attr_files": 28,
+    "isinstance_sites": 52,
+    "isinstance_files": 18,
+    "shape_attr_sites": 61,
+    "shape_attr_files": 25,
 }
 
 #: 정당한 잔존 사이트 — `module::qualname`. 면제는 **사유와 철거 주체**를 적는다.

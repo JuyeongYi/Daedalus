@@ -43,6 +43,7 @@ from daedalus.compiler.emit.sections import (
 from daedalus.model.fsm.pseudo import ChoiceState, ExitPoint
 from daedalus.model.fsm.state import CompositeState, SimpleState
 from daedalus.model.plugin.agent import Agent, AgentDefinition
+from daedalus.model.plugin.roles import PlacementRole
 from daedalus.model.plugin.enums import (
     AgentField,
     FieldEmit,
@@ -107,12 +108,13 @@ def _agent_skills_list(agent: AgentDefinition, project) -> list[str]:
     그 뒤에 `config.skills`(수동 선언)가 순서대로 붙는다(중복 제거 — 자동 목록에
     이미 있으면 다시 넣지 않는다). project가 없으면 수동 선언만(하위 호환).
     """
-    from daedalus.model.plugin.skill import DeclarativeSkill, ReferenceSkill
-
     auto: list[str] = []
     if project is not None:
+        # 1. 배경 지식 스킬 = **어디에도 놓이지 않는 종류**(선언형). 캔버스에
+        #    놓이는 종류는 그래프가 언제 쓸지 말하지만, 놓이지 않는 스킬은
+        #    모델이 알아서 집어 쓰는 지식이라 서브에이전트에 통째로 실어 준다.
         for skill in getattr(project, "skills", []) or []:
-            if isinstance(skill, DeclarativeSkill):
+            if type(skill).PLACEMENT is PlacementRole.NONE:
                 auto.append(skill.name)
         # placement 노드 이름 집합 — 참조 링크(connected_states)는 노드 이름을 가리킨다
         node_names = {
@@ -121,8 +123,12 @@ def _agent_skills_list(agent: AgentDefinition, project) -> list[str]:
             if getattr(s, "skill_ref", None) is agent
         }
         if node_names:
+            # 2. 참조 노드로 **선언된** 스킬(참조 스킬). 용도가 reference인
+            #    랩핑 스킬은 선언 PLACEMENT가 STATE라 여기 들어오지 않는다 —
+            #    그쪽은 아래 3단계가 `플러그인:스킬` 이름으로 따로 싣는다.
             ref_names = {
-                s.name for s in project.skills if isinstance(s, ReferenceSkill)
+                s.name for s in project.skills
+                if type(s).PLACEMENT is PlacementRole.REFERENCE
             }
             for rp in getattr(project, "reference_placements", []) or []:
                 if rp.skill_name in ref_names and node_names & set(rp.connected_states):
@@ -337,7 +343,7 @@ def _call_contract_section(agent: AgentDefinition, project) -> list[str]:
             continue
         port = getattr(getattr(trans, "trigger", None), "name", "") or ""
         desc = ""
-        for ev in getattr(src_ref, "call_agents", None) or []:
+        for ev in src_ref.call_ports():
             if ev.name == port:
                 desc = (ev.description or "").strip()
                 break
@@ -406,7 +412,8 @@ def _agent_delegation_section(agent: AgentDefinition, project=None) -> list[str]
         if getattr(trans.source, "skill_ref", None) is not agent:
             continue
         callee = getattr(trans.target, "skill_ref", None)
-        if not isinstance(callee, AgentDefinition):
+        # 위임 대상 선언이 답한다(Q9) — 종류를 열거하지 않는다.
+        if callee is None or not callee.DELEGATION_TARGET:
             continue
         port = getattr(getattr(trans, "trigger", None), "name", "") or ""
         if (port, callee.name) in seen:
@@ -448,7 +455,9 @@ def compile_agent(
     포트도 배치도 없으므로, 가드 없이 부르면 없는 필드를 역참조해 AttributeError로
     죽는다. 판정은 하나(`is_workflow`)다.
     """
-    is_workflow = isinstance(agent, AgentDefinition)
+    # "그래프 유도 단락을 내는가" = **그래프 노드로 놓이는 에이전트인가**.
+    # fork 에이전트는 PLACEMENT=NONE이라 fsm도 포트도 배치도 없다.
+    is_workflow = type(agent).PLACEMENT is PlacementRole.STATE
     fm_lines = _frontmatter_lines_agent(agent, project)
     # LOCAL 빌드에서만 hooks/mcpServers가 프론트매터로 나간다 (WP-LA)
     fm_lines.extend(_local_settings_frontmatter_lines(agent, project, resolved_hooks))
@@ -563,7 +572,7 @@ def _agent_outputs_section(agent: AgentDefinition) -> list[str]:
     호출자 그래프가 이 이름들로 분기하므로, 에이전트는 종료 시 자신이 어느
     출구로 끝났는지 명시해야 한다. description이 있으면 판정 기준으로 병기.
     """
-    return _exits_section(agent.output_event_defs)
+    return _exits_section(agent.output_ports())
 
 
 def _exits_section(events) -> list[str]:

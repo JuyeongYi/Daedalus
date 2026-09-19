@@ -79,7 +79,7 @@ from daedalus.compiler.workspace import (
     merge_claude_md,
     render_rule,
 )
-from daedalus.model.plugin.skill import Skill
+from daedalus.model.plugin.roles import Bucket
 from daedalus.model.validation import ValidationError, Validator
 
 
@@ -265,9 +265,9 @@ def _scan_dangling_file_refs(project, files_dir: Path) -> list[ValidationError]:
             ))
 
     for skill in project.skills:
-        scan(f"스킬 '{skill.name}'", skill, getattr(skill, "body", ""))
+        scan(f"스킬 '{skill.name}'", skill, skill.body)
     for agent in project.agents:
-        scan(f"에이전트 '{agent.name}'", agent, getattr(agent, "body", ""))
+        scan(f"에이전트 '{agent.name}'", agent, agent.body)
     return warnings
 
 
@@ -313,10 +313,13 @@ def _scan_dangling_skill_file_refs(
             ))
 
     for skill in project.skills:
-        if isinstance(skill, Skill):
+        # 버킷이 곧 타입 가드다(Q31) — **산출 판정이 아니다**: 참조 용도·비활성
+        # 랩퍼도 본문을 갖고, 그 본문의 깨진 `${CLAUDE_SKILL_DIR}` 참조는
+        # 여전히 짚어야 한다(`emits_output()`으로 걸면 경고가 조용히 사라진다).
+        if skill.BUCKET is Bucket.SKILLS:
             scan(
                 f"스킬 '{skill.name}'", skill,
-                getattr(skill, "body", ""), _skill_dir_name(skill.name),
+                skill.body, _skill_dir_name(skill.name),
             )
     return warnings
 

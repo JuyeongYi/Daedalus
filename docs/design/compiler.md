@@ -50,8 +50,9 @@
    "호출 파라미터" 본문 단락과 그것을 만들던 `_invocation_section_agent`(항상 빈 목록을 돌려주던 죽은 코드)는 **삭제됐고**,
    남아 있던 `FieldEmit.INVOCATION` 멤버도 퇴역했다(WP-0c).
 
-7-b. **에이전트 종류별 본문 (WP-FK2 C2)**: `compile_agent`는 `is_workflow = isinstance(agent, AgentDefinition)` **하나로 갈린다** —
-   fork 에이전트(`ForkAgent`)에는 fsm도 출력 포트도 배치도 없으므로 그래프 유도 단락을 가드 없이 부르면 없는 필드를 역참조해 죽는다.
+7-b. **에이전트 종류별 본문 (WP-FK2 C2)**: `compile_agent`는 `is_workflow = type(agent).PLACEMENT is PlacementRole.STATE`
+   **하나로 갈린다**(WP-2c — 종전의 `isinstance(agent, AgentDefinition)`) — fork 에이전트(`ForkAgent`)는 `PLACEMENT=NONE`이고
+   fsm도 출력 포트도 배치도 없으므로 그래프 유도 단락을 가드 없이 부르면 없는 필드를 역참조해 죽는다.
    - **워크플로 에이전트**: 본문 → "## Invocation Contract"(`_call_contract_section` — 그래프 도착 전이) → "## Delegation" → "## Requirements" →
      "## Internal Workflow"(legacy FSM) → "## Exits" → tool_shelf → 블랙보드. **fork 실행 기반 줄은 나오지 않는다** — 워크플로 에이전트는
      fork 에이전트가 될 수 없다(검증 `fork_agent_wrong_kind`).
@@ -83,6 +84,15 @@
     - **터미널 배치**: **placement의 실제 outgoing 전이가 0개**인 배치는 "Next Steps" 대신 `_progress_terminal_section`이 "## Finishing Up"(자신을 `completed`에 추가 + `current`를 `"done"`으로) **명령 1줄**을 배출한다. 판정은 "다음 단계 문구 생성 실패"가 아니다 — outgoing 타깃이 빈 상태(skill_ref=None)뿐이라 문구가 안 나와도 터미널이 아니며 이때는 아무 단락도 배출하지 않는다.
     - **TransferSkill**: **project에 placement가 1개 이상**일 때 본문 끝에 "## Progress Record" 헤딩 + `_transfer_progress_note(project)` **명령 1줄**(`set --note "<what happened>"`)을 배출한다(진행 파일이 존재하지 않는 프로젝트에서의 고아 지시 방지). "`current`를 소유하지 않는다"는 규약 문장은 가이드 2절이 말한다.
     - **SessionStart 훅 합성**: `PluginProject.emit_progress_hook: bool = True`(직렬화 왕복, 구버전 키 부재 시 기본 True)이고 프로젝트 그래프에 placement가 1개 이상이면, `compile_hooks_json`이 `hook_library`를 오염시키지 않고 컴파일 시점에 SessionStart 이벤트에 진행 상태 주입 커맨드(`cat state/__progress__.json 2>/dev/null || true`)를 합성해 합류시킨다(사용자 정의 SessionStart 훅 뒤에 이어붙어 공존). `emit_progress_hook=False`이거나 placement가 0개면 합성 훅 미배출. 토글은 프로젝트 속성 다이얼로그의 "세션 시작 시 진행 상태 자동 주입 (SessionStart 훅)" 체크박스. 합성 커맨드는 POSIX 셸 전제(`cat`/`||`) — 비POSIX 환경에서는 토글로 끄는 것이 대응책(훅 프리셋과 동일한 전제).
+12-a. **종류를 묻는 자리의 술어 (WP-2c)**: 산출 조립의 분기는 **컴포넌트 클래스가 아니라 능력 선언**을 본다 — 컴파일러에
+    남은 컴포넌트 대상 `isinstance`는 0이다. 대응표: "산출 파일을 내는가"=`emits_output()`(파사드 `emits_output_file`) ·
+    "fork 스킬인가"=`BUCKET is SKILLS ∧ RUNS_IN_SUBAGENT ∧ BODY_SOURCE is OWNED` · "단계 스킬인가"=`PLACEMENT is STATE ∧
+    BODY_SOURCE is OWNED` · "랩핑 스킬인가"=`BODY_SOURCE is EXTERNAL` · "전이 스킬인가"=`effective_placement() is EDGE` ·
+    "참조 노드인가"=`effective_placement() is REFERENCE` · "위임 대상인가"=`DELEGATION_TARGET` · "보고가 늦게 오는가"=
+    `REPORTS_OUT_OF_BAND` · "배경 지식 스킬인가"=`PLACEMENT is NONE` · "워크플로 에이전트인가"=`PLACEMENT is STATE` ·
+    "훅을 무엇을 참조하는가"=`hook_refs()` · "FSM이 있는가"=`state_machines()` · "포트가 무엇인가"=`output_ports()`/`call_ports()`.
+    새 종류는 산출 코드를 고치지 않고 선언을 고른다.
+
 13. **진입 맥락 + 호출 계약 (WP-IC/WP-IP/WP-CT)**: 배치된 전역 `StepSkill`(절차형·fork 2종)·`DeclarativeSkill`·state 용도 `WrappedSkill`에서 incoming 전이가 1개 이상이면, `_entry_context_section`이 "## Resuming Work" 프리앰블 뒤·본문 앞에 "## Entry Context" 단락을 배출한다. **도입은 한 문장이다** — `Check \`prev\` and the branch in \`note\`, then follow the matching entry below.`(예전의 5문장 도입 — 어디서 읽는가·여러 갈래를 어떻게 가르는가·에이전트 위임 뒤의 `prev` — 은 워크플로 가이드 4절로 갔다. 진행 파일을 직접 읽으라는 지시도 함께 사라져 CLI 경로로 통일됐다).
     항목은 출처 이름순으로 한 줄씩이다: `- entered from \`X\` [조건]`(+ 출처의 transfer_on description 병기, 전이 스킬 수행 완료 문구 합류). 출처가 **워크플로 에이전트**면 `- entered after agent \`X\` returned` + 위임 스킬 이름 병기(규약상 `prev`에는 에이전트가 아니라 위임 스킬이 남는다), **비동기 fork**면 `- entered when background fork \`X\` reported`(그 fork가 다음 단계를 부른 것이 아니라, 보고를 받은 메인이 시작시켰다). 동기 fork는 일반 출처와 문구가 같다. 포트 그룹 헤딩 없음, 그래프에서만 유도(WP-IP). incoming 0개 배치·미배치는 산출 변화 없음.
     `compile_agent`의 "## Invocation Contract"는 종류가 가른다 — 워크플로 에이전트는 `_call_contract_section`이 프로젝트 그래프의 incoming 호출 전이에서 유도하고(WP-CT — 수동 카드 없음), fork 에이전트는 `_fork_base_contract_section`이 자기를 실행 기반으로 쓰는 fork 스킬 줄만 낸다(7-b번).

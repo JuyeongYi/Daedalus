@@ -160,8 +160,8 @@ no-op가 된다. 그래서 `PluginComponent`가 **선언(ClassVar) + 인스턴�
 무관한 참조를 오갱신한다. 오버라이드는 `ForkSkillConfig`(`agent` → AGENTS)와
 `AgentConfigBase`(`skills` → SKILLS) 둘뿐이고, 그 사실 자체를 테스트가 양방향으로 고정한다.
 
-> **오늘의 상태(WP-2c 1/3).** **model 계층의 호출자는 전부, compiler 계층의
-> 공용 판정은 이 표면을 쓴다** — 배치 판정(`placement.*`·`is_reference_usage`), 검증 규칙의
+> **오늘의 상태(WP-2c 2/3).** **model·compiler 두 계층의 호출자가 전부 이
+> 표면을 쓴다** — 배치 판정(`placement.*`·`is_reference_usage`), 검증 규칙의
 > 술어(`REQUIRES_OUTPUT_PORTS`·`known_outgoing_events()`·`IS_FORK_BASE`·
 > `external_source`/`external_plugin_refs()`·`hook_refs()`·`config.name_refs`),
 > `project.rename_component`/`project_state_machines`/`remove_component`,
@@ -169,8 +169,8 @@ no-op가 된다. 그래서 `PluginComponent`가 **선언(ClassVar) + 인스턴�
 > (`emits_output_file` = `emits_output()` 파사드)·포인터 판정·절 적용 게이트·
 > 위임 대상 이름 해소(`agent_invocation_name`). model 계층에 남은 컴포넌트 대상
 > `isinstance`는 `serialize/ser.py`의 직렬화 사다리(WP-4가 철거)와
-> `skill.has_external_body`(WP-2c 3/3이 `BODY_SOURCE`로 치환) 둘뿐이다.
-> compiler 계층에는 `emit/skill.py`·`emit/agent.py`의 조립 분기만 남았다(WP-2c 2/3).
+> `skill.has_external_body`(WP-2c 3/3이 `BODY_SOURCE`로 치환) 둘뿐이고,
+> **compiler 계층에는 하나도 없다** — 형상 `getattr`도 0이다.
 >
 > **능력 표면에는 소비자 없는 메서드가 없다.** WP-2a가 표면을 선언하면서
 > `tests/test_dead_code.py`의 allowlist에 배선 예정 WP와 함께 얹어 두었던 항목은
