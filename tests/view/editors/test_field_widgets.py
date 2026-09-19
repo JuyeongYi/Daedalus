@@ -90,3 +90,48 @@ def test_fork_skill_fields_have_widgets(qapp):
     assert SkillField.AGENT in FIELD_WIDGETS
     # BACKGROUND는 FIXED라 그려지지 않지만 표 완전성 때문에 등재한다(CONTEXT 선례).
     assert SkillField.BACKGROUND in FIELD_WIDGETS
+
+
+# ─── fork 에이전트 피커는 팝업을 열 때마다 후보를 다시 읽는다 (2026-09-19) ───
+
+
+def test_fork_agent_combo_reloads_choices_and_keeps_selection(qapp):
+    """탭이 열린 뒤 선언·생성으로 늘어난 후보가 다시 열면 보인다 — 선택값은 보존."""
+    from daedalus.view.widgets.combo_widgets import ForkAgentComboBox
+    from daedalus.view.widgets.tag_input import set_fork_agent_choice_provider
+
+    choices = [("general-purpose", "내장"), ("helper", "프로젝트 fork 에이전트")]
+    set_fork_agent_choice_provider(lambda: list(choices))
+    try:
+        combo = ForkAgentComboBox()
+        combo.setCurrentText("helper")
+        assert [combo.itemText(i) for i in range(combo.count())] == [
+            "general-purpose", "helper",
+        ]
+        # 사용 선언으로 외부 플러그인 에이전트가 후보에 합류했다.
+        choices.append(("hookify:conversation-analyzer", "외부 플러그인 에이전트"))
+        combo.reload_choices()
+        assert "hookify:conversation-analyzer" in [
+            combo.itemText(i) for i in range(combo.count())
+        ]
+        assert combo.currentText() == "helper"
+    finally:
+        set_fork_agent_choice_provider(None)
+
+
+def test_fork_agent_combo_reload_keeps_unlisted_saved_value(qapp):
+    """새 목록에 없는 저장값은 사라지지 않고 '목록에 없음'으로 남는다."""
+    from daedalus.view.widgets.combo_widgets import ForkAgentComboBox
+    from daedalus.view.widgets.tag_input import set_fork_agent_choice_provider
+
+    choices = [("general-purpose", "내장"), ("helper", "프로젝트 fork 에이전트")]
+    set_fork_agent_choice_provider(lambda: list(choices))
+    try:
+        combo = ForkAgentComboBox()
+        combo.setCurrentText("helper")
+        choices.pop()  # helper가 삭제됐다
+        combo.reload_choices()
+        assert combo.currentText() == "helper"
+        assert "목록에 없음" in combo.itemData(combo.currentIndex(), 3)  # ToolTipRole
+    finally:
+        set_fork_agent_choice_provider(None)

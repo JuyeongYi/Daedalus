@@ -48,10 +48,19 @@ class ForkAgentComboBox(QComboBox):
 
     후보는 생성 시점에 제공자(`tag_input.get_fork_agent_choices`)에서 읽는다 —
     값 적용이 후보 연결보다 먼저라 생성자에서 채워야 저장된 값이 선택된다.
+
+    **팝업을 열 때마다 다시 읽는다** (2026-09-19, 사용자 보고). 편집 탭이 열린 뒤에
+    외부 플러그인을 사용 선언하거나 fork 에이전트를 새로 만들면 후보가 늘어나는데,
+    생성 시점 목록만 들고 있으면 그 탭을 닫았다 열기 전까지 새 후보가 보이지
+    않았다 — 사용자는 "선언했는데 목록에 안 뜬다"로 겪는다. 현재 선택값은 보존하고,
+    새 목록에 없는 저장값은 `add_unlisted`로 그대로 보인다.
     """
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
+        self._load_choices()
+
+    def _load_choices(self) -> None:
         from PySide6.QtCore import Qt
 
         from daedalus.view.widgets.tag_input import get_fork_agent_choices
@@ -59,6 +68,25 @@ class ForkAgentComboBox(QComboBox):
         for value, note in get_fork_agent_choices():
             self.addItem(value)
             self.setItemData(self.count() - 1, note, Qt.ItemDataRole.ToolTipRole)
+
+    def reload_choices(self) -> None:
+        """제공자에서 후보를 다시 읽는다 — 선택값 보존, 시그널 없음."""
+        current = self.currentText()
+        self.blockSignals(True)
+        try:
+            self.clear()
+            self._load_choices()
+            if current:
+                idx = self.findText(current)
+                if idx < 0:
+                    idx = self.add_unlisted(current)
+                self.setCurrentIndex(idx)
+        finally:
+            self.blockSignals(False)
+
+    def showPopup(self) -> None:  # noqa: N802 — Qt 오버라이드
+        self.reload_choices()
+        super().showPopup()
 
     def add_unlisted(self, value: str) -> int:
         """후보에 없는 저장값을 보이게 하고 그 인덱스를 돌려준다 — 안 보이면 무엇이

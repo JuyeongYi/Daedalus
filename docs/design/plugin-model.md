@@ -511,7 +511,7 @@ background를 지정할 수 없다.
   🧩 FORK AGENTS 셋이 늘었고 — 섹션·탭 라벨·아이콘은 WP-7 ②에서 `view/kind_ui.KIND_UI` **한 행**이
   되었다(예전에는 세 표가 동시에 커버해야 했다. 지금은 행이 없으면 팔레트 구축이 그 종류 이름을 찍고
   죽는다 — parity·fail-loud 테스트가 고정) —
-  🧩 탭의 항목은 드래그 불가다. AGENT 피커(`ForkAgentComboBox` — 후보 밖 저장값도 보인다), 안내문
+  🧩 탭의 항목은 드래그 불가다. AGENT 피커(`ForkAgentComboBox` — 후보 밖 저장값도 보인다. **팝업을 열 때마다 제공자에서 후보를 다시 읽는다** — 탭이 열린 뒤 외부 플러그인을 사용 선언하거나 fork 에이전트를 만들어도 닫았다 열 필요가 없다, 2026-09-19 사용자 보고), 안내문
   "도구는 fork 에이전트가, 모델·effort는 이 스킬 값이(비우면 fork 에이전트 값)". ForkAgent 편집 탭은
   🧩 접두를 달고 출력/호출 포트 패널 대신 **"🍴 사용하는 fork 스킬"** 읽기 전용 패널을 보인다.
 - 산출은 `compiler.md` 7-b·20·21번, 검증은 `validation.md`의 `fork_*`·`unused_fork_agent` 규칙,
