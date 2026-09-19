@@ -127,7 +127,7 @@ def _is_local_build(project) -> bool:
 # ─────────────────────────── 위임 대상 에이전트 이름 ───────────────────────────
 
 
-def agent_invocation_name(component, project) -> str:
+def agent_invocation_name(component, project) -> str | None:
     """이 컴포넌트의 본문을 실행하는 서브에이전트를 **CC가 찾는 이름** (WP-2c).
 
     "누구에게 위임하는가"는 컴포넌트가 답하고(`delegated_agent_name()` — fork
@@ -135,9 +135,20 @@ def agent_invocation_name(component, project) -> str:
     부르는가"는 빌드 타깃이 답한다. 둘을 한 함수로 묶어 두면 위임 대상을 갖는
     종류가 늘 때마다 이름 해소 규칙이 복제된다.
 
-    프로젝트 에이전트만 타깃별로 바뀐다 — 마켓 빌드는 `플러그인:이름`, LOCAL은
-    `이름`. 내장(`general-purpose`)·외부 에이전트는 저장된 문자열 그대로다
-    (정확 일치라 틀리면 조용히 general-purpose로 돈다).
+    세 갈래다:
+
+    - **우리가 파일을 내는 프로젝트 에이전트** — 타깃이 이름을 가른다(마켓
+      빌드는 `플러그인:이름`, LOCAL은 `이름`).
+    - **외부 정본을 가진 프로젝트 에이전트**(`ExternalForkAgent`) — **source
+      원문**이 곧 CC가 찾는 이름이라 타깃과 무관하다(WP-EX). 우리 산출에는
+      그 이름의 파일이 없고 CC가 설치된 플러그인에서 정확 일치로 찾는다.
+    - **그 밖**(내장 `general-purpose` 등) — 저장된 문자열 그대로.
+
+    **원문이 비었거나 형식이 깨졌으면 `None`**이다 — 이름을 지어내지 않는다
+    (`delegation_target_name`과 같은 규약, 원칙 5). `general-purpose`로
+    떨어뜨리면 산출이 조용히 **다른 에이전트**를 지목하고 컴파일은 경고
+    (`external_source_missing`)만 낸 채 성공한다. 부르는 자리는 그 줄을
+    생략한다(`emit/fork.fork_frontmatter_lines`).
 
     위임 대상이 없는 종류는 `general-purpose`로 답한다 — 종전
     `resolve_fork_agent_name`의 `or "general-purpose"` 폴백과 같다.
@@ -145,8 +156,16 @@ def agent_invocation_name(component, project) -> str:
     agent = component.delegated_agent_name() or "general-purpose"
     if project is None:
         return agent
-    if not any(a.name == agent for a in getattr(project, "agents", None) or []):
+    target = next(
+        (a for a in getattr(project, "agents", None) or [] if a.name == agent), None
+    )
+    if target is None:
         return agent
+    source = target.external_source
+    if source is not None:
+        # 외부 정본 — 타깃 무관 원문. 깨졌으면 이름이 없다(`None`).
+        _plugin_id, ref_name = parse_external_source(source)
+        return source if ref_name else None
     if _is_local_build(project):
         return agent
     return f"{getattr(project, 'name', '')}:{agent}"

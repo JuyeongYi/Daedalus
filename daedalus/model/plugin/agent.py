@@ -19,8 +19,62 @@ from daedalus.model.plugin.config import (
     AgentConfig,
     AgentConfigBase,
     ExternalAgentConfig,
+    ExternalForkAgentConfig,
     ForkAgentConfig,
 )
+
+
+class ExternalSourceMixin:
+    """정본이 **외부 플러그인**에 있는 컴포넌트의 공통 구현 (WP-EX).
+
+    오늘 이것을 섞는 종류는 둘이다 — 외부 에이전트를 **그래프 노드**로 쓰는
+    `ExternalAgent`와 **fork 실행 기반**으로 쓰는 `ExternalForkAgent`. 둘은
+    역할이 다르지만 "무엇을 가리키는가"(`external_source`)와 "어떤 플러그인
+    배선을 요구하는가"(`external_plugin_refs`)는 **같은 사실**이다. 두 클래스에
+    같은 코드를 베껴 두면 한쪽만 고치는 편집이 조용히 지나간다(원칙 1).
+
+    **`Agent` 기저에 두지 않는다.** `ForkAgent`·`AgentDefinition`은 외부 정본이
+    없다 — 기저에 올리면 그 둘의 `external_source`가 `None`이 아니라 `""`가
+    되어 `_check_external_sources`가 없는 경고를 쏟는다.
+
+    **상속 순서가 계약이다** — `class X(ExternalSourceMixin, Agent)`처럼
+    **믹스인을 앞에** 둔다. 뒤에 두면 MRO에서 `PluginComponent`의 기본 구현
+    (`external_source → None`)이 먼저 잡혀 **조용히 무시된다**
+    (`WorkflowComponent`가 겪은 §10 R2와 같은 함정).
+    """
+
+    @property
+    def external_source(self) -> str | None:
+        """외부 정본 원문 — **비어 있어도 `None`이 아니다**.
+
+        `None`은 "이 종류엔 외부 정본이 없다"는 뜻이라, 빈 값에 그것을
+        돌려주면 `_check_external_sources`가 건너뛰어 경고가 조용히 사라진다
+        (원칙 5). 손상된 저장 파일의 non-str도 여기서 빈 문자열로 받는다.
+        """
+        source = self.config.source  # type: ignore[attr-defined]
+        return source if isinstance(source, str) else ""
+
+    def external_plugin_refs(self) -> list[str]:
+        """배선을 요구하는 플러그인 설치 id — 형식이 깨졌으면 빈 목록.
+
+        깨진 source를 여기서 또 짚지 않는 것은 `external_source_missing`
+        소관이기 때문이다(한 사실에 경고 둘을 내지 않는다).
+        """
+        plugin_id, _, ref_name = (self.external_source or "").partition(":")
+        plugin_id = plugin_id.strip()
+        if not plugin_id or not ref_name.strip():
+            return []
+        return [plugin_id]
+
+    @classmethod
+    def external_source_creation_config(cls, source: str | None):
+        """생성 시드의 `config` — 만들자마자 source를 갖고 태어난다.
+
+        레지스트리 "+"·캔버스·MCP `create_agent(source=)`가 **같은 경로**로
+        만든다(원칙 1). `None`이면 빈 source이고, 그 상태는
+        `external_source_missing` 경고가 짚는다(조용히 넘어가지 않는다).
+        """
+        return cls.CONFIG_CLS(source=source or "")  # type: ignore[attr-defined,call-arg]
 
 
 @dataclass
@@ -115,7 +169,9 @@ class AgentDefinition(Agent, WorkflowComponent):
         return frozenset(e.name for e in self.output_ports())
 
     @classmethod
-    def creation_defaults(cls, *, name: str, agent: str | None) -> dict[str, Any]:
+    def creation_defaults(
+        cls, *, name: str, agent: str | None, source: str | None
+    ) -> dict[str, Any]:
         """새 에이전트는 출력 포트 `done` 하나로 태어난다.
 
         dataclass 기본값은 **빈 목록**이다(저장 파일에 키가 없으면 포트를
@@ -148,7 +204,7 @@ class ForkAgent(Agent):
 
 
 @dataclass
-class ExternalAgent(Agent):
+class ExternalAgent(ExternalSourceMixin, Agent):
     """외부 플러그인 서브에이전트를 **워크플로 노드로** 쓴다 (WP-9).
 
     `config.source`(``플러그인[@마켓]:이름``)가 가리키는 것은 다른 플러그인이
@@ -212,35 +268,67 @@ class ExternalAgent(Agent):
             e.name for e in (*self.output_ports(), *self.call_ports())
         )
 
-    def external_plugin_refs(self) -> list[str]:
-        """배선을 요구하는 플러그인 설치 id — 형식이 깨졌으면 빈 목록.
-
-        깨진 source를 여기서 또 짚지 않는 것은 `external_source_missing`
-        소관이기 때문이다(랩핑 스킬과 같은 제외 규칙 — 한 사실에 경고 둘).
-        """
-        plugin_id, _, agent_name = (self.external_source or "").partition(":")
-        plugin_id = plugin_id.strip()
-        if not plugin_id or not agent_name.strip():
-            return []
-        return [plugin_id]
-
-    @property
-    def external_source(self) -> str | None:
-        """외부 정본 원문 — **비어 있어도 `None`이 아니다**.
-
-        `None`은 "이 종류엔 외부 정본이 없다"는 뜻이라, 빈 값에 그것을
-        돌려주면 `_check_external_sources`가 건너뛰어 경고가 조용히 사라진다
-        (원칙 5). 손상된 저장 파일의 non-str도 여기서 빈 문자열로 받는다.
-        """
-        source = self.config.source
-        return source if isinstance(source, str) else ""
-
     @classmethod
-    def creation_defaults(cls, *, name: str, agent: str | None) -> dict[str, Any]:
+    def creation_defaults(
+        cls, *, name: str, agent: str | None, source: str | None
+    ) -> dict[str, Any]:
         """새 외부 에이전트 노드도 출력 포트 `done` 하나로 태어난다.
 
         근거는 `AgentDefinition.creation_defaults`와 같다 — 포트 0개면 배치
         즉시 `transfer_on_not_empty`가 뜨지만, 저장 파일에 키가 없을 때
         포트를 발명해서는 안 된다.
         """
-        return {"transfer_on": [EventDef(name="done")]}
+        return {
+            "transfer_on": [EventDef(name="done")],
+            "config": cls.external_source_creation_config(source),
+        }
+
+
+@dataclass
+class ExternalForkAgent(ExternalSourceMixin, Agent):
+    """외부 플러그인 서브에이전트를 **fork 스킬의 실행 기반**으로 쓴다 (WP-EX).
+
+    `ExternalAgent`와 가리키는 것은 같은 종류의 물건(다른 플러그인이 소유한
+    서브에이전트)이지만 **역할이 다르다**: 저쪽은 그래프 노드라 출력 포트로
+    갈래를 내고, 이쪽은 fork 스킬의 `agent:`가 된다. 역할은 등록 시점에
+    고정되고 전환은 없다 — 같은 source를 두 역할로 등록하면
+    `external_source_role_conflict` 에러다(사용자 확정 2026-09-19).
+
+    선언의 조합이 이 종류의 정체다: 배치되지 않고(`PLACEMENT=NONE`) 산출
+    파일도 없으며(`OUTPUT_LOCATION=NONE`, 정본은 그 플러그인의 파일) 본문
+    편집이 잠기지만(`BODY_SOURCE=EXTERNAL`) fork 실행 기반은 될 수 있다
+    (`IS_FORK_BASE=True`). `ForkAgent`에서 "우리가 파일을 낸다"만 빠진 자리다.
+
+    **`ForkAgent`를 상속하지 않는다** — 구체가 구체를 상속하면
+    `isinstance(a, ForkAgent)`가 이 종류까지 잡아 산출 계획·편집기가 있지도
+    않은 본문을 기대한다. 공통은 `IS_FORK_BASE` 선언이 말한다.
+
+    컴파일에서 fork 스킬의 `agent:` 값은 **source 원문**이다(타깃 무관 — CC는
+    설치된 플러그인에서 정확 일치로 찾는다). 원문이 비었거나 깨졌으면 그 줄을
+    **생략한다** — `general-purpose`로 떨어뜨리면 산출이 조용히 다른 에이전트를
+    지목한다(`compiler/emit/common.agent_invocation_name`).
+    """
+
+    KIND: ClassVar[str] = "external_fork_agent"
+    CONFIG_CLS: ClassVar[type[ExternalForkAgentConfig]] = ExternalForkAgentConfig
+    #: 산출 파일이 없다 — 정본은 외부 플러그인이 가진다.
+    OUTPUT_LOCATION: ClassVar[OutputLocation] = OutputLocation.NONE
+    BODY_SOURCE: ClassVar[BodySource] = BodySource.EXTERNAL
+    IS_FORK_BASE: ClassVar[bool] = True
+
+    config: ExternalForkAgentConfig = field(  # type: ignore[assignment]
+        default_factory=ExternalForkAgentConfig
+    )
+    #: 산출에 나가지 않는다(BODY_SOURCE=EXTERNAL) — 왕복 보존용 자리다.
+    body: str = ""
+
+    @property
+    def kind(self) -> str:
+        return self.KIND
+
+    @classmethod
+    def creation_defaults(
+        cls, *, name: str, agent: str | None, source: str | None
+    ) -> dict[str, Any]:
+        """포트는 없다(fork 실행 기반) — source만 시드한다."""
+        return {"config": cls.external_source_creation_config(source)}

@@ -20,6 +20,7 @@ from daedalus.model.plugin.config import (
     AsyncForkSkillConfig,
     DeclarativeSkillConfig,
     ExternalAgentConfig,
+    ExternalForkAgentConfig,
     ForkAgentConfig,
     ProceduralSkillConfig,
     ReferenceSkillConfig,
@@ -205,13 +206,17 @@ _FORK_AGENT: dict[AgentField, FieldRule] = {
     if afield not in (AgentField.BACKGROUND, AgentField.ISOLATION)
 }
 
-# WP-9 외부 플러그인 에이전트 — **산출 파일이 없는 종류는 프론트매터 필드를
-# 갖지 않는다**. model/effort/tools/permission_mode/max_turns/skills/memory/color는
-# 전부 그 플러그인이 소유한 파일의 값이라 우리가 쓸 수 없고, 표에 남기면
+# WP-9/WP-EX 외부 플러그인 에이전트 2종 — **산출 파일이 없는 종류는 프론트매터
+# 필드를 갖지 않는다**. model/effort/tools/permission_mode/max_turns/skills/memory/
+# color는 전부 그 플러그인이 소유한 파일의 값이라 우리가 쓸 수 없고, 표에 남기면
 # 편집기와 MCP `set_component_field`가 값을 받아 놓고 아무 일도 하지 않는다
 # (원칙 5). 그래서 세 행 전부 `FieldEmit.NONE`("편집 필드이지만 배출 없음")이고,
 # `test_kind_registry_parity.test_kinds_that_emit_a_file_have_frontmatter_rows`가
 # 산출 유무 ↔ 배출 행 유무를 양방향으로 고정한다.
+#
+# **그래프 노드 역할과 fork 실행 기반 역할이 같은 표를 쓴다** — 편집할 수 있는
+# 것은 양쪽 다 이름·설명·source 셋뿐이다(역할은 종류가 말하지 표가 말하지
+# 않는다). 표를 두 벌로 베끼면 한쪽만 고치는 편집이 조용히 지나간다.
 _EXTERNAL_AGENT: dict[AgentField, FieldRule] = {
     AgentField.NAME:        FieldRule(R, emit=FieldEmit.NONE),
     AgentField.DESCRIPTION: FieldRule(R, emit=FieldEmit.NONE),
@@ -223,6 +228,7 @@ AGENT_FIELD_MATRIX: dict[str, dict[AgentField, FieldRule]] = {
     AgentConfig.KIND: _AGENT,
     ForkAgentConfig.KIND: _FORK_AGENT,
     ExternalAgentConfig.KIND: _EXTERNAL_AGENT,
+    ExternalForkAgentConfig.KIND: _EXTERNAL_AGENT,
 }
 
 

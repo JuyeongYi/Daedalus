@@ -285,7 +285,7 @@ class TestRegistryPreviewSignal:
 
 
 # ---------------------------------------------------------------------------
-# 생성 종류 표의 완전성 (WP-FK2 D — 종류가 9개로 늘었다)
+# 생성 종류 표의 완전성 (WP-EX — 종류가 10개로 늘었다)
 # ---------------------------------------------------------------------------
 
 class TestComponentKindTables:
@@ -299,6 +299,7 @@ class TestComponentKindTables:
     _KINDS = {
         "procedural", "sync_fork", "async_fork", "declarative", "transfer",
         "reference", "agent", "fork_agent", "external_agent",
+        "external_fork_agent",
     }
 
     def test_registry_sections_match_the_kind_set(self, qapp):

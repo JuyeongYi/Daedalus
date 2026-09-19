@@ -8,8 +8,15 @@ fork 에이전트는 별도 종류다(WP-FK2) — 워크플로 에이전트를 f
 지목하면 에러(`fork_agent_wrong_kind`)이고, 아무도 부르지 않는 fork 에이전트는
 경고(`unused_fork_agent`)다.
 
+**다른 플러그인의 에이전트도 먼저 컴포넌트로 등록한다**(WP-EX, 사용자 확정
+2026-09-19). 그래서 여기에는 `플러그인:이름` 문자열을 따로 보는 분기가 없다 —
+등록되지 않은 이름은 등록된 자체 fork 에이전트와 **똑같이** `fork_agent_missing`
+이고, 등록된 것의 사용 선언 누락은 `ExternalForkAgent.external_plugin_refs()`를
+통해 `undeclared_external_plugin`(경고)이 짚는다. 종전 `fork_agent_undeclared_plugin`
+(에러)은 같은 사실을 두 등급으로 말하던 비대칭이라 함께 사라졌다.
+
 외부 플러그인 에이전트가 실제로 그 플러그인에 있는지는 보지 않는다 — 카탈로그는
-파일시스템이고 검증기는 파일시스템을 읽지 않는다. 사용 선언 여부까지만 판정한다.
+파일시스템이고 검증기는 파일시스템을 읽지 않는다.
 """
 from __future__ import annotations
 
@@ -33,14 +40,11 @@ class _ForkRules:
 
     @staticmethod
     def _check_fork_agents(project) -> list[ValidationError]:
-        """fork_agent_wrong_kind / fork_agent_missing / fork_agent_undeclared_plugin (에러),
+        """fork_agent_wrong_kind / fork_agent_missing (에러),
         fork_model_overrides_agent (경고)."""
         from daedalus.model.plugin.config import BUILTIN_FORK_AGENTS
         from daedalus.model.plugin.enums import ModelType
 
-        declared = {
-            p.partition("@")[0] for p in getattr(project, "external_plugins", None) or []
-        }
         errors: list[ValidationError] = []
 
         # rule은 반드시 키워드 리터럴로 넘긴다 — 등급 분류 테스트가 소스의
@@ -60,20 +64,13 @@ class _ForkRules:
             if target is None:
                 if name in BUILTIN_FORK_AGENTS:
                     continue
-                plugin, sep, _agent = name.partition(":")
-                if not sep:
-                    add(skill, rule="fork_agent_missing", message=(
-                        f"fork 스킬 '{skill.name}'의 에이전트 '{name}'이(가) 없습니다 — "
-                        f"CC는 못 찾은 에이전트를 조용히 general-purpose로 실행합니다. "
-                        f"내장({', '.join(BUILTIN_FORK_AGENTS)}), 사용 선언한 외부 "
-                        f"플러그인 에이전트(플러그인:이름), 프로젝트 에이전트 중에서 고르세요."
-                    ))
-                elif plugin not in declared:
-                    add(skill, rule="fork_agent_undeclared_plugin", message=(
-                        f"fork 스킬 '{skill.name}'의 에이전트 '{name}'은(는) 사용 선언하지 "
-                        f"않은 플러그인 '{plugin}'의 것입니다 — 플러그인이 켜지지 않으면 "
-                        f"조용히 general-purpose로 실행됩니다. 외부 플러그인 목록에 선언하세요."
-                    ))
+                add(skill, rule="fork_agent_missing", message=(
+                    f"fork 스킬 '{skill.name}'의 에이전트 '{name}'이(가) 없습니다 — "
+                    f"CC는 못 찾은 에이전트를 조용히 general-purpose로 실행합니다. "
+                    f"내장({', '.join(BUILTIN_FORK_AGENTS)})이나 프로젝트에 등록한 "
+                    f"fork 에이전트(자체 fork 에이전트 · 등록한 외부 fork 에이전트) "
+                    f"중에서 고르세요."
+                ))
                 continue
 
             # fork 실행 기반이 될 수 있는 종류인가 (Q27 — `IS_FORK_BASE`).

@@ -289,9 +289,13 @@ _AGENT_KIND_ABSENT_FIELDS = {
     "fork_agent": {
         AgentField.SOURCE, AgentField.BACKGROUND, AgentField.ISOLATION,
     },
-    # 외부 플러그인 에이전트(WP-9)는 **산출 파일이 없다** — 프론트매터가 나갈
-    # 자리 자체가 없으므로 우리가 쓸 수 없는 필드를 두지 않는다.
+    # 외부 플러그인 에이전트 2역할(WP-9/WP-EX)은 **산출 파일이 없다** —
+    # 프론트매터가 나갈 자리 자체가 없으므로 우리가 쓸 수 없는 필드를 두지
+    # 않는다. 두 역할은 같은 표를 쓴다(편집할 수 있는 것이 같다).
     "external_agent": set(AgentField) - {
+        AgentField.NAME, AgentField.DESCRIPTION, AgentField.SOURCE,
+    },
+    "external_fork_agent": set(AgentField) - {
         AgentField.NAME, AgentField.DESCRIPTION, AgentField.SOURCE,
     },
 }

@@ -4,7 +4,9 @@
 배선의 단일 진실은 **`PluginProject.external_plugins` 사용 선언**이다(사용자
 확정 2026-09-06) — 컴포넌트의 `source`는 배선에 쓰이지 않고, 선언·참조의
 어긋남은 검증 경고 2종(`undeclared_external_plugin`/`unused_external_plugin`)이
-짚는다. 외부 정본을 선언하는 종류는 오늘 `ExternalAgent` 하나다(WP-9).
+짚는다. 외부 정본을 선언하는 종류는 둘이다 — 그래프 노드 `ExternalAgent`(WP-9)와
+fork 실행 기반 `ExternalForkAgent`(WP-EX). 같은 source를 **두 번** 등록하면
+역할 충돌 에러(`external_source_role_conflict`)다.
 
 WP-10 이전에는 이 파일이 `test_wrapped_skill.py`였고 같은 배선을 랩핑 스킬로
 태웠다 — 랩핑 스킬 퇴역 후에도 배선·검증은 그대로이므로 종류만 바꿔 남긴다.
@@ -288,11 +290,31 @@ def test_marketplace_mismatch_is_both_warnings():
     assert "unused_external_plugin" in rules
 
 
-def test_same_source_multiple_components_is_normal():
-    """같은 source를 여러 컴포넌트가 가리키는 것은 정상이다."""
+def test_same_source_registered_twice_is_a_role_conflict():
+    """같은 외부 정본을 두 번 등록하면 **에러**다 (WP-EX 역할 고정).
+
+    2026-09-19 이전에는 "여러 컴포넌트가 같은 source를 가리켜도 정상"이었다.
+    역할이 등록 시점에 고정되면서(그래프 노드 / fork 실행 기반) 같은 source를
+    두 번 등록하면 어느 쪽이 정본인지 아무도 답할 수 없다 — 이름 충돌이 아니라
+    역할 충돌이라 `duplicate_component_name`은 잡지 못한다.
+    """
     project = PluginProject(name="p")
     project.agents.append(_external(name="review-a"))
     project.agents.append(_external(name="review-b"))
+    project.external_plugins.append("other@mkt")
+    issues = Validator.validate_project(project)
+    conflicts = [e for e in issues if e.rule == "external_source_role_conflict"]
+    # 양쪽 다 짚는다 — 어느 하나만 지목하면 "이쪽이 옳다"는 거짓말이 된다.
+    assert len(conflicts) == 2
+    assert all(not e.is_warning for e in conflicts)
+    assert {e.source for e in conflicts} == {"review-a", "review-b"}
+
+
+def test_distinct_sources_are_normal():
+    """서로 다른 외부 정본은 몇 개든 정상이다 — 충돌 판정은 원문 정확 일치다."""
+    project = PluginProject(name="p")
+    project.agents.append(_external(name="review-a"))
+    project.agents.append(_external(name="review-b", source="other@mkt:second"))
     project.external_plugins.append("other@mkt")
     issues = Validator.validate_project(project)
     assert not [e for e in issues if not e.is_warning]

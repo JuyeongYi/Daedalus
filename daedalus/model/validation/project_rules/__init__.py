@@ -108,6 +108,7 @@ class _ProjectRules(
         errors.extend(_NamingRules._check_invalid_project_name(project))
         errors.extend(_NamingRules._check_dangling_string_references(project))
         errors.extend(_NamingRules._check_external_sources(project))
+        errors.extend(_NamingRules._check_external_source_roles(project))
         errors.extend(_NamingRules._check_external_plugins(project))
         # 도구(tool_shelf) 규칙
         errors.extend(_ToolRules._check_duplicate_tool_name(project))

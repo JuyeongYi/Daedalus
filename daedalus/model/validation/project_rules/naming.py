@@ -77,6 +77,53 @@ class _NamingRules:
         return errors
 
     @staticmethod
+    def _check_external_source_roles(project) -> list[ValidationError]:
+        """external_source_role_conflict — 같은 외부 정본을 **두 번/두 역할로** 등록 (에러).
+
+        외부 플러그인 에이전트는 등록할 때 역할이 고정된다(사용자 확정
+        2026-09-19): 그래프 노드(`external_agent`)이거나 fork 실행 기반
+        (`external_fork_agent`)이거나 **둘 중 하나**다. 같은 `source`를 두 번
+        등록하면 어느 쪽이 정본인지 아무도 답할 수 없다 — 이름 충돌이 아니라
+        **역할 충돌**이라 `duplicate_component_name`은 잡지 못한다.
+
+        판정은 **원문 정확 일치**다. `alpha@mkt:x`와 `alpha:x`는 설치 대상이
+        다를 수 있으므로 같은 것으로 보지 않는다(`_check_external_plugins`의
+        매칭 규약과 같다). 빈/깨진 source는 제외한다 — 그쪽은
+        `external_source_missing` 소관이고, 편집 중인 빈 칸 둘을 충돌로
+        보고하면 만들자마자 에러가 뜬다.
+
+        **종류를 묻지 않는다** — 외부 정본을 갖는 새 종류는 `external_source`
+        선언만으로 이 검사를 받는다(Q34).
+        """
+        by_source: dict[str, list[object]] = {}
+        for comp in [*getattr(project, "skills", []), *getattr(project, "agents", [])]:
+            source = comp.external_source
+            if source is None:
+                continue
+            plugin_id, _, ref_name = source.partition(":")
+            if not plugin_id.strip() or not ref_name.strip():
+                continue
+            by_source.setdefault(source, []).append(comp)
+
+        errors: list[ValidationError] = []
+        for source, comps in by_source.items():
+            if len(comps) < 2:
+                continue
+            listed = ", ".join(f"{c.name}({c.kind})" for c in comps)
+            for comp in comps:
+                errors.append(ValidationError(
+                    rule="external_source_role_conflict",
+                    message=(
+                        f"외부 에이전트 '{source}'가 {len(comps)}번 등록돼 있습니다"
+                        f"({listed}) — 등록 역할은 하나로 고정됩니다(그래프 노드 "
+                        f"또는 fork 실행 기반). 하나만 남기고 나머지는 지우세요."
+                    ),
+                    source=comp.name,
+                    subject=comp,
+                ))
+        return errors
+
+    @staticmethod
     def _check_external_plugins(project) -> list[ValidationError]:
         """외부 플러그인 사용 선언 ↔ 컴포넌트 참조 정합 (WP-WR, 사용자 확정).
 

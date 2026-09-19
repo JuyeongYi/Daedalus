@@ -77,7 +77,8 @@ GUI가 켜지면 `127.0.0.1`에 Streamable HTTP로 뜬다.
 |------|----------|---------|
 | `create_skill` | `kind` | `procedural` · `sync_fork` · `async_fork` · `declarative` · `transfer` · `reference` |
 | `create_skill` | `fork_agent` | 설정에 `agent`를 가진 종류(`sync_fork`/`async_fork`) 전용 — 내장 fork 에이전트, `플러그인:이름`, 또는 프로젝트의 fork 에이전트 이름. 생략하면 `general-purpose` |
-| `create_agent` | `kind` | `agent`(워크플로 에이전트 — 캔버스 노드) · `fork_agent`(fork 스킬의 실행 기반) · `external_agent`(다른 플러그인의 에이전트를 노드로 — 산출 파일 없음. `source`는 `set_component_field(name, "source", "플러그인:이름")`으로 채운다) |
+| `create_agent` | `kind` | `agent`(워크플로 에이전트 — 캔버스 노드) · `fork_agent`(fork 스킬의 실행 기반) · `external_agent`(다른 플러그인의 에이전트를 **노드로**) · `external_fork_agent`(같은 것을 **fork 실행 기반으로**). 뒤 둘은 산출 파일이 없고 `source`로 정본을 가리킨다 |
+| `create_agent` | `source` | `external_agent`/`external_fork_agent` 전용 — `플러그인[@마켓]:이름` 원문(CC가 찾는 이름, 정확 일치). `list_external_plugins`의 에이전트 행 `agent_type`이 그 값이다. 다른 종류에 주면 거절한다. 나중에 바꿀 때는 `set_component_field(name, "source", …)` |
 | `convert_skill` | `to` | `procedural` · `sync_fork` · `async_fork` |
 
 - **읽는 쪽 `kind`는 철자가 다르다.** 조회 응답(`get_project`의 스킬·에이전트 행, `get_component`,
@@ -98,6 +99,11 @@ GUI가 켜지면 `127.0.0.1`에 Streamable HTTP로 뜬다.
   이름만** 실린다. 전용 도구가 있는 것은 그 도구로 안내한다 — `hooks`는 `set_component_hooks`를 쓴다.
 - **생성 인자는 그 종류가 그 설정을 가질 때만 받는다.** `fork_agent`를 fork 스킬이 아닌 종류에
   주면 거절하며 **받을 수 있는 종류를 함께 말한다**.
+- **외부 플러그인 에이전트의 역할은 등록 시점에 고정된다.** 같은 `source`를 `external_agent`와
+  `external_fork_agent` 양쪽으로(또는 한쪽으로 두 번) 등록하면 `external_source_role_conflict`
+  **에러**다. 역할을 바꾸려면 지우고 다시 만든다. fork 스킬의 `agent`에는 `플러그인:이름` 원문을
+  적을 수 없다 — 먼저 `create_agent(kind="external_fork_agent", source=…)`로 등록하고 그 **컴포넌트
+  이름**을 준다(원문을 주면 등록하는 법을 알려 주며 거절한다).
 - **fork 에이전트는 캔버스에 놓이지 않는다.** `create_agent(kind="fork_agent")`에 `x`·`y`를 주면
   거절하고, `place_component`도 거절한다 — fork 스킬이 부르는 실행 기반이지 워크플로 단계가
   아니다. 출력 포트(`set_transfer_on`)·호출 포트도 없다(갈래는 그를 부르는 fork 스킬의 보고

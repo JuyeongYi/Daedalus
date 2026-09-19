@@ -89,7 +89,9 @@ def test_creates_reference_as_reference_node(window):
 #: 캔버스에 **아무 노드로도 놓이지 않는** 종류. WP-7 ②/WP-8에서 생산 코드의
 #: 음성 목록(`creation.NO_PLACE_KINDS`)은 삭제됐다 — 판정의 실체는 종류의
 #: `PLACEMENT` 선언 하나이고, 여기서는 **오늘의 집합이 그대로인지**를 고정한다.
-_NO_PLACE_KINDS = frozenset({"declarative", "transfer", "fork_agent"})
+_NO_PLACE_KINDS = frozenset({
+    "declarative", "transfer", "fork_agent", "external_fork_agent",
+})
 
 
 def _non_canvas_kinds() -> list[str]:

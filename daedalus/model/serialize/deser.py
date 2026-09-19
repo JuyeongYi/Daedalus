@@ -33,8 +33,10 @@ from daedalus.model.project import (
 from daedalus.model.serialize.migrate import (
     _migrate_v1,
     _promote_local_skills,
+    migrate_external_fork_agents,
     migrate_fork_split,
     migrate_skill_context,
+    needs_external_fork_agent_migration,
     needs_fork_split_migration,
     needs_skill_context_migration,
 )
@@ -125,6 +127,14 @@ def deserialize_project(
             f"지원하지 않는 파일 형식 버전: {fmt!r} "
             f"(지원: {FORMAT_VERSION}, 구버전 1은 로드 시 마이그레이션)"
         )
+
+    # 외부 플러그인 에이전트 역할 고정(2026-09-19) 이전에 저장된 파일 — fork
+    # 스킬이 `플러그인:이름` **원문**을 직접 가리킨다. **두 경로 다** 태운다:
+    # v1 파일도 fork 스킬을 가질 수 있고(위 `migrate_skill_context`가 만든다),
+    # 원문이 남으면 등록되지 않은 이름이라 컴파일 게이트가 통째로 막힌다.
+    if needs_external_fork_agent_migration(data):
+        data = copy.deepcopy(data)
+        migrate_external_fork_agents(data, reg.warnings)
 
     # ── pass 1: 컴포넌트(skill/agent) 객체 생성 + 등록 ──
     skills = [_deser_skill(s, reg) for s in data.get("skills", [])]

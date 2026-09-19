@@ -35,23 +35,24 @@ from pathlib import Path
 _REPO = Path(__file__).resolve().parent.parent
 _SRC = _REPO / "daedalus"
 
-# ── 컴포넌트/설정 클래스 이름 29종 (구체 9 + 추상 5 + 믹스인 1 + config 14) ──
+# ── 컴포넌트/설정 클래스 이름 33종 (구체 10 + 추상 5 + 믹스인 2 + config 16) ──
 # WP-9가 `ExternalAgent`/`ExternalAgentConfig`를, WP-10이 `WrappedSkill`/
 # `WrappedSkillConfig`를 갈아 끼웠다 — 없는 클래스 이름을 남겨 두면 스캐너가
 # 아무것도 세지 않는 표적을 들고 다니게 된다.
 COMPONENT_CLASS_NAMES: frozenset[str] = frozenset({
     # 추상 기저 + 믹스인
     "PluginComponent", "Skill", "StepSkill", "ForkSkill", "Agent", "WorkflowComponent",
-    # 구체 컴포넌트 9종
+    "ExternalSourceMixin",
+    # 구체 컴포넌트 10종
     "ProceduralSkill", "SyncForkSkill", "AsyncForkSkill", "DeclarativeSkill",
     "TransferSkill", "ReferenceSkill", "AgentDefinition", "ForkAgent",
-    "ExternalAgent",
-    # config 14종
+    "ExternalAgent", "ExternalForkAgent",
+    # config 16종
     "ComponentConfig", "SkillConfig", "StepSkillConfig", "ProceduralSkillConfig",
     "ForkSkillConfig", "SyncForkSkillConfig", "AsyncForkSkillConfig",
     "DeclarativeSkillConfig", "AgentConfigBase", "AgentConfig",
     "ForkAgentConfig", "TransferSkillConfig", "ReferenceSkillConfig",
-    "ExternalAgentConfig",
+    "ExternalSourceConfig", "ExternalAgentConfig", "ExternalForkAgentConfig",
 })
 
 # ── 컴포넌트 형상 속성 (§8 래칫 ② 목록 + output_events/output_event_defs) ──

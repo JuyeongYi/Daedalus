@@ -272,7 +272,8 @@
 |------|----------|---------|
 | `create_skill` | `kind` | `config_kinds_in(Bucket.SKILLS)` **파생** — 오늘 `procedural` · `sync_fork` · `async_fork` · `declarative` · `transfer` · `reference`(선언 순서) |
 | `create_skill` | `fork_agent` | 설정에 `agent`를 가진 종류(오늘 `sync_fork`/`async_fork`) **전용** — 내장 fork 에이전트, `플러그인:이름`, 또는 프로젝트의 fork 에이전트 이름(정확 일치). 생략하면 `general-purpose` |
-| `create_agent` | `kind` | `config_kinds_in(Bucket.AGENTS)` 파생 — `agent`(워크플로 에이전트 — 캔버스 노드) · `fork_agent`(fork 스킬의 실행 기반 — fsm·포트·배치 없음) · `external_agent`(외부 플러그인 에이전트를 노드로 — fsm·산출 파일 없음, 포트는 있다). **WP-9은 이 도구를 한 줄도 고치지 않았다** — 어휘가 파생이라 새 종류가 그대로 나타난다 |
+| `create_agent` | `kind` | `config_kinds_in(Bucket.AGENTS)` 파생 — `agent`(워크플로 에이전트 — 캔버스 노드) · `fork_agent`(fork 스킬의 실행 기반 — fsm·포트·배치 없음) · `external_agent`(외부 플러그인 에이전트를 **노드로** — fsm·산출 파일 없음, 포트는 있다) · `external_fork_agent`(같은 것을 **fork 실행 기반으로** — 포트·배치·산출 파일 전부 없음). **어휘는 파생이라 WP-9·WP-EX 모두 이 목록을 손대지 않고 새 종류가 나타났다** |
+| `create_agent` | `source` | 설정에 `source`를 가진 종류(`external_agent`/`external_fork_agent`) 전용 생성 인자 — `플러그인[@마켓]:이름` 원문. 다른 종류에 주면 **거절**하고 어느 종류가 받는지 말한다(`create_skill(fork_agent=)` 선례 — 판정은 kind 목록이 아니라 **그 종류의 config 필드**가 한다). 등록과 정본 지목이 1 undo로 묶인다 |
 | `convert_skill` | `to` | `procedural` · `sync_fork` · `async_fork` (3-way) |
 
 - **읽는 쪽과 쓰는 쪽의 철자가 다르다.** 조회(`get_project`의 스킬·에이전트 행, `get_component`,
@@ -287,7 +288,8 @@
   dataclass 필드 조회 한 곳). 거절 문구의 "사용 가능" 목록도 레지스트리를 훑어 만들므로, 새 종류가
   그 필드를 선언하면 인자가 자동으로 열린다 — kind 목록을 따로 들던 시절에는 빠뜨린 인자가
   **거절되는데 아무도 실패하지 않았다**(👻). 응답의 `fork_agent` 키도 같은 파생이다.
-- **`create_agent(kind="fork_agent", x=, y=)`는 거절한다.** fork 에이전트는 그래프 노드가 아니다.
+- **`create_agent(kind="fork_agent"|"external_fork_agent", x=, y=)`는 거절한다.** fork 실행 기반은 그래프 노드가 아니다(판정은 `PLACEMENT` 선언 파생).
+- **외부 플러그인 에이전트의 역할은 등록 시점에 고정된다** (WP-EX, 사용자 확정 2026-09-19). 같은 `source`를 두 종류로(또는 같은 종류로 두 번) 등록하면 검증이 `external_source_role_conflict` **에러**로 양쪽을 짚는다 — 역할 전환 도구는 없고, 바꾸려면 `delete_component` 후 다시 만든다. fork 스킬의 `agent`에 `플러그인:이름` 원문을 주면 `create_skill(fork_agent=)`·`set_component_field(name, "agent", …)`가 **거절하며 등록하는 법**을 말한다.
   판정은 종류의 **배치 역할 선언** 하나다 — `placement.is_canvas_placeable_role(spec_by_config_kind(kind).placement)`가
   거절을 답한다(WP-7 ②/WP-8. 음성 목록 상수 `creation.NO_PLACE_KINDS`는 소비자 0으로 퇴역).
   좌표를 조용히 무시하면 "배치했는데 아무 데도 없는" 상태가 된다.

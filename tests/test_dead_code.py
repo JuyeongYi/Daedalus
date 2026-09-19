@@ -89,6 +89,17 @@ ALLOWLIST: dict[str, tuple[str, str]] = {
         "(+ tests/model/fsm/test_machine.py)다. 지우면 그 테스트들이 private "
         "`_validate_machine`로 내려간다(DEADCODE §3.1).",
     ),
+    "model.plugin.wrap_catalog::used_plugin_agents": (
+        "test-seam",
+        "사용 선언한 플러그인이 동봉한 에이전트 목록 — **등록 표면의 유도 함수**. "
+        "WP-EX(역할 고정, 2026-09-19)가 fork 후보에서 `플러그인:이름` 문자열을 "
+        "걷어 내면서 프로덕션 호출자가 0이 됐다. 지우면 그 판정(사용 선언 필터 + "
+        "agent_type 중복 제거 + 결정적 정렬)이 `used_plugin_mcp_servers`와 갈려 "
+        "다음 소비자가 손으로 다시 쓴다(원칙 1). 소비자는 레지스트리 🔌 탭의 "
+        "'미등록 외부 에이전트' 목록(WP-C)이고, 그것이 배선되면 이 면제는 "
+        "`test_exemptions_point_at_live_sites`가 스테일로 잡아 스스로 지워진다. "
+        "오늘 호출자는 tests/model/plugin/test_wrap_catalog.py뿐이다.",
+    ),
     "view.editors.body_documents::BodyDocumentRegistry.sync_from_model": (
         "test-seam",
         "editor.md:80이 지정한 **유일한 인가 경로** — 모델 body가 에디터 밖에서 "

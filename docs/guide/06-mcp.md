@@ -157,8 +157,13 @@ Claude가 하는 일:
 fork 에이전트로 고를 수 있는 것:
 
 - 내장 에이전트: `general-purpose`, `Explore`, `Plan`
-- 사용 선언한 외부 플러그인 에이전트 (`플러그인:이름`)
-- 프로젝트의 **fork 에이전트**(`create_agent(name, kind="fork_agent")`로 만든 것)
+- 프로젝트에 **등록한 fork 에이전트** — `create_agent(name, kind="fork_agent")`로 만든 것,
+  그리고 `create_agent(name, kind="external_fork_agent", source="플러그인:이름")`으로 등록한
+  다른 플러그인의 에이전트
+
+`플러그인:이름` 원문을 `fork_agent`/`agent` 값으로 **직접 줄 수 없습니다** — 먼저 등록하고
+그 컴포넌트 이름을 주세요(원문을 주면 등록하는 법을 알려 주며 거부합니다). 산출의 `agent:`
+줄에는 등록한 `source` 원문이 그대로 나갑니다.
 
 **워크플로 에이전트는 고를 수 없습니다** — 종류가 다릅니다. 이름을 주면 그 사실을 말하며 거부합니다.
 이름은 대소문자까지 정확히 맞아야 합니다. 틀리면 Claude Code가 조용히 `general-purpose`로 돌려
@@ -178,6 +183,19 @@ fork 에이전트로 고를 수 있는 것:
 **같은 목록**입니다. 아무도 쓰지 않으면 `unused_fork_agent` 경고가 뜹니다.
 
 fork 에이전트에는 출력 포트가 없으므로 `set_transfer_on`은 이유를 말하며 거부합니다.
+
+### 예시 2-c. 다른 플러그인의 에이전트를 fork 실행 기반으로 쓰기
+
+> **나:** hookify 플러그인의 conversation-analyzer로 돌아가는 fork 단계를 만들어 줘.
+
+1. `list_external_plugins()` → 에이전트 행의 `agent_type`(`hookify:conversation-analyzer`)을 찾습니다.
+2. `set_external_plugins([...,"hookify@claude-plugins-official"])` → 사용 선언(빌드 배선).
+3. `create_agent("conversation-analyzer", kind="external_fork_agent",
+   source="hookify:conversation-analyzer")` → 등록. 좌표를 주면 **거부**합니다(캔버스 노드가 아닙니다).
+4. `create_skill("analyze", kind="sync_fork", fork_agent="conversation-analyzer")`
+
+같은 `source`를 `external_agent`(캔버스 노드)로도 등록하면 **역할 충돌 에러**입니다 —
+한 외부 에이전트는 한 역할만 맡습니다.
 `list_component_fields`도 종류별 표를 따라 `background`·`isolation`을 보여 주지 않습니다.
 
 ### 예시 3. 분기가 있는 흐름 만들기

@@ -279,6 +279,10 @@
   "copied_files": [],
   "findings": [
     [
+      "undeclared_external_plugin",
+      "conversation-analyzer"
+    ],
+    [
       "unused_external_plugin",
       "claude-code-setup@claude-plugins-official"
     ],

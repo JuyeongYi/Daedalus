@@ -171,3 +171,62 @@ def test_agent_editor_port_panels_follow_the_placement_declaration(qapp):
     fork_agent, project = _fork_project()
     fork = AgentEditor(fork_agent, project=project)
     assert fork.findChildren(_TransferOnPanel) == []
+
+
+# ---------------------------------------------------------------------------
+# 외부 fork 에이전트 — fork 기반 패널 + 본문 대신 원본 패널 (WP-EX)
+# ---------------------------------------------------------------------------
+
+def _external_fork_project(used_by: tuple[str, ...] = ()):
+    from daedalus.model.fsm.state import SimpleState
+    from daedalus.model.plugin.agent import ExternalForkAgent
+    from daedalus.model.plugin.config import (
+        ExternalForkAgentConfig,
+        SyncForkSkillConfig,
+    )
+    from daedalus.model.plugin.skill import SyncForkSkill
+    from daedalus.model.project import PluginProject
+
+    agent = ExternalForkAgent(
+        name="critic", description="외부 fork 실행 기반",
+        config=ExternalForkAgentConfig(source="review-pack@mkt:critic"),
+    )
+    skills = []
+    for name in used_by:
+        s = SimpleState(name="s")
+        skills.append(SyncForkSkill(
+            fsm=StateMachine(name=f"{name}_fsm", states=[s], initial_state=s),
+            name=name, description="d",
+            config=SyncForkSkillConfig(agent="critic"),
+        ))
+    return agent, PluginProject(name="p", skills=skills, agents=[agent])
+
+
+def test_external_fork_agent_editor_gets_the_fork_users_panel(qapp):
+    """패널 게이트는 `IS_FORK_BASE` 선언이다 — 종류 열거가 아니라서 자동 합류한다."""
+    from daedalus.view.editors.agent_editor import AgentEditor
+    from daedalus.view.editors.skill_editor import _TransferOnPanel
+
+    agent, project = _external_fork_project(used_by=("scout",))
+    editor = AgentEditor(agent, project=project)
+
+    assert editor._callers_panel is None          # 그래프에서 불리지 않는다
+    assert editor.findChildren(_TransferOnPanel) == []  # 포트도 없다
+    panel = editor._fork_users_panel
+    assert panel is not None
+    assert [panel._list.item(i).text() for i in range(panel._list.count())] == ["scout"]
+
+
+def test_external_fork_agent_editor_replaces_the_body_with_the_source_panel(qapp):
+    """본문 정본이 외부다 — 편집기 대신 원본 경로 + "원본 열기"가 선다."""
+    from daedalus.view.editors.agent_editor import AgentEditor
+    from daedalus.view.editors.component_editor import _ExternalSourcePanel
+
+    agent, project = _external_fork_project()
+    editor = AgentEditor(agent, project=project)
+
+    panels = editor.findChildren(_ExternalSourcePanel)
+    assert len(panels) == 1
+    assert panels[0]._w_source.text() == "review-pack@mkt:critic"
+    # 문구의 명사는 버킷 선언에서 나온다 — 에이전트를 "스킬"이라 부르면 안 된다.
+    assert panels[0]._noun == "에이전트"

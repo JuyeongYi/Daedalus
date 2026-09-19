@@ -30,7 +30,12 @@ from enum import Enum
 from types import MappingProxyType
 from typing import Any
 
-from daedalus.model.plugin.agent import AgentDefinition, ExternalAgent, ForkAgent
+from daedalus.model.plugin.agent import (
+    AgentDefinition,
+    ExternalAgent,
+    ExternalForkAgent,
+    ForkAgent,
+)
 from daedalus.model.plugin.base import PluginComponent
 from daedalus.model.plugin.config import ComponentConfig
 from daedalus.model.plugin.field_matrix import (
@@ -135,6 +140,7 @@ COMPONENT_CLASSES: tuple[type[PluginComponent], ...] = (
     AgentDefinition,
     ForkAgent,
     ExternalAgent,
+    ExternalForkAgent,
 )
 
 

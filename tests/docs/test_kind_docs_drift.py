@@ -52,7 +52,7 @@ def test_plugin_model_kind_table_lists_every_registered_kind():
     없다.
     """
     text = (_DOCS / "design" / "plugin-model.md").read_text(encoding="utf-8")
-    rows = _table_rows(text, "## 스킬 6종과 에이전트 3종")
+    rows = _table_rows(text, "## 스킬 6종과 에이전트 4종")
     assert len(rows) == len(KIND_REGISTRY), (
         f"종류 표 {len(rows)}행 ↔ 레지스트리 {len(KIND_REGISTRY)}종"
     )

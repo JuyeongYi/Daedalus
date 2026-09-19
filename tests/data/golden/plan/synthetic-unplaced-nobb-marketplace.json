@@ -37,6 +37,12 @@
       true
     ],
     [
+      "skills/ext-fork-step/SKILL.md",
+      "skill",
+      "스킬 'ext-fork-step'",
+      true
+    ],
+    [
       "agents/worker.md",
       "agent",
       "에이전트 'worker'",
@@ -110,6 +116,7 @@
     "skills/knowledge/SKILL.md",
     "skills/edge-helper/SKILL.md",
     "skills/ref-with-hooks/SKILL.md",
+    "skills/ext-fork-step/SKILL.md",
     "agents/worker.md",
     "agents/fork-base.md",
     "hooks/hooks.json",

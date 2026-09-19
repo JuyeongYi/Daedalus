@@ -58,7 +58,7 @@ GUI는 PySide6 노드 에디터(`view/`), 앱 내장 MCP 서버(`mcp/`)가 CC와
 
 | 파일 | 무엇 |
 |------|------|
-| `corpus.py` | **코퍼스 2벌.** ① `dogfood.daedalus.json` — 실사용 프로젝트 `project/daedalus_cc_plugin/`의 **동결 사본**(살아 있는 작업 사본은 테스트가 읽지 않는다 — 사용자가 편집하면 골든이 무작위로 깨진다) ② 합성 프로젝트 — 9종 전부 × 배치/미배치 × 블랙보드 유/무 × async fork × fork 에이전트 × 외부 플러그인 에이전트 × **훅을 가진 ReferenceSkill**. 실사용 코퍼스만으로는 async fork·fork 에이전트가 0줄 커버라 두 벌이다. `_stamp_ids`가 uuid4 기본값을 결정적 id로 덮는다. FSM 형상은 `tests/compiler/builders.py`(`make_linear_fsm`/`make_agent_fsm`)에 위임한다 — 컴포넌트 **조립**은 위임하지 않는다(builders의 팩토리 5종은 9종 중 5종만 덮고 config·body·포트가 고정이라, 이 코퍼스의 축을 태우려면 전부 덮어써야 한다) |
+| `corpus.py` | **코퍼스 2벌.** ① `dogfood.daedalus.json` — 실사용 프로젝트 `project/daedalus_cc_plugin/`의 **동결 사본**(살아 있는 작업 사본은 테스트가 읽지 않는다 — 사용자가 편집하면 골든이 무작위로 깨진다) ② 합성 프로젝트 — 10종 전부 × 배치/미배치 × 블랙보드 유/무 × async fork × fork 에이전트 × 외부 플러그인 에이전트(노드·fork 기반 2역할) × **훅을 가진 ReferenceSkill**. 실사용 코퍼스만으로는 async fork·fork 에이전트가 0줄 커버라 두 벌이다. `_stamp_ids`가 uuid4 기본값을 결정적 id로 덮는다. FSM 형상은 `tests/compiler/builders.py`(`make_linear_fsm`/`make_agent_fsm`)에 위임한다 — 컴포넌트 **조립**은 위임하지 않는다(builders의 팩토리 5종은 9종 중 5종만 덮고 config·body·포트가 고정이라, 이 코퍼스의 축을 태우려면 전부 덮어써야 한다) |
 | `trees/` | 복사 계획(`files_tree`/`skill_file`)을 태우는 **ASCII 전용** 픽스처. `.gitattributes`의 `-text`로 줄바꿈 정규화를 막는다 — 복사 바이트가 그대로 sha256에 들어간다 |
 | `render.py` | 계산 쪽 **한 곳** — 테스트가 보는 것과 regen이 쓰는 것이 어긋날 수 없다(원칙 1) |
 | `store.py` | 저장 형식 — `*.sha256`(`sha256sum` 형식, 키 정렬) · `plan/<코퍼스>-<타깃>.json` · `dogfood.project.json` |
@@ -275,6 +275,8 @@ daedalus/
 │   │   │                   #   + 종류별 능력 선언(KIND/CONFIG_CLS/PLACEMENT/…). 인스턴스 훅을 덮는 클래스는 WP-10 이후 0이다
 │   │   ├── agent.py        # Agent(ABC) → AgentDefinition(워크플로 — 캔버스 노드) / ForkAgent(fork 스킬 실행 기반, WP-FK2)
 │   │   │                   #   / ExternalAgent(외부 플러그인 에이전트를 노드로 — 산출 파일 없음, WP-9)
+│   │   │                   #   / ExternalForkAgent(같은 것을 fork 실행 기반으로 — 배치·포트·산출 없음, WP-EX)
+│   │   │                   #   + ExternalSourceMixin(외부 정본 2종의 공통 구현 — 상속 순서가 계약: 믹스인이 앞)
 │   │   ├── placement.py    # 배치 역할 판정 **네 개**(is_state_placeable=포트 소유 판정 겸임/is_canvas_placeable/is_edge_placeable/is_reference_placed — 실체는 effective_placement()).
 │   │   │                   #   enum 비교를 손으로 적는 자리는 없다 — 참조 배치 질문은 compiler/emit(guides·sections)·validation(naming)까지 전부 is_reference_placed다 +
 │   │   │                   #   placement_role_of(비-컴포넌트 관용의 단일 진실) + fork 역참조 fork_skills_using(config.name_refs(AGENTS) 기반).
@@ -697,7 +699,7 @@ daedalus/
     │   │                   #     파일은 쓰지 않는다. 산출은 **원문 그대로** 보인다(렌더하면 프론트매터가 사라진다).
     │   ├── model_effort.py #   모델/effort 지정(A9-2) — MODEL_CHOICES/EFFORT_CHOICES(표시 순서 단일 진실) + set_model/set_effort.
     │   │                   #     새로 만드는 것은 UI가 아니라 **쓰기 경로의 단일 진실**이다(에디터 콤보와 같은 SetAttrCmd 경로).
-    │   ├── fork_skill.py   #   fork 스킬(2026-09-13) — fork_agent_choices(fork 에이전트 후보 세 종류)/validate_fork_agent/skill_kind_of/
+    │   ├── fork_skill.py   #   fork 스킬(2026-09-13) — fork_agent_choices(내장 + 등록된 IS_FORK_BASE)/validate_fork_agent/skill_kind_of/
     │   │                   #     KINDS(3-way: procedural/sync_fork/async_fork)/convert_skill_kind(대상 config 클래스
     │   │                   #     기준 필드 복사, config·__class__ 교체 + resync_bracket을 묶어 1 undo). 피커·캔버스 메뉴·MCP 공용 실체
     │   ├── creation.py     #   생성+배치 — (NO_PLACE_KINDS 음성 목록은 WP-7 ②/WP-8에서 삭제됐다: 만들기 전 거절은

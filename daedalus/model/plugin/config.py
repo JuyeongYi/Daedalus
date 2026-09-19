@@ -333,8 +333,9 @@ class ForkAgentConfig(AgentConfigBase):
 
 
 @dataclass
-class ExternalAgentConfig(ComponentConfig):
-    """외부 플러그인 서브에이전트 설정 (WP-9) — 우리가 소유하는 값은 `source` 하나다.
+class ExternalSourceConfig(ComponentConfig, ABC):
+    """정본이 **외부 플러그인**에 있는 컴포넌트의 공통 설정 — 우리가 소유하는
+    값은 `source` 하나다 (WP-EX).
 
     **`AgentConfigBase`를 상속하지 않는다.** tools·skills·permission_mode·color·
     max_turns 따위는 전부 **그 플러그인이 소유한 파일**의 값이다. 우리 쪽에
@@ -342,21 +343,48 @@ class ExternalAgentConfig(ComponentConfig):
     파일이 없으니 배출될 자리 자체가 없다(원칙 5: 조용한 no-op 금지).
 
     기저의 `model`/`effort`/`hooks`는 상속되지만 `AGENT_FIELD_MATRIX`의
-    `external_agent` 행에 없어 편집기·MCP가 노출하지 않는다 — 같은 이유다.
+    외부 행들에 없어 편집기·MCP가 노출하지 않는다 — 같은 이유다.
 
     `source`는 ``플러그인[@마켓]:에이전트`` 원문이고, 이것이 곧 **CC가 그
     서브에이전트를 찾는 이름**이다(정확 일치). 형식 검사는
     `validation.project_rules.naming._check_external_sources`가,
-    사용 선언 검사는 `_check_external_plugins`가 맡는다 — 둘 다 종류를 묻지
+    사용 선언 검사는 `_check_external_plugins`가, 같은 source를 두 역할로
+    등록했는지는 `_check_external_source_roles`가 맡는다 — 전부 종류를 묻지
     않고 `external_source`/`external_plugin_refs()`만 본다.
+
+    **추상이다** — 두 구체 설정(그래프 노드 / fork 실행 기반)은 필드가 같고
+    `KIND`만 다르다. 한쪽이 다른 쪽을 상속하면 "구체가 구체를 상속한다"가 되어
+    `isinstance(cfg, ExternalAgentConfig)`가 두 역할을 함께 잡는다 — 역할을
+    고정하려고 종류를 나눈 의미가 사라진다(사용자 확정 2026-09-19).
     """
 
-    KIND: ClassVar[str] = "external_agent"
     SERIALIZED_FIELDS: ClassVar[tuple[FieldSpec, ...]] = (
         ComponentConfig.SERIALIZED_FIELDS + (FieldSpec("source", STR),)
     )
 
     source: str = ""
+
+
+@dataclass
+class ExternalAgentConfig(ExternalSourceConfig):
+    """외부 플러그인 서브에이전트를 **그래프 노드**로 쓸 때의 설정 (WP-9)."""
+
+    KIND: ClassVar[str] = "external_agent"
+
+    @property
+    def kind(self) -> str:
+        return self.KIND
+
+
+@dataclass
+class ExternalForkAgentConfig(ExternalSourceConfig):
+    """외부 플러그인 서브에이전트를 **fork 실행 기반**으로 쓸 때의 설정 (WP-EX).
+
+    `ExternalAgentConfig`와 필드는 같고 `KIND`만 다르다 — 그 차이가 곧
+    **역할 고정**이다(같은 source를 두 역할로 등록할 수 없다).
+    """
+
+    KIND: ClassVar[str] = "external_fork_agent"
 
     @property
     def kind(self) -> str:

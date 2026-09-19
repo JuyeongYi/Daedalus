@@ -25,7 +25,10 @@ _ERROR_RULES = frozenset({
     # WP-FK2 — fork_agent_placed 퇴역, 종류 불일치(fork_agent_wrong_kind)로 대체
     "fork_agent_wrong_kind",
     "fork_agent_missing",
-    "fork_agent_undeclared_plugin",
+    # WP-EX — 같은 외부 정본을 두 역할/두 번 등록(역할 고정, 사용자 확정
+    # 2026-09-19). 종전 fork_agent_undeclared_plugin(에러)은 같은 사실을
+    # undeclared_external_plugin(경고)과 두 등급으로 말하던 비대칭이라 사라졌다.
+    "external_source_role_conflict",
     "transfer_on_not_empty",
     "transition_endpoint_not_in_states",
     "duplicate_component_name",

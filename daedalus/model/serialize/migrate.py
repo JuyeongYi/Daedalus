@@ -251,7 +251,12 @@ def _fork_agent_names(data: dict) -> set[str]:
         for a in data.get("agents", []) or []
         if a.get("id") not in placed
         and a.get("name") in fork_targets
-        and a.get("kind") != "fork_agent"
+        # **워크플로 에이전트만** 재분류한다. 종전 조건은 `!= "fork_agent"`
+        # (음성 목록)이라 이후에 생긴 종류를 전부 끌어들였다 — WP-EX의
+        # `external_fork_agent`가 로드 때마다 조용히 `fork_agent`로 강등되고
+        # source가 사라졌다. 이 마이그레이션이 고치려는 것은 "fork 기반인데
+        # 종류가 워크플로 에이전트로 저장된 v1 파일" 하나다(원칙 7).
+        and a.get("kind") == "agent"
     } - {None}
 
 
@@ -303,6 +308,120 @@ def migrate_fork_split(
         warnings.append(
             f"에이전트 '{a.get('name', '?')}'을(를) fork 에이전트 종류로 이관했습니다."
         )
+
+
+# ═══════ 외부 플러그인 fork 에이전트 등록 (WP-EX, 2026-09-19) ═══════
+#
+# 역할 고정 이전에는 fork 스킬의 `agent`에 `플러그인:이름` **원문**을 그대로
+# 적었다(후보 목록이 그 문자열을 흘려 넣었다). 지금은 다른 플러그인의
+# 에이전트도 `external_fork_agent` 컴포넌트로 **등록**한 뒤 그 이름을 고른다 —
+# 원문이 그대로 남으면 등록되지 않은 이름이라 `fork_agent_missing` 에러가 되고,
+# 그 순간 그 프로젝트는 컴파일 게이트를 통째로 통과하지 못한다. 퇴역 개념은
+# 흔적 없이 흡수한다(원칙 7): 원문마다 컴포넌트 하나를 만들고 스킬은 그 이름을
+# 가리키게 바꾼다.
+
+
+def _plugin_fork_refs(data: dict) -> list[tuple[dict, str]]:
+    """fork 스킬 중 `agent`가 `플러그인:이름` 원문인 것 — (스킬 dict, 원문).
+
+    프로젝트 에이전트 이름에는 콜론이 들어갈 수 없다(`^[a-z0-9][a-z0-9-]*$`)
+    므로 콜론 유무가 곧 "외부 원문인가"다.
+    """
+    found: list[tuple[dict, str]] = []
+    for skill in data.get("skills", []) or []:
+        if skill.get("kind") not in _FORK_SKILL_KINDS:
+            continue
+        agent = (skill.get("config") or {}).get("agent")
+        if not isinstance(agent, str) or ":" not in agent:
+            continue
+        plugin, _, ref_name = agent.partition(":")
+        if plugin.strip() and ref_name.strip():
+            found.append((skill, agent))
+    return found
+
+
+def needs_external_fork_agent_migration(data: dict) -> bool:
+    """fork 스킬이 아직 외부 원문을 직접 가리키고 있는가 (내용 스니핑)."""
+    return bool(_plugin_fork_refs(data))
+
+
+def _free_component_name(taken: set[str], *candidates: str) -> str:
+    """이미 쓰이는 이름을 피해 후보 중 첫 자유 이름을 고른다(최후에는 접미 숫자).
+
+    이름이 겹치면 `duplicate_component_name` 에러가 되어 마이그레이션이 문제를
+    **새로** 만든다 — 그래서 여기서 피한다. 후보 순서가 곧 선호 순서다.
+    """
+    for candidate in candidates:
+        if candidate and candidate not in taken:
+            return candidate
+    stem = next((c for c in candidates if c), "external-fork-agent")
+    index = 2
+    while f"{stem}-{index}" in taken:
+        index += 1
+    return f"{stem}-{index}"
+
+
+def migrate_external_fork_agents(data: dict, warnings: list[str]) -> None:
+    """fork 스킬의 `플러그인:이름` 원문 → `external_fork_agent` 컴포넌트 (제자리 변형).
+
+    같은 원문을 여러 스킬이 가리키면 컴포넌트는 **하나**다 — 두 개를 만들면
+    `external_source_role_conflict` 에러가 되어 마이그레이션이 문제를 새로
+    만든다. 이름은 참조 이름(하위 폴더 콜론은 `-`로) → `<플러그인>-<이름>`
+    순으로 자유로운 것을 고른다.
+    """
+    import hashlib
+
+    refs = _plugin_fork_refs(data)
+    if not refs:
+        return
+    taken = {
+        str(c.get("name"))
+        for c in [*(data.get("skills") or []), *(data.get("agents") or [])]
+    }
+    registered: dict[str, str] = {}
+    agents = data.setdefault("agents", [])
+
+    for skill, source in refs:
+        name = registered.get(source)
+        if name is None:
+            plugin, _, ref_name = source.partition(":")
+            bare_plugin = plugin.partition("@")[0].strip()
+            name = _free_component_name(
+                taken,
+                ref_name.strip().replace(":", "-"),
+                f"{bare_plugin}-{ref_name.strip().replace(':', '-')}",
+            )
+            taken.add(name)
+            registered[source] = name
+            agents.append({
+                "kind": "external_fork_agent",
+                # **결정적 id**다 — uuid4면 저장하기 전까지 매 로드마다 id가
+                # 바뀌어, 같은 파일을 두 번 열면 다른 바이트가 나온다(골든이
+                # 그 흔들림을 잡아냈다). source가 컴포넌트 하나를 유일하게
+                # 정하므로 그것을 그대로 해시한다.
+                "id": hashlib.blake2b(
+                    source.encode("utf-8"), digest_size=16
+                ).hexdigest(),
+                "name": name,
+                "description": (
+                    f"External plugin agent used as a fork execution base "
+                    f"({source})."
+                ),
+                "config": {
+                    "kind": "external_fork_agent",
+                    "model": "inherit",
+                    "effort": None,
+                    "hooks": None,
+                    "source": source,
+                },
+                "body": "",
+            })
+            warnings.append(
+                f"외부 플러그인 에이전트 '{source}'를 외부 fork 에이전트 "
+                f"'{name}'으로 등록했습니다 — 이제 fork 스킬은 원문이 아니라 "
+                f"등록한 컴포넌트 이름을 가리킵니다(역할 고정)."
+            )
+        skill.setdefault("config", {})["agent"] = name
 
 
 def _promote_local_skills(data: dict, warnings: list[str]) -> None:
