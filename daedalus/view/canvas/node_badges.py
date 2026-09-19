@@ -98,10 +98,14 @@ def badges_for(component: object) -> list[tuple[str, str]]:
         return []
     result: list[tuple[str, str]] = []
 
-    # WP-WR — 랩핑 스킬은 본문의 정본이 외부 스킬이다. 소스를 뱃지로 보인다
+    # WP-WR — 본문의 정본이 외부에 있는 컴포넌트는 소스를 뱃지로 보인다
     # (미지정도 표시 — 배치는 됐는데 소스가 빈 노드를 화면에서 바로 잡는다).
-    if getattr(component, "kind", "") == "wrapped_skill":
-        source = getattr(config, "source", None) or "(source 미지정)"
+    # 종류가 아니라 `BODY_SOURCE` 선언이 답한다(WP-7 ②) — 종류로 물으면
+    # 정본이 외부인 새 종류에 뱃지가 **조용히** 붙지 않는다.
+    from daedalus.model.plugin.skill import has_external_body
+
+    if has_external_body(component):
+        source = component.external_source or "(source 미지정)"
         result.append(("🔗", f"랩핑 스킬 — 본문 정본: {source}"))
 
     # 진입 의미론 (A8) — user_invocable × disable_model_invocation을 **한 뱃지로**

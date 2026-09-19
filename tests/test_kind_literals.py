@@ -88,9 +88,14 @@ KIND_DECLARATION_FILES: frozenset[str] = frozenset({
 #: `"claude_md"`)은 계획 kind가 아니라 **MCP 응답 형상의 키 이름**이다 —
 #: 어휘가 겹치는 오탐이고(모듈 docstring "측정의 정직성"), 고치면 응답 형상이
 #: 바뀐다. 0으로 내릴 수 없는 유일한 자리라 여기 적어 둔다.
+#: WP-7이 걷어낸 자리(79 → 26, 17 → 12파일): 뷰의 kind 표 여섯 벌 —
+#: `registry_panel`의 `_ICON`/`_sections`/`tab_labels` 27 · `node_item._TYPE_STYLE` 7 ·
+#: `component_actions._COMPONENT_TITLES` 9 · `kind_switch_row`의 라벨·툴팁 6 ·
+#: `creation.NO_PLACE_KINDS` 3 — 전부 `view/kind_ui.KIND_UI` 한 표로 모였고
+#: 그 표의 키는 리터럴이 아니라 **클래스 선언 참조**(`ProceduralSkill.KIND`)다.
 RATCHET: dict[str, int] = {
-    "component_kind_sites": 79,
-    "component_kind_files": 17,
+    "component_kind_sites": 26,
+    "component_kind_files": 12,
     "plan_kind_sites": 1,
     "plan_kind_files": 1,
 }

@@ -42,7 +42,9 @@ GUI는 PySide6 노드 에디터(`view/`), 앱 내장 MCP 서버(`mcp/`)가 CC와
 | `compiler/workspace.py`·`wiring.py`·`token_report.py` | CLAUDE.md 구역 병합·rules 렌더 · `.mcp.json`/settings 병합 · 토큰 리포트(표시 전용, 계상 구간은 `TokenKind`) |
 | `mcp/` | 앱 내장 MCP 서버 — `tools/`(도메인 믹스인), `service.py`(HTTP 수명주기), `invoker.py`(메인 스레드 마샬링) |
 | `cli/` | `daedalus-bb` — 블랙보드 read/init/write/validate/list + progress |
-| `view/app.py` | MainWindow **골격** — 실체는 협력 객체 6종(`session_io`/`compile_actions`/`launch_actions`/`validation_actions`/`graph_io`/`component_actions`)에 있고 창에는 한 줄 위임만 |
+| `view/app.py` | MainWindow **골격** — 실체는 협력 객체 7종(`session_io`/`compile_actions`/`launch_actions`/`validation_actions`/`graph_io`/`component_actions`/`editor_tabs`)에 있고 창에는 한 줄 위임만 |
+| `view/editor_tabs.py` | `EditorTabs(window)` — 고정 탭 6개 구축 + 컴포넌트 편집 탭 수명주기(열기·닫기·제목 동기화·프론트매터 재구축) + 탭 전환의 undo 스택 배선. 탭 인덱스 상수·`_tab_prefix`의 소유자 |
+| `view/kind_ui.py` | **뷰의 종류 표** `KIND_UI` — 아이콘·섹션 라벨·색·탭 라벨·노드 스타일·다이얼로그 제목·편집기 팩토리·탭 접두·전환 라벨. 모델 레지스트리와 **kind 문자열로만** 연결(import 방향 view → model) |
 | `view/actions/` | **UI 무관 편집 액션** — 캔버스 메뉴·에디터·MCP가 공유하는 기능의 실체 |
 | `view/canvas/`·`commands/`·`editors/`·`panels/`·`viewmodel/`·`widgets/` | 노드 캔버스 · undo 커맨드 · 속성 편집기 · 독 패널 · VM(notify 채널) · 공용 위젯(마크다운 에디터 패키지, TagInput) |
 
@@ -98,7 +100,7 @@ python -m tests.data.golden.regen --refresh-dogfood   # 동결 사본 자체를 
 
 | 테스트 · 표 | 세는 것 | WP-0 기준선 (2026-09-19) | 현재 (WP-4 완료) |
 |---|---|---|---|
-| `tests/test_polymorphism_ratchet.py` `RATCHET` ① | 컴포넌트/설정 클래스 29종을 두 번째 인자로 갖는 `isinstance` | **111 사이트 / 34 파일** | **23 / 8** — compiler·serialize 둘 다 0(WP-4가 `ser.py` 11을 걷었다). 남은 최대치는 `registry_panel.py` 10(WP-7)·`app.py` 4(WP-7) |
+| `tests/test_polymorphism_ratchet.py` `RATCHET` ① | 컴포넌트/설정 클래스 29종을 두 번째 인자로 갖는 `isinstance` | **111 사이트 / 34 파일** | **4 / 2** — compiler·serialize·view 전부 0(WP-7이 뷰의 kind 표 여섯 벌을 `KIND_UI` 하나로 모았다). 남은 4는 레지스트리 조회 1(`kinds::spec_for`)과 랩핑 전용 3(`wrapped_usage` — WP-10) |
 | 〃 ② | 컴포넌트 형상 속성 12종(`config`/`body`/`fsm`/`transfer_on`/`call_agents`/`when_to_use`/`usage`/`enabled`/`reference_placements`/`source`/`output_events`/`output_event_defs`)을 문자열로 묻는 `getattr`/`hasattr`. 첫 인자가 `project`/`cfg`/`config`/`doc`이면 제외(컴포넌트 형상이 아니다) | **123 사이트 / 41 파일** | **33 / 12**(WP-4 무변 — WP-7·WP-8이 다음 주인) |
 | `tests/test_kind_literals.py` `RATCHET` ① | 컴포넌트 kind 16종이 `Compare` 피연산자·`dict` 키·`set`/`tuple`/`list` 원소로 쓰인 자리. 허용 파일 `model/serialize/migrate.py`(구버전 파일 문자열 해석이 정본)는 세지 않는다 | **157 사이트 / 26 파일** | **80 / 18** — WP-3이 레지스트리로(역직렬화·생성·전환·MCP 어휘·매트릭스 키), WP-4가 `deser_plugin`의 마지막 11을, WP-5가 쓰기 루프의 `skill`/`agent`/`wrapped_runner` 사다리를 흡수 |
 | 〃 ② plan kind | plan kind 14종. `agent`/`skill`이 컴포넌트 어휘와 겹치므로 `compiler/**`·`mcp/tools/query.py`에서만 센다. 소유자는 `compiler/plan_kinds.py` 하나(허용 파일) | **22 사이트 / 3 파일** | **1 / 1** — WP-5가 쓰기 루프 사다리 12와 `token_report`의 kind 사본 2를 걷었다. 남은 1건은 `mcp/tools/query.py`의 응답 키 `"claude_md"`로 **계획 kind가 아닌 오탐**이라 더 내려가지 않는다 |
@@ -535,10 +537,10 @@ daedalus/
     ├── recent.py           # 최근 프로젝트 목록(WP-RP) — ~/.daedalus/recent.json 읽기/쓰기 (Qt 무관 순수 stdlib).
     │                       #   load/save/push/remove/clear + MAX_RECENT. 기록 실패는 삼킨다(endpoint.py와 같은 정책).
     │                       #   실존 검사는 하지 않는다 — 메뉴를 열 때마다 stat을 때리면 네트워크 드라이브에서 UI가 멈춘다.
-    ├── app.py              # 메인 윈도우 **골격** (WP-RF-3e 분해 후 — 줄 수는 `docs/backlog.md` §7 표가 단일 진실) — 탭·독·메뉴 배선 + 컴포넌트 편집 진입.
-    │                       #   나머지는 협력 객체 6종에 위임(Mixin 아님 — 상속으로 섞으면 이름 충돌과 self의 정체가 흐려진다):
+    ├── app.py              # 메인 윈도우 **골격** (WP-RF-3e 분해 후 — 줄 수는 `docs/backlog.md` §7 표가 단일 진실) — 독·메뉴 배선 + 프로젝트 수명주기.
+    │                       #   나머지는 협력 객체 7종에 위임(Mixin 아님 — 상속으로 섞으면 이름 충돌과 self의 정체가 흐려진다):
     │                       #   session_io.py / compile_actions.py / launch_actions.py / validation_actions.py /
-    │                       #   graph_io.py / component_actions.py (아래 각 항목).
+    │                       #   graph_io.py / component_actions.py / editor_tabs.py (아래 각 항목).
     │                       #   **협력 객체가 실체이고 MainWindow에는 같은 이름의 한 줄 위임 메서드만 남는다** — 테스트와 MCP 도구가
     │                       #   window._save_to_path(...)처럼 윈도우의 내부 메서드를 직접 부르기 때문이다(tests/view/test_app_collaborators.py가 고정).
     │                       #   **위임은 한 방향이다** — 협력 객체끼리·자기 자신의 후속 단계는 self.update_title()처럼 협력 객체 쪽을
@@ -555,8 +557,8 @@ daedalus/
     │                       # 컴포넌트 생성·이름 변경·삭제는 component_actions.py로 이관(아래 항목) — 창에는 한 줄 위임만.
     │                       # 탭 구조(WP-BB/WP-HK/WP-WD): 0=프로젝트 FSM 캔버스, 1=블랙보드(BlackboardPanel), 2=훅 라이브러리(HookLibraryPanel),
     │                       #   3=CLAUDE.md 구역(ClaudeMdPanel), 4=규칙(RulesPanel), 5=작업 폴더 설정(WorkspaceSettingsPanel — WP-WS)
-    │                       #   — 상주·닫기 불가 고정 6개. _close_tab이 여섯 인덱스를
-    │                       #   모두 거부하고, load_project의 탭 정리 루프는 _LAST_FIXED_TAB_INDEX 다음부터 닫는다.
+    │                       #   — 상주·닫기 불가 고정 6개. **실체는 editor_tabs.py**(WP-7 ①, 아래 항목) — 창에는 한 줄 위임만.
+    │                       #   _close_tab이 여섯 인덱스를 모두 거부하고, load_project의 탭 정리 루프는 _LAST_FIXED_TAB_INDEX 다음부터 닫는다.
     │                       #   **LOCAL 전용 탭 표시(WP-WS)**: 탭 3·4·5는 빌드 타깃이 LOCAL일 때만 보인다 —
     │                       #   _refresh_target_dependent_tabs가 setTabVisible로 **숨긴다**(제거 아님 — 인덱스가
     │                       #   보존돼야 고정 탭 체계·_open_tabs가 흔들리지 않는다). set_project와
@@ -566,6 +568,26 @@ daedalus/
     │                       #   markdown_editor.set_files_root_provider(lambda: self._file_panel.files_root())를 등록.
     │                       # 미저장 변경: _dirty 플래그 + _mark_dirty/mark_clean/confirm_discard_changes.
     │                       #   상세는 "미저장 변경 확인" 개념 섹션 참조.
+    ├── editor_tabs.py      # EditorTabs(window) — **탭 배선**(WP-7 ① — app.py 1,072줄 선분해, 이동만).
+    │                       #   setup_central(QTabWidget + 고정 탭 6개 + FsmScene 생성 + notify 리스너 등록)/
+    │                       #   schedule_settings_prewarm(WP-WS 유휴 프리웜, isVisible 가드)/on_project_vm_changed(레지스트리 dim +
+    │                       #     상주 패널 refresh_external + 탭 제목·표시 재동기)/refresh_target_dependent_tabs(LOCAL 전용 탭 setTabVisible)/
+    │                       #   sync_tab_titles/open_component(SkillEditor·AgentEditor 탭)/rebuild_component_frontmatter(종류 전환 후 폼 재생성)/
+    │                       #   open_component_ports(A9-5)/close_tab/on_tab_changed(활성 undo 스택 전환)/on_scene_selection/update_undo_redo/undo/redo.
+    │                       #   **탭 인덱스 상수(_FSM_TAB_INDEX … _FIXED_TAB_INDEXES·_LOCAL_ONLY_TAB_INDEXES·_LAST_FIXED_TAB_INDEX)와
+    │                       #   _tab_prefix의 소유자**다 — app.py가 **같은 객체**를 재-export한다(테스트·validation_actions가 app 경로로 임포트).
+    │                       #   상태(_tabs/_open_tabs/_fsm_scene/고정 패널)는 계속 윈도우 소유이고 self._w.<attr>로 읽고 쓴다.
+    ├── kind_ui.py          # **뷰의 종류 표** KIND_UI (WP-7 ② — 카탈로그 V1~V15 흡수). 한 행 = 한 종류의 화면 표면:
+    │                       #   icon(레지스트리 행) / section_label·section_color(섹션) / tab_label(탭) / node_style(캔버스 상태 노드,
+    │                       #   None=상태 노드가 아니다) / dialog_title(이름 입력) / editor_factory(편집 탭 위젯 — **호출 가능 객체**,
+    │                       #   위젯 클래스를 값으로 들지 않고 안에서 지연 임포트) / tab_prefix(에이전트 🤖·🧩) /
+    │                       #   switch_label·switch_tooltip(종류 전환, CONVERT_FAMILY가 있는 종류만) / has_enable_toggle(랩핑) /
+    │                       #   first_placement_prompt(최초 배치 질문 — 랩핑 용도. 팝업 자체는 FsmScene._ask_wrapped_usage 봉합선).
+    │                       #   조회는 ui_for(component)/ui_by_kind/ui_by_config_kind + DIALOG_TITLES·switch_noun.
+    │                       #   **미지 종류는 이유와 선택지를 말하는 ValueError**다 — 예전에는 표에서 빠진 종류가 아이콘 없는 행·
+    │                       #   빈 상태와 구분되지 않는 회색 노드·열리지 않는 탭으로 **조용히** 나타났다(👻).
+    │                       #   **자동 생성하지 않는다** — 모델 레지스트리를 순회해 기본값을 주면 그 회귀가 되돌아온다.
+    │                       #   parity(tests/test_kind_registry_parity.py)와 fail-loud(tests/test_registry_failure_is_loud.py)가 고정.
     ├── session_io.py       # SessionIO(window) — 저장/열기/최근 목록/패키지(.ddpj) (WP-RF-3e에서 app.py로부터 추출).
     │                       # 프로젝트 패키지(WP-PK): 열기/저장이 **폴더** 단위. open_project_dialog(폴더 선택)/open_file_dialog(구버전 파일 직접)/
     │                       #   save_project_as(폴더 선택 — 형식이 새 형식으로 바뀌는 유일한 지점)/export_package_dialog/import_package_dialog.
@@ -604,7 +626,8 @@ daedalus/
     ├── validation_actions.py  # ValidationActions(window) — F7 검증 + 결과 항목 → 노드 포커스 (WP-RF-3e에서 추출).
     │                       #   run_validation(Validator.validate_project → ValidationPanel + dock 표시)/show_validation_dock(컴파일 경로와 공용)/
     │                       #   find_validation_dock/on_validation_item_activated → focus_in_project_canvas | focus_in_agent_tab.
-    │                       #   탭 인덱스 상수(_FSM_TAB_INDEX)는 app.py 소유라 **메서드 안에서 지역 임포트**한다(최상단이면 순환 임포트).
+    │                       #   탭 인덱스 상수(_FSM_TAB_INDEX)는 app.py가 editor_tabs.py에서 재-export한 것이라 **메서드 안에서 지역
+    │                       #   임포트**한다(최상단이면 순환 임포트).
     ├── graph_io.py         # GraphIO(window) — 프로젝트 그래프 ↔ 캔버스 VM 왕복 (app.py로부터 추출).
     │                       #   load_project_graph(project.graph + graph_layout/edge_layout → state_vms/transition_vms/
     │                       #     reference_vms/reference_links 재구성 + notify. WP-EP: EntryPoint와 그에 닿는 전이는 VM을 만들지 않는다)/
@@ -638,8 +661,8 @@ daedalus/
     │   ├── fork_skill.py   #   fork 스킬(2026-09-13) — fork_agent_choices(fork 에이전트 후보 세 종류)/validate_fork_agent/skill_kind_of/
     │   │                   #     KINDS(3-way: procedural/sync_fork/async_fork)/convert_skill_kind(대상 config 클래스
     │   │                   #     기준 필드 복사, config·__class__ 교체 + resync_bracket을 묶어 1 undo). 피커·캔버스 메뉴·MCP 공용 실체
-    │   ├── creation.py     #   생성+배치 — NO_PLACE_KINDS(= model/plugin/placement.is_canvas_placeable의 음성 거울
-    │   │                   #     상수 — 판정의 실체는 placement 쪽이고 레지스트리·캔버스도 그 함수를 부른다)/create_wrapped_skill(WP-WR —
+    │   ├── creation.py     #   생성+배치 — (NO_PLACE_KINDS 음성 목록은 WP-7 ②에서 삭제됐다: 만들기 전 거절은
+    │   │                   #     placement.is_canvas_placeable_role(spec.placement) — 선언 하나가 두 판정을 함께 답한다)/create_wrapped_skill(WP-WR —
     │   │                   #     생성+선언+배치 1 undo, WRAPPED_SOURCE_MIME_PREFIX)/
     │   │                   #     ("여기에 만들기" 빈 캔버스 메뉴(A9-9)·CREATABLE_KINDS는 퇴역 — 정확한 이름 타이핑 요구, 사용자 확정)/
     │   │                   #     make_component(창의 _make_fsm 재사용 — 레지스트리와 같은 물건이어야 한다)/create_and_place.
@@ -717,8 +740,12 @@ daedalus/
     │                       #                              (WP-2d) — 단일 배치 노드만 포트를 갖는다. MCP `ports.py`의 두 게이트와 같은 술어.
     │                       #     reference_link_panel.py— _ReferenceLinkPanel
     │                       #     kind_switch_row.py     — 절차형 ↔ 동기/비동기 fork **3-way** 전환 버튼·안내 행
-    │                       #                              (build_kind_switch_row, 800줄 예산 때문에 분리)
-    │                       #     kind_matrix.py         — matrix_for(component) → (규칙 표, 위젯 표, is_agent). **얇은 어댑터**다 —
+    │                       #                              (build_kind_switch_row, 800줄 예산 때문에 분리). 라벨·툴팁·명사형의
+    │                       #                              실체는 kind_ui.KIND_UI(switch_label/switch_tooltip/switch_noun)다 —
+    │                       #                              캔버스 우클릭 "종류 전환" 서브메뉴도 같은 행을 읽는다(WP-7 ②).
+    │                       #     kind_matrix.py         — matrix_for(component) → (규칙 표, 위젯 표, is_agent). 위젯 표는 **버킷
+    │                       #                              선언**(spec_for(c).bucket)이 고른다(WP-7 ② — isinstance(c, Agent)로 물으면
+    │                       #                              에이전트 버킷의 새 종류가 스킬 위젯 표로 그려진다). **얇은 어댑터**다 —
     │                       #                              표 선택의 실체는 model.plugin.field_matrix.matrix_for이고(컴파일러는 뷰를
     │                       #                              임포트할 수 없다) 여기서는 뷰에만 있는 위젯 표를 짝지어 준다. 800줄 예산 분리
     │                       #     field_adapters.py      — _WIDGET_ADAPTERS 표(위 설명) + _adapter_for. WP-E에서 frontmatter_panel에서

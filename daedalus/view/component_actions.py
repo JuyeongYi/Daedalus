@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING
 from PySide6.QtWidgets import QInputDialog, QMessageBox
 
 from daedalus.model.plugin.roles import Bucket
+from daedalus.view.kind_ui import DIALOG_TITLES
 
 if TYPE_CHECKING:  # pragma: no cover - 타입 전용
     from daedalus.view.app import MainWindow
@@ -31,17 +32,9 @@ class ComponentActions:
     """컴포넌트 생성/이름 변경/삭제를 담당하는 MainWindow 협력 객체."""
 
     #: 종류 → 이름 입력 다이얼로그 제목 (알 수 없는 종류 방어에도 쓰인다).
-    _COMPONENT_TITLES = {
-        "procedural": "새 Procedural Skill",
-        "sync_fork": "새 Sync Fork Skill",
-        "async_fork": "새 Async Fork Skill",
-        "declarative": "새 Declarative Skill",
-        "transfer": "새 Transfer Skill",
-        "reference": "새 Reference Skill",
-        "wrapped": "새 Wrapped Skill",
-        "agent": "새 Agent",
-        "fork_agent": "새 Fork Agent",
-    }
+    #: 실체는 뷰의 종류 표 `KIND_UI`다 (WP-7 ②) — 손으로 적은 9키 dict가 여기
+    #: 하나 더 있으면 새 종류가 제목 없이 태어난다.
+    _COMPONENT_TITLES = DIALOG_TITLES
 
     def __init__(self, window: MainWindow) -> None:
         self._w = window

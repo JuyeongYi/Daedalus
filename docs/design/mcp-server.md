@@ -264,8 +264,9 @@
   `agent` · `fork_agent`)를 싣고, 쓰는 쪽 파라미터는 위 표의 **짧은 형**을 받는다. 판정의 실체가
   다르기 때문이다 — 읽는 쪽은 모델이 스스로 말하는 `kind` 프로퍼티(원칙 1), 쓰는 쪽은 도구의
   생성 어휘(`_SKILL_KINDS`)다. 둘을 섞어 넣으면 거절된다(조용히 받지 않는다 — 원칙 5).
-- **`create_agent(kind="fork_agent", x=, y=)`는 거절한다.** fork 에이전트는 그래프 노드가 아니다
-  (`NO_PLACE_KINDS`). 좌표를 조용히 무시하면 "배치했는데 아무 데도 없는" 상태가 된다.
+- **`create_agent(kind="fork_agent", x=, y=)`는 거절한다.** fork 에이전트는 그래프 노드가 아니다.
+  판정은 종류의 `PLACEMENT` 선언 하나다(`placement.is_canvas_placeable_role` — WP-7 ②에서 음성 목록
+  `creation.NO_PLACE_KINDS`가 삭제됐다). 좌표를 조용히 무시하면 "배치했는데 아무 데도 없는" 상태가 된다.
 - **`convert_skill`은 3-way다.** sync↔async는 같은 fork라 `agent`를 보존하고 버리는 것이 없다
   (복사는 **대상 config 클래스의 필드 기준** — 부모 클래스 기준으로 복사하면 `ForkSkillConfig`에만
   있는 `agent`가 `dropped`에도 안 잡힌 채 기본값으로 리셋된다). procedural→fork는 `allowed_tools`,

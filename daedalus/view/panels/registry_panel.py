@@ -16,14 +16,11 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from daedalus.model.plugin.skill import (
-    DeclarativeSkill,
-    ProceduralSkill,
-    ReferenceSkill,
-    TransferSkill,
-    WrappedSkill,
-)
+from daedalus.model.plugin.kinds import config_kinds_in, spec_for
+from daedalus.model.plugin.roles import Bucket
+from daedalus.model.plugin.skill import WrappedSkill
 from daedalus.model.project import PluginProject
+from daedalus.view.kind_ui import ui_by_config_kind, ui_for
 
 _ROLE_COMPONENT = Qt.ItemDataRole.UserRole + 1
 _ROLE_PLACED = Qt.ItemDataRole.UserRole + 2
@@ -35,17 +32,14 @@ _COLOR_PLACED = QColor("#445544")
 _COLOR_NO_PLACE = QColor("#666644")
 _COLOR_CANDIDATE = QColor("#7f8f9f")
 
-_ICON = {
-    "procedural_skill": "⚙",
-    "sync_fork_skill": "🍴",
-    "async_fork_skill": "🍴⏳",
-    "declarative_skill": "📄",
-    "transfer_skill": "⚡",
-    "wrapped_skill": "🔗",
-    "reference_skill": "📖",
-    "agent": "🤖",
-    "fork_agent": "🧩",
-}
+#: 섹션 키 = config `kind` 어휘. **선언 순서**가 곧 탭 순서다(결정성) — 새 종류는
+#: 모델 레지스트리 한 줄 + `KIND_UI` 한 행이면 팔레트에 나타난다(V1~V4 소멸).
+_SECTION_KINDS: tuple[str, ...] = (
+    config_kinds_in(Bucket.SKILLS) + config_kinds_in(Bucket.AGENTS)
+)
+
+#: 후보 행(WP-WR)이 들어갈 섹션 — WP-10에서 이 경로 전체가 사라진다.
+_WRAPPED_SECTION = WrappedSkill.CONFIG_CLS.KIND
 
 
 class _DraggableList(QListWidget):
@@ -139,8 +133,7 @@ class _RegistrySection(QWidget):
     def add_item(self, component: object, placed: bool) -> None:
         from daedalus.model.plugin.placement import is_canvas_placeable
 
-        kind = getattr(component, "kind", "")
-        icon = _ICON.get(kind, "")
+        icon = ui_for(component).icon
         name = getattr(component, "name", str(component))
         # 캔버스에 놓이는가는 **항목마다** 묻는다(양성 판정 단일 진실) — 섹션
         # 단위 플래그를 따로 두면 같은 사실의 출처가 둘이 된다(스멜 ②).
@@ -200,10 +193,10 @@ class _RegistrySection(QWidget):
         # 랩핑 스킬은 삭제할 수 없다(WP-WR, 사용자 확정 2026-09-07) — 메뉴에
         # 아예 내지 않고 그 자리에 켜고 끄는 항목을 둔다. 눌러 봐야 거절당하는
         # 항목을 보여 주면 "왜 안 되지"를 매번 다시 겪는다.
-        from daedalus.model.plugin.skill import WrappedSkill
-
-        if isinstance(comp, WrappedSkill):
-            enabled = bool(getattr(comp.config, "enabled", True))
+        # 종류가 아니라 **뷰 표면 선언**(`has_enable_toggle`)이 어느 쪽
+        # 항목인지 답한다 — 활성/비활성은 인스턴스 능력(`is_active`)이 답한다.
+        if ui_for(comp).has_enable_toggle:
+            enabled = comp.is_active()
             toggle = menu.addAction("비활성화" if enabled else "활성화")
             if toggle is not None:
                 toggle.setToolTip(
@@ -246,39 +239,24 @@ class RegistryPanel(QWidget):
         layout.setSpacing(2)
 
         self._sections: dict[str, _RegistrySection] = {
-            "procedural": _RegistrySection("⚙ PROCEDURAL", QColor("#88cc88")),
-            "sync_fork": _RegistrySection("🍴 SYNC FORK", QColor("#c07a3a")),
-            "async_fork": _RegistrySection("🍴⏳ ASYNC FORK", QColor("#8a5a2a")),
-            "declarative": _RegistrySection("📄 DECLARATIVE", QColor("#cccc88")),
-            "transfer": _RegistrySection("⚡ TRANSFER", QColor("#88aacc")),
-            "reference": _RegistrySection("📖 REFERENCE", QColor("#66aaaa")),
-            "wrapped": _RegistrySection("🔗 WRAPPED", QColor("#aa88cc")),
-            "agent": _RegistrySection("🤖 AGENTS", QColor("#cc8888")),
-            "fork_agent": _RegistrySection("🧩 FORK AGENTS", QColor("#cc8888")),
+            kind: _RegistrySection(
+                ui_by_config_kind(kind).section_label,
+                ui_by_config_kind(kind).section_color,
+            )
+            for kind in _SECTION_KINDS
         }
         # 종류별 세로 스택 대신 **탭**으로 담는다 (사용자 확정 — 좌측 열을
         # 컴팩트하게 만들어 파일 독을 아래에 두고 에디터가 공간을 가져간다).
         # 탭 라벨은 짧게, 전체 이름은 툴팁으로.
         self._tabs = QTabWidget()
         self._tabs.setDocumentMode(True)
-        tab_labels = {
-            "procedural": "⚙",
-            "sync_fork": "🍴",
-            "async_fork": "🍴⏳",
-            "declarative": "📄",
-            "transfer": "⚡",
-            "reference": "📖",
-            "wrapped": "🔗",
-            "agent": "🤖",
-            "fork_agent": "🧩",
-        }
         for kind, section in self._sections.items():
             section.add_requested.connect(lambda k=kind: self.new_component_requested.emit(k))
             section.item_double_clicked.connect(self.component_double_clicked)
             section.delete_requested.connect(self.component_delete_requested)
             section.enabled_toggle_requested.connect(self.component_enabled_toggled)
             section.preview_requested.connect(self.component_preview_requested)
-            idx = self._tabs.addTab(section, tab_labels[kind])
+            idx = self._tabs.addTab(section, ui_by_config_kind(kind).tab_label)
             self._tabs.setTabToolTip(idx, section.label_text)
         layout.addWidget(self._tabs)
 
@@ -323,44 +301,35 @@ class RegistryPanel(QWidget):
             section.clear()
         if self._project is None:
             return
-        from daedalus.model.plugin.agent import ForkAgent
-        from daedalus.model.plugin.skill import AsyncForkSkill, SyncForkSkill
-
-        for skill in self._project.skills:
-            placed = id(skill) in self._placed_ids
-            if isinstance(skill, WrappedSkill):
-                self._sections["wrapped"].add_item(skill, placed)
-            elif isinstance(skill, AsyncForkSkill):
-                self._sections["async_fork"].add_item(skill, placed)
-            elif isinstance(skill, SyncForkSkill):
-                self._sections["sync_fork"].add_item(skill, placed)
-            elif isinstance(skill, TransferSkill):
-                self._sections["transfer"].add_item(skill, placed=False)
-            elif isinstance(skill, ReferenceSkill):
-                self._sections["reference"].add_item(skill, placed)
-            elif isinstance(skill, ProceduralSkill):
-                self._sections["procedural"].add_item(skill, placed)
-            elif isinstance(skill, DeclarativeSkill):
-                self._sections["declarative"].add_item(skill, placed=False)
-        for agent in self._project.agents:
-            placed = id(agent) in self._placed_ids
-            key = "fork_agent" if isinstance(agent, ForkAgent) else "agent"
-            self._sections[key].add_item(agent, placed)
+        # **순서 민감한 isinstance 사다리가 있던 자리다**(V4) — 서브클래스가 먼저
+        # 매치돼야 해서 WrappedSkill/AsyncForkSkill을 앞에 두어야 했고, 새 종류는
+        # 어느 분기에도 걸리지 않아 **조용히 레지스트리에서 사라졌다**. 이제
+        # 종류 선언이 자기 섹션을 답한다(`spec_for(c).config_kind`).
+        # 배치 여부는 항목마다 묻는다 — 캔버스에 놓이지 않는 종류는 애초에
+        # `_placed_ids`(상태 노드의 skill_ref)에 들어가지 않는다.
+        for component in list(self._project.skills) + list(self._project.agents):
+            key = spec_for(component).config_kind
+            self._sections[key].add_item(
+                component, id(component) in self._placed_ids
+            )
         # 외부 스킬 후보 (WP-WR) — 사용 선언된 플러그인의 스킬 중 아직 이
         # 프로젝트가 랩핑하지 않은 것. 드래그해 배치하면 그 시점에
         # WrappedSkill이 생성된다(체크만 하면 목록에 자동으로 나타난다 —
         # 사용자 확정 "목록에 그냥 자동으로 명시").
+        # "본문 정본이 외부인 스킬의 소스" — 종류가 아니라 능력이 답한다(WP-2c).
+        from daedalus.model.plugin.skill import has_external_body
+
         wrapped_sources = {
-            getattr(getattr(s, "config", None), "source", "") or ""
+            s.external_source or ""
             for s in self._project.skills
-            if isinstance(s, WrappedSkill)
+            if has_external_body(s)
         }
         from daedalus.view.actions.creation import WRAPPED_SOURCE_MIME_PREFIX
 
         for name, plugin_id, source, description in self._wrapped_candidates():
             if source in wrapped_sources:
                 continue
-            self._sections["wrapped"].add_candidate_item(
+            self._sections[_WRAPPED_SECTION].add_candidate_item(
                 label=f"🔗 {name} ({plugin_id})",
                 drag_text=f"{WRAPPED_SOURCE_MIME_PREFIX}{source}",
                 tooltip=(

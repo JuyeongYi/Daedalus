@@ -55,6 +55,18 @@ def is_state_placeable(component: object) -> bool:
     return placement_role_of(component) is PlacementRole.STATE
 
 
+def is_canvas_placeable_role(role: PlacementRole) -> bool:
+    """이 **배치 역할**이 캔버스에 놓이는가 — 인스턴스가 아직 없는 자리 전용.
+
+    MCP `create_skill(x=, y=)`처럼 **만들기 전에** 거절해야 하는 자리는 kind
+    문자열밖에 갖고 있지 않다(종전 `creation.NO_PLACE_KINDS` 음성 목록이 그
+    자리였고, 목록과 판정이 어긋나도 아무도 알려 주지 않았다). 종류의
+    `PLACEMENT` 선언을 그대로 물어 두 답이 갈리지 않게 한다 —
+    `is_canvas_placeable`은 이 함수의 인스턴스 판본이다.
+    """
+    return role in (PlacementRole.STATE, PlacementRole.REFERENCE)
+
+
 def is_edge_placeable(component: object) -> bool:
     """전이 **엣지**에 붙는 컴포넌트인가 — 오늘 `TransferSkill` 하나.
 
@@ -82,7 +94,7 @@ def is_canvas_placeable(component: object) -> bool:
     `is_state_placeable`과 **다른 질문**이다: 참조 스킬은 상태 노드가 될 수
     없지만 캔버스에는 참조 노드로 놓인다(레지스트리에서 드래그 가능).
     """
-    return placement_role_of(component) in (PlacementRole.STATE, PlacementRole.REFERENCE)
+    return is_canvas_placeable_role(placement_role_of(component))
 
 
 def fork_skills_using(agent, project) -> list[str]:

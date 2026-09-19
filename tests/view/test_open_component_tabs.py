@@ -9,18 +9,15 @@ from __future__ import annotations
 
 import pytest
 
+from daedalus.model.plugin.kinds import config_kinds_in
+from daedalus.model.plugin.roles import Bucket
 from daedalus.model.project import PluginProject
 
-_SKILL_KINDS = [
-    "procedural",
-    "sync_fork",
-    "async_fork",
-    "declarative",
-    "transfer",
-    "reference",
-    "wrapped",
-]
-_AGENT_KINDS = ["agent", "fork_agent"]
+#: 종류 목록은 **모델 레지스트리에서 파생**한다 (WP-7 ②) — 손으로 적어 두면
+#: 새 종류가 이 커버리지에서 조용히 빠지고, 그 종류의 탭이 안 열려도
+#: 아무도 알려 주지 않는다(이 파일이 막으려는 바로 그 부재다).
+_SKILL_KINDS = list(config_kinds_in(Bucket.SKILLS))
+_AGENT_KINDS = list(config_kinds_in(Bucket.AGENTS))
 
 
 @pytest.fixture

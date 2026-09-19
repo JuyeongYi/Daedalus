@@ -11,13 +11,6 @@
 """
 from __future__ import annotations
 
-#: 캔버스에 **아무 노드로도 놓이지 않는** 종류. 판정의 실체는
-#: `model.plugin.placement.is_canvas_placeable`이고 이 상수는 그 음성 목록의
-#: 문자열 표현이다(생성 다이얼로그가 kind 문자열만 들고 있는 자리 전용) —
-#: 어긋나지 않음을 테스트가 고정한다. reference는 여기 없다: 상태 노드는
-#: 못 되지만 **참조 노드로는 놓인다**.
-NO_PLACE_KINDS: frozenset[str] = frozenset({"declarative", "transfer", "fork_agent"})
-
 # (CREATABLE_KINDS는 "여기에 만들기" 빈 캔버스 메뉴(A9-9)와 함께 퇴역 —
 #  이름을 정확히 타이핑해야 해서 쓰기 어려웠다(사용자 확정). 생성 표면은
 #  레지스트리 "+" / 카탈로그 선언 후 드래그 / MCP create_skill이다.)

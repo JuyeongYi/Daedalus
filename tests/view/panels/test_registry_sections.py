@@ -1,28 +1,26 @@
-"""레지스트리 세 표의 완전성 + 드래그 가능 판정 (WP-A 리뷰 반영).
+"""레지스트리 섹션의 완전성 + 드래그 가능 판정 (WP-A 리뷰 반영, WP-7 ②).
 
-섹션 키·탭 라벨·아이콘 세 표가 **동시에** 늘어야 한다 — `tab_labels[kind]`는
-맨 첨자라 하나만 빠져도 KeyError로 패널 전체가 뜨지 않고, `_ICON`이 빠지면
-아이콘 없는 행이 조용히 생긴다. 드래그 가능 여부는 섹션 플래그가 아니라
-**항목마다** `is_canvas_placeable`이 정한다(판정의 단일 진실).
+예전에는 섹션 키·탭 라벨·아이콘이 **세 표**였고 셋이 동시에 늘어야 했다. 이제
+셋 다 `view/kind_ui.KIND_UI` 한 행에서 나오므로, 여기서 고정하는 것은
+**모델 레지스트리와 팔레트가 같은 종류 집합을 말하는가**다 — 섹션 목록을 손으로
+적어 두면 새 종류가 모델에만 생기고 팔레트에서는 조용히 사라진다.
+드래그 가능 여부는 섹션 플래그가 아니라 **항목마다** `is_canvas_placeable`이
+정한다(판정의 단일 진실).
 """
 from __future__ import annotations
 
 import pytest
 from PySide6.QtCore import Qt
 
+from daedalus.model.plugin.kinds import config_kinds_in
+from daedalus.model.plugin.roles import Bucket
 from daedalus.model.project import PluginProject
 
-_ALL_KINDS = [
-    "procedural",
-    "sync_fork",
-    "async_fork",
-    "declarative",
-    "transfer",
-    "reference",
-    "wrapped",
-    "agent",
-    "fork_agent",
-]
+#: 종류 목록은 **모델 레지스트리에서 파생**한다(R14) — 손으로 적은 9줄이
+#: 있으면 그 목록이 낡는 것을 아무도 알려 주지 않는다.
+_ALL_KINDS = list(config_kinds_in(Bucket.SKILLS)) + list(
+    config_kinds_in(Bucket.AGENTS)
+)
 
 
 @pytest.fixture
@@ -46,18 +44,17 @@ def _panel_with_all_kinds(window):
 
 
 def test_every_section_key_has_a_tab_label_and_an_icon(window):
-    """세 표의 커버리지 — 하나라도 빠지면 패널이 KeyError로 죽는다."""
-    from daedalus.view.panels.registry_panel import _ICON
+    """섹션·탭·아이콘이 종류마다 하나씩 — 빠진 종류는 팔레트에서 사라진다."""
+    from daedalus.model.plugin.kinds import spec_by_config_kind
+    from daedalus.view.kind_ui import KIND_UI
 
     panel = window._registry_panel
-    assert set(panel._sections) == set(_ALL_KINDS)
-    # 탭은 섹션마다 정확히 하나 — tab_labels 누락은 생성 시점 KeyError다.
+    assert list(panel._sections) == _ALL_KINDS  # 순서까지 선언 순서다
+    # 탭은 섹션마다 정확히 하나 — KIND_UI 행이 없으면 생성 시점에 ValueError다.
     assert panel._tabs.count() == len(panel._sections)
-    kinds = {
-        f"{k}_skill" if k not in ("agent", "fork_agent") else k
-        for k in panel._sections
-    }
-    assert kinds <= set(_ICON)
+    for kind in panel._sections:
+        ui = KIND_UI[spec_by_config_kind(kind).kind]
+        assert ui.icon and ui.tab_label and ui.section_label
 
 
 def test_each_component_class_lands_in_exactly_one_section(window):

@@ -8,26 +8,7 @@ from __future__ import annotations
 
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton
 
-
-#: 종류 → 버튼 라벨. 전환은 3-way라 "토글"이 아니다.
-KIND_LABELS: dict[str, str] = {
-    "procedural": "절차형 스킬로 전환",
-    "sync_fork": "동기 fork 스킬로 전환",
-    "async_fork": "비동기 fork 스킬로 전환",
-}
-
-#: 종류 → 명사형("동기 fork 스킬"). 라벨에서 **유도**한다 — 상태 문구와 버튼이
-#: 다른 어휘를 쓰면(예: 버튼은 "동기 fork 스킬로 전환", 상태는 "sync_fork로
-#: 전환됨") 같은 것을 가리키는지 사용자가 알 수 없다.
-KIND_NOUNS: dict[str, str] = {
-    kind: label.removesuffix("로 전환") for kind, label in KIND_LABELS.items()
-}
-
-_KIND_TOOLTIPS: dict[str, str] = {
-    "procedural": "fork 에이전트 지정을 버립니다.",
-    "sync_fork": "fork 스킬은 allowed_tools를 쓰지 않아 버립니다. 부른 쪽이 보고를 기다립니다.",
-    "async_fork": "fork 스킬은 allowed_tools를 쓰지 않아 버립니다. 보고는 작업 알림으로 옵니다.",
-}
+from daedalus.view.kind_ui import switch_noun, ui_by_config_kind
 
 
 def build_kind_switch_row(panel, component, kind: str) -> None:
@@ -42,10 +23,13 @@ def build_kind_switch_row(panel, component, kind: str) -> None:
     for target in KINDS:
         if target == current:
             continue
-        btn = QPushButton(KIND_LABELS[target])
+        # 라벨·툴팁의 실체는 뷰의 종류 표 `KIND_UI`다 (WP-7 ②) — 전환 가족에
+        # 종류를 더할 때 여기 표 세 벌을 따로 고칠 자리가 없어야 한다.
+        target_ui = ui_by_config_kind(target)
+        btn = QPushButton(target_ui.switch_label)
         btn.setToolTip(
             "이름·본문·포트·배치는 그대로 두고 종류만 바꿉니다(Ctrl+Z로 되돌림). "
-            + _KIND_TOOLTIPS[target]
+            + (target_ui.switch_tooltip or "")
         )
         btn.clicked.connect(
             lambda _=False, b=btn, t=target: _convert(panel, b, t)
@@ -72,7 +56,7 @@ def _convert(panel, btn: QPushButton, target: str) -> None:
     result = convert_skill_kind(window, panel._component, target)
     dropped = ", ".join(result["dropped"])
     message = (
-        f"'{getattr(panel._component, 'name', '?')}' {KIND_NOUNS[target]}로 전환됨"
+        f"'{getattr(panel._component, 'name', '?')}' {switch_noun(target)}로 전환됨"
         f"{f' ({dropped} 버림)' if dropped else ''} — 필드 구성이 갱신됐습니다 "
         f"(Ctrl+Z로 되돌릴 수 있습니다)"
     )

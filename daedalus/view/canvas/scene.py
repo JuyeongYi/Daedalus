@@ -386,18 +386,18 @@ class FsmScene(QGraphicsScene):
             return
         # 참조 스킬은 별도 처리 (여러 인스턴스 허용) — 용도가 reference로
         # 고정된 WrappedSkill도 같은 경로다(WP-WR).
-        from daedalus.model.plugin.skill import WrappedSkill, is_reference_usage
+        from daedalus.model.plugin.skill import is_reference_usage
 
         if is_reference_usage(skill):
             self.drop_reference_skill(skill_name, scene_pos)
             return
-        # 용도 미정 wrapped(레지스트리 "+"로 만든 것) — 최초 배치가 용도를
-        # 고정한다(사용자 확정): 물어서 고정 + 배치를 1 undo로 묶는다.
-        if isinstance(skill, WrappedSkill) and not getattr(skill.config, "usage", ""):
-            usage = self._ask_wrapped_usage()
-            if usage is None:
-                return
-            self._place_wrapped_fixing_usage(skill, usage, scene_pos)
+        # 최초 배치가 무언가를 묻는 종류인가 — 종류가 아니라 **뷰 표면 선언**이
+        # 답한다(WP-7 ②, `KIND_UI[kind].first_placement_prompt`). 오늘은 용도
+        # 미정 랩핑 스킬 하나이고, 물어서 고정 + 배치를 1 undo로 묶는다.
+        from daedalus.view.kind_ui import ui_for
+
+        prompt = ui_for(skill).first_placement_prompt
+        if prompt is not None and prompt(self, skill, scene_pos):
             return
         # 상태 노드로 놓을 수 있는 종류인가 — 판정의 실체는 model의
         # `is_state_placeable` 하나다(레지스트리·"여기에 만들기"·MCP와 공용).

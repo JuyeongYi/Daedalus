@@ -129,6 +129,49 @@
   돌아오고 탭을 다시 열 때 문서가 새로 만들어진다 — 잃는 것은 본문 편집 이력뿐이다.
   닫힌 편집 탭도 undo로 다시 열리지는 않는다.
 
+## 탭 배선 — `view/editor_tabs.py` (WP-7 ①)
+
+- **역할:** 고정 탭 6개(0 FSM 캔버스 · 1 블랙보드 · 2 훅 · 3 CLAUDE.md · 4 규칙 · 5 설정) 구축과
+  컴포넌트 편집 탭의 수명주기(열기·닫기·제목 동기화·종류 전환 후 폼 재생성·포트 포커스),
+  그리고 탭 전환이 좌우하는 활성 undo 스택 배선이 `EditorTabs(window)` 하나에 모인다.
+  `MainWindow`의 협력 객체다(Mixin 아님 — `session_io`/`component_actions`와 같은 관례).
+- **왜 나왔나:** `app.py`가 1,072줄로 분해 예산(~800줄)을 넘겼고, 탭에 관한 것이 한 덩어리로
+  떨어져 나올 수 있었다(코드 위생 — "기능을 더하기 전에 먼저 쪼갠다"). WP-7 ②가 여기에
+  `KIND_UI` 조회를 얹는다.
+- **소유·위임:** 탭 인덱스 상수(`_FSM_TAB_INDEX` … `_FIXED_TAB_INDEXES`·`_LOCAL_ONLY_TAB_INDEXES`·
+  `_LAST_FIXED_TAB_INDEX`)와 `_tab_prefix`의 **소유자는 이 모듈**이고, `app.py`는 **같은 객체**를
+  재-export한다(테스트·`validation_actions`가 `daedalus.view.app` 경로로 임포트해 왔다 — 복제하면
+  두 벌이 되어 인덱스가 갈린다). 창에는 `_open_component`/`_close_tab` 등 한 줄 위임만 남는다 —
+  테스트와 MCP 도구가 창의 내부 메서드를 직접 부른다.
+- **상태의 단일 진실은 계속 윈도우다**(`_tabs`/`_open_tabs`/`_fsm_scene`/고정 패널들) —
+  협력 객체는 복제하지 않고 `self._w.<attr>`로 직접 읽고 쓴다.
+
+## 종류의 뷰 표면 — `view/kind_ui.py` (WP-7 ②)
+
+- **역할:** "이 종류가 화면에서 어떻게 보이고 무엇으로 편집되는가"의 등록 지점.
+  한 행(`KindUI`)이 아이콘·섹션 라벨·색·탭 라벨·캔버스 노드 스타일·다이얼로그 제목·
+  편집기 팩토리·탭 접두·종류 전환 라벨/툴팁·활성 토글 여부·최초 배치 질문을 들고,
+  레지스트리 팔레트·캔버스 노드·편집 탭·전환 메뉴가 **같은 행**을 읽는다.
+- **왜 하나인가:** 예전에는 뷰 안에서만 열다섯 벌이었다(`_ICON`·`_sections`·
+  `tab_labels`·`_rebuild` isinstance 사다리·`_TYPE_STYLE`·`_COMPONENT_TITLES`·
+  `KIND_LABELS`/`KIND_NOUNS`/`_KIND_TOOLTIPS`·편집기 클래스 전수 열거·`_tab_prefix`·
+  `NO_PLACE_KINDS`). 표가 여럿이면 새 종류는 예외 없이 **조용히** 빠진다 — 아이콘
+  없는 행, **빈 상태와 구분되지 않는 회색 노드**(랩핑 스킬이 실제로 겪었다,
+  사용자 보고 2026-09-07), 열리지 않는 편집 탭.
+- **거절은 시끄럽다:** `ui_for(component)`는 표에 없는 종류에 **이름과 등록된 종류
+  목록을 담은 ValueError**를 낸다(원칙 5). `tests/test_registry_failure_is_loud.py`가
+  행 하나를 지우고 팔레트 구축이 그 이름을 찍고 죽는지 본다.
+- **모델이 아니라 뷰에 있는 이유:** `QColor`·위젯 팩토리는 Qt이고 core는 Qt를
+  임포트할 수 없다(import 계약). 두 레지스트리는 **kind 문자열로만** 연결되고
+  방향은 view → model 한쪽이다. 그래서 등록 지점은 최소 둘이고(모델 `KIND_REGISTRY`
+  + 뷰 `KIND_UI`), 두 집합이 같은지는 `tests/test_kind_registry_parity.py`가
+  **양방향 등식**으로 고정한다 — 한쪽만 등록하면 좋은 실패가 난다.
+- **자동 생성 금지:** 모델 레지스트리를 순회해 기본값을 만들어 주면 "UI가 없는
+  종류"가 회색 기본 스타일로 조용히 그려진다 — 없애려는 바로 그 실패 양식이다.
+- **위젯 클래스를 값으로 들지 않는다:** `editor_factory`/`first_placement_prompt`는
+  호출 가능 객체이고 편집기 임포트는 그 안에서 지연된다. 랩핑 용도 팝업 자체는
+  `FsmScene._ask_wrapped_usage`에 남는다 — 헤드리스 테스트의 몽키패치 봉합선이다.
+
 ## 컴파일 미리보기 (A9-1) — 진입점 넷, 실체 하나
 
 "그래서 이게 어떤 파일로 나가는데?"를 여는 표면은 넷이다 — 캔버스 노드 우클릭
