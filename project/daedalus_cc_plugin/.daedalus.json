@@ -18,7 +18,7 @@
         "hooks": {
           "check-daedalus-mcp": {}
         },
-        "argument_hint": null,
+        "argument_hint": "[프로젝트 폴더 경로 또는 이번 세션의 설계 목표]",
         "allowed_tools": [
           "mcp__daedalus__get_project",
           "mcp__daedalus__get_selection",
@@ -30,8 +30,6 @@
         "paths": null,
         "disable_model_invocation": false,
         "user_invocable": true,
-        "context": "inline",
-        "agent": null,
         "shell": "bash"
       },
       "fsm": {
@@ -85,7 +83,7 @@
       "name": "graph-design",
       "description": "컴포넌트를 만들고 캔버스에 배치해 워크플로의 뼈대를 세운다.",
       "when_to_use": "설계 목표는 정해졌는데 캔버스에 컴포넌트가 없거나, 기존 워크플로에 새 단계를 추가해야 할 때.",
-      "body": "# 뼈대 — 컴포넌트를 만들고 캔버스에 놓는다\n\n구조가 먼저다. 본문·분기·공유 상태는 다음 단계들이 채운다 — 여기서는 **무엇이\n있고 어디에 놓이는가**만 결정한다.\n\n## 1. 단계를 컴포넌트로 나눈다\n\n`DesignSession.goal`을 읽고 워크플로를 단계로 쪼갠 뒤, 단계마다 맞는 종류를\n고른다(판단 기준은 daedalus-model 참조):\n\n- 절차가 있는 단계 → **procedural_skill**\n- 여러 단계가 공유하는 배경 지식 → **declarative_skill**\n- 여러 노드가 참조하는 문서 → **reference_skill** (참조 노드로 복수 배치 가능)\n- 별도 컨텍스트가 필요한 작업(대량 반복, 독립 판단, 격리 권한) → **agent**.\n  에이전트는 내부 FSM이 없다 — 절차는 본문에 적고, 결과 분기는 출력 포트\n  (transfer_on)로 낸다.\n\n**과하게 쪼개지 마라.** 한 컨텍스트에서 자연스럽게 이어지는 일은 한 스킬이다.\n컨텍스트 경계(다른 시점, 다른 권한, 위임)가 있을 때만 나눈다 — 나눌수록\n블랙보드로 넘겨야 할 상태가 늘어난다.\n\n## 2. 만들고 배치한다\n\n`create_skill`/`create_agent`로 만들고 `place_component`로 캔버스에 놓는다.\n\n- 이름은 `^[a-z0-9][a-z0-9-]*$` — 어기면 컴파일 게이트가 거부한다.\n- **description은 만들 때 바로 채워라.** 모델이 이 스킬을 고르는 근거다.\n  빈 채로 두면 나중 단계에서 누락되기 쉽다.\n- 같은 컴포넌트를 두 번 배치할 수 없다(no_duplicate_skill_ref 에러). 여러 곳에서\n  같은 문서가 필요하면 reference_skill을 만들어 참조 노드로 놓는 것이 맞다.\n\n## 3. 배치 지형\n\n왼쪽→오른쪽이 시간 순서로 읽히게 놓는다. 검증→수정 같은 루프백은 아래쪽으로\n돌린다. 노드가 겹치면 다음 단계에서 배선이 읽히지 않는다.\n\n## 완료 갈림길\n\n- 노드가 **10개 이상**이거나 기존 그래프 대규모 재구성이면 **ultracode** 키워드를\n  써서 병렬 배치를 요청하라 — 한 컨텍스트에서 20개 노드를 순차로 만들면 맥락을\n  놓친다.\n- 노드가 많아 재배선을 한 컨텍스트에서 감당하기 어렵다 → **bulk-rewire**로\n  graph-surgeon에 위임한다.\n- 컴포넌트와 배치가 끝났다 → **done**. 아직 선에는 의미가 없다 — 다음 단계가\n  포트와 트리거를 물린다.\n",
+      "body": "# 뼈대 — 컴포넌트를 만들고 캔버스에 놓는다\n\n구조가 먼저다. 본문·분기·공유 상태는 다음 단계들이 채운다 — 여기서는 **무엇이\n있고 어디에 놓이는가**만 결정한다.\n\n## 1. 단계를 컴포넌트로 나눈다\n\n`DesignSession.goal`을 읽고 워크플로를 단계로 쪼갠 뒤, 단계마다 맞는 종류를\n고른다(판단 기준은 daedalus-model 참조):\n\n- 절차가 있는 단계 → **procedural_skill**\n- 절차는 있는데 **별도 컨텍스트에서 돌아야 하는 단계**(대량 반복, 컨텍스트 오염 방지)\n  → **sync_fork / async_fork 스킬**. 본문이 서브에이전트의 작업 지시가 되고, 실행\n  기반은 `fork_agent`로 지목한다(내장 general-purpose/Explore/Plan, 또는 프로젝트의\n  **fork_agent**). 부른 쪽이 보고를 기다려야 하면 sync, 보고가 나중에 작업 알림으로\n  와도 되면 async. 도구·권한을 걸어야 하면 `create_agent(kind=\"fork_agent\")`로 실행\n  기반을 따로 만든다 — fork 에이전트는 캔버스에 놓이지 않는다.\n- 여러 단계가 공유하는 배경 지식 → **declarative_skill**\n- 여러 노드가 참조하는 문서 → **reference_skill** (참조 노드로 복수 배치 가능)\n- 호출자가 **매번 다른 지시를 만들어 넘기는** 독립 판단 작업 → **agent**(워크플로\n  에이전트). 호출 포트(call_agents)에서만 전이가 나가고, 결과 분기는 출력 포트\n  (transfer_on)로 낸다. 내부 FSM은 없다 — 절차는 본문에 적는다.\n- 다른 플러그인의 서브에이전트를 그대로 노드로 → **external_agent**(`source`만 지목).\n\n**과하게 쪼개지 마라.** 한 컨텍스트에서 자연스럽게 이어지는 일은 한 스킬이다.\n컨텍스트 경계(다른 시점, 다른 권한, 위임)가 있을 때만 나눈다 — 나눌수록\n블랙보드로 넘겨야 할 상태가 늘어난다.\n\n## 2. 만들고 배치한다\n\n`create_skill`/`create_agent`로 만들고 `place_component`로 캔버스에 놓는다.\n\n- 이름은 `^[a-z0-9][a-z0-9-]*$` — 어기면 컴파일 게이트가 거부한다.\n- **description은 만들 때 바로 채워라.** 모델이 이 스킬을 고르는 근거다.\n  빈 채로 두면 나중 단계에서 누락되기 쉽다.\n- 같은 컴포넌트를 두 번 배치할 수 없다(no_duplicate_skill_ref 에러). 여러 곳에서\n  같은 문서가 필요하면 reference_skill을 만들어 참조 노드로 놓는 것이 맞다.\n\n## 3. 배치 지형\n\n왼쪽→오른쪽이 시간 순서로 읽히게 놓는다. 검증→수정 같은 루프백은 아래쪽으로\n돌린다. 노드가 겹치면 다음 단계에서 배선이 읽히지 않는다.\n\n## 완료 갈림길\n\n- 노드가 **10개 이상**이거나 기존 그래프 대규모 재구성이면 **ultracode** 키워드를\n  써서 병렬 배치를 요청하라 — 한 컨텍스트에서 20개 노드를 순차로 만들면 맥락을\n  놓친다.\n- 노드가 많아 재배선을 한 컨텍스트에서 감당하기 어렵다 → **bulk-rewire**.\n  `/graph-bulk-rewire <범위>`로 넘긴다 — graph-surgeon fork 에이전트가 별도 컨텍스트에서\n  조사·재배선하고 보고만 돌아온다.\n- 컴포넌트와 배치가 끝났다 → **done**. 아직 선에는 의미가 없다 — 다음 단계가\n  포트와 트리거를 물린다.\n",
       "config": {
         "kind": "procedural",
         "model": "sonnet",
@@ -97,6 +95,7 @@
           "mcp__daedalus__get_component",
           "mcp__daedalus__create_skill",
           "mcp__daedalus__create_agent",
+          "mcp__daedalus__convert_skill",
           "mcp__daedalus__place_component",
           "mcp__daedalus__create_state",
           "mcp__daedalus__move_state",
@@ -112,8 +111,6 @@
         "paths": null,
         "disable_model_invocation": false,
         "user_invocable": false,
-        "context": "inline",
-        "agent": null,
         "shell": "bash"
       },
       "fsm": {
@@ -152,15 +149,14 @@
           "name": "done",
           "color": "#4488ff",
           "description": "컴포넌트와 배치가 끝났다 — 아직 의미론은 비어 있다"
-        }
-      ],
-      "call_agents": [
+        },
         {
           "name": "bulk-rewire",
           "color": "#4488ff",
-          "description": "노드가 많아 한 컨텍스트에서 재배선하면 흐름을 놓칠 때 위임한다."
+          "description": "노드가 많아 한 컨텍스트에서 재배선하면 흐름을 놓칠 때 — 범위(어느 노드·무엇을)를 인자로 넘겨 graph-bulk-rewire fork에 맡긴다"
         }
-      ]
+      ],
+      "call_agents": []
     },
     {
       "kind": "procedural_skill",
@@ -190,8 +186,6 @@
         "paths": null,
         "disable_model_invocation": false,
         "user_invocable": false,
-        "context": "inline",
-        "agent": null,
         "shell": "bash"
       },
       "fsm": {
@@ -259,8 +253,6 @@
         "paths": null,
         "disable_model_invocation": false,
         "user_invocable": false,
-        "context": "inline",
-        "agent": null,
         "shell": "bash"
       },
       "fsm": {
@@ -325,8 +317,6 @@
         "paths": null,
         "disable_model_invocation": false,
         "user_invocable": false,
-        "context": "inline",
-        "agent": null,
         "shell": "bash"
       },
       "fsm": {
@@ -397,8 +387,6 @@
         "paths": null,
         "disable_model_invocation": false,
         "user_invocable": false,
-        "context": "inline",
-        "agent": null,
         "shell": "bash"
       },
       "fsm": {
@@ -450,9 +438,9 @@
       "kind": "reference_skill",
       "id": "d1fc9f25a5fd4b688adc6773eceea2bf",
       "name": "daedalus-model",
-      "description": "Daedalus의 설계 모델 — 컴포넌트 5종, FSM+블랙보드 하이브리드, 포트 2종(출력·에이전트 호출)의 의미론.",
+      "description": "Daedalus의 설계 모델 — 스킬 6종(절차형·fork 2종·선언·전이·참조)과 에이전트 3종(워크플로·fork·외부), FSM+블랙보드 하이브리드, 포트 2종(출력·에이전트 호출)의 의미론.",
       "when_to_use": "",
-      "body": "# Daedalus 설계 모델\n\nDaedalus는 플러그인을 **FSM + 블랙보드**로 설계하고 컴파일러가 플러그인 파일을\n찍어내는 도구다. 캔버스에서 그린 것이 곧 컴파일 산출의 소스다.\n\n## 컴포넌트 5종\n\n| 종류 | 본질 | 구조 |\n|------|------|-----|\n| ProceduralSkill | 작업 지침 | 본문 + 출력 포트, 자체 FSM 가능 |\n| DeclarativeSkill | 배경 지식 | 본문만 |\n| TransferSkill | 전이 중 실행되는 보조 지침 | 본문만 |\n| ReferenceSkill | 참조 문서 | 본문만, 참조 노드로 복수 배치 |\n| AgentDefinition | 별도 컨텍스트의 작업자 | **본문 + 출력 포트** (내부 FSM 없음 — 절차는 본문 산문으로) |\n\n**무엇을 무엇으로 만들 것인가**가 첫 판단이다:\n\n- 컨텍스트를 오염시키는 작업(대량 검색, 로그 훑기) → **에이전트**. 별도 창에서 하고\n  결과만 돌려준다. 절차는 본문에 적고, 결과 분기는 출력 포트(transfer_on)로 낸다 —\n  내부 FSM은 없다(런타임 엔진이 없어 형식화해도 텍스트가 될 뿐이다).\n- 매번 같은 배경 지식이 필요 → **declarative**. 본문이 필요할 때만 로드된다.\n  전역 declarative는 컴파일 시 모든 에이전트의 skills 프론트매터에 자동 합류된다.\n- 순서가 있는 절차 → **procedural**. 워크플로 그래프에 배치해 전이로 잇는다.\n- 전이 도중에만 필요한 지침 → **transfer**.\n- 여러 단계가 공유하는 문서 → **reference**. 참조 노드로 배치해 어느 단계가\n  읽는지 캔버스에 드러낸다. 에이전트 노드에 링크하면 그 에이전트의 skills\n  프론트매터에도 합류된다.\n\n## 포트 2종 — 인터페이스 선언은 값을 만드는 쪽에만\n\n구조(노드와 선)만 만들면 분기가 표현되지 않는다. 포트가 의미론을 담는다.\n\n| 포트 | 필드 | 뜻 |\n|------|------|-----|\n| 출력 | `transfer_on` | 이 노드가 **어떤 결과로 끝나는가** (분기 갈래) |\n| 에이전트 호출 | `call_agents` | 여기서 에이전트에게 위임한다 |\n\n**입력 포트는 없다.** (출처, 트리거) 쌍이 진입 경로를 특정하므로 도착 노드가\n입력을 선언할 이유가 없다 — 갈래의 의미는 **출발 노드의 transfer_on\ndescription**에 적고, 경로별 대응이 필요하면 도착 노드 본문에 쓴다. 컴파일된\n\"진입 맥락\" 단락이 그래프에서 출처 목록을 자동 유도한다.\n\n- 전이의 `trigger`가 출발 노드의 출력 포트 이름을 가리킨다. 이게 없으면 캔버스에서\n  포트가 갈라지지 않고, 컴파일된 \"다음 단계\" 단락도 조건 없이 뭉뚱그려진다.\n- **transfer_on description을 반드시 채워라** — 그 문장이 출발 스킬의 \"다음 단계\"와\n  도착 스킬의 \"진입 맥락\" 양쪽에 그대로 실린다.\n- **에이전트로 가는 전이는 반드시 `call_agents` 포트에서 나가야 한다.** 캔버스가\n  강제하는 규칙이고 MCP 경로도 같다. 호출 포트 description에는 **호출자가 무엇을\n  넘기는지** 적는다 — 에이전트 .md의 \"호출 계약\" 단락이 그래프에서 자동 유도된다\n  (에이전트 쪽에 따로 입력할 것이 없다).\n\n## 블랙보드 — 컨텍스트 사이의 통로\n\n같은 컨텍스트 안에서는 필요 없다. 이미 맥락을 공유하기 때문이다. **서로 다른\n컨텍스트**(스킬 → 에이전트, 세션 → 다음 세션)로 값을 넘길 때 쓴다.\n\n- 필드 타입은 스칼라 4종(`string`/`int`/`float`/`bool`)뿐이다. 컨테이너 형상은\n  `collection`(none/list/set)이 전담한다 — \"문자열 목록\"은 `string × list`.\n- 클래스 하나가 런타임에 `state/<ClassName>.json` 파일 하나가 된다.\n- 각 노드가 `reads`/`writes`로 접근을 선언한다. 선언하면 캔버스에 뱃지가 붙고,\n  컴파일된 본문의 블랙보드 단락이 그 클래스로 좁혀진다. 선언이 없으면 전 클래스를\n  나열하는 일반 안내만 나간다.\n\n## 진행 상태 — 세션을 넘기는 규약\n\n프로젝트 그래프에 배치된 스킬은 `state/__progress__.json`으로 자기 위치를 남긴다\n(`current` / `completed` / `prev` / `note`). 컴파일러가 \"작업 재개\" 단락과 \"다음 단계\"\n단락을 자동으로 붙이므로, 설계자는 그래프만 제대로 그리면 된다.\n\n`prev`에는 직전 **스킬** 이름이 남는다 — 에이전트에 위임했다가 돌아온 경우에도\n에이전트 이름이 아니라 위임한 스킬 이름이다.\n\n## 검증과 컴파일 게이트\n\nF7 검증은 에러와 경고를 나눈다. **에러가 1건이라도 있으면 컴파일이 거부**되고 파일이\n하나도 생기지 않는다. 경고는 통과하지만 대부분 실제 결함이다.\n\n컴파일 시점에만 에러로 승격되는 것이 둘 있다: 이름 규약 위반, 산출 경로 충돌.\n편집 중에는 경고지만 파일을 쓰기 직전에는 막는다.\n",
+      "body": "# Daedalus 설계 모델\n\nDaedalus는 플러그인을 **FSM + 블랙보드**로 설계하고 컴파일러가 플러그인 파일을\n찍어내는 도구다. 캔버스에서 그린 것이 곧 컴파일 산출의 소스다.\n\n## 컴포넌트 — 스킬 6종, 에이전트 3종\n\n| 종류 | 본질 | 구조 |\n|------|------|-----|\n| ProceduralSkill | 작업 지침 — 메인 대화에서 그대로 돈다 | 본문 + 출력 포트, 자체 FSM 가능 |\n| SyncForkSkill | 서브에이전트에서 도는 단계 — 부른 쪽이 보고를 기다린다 | 절차형과 같다(배치·포트·본문). 본문이 `agent` 서브에이전트의 **작업 지시** |\n| AsyncForkSkill | 서브에이전트에서 도는 단계 — 보고가 작업 알림으로 온다 | 〃 (`background: true`) |\n| DeclarativeSkill | 배경 지식 | 본문만 |\n| TransferSkill | 전이 중 실행되는 보조 지침 | 본문만 |\n| ReferenceSkill | 참조 문서 | 본문만, 참조 노드로 복수 배치 |\n| AgentDefinition | 별도 컨텍스트의 작업자 — **워크플로 에이전트**(캔버스 노드) | **본문 + 출력 포트** (내부 FSM 없음 — 절차는 본문 산문으로) |\n| ForkAgent | fork 스킬의 **실행 기반** | 본문이 **시스템 프롬프트**(역할·한계·도구·권한). fsm·포트 없음, **캔버스 배치 불가** |\n| ExternalAgent | 다른 플러그인의 서브에이전트를 노드로 | `source`만. 산출 파일 없음, 포트 있음 |\n\n**무엇을 무엇으로 만들 것인가**가 첫 판단이다:\n\n- 순서가 있는 절차 → **procedural**. 워크플로 그래프에 배치해 전이로 잇는다.\n- 절차는 정해져 있는데 **별도 컨텍스트에서 돌아야 하는 단계**(대량 반복, 컨텍스트\n  오염 방지) → **fork 스킬**. 단계는 그래프의 노드이고, 실행 기반은 `agent`로 지목한다\n  (내장 general-purpose/Explore/Plan 또는 프로젝트 **ForkAgent**). 도구·권한·모델을\n  걸어야 하면 ForkAgent를 만든다 — 그 본문은 시스템 프롬프트(역할·한계), 작업 절차는\n  fork 스킬 본문이다. 둘을 섞으면 같은 지시가 두 번 실린다. **fork 스킬은 도구를\n  늘리지 못한다**(에이전트 `tools`가 이긴다). 부른 쪽이 결과로 분기해야 하면 sync.\n- 호출자가 **매번 다른 지시를 만들어 넘기는** 독립 판단 작업(고정 절차가 없다) →\n  **워크플로 에이전트**. 호출 포트(call_agents)에서만 전이가 나가고, 결과 분기는\n  출력 포트(transfer_on)로 낸다. 내부 FSM은 없다(런타임 엔진이 없어 형식화해도 텍스트가\n  될 뿐이다).\n- 매번 같은 배경 지식이 필요 → **declarative**. 본문이 필요할 때만 로드된다.\n  전역 declarative는 컴파일 시 모든 에이전트(fork 에이전트 포함)의 skills 프론트매터에\n  자동 합류된다.\n- 전이 도중에만 필요한 지침 → **transfer**.\n- 여러 단계가 공유하는 문서 → **reference**. 참조 노드로 배치해 어느 단계가\n  읽는지 캔버스에 드러낸다. 에이전트 노드에 링크하면 그 에이전트의 skills\n  프론트매터에도 합류된다.\n- 다른 플러그인이 이미 가진 서브에이전트 → **external_agent**. 그 플러그인을\n  사용 선언하고 `source`를 지목한다. 갈래는 호출자가 보고를 읽고 고른다.\n\n## 포트 2종 — 인터페이스 선언은 값을 만드는 쪽에만\n\n구조(노드와 선)만 만들면 분기가 표현되지 않는다. 포트가 의미론을 담는다.\n\n| 포트 | 필드 | 뜻 |\n|------|------|-----|\n| 출력 | `transfer_on` | 이 노드가 **어떤 결과로 끝나는가** (분기 갈래) |\n| 에이전트 호출 | `call_agents` | 여기서 워크플로 에이전트에게 위임한다 |\n\n**입력 포트는 없다.** (출처, 트리거) 쌍이 진입 경로를 특정하므로 도착 노드가\n입력을 선언할 이유가 없다 — 갈래의 의미는 **출발 노드의 transfer_on\ndescription**에 적고, 경로별 대응이 필요하면 도착 노드 본문에 쓴다. 컴파일된\n\"진입 맥락\" 단락이 그래프에서 출처 목록을 자동 유도한다.\n\n- 전이의 `trigger`가 출발 노드의 출력 포트 이름을 가리킨다. 이게 없으면 캔버스에서\n  포트가 갈라지지 않고, 컴파일된 \"다음 단계\" 단락도 조건 없이 뭉뚱그려진다.\n- **transfer_on description을 반드시 채워라** — 그 문장이 출발 스킬의 \"다음 단계\"와\n  도착 스킬의 \"진입 맥락\" 양쪽에 그대로 실린다.\n- **워크플로 에이전트로 가는 전이는 반드시 `call_agents` 포트에서 나가야 한다.** 캔버스가\n  강제하는 규칙이고 MCP 경로도 같다. 호출 포트 description에는 **호출자가 무엇을\n  넘기는지** 적는다 — 에이전트 .md의 \"호출 계약\" 단락이 그래프에서 자동 유도된다\n  (에이전트 쪽에 따로 입력할 것이 없다).\n- **fork 스킬 노드로 가는 전이는 일반 출력 포트에서 나간다** — fork 스킬은 노드이지\n  위임 대상이 아니다. 넘길 것은 `$ARGUMENTS`로 간다(`argument_hint`에 무엇을 넘기는지\n  적는다). fork 스킬 자신의 출력 포트가 결과 분기이고, fork 에이전트에는 포트가 없다.\n\n## 블랙보드 — 컨텍스트 사이의 통로\n\n같은 컨텍스트 안에서는 필요 없다. 이미 맥락을 공유하기 때문이다. **서로 다른\n컨텍스트**(스킬 → 에이전트, 세션 → 다음 세션)로 값을 넘길 때 쓴다.\n\n- 필드 타입은 스칼라 4종(`string`/`int`/`float`/`bool`)뿐이다. 컨테이너 형상은\n  `collection`(none/list/set)이 전담한다 — \"문자열 목록\"은 `string × list`.\n- 클래스 하나가 런타임에 `state/<ClassName>.json` 파일 하나가 된다.\n- 각 노드가 `reads`/`writes`로 접근을 선언한다. 선언하면 캔버스에 뱃지가 붙고,\n  컴파일된 본문의 블랙보드 단락이 그 클래스로 좁혀진다. 선언이 없으면 전 클래스를\n  나열하는 일반 안내만 나간다.\n\n## 진행 상태 — 세션을 넘기는 규약\n\n프로젝트 그래프에 배치된 스킬은 `state/__progress__.json`으로 자기 위치를 남긴다\n(`current` / `completed` / `prev` / `note`). 컴파일러가 \"작업 재개\" 단락과 \"다음 단계\"\n단락을 자동으로 붙이므로, 설계자는 그래프만 제대로 그리면 된다.\n\n`prev`에는 직전 **스킬** 이름이 남는다 — 에이전트에 위임했다가 돌아온 경우에도\n에이전트 이름이 아니라 위임한 스킬 이름이다.\n\n## 검증과 컴파일 게이트\n\nF7 검증은 에러와 경고를 나눈다. **에러가 1건이라도 있으면 컴파일이 거부**되고 파일이\n하나도 생기지 않는다. 경고는 통과하지만 대부분 실제 결함이다.\n\n컴파일 시점에만 에러로 승격되는 것이 둘 있다: 이름 규약 위반, 산출 경로 충돌.\n편집 중에는 경고지만 파일을 쓰기 직전에는 막는다.\n",
       "config": {
         "kind": "reference",
         "model": "inherit",
@@ -488,7 +476,7 @@
       "name": "graph-author",
       "description": "배치된 컴포넌트의 본문과 프론트매터를 채운다 — 구조 다음은 내용이다.",
       "when_to_use": "그래프 구조(배치·배선·블랙보드)는 끝났는데 컴포넌트 본문이 비었거나 프론트매터(tools/model/permission 등)가 기본값일 때.",
-      "body": "# 본문과 프론트매터 — 구조 다음은 내용이다\n\n그래프가 완성돼도 컴포넌트 본문이 비어 있으면 컴파일 산출은 껍데기다. 이 단계에서\n배치된 모든 컴포넌트의 본문과 프론트매터를 채운다.\n\n## 1. 빈 곳부터 찾는다\n\n`get_component`로 배치된 컴포넌트를 하나씩 확인한다. 점검 목록:\n\n- `body`가 비었거나 한 줄짜리 — 실제 지침이 없다\n- `when_to_use`가 빈 값 — 모델이 언제 집을지 판단할 근거가 없다\n- 에이전트의 `tools`가 미지정 — 전 도구 상속(대부분 과하다)\n- 로컬 스킬(`agent=` 지정 조회)도 잊지 마라 — 에이전트 내부 상태의 본문이다\n\n## 2. 본문 작성 원칙\n\n- **왜를 적어라.** \"X를 하라\"보다 \"Y가 깨지므로 X를 하라\"가 지시를 지키게 만든다.\n- 다음 단계·작업 재개·블랙보드 단락은 **컴파일러가 자동으로 붙인다**. 본문에 직접\n  쓰면 이중이 된다 — 본문은 그 단계 고유의 지침만 담는다.\n- 파일 동봉 참조는 `${ROOT}/files/...` 토큰을 쓴다(타깃 중립 — cc-plugin-spec 참조).\n\n## 3. 프론트매터\n\n`list_component_fields`로 그 컴포넌트가 받는 필드를 확인하고 `set_component_field`로\n채운다. 짐작으로 필드명을 넘기지 마라 — 스킬 종류마다 받는 필드가 다르다.\n\n- 스킬 `allowed_tools`: 그 단계가 실제로 쓰는 도구만. 좁을수록 안전하다.\n- 에이전트 `tools`: 명시 목록. `mcp__<서버>__<도구>` 접두에서 서버 이름이 추출돼\n  `mcpServers` 프론트매터에 자동 합류한다.\n- 에이전트 `permission_mode`/`max_turns`: 프로젝트 설치(LOCAL) 빌드에서만 실제로\n  동작한다 — 빌드 타깃이 marketplace면 넣어도 무시된다.\n\n## 4. 훅\n\n반복 강제가 필요한 규칙(세션 시작 주입, 도구 사용 감시)은 본문 지시가 아니라 훅으로\n만든다 — `create_hook`으로 라이브러리에 정의하고 `set_component_hooks`로 부착한다.\n\n## 위임 판단\n\n빈 본문이 **5개 이상**이면 한 컨텍스트에서 전부 작성하면 맥락을 잃는다 —\n컴포넌트 하나씩 **delegate-body**로 body-writer에 위임하라. 위임 시 `note`에\n대상 컴포넌트 이름을 기록한다.\n\n## ultracode 사용\n\n빈 본문이 많거나 기존 본문을 대규모로 고쳐야 할 때(프로젝트 전반 리팩토링 등)는\n**ultracode** 키워드를 써서 다중 에이전트 오케스트레이션을 요청하라 — 병렬로\n여러 컴포넌트를 동시에 작성해 시간을 절약한다.\n\n## 완료\n\n배치 컴포넌트 전부의 본문·프론트매터가 채워졌으면 `GraphDraft`에 작성 완료를\n기록하고 **done**으로 검증 단계에 넘긴다.\n",
+      "body": "# 본문과 프론트매터 — 구조 다음은 내용이다\n\n그래프가 완성돼도 컴포넌트 본문이 비어 있으면 컴파일 산출은 껍데기다. 이 단계에서\n배치된 모든 컴포넌트의 본문과 프론트매터를 채운다.\n\n## 1. 빈 곳부터 찾는다\n\n`get_component`로 배치된 컴포넌트를 하나씩 확인한다. 점검 목록:\n\n- `body`가 비었거나 한 줄짜리 — 실제 지침이 없다\n- `when_to_use`가 빈 값 — 모델이 언제 집을지 판단할 근거가 없다\n- 에이전트의 `tools`가 미지정 — 전 도구 상속(대부분 과하다)\n- **fork 에이전트도 잊지 마라** — 캔버스에 없어서 놓치기 쉽다. `get_project`의\n  agents 목록에서 `fork_agent`를 찾아라. 본문이 그 서브에이전트의 시스템 프롬프트다\n  (역할·한계). 작업 절차는 그를 쓰는 fork 스킬 본문에 적는다 — 둘을 섞으면 같은 지시가\n  두 번 실린다.\n\n## 2. 본문 작성 원칙\n\n- **왜를 적어라.** \"X를 하라\"보다 \"Y가 깨지므로 X를 하라\"가 지시를 지키게 만든다.\n- 다음 단계·작업 재개·블랙보드 단락은 **컴파일러가 자동으로 붙인다**. 본문에 직접\n  쓰면 이중이 된다 — 본문은 그 단계 고유의 지침만 담는다.\n- 파일 동봉 참조는 `${ROOT}/files/...` 토큰을 쓴다(타깃 중립 — cc-plugin-spec 참조).\n\n## 3. 프론트매터\n\n`list_component_fields`로 그 컴포넌트가 받는 필드를 확인하고 `set_component_field`로\n채운다. 짐작으로 필드명을 넘기지 마라 — 스킬 종류마다 받는 필드가 다르다.\n\n- 스킬 `allowed_tools`: 그 단계가 실제로 쓰는 도구만. 좁을수록 안전하다.\n- 스킬 `argument_hint`: 인자를 받는 스킬(진입점, `$ARGUMENTS`를 읽는 fork)에는 반드시\n  — 사용자와 호출자가 무엇을 넘겨야 하는지 알 유일한 단서다.\n- 스킬 `model`/`effort`: 단계의 난이도에 맞춘다. fork 스킬은 이 값이 fork 에이전트\n  값을 **이긴다**(비우면 에이전트 값). fork 스킬에는 `allowed_tools`가 없다 — 도구는\n  fork 에이전트의 `tools`가 정한다.\n- 에이전트 `tools`: 명시 목록. `mcp__<서버>__<도구>` 접두에서 서버 이름이 추출돼\n  `mcpServers` 프론트매터에 자동 합류한다.\n- 에이전트 `permission_mode`/`max_turns`: 프로젝트 설치(LOCAL) 빌드에서만 실제로\n  동작한다 — 빌드 타깃이 marketplace면 넣어도 무시된다. fork 에이전트에는\n  `isolation`이 없다(fork에서 적용되지 않는다는 실측).\n\n## 4. 훅\n\n반복 강제가 필요한 규칙(세션 시작 주입, 도구 사용 감시)은 본문 지시가 아니라 훅으로\n만든다 — `create_hook`으로 라이브러리에 정의하고 `set_component_hooks`로 부착한다.\n\n## 위임 판단\n\n빈 본문이 **5개 이상**이면 한 컨텍스트에서 전부 작성하면 맥락을 잃는다 —\n컴포넌트 하나씩 **write-body**로 넘긴다: `/graph-write-body <컴포넌트 이름>`.\nbody-writer fork 에이전트가 별도 컨텍스트에서 채우고 보고만 돌아온다. 보고를 받으면\n다음 컴포넌트를 넘기고, 남은 것이 없으면 아래 완료로 간다. **failed**로 돌아오면\n보고 첫 줄의 이유(대상 없음·정보 부족)를 고쳐 다시 넘기거나 직접 쓴다.\n\n## ultracode 사용\n\n빈 본문이 많거나 기존 본문을 대규모로 고쳐야 할 때(프로젝트 전반 리팩토링 등)는\n**ultracode** 키워드를 써서 다중 에이전트 오케스트레이션을 요청하라 — 병렬로\n여러 컴포넌트를 동시에 작성해 시간을 절약한다.\n\n## 완료\n\n배치 컴포넌트 전부의 본문·프론트매터가 채워졌으면 `GraphDraft`에 작성 완료를\n기록하고 **done**으로 검증 단계에 넘긴다.\n",
       "config": {
         "kind": "procedural",
         "model": "fable",
@@ -512,8 +500,6 @@
         "paths": null,
         "disable_model_invocation": false,
         "user_invocable": false,
-        "context": "inline",
-        "agent": null,
         "shell": "bash"
       },
       "fsm": {
@@ -552,15 +538,14 @@
           "name": "done",
           "color": "#4488ff",
           "description": "모든 배치 컴포넌트의 본문·프론트매터 작성 완료"
+        },
+        {
+          "name": "write-body",
+          "color": "#4488ff",
+          "description": "빈 본문이 5개 이상 — 컴포넌트 이름 하나를 인자로 graph-write-body fork에 넘긴다(하나씩, 컨텍스트 폭주 방지)"
         }
       ],
-      "call_agents": [
-        {
-          "name": "delegate-body",
-          "color": "#4488ff",
-          "description": "빈 본문이 5개 이상이면 개별 컴포넌트를 body-writer에 하나씩 위임한다 — 컨텍스트 폭주 방지."
-        }
-      ]
+      "call_agents": []
     },
     {
       "kind": "procedural_skill",
@@ -584,8 +569,6 @@
         "paths": null,
         "disable_model_invocation": false,
         "user_invocable": false,
-        "context": "inline",
-        "agent": null,
         "shell": "bash"
       },
       "fsm": {
@@ -629,128 +612,6 @@
       "call_agents": []
     },
     {
-      "kind": "procedural_skill",
-      "id": "1f633022ac3f4671819bd991d83a8d7c",
-      "name": "survey-graph",
-      "description": "그래프 전체를 훑어 고쳐야 할 전이·포트 목록을 뽑는다.",
-      "when_to_use": "",
-      "body": "# 그래프 조사 — 고칠 목록부터\n\n편집하기 전에 전체를 본다. `get_project`로 배치·전이·포트를 받아 다음을 점검한다.\n\n## 점검 항목\n\n1. **트리거 없는 다중 분기** — 한 노드에서 나가는 전이가 2개 이상인데 trigger가\n   없는 것. 어느 갈래인지 표현되지 않아 LLM이 임의로 고른다.\n2. **선언 안 된 포트 참조** — 전이의 trigger가 출발 노드의 transfer_on에 없거나,\n   target_port가 도착 노드의 entry_paths에 없는 것 (rename 고아).\n3. **에이전트 직결** — 에이전트로 가는 전이가 call_agent 포트를 거치지 않는 것.\n4. **고립 노드** — 들어오는 전이도 나가는 전이도 없는 배치.\n5. `validate_project`의 경고 — 위 항목과 겹치지 않는 것만 추가한다.\n\n## 산출\n\n고칠 항목을 **하나씩 실행 가능한 편집 단위**로 목록화한다:\n\"survey → rewire: `A`의 transfer_on에 `ok` 추가, `A→B` 전이 trigger를 `ok`로\".\n\n목록이 확정되면 **done**으로 rewire-edges에 넘긴다. 빈 목록이면 그대로 done —\n고칠 것이 없다는 것도 유효한 조사 결과다.\n",
-      "config": {
-        "kind": "procedural",
-        "model": "inherit",
-        "effort": null,
-        "hooks": null,
-        "argument_hint": null,
-        "allowed_tools": [],
-        "paths": null,
-        "disable_model_invocation": false,
-        "user_invocable": true,
-        "context": "inline",
-        "agent": null,
-        "shell": "bash"
-      },
-      "fsm": {
-        "id": "7430ec470fb9433fbbd0f3bf56447cde",
-        "name": "survey-graph_fsm",
-        "states": [
-          {
-            "kind": "simple",
-            "id": "82881521a9784b898c76cc1f52236282",
-            "name": "start",
-            "on_entry_start": [],
-            "on_entry": [],
-            "on_entry_end": [],
-            "on_exit_start": [],
-            "on_exit": [],
-            "on_exit_end": [],
-            "on_active": [],
-            "custom_events": {},
-            "inputs": [],
-            "outputs": [],
-            "reads": [],
-            "writes": [],
-            "skill_ref": null
-          }
-        ],
-        "transitions": [],
-        "initial_state": "82881521a9784b898c76cc1f52236282",
-        "final_states": [],
-        "blackboard": {
-          "class_definitions": [],
-          "variables": {}
-        }
-      },
-      "transfer_on": [
-        {
-          "name": "done",
-          "color": "#4488ff",
-          "description": ""
-        }
-      ],
-      "call_agents": []
-    },
-    {
-      "kind": "procedural_skill",
-      "id": "8130677bfeca4b5dbbc6daa3d6ce6392",
-      "name": "rewire-edges",
-      "description": "뽑아둔 목록대로 배선을 고치고 무엇을 바꿨는지 보고한다.",
-      "when_to_use": "",
-      "body": "# 배선 수리 — 목록대로만\n\nsurvey-graph가 만든 목록을 위에서부터 하나씩 실행한다.\n\n## 실행 순서\n\n항목마다: **포트 선언 먼저, 전이 수정 나중**. 전이의 trigger는 출발 노드의\ntransfer_on에 그 이름이 있어야 유효하다 — 순서를 바꾸면 중간 상태가\n`trigger_unknown_event` 경고를 낸다.\n\n- 포트 추가: `set_transfer_on` / `set_entry_paths` (기존 목록에 **추가**한다 —\n  통째로 교체하는 도구이므로 먼저 현재 목록을 읽어라)\n- 전이 수정: `set_transition` (None=건드리지 않음, \"\"=지움)\n- 새 전이: `connect_states`, 삭제: `disconnect_states`\n- 에이전트 호출 경로: `add_agent_call`로 포트를 만든 뒤 연결\n\n## 실수했을 때\n\n방금 한 편집이 잘못됐으면 `undo`로 되돌린다. 여러 단계 전 실수는 undo 연타보다\n반대 편집이 안전하다 — 그 사이 편집까지 되돌리기 때문이다.\n\n## 완료\n\n목록을 다 소진하면 `validate_project`로 에러 0을 확인하고, 바꾼 내역 요약과 함께\n**done**으로 나간다. 에러가 남으면 해소할 때까지 이 단계를 벗어나지 마라.\n",
-      "config": {
-        "kind": "procedural",
-        "model": "inherit",
-        "effort": null,
-        "hooks": null,
-        "argument_hint": null,
-        "allowed_tools": [],
-        "paths": null,
-        "disable_model_invocation": false,
-        "user_invocable": true,
-        "context": "inline",
-        "agent": null,
-        "shell": "bash"
-      },
-      "fsm": {
-        "id": "b4876045f86648e1a194b0f8087ecd29",
-        "name": "rewire-edges_fsm",
-        "states": [
-          {
-            "kind": "simple",
-            "id": "ce412fd827cf4e96907862939178341e",
-            "name": "start",
-            "on_entry_start": [],
-            "on_entry": [],
-            "on_entry_end": [],
-            "on_exit_start": [],
-            "on_exit": [],
-            "on_exit_end": [],
-            "on_active": [],
-            "custom_events": {},
-            "inputs": [],
-            "outputs": [],
-            "reads": [],
-            "writes": [],
-            "skill_ref": null
-          }
-        ],
-        "transitions": [],
-        "initial_state": "ce412fd827cf4e96907862939178341e",
-        "final_states": [],
-        "blackboard": {
-          "class_definitions": [],
-          "variables": {}
-        }
-      },
-      "transfer_on": [
-        {
-          "name": "done",
-          "color": "#4488ff",
-          "description": ""
-        }
-      ],
-      "call_agents": []
-    },
-    {
       "kind": "declarative_skill",
       "id": "4e1cd4503bd14f29a2c5aba1abccee78",
       "name": "blackboard-cli",
@@ -768,57 +629,35 @@
         "disable_model_invocation": false,
         "user_invocable": true
       }
-    }
-  ],
-  "agents": [
+    },
     {
-      "kind": "agent",
-      "id": "6a500c27767e443789499e6e711333bd",
-      "name": "graph-surgeon",
-      "description": "대규모 그래프 재배선을 별도 컨텍스트에서 수행한다.",
+      "kind": "sync_fork_skill",
+      "id": "f25bcb2dbf564be0a9f0deefd9830468",
+      "name": "graph-bulk-rewire",
+      "description": "그래프 전체를 훑어 고칠 전이·포트 목록을 뽑고 그 목록대로만 재배선한다 — 별도 컨텍스트(graph-surgeon)에서 돌아 메인 대화를 수십 번의 편집 호출로 오염시키지 않는다.",
+      "when_to_use": "graph-design이 bulk-rewire 갈래로 넘길 때 — 재배선할 노드가 스무 개를 넘어 메인 컨텍스트에서 다루면 흐름을 놓칠 때.",
+      "body": "# 대규모 재배선 — 조사 → 목록 → 목록대로만\n\n호출자가 캔버스를 크게 갈아엎는 작업을 넘겼다. `$ARGUMENTS`에 범위(어느 노드들·무엇을\n고칠지)가 있으면 그 범위 안에서만 움직인다. 비어 있으면 `DesignSession.goal`과\n`GraphDraft`를 읽어 범위를 정하고 보고 첫 줄에 그 범위를 적는다.\n\n## 1. 조사 — 고칠 목록부터\n\n편집하기 전에 전체를 본다. `get_project`로 배치·전이·포트를 받아 다음을 점검한다.\n\n1. **트리거 없는 다중 분기** — 한 노드에서 나가는 전이가 2개 이상인데 trigger가 없는\n   것. 어느 갈래인지 표현되지 않아 LLM이 임의로 고른다.\n2. **선언 안 된 포트 참조** — 전이의 trigger가 출발 노드의 transfer_on에 없는 것\n   (rename 고아).\n3. **에이전트 직결** — 워크플로 에이전트 노드로 가는 전이가 call_agents 포트를 거치지\n   않는 것.\n4. **고립 노드** — 들어오는 전이도 나가는 전이도 없는 배치.\n5. `validate_project`의 경고 — 위 항목과 겹치지 않는 것만 추가한다.\n\n고칠 항목을 **하나씩 실행 가능한 편집 단위**로 목록화한다:\n\"`A`의 transfer_on에 `ok` 추가, `A→B` 전이 trigger를 `ok`로\". 빈 목록이면 그대로\ndone — 고칠 것이 없다는 것도 유효한 조사 결과다.\n\n## 2. 수리 — 목록대로만\n\n항목마다 **포트 선언 먼저, 전이 수정 나중**. 전이의 trigger는 출발 노드의 transfer_on에\n그 이름이 있어야 유효하다 — 순서를 바꾸면 중간 상태가 `trigger_unknown_event` 경고를\n낸다.\n\n- 포트 추가: `set_transfer_on`(기존 목록에 **추가**한다 — 통째로 교체하는 도구이므로\n  먼저 현재 목록을 읽어라)\n- 전이 수정: `set_transition`(None=건드리지 않음, \"\"=지움)\n- 새 전이: `connect_states`, 삭제: `disconnect_states`\n- 워크플로 에이전트 호출 경로: `add_agent_call`로 포트를 만든 뒤 연결\n\n방금 한 편집이 잘못됐으면 `undo`로 되돌린다. 여러 단계 전 실수는 undo 연타보다 반대\n편집이 안전하다 — 그 사이 편집까지 되돌리기 때문이다.\n\n## 3. 완료 갈림길\n\n- 목록을 다 소진하고 `validate_project` 에러 0 → **done**. 만든/지운 전이 수, 선언한\n  포트, 남은 경고를 보고에 적고 블랙보드 `GraphDraft.wired`에 배선 완료를 기록한다.\n- 범위가 불명확하거나 해소 불가 검증 에러가 남으면 **blocked** — 남은 목록과 막힌\n  이유를 보고에 적는다. 절반쯤 자른 그래프를 done으로 보고하는 것이 최악이다.\n",
+      "config": {
+        "kind": "sync_fork",
+        "model": "opus",
+        "effort": "high",
+        "hooks": null,
+        "argument_hint": "[재배선 범위 — 어느 노드들을 무엇 기준으로 고칠지]",
+        "allowed_tools": [],
+        "paths": null,
+        "disable_model_invocation": null,
+        "user_invocable": false,
+        "shell": "bash",
+        "agent": "graph-surgeon"
+      },
       "fsm": {
-        "id": "90eb57ad384b4cc480eb22e8785a8eab",
-        "name": "graph-surgeon_fsm",
+        "id": "e72f72e463604e8199580b03a747da1d",
+        "name": "graph-bulk-rewire_fsm",
         "states": [
           {
-            "kind": "entry_point",
-            "id": "cb18bfdb234446ef8a6bddcf5d0a0ad5",
-            "name": "entry",
-            "on_entry_start": [],
-            "on_entry": [],
-            "on_entry_end": [],
-            "on_exit_start": [],
-            "on_exit": [],
-            "on_exit_end": [],
-            "on_active": [],
-            "custom_events": {},
-            "inputs": [],
-            "outputs": [],
-            "reads": [],
-            "writes": []
-          },
-          {
-            "kind": "exit_point",
-            "id": "2c26b93aa373476dbabbd85da6e0cc53",
-            "name": "done",
-            "on_entry_start": [],
-            "on_entry": [],
-            "on_entry_end": [],
-            "on_exit_start": [],
-            "on_exit": [],
-            "on_exit_end": [],
-            "on_active": [],
-            "custom_events": {},
-            "inputs": [],
-            "outputs": [],
-            "reads": [],
-            "writes": [],
-            "color": "#cc6666"
-          },
-          {
             "kind": "simple",
-            "id": "5d64f44a9b8442428cf2ed42a51be0f0",
-            "name": "survey-graph",
+            "id": "d9aeeb3ceccd43e28e185983f8b79018",
+            "name": "start",
             "on_entry_start": [],
             "on_entry": [],
             "on_entry_end": [],
@@ -831,91 +670,105 @@
             "outputs": [],
             "reads": [],
             "writes": [],
-            "skill_ref": "1f633022ac3f4671819bd991d83a8d7c"
-          },
-          {
-            "kind": "simple",
-            "id": "3c064c3de9c4412b9756a969be37811a",
-            "name": "rewire-edges",
-            "on_entry_start": [],
-            "on_entry": [],
-            "on_entry_end": [],
-            "on_exit_start": [],
-            "on_exit": [],
-            "on_exit_end": [],
-            "on_active": [],
-            "custom_events": {},
-            "inputs": [],
-            "outputs": [],
-            "reads": [],
-            "writes": [],
-            "skill_ref": "8130677bfeca4b5dbbc6daa3d6ce6392"
-          }
-        ],
-        "transitions": [
-          {
-            "id": "1322fd0604ee4528ad5b4ecd00ac13f0",
-            "source": "cb18bfdb234446ef8a6bddcf5d0a0ad5",
-            "target": "5d64f44a9b8442428cf2ed42a51be0f0",
-            "type": "external",
-            "trigger": null,
-            "guard": null,
-            "on_guard_check": [],
-            "on_traverse_start": [],
-            "on_traverse": [],
-            "on_traverse_end": [],
-            "custom_events": {},
-            "data_map": {},
-            "skill_ref": null
-          },
-          {
-            "id": "21e97de97cca4d33a9eae9edb1f59799",
-            "source": "5d64f44a9b8442428cf2ed42a51be0f0",
-            "target": "3c064c3de9c4412b9756a969be37811a",
-            "type": "external",
-            "trigger": {
-              "kind": "completion",
-              "name": "done"
-            },
-            "guard": null,
-            "on_guard_check": [],
-            "on_traverse_start": [],
-            "on_traverse": [],
-            "on_traverse_end": [],
-            "custom_events": {},
-            "data_map": {},
-            "skill_ref": null
-          },
-          {
-            "id": "f2dc816477984e51a735e1b0205a262f",
-            "source": "3c064c3de9c4412b9756a969be37811a",
-            "target": "2c26b93aa373476dbabbd85da6e0cc53",
-            "type": "external",
-            "trigger": {
-              "kind": "completion",
-              "name": "done"
-            },
-            "guard": null,
-            "on_guard_check": [],
-            "on_traverse_start": [],
-            "on_traverse": [],
-            "on_traverse_end": [],
-            "custom_events": {},
-            "data_map": {},
             "skill_ref": null
           }
         ],
-        "initial_state": "cb18bfdb234446ef8a6bddcf5d0a0ad5",
-        "final_states": [
-          "2c26b93aa373476dbabbd85da6e0cc53"
-        ],
+        "transitions": [],
+        "initial_state": "d9aeeb3ceccd43e28e185983f8b79018",
+        "final_states": [],
         "blackboard": {
           "class_definitions": [],
           "variables": {}
         }
       },
+      "transfer_on": [
+        {
+          "name": "done",
+          "color": "#4488ff",
+          "description": "재배선 완료 — 검증 에러 0, 변경 요약 보고됨"
+        },
+        {
+          "name": "blocked",
+          "color": "#4488ff",
+          "description": "재배선 중단 — 범위 불명확·해소 불가 에러. 남은 목록을 보고했고 graph-wire에서 수동 배선으로 이어받는다"
+        }
+      ],
+      "call_agents": []
+    },
+    {
+      "kind": "sync_fork_skill",
+      "id": "65023c5269ab48dab4efe4a788d9a65d",
+      "name": "graph-write-body",
+      "description": "인자로 받은 컴포넌트 하나의 본문과 프론트매터를 별도 컨텍스트(body-writer)에서 채운다 — graph-author가 빈 본문이 많아 한 컨텍스트에 안 담길 때 하나씩 넘긴다.",
+      "when_to_use": "graph-author가 write-body 갈래로 넘길 때 — 빈 본문이 5개 이상이라 한 컨텍스트에서 전부 쓰면 맥락을 잃을 때, 컴포넌트 하나씩.",
+      "body": "# 컴포넌트 하나의 본문·프론트매터 채우기\n\n대상은 `$ARGUMENTS`에 적힌 컴포넌트 이름 **하나**다. 인자가 비었거나 그 이름의\n컴포넌트가 없으면 지어내지 말고 **failed**로 끝낸다.\n\n## 절차\n\n1. `get_component`로 현재 상태를 본다 — body / when_to_use / 프론트매터 중 빈 곳을\n   찾는다. `DesignSession.goal`과 `GraphDraft.placed`로 이 컴포넌트가 워크플로에서 맡은\n   자리를 파악한다 — 그래프 안에서의 앞뒤 단계가 본문의 맥락이다.\n2. 본문을 쓴다. 긴 본문은 `get_body_outline` → `set_body_section`으로 섹션 단위로\n   고친다 — 전문 재전송은 undo 단위를 뭉개고 토큰을 낭비한다.\n3. `list_component_fields`로 받는 필드를 확인하고 `set_component_field`로 채운다.\n   - 스킬 `allowed_tools`: 그 단계가 실제로 쓰는 도구만. 좁을수록 안전하다.\n   - fork 스킬은 도구를 늘리지 못한다 — 도구는 fork 에이전트의 `tools`가 정한다.\n   - `when_to_use`는 `set_component_when_to_use`로 — 모델이 언제 집을지의 근거다.\n4. `compile_preview`로 산출을 확인한다.\n\n## 완료 갈림길\n\n- 대상의 본문·프론트매터를 채웠다 → **done**. 무엇을 채웠는지 한 줄씩 보고한다.\n- 대상을 찾을 수 없거나(이름 오타·삭제됨) 작성에 필요한 정보(목표·역할)가 부족하다 →\n  **failed**. 무엇이 막혔는지 첫 줄에 명시한다.\n",
       "config": {
-        "kind": "agent",
+        "kind": "sync_fork",
+        "model": "opus",
+        "effort": "high",
+        "hooks": null,
+        "argument_hint": "<컴포넌트 이름>",
+        "allowed_tools": [],
+        "paths": null,
+        "disable_model_invocation": null,
+        "user_invocable": false,
+        "shell": "bash",
+        "agent": "body-writer"
+      },
+      "fsm": {
+        "id": "b928f3f5e6ef468a875f1bf57a3b8436",
+        "name": "graph-write-body_fsm",
+        "states": [
+          {
+            "kind": "simple",
+            "id": "796925a2f225446cabd4e21f2c3f0fbd",
+            "name": "start",
+            "on_entry_start": [],
+            "on_entry": [],
+            "on_entry_end": [],
+            "on_exit_start": [],
+            "on_exit": [],
+            "on_exit_end": [],
+            "on_active": [],
+            "custom_events": {},
+            "inputs": [],
+            "outputs": [],
+            "reads": [],
+            "writes": [],
+            "skill_ref": null
+          }
+        ],
+        "transitions": [],
+        "initial_state": "796925a2f225446cabd4e21f2c3f0fbd",
+        "final_states": [],
+        "blackboard": {
+          "class_definitions": [],
+          "variables": {}
+        }
+      },
+      "transfer_on": [
+        {
+          "name": "done",
+          "color": "#4488ff",
+          "description": "대상 컴포넌트의 본문·프론트매터 작성 완료 — 남은 컴포넌트가 있으면 다음 것을 넘긴다"
+        },
+        {
+          "name": "failed",
+          "color": "#4488ff",
+          "description": "대상을 찾지 못했거나 작성에 필요한 정보 부족 — 보고 첫 줄의 이유를 보고 graph-author가 직접 쓰거나 입력을 고쳐 다시 넘긴다"
+        }
+      ],
+      "call_agents": []
+    }
+  ],
+  "agents": [
+    {
+      "kind": "fork_agent",
+      "id": "a389acbecc85411ea6e9d632d332a826",
+      "name": "graph-surgeon",
+      "description": "대규모 그래프 재배선 전담 서브에이전트 — graph-bulk-rewire fork 스킬의 실행 기반. 캔버스 편집 도구만 갖고, 조사 없이 자르지 않는 규율을 시스템 프롬프트로 받는다.",
+      "config": {
+        "kind": "fork_agent",
         "model": "opus",
         "effort": "high",
         "hooks": {
@@ -950,87 +803,17 @@
           "daedalus"
         ],
         "memory": null,
-        "background": false,
-        "isolation": "none",
         "color": "cyan"
       },
-      "execution_policy": {
-        "mode": "fixed",
-        "count": 1,
-        "join": "all",
-        "join_count": null
-      },
-      "body": "# 대규모 그래프 재배선\n\n호출자가 캔버스를 크게 갈아엎는 작업을 넘겼다. 별도 컨텍스트에서 도는 이유는\n호출자의 대화를 수십 번의 편집 호출로 오염시키지 않기 위해서다.\n\n## 작업 규율\n\n- **조사 없이 자르지 마라.** 먼저 `survey-graph`로 전체 그래프를 훑어 고칠 목록을\n  만들고, 그 목록대로만 `rewire-edges`에서 편집한다. 목록에 없는 것을 \"겸사겸사\"\n  고치지 마라 — 호출자가 의도한 범위를 넘는다.\n- **모든 편집은 사용자의 undo 스택에 들어간다.** 되돌릴 수 있지만, 수십 개의\n  편집을 되돌리는 것은 사용자에게 고역이다. 편집 전에 계획을 확정하라.\n- **분기 의미론을 지켜라.** 노드와 선만 만들면 분기가 표현되지 않는다. 여러 갈래로\n  나가는 노드는 `set_transfer_on`으로 갈래를 선언하고 각 전이에 trigger를 물려라.\n  에이전트로 가는 전이는 `add_agent_call`로 만든 호출 포트에서만 나갈 수 있다.\n- **끝나면 검증하라.** `validate_project`가 에러 0인 상태로 반환한다. 경고는\n  원인과 함께 보고에 적는다.\n\n## 보고\n\n완료 시 무엇을 바꿨는지 요약한다: 만든/지운 전이 수, 선언한 포트, 남은 경고.\n블랙보드 `GraphDraft.wired`에 배선 완료 여부를 기록한다.\n\n재배선을 끝낼 수 없으면(범위 불명확, 해소 불가 검증 에러) **blocked**로 끝내라 —\n남은 목록과 막힌 이유를 보고에 적는다. 절반쯤 자른 그래프를 done으로 보고하는\n것이 최악이다: 호출자는 완료로 믿고 다음 단계로 넘어간다.\n",
-      "reference_placements": [],
-      "graph_layout": {
-        "cb18bfdb234446ef8a6bddcf5d0a0ad5": [
-          0.0,
-          100.0
-        ],
-        "5d64f44a9b8442428cf2ed42a51be0f0": [
-          220.0,
-          0.0
-        ],
-        "3c064c3de9c4412b9756a969be37811a": [
-          470.0,
-          0.0
-        ],
-        "2c26b93aa373476dbabbd85da6e0cc53": [
-          602.9292577634706,
-          180.00165244354196
-        ]
-      },
-      "edge_layout": {},
-      "transfer_on": [
-        {
-          "name": "done",
-          "color": "#4488ff",
-          "description": "재배선 완료 — 검증 에러 0, 변경 요약 보고됨"
-        },
-        {
-          "name": "blocked",
-          "color": "#4488ff",
-          "description": "재배선 중단 — 범위 불명확·해소 불가 에러. 남은 목록을 보고하고 수동 배선으로 폴백"
-        }
-      ]
+      "body": "# 그래프 재배선 전담자\n\n너는 Daedalus 캔버스의 대규모 재배선을 별도 컨텍스트에서 수행하는 작업자다. 무엇을\n고칠지는 fork 스킬(graph-bulk-rewire)의 지시가 정한다 — 이 파일은 네 역할과 한계만\n정한다. 별도 컨텍스트에서 도는 이유는 호출자의 대화를 수십 번의 편집 호출로 오염시키지\n않기 위해서다.\n\n## 규율\n\n- **조사 없이 자르지 마라.** 먼저 전체 그래프를 훑어 고칠 목록을 만들고, 그 목록대로만\n  편집한다. 목록에 없는 것을 \"겸사겸사\" 고치지 마라 — 호출자가 의도한 범위를 넘는다.\n- **모든 편집은 사용자의 undo 스택에 들어간다.** 되돌릴 수 있지만 수십 개의 편집을\n  되돌리는 것은 사용자에게 고역이다. 편집 전에 계획을 확정하라.\n- **분기 의미론을 지켜라.** 노드와 선만 만들면 분기가 표현되지 않는다. 여러 갈래로\n  나가는 노드는 `set_transfer_on`으로 갈래를 선언하고 각 전이에 trigger를 물려라.\n  워크플로 에이전트 노드로 가는 전이는 `add_agent_call`로 만든 호출 포트에서만 나갈 수\n  있다(fork 스킬 노드는 일반 출력 포트에서 간다).\n- **끝나면 검증하라.** `validate_project`가 에러 0인 상태로 보고한다. 경고는 원인과\n  함께 보고에 적는다.\n- **절반쯤 자른 그래프를 완료로 보고하지 마라.** 호출자는 완료로 믿고 다음 단계로\n  넘어간다. 끝낼 수 없으면 남은 목록과 막힌 이유를 보고하고 멈춘다.\n"
     },
     {
-      "kind": "agent",
-      "id": "2a363db3872c456e891748d2be405b92",
+      "kind": "fork_agent",
+      "id": "745680004e51462e983c8430ee980aa9",
       "name": "body-writer",
-      "description": "컴포넌트 본문·프론트매터를 별도 컨텍스트에서 작성한다 — graph-author가 목록이 길어 한 컨텍스트에 안 담길 때 위임.",
-      "fsm": {
-        "id": "c71181a884c5435d8d40b0a9b4d008c2",
-        "name": "body-writer_fsm",
-        "states": [
-          {
-            "kind": "entry_point",
-            "id": "7caf2586a41c4ad0ba8de382bc911535",
-            "name": "entry",
-            "on_entry_start": [],
-            "on_entry": [],
-            "on_entry_end": [],
-            "on_exit_start": [],
-            "on_exit": [],
-            "on_exit_end": [],
-            "on_active": [],
-            "custom_events": {},
-            "inputs": [],
-            "outputs": [],
-            "reads": [],
-            "writes": []
-          }
-        ],
-        "transitions": [],
-        "initial_state": "7caf2586a41c4ad0ba8de382bc911535",
-        "final_states": [],
-        "blackboard": {
-          "class_definitions": [],
-          "variables": {}
-        }
-      },
+      "description": "컴포넌트 본문·프론트매터 작성 전담 서브에이전트 — graph-write-body fork 스킬의 실행 기반. 본문 편집 도구만 갖고, 지어내지 않는 작성 원칙을 시스템 프롬프트로 받는다.",
       "config": {
-        "kind": "agent",
+        "kind": "fork_agent",
         "model": "opus",
         "effort": "high",
         "hooks": {
@@ -1058,32 +841,9 @@
           "daedalus"
         ],
         "memory": null,
-        "background": false,
-        "isolation": "none",
-        "color": null
+        "color": "purple"
       },
-      "execution_policy": {
-        "mode": "fixed",
-        "count": 1,
-        "join": "all",
-        "join_count": null
-      },
-      "body": "# 본문 작성 위임\n\ngraph-author로부터 위임받은 컴포넌트의 본문과 프론트매터를 채운다.\n\n## 입력\n\n호출 시 `note`에 대상 컴포넌트 이름이 기록돼 있다. `get_component`로 현재\n상태를 확인하고 빈 곳(body/when_to_use/allowed_tools 등)을 채워라.\n\n## 작성 원칙\n\n- **왜를 적어라.** \"X를 하라\"보다 \"Y가 깨지므로 X를 하라\"가 지시를 지키게 한다.\n- 다음 단계·작업 재개·블랙보드 단락은 **컴파일러가 자동으로 붙인다** — 본문에\n  직접 쓰면 이중이 된다.\n- `list_component_fields`로 그 컴포넌트가 받는 필드를 확인하고\n  `set_component_field`로 채운다. 짐작으로 필드명을 넘기지 마라.\n- `compile_preview`로 산출 결과를 확인해 껍데기가 아닌지 본다.\n\n## 완료 갈림길\n\n- 대상 컴포넌트의 본문·프론트매터를 채웠으면 **done**으로 보고한다.\n- 대상을 찾을 수 없거나(이름 오타·삭제됨) 작성에 필요한 정보(목표·역할)가\n  부족하면 **failed** — 무엇이 막혔는지 첫 줄에 명시하고 임의로 지어내지 마라.\n  빈 본문을 그럴듯한 추측으로 채우는 것이 최악이다.\n",
-      "reference_placements": [],
-      "graph_layout": {},
-      "edge_layout": {},
-      "transfer_on": [
-        {
-          "name": "done",
-          "color": "#4488ff",
-          "description": "대상 컴포넌트의 본문·프론트매터 작성 완료"
-        },
-        {
-          "name": "failed",
-          "color": "#4488ff",
-          "description": "대상을 찾지 못했거나 작성에 필요한 정보 부족 — 무엇이 막혔는지 보고"
-        }
-      ]
+      "body": "# 본문 작성 전담자\n\n너는 Daedalus 컴포넌트의 본문과 프론트매터를 별도 컨텍스트에서 채우는 작업자다. 어느\n컴포넌트를 채울지는 fork 스킬(graph-write-body)의 지시가 정한다 — 이 파일은 네 역할과\n한계만 정한다.\n\n## 작성 원칙\n\n- **왜를 적어라.** \"X를 하라\"보다 \"Y가 깨지므로 X를 하라\"가 지시를 지키게 한다.\n- 다음 단계·작업 재개·블랙보드 단락은 **컴파일러가 자동으로 붙인다** — 본문에 직접\n  쓰면 이중이 된다. 본문은 그 단계 고유의 지침만 담는다.\n- `list_component_fields`로 그 컴포넌트가 받는 필드를 확인하고 `set_component_field`로\n  채운다. 짐작으로 필드명을 넘기지 마라 — 종류마다 받는 필드가 다르다.\n- `compile_preview`로 산출 결과를 확인해 껍데기가 아닌지 본다.\n- **지어내지 마라.** 목표·역할 정보가 부족하면 빈 본문을 그럴듯한 추측으로 채우지 말고\n  무엇이 부족한지 보고한다 — 그럴듯한 껍데기가 최악이다.\n- 편집은 전부 사용자의 undo 스택에 들어간다. 지시받은 컴포넌트 밖은 건드리지 마라.\n"
     }
   ],
   "reference_placements": [
@@ -1095,7 +855,7 @@
         "graph-design",
         "graph-wire",
         "graph-state",
-        "graph-surgeon"
+        "graph-bulk-rewire"
       ]
     },
     {
@@ -1108,7 +868,7 @@
         "graph-author",
         "graph-orient",
         "graph-tools",
-        "body-writer"
+        "graph-write-body"
       ]
     }
   ],
@@ -1120,6 +880,7 @@
       "description": "세션 시작 시 Daedalus 앱(MCP 서버)이 떠 있는지 확인하고 접속 정보를 컨텍스트에 주입한다.",
       "event": "SessionStart",
       "matcher": "",
+      "enabled": true,
       "handlers": [
         {
           "kind": "command",
@@ -1142,6 +903,7 @@
       "description": "state/*.json 쓰기를 가로채 스키마 검증을 강제한다 — daedalus-bb write가 아니라 직접 편집하면 경고.",
       "event": "PreToolUse",
       "matcher": "Write|Edit",
+      "enabled": true,
       "handlers": [
         {
           "kind": "command",
@@ -1164,6 +926,7 @@
       "description": "state/*.json 저장 직후 블랙보드 검증을 자동 실행한다.",
       "event": "PostToolUse",
       "matcher": "Write|Edit",
+      "enabled": true,
       "handlers": [
         {
           "kind": "command",
@@ -1186,6 +949,7 @@
       "description": "도구 사용 로그를 남긴다 — 디버깅·감사 추적용.",
       "event": "PostToolUse",
       "matcher": "",
+      "enabled": true,
       "handlers": [
         {
           "kind": "command",
@@ -1369,29 +1133,6 @@
       },
       {
         "kind": "simple",
-        "id": "f779ad58ae474a93baf9193294c70ad9",
-        "name": "graph-surgeon",
-        "on_entry_start": [],
-        "on_entry": [],
-        "on_entry_end": [],
-        "on_exit_start": [],
-        "on_exit": [],
-        "on_exit_end": [],
-        "on_active": [],
-        "custom_events": {},
-        "inputs": [],
-        "outputs": [],
-        "reads": [
-          "DesignSession.goal",
-          "GraphDraft"
-        ],
-        "writes": [
-          "GraphDraft.wired"
-        ],
-        "skill_ref": "6a500c27767e443789499e6e711333bd"
-      },
-      {
-        "kind": "simple",
         "id": "0a71735c326c4d5ab8557b824063c041",
         "name": "graph-wire",
         "on_entry_start": [],
@@ -1529,8 +1270,31 @@
       },
       {
         "kind": "simple",
-        "id": "3082139d9fb04801b4e379c4d63e6ed2",
-        "name": "body-writer",
+        "id": "6454f7a663744bada341639808d867ee",
+        "name": "graph-bulk-rewire",
+        "on_entry_start": [],
+        "on_entry": [],
+        "on_entry_end": [],
+        "on_exit_start": [],
+        "on_exit": [],
+        "on_exit_end": [],
+        "on_active": [],
+        "custom_events": {},
+        "inputs": [],
+        "outputs": [],
+        "reads": [
+          "DesignSession.goal",
+          "GraphDraft"
+        ],
+        "writes": [
+          "GraphDraft.wired"
+        ],
+        "skill_ref": "f25bcb2dbf564be0a9f0deefd9830468"
+      },
+      {
+        "kind": "simple",
+        "id": "011b60c27a6449ba85b5b0136d311bb9",
+        "name": "graph-write-body",
         "on_entry_start": [],
         "on_entry": [],
         "on_entry_end": [],
@@ -1548,7 +1312,7 @@
         "writes": [
           "GraphDraft"
         ],
-        "skill_ref": "2a363db3872c456e891748d2be405b92"
+        "skill_ref": "65023c5269ab48dab4efe4a788d9a65d"
       }
     ],
     "transitions": [
@@ -1565,29 +1329,6 @@
           "evaluation": {
             "kind": "llm_evaluation",
             "prompt": "캔버스에 배치가 없거나, 사용자가 새로운 워크플로를 만들려는 경우"
-          }
-        },
-        "on_guard_check": [],
-        "on_traverse_start": [],
-        "on_traverse": [],
-        "on_traverse_end": [],
-        "custom_events": {},
-        "data_map": {},
-        "skill_ref": null
-      },
-      {
-        "id": "f2db256870b94d1b91c78009772e1ba2",
-        "source": "5be77a4d502447caaf04886480b7f071",
-        "target": "f779ad58ae474a93baf9193294c70ad9",
-        "type": "external",
-        "trigger": {
-          "kind": "completion",
-          "name": "bulk-rewire"
-        },
-        "guard": {
-          "evaluation": {
-            "kind": "llm_evaluation",
-            "prompt": "재배선할 노드가 스무 개를 넘어 한 컨텍스트에서 다루면 흐름을 놓칠 때"
           }
         },
         "on_guard_check": [],
@@ -1730,24 +1471,6 @@
         "skill_ref": null
       },
       {
-        "id": "49169ecf26af41188b2a328cc86b5a43",
-        "source": "f779ad58ae474a93baf9193294c70ad9",
-        "target": "17d8711d1a4e4c7f89775b5a25c4f064",
-        "type": "external",
-        "trigger": {
-          "kind": "completion",
-          "name": "done"
-        },
-        "guard": null,
-        "on_guard_check": [],
-        "on_traverse_start": [],
-        "on_traverse": [],
-        "on_traverse_end": [],
-        "custom_events": {},
-        "data_map": {},
-        "skill_ref": null
-      },
-      {
         "id": "6c985c7e945a431788c94b020f28bcf7",
         "source": "5ee3bc1c5580488baa3f242983d19d11",
         "target": "17d8711d1a4e4c7f89775b5a25c4f064",
@@ -1755,78 +1478,6 @@
         "trigger": {
           "kind": "completion",
           "name": "done"
-        },
-        "guard": null,
-        "on_guard_check": [],
-        "on_traverse_start": [],
-        "on_traverse": [],
-        "on_traverse_end": [],
-        "custom_events": {},
-        "data_map": {},
-        "skill_ref": null
-      },
-      {
-        "id": "a24810d6f461446fb299cf7eba210b71",
-        "source": "5ee3bc1c5580488baa3f242983d19d11",
-        "target": "3082139d9fb04801b4e379c4d63e6ed2",
-        "type": "external",
-        "trigger": {
-          "kind": "completion",
-          "name": "delegate-body"
-        },
-        "guard": null,
-        "on_guard_check": [],
-        "on_traverse_start": [],
-        "on_traverse": [],
-        "on_traverse_end": [],
-        "custom_events": {},
-        "data_map": {},
-        "skill_ref": null
-      },
-      {
-        "id": "159ea63feccf4d2887de191f05a5acf2",
-        "source": "3082139d9fb04801b4e379c4d63e6ed2",
-        "target": "17d8711d1a4e4c7f89775b5a25c4f064",
-        "type": "external",
-        "trigger": {
-          "kind": "completion",
-          "name": "done"
-        },
-        "guard": null,
-        "on_guard_check": [],
-        "on_traverse_start": [],
-        "on_traverse": [],
-        "on_traverse_end": [],
-        "custom_events": {},
-        "data_map": {},
-        "skill_ref": null
-      },
-      {
-        "id": "3b441e4d46844ba8bde61121b8a7298e",
-        "source": "f779ad58ae474a93baf9193294c70ad9",
-        "target": "0a71735c326c4d5ab8557b824063c041",
-        "type": "external",
-        "trigger": {
-          "kind": "completion",
-          "name": "blocked"
-        },
-        "guard": null,
-        "on_guard_check": [],
-        "on_traverse_start": [],
-        "on_traverse": [],
-        "on_traverse_end": [],
-        "custom_events": {},
-        "data_map": {},
-        "skill_ref": null
-      },
-      {
-        "id": "4bf5e7463ec74a7c9cfb25a0c912d0e3",
-        "source": "3082139d9fb04801b4e379c4d63e6ed2",
-        "target": "5ee3bc1c5580488baa3f242983d19d11",
-        "type": "external",
-        "trigger": {
-          "kind": "completion",
-          "name": "failed"
         },
         "guard": null,
         "on_guard_check": [],
@@ -1854,6 +1505,124 @@
         "custom_events": {},
         "data_map": {},
         "skill_ref": null
+      },
+      {
+        "id": "48d3803197fd487ba741b516d1ddf683",
+        "source": "5be77a4d502447caaf04886480b7f071",
+        "target": "6454f7a663744bada341639808d867ee",
+        "type": "external",
+        "trigger": {
+          "kind": "completion",
+          "name": "bulk-rewire"
+        },
+        "guard": {
+          "evaluation": {
+            "kind": "llm_evaluation",
+            "prompt": "재배선할 노드가 스무 개를 넘어 한 컨텍스트에서 다루면 흐름을 놓칠 때"
+          }
+        },
+        "on_guard_check": [],
+        "on_traverse_start": [],
+        "on_traverse": [],
+        "on_traverse_end": [],
+        "custom_events": {},
+        "data_map": {},
+        "skill_ref": null
+      },
+      {
+        "id": "44fe9a7f3d4f47d098a3d42d50fc2be1",
+        "source": "6454f7a663744bada341639808d867ee",
+        "target": "17d8711d1a4e4c7f89775b5a25c4f064",
+        "type": "external",
+        "trigger": {
+          "kind": "completion",
+          "name": "done"
+        },
+        "guard": null,
+        "on_guard_check": [],
+        "on_traverse_start": [],
+        "on_traverse": [],
+        "on_traverse_end": [],
+        "custom_events": {},
+        "data_map": {},
+        "skill_ref": null
+      },
+      {
+        "id": "e4e356ef4b1745c1a50d70b546f7f2e9",
+        "source": "6454f7a663744bada341639808d867ee",
+        "target": "0a71735c326c4d5ab8557b824063c041",
+        "type": "external",
+        "trigger": {
+          "kind": "completion",
+          "name": "blocked"
+        },
+        "guard": null,
+        "on_guard_check": [],
+        "on_traverse_start": [],
+        "on_traverse": [],
+        "on_traverse_end": [],
+        "custom_events": {},
+        "data_map": {},
+        "skill_ref": null
+      },
+      {
+        "id": "20a376793dfe4b6caea067dc7d32d613",
+        "source": "5ee3bc1c5580488baa3f242983d19d11",
+        "target": "011b60c27a6449ba85b5b0136d311bb9",
+        "type": "external",
+        "trigger": {
+          "kind": "completion",
+          "name": "write-body"
+        },
+        "guard": {
+          "evaluation": {
+            "kind": "llm_evaluation",
+            "prompt": "빈 본문이 5개 이상이라 한 컨텍스트에서 전부 쓰면 맥락을 잃을 때 — 한 번에 컴포넌트 하나"
+          }
+        },
+        "on_guard_check": [],
+        "on_traverse_start": [],
+        "on_traverse": [],
+        "on_traverse_end": [],
+        "custom_events": {},
+        "data_map": {},
+        "skill_ref": null
+      },
+      {
+        "id": "fafc80a37718484bb489c7af1a0bddf8",
+        "source": "011b60c27a6449ba85b5b0136d311bb9",
+        "target": "5ee3bc1c5580488baa3f242983d19d11",
+        "type": "external",
+        "trigger": {
+          "kind": "completion",
+          "name": "done"
+        },
+        "guard": null,
+        "on_guard_check": [],
+        "on_traverse_start": [],
+        "on_traverse": [],
+        "on_traverse_end": [],
+        "custom_events": {},
+        "data_map": {},
+        "skill_ref": null
+      },
+      {
+        "id": "3ddf5876f1674d8f96bc3c1934169c7f",
+        "source": "011b60c27a6449ba85b5b0136d311bb9",
+        "target": "5ee3bc1c5580488baa3f242983d19d11",
+        "type": "external",
+        "trigger": {
+          "kind": "completion",
+          "name": "failed"
+        },
+        "guard": null,
+        "on_guard_check": [],
+        "on_traverse_start": [],
+        "on_traverse": [],
+        "on_traverse_end": [],
+        "custom_events": {},
+        "data_map": {},
+        "skill_ref": null
       }
     ],
     "initial_state": "07c498a5d4ce47508cd495bf7c13a626",
@@ -1871,10 +1640,6 @@
     "5be77a4d502447caaf04886480b7f071": [
       125.29585437500009,
       -191.8296421875
-    ],
-    "f779ad58ae474a93baf9193294c70ad9": [
-      347.83594021739134,
-      329.6640489130434
     ],
     "0a71735c326c4d5ab8557b824063c041": [
       720.9900000000001,
@@ -1900,13 +1665,29 @@
       1239.3899999999999,
       -180.44250000000002
     ],
-    "3082139d9fb04801b4e379c4d63e6ed2": [
-      1910.0899999999997,
-      -80.34249999999997
+    "6454f7a663744bada341639808d867ee": [
+      347.8,
+      329.7
+    ],
+    "011b60c27a6449ba85b5b0136d311bb9": [
+      1910.1,
+      -80.3
     ]
   },
   "edge_layout": {},
   "emit_progress_hook": true,
   "build_target": "local",
-  "mcp_server_defs": {}
+  "mcp_server_defs": {},
+  "external_plugins": [
+    "hookify@claude-plugins-official",
+    "skill-creator@claude-plugins-official"
+  ],
+  "workspace_settings": {},
+  "claude_md": {
+    "id": "f06dbf09c3754fb0bdc9b07098cddbe5",
+    "name": "daedalus",
+    "body": "",
+    "paths": []
+  },
+  "rules": []
 }
