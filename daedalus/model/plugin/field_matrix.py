@@ -15,6 +15,17 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from daedalus.model.plugin.config import (
+    AgentConfig,
+    AsyncForkSkillConfig,
+    DeclarativeSkillConfig,
+    ForkAgentConfig,
+    ProceduralSkillConfig,
+    ReferenceSkillConfig,
+    SyncForkSkillConfig,
+    TransferSkillConfig,
+    WrappedSkillConfig,
+)
 from daedalus.model.plugin.enums import (
     AgentField,
     AgentIsolation,
@@ -170,14 +181,16 @@ _REFERENCE: dict[SkillField, FieldRule] = {
 
 # fmt: on
 
+#: 키는 **설정 클래스의 선언**에서 읽는다 — 문자열을 베껴 두면 종류 어휘를
+#: 바꿀 때 여기만 남아 `matrix_for`가 조용히 "표가 없다"고 말한다(WP-3).
 SKILL_FIELD_MATRIX: dict[str, dict[SkillField, FieldRule]] = {
-    "procedural": _PROCEDURAL,
-    "sync_fork": _SYNC_FORK,
-    "async_fork": _ASYNC_FORK,
-    "declarative": _DECLARATIVE,
-    "wrapped": _WRAPPED,
-    "transfer": _TRANSFER,
-    "reference": _REFERENCE,
+    ProceduralSkillConfig.KIND: _PROCEDURAL,
+    SyncForkSkillConfig.KIND: _SYNC_FORK,
+    AsyncForkSkillConfig.KIND: _ASYNC_FORK,
+    DeclarativeSkillConfig.KIND: _DECLARATIVE,
+    WrappedSkillConfig.KIND: _WRAPPED,
+    TransferSkillConfig.KIND: _TRANSFER,
+    ReferenceSkillConfig.KIND: _REFERENCE,
 }
 
 # fmt: off
@@ -213,8 +226,8 @@ _FORK_AGENT: dict[AgentField, FieldRule] = {
 # fmt: on
 
 AGENT_FIELD_MATRIX: dict[str, dict[AgentField, FieldRule]] = {
-    "agent": _AGENT,
-    "fork_agent": _FORK_AGENT,
+    AgentConfig.KIND: _AGENT,
+    ForkAgentConfig.KIND: _FORK_AGENT,
 }
 
 

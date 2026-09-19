@@ -29,17 +29,16 @@ if TYPE_CHECKING:
 
 
 def _bucket(project: PluginProject, component: object) -> list:
-    """컴포넌트가 들어갈 프로젝트 리스트를 고른다.
+    """컴포넌트가 들어갈 프로젝트 리스트를 고른다 — 실체는 `kinds.bucket_of` (WP-3).
 
     **에이전트 두 종류를 `project.agents`로 보내는 단 하나의 판정**이다 —
     워크플로 에이전트로 좁히면 fork 에이전트가 `project.skills`에 들어가
-    저장·레지스트리·검증·산출 계획이 전부 어긋난다.
+    저장·레지스트리·검증·산출 계획이 전부 어긋난다. 종류를 타입으로 묻던
+    자리이고, 지금은 `BUCKET` 선언이 답한다.
     """
-    from daedalus.model.plugin.agent import Agent
+    from daedalus.model.plugin.kinds import bucket_of
 
-    if isinstance(component, Agent):
-        return project.agents
-    return project.skills
+    return bucket_of(project, component)
 
 
 class CreateComponentCmd(Command):

@@ -29,7 +29,7 @@ GUI는 PySide6 노드 에디터(`view/`), 앱 내장 MCP 서버(`mcp/`)가 CC와
 | 경로 | 역할 |
 |------|------|
 | `model/fsm/` | 순수 FSM(상태·전이·가드·액션·블랙보드·Section/EventDef). 재귀 순회 단일 진실은 `walk.py` |
-| `model/plugin/` | 플러그인 메타데이터 — config 계층·스킬/에이전트·도구·훅(`hook_store`는 파일시스템을 아는 유일한 훅 모듈)·필드 매트릭스·경로 변수·외부 플러그인 카탈로그(`wrap_catalog`/`plugin_cache`) |
+| `model/plugin/` | 플러그인 메타데이터 — config 계층·스킬/에이전트·**종류 레지스트리(`kinds.py` — 등록 지점 단일화)**·도구·훅(`hook_store`는 파일시스템을 아는 유일한 훅 모듈)·필드 매트릭스·경로 변수·외부 플러그인 카탈로그(`wrap_catalog`/`plugin_cache`) |
 | `model/project.py` | `PluginProject` 최상위 컨테이너 + 이름 변경/삭제/참조 판정 순수 함수 |
 | `model/serialize/` | 모델↔JSON(format 2, 안정 ID) — `ser`←`migrate`←`deser_fsm`←`deser_plugin`←`deser` 단방향, `__init__`은 재-export 파사드 |
 | `model/validation/` | Validator — `machine_rules` + `project_rules/`(그룹 믹스인), 등급은 `severity.WARNING_RULES` |
@@ -243,8 +243,19 @@ daedalus/
 │   │   ├── variables.py    # 본문 경로 변수(WP-RT) — ${ROOT} 타깃 중립 토큰, 타깃별 확장 매핑, 구버전 마이그레이션
 │   │   │                   #   + SKILL_ONLY_VARIABLES(A6 — 스킬 본문에서만 치환되는 토큰 3종. skill_only_variable_in_body의 단일 진실)
 │   │   ├── field_matrix.py # FieldRule(emit 포함), SKILL_FIELD_MATRIX(7종), AGENT_FIELD_MATRIX(agent/fork_agent)
+│   │   │                   #   표 키는 리터럴이 아니라 **설정 클래스 선언**(XxxConfig.KIND)이다(WP-3) — 종류 어휘를 바꿀 때
+│   │   │                   #   여기만 남아 matrix_for가 조용히 "표가 없다"고 말하는 것을 막는다. 그래서 field_matrix → config 간선이 있다
 │   │   │                   #   + **matrix_for(component)** — 표 선택의 단일 진실(키 = config.kind. 미지 kind는 ValueError)
 │   │   │                   #   (config.py에도 KIND ClassVar + 이름 참조 계약 name_refs/rename_ref가 있다 — plugin-model.md "능력 표면")
+│   │   ├── kinds.py        # **종류 레지스트리 — 유일한 등록 지점**(WP-3). COMPONENT_CLASSES 튜플 9행 → KindSpec(kind/config_kind/
+│   │   │                   #   bucket/component_cls/config_cls/field_matrix(MappingProxyType 읽기 전용 뷰)/placement/output_location/
+│   │   │                   #   body_source/convert_family/delegation_target/runs_in_subagent/reports_out_of_band/is_fork_base).
+│   │   │                   #   값은 전부 ClassVar 선언에서 **파생**된다 — 손으로 적는 칸이 없다.
+│   │   │                   #   조회: spec_for(인스턴스 — 종류 행 없는 값은 TypeError) / spec_by_kind(kind, bucket=, subject= — 버킷
+│   │   │                   #   밖 kind는 거절) / spec_by_config_kind / kinds_in / config_kinds_in / convert_family_kinds / bucket_of.
+│   │   │                   #   소비자: 역직렬화(_deser_skill/_deser_agent/_CONFIG_KINDS) · view/actions/creation.make_component ·
+│   │   │                   #   fork_skill.KINDS·convert_skill_kind · mcp/tools/props._SKILL_KINDS/_AGENT_KINDS · component_commands._bucket.
+│   │   │                   #   **plugin 패키지의 리프 소비자다** — 어느 plugin 모듈도 kinds를 임포트하지 않는다(임포트하면 곧 순환)
 │   │   └── workspace_doc.py# WorkspaceDoc(name, body, paths, id) — .claude/CLAUDE.md 구역과 .claude/rules/<name>.md의 편집 단위(WP-WD).
 │   │                       #   값 동등성이고 id는 비교 제외 — 본문 undo 스택이 이름이 아니라 안정 식별자로 문서를 잡는다.
 │   │                       #   paths(A13)는 규칙 전용 `paths:` 프론트매터 glob 목록 — 비면 프론트매터를 내지 않는다(항상 로드).

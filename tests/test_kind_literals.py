@@ -68,10 +68,14 @@ KIND_DECLARATION_FILES: frozenset[str] = frozenset({
     "model.plugin.skill", "model.plugin.agent", "model.plugin.config",
 })
 
-#: 실측 기준선 (2026-09-19, WP-0c 직후 HEAD). **내리기만 한다.**
+#: 실측 기준선 (2026-09-19, WP-3 완료 — 종류 레지스트리 `kinds.py`). **내리기만 한다.**
+#: WP-3이 걷어낸 자리: `field_matrix`의 표 키 9(→ `XxxConfig.KIND` 참조) ·
+#: `deser_plugin`의 `_CONFIG_KINDS`/`step_kinds`/종류 사다리/"사용 가능" 문구 2 ·
+#: `creation.factories` 람다 9 · `fork_skill.KINDS`/`_KIND_CLASSES` ·
+#: `props._SKILL_KINDS`/`_AGENT_KINDS`. 남은 자리의 주인은 WP-5~WP-8이다.
 RATCHET: dict[str, int] = {
-    "component_kind_sites": 148,
-    "component_kind_files": 22,
+    "component_kind_sites": 94,
+    "component_kind_files": 21,
     "plan_kind_sites": 22,
     "plan_kind_files": 3,
 }

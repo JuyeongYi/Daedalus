@@ -10,17 +10,14 @@ import copy
 import dataclasses
 from typing import Any
 
-#: 전환할 수 있는 종류 — 세 종류는 필드 레이아웃이 같아(모두 StepSkill 하위)
-#: 컴포넌트 정체성을 유지한 채 `__class__`만 바꿀 수 있다.
-KINDS: tuple[str, ...] = ("procedural", "sync_fork", "async_fork")
+from daedalus.model.plugin.kinds import convert_family_kinds, spec_by_config_kind
+from daedalus.model.plugin.skill import StepSkill
 
-#: 종류 문자열 → (스킬 클래스 이름, config 클래스 이름). 실제 클래스는 순환
-#: 임포트를 피해 함수 안에서 해소한다.
-_KIND_CLASSES: dict[str, tuple[str, str]] = {
-    "procedural": ("ProceduralSkill", "ProceduralSkillConfig"),
-    "sync_fork": ("SyncForkSkill", "SyncForkSkillConfig"),
-    "async_fork": ("AsyncForkSkill", "AsyncForkSkillConfig"),
-}
+#: 전환할 수 있는 종류 — **전환 가족 선언에서 파생**한다(WP-3). 같은 가족의
+#: 종류는 필드 레이아웃이 같아 컴포넌트 정체성을 유지한 채 `__class__`만 바꿀
+#: 수 있다. 목록을 손으로 적어 두면 가족에 종류를 더할 때 여기를 빠뜨리고,
+#: 빠뜨린 종류는 전환 메뉴에서 **조용히** 사라진다.
+KINDS: tuple[str, ...] = convert_family_kinds(StepSkill.CONVERT_FAMILY)
 
 
 def fork_agent_choices(project) -> list[tuple[str, str]]:
@@ -80,8 +77,6 @@ def skill_kind_of(component) -> str | None:
     컴포넌트가 아닌 값(`None` — 빈 노드의 skill_ref 등)은 예외가 아니라
     "전환 대상이 아니다"로 답한다(`placement_role_of`와 같은 관용 계약).
     """
-    from daedalus.model.plugin.skill import StepSkill
-
     if getattr(component, "CONVERT_FAMILY", None) != StepSkill.CONVERT_FAMILY:
         return None
     return component.config.kind if component.config.kind in KINDS else None
@@ -104,8 +99,6 @@ def convert_skill_kind(window, component, target: str) -> dict[str, Any]:
     Returns: {"changed", "old", "new", "dropped"}.
     Raises: ValueError — 대상이 단계 스킬이 아니거나 알 수 없는 종류.
     """
-    from daedalus.model.plugin import config as config_mod
-    from daedalus.model.plugin import skill as skill_mod
     from daedalus.view.commands.attr_commands import SetAttrCmd
     from daedalus.view.commands.base import MacroCommand
     from daedalus.view.commands.surface_commands import resync_bracket
@@ -121,9 +114,11 @@ def convert_skill_kind(window, component, target: str) -> dict[str, Any]:
     if current == target:
         return {"changed": False, "old": current, "new": target, "dropped": {}}
 
-    cls_name, cfg_name = _KIND_CLASSES[target]
-    new_cls = getattr(skill_mod, cls_name)
-    new_cfg_cls = getattr(config_mod, cfg_name)
+    # 클래스 이름을 문자열로 보관하고 런타임에 `getattr`로 푸는 옛 표(V11)는
+    # 이름 오타가 AttributeError로만 드러났다 — 레지스트리가 **클래스 자체**를 준다.
+    target_spec = spec_by_config_kind(target)
+    new_cls = target_spec.component_cls
+    new_cfg_cls = target_spec.config_cls
 
     old_cfg = component.config
     # 드롭은 **쌍**이 정한다: procedural → fork 전환에서만 allowed_tools가

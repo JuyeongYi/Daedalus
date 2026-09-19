@@ -183,11 +183,56 @@ no-op가 된다. 그래서 `PluginComponent`가 **선언(ClassVar) + 인스턴�
 > `has_external_body`는 view/MCP 호출자가 남아 있어 한 줄 파사드로 살고, 둘 다
 > 본문이 능력 호출 한 줄이다(`effective_placement()` / `BODY_SOURCE`).
 >
-> view·MCP 호출자 정리는 WP-2d가 맡는다.
+> 종류 표(생성·전환·MCP 어휘·역직렬화)는 WP-3의 종류 레지스트리가 흡수했다 — 아래 절.
 >
 > **랩핑 전용으로 남은 좁힘**은 소스에 `# WRAPPED-ONLY` 태그가 붙는다 — 능력 선언으로는
 > 표현되지 않지만 오늘의 집합을 정확히 보존해야 하는 자리이고(전수 목록과 개수는
 > `validation.md`), WrappedSkill 퇴역(WP-10)이 태그를 따라 전수 삭제한다.
+
+### 종류 레지스트리 (`model/plugin/kinds.py`, WP-3, 2026-09-19)
+
+"종류가 몇 가지인가"라는 사실은 여섯 벌로 흩어져 있었다 — 역직렬화의 `step_kinds`·
+`_CONFIG_KINDS`·"사용 가능" 문구 2개, 뷰의 생성 람다 9개와 전환 표 2개, MCP의
+`_SKILL_KINDS`/`_AGENT_KINDS`. 표가 여러 벌이면 새 종류를 더할 때 **어디를 고쳐야
+하는지 아무도 말해 주지 않고**, 빠뜨린 자리는 예외가 아니라 조용한 부재가 된다:
+팔레트에서 사라지고, MCP가 "알 수 없는 종류"로 거절하고, 저장 파일에서 읽히지 않는다.
+
+**등록 지점은 `COMPONENT_CLASSES` 튜플 하나다.** 선언 순서 = 팔레트 탭 순서 = MCP
+안내 문구 순서(결정성). 나머지는 전부 파생이고, 한 행(`KindSpec`)의 값은 **전부
+능력 표면의 ClassVar와 `field_matrix`에서 읽는다** — 레지스트리가 사실을 새로
+발명하는 칸은 하나도 없다.
+
+| 조회 | 답 | 거절 |
+|------|-----|------|
+| `spec_for(component)` | 이 **인스턴스**의 행 | 종류 행이 없는 값은 `TypeError`. `PluginComponent`는 스킬·에이전트보다 넓다(`Tool`·`HookDef`도 상속하지만 `KIND`를 선언하지 않는다) |
+| `spec_by_kind(kind, bucket=…, subject=…)` | 저장 파일 `kind` → 행 | 미지 kind·**버킷 밖 kind**는 `ValueError`(어느 항목인지 + 고를 수 있는 값). 스킬 목록에 적힌 `"agent"`는 에이전트를 만드는 것이 아니라 거절이다 |
+| `spec_by_config_kind(kind)` | config `kind` → 행 | `matrix_for`와 같은 거절 정책 |
+| `kinds_in(bucket)` / `config_kinds_in(bucket)` | 버킷별 어휘 튜플(선언 순서) | – |
+| `convert_family_kinds(family)` | `__class__` 전환 가족의 config kind 튜플 | `None` → 빈 튜플("가족 없음"이지 "전부"가 아니다) |
+| `bucket_of(project, component)` | `project.skills` / `project.agents` | `spec_for`의 거절을 그대로 |
+
+**매트릭스 키는 리터럴이 아니라 선언 참조다.** `SKILL_FIELD_MATRIX`/`AGENT_FIELD_MATRIX`의
+키는 `ProceduralSkillConfig.KIND` 꼴이다 — 그래서 `field_matrix.py → config.py` 간선이
+새로 생겼고(순환 없음), `KindSpec.from_class`의 표 조회가 전수임이 구조적으로 보장된다.
+행이 들고 있는 `field_matrix`는 `MappingProxyType` **읽기 전용 뷰**다(한 호출자의 제자리
+수정이 모듈 표를 오염시키면 그 오염은 다음 컴파일에서야 드러난다). `matrix_for()`는 종전대로
+**복사본**을 돌려준다 — 호출자 무수정.
+
+**오늘의 소비자.** 역직렬화(`_deser_skill`/`_deser_agent`는 `_build_component` 하나로
+합쳐졌고, 종류별 가지 대신 `dataclasses.fields`로 "이 종류가 fsm/포트/when_to_use를
+갖는가"를 묻는다) · `view/actions/creation.make_component`(람다 9개 → `new()`) ·
+`view/actions/fork_skill`(`KINDS`는 파생, 전환 대상 클래스는 문자열 `getattr`이 아니라
+행에서 온다) · `mcp/tools/props`(`create_skill`/`create_agent` 어휘) ·
+`view/commands/component_commands._bucket`. `KIND_UI`(WP-7)·`EMITTERS`(WP-6)는 아직
+없고, 생기면 같은 패리티 테스트에 합류한다.
+
+**게이트 3종.** `tests/test_kind_registry_parity.py`(집합 등식 — 매트릭스 키·MCP 어휘·
+생성 등가 `make_component` ↔ `new()` 9종 필드 단위) · `tests/model/plugin/test_registry_discovery.py`
+(pkgutil로 패키지를 훑어 구체 스킬·에이전트 클래스 집합 == `COMPONENT_CLASSES`) ·
+`tests/test_registry_failure_is_loud.py`(항목 하나를 monkeypatch로 지우면 **예외**가 나고
+메시지에 그 종류 이름이 실린다). `test_component_hierarchy._EXPECTED_KINDS`는 손으로 쓴 채
+남고(kind ↔ config.kind가 짝이라는 계약을 파생으로 만들면 계약이 자기 자신을 증명한다)
+레지스트리와 **같은 집합**인지만 묶는다.
 
 ### 배치 가능 판정 (`model/plugin/placement.py`)
 

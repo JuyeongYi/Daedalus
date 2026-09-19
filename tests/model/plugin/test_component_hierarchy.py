@@ -31,6 +31,7 @@ from daedalus.model.plugin.config import (
     TransferSkillConfig,
     WrappedSkillConfig,
 )
+from daedalus.model.plugin.kinds import KIND_REGISTRY
 from daedalus.model.plugin.field_matrix import (
     AGENT_FIELD_MATRIX,
     SKILL_FIELD_MATRIX,
@@ -219,6 +220,19 @@ def test_every_component_kind_pairs_with_its_config_kind():
     """클래스 종류 ↔ config 종류 짝은 전수 고정이다 — 산출이 두 사실을 말하면 안 된다."""
     pairs = {c.kind: c.config.kind for c in _components()}
     assert pairs == _EXPECTED_KINDS
+
+
+def test_expected_kinds_and_the_registry_are_the_same_set():
+    """손으로 쓴 이 표와 `kinds.KIND_REGISTRY`가 **같은 종류 집합**을 말한다 (WP-3).
+
+    표를 손으로 유지하는 것은 의도다 — "kind ↔ config.kind가 짝"이라는 계약을
+    파생으로 만들면 그 계약 자체가 자기 자신을 증명하게 된다. 대신 **집합이
+    같은지**를 여기서 묶어, 새 종류가 한쪽에만 생기는 것을 막는다.
+    """
+    assert set(_EXPECTED_KINDS) == set(KIND_REGISTRY)
+    assert _EXPECTED_KINDS == {
+        kind: spec.config_kind for kind, spec in KIND_REGISTRY.items()
+    }
 
 
 def test_every_config_kind_has_a_matrix():

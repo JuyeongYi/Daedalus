@@ -13,9 +13,11 @@ from __future__ import annotations
 
 from typing import Any
 
+import dataclasses
+
 from daedalus.model.fsm.join import JoinStrategy
 from daedalus.model.fsm.section import EventDef
-from daedalus.model.plugin.agent import Agent, AgentDefinition, ForkAgent
+from daedalus.model.plugin.agent import Agent, AgentDefinition
 from daedalus.model.plugin.config import (
     WrappedSkillConfig,
     AgentConfig,
@@ -27,6 +29,8 @@ from daedalus.model.plugin.config import (
     SyncForkSkillConfig,
     TransferSkillConfig,
 )
+from daedalus.model.plugin.kinds import config_kinds_in, spec_by_kind
+from daedalus.model.plugin.roles import Bucket
 from daedalus.model.plugin.enums import (
     AgentColor,
     AgentIsolation,
@@ -37,15 +41,6 @@ from daedalus.model.plugin.enums import (
     SkillShell,
 )
 from daedalus.model.plugin.hook import HookDef, HookEvent
-from daedalus.model.plugin.skill import (
-    WrappedSkill,
-    AsyncForkSkill,
-    DeclarativeSkill,
-    ProceduralSkill,
-    ReferenceSkill,
-    SyncForkSkill,
-    TransferSkill,
-)
 from daedalus.model.plugin.tool import (
     BuiltinTool,
     MCPTool,
@@ -80,12 +75,16 @@ def _deser_eventdef(d: dict) -> EventDef:
 
 # ── config / policy ──
 
-#: config `kind` → 생성자. 미지 kind는 **ValueError**다(조용한 강등 금지 — 원칙 5).
-#: 키 자체가 없으면 "미지"가 아니라 "미기재"라 None을 돌려주고 호출자가 자기
-#: 분기의 기본 config를 쓴다(구버전·손편집 파일).
+#: 읽을 수 있는 config `kind` 전수 — **레지스트리에서 파생**한다(WP-3).
+#: 미지 kind는 **ValueError**다(조용한 강등 금지 — 원칙 5). 키 자체가 없으면
+#: "미지"가 아니라 "미기재"라 None을 돌려주고 호출자가 자기 분기의 기본 config를
+#: 쓴다(구버전·손편집 파일).
+#:
+#: 베껴 쓴 목록이었을 때는 새 종류가 여기 빠지면 그 종류의 설정이 통째로
+#: "알 수 없는 config"로 거절돼 프로젝트가 아예 열리지 않았다 — 그리고 그
+#: 사실을 알려 주는 것은 사용자의 버그 리포트뿐이었다.
 _CONFIG_KINDS: tuple[str, ...] = (
-    "wrapped", "procedural", "sync_fork", "async_fork", "declarative",
-    "transfer", "reference", "agent", "fork_agent",
+    config_kinds_in(Bucket.SKILLS) + config_kinds_in(Bucket.AGENTS)
 )
 
 
@@ -202,116 +201,70 @@ def _coerce_config(config, expected_cls, *, kind: str, name: str, reg: _Registry
     return expected_cls()
 
 
-def _deser_skill(d: dict, reg: _Registry) -> Any:
-    kind = d.get("kind")
-    sid = d.get("id") or _new_id()
+def _build_component(d: dict, reg: _Registry, spec) -> Any:
+    """행이 가리키는 클래스로 컴포넌트 한 개를 조립한다 — **필드 유무가 분기다**.
+
+    종류별 if 사다리(M5) 대신 `dataclasses.fields`로 "이 종류가 fsm/포트/
+    when_to_use를 갖는가"를 묻는다. 사다리였을 때는 종류를 하나 더할 때마다
+    가지를 하나 더 쳐야 했고, 빠뜨리면 그 종류만 "알 수 없는 종류"로 거절됐다.
+
+    부수효과가 있는 호출의 **순서는 종전 그대로**다(config dict → fsm →
+    config 강제 → 나머지). `reg.warnings`가 쌓이는 순서가 곧 사용자가 보는
+    경고 순서라, 순서를 바꾸면 동작 불변이 아니다.
+    """
+    cls = spec.component_cls
+    field_names = {f.name for f in dataclasses.fields(cls)}
     name = d.get("name", "")
-    desc = d.get("description", "")
-    config = _deser_config(d["config"]) if d.get("config") else None
-    body = _deser_body(d)
+    raw_config = _deser_config(d["config"]) if d.get("config") else None
 
-    #: 스킬 kind → (클래스, config 클래스). 미지 kind는 ValueError다 —
-    #: 조용한 DeclarativeSkill 강등은 스킬 종류·본문을 통째로 바꿔 놓는다.
-    step_kinds = {
-        "procedural_skill": (ProceduralSkill, ProceduralSkillConfig),
-        "sync_fork_skill": (SyncForkSkill, SyncForkSkillConfig),
-        "async_fork_skill": (AsyncForkSkill, AsyncForkSkillConfig),
-        "wrapped_skill": (WrappedSkill, WrappedSkillConfig),
-    }
+    kwargs: dict[str, Any] = {"name": name, "description": d.get("description", "")}
+    if "fsm" in field_names:
+        kwargs["fsm"] = _deser_machine(d["fsm"], reg, parent_bb=None)
+    kwargs["config"] = _coerce_config(
+        raw_config, spec.config_cls, kind=spec.kind, name=name, reg=reg
+    )
+    kwargs["body"] = _deser_body(d)
+    if "when_to_use" in field_names:
+        kwargs["when_to_use"] = d.get("when_to_use", "")
+    for port in ("transfer_on", "call_agents"):
+        # 키 부재(구버전 파일) → 빈 목록, 경고 없음. dataclass 기본값으로
+        # 떨어지면 키 없는 파일에 포트 `done`이 **발명**된다(§2-d 부재 의미론).
+        if port in field_names:
+            kwargs[port] = [_deser_eventdef(e) for e in d.get(port, [])]
 
-    skill: Any
-    if kind in step_kinds:
-        cls, cfg_cls = step_kinds[kind]
-        fsm = _deser_machine(d["fsm"], reg, parent_bb=None)
-        skill = cls(
-            fsm=fsm, name=name, description=desc, id=sid,
-            config=_coerce_config(config, cfg_cls, kind=kind, name=name, reg=reg),
-            body=body,
-            transfer_on=[_deser_eventdef(e) for e in d.get("transfer_on", [])],
-            call_agents=[_deser_eventdef(e) for e in d.get("call_agents", [])],
-        )
-    elif kind == "transfer_skill":
-        fsm = _deser_machine(d["fsm"], reg, parent_bb=None)
-        skill = TransferSkill(
-            fsm=fsm, name=name, description=desc, id=sid,
-            config=_coerce_config(
-                config, TransferSkillConfig, kind=kind, name=name, reg=reg
-            ),
-            body=body,
-        )
-    elif kind == "declarative_skill":
-        skill = DeclarativeSkill(
-            name=name, description=desc, id=sid,
-            config=_coerce_config(
-                config, DeclarativeSkillConfig, kind=kind, name=name, reg=reg
-            ),
-            body=body,
-        )
-    elif kind == "reference_skill":
-        skill = ReferenceSkill(
-            name=name, description=desc, id=sid,
-            config=_coerce_config(
-                config, ReferenceSkillConfig, kind=kind, name=name, reg=reg
-            ),
-            body=body,
-        )
-    else:
-        known = ", ".join([
-            *step_kinds, "transfer_skill", "declarative_skill", "reference_skill",
-        ])
-        raise ValueError(
-            f"알 수 없는 스킬 종류: {kind!r} (스킬 '{name}'). 사용 가능: {known}"
-        )
+    sid = d.get("id") or _new_id()
+    component = cls(**kwargs, id=sid)
+    reg.components[sid] = component
+    return component
 
-    skill.when_to_use = d.get("when_to_use", "")
-    reg.components[sid] = skill
-    return skill
+
+def _deser_skill(d: dict, reg: _Registry) -> Any:
+    """스킬 역직렬화 — 종류 해소는 **레지스트리**가 한다 (WP-3).
+
+    버킷을 함께 넘기는 것이 게이트다: 스킬 목록에 적힌 ``"agent"``는 에이전트를
+    만드는 것이 아니라 거절이다(손편집·손상 파일이 스킬 자리에 에이전트를
+    앉히면 저장·산출까지 어긋남이 따라간다).
+    """
+    name = d.get("name", "")
+    spec = spec_by_kind(
+        d.get("kind"), bucket=Bucket.SKILLS, subject=f"스킬 '{name}'"
+    )
+    return _build_component(d, reg, spec)
 
 
 def _deser_agent(d: dict, reg: _Registry) -> Agent:
     """에이전트 역직렬화 — `kind`가 종류를 가른다.
 
-    키 부재·``"agent"`` → 워크플로 에이전트(AgentDefinition),
-    ``"fork_agent"`` → fork 에이전트(fsm·포트·배치 없음). 미지 kind는 ValueError다.
+    키 부재는 구버전 파일이라 **워크플로 에이전트**로 읽는다(그때는 종류가
+    하나뿐이었다). 미지 kind는 ValueError다.
     """
-    sid = d.get("id") or _new_id()
     name = d.get("name", "")
-    kind = d.get("kind") or "agent"
-    config = _deser_config(d["config"]) if d.get("config") else None
-
-    agent: Agent
-    if kind == "fork_agent":
-        agent = ForkAgent(
-            name=name,
-            description=d.get("description", ""),
-            id=sid,
-            config=_coerce_config(
-                config, ForkAgentConfig, kind=kind, name=name, reg=reg
-            ),
-            body=_deser_body(d),
-        )
-    elif kind == "agent":
-        agent = AgentDefinition(
-            fsm=_deser_machine(d["fsm"], reg, parent_bb=None),
-            name=name,
-            description=d.get("description", ""),
-            id=sid,
-            config=_coerce_config(
-                config, AgentConfig, kind=kind, name=name, reg=reg
-            ),
-            body=_deser_body(d),
-            # WP-AF — 출력 포트가 단일 진실. v1의 ExitPoint 승계는 _migrate_v1 소관.
-            transfer_on=[_deser_eventdef(e) for e in d.get("transfer_on", [])],
-            # 에이전트 호출 포트(2026-09-12) — 키 부재(구버전) → 빈 목록, 경고 없음.
-            call_agents=[_deser_eventdef(e) for e in d.get("call_agents", [])],
-        )
-    else:
-        raise ValueError(
-            f"알 수 없는 에이전트 종류: {kind!r} (에이전트 '{name}'). "
-            f"사용 가능: agent, fork_agent"
-        )
-    reg.components[sid] = agent
-    return agent
+    spec = spec_by_kind(
+        d.get("kind") or AgentDefinition.KIND,
+        bucket=Bucket.AGENTS,
+        subject=f"에이전트 '{name}'",
+    )
+    return _build_component(d, reg, spec)
 
 
 def _deser_ref_placement(d: dict) -> ReferencePlacement:

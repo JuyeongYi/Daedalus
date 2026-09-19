@@ -55,10 +55,13 @@ SHAPE_ATTRS: frozenset[str] = frozenset({
 #: 첫 인자가 이것들이면 컴포넌트 형상 질문이 아니다(프로젝트/설정/문서 조회).
 SHAPE_EXCLUDED_SUBJECTS: frozenset[str] = frozenset({"project", "cfg", "config", "doc"})
 
-#: 실측 기준선 (2026-09-19, WP-2d 완료 — view/MCP 소비자 치환). **내리기만 한다.**
+#: 실측 기준선 (2026-09-19, WP-3 완료 — 종류 레지스트리 `kinds.py`). **내리기만 한다.**
 #: compiler 패키지의 컴포넌트 대상 isinstance·형상 getattr는 **둘 다 0**이다.
-#: 남은 view/MCP 사이트는 kind 표(레지스트리 패널·app 탭·에디터 위젯 맵)와
-#: 미리보기 분기로, 각각 WP-3/WP-6/WP-7/WP-8/WP-10이 소유한다.
+#: WP-3은 ①의 수를 **바꾸지 않았다**: `component_commands._bucket`의 사다리가
+#: 사라진 자리를 `kinds::spec_for`의 타입 가드가 정확히 채웠다(그 하나가 명세가
+#: 예정한 최종 면제 2건 중 하나다 — 레지스트리 조회의 입구).
+#: 남은 사이트는 직렬화 사다리(`ser.py` 11 — WP-4)와 kind 표(레지스트리 패널·
+#: app 탭·에디터 위젯 맵), 미리보기 분기로, 각각 WP-6/WP-7/WP-8/WP-10이 소유한다.
 RATCHET: dict[str, int] = {
     "isinstance_sites": 34,
     "isinstance_files": 9,

@@ -13,6 +13,9 @@ from __future__ import annotations
 
 from typing import Any
 
+from daedalus.model.plugin.kinds import config_kinds_in
+from daedalus.model.plugin.roles import Bucket
+
 from ._base import _BaseTools
 
 
@@ -20,12 +23,11 @@ class PropsTools(_BaseTools):
     """컴포넌트 생성 + 속성/프론트매터 편집 + 프로젝트 속성."""
 
     #: create_skill이 받는 종류 (에이전트는 create_agent가 따로 맡는다).
-    _SKILL_KINDS = (
-        "procedural", "sync_fork", "async_fork", "declarative", "transfer",
-        "reference", "wrapped",
-    )
+    #: **레지스트리에서 파생**한다(WP-3) — 손으로 적어 두면 새 종류가 GUI에는
+    #: 있고 MCP에는 없는 상태가 되고, 그것이 곧 MCP 패리티 파손이다(원칙 2).
+    _SKILL_KINDS = config_kinds_in(Bucket.SKILLS)
     #: create_agent가 받는 종류 — 워크플로 에이전트 / fork 스킬의 실행 기반.
-    _AGENT_KINDS = ("agent", "fork_agent")
+    _AGENT_KINDS = config_kinds_in(Bucket.AGENTS)
 
     def _create_component(
         self,

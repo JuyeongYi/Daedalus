@@ -26,62 +26,37 @@ NO_PLACE_KINDS: frozenset[str] = frozenset({"declarative", "transfer", "fork_age
 def make_component(
     window, kind: str, name: str, description: str = "", agent: str | None = None,
 ):
-    """모델 객체만 만든다(프로젝트에 넣지 않는다).
+    """모델 객체만 만든다(프로젝트에 넣지 않는다). 미지 종류는 ``None``.
 
-    FSM 생성은 창의 `_make_fsm`/`_make_agent_fsm`을 쓴다 — 레지스트리 생성
-    경로가 쓰는 것과 같은 팩토리여야 만들어진 물건이 같다.
+    **종류별 팩토리는 없다** (WP-3). 예전에는 여기 config kind → 람다 9개짜리
+    표가 있었고, 새 종류를 만들면 그 표를 고쳐야 한다는 사실을 아무도 알려 주지
+    않았다 — 빠뜨리면 레지스트리 "+"와 MCP `create_skill`에서 조용히 사라졌다.
+    지금은 종류 레지스트리가 클래스를 고르고, **무엇으로 태어나는지는 그 종류
+    자신이 안다**(`PluginComponent.new`/`creation_defaults`).
+
+    FSM 팩토리는 창의 `_make_fsm`/`_make_agent_fsm`을 쓴다 — 레지스트리 생성
+    경로가 쓰는 것과 같은 팩토리여야 만들어진 물건이 같다. 어느 쪽을 쓸지는
+    버킷 선언이 답한다.
 
     `description`은 MCP `create_skill`/`create_agent`가 생성과 동시에 설명을
     받기 때문에 있다(S1 — 그쪽이 자체 팩토리 dict를 들고 있던 것을 여기로
     환원했다). GUI 경로는 이름만 주고 설명은 편집기에서 채운다.
-    """
-    from daedalus.model.fsm.section import EventDef
-    from daedalus.model.plugin.agent import AgentDefinition, ForkAgent
-    from daedalus.model.plugin.config import (
-        AsyncForkSkillConfig,
-        SyncForkSkillConfig,
-    )
-    from daedalus.model.plugin.skill import (
-        AsyncForkSkill,
-        DeclarativeSkill,
-        ProceduralSkill,
-        ReferenceSkill,
-        SyncForkSkill,
-        TransferSkill,
-        WrappedSkill,
-    )
 
-    factories = {
-        "procedural": lambda: ProceduralSkill(
-            fsm=window._make_fsm(name), name=name, description=description
-        ),
-        # agent는 등록 전에 채운다 — undo/redo에 agent가 빈 중간 상태가 없다.
-        "sync_fork": lambda: SyncForkSkill(
-            fsm=window._make_fsm(name), name=name, description=description,
-            config=SyncForkSkillConfig(agent=agent or "general-purpose"),
-        ),
-        "async_fork": lambda: AsyncForkSkill(
-            fsm=window._make_fsm(name), name=name, description=description,
-            config=AsyncForkSkillConfig(agent=agent or "general-purpose"),
-        ),
-        "declarative": lambda: DeclarativeSkill(name=name, description=description),
-        "transfer": lambda: TransferSkill(
-            fsm=window._make_fsm(name), name=name, description=description
-        ),
-        "reference": lambda: ReferenceSkill(name=name, description=description),
-        "wrapped": lambda: WrappedSkill(
-            fsm=window._make_fsm(name), name=name, description=description
-        ),
-        "agent": lambda: AgentDefinition(
-            fsm=window._make_agent_fsm(name), name=name, description=description,
-            transfer_on=[EventDef(name="done")],
-        ),
-        # fork 에이전트 — fsm도 포트도 없다(fork 스킬이 부르고, 결과 분기는
-        # 그 스킬의 보고 양식이 정한다).
-        "fork_agent": lambda: ForkAgent(name=name, description=description),
-    }
-    factory = factories.get(kind)
-    return factory() if factory is not None else None
+    미지 종류에 `None`을 돌려주는 것은 종전 계약이다 — 거절 문구는 호출자가
+    소유한다(MCP `create_skill`은 고를 수 있는 종류를 함께 말한다).
+    """
+    from daedalus.model.plugin.kinds import CONFIG_KIND_INDEX
+    from daedalus.model.plugin.roles import Bucket
+
+    spec = CONFIG_KIND_INDEX.get(kind)
+    if spec is None:
+        return None
+    fsm_factory = (
+        window._make_agent_fsm if spec.bucket is Bucket.AGENTS else window._make_fsm
+    )
+    return spec.component_cls.new(
+        name, description, fsm_factory=fsm_factory, agent=agent
+    )
 
 
 def unique_component_name(project, base: str) -> str:

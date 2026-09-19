@@ -13,9 +13,9 @@
    `is_reference_usage`/`placement.*` 처럼, 호출자를 치환할 WP-2b~2d가
    **동작 불변**임을 여기서 미리 고정한다.
 
-`new()`/`creation_defaults()`는 `view/actions/creation.make_component`의 kind별
-람다 9개와 **필드 단위로** 같은 물건을 만드는지 본다 — 그래야 WP-3에서 그 표를
-지워도 만들어지는 컴포넌트가 달라지지 않는다.
+`new()`/`creation_defaults()`의 **생성 등가 게이트**(`make_component`와 필드 단위
+비교)는 종류 레지스트리 패리티와 함께 사는 것이 맞아 `tests/test_kind_registry_parity.py`
+로 옮겼다(WP-3) — 여기 남는 것은 "생성 시드와 dataclass 기본값은 다르다"는 계약이다.
 """
 from __future__ import annotations
 
@@ -65,7 +65,6 @@ from daedalus.model.plugin.skill import (
     is_reference_usage,
 )
 from daedalus.view.component_actions import ComponentActions
-from daedalus.view.actions.creation import make_component
 
 #: §2-b가 정한 종류 선언 13개. 구체 클래스는 **전부** 해석 가능해야 한다.
 CLASSVAR_NAMES: tuple[str, ...] = (
@@ -178,25 +177,14 @@ ABSTRACT_CONFIGS: tuple[type, ...] = (
     ComponentConfig, SkillConfig, StepSkillConfig, ForkSkillConfig, AgentConfigBase,
 )
 
-#: config kind ↔ 컴포넌트 클래스 (make_component의 어휘는 **config** kind다).
-CONFIG_KIND_TO_CLASS: dict[str, type] = {
-    "procedural": ProceduralSkill,
-    "sync_fork": SyncForkSkill,
-    "async_fork": AsyncForkSkill,
-    "declarative": DeclarativeSkill,
-    "transfer": TransferSkill,
-    "reference": ReferenceSkill,
-    "wrapped": WrappedSkill,
-    "agent": AgentDefinition,
-    "fork_agent": ForkAgent,
-}
-
 
 class _StubWindow:
     """`make_component`가 요구하는 FSM 팩토리 두 개만 가진 창 대역.
 
     팩토리를 손으로 재현하지 않고 **실제 `ComponentActions`의 것**을 빌려 쓴다
-    (두 벌이 되면 이 테스트가 지키려는 등가성 자체가 흐려진다).
+    (두 벌이 되면 이 대역이 지키려는 등가성 자체가 흐려진다).
+    `tests/test_kind_registry_parity.py`의 생성 등가 게이트도 이것을 빌려 쓴다 —
+    창 대역이 두 벌이면 "같은 물건인가"라는 질문이 무의미해진다.
     """
 
     _make_fsm = ComponentActions.make_fsm
@@ -489,39 +477,9 @@ def test_only_the_two_referencing_families_override_the_contract(cls):
         assert cfg.name_refs(Bucket.AGENTS) == []
 
 
-# ── 5. `new()` ↔ `make_component` 등가 (V7 이관 게이트) ──────────────────
-
-def _fsm_factory_for(cls: type, window: _StubWindow):
-    return window._make_agent_fsm if cls.BUCKET is _A else window._make_fsm
-
-
-def _fsm_shape(machine) -> tuple[str, tuple[str, ...], str]:
-    return (
-        machine.name,
-        tuple(s.name for s in machine.states),
-        machine.initial_state.name,
-    )
-
-
-@pytest.mark.parametrize("config_kind", sorted(CONFIG_KIND_TO_CLASS))
-@pytest.mark.parametrize("agent", [None, "worker"])
-def test_new_matches_make_component_field_by_field(config_kind, agent):
-    """레지스트리·MCP·캔버스가 쓰는 팩토리와 `new()`가 **같은 물건**을 만든다."""
-    cls = CONFIG_KIND_TO_CLASS[config_kind]
-    window = _StubWindow()
-    legacy = make_component(window, config_kind, "thing", "desc", agent=agent)
-    fresh = cls.new(
-        "thing", "desc", fsm_factory=_fsm_factory_for(cls, window), agent=agent
-    )
-    assert type(fresh) is type(legacy)
-    for f in dataclasses.fields(cls):
-        if f.name == "id":
-            continue          # 안정 ID는 인스턴스마다 다르다(compare=False)
-        left, right = getattr(fresh, f.name), getattr(legacy, f.name)
-        if f.name == "fsm":
-            assert _fsm_shape(left) == _fsm_shape(right), f.name
-        else:
-            assert left == right, f.name
+# ── 5. 생성 시드 (`new()` / `creation_defaults()`) ───────────────────────
+# 생성 등가 게이트(`make_component` ↔ `new()` 필드 단위 비교)는 종류 레지스트리
+# 패리티와 함께 `tests/test_kind_registry_parity.py`에 산다(WP-3).
 
 
 def test_new_refuses_to_guess_a_state_machine():
@@ -530,22 +488,6 @@ def test_new_refuses_to_guess_a_state_machine():
         ProceduralSkill.new("x")
     # FSM이 없는 종류는 팩토리 없이도 만들어진다.
     assert ReferenceSkill.new("x").name == "x"
-
-
-@pytest.mark.parametrize(
-    "cls",
-    [c for c in CONCRETE_COMPONENTS if c.REQUIRES_OUTPUT_PORTS],
-    ids=lambda c: c.__name__,
-)
-def test_required_ports_exist_right_after_new(cls):
-    """`REQUIRES_OUTPUT_PORTS`인 종류는 태어나자마자 포트를 갖는다.
-
-    없으면 배치 즉시 `transfer_on_not_empty` 에러가 뜬다 — 새 컴포넌트가
-    처음부터 빨간 줄을 달고 나오는 것을 막는 것이 `creation_defaults()`다.
-    """
-    window = _StubWindow()
-    comp = cls.new("thing", fsm_factory=_fsm_factory_for(cls, window))
-    assert comp.output_ports(), f"{cls.__name__}이 포트 0개로 태어난다"
 
 
 def test_creation_defaults_do_not_leak_into_deserialisation():
