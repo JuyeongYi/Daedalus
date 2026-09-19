@@ -199,8 +199,11 @@ def test_compile_writes_no_file_for_it(tmp_path):
     project = _project(build_target=BuildTarget.LOCAL)
     result = compile_project(project, tmp_path)
     assert not result.errors
-    assert not list((tmp_path / ".claude" / "agents").glob("*")) or not any(
-        p.name == "critic.md" for p in (tmp_path / ".claude" / "agents").iterdir()
+    # fork 스킬은 나갔고(산출 있음), 외부 fork 에이전트 파일은 없다.
+    assert (tmp_path / ".claude" / "skills" / "scout" / "SKILL.md").is_file()
+    assert not (tmp_path / ".claude" / "agents" / "critic.md").exists()
+    assert not any(
+        p.name == "critic.md" for p in tmp_path.rglob("*.md")
     )
 
 

@@ -345,6 +345,21 @@ def needs_external_fork_agent_migration(data: dict) -> bool:
     return bool(_plugin_fork_refs(data))
 
 
+def _component_name_slug(text: str) -> str:
+    """임의 문자열을 컴포넌트 이름 규약(`^[a-z0-9][a-z0-9-]*$`)에 맞춘다.
+
+    소문자화 + 규약 밖 문자(콜론·밑줄·공백·대문자 …)를 `-`로, 연속 `-`는 하나로,
+    앞뒤 `-`는 제거. `hookify:Hook_Doctor` → `hook-doctor`. 규약을 어긴 이름을
+    만들면 마이그레이션이 `invalid_component_name` 경고를 **새로** 낸다(리뷰
+    2026-09-19 재현).
+    """
+    import re
+
+    slug = re.sub(r"[^a-z0-9-]+", "-", text.lower())
+    slug = re.sub(r"-{2,}", "-", slug).strip("-")
+    return slug
+
+
 def _free_component_name(taken: set[str], *candidates: str) -> str:
     """이미 쓰이는 이름을 피해 후보 중 첫 자유 이름을 고른다(최후에는 접미 숫자).
 
@@ -366,8 +381,15 @@ def migrate_external_fork_agents(data: dict, warnings: list[str]) -> None:
 
     같은 원문을 여러 스킬이 가리키면 컴포넌트는 **하나**다 — 두 개를 만들면
     `external_source_role_conflict` 에러가 되어 마이그레이션이 문제를 새로
-    만든다. 이름은 참조 이름(하위 폴더 콜론은 `-`로) → `<플러그인>-<이름>`
-    순으로 자유로운 것을 고른다.
+    만든다. **이미 저장 파일에 같은 원문의 `external_fork_agent`가 있으면 그
+    컴포넌트를 재사용한다**(리뷰 2026-09-19 — 이번 실행분만 추적하면 두 번째
+    컴포넌트를 만들어 같은 에러를 냈다). 같은 원문의 `external_agent`(그래프
+    노드 역할)가 있는 경우는 재사용하지 **않는다** — 역할 고정(사용자 확정)상
+    한 원문은 한 역할이고, 그 충돌은 로드 뒤 검증 에러로 사용자에게 드러나야
+    한다(조용히 한쪽을 고르지 않는다, 원칙 5).
+
+    이름은 참조 이름 → `<플러그인>-<이름>` 순으로 자유로운 것을 고르되, 둘 다
+    컴포넌트 이름 규약으로 정규화한다(`_component_name_slug`).
     """
     import hashlib
 
@@ -378,8 +400,14 @@ def migrate_external_fork_agents(data: dict, warnings: list[str]) -> None:
         str(c.get("name"))
         for c in [*(data.get("skills") or []), *(data.get("agents") or [])]
     }
-    registered: dict[str, str] = {}
     agents = data.setdefault("agents", [])
+    registered: dict[str, str] = {
+        str(cfg.get("source")): str(a.get("name"))
+        for a in agents
+        if a.get("kind") == "external_fork_agent"
+        for cfg in [a.get("config") or {}]
+        if isinstance(cfg.get("source"), str) and cfg.get("source")
+    }
 
     for skill, source in refs:
         name = registered.get(source)
@@ -388,8 +416,8 @@ def migrate_external_fork_agents(data: dict, warnings: list[str]) -> None:
             bare_plugin = plugin.partition("@")[0].strip()
             name = _free_component_name(
                 taken,
-                ref_name.strip().replace(":", "-"),
-                f"{bare_plugin}-{ref_name.strip().replace(':', '-')}",
+                _component_name_slug(ref_name),
+                _component_name_slug(f"{bare_plugin}-{ref_name}"),
             )
             taken.add(name)
             registered[source] = name

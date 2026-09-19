@@ -4,9 +4,11 @@
 CC의 `context: fork` 스킬은 SKILL.md 본문을 작업 지시로 삼아 `agent` 서브에이전트를
 띄운다(실측, CC 2.1.268). 그래서 절차형과 달리:
 
-- `agent:`는 CC가 찾는 이름으로 낸다 — 프로젝트 에이전트는 마켓 빌드에서
-  `플러그인:이름`, LOCAL에서 `이름`. 내장·외부 에이전트는 저장된 문자열 그대로
-  (정확 일치라 틀리면 조용히 general-purpose로 돈다).
+- `agent:`는 CC가 찾는 이름으로 낸다 — 프로젝트 fork 에이전트는 마켓 빌드에서
+  `플러그인:이름`, LOCAL에서 `이름`. 등록된 **외부** fork 에이전트는 그 컴포넌트의
+  `source` 원문(`플러그인:이름`, 타깃 무관), 내장(`general-purpose` 등)은 저장된
+  문자열 그대로(정확 일치라 틀리면 조용히 general-purpose로 돈다). 해소 실체는
+  `common.agent_invocation_name` 하나다(WP-EX/WP-A).
 - `background`는 종류가 정한다(사용자 확정 2026-09-17): 동기 fork는 `false`,
   비동기 fork는 `true`. 매트릭스의 FIXED 값이라 배치 여부와 무관하게 **항상**
   배출된다 — 키가 없으면 CC 기본값(백그라운드)으로 돌아 산출이 침묵한다.

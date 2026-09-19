@@ -23,7 +23,7 @@
 
 ## 본문(body) / Section / EventDef
 
-- **본문의 단일 진실은 `body: str`(단일 마크다운 문자열)** — 스킬 6종(절차형·fork 2종·선언형·전이·참조)과 에이전트 3종(`AgentDefinition`·`ForkAgent`·`ExternalAgent`) 전부 동일 필드(WP-SB, 기본값 `""`. 외부 에이전트만 항상 빈 값 — 정본이 남의 플러그인 파일이다). 마크다운 에디터(WP-MD1/MD2/MD3, **완료** — 코어 위젯+오버레이 UX+찾기/바꾸기+TOC)가 헤딩·리스트·슬래시 메뉴를 네이티브로 다루면서 수동 섹션 트리 편집의 존재 의의가 사라져 단일 텍스트로 통일했다.
+- **본문의 단일 진실은 `body: str`(단일 마크다운 문자열)** — 스킬 6종(절차형·fork 2종·선언형·전이·참조)과 에이전트 4종(`AgentDefinition`·`ForkAgent`·`ExternalAgent`·`ExternalForkAgent`) 전부 동일 필드(WP-SB, 기본값 `""`. 외부 에이전트 2종만 항상 빈 값 — 정본이 남의 플러그인 파일이다). 마크다운 에디터(WP-MD1/MD2/MD3, **완료** — 코어 위젯+오버레이 UX+찾기/바꾸기+TOC)가 헤딩·리스트·슬래시 메뉴를 네이티브로 다루면서 수동 섹션 트리 편집의 존재 의의가 사라져 단일 텍스트로 통일했다.
 - `Section`(`model/fsm/section.py`)은 자유 콘텐츠 계층(H1–H6, `children: list[Section]` 재귀 트리)으로, 이제 **v1 sections 트리 마이그레이션의 입력**으로만 쓰인다(RF-1b — 계약 카드 용도(caller_contracts)는 필드째 삭제, `commands/section_commands.py`도 함께 제거). 모듈이 남는 이유는 아래 `render_markdown`과 `EventDef`가 여기 살기 때문이다.
 - `render_markdown(sections, depth=1) -> str`(section.py): v1(sections 트리) 파일을 로드할 때 `body`로 평탄화하는 단방향 마이그레이션 헬퍼. `serialize._migrate_v1`이 `body` 키 부재 + `sections` 키 존재 시에만 호출한다(경고 없음 — 정상 마이그레이션 경로).
 - `EventDef`: TransferOn 스킬의 출력 이벤트 정의. 노드 출력 포트에 대응 (`name`, `color`, `description`)

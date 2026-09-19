@@ -97,7 +97,7 @@ ALLOWLIST: dict[str, tuple[str, str]] = {
         "agent_type 중복 제거 + 결정적 정렬)이 `used_plugin_mcp_servers`와 갈려 "
         "다음 소비자가 손으로 다시 쓴다(원칙 1). 소비자는 레지스트리 🔌 탭의 "
         "'미등록 외부 에이전트' 목록(WP-C)이고, 그것이 배선되면 이 면제는 "
-        "`test_exemptions_point_at_live_sites`가 스테일로 잡아 스스로 지워진다. "
+        "`test_allowlist_entries_are_still_dead`가 스테일로 잡아 스스로 지워진다. "
         "오늘 호출자는 tests/model/plugin/test_wrap_catalog.py뿐이다.",
     ),
     "view.editors.body_documents::BodyDocumentRegistry.sync_from_model": (
