@@ -1,7 +1,7 @@
 """작업 폴더 MCP/훅 배선 — `.mcp.json` + `.claude/settings.local.json` 병합 (WP-MW).
 
 두 호출자가 같은 병합을 쓴다:
-  1. LOCAL 빌드 컴파일(project_compiler._wire_local_install) — 컴파일이 곧 설치.
+  1. LOCAL 빌드 컴파일(units/install.LocalWiringUnit) — 컴파일이 곧 설치.
   2. 앱의 "Claude Code 실행"(view/launch_actions.LaunchActions) — 프로젝트 폴더에서
      CC를 열기 전에 daedalus 서버를 배선해 새 세션이 바로 붙게 한다.
 

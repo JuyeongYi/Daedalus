@@ -8,7 +8,9 @@
 "파일 내용은 같은데 쓰는 순서가 달라졌다"가 조용히 통과한다.
 
 스냅샷 5종(`tests/data/golden/plan/<코퍼스>-<타깃>.json`):
-  plan          — `_plan_outputs`가 세운 [(상대 경로, kind, 라벨)] **그대로**
+  plan          — `Planner`가 세운 [(상대 경로, kind, 라벨, exclusive)] **그대로**
+                  (파사드 `_plan_outputs`가 아니라 **전체 계획**이다 — 파사드는
+                  out_dir·files_dir가 없어 `files_tree`/LOCAL 병합 행을 못 본다)
   written       — `CompileResult.written`의 순서 (out_dir 기준 상대 경로)
   copied_files  — 트리/스킬 파일 복사 순서
   findings      — `errors + warnings`의 (rule, source) 순서
@@ -64,17 +66,33 @@ def test_plan_and_write_order_match_golden(case, plans, regen_golden):
 def test_gate_failure_reports_every_planned_output_as_skipped(plans):
     """게이트가 막으면 파일을 하나도 쓰지 않고 계획 전체를 skipped로 보고한다.
 
-    `skipped`의 라벨 집합 == 계획의 라벨 목록이라는 계약을 고정한다 —
-    WP-5가 계획에 새 행(files_tree/local_wiring/claude_md)을 더할 때
-    `exclusive=False` 행이 여기 섞이면 MCP `compile_check` 응답 형상이 바뀐다.
+    `skipped`의 라벨 목록 == 계획의 **`exclusive=True` 행** 라벨 목록이라는
+    계약을 고정한다. WP-5가 더한 행(files_tree/local_wiring/claude_md)은
+    `exclusive=False`라 여기 섞이지 않는다 — 섞이면 MCP `compile_check` 응답
+    형상이 바뀐다. 두 목록을 순서까지 비교하므로 "한 행이 조용히 빠졌다"도
+    잡힌다.
     """
     for case in ("gate-failure-marketplace", "gate-failure-local"):
         snapshot = plans[case]
         assert snapshot["written"] == []
         assert snapshot["copied_files"] == []
         assert [label for _reason, label in snapshot["skipped"]] == [
-            label for _rel, _kind, label in snapshot["plan"]
+            label for _rel, _kind, label, exclusive in snapshot["plan"] if exclusive
         ]
         assert {reason for reason, _label in snapshot["skipped"]} == {
             "compile_gate_error"
         }
+
+
+def test_local_install_rows_are_planned_but_not_exclusive(plans):
+    """LOCAL 타깃의 병합 행 둘은 계획에 오르되 게이트 대상이 아니다 (WP-5).
+
+    계획에 없으면 "누가 그것을 쓰는가"가 다시 드라이버의 if 문으로 돌아가고,
+    `exclusive=True`면 게이트 실패 시 `skipped`에 새 항목이 튀어나온다.
+    """
+    snapshot = plans["synthetic-placed-bb-local"]
+    rows = {kind: exclusive for _rel, kind, _label, exclusive in snapshot["plan"]}
+    assert rows["local_wiring"] is False
+    assert rows["claude_md"] is False
+    assert rows["files_tree"] is False
+    assert rows["skill"] is True

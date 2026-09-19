@@ -59,9 +59,11 @@ COMPONENT_KIND_ALLOWED_FILES: frozenset[str] = frozenset({
     # 모델 클래스를 참조할 수 없다(이미 사라진 종류도 해석해야 한다).
     "model.serialize.migrate",
 })
-#: plan kind의 정본 파일. `compiler/plan_kinds.py`는 WP-5에서 신설된다 —
-#: 그전에는 비어 있고, 신설되면 여기에 등재한다.
-PLAN_KIND_ALLOWED_FILES: frozenset[str] = frozenset()
+#: plan kind의 정본 파일 (WP-5에서 신설). 다른 모듈은 이름으로 참조한다 —
+#: `emit/guides.py`의 가이드 kind 둘도 여기서 재-export된 것이다.
+PLAN_KIND_ALLOWED_FILES: frozenset[str] = frozenset({
+    "compiler.plan_kinds",
+})
 
 #: 종류 문자열을 **선언**해도 되는 파일.
 KIND_DECLARATION_FILES: frozenset[str] = frozenset({
@@ -77,11 +79,20 @@ KIND_DECLARATION_FILES: frozenset[str] = frozenset({
 #: 종류 사다리 11 → **0**(패키지 전체에서 모듈 하나가 통째로 빠졌다).
 #: 직렬화는 이제 kind 문자열을 **비교하지 않는다** — 레지스트리에 묻고
 #: 설정 클래스의 `SERIALIZED_FIELDS`를 읽는다. 남은 자리의 주인은 WP-5~WP-8이다.
+#: WP-5가 걷어낸 자리: `project_compiler`의 쓰기 루프 kind 사다리 12
+#: (컴포넌트 어휘와 겹치는 `skill`/`agent`/`wrapped_runner` 포함) ·
+#: `token_report`의 `CONTEXT_KINDS`/`_GUIDE_KINDS` 사본 2 — 산출 계획의
+#: kind 문자열은 이제 `compiler/plan_kinds.py` **한 파일**이 소유하고,
+#: 계획 행이 `token_kind`/`expands_root`/`phase`를 **값으로** 들고 다닌다.
+#: 남은 plan kind 1건(`mcp/tools/query.py`의 `_workspace_doc_signal` 응답 키
+#: `"claude_md"`)은 계획 kind가 아니라 **MCP 응답 형상의 키 이름**이다 —
+#: 어휘가 겹치는 오탐이고(모듈 docstring "측정의 정직성"), 고치면 응답 형상이
+#: 바뀐다. 0으로 내릴 수 없는 유일한 자리라 여기 적어 둔다.
 RATCHET: dict[str, int] = {
-    "component_kind_sites": 83,
-    "component_kind_files": 20,
-    "plan_kind_sites": 22,
-    "plan_kind_files": 3,
+    "component_kind_sites": 80,
+    "component_kind_files": 18,
+    "plan_kind_sites": 1,
+    "plan_kind_files": 1,
 }
 
 

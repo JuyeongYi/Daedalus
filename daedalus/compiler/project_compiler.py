@@ -19,9 +19,15 @@ plugin.json·hooks/hooks.json·설치 스크립트는 만들지 않는다 — �
 ``${CLAUDE_PROJECT_DIR}``로 확장된다(본문 저장 정본은 불변).
 
 compile_project는 파일 쓰기 전에 전체 산출 경로 집합을 계산하고, 중복이 있으면
-컴파일을 거부한다(조용한 덮어쓰기 방지). **그 계산은 ``compiler/plan.py``가 한다**
-(WP-FK2 C0 분해, 이동만) — 이 모듈은 쓰기·복사·JSON 병합·LOCAL 설치 배선을 맡고,
-계획 쪽 이름은 전부 재-export한다.
+컴파일을 거부한다(조용한 덮어쓰기 방지). **계획도 쓰기도 이 모듈이 하지 않는다**
+(WP-5, 이동만): 산출 종류 하나가 ``compiler/units/``의 `CompileUnit` 하나이고,
+이 모듈에 남은 것은 **게이트와 두 단계 루프**다 —
+
+  ① `Phase.WRITE` — 산출 파일 쓰기·복사 (계획 순서)
+  ② 드라이버가 소유한 진단 스캔 2건 (dangling_file_ref/dangling_skill_file_ref)
+  ③ `Phase.INSTALL` — LOCAL 설치 배선 + `.claude/CLAUDE.md` 구역
+
+계획 쪽 이름(`SKILL_FILES_DIRNAME` 등)은 종전대로 전부 재-export한다.
 
 컴파일 게이트(정책 8 + 강화 2종):
   - Validator.validate_project의 에러(is_warning=False) 1건 이상 → 거부.
@@ -41,29 +47,13 @@ unmergeable_claude_md, rule_body_frontmatter)는 Validator에 나오지 않아 �
 """
 from __future__ import annotations
 
-import json
-import os
 import re
-import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from daedalus.compiler.emit import (
-    _is_local_build,
-    compile_agent,
-    compile_hook_scripts,
-    compile_hooks_json,
-    compile_plugin_manifest,
-    compile_schemas_json,
-    compile_skill,
-    expand_root_token,
-    referenced_mcp_servers,
-)
-from daedalus.compiler.emit.guides import GUIDE_KINDS, compile_guide
-from daedalus.compiler.emit.manifest import external_plugin_ids
-from daedalus.compiler.emit.wrapped import compile_wrapped_runner
-# 산출 계획은 compiler/plan.py로 분해했다(WP-FK2 C0, 이동만). 여기서 재-export해
-# 기존 임포트 경로(`from ...project_compiler import SKILL_FILES_DIRNAME` 등)를 지킨다.
+# 산출 계획은 compiler/plan.py → compiler/units/로 분해했다(WP-FK2 C0 · WP-5,
+# 이동만). 여기서 재-export해 기존 임포트 경로
+# (`from ...project_compiler import SKILL_FILES_DIRNAME` 등)를 지킨다.
 from daedalus.compiler.plan import (  # noqa: F401 — 재-export 파사드
     SKILL_FILES_DIRNAME,
     _OUTPUT_NAME_RE,
@@ -75,10 +65,10 @@ from daedalus.compiler.plan import (  # noqa: F401 — 재-export 파사드
     _skill_dir_name,
 )
 from daedalus.compiler.token_report import TokenReport
-from daedalus.compiler.workspace import (
-    merge_claude_md,
-    render_rule,
-)
+from daedalus.compiler.units.base import Phase
+from daedalus.compiler.units.context import CompileContext
+from daedalus.compiler.units.registry import PLANNER, unit_for
+from daedalus.compiler.units.sink import OutputSink
 from daedalus.model.plugin.roles import Bucket
 from daedalus.model.validation import ValidationError, Validator
 
@@ -143,72 +133,6 @@ class CompileResult:
     @property
     def ok(self) -> bool:
         return not self.errors
-
-
-
-
-def _hook_script_bodies(project, resolved_hooks=None) -> dict[str, str]:
-    """훅 스크립트 파일명 → 내용 (WP-HS). 계획과 쓰기가 같은 원본을 본다."""
-    return dict(compile_hook_scripts(project, resolved_hooks))
-
-
-
-
-
-
-
-
-def _copy_files_tree(
-    src_dir: Path, dst_dir: Path, clear_first: bool = True,
-    dry_run: bool = False,
-) -> list[Path]:
-    """src_dir 트리를 dst_dir로 정렬 순회 복사한다 (결정적 로그).
-
-    심볼릭 링크는 따라가지 않는다 — 디렉토리는 재귀하지 않고, 파일은 복사하지
-    않는다. 기존 dst_dir는 복사 전 삭제한다(스테일 잔존 방지 — out 디렉토리
-    전체가 아니라 files/ 하위만 지운다).
-
-    dry_run(G3)이면 **순회만 하고 아무것도 만들거나 지우지 않는다** — 반환
-    목록은 동일하다(같은 순회 코드가 계획과 실행을 함께 만든다. 열거를 따로
-    구현하면 두 목록이 언젠가 어긋난다).
-
-    반환: 실제로 복사된 파일의 dst_dir 기준 경로 목록 (정렬 순서, 디렉토리
-    자체는 포함하지 않음).
-    """
-    # clear_first=False(LOCAL — out_dir가 사용자의 작업 폴더)는 기존 dst_dir를
-    # 지우지 않고 덮어쓰기 복사만 한다. 사용자 파일 삭제 위험 > 스테일 잔존.
-    if not dry_run:
-        if clear_first and dst_dir.exists():
-            shutil.rmtree(dst_dir)
-        dst_dir.mkdir(parents=True, exist_ok=True)
-
-    copied: list[Path] = []
-    for root, dirnames, filenames in os.walk(src_dir, followlinks=False):
-        root_path = Path(root)
-        rel_root = root_path.relative_to(src_dir)
-        # in-place 정렬 + 심볼릭 링크 디렉토리 제외 — os.walk가 다음 순회에서
-        # 이 리스트를 그대로 재사용하므로 순회 순서·재귀 범위를 동시에 제어한다.
-        # Windows 디렉토리 정션(junction)은 is_symlink()가 False다 — 거르지
-        # 않으면 files/ 밖 내용이 산출물로 새고, 자기 참조 정션은 폭주 재귀가
-        # 된다(리뷰 실측). isjunction은 Python 3.12 표준.
-        dirnames[:] = sorted(
-            d for d in dirnames if not _is_link_like(root_path / d)
-        )
-        if not dry_run:
-            for dirname in dirnames:
-                (dst_dir / rel_root / dirname).mkdir(parents=True, exist_ok=True)
-        for filename in sorted(filenames):
-            src_file = root_path / filename
-            if _is_link_like(src_file):
-                continue
-            dst_file = dst_dir / rel_root / filename
-            if not dry_run:
-                dst_file.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(src_file, dst_file)
-            copied.append(dst_file)
-    return copied
-
-
 
 
 #: 본문이 토큰의 **형식을 설명할 때** 쓰는 자리표시자 — 실제 파일 이름이 아니다.
@@ -324,14 +248,6 @@ def _scan_dangling_skill_file_refs(
     return warnings
 
 
-def _write_text(path: Path, text: str) -> None:
-    """LF 줄바꿈 + UTF-8(BOM 없음)으로 쓴다 (결정적)."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    # newline="" → 파이썬이 \n을 변환하지 않음(LF 그대로). text는 emit에서 LF 보장.
-    with open(path, "w", encoding="utf-8", newline="") as f:
-        f.write(text)
-
-
 def compile_project(
     project, out_dir: Path | str | None = None,
     files_dir: Path | str | None = None,
@@ -396,16 +312,18 @@ def compile_project(
     이 값이 주어지면 `dangling_hook_ref` 판정도 그 이름 집합을 기준으로 한다.
     생략 시 `project.hook_library`만 본다 — 기존 산출 완전 불변(하위 호환).
     """
-    if out_dir is None:
-        if not dry_run:
-            raise ValueError(
-                "out_dir가 필요합니다 — 생략은 dry_run=True(검사 전용)에서만 "
-                "가능합니다."
-            )
-        out_root: Path | None = None
-    else:
-        out_root = Path(out_dir)
-    skill_files_path = Path(skill_files_dir) if skill_files_dir is not None else None
+    if out_dir is None and not dry_run:
+        raise ValueError(
+            "out_dir가 필요합니다 — 생략은 dry_run=True(검사 전용)에서만 "
+            "가능합니다."
+        )
+    ctx = CompileContext.build(
+        project, out_dir=out_dir, files_dir=files_dir,
+        skill_files_dir=skill_files_dir, resolved_hooks=resolved_hooks,
+        extra_server_defs=extra_server_defs,
+        provided_server_names=provided_server_names,
+        settings_filename=settings_filename, dry_run=dry_run,
+    )
     known_hook_names = (
         frozenset(resolved_hooks) if resolved_hooks is not None else None
     )
@@ -416,264 +334,38 @@ def compile_project(
     warnings = [e for e in all_findings if e.is_warning]
 
     # 파일 쓰기 전에 산출 계획 수립 — 이름 규약 + 경로 충돌 게이트
-    plan, gate_errors, plan_warnings = _plan_outputs(
-        project, skill_files_dir=skill_files_path, resolved_hooks=resolved_hooks,
-    )
+    plan, gate_errors, plan_warnings = PLANNER.plan(ctx)
     errors = errors + gate_errors
     warnings = warnings + plan_warnings
 
     result = CompileResult(errors=errors, warnings=warnings, dry_run=dry_run)
     if errors:
-        # 거부 — 무엇이 막혔는지 skipped에 기록 (산출 계획 전체)
+        # 거부 — 무엇이 막혔는지 skipped에 기록 (산출 계획 전체). 트리 복사·병합
+        # 행(`exclusive=False`)은 종전에도 계획 밖이라 여기 실리지 않았다 —
+        # MCP `compile_check` 응답 형상 불변.
         for item in plan:
-            result.skipped.append(("compile_gate_error", item.label))
+            if item.exclusive:
+                result.skipped.append(("compile_gate_error", item.label))
         return result
 
-    def _out(rel) -> Path:
-        """계획 상대 경로 → 실제 경로. out_dir 생략(dry_run)이면 상대 경로 그대로."""
-        return (out_root / rel) if out_root is not None else Path(rel)
-
+    sink = OutputSink(result, ctx)
+    # ① 산출 파일 쓰기·복사 — 계획 순서 그대로.
     for item in plan:
-        if item.kind == "skill_file" and item.src_path is not None:
-            # 스킬별 동봉 파일 (WP-SF) — 텍스트 산출이 아니라 복사다.
-            dst = _out(item.rel_path)
-            if not dry_run:
-                dst.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(item.src_path, dst)
-            result.copied_files.append(dst)
-            continue
-        if item.kind == "skill":
-            text = compile_skill(item.component, project=project,
-                                 resolved_hooks=resolved_hooks)
-        elif item.kind == "agent":
-            text = compile_agent(item.component, project=project,
-                                 resolved_hooks=resolved_hooks)
-        elif item.kind == "wrapped_runner":
-            text = compile_wrapped_runner(item.component)
-        elif item.kind == "hooks_json":
-            text = compile_hooks_json(project, resolved_hooks) or ""
-        elif item.kind == "hook_script":
-            text = _hook_script_bodies(project, resolved_hooks).get(item.script_name, "")
-        elif item.kind == "workspace_rule":
-            # 본문 그대로 + paths 프론트매터(A13). paths가 비면 프론트매터가
-            # 아예 나가지 않아 필드 도입 전과 산출이 바이트 단위로 같다.
-            text = render_rule(item.component)
-        elif item.kind in GUIDE_KINDS:
-            text = compile_guide(project, item.kind) or ""
-        elif item.kind == "schemas_json":
-            text = compile_schemas_json(project) or ""
-        elif item.kind == "plugin_manifest":
-            text = compile_plugin_manifest(project)
-        else:
-            raise ValueError(f"알 수 없는 산출 계획 kind: {item.kind!r}")
+        if item.phase is Phase.WRITE:
+            unit_for(item).emit(item, ctx, sink)
 
-        # 타깃 중립 토큰 ${ROOT}를 빌드 타깃에 맞는 CC 변수로 확장한다(WP-RT).
-        # 본문 정본은 어느 타깃에도 기울지 않고, 여기서만 갈라진다.
-        if item.kind in ("skill", "agent", "wrapped_runner", *GUIDE_KINDS):
-            text = expand_root_token(text, project)
+    # ② 진단 스캔 — 산출이 아니라 드라이버가 소유한다(파일시스템을 읽는 판정).
+    if ctx.files_dir is not None:
+        result.warnings.extend(_scan_dangling_file_refs(project, ctx.files_dir))
 
-        path = _out(item.rel_path)
-        if not dry_run:
-            _write_text(path, text)
-        result.written.append(path)
-        # 토큰 리포트(A5-lite) — **확장 후 최종 텍스트**를 잰다. 실제로 컨텍스트에
-        # 실리는 것이 그것이고, ${ROOT} 확장으로 길이가 달라진다.
-        result.token_report.add(str(item.rel_path), item.kind, text)
-
-    if files_dir is not None:
-        files_dir_path = Path(files_dir)
-        if files_dir_path.is_dir():
-            # LOCAL의 out_dir는 사용자의 작업 폴더다 — 기존 <out>/files/를 지우면
-            # 사용자 파일을 지울 수 있으므로 덮어쓰기 복사만 한다(스테일 잔존은
-            # 감수). MARKETPLACE 스테이징 디렉토리는 종전대로 삭제 후 복사.
-            # 스킬별 동봉 파일(WP-SF) 복사분을 덮어쓰지 않고 이어 붙인다 —
-            # 대입이면 files/와 skill-files/를 함께 준 컴파일에서 앞의 목록이
-            # 통째로 사라져 "복사 N개"가 거짓말이 된다.
-            result.copied_files.extend(_copy_files_tree(
-                files_dir_path, _out("files"),
-                clear_first=not _is_local_build(project),
-                dry_run=dry_run,
-            ))
-        result.warnings.extend(_scan_dangling_file_refs(project, files_dir_path))
-
-    if skill_files_path is not None:
+    if ctx.skill_files_dir is not None:
         result.warnings.extend(
-            _scan_dangling_skill_file_refs(project, skill_files_path)
+            _scan_dangling_skill_file_refs(project, ctx.skill_files_dir)
         )
 
-    if _is_local_build(project):
-        _wire_local_install(
-            project, out_root, result, extra_server_defs, resolved_hooks,
-            dry_run=dry_run, settings_filename=settings_filename,
-            provided_server_names=provided_server_names,
-        )
-        _merge_claude_md_region(project, out_root, result, dry_run=dry_run)
+    # ③ LOCAL 설치 배선 + CLAUDE.md 구역 — 사용자 파일 병합은 스캔 뒤다.
+    for item in plan:
+        if item.phase is Phase.INSTALL:
+            unit_for(item).emit(item, ctx, sink)
 
     return result
-
-
-def _merge_claude_md_region(
-    project, out_dir: Path | None, result: CompileResult, dry_run: bool = False,
-) -> None:
-    """`.claude/CLAUDE.md`의 이 플러그인 구역을 갱신한다 (WP-WD/D9).
-
-    산출 계획(`_plan_outputs`)에 넣지 않는 이유: 이 파일은 **쓰기 전에 읽어야**
-    하고 결과가 기존 내용에 달려 있어, "경로 하나 = 산출 하나"라는 계획의 전제와
-    맞지 않는다. `.mcp.json`·`settings.local.json` 병합이 `_wire_local_install`에
-    따로 있는 것과 같은 이유다.
-
-    out_dir가 None이면(dry_run에서 대상 폴더를 지정하지 않은 경우) 기존 파일을
-    읽을 수 없어 병합 판정 자체가 불가능하다 — 비용만 계상하고 물러난다.
-    """
-    doc = getattr(project, "claude_md", None)
-    if out_dir is None:
-        if doc is not None and doc.has_content():
-            result.token_report.add(
-                ".claude/CLAUDE.md (plugin section)", "claude_md", doc.body or "",
-            )
-        return
-    path = out_dir / ".claude" / "CLAUDE.md"
-    existing: str | None = None
-    if path.is_file():
-        try:
-            existing = path.read_text(encoding="utf-8")
-        except OSError as exc:  # pragma: no cover - 권한 등 환경 의존
-            result.warnings.append(ValidationError(
-                rule="unmergeable_claude_md",
-                message=f"'{path}'를 읽을 수 없어 병합하지 않았습니다: {exc}",
-                source=str(path), subject=project,
-            ))
-            return
-    elif doc is None or not doc.has_content():
-        return  # 쓸 내용도 없고 기존 파일도 없다 — 빈 파일을 만들지 않는다
-
-    text, warning = merge_claude_md(
-        existing,
-        project.name,
-        title=(doc.name if doc is not None and doc.name else project.name),
-        body=(doc.body if doc is not None else ""),
-    )
-    if warning is not None:
-        result.warnings.append(ValidationError(
-            rule="unmergeable_claude_md",
-            message=f"{warning} 표식을 고친 뒤 다시 컴파일하세요: {path}",
-            source=str(path), subject=project,
-        ))
-        return
-    if text is None:
-        return
-    if not dry_run:
-        _write_text(path, text)
-    result.written.append(path)
-    # 토큰 리포트에는 **이 플러그인의 구역 본문만** 싣는다(A5-lite) — 파일 전체는
-    # 다른 플러그인·사용자가 쓴 내용까지 포함해서, 이 컴파일이 만든 비용이 아니다.
-    # 다만 CLAUDE.md는 매 세션 통째로 실리므로 구역 본문의 비용은 실재한다.
-    if doc is not None and doc.has_content():
-        result.token_report.add(
-            ".claude/CLAUDE.md (plugin section)", "claude_md", doc.body or "",
-        )
-
-
-# ─────────────────────── LOCAL 설치 배선 — JSON 병합 (WP-MW) ───────────────────────
-
-
-def _wire_local_install(
-    project, out_dir: Path | None, result: CompileResult,
-    extra_server_defs: dict[str, dict] | None = None,
-    resolved_hooks: dict | None = None,
-    dry_run: bool = False,
-    settings_filename: str = "settings.json",
-    provided_server_names: set[str] | frozenset[str] | None = None,
-) -> None:
-    """LOCAL 빌드의 설치 배선 — 대상 작업 폴더의 설정 파일을 생성/수정한다.
-
-    병합 자체는 `compiler/wiring.wire_workspace`가 한다("Claude Code 실행"
-    메뉴와 공유 — 같은 폴더를 두 경로가 다르게 만지면 안 된다). 여기서는
-    무엇을 배선할지(참조 서버 ∩ 정의, 프로젝트 훅)를 정하고, 배선하지 못한
-    사실을 경고로 변환한다.
-
-    정의 조회는 프로젝트(`mcp_server_defs`)가 우선이고, 없으면 호출 환경이
-    준 `extra_server_defs`(예: Daedalus 앱 자신의 daedalus 서버)로 채운다.
-
-    `missing_mcp_server_def` 판정은 **대상 폴더와 무관**하므로 out_dir가
-    None이어도(dry_run) 그대로 낸다 — 폴더를 읽어야 하는 것은 병합
-    (`unmergeable_settings_json`)뿐이고 그쪽만 건너뛴다.
-    """
-    from daedalus.compiler.wiring import wire_workspace
-
-    defs = dict(extra_server_defs or {})
-    defs.update(getattr(project, "mcp_server_defs", None) or {})  # 프로젝트가 우선
-    referenced = referenced_mcp_servers(project)
-    entries = {name: defs[name] for name in referenced if name in defs}
-    provided = set(provided_server_names or ())
-    for name in referenced:
-        if name not in defs and name not in provided:
-            result.warnings.append(ValidationError(
-                rule="missing_mcp_server_def",
-                message=(
-                    f"MCP 서버 '{name}'가 참조되지만 프로젝트에 서버 정의가 없어 "
-                    f".mcp.json에 배선하지 못했습니다. set_mcp_server_def(MCP) 또는 "
-                    f"프로젝트 속성에서 정의를 추가하거나, 대상 프로젝트의 "
-                    f".mcp.json에 직접 추가하세요."
-                ),
-                source=name,
-                subject=project,
-            ))
-
-    # WP-WR — 사용 선언된 외부 플러그인(external_plugins)을 enabledPlugins로
-    # 활성화한다. 배선의 단일 진실은 선언이다 — 랩핑 스킬 source를 스캔하지
-    # 않는다(사용자 확정. 선언·참조의 어긋남은 검증 경고가 짚는다). 형식은
-    # settings 스키마(벤더링 스냅샷) 확인: {"plugin-id@marketplace-id": true}.
-    # 마켓 표기가 없는 bare 이름은 enabledPlugins 키가 될 수 없어 경고 후 생략
-    # (매니페스트 dependencies와 달리 자기-마켓 해소 규칙이 없다). 이 판정은
-    # missing_mcp_server_def처럼 **대상 폴더와 무관**하므로 out_dir 조기 반환
-    # 앞에 있어야 한다 — 뒤에 두면 out_dir 없는 compile_check(dry-run)에서
-    # 경고가 통째로 사라진다.
-    enabled_plugins: dict = {}
-    for plugin_id in external_plugin_ids(project):
-        if "@" not in plugin_id:
-            result.warnings.append(ValidationError(
-                rule="external_plugin_no_marketplace",
-                message=(
-                    f"사용 선언된 외부 플러그인 '{plugin_id}'에 마켓플레이스 "
-                    f"표기가 없어 enabledPlugins에 올릴 수 없습니다 — "
-                    f"`플러그인@마켓` 형식이면 설치 배선까지 자동입니다."
-                ),
-                source=plugin_id,
-                subject=project,
-            ))
-            continue
-        enabled_plugins[plugin_id] = True
-
-    if out_dir is None:
-        return  # 대상 폴더를 모르면 병합 판정 자체가 불가능하다
-
-    hooks_text = compile_hooks_json(project, resolved_hooks)
-    hooks_map = json.loads(hooks_text).get("hooks", {}) if hooks_text else None
-
-    baked_settings = dict(project.workspace_settings or {})
-    if enabled_plugins:
-        merged = dict(baked_settings.get("enabledPlugins") or {})
-        merged.update(enabled_plugins)
-        baked_settings["enabledPlugins"] = merged
-
-    wired = wire_workspace(
-        out_dir, entries, hooks_map, dry_run=dry_run,
-        # WP-WS — 프로젝트의 작업 폴더 설정 베이크. hooks 키는 wire_workspace가
-        # 무시한다(훅 정본은 hook_library — hooks_map 경로 전담).
-        # WP-WR — 랩핑 소스 플러그인의 enabledPlugins 합성 포함(모델 불변).
-        extra_settings=baked_settings or None,
-        settings_name=settings_filename,
-    )
-    result.written.extend(wired.written)
-    for path in wired.unmergeable:
-        result.warnings.append(ValidationError(
-            rule="unmergeable_settings_json",
-            message=(
-                f"'{path}'가 올바른 JSON이 아니어서 병합하지 않았습니다 — 기존 "
-                f"내용을 지키기 위해 그대로 두었습니다. 파일을 고친 뒤 다시 "
-                f"컴파일하세요."
-            ),
-            source=str(path),
-            subject=project,
-        ))

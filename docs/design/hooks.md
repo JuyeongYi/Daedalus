@@ -32,7 +32,7 @@ CC의 구조는 **3단**이다: 이벤트 → 그룹(matcher + 핸들러 목록)
   산출은 둘로 나뉜다 — ① 스크립트 파일 `hooks/scripts/<이름>.sh`(command 핸들러가
   있는 훅마다, `compile_hook_scripts`) ② 등록: MARKETPLACE는 `<out>/hooks/hooks.json`,
   LOCAL은 **파일을 만들지 않고** `.claude/settings*.json`의 `hooks` 섹션에 병합
-  (`_wire_local_install` → `wire_workspace`). 이벤트 키=HookEvent 선언 순서,
+  (`units/install.LocalWiringUnit` → `wire_workspace`). 이벤트 키=HookEvent 선언 순서,
   같은 이벤트 복수 훅=라이브러리 순서, 핸들러 0개인 훅은 배출 안 함.
 - **에이전트 프론트매터 훅은 별개 경로다** — LOCAL 빌드에서 에이전트가
   `config.hooks`로 참조한 훅이 그 `.md` 프론트매터로 나간다(WP-LA, 컴파일 정책

@@ -1,8 +1,57 @@
 # daedalus/compiler/units/
 """컴파일 참여자 — 산출 종류 하나 = 단위 하나 (WP-5).
 
-첫 걸음은 **골격과 경로 규약**이다: 산출 이름 규약·트리 열거 규칙·훅 스크립트
-이름 판정처럼 "계획과 실제 쓰기가 같은 규칙을 봐야 하는" 것들을 `paths.py`로
-모았다(`plan.py`에서 이동만 — AST 동일). `compiler/plan.py`가 같은 객체를
-재-export하므로 기존 임포트 경로는 무수정으로 동작한다.
+모듈 방향은 단방향이다::
+
+    emit/ · workspace · wiring
+        ↑
+    units/{paths, context, base, gate, sink}      ← 공통 계약
+        ↑
+    units/{components, hooks, docs, trees, install}  ← 12개 단위
+        ↑
+    units/registry  (UNITS · UNIT_BY_ID · Planner)
+        ↑
+    compiler/plan (파사드) → compiler/project_compiler (게이트 + 루프)
+
+여기서 재-export하는 이름이 단위 계층의 공개 표면이다.
 """
+from __future__ import annotations
+
+from daedalus.compiler.units.base import (
+    CompileUnit,
+    CopyUnit,
+    MergeUnit,
+    OutputMode,
+    Phase,
+    PlannedOutput,
+    TextUnit,
+)
+from daedalus.compiler.units.context import CompileContext
+from daedalus.compiler.units.gate import Gate
+from daedalus.compiler.units.registry import (
+    PLANNER,
+    UNIT_BY_ID,
+    UNITS,
+    Planner,
+    unit_for,
+)
+from daedalus.compiler.units.sink import MergeOutcome, OutputSink
+
+__all__ = [
+    "CompileContext",
+    "CompileUnit",
+    "CopyUnit",
+    "Gate",
+    "MergeOutcome",
+    "MergeUnit",
+    "OutputMode",
+    "OutputSink",
+    "PLANNER",
+    "Phase",
+    "PlannedOutput",
+    "Planner",
+    "TextUnit",
+    "UNITS",
+    "UNIT_BY_ID",
+    "unit_for",
+]

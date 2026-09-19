@@ -7,10 +7,61 @@
 `resolved_hooks`(A1)는 호출자가 주입하는 이름→HookDef 사전 — 컴파일러는 파일시스템에서 훅을 읽지 않는다("전역 훅 2단 스코프" 섹션 참조).
 `dry_run`(G3)은 파일을 하나도 쓰지 않는 예행 — 컴파일 정책 18번 참조(`out_dir`는 이때만 생략 가능).
 
-**"무엇이 어디로 나가는가"는 `compiler/plan.py`가 담는다**(WP-FK2 C0에서 `project_compiler.py`에서 이동만 —
-동작 불변, `project_compiler`가 전부 재-export해 기존 임포트 경로가 불변이고 `tests/compiler/test_plan_facade.py`가
-고정한다): `_PlannedOutput`·`_plan_outputs`와 계획 단계 게이트 3종(이름 규약·경로 충돌·훅 스크립트 이름).
-`project_compiler.compile_project`는 검증 게이트 + 그 계획대로 쓰기 + LOCAL 설치 배선만 한다.
+## 컴파일 참여자 — `CompileUnit` 12개 (WP-5)
+
+**산출 종류 하나 = 단위 하나다.** 종전에는 산출 종류마다 지식이 세 자리에 흩어져 있었다 —
+계획(`plan._plan_outputs`의 한 문단), 쓰기(`project_compiler`의 kind 사다리), 그리고 "이 kind는
+`${ROOT}`를 확장하는가 / 토큰을 어떻게 세는가"의 튜플 두 개. 하나를 고치고 나머지를 잊으면
+조용한 불일치가 됐다. 이제 단위가 자기 계획·자기 렌더·자기 쓰기 방식을 **전부** 말하고,
+드라이버는 kind를 비교하지 않는다:
+
+```
+plan  = Planner(UNITS).plan(ctx)            # 선언 순서 = 계획 순서 = 쓰기 순서
+write = UNIT_BY_ID[행.kind].emit(행, ctx, sink)
+```
+
+`compiler/units/`의 계약: `CompileUnit(ABC: plan/emit)` → `TextUnit`(하위는 `render`만) /
+`CopyUnit` / `MergeUnit` · `CompileContext`(주입 인자 1:1, 원칙 4) · `Gate`(이름 규약) ·
+`OutputSink`(쓰기·복사·병합·토큰 계상의 유일한 실행자 — `dry_run`·`${ROOT}` 확장·LF/UTF-8을
+여기서만 안다) · `PlannedOutput`(계획 행).
+**계획 kind 문자열의 소유자는 `compiler/plan_kinds.py` 하나**이고(`tests/test_kind_literals.py`가
+AST로 강제) `emit/guides.py`의 `WORKFLOW_GUIDE_KIND`/`BLACKBOARD_GUIDE_KIND`/`GUIDE_KINDS`는
+거기서 재-export한 것이다.
+
+| # | 단위 | plan kind (= 단위 id) | 모드 | phase | 경로 | `${ROOT}` | token | `exclusive` | 계획 조건 |
+|---|---|---|---|---|---|---|---|---|---|
+| 1 | `ComponentUnit(SKILLS)` | `skill`, `wrapped_runner` | TEXT | WRITE | `<cc>/skills/<n>/SKILL.md`, `<cc>/agents/<n>.md` | ✔ | CONTEXT | ✔ | `c.emits_output()` (+ `needs_runner_agent`) |
+| 2 | `ComponentUnit(AGENTS)` | `agent` | TEXT | WRITE | `<cc>/agents/<n>.md` | ✔ | CONTEXT | ✔ | `c.emits_output()` |
+| 3 | `SkillFilesUnit` | `skill_file` | COPY_FILE | WRITE | `<cc>/skills/<d>/<rel>` | – | – | ✔ | `skill_files_dir.is_dir()` ∧ 폴더명이 산출 스킬 이름과 일치 |
+| 4 | `HooksUnit` | `hooks_json`(MARKET만), `hook_script` | TEXT | WRITE | `hooks/hooks.json`, `hooks/scripts/<f>` | ✘ | TOTAL_ONLY | ✔ | `compile_hooks_json(...) is not None` — **계획 단계에서 1회 렌더해 `payload`에 메모** |
+| 5 | `WorkspaceRuleUnit` | `workspace_rule` | TEXT | WRITE | `.claude/rules/<n>.md` | ✘ | CONTEXT | ✔ | LOCAL ∧ `doc.has_content()` |
+| 6·7 | `GuideUnit` ×2 | `guide_workflow`, `guide_blackboard` | TEXT | WRITE | `guides/<플러그인>/…` | ✔ | CONTEXT(`is_guide`) | ✔ | `workflow_guide_referenced` / `blackboard_guide_referenced` |
+| 8 | `SchemasUnit` | `schemas_json` | TEXT | WRITE | `schemas/<프로젝트>.json` | ✘ | TOTAL_ONLY | ✔ | `compile_schemas_json(...) is not None` |
+| 9 | `ManifestUnit` | `plugin_manifest` | TEXT | WRITE | `.claude-plugin/plugin.json` | ✘ | TOTAL_ONLY | ✔ | MARKETPLACE |
+| 10 | `FilesTreeUnit` | `files_tree` | COPY_TREE | WRITE | `files/` | – | – | **✘** | `files_dir.is_dir()` (`clear_first = not is_local`) |
+| 11 | `LocalWiringUnit` | `local_wiring` | MERGE | **INSTALL** | `.mcp.json` + `.claude/<settings>` | – | – | **✘** | LOCAL |
+| 12 | `ClaudeMdUnit` | `claude_md` | MERGE | **INSTALL** | `.claude/CLAUDE.md` | ✘ | CONTEXT | **✘** | LOCAL |
+
+**`exclusive`**: 경로 충돌 게이트와 `skipped` 보고의 대상인가. 트리 복사·병합(10~12)은 "경로 하나 =
+산출 하나"라는 계획의 전제를 만족하지 않아 `False`다 — 종전에도 계획 밖이라 검사를 받지 않았고
+`skipped`에도 실리지 않았다(MCP `compile_check` 응답 형상 불변).
+
+**`Phase`가 둘인 이유**: `WRITE`(1~10) 뒤, `INSTALL`(11~12) 앞에 **드라이버가 소유한 진단 스캔
+2건**(`dangling_file_ref`/`dangling_skill_file_ref`)이 있다. 파일시스템을 읽는 판정이라 산출이
+아니고, 한 루프로 합치면 경고 순서가 조용히 바뀐다(`tests/compiler/test_plan_order_golden.py`).
+
+**`TokenKind`**: 계상 구간을 **계획 행이 선언한다**(`CONTEXT` 임계 판정 대상 / `TOTAL_ONLY` 총합만 /
+`NONE` 계상 없음). 종전 `token_report.CONTEXT_KINDS`는 계획 kind의 사본이라 개명하면 리포트만
+조용히 산출을 못 알아봤다.
+
+**계획 파사드**: `compiler/plan.py`가 `_plan_outputs`(종전 시그니처)·`_PlannedOutput`·경로 헬퍼 6종을
+`units/`의 **같은 객체**로 재-export하고 `project_compiler`가 다시 재-export한다(기존 임포트 경로 불변 —
+`tests/compiler/test_plan_facade.py`가 고정). 파사드는 `out_dir`/`files_dir`를 모르므로 `files_tree`
+행이 보이지 않는다 — 전체 계획은 `Planner().plan(CompileContext.build(...))`다.
+`project_compiler.compile_project`에 남은 것은 검증 게이트 + 2단계 루프 + 진단 스캔뿐이다.
+
+새 산출을 더하는 사람은 **단위 하나와 `UNITS` 한 줄**을 쓴다 — 드라이버·게이트·토큰 리포트는
+고치지 않는다.
 
 **출력 구조 (CC 플러그인 규약, `project.build_target == MARKETPLACE` — 기본):**
 - `<out>/.claude-plugin/plugin.json` — 플러그인 매니페스트 (MARKETPLACE에서 항상 생성 — 이게 없으면 산출 디렉토리를 CC 플러그인으로 설치할 수 없다)
@@ -97,7 +148,7 @@
     항목은 출처 이름순으로 한 줄씩이다: `- entered from \`X\` [조건]`(+ 출처의 transfer_on description 병기, 전이 스킬 수행 완료 문구 합류). 출처가 **워크플로 에이전트**면 `- entered after agent \`X\` returned` + 위임 스킬 이름 병기(규약상 `prev`에는 에이전트가 아니라 위임 스킬이 남는다), **비동기 fork**면 `- entered when background fork \`X\` reported`(그 fork가 다음 단계를 부른 것이 아니라, 보고를 받은 메인이 시작시켰다). 동기 fork는 일반 출처와 문구가 같다. 포트 그룹 헤딩 없음, 그래프에서만 유도(WP-IP). incoming 0개 배치·미배치는 산출 변화 없음.
     `compile_agent`의 "## Invocation Contract"는 종류가 가른다 — 워크플로 에이전트는 `_call_contract_section`이 프로젝트 그래프의 incoming 호출 전이에서 유도하고(WP-CT — 수동 카드 없음), fork 에이전트는 `_fork_base_contract_section`이 자기를 실행 기반으로 쓰는 fork 스킬 줄만 낸다(7-b번).
 14. **files/ 복사 + dangling_file_ref 경고 (WP-FR)**: `files_dir`가 실존 디렉토리면(게이트 통과 시에만) `_copy_files_tree`가 `<out>/files/`로 정렬 순회 복사한다(결정적, 심볼릭 링크 미추종 — 디렉토리는 재귀 안 함·파일은 복사 안 함). 기존 `<out>/files/`는 복사 전 삭제(out 전체가 아니라 files/만). 복사된 파일 경로는 `CompileResult.copied_files`에 담긴다. `files_dir`가 주어지면(실존 여부 무관) `_scan_dangling_file_refs`가 스킬·에이전트 body에서 `${CLAUDE_PLUGIN_ROOT}/files/<경로>` 참조 토큰을 스캔해 files_dir에 실존하지 않으면 `dangling_file_ref` 경고를 `CompileResult.warnings`에 추가한다(게이트 차단 아님). `files_dir` 생략(None) 시 복사·스캔 모두 생략되어 기존 산출 파일/문자열이 완전히 불변(하위 호환).
-15. **빌드 타깃 — LOCAL 빌드 (WP-TG)**: `project.build_target`(기본 `MARKETPLACE`)에 따라 `_plan_outputs`의 산출 계획이 갈린다.
+15. **빌드 타깃 — LOCAL 빌드 (WP-TG)**: `project.build_target`(기본 `MARKETPLACE`)에 따라 산출 계획이 갈린다(`CompileContext.is_local`/`cc_prefix`).
     - **MARKETPLACE**(기본): `plugin.json` + `skills/`·`agents/` 산출. **"현행과 바이트 동일"이라는 하위 호환 게이트는 WP-NS에서 폐기됐다** — `state/`에는 `${ROOT}` 토큰이 붙지 않아 작업 폴더 CWD 기준이라, 마켓플레이스 플러그인이 한쪽에만 끼어도 `state/<Class>.json`과 고정 파일명 `state/__progress__.json`이 충돌한다. 배포 전이라 지킬 대상이 없어 네임스페이스를 양쪽 타깃에 적용했다.
     - **LOCAL — 컴파일이 곧 설치 (WP-MW)**: out_dir가 대상 작업 폴더다. 스킬/에이전트는 `.claude/skills/`·`.claude/agents/`(CC가 실제로 읽는 위치)로 나가고, `plugin.json`과 이전의 `INSTALL.md`/`install.ps1`/`install.sh` 동봉은 폐기됐다(별도 설치 단계가 없다). `hooks/hooks.json` 파일도 만들지 않는다 — 훅은 설정 파일(`.claude/settings.json` 기본 / `settings.local.json` — Ctrl+B 때 고른다, `compile_project(settings_filename=)`)의 `hooks` 섹션에 병합된다(훅 스크립트 파일은 양쪽 타깃 모두 `hooks/scripts/`로 — LOCAL 커맨드가 `${CLAUDE_PROJECT_DIR}/hooks/scripts/…`를 가리킨다). MCP 배선: `referenced_mcp_servers(project)`(스킬 allowed_tools ∪ 에이전트 tools/mcp_servers, 이름순) ∩ `project.mcp_server_defs` 정의를 `<out>/.mcp.json`의 `mcpServers`에 병합하고 그 이름을 같은 설정 파일의 `enabledMcpjsonServers`에 올린다. 정의 조회는 `project.mcp_server_defs` 우선 + `compile_project(..., extra_server_defs=)`(호출 환경 주입 — 앱이 `CompileActions.known_server_defs()`로 자기 자신의 daedalus 서버를 넣는다. 서버 미기동이면 기본 포트) 폴백. 참조되지만 정의 없는 서버는 `missing_mcp_server_def` 경고, 깨진 기존 JSON은 건드리지 않고 `unmergeable_settings_json` 경고(수기 설정 보호). 병합은 추가/갱신만·동일 훅 그룹 중복 삽입 없음 — **재컴파일 멱등**. 병합 구현은 `compiler/wiring.py`의 `wire_workspace`가 단일 진실("Claude Code 실행" 메뉴와 공유). files/ 복사는 LOCAL에서 기존 `<out>/files/`를 **삭제하지 않고** 덮어쓰기만 한다(`_copy_files_tree(clear_first=False)` — 사용자 작업 폴더의 파일 삭제 위험 > 스테일 잔존). `${ROOT}` 확장·이름 규약 게이트·`schemas/<플러그인>.json` 산출 조건은 기존 그대로.
 
@@ -129,8 +180,8 @@
     - **추정은 휴리스틱**(순수 stdlib, 외부 토크나이저 의존 금지): ASCII 4자 ≈ 1토큰, 비ASCII 1.5자 ≈
       1토큰. 두 구간으로 나눈 이유는 산출의 자동 단락이 영어여도 사용자 값(body/description)은 한국어일
       수 있고, 한 구간으로 뭉치면 그 부분을 3배 가까이 과소평가하기 때문이다. 자릿수 감각용(±20% 수준).
-    - **임계 `DEFAULT_FILE_TOKEN_THRESHOLD = 5000`은 파일당**이고 `CONTEXT_KINDS`(skill/agent/
-      workspace_rule/claude_md)에만 적용한다 — `schemas.json`/`hooks.json`/`plugin.json`은 CC가 설정으로
+    - **임계 `DEFAULT_FILE_TOKEN_THRESHOLD = 5000`은 파일당**이고 `TokenKind.CONTEXT`로 선언된
+      행(skill/agent/wrapped_runner/workspace_rule/claude_md/가이드 2종)에만 적용한다 — `schemas.json`/`hooks.json`/`plugin.json`은 CC가 설정으로
       읽을 뿐 대화 컨텍스트에 실리지 않으므로 합계에는 넣되 임계로 재지 않는다. 5000의 근거: SKILL.md는
       스킬이 걸릴 때마다 통째로 실리고, Anthropic 스킬 저작 지침의 "500줄 안쪽" 권고 ≈ 20,000자 ≈
       5,000토큰이다(새 규범이 아니라 기존 권고의 토큰 환산).
@@ -149,8 +200,8 @@
       `unmergeable_settings_json` / `unmergeable_claude_md` / `rule_body_frontmatter`)은
       `Validator.validate_project`에 나오지 않아 **실제 컴파일에서만** 드러났다 — MCP로만
       저작하면 GUI Ctrl+B를 누르기 전까지 영영 보이지 않는다(MCP 패리티 원칙 위반).
-    - **LOCAL 병합류는 읽되 절대 쓰지 않는다.** `wire_workspace(..., dry_run=True)`와
-      `_merge_claude_md_region(..., dry_run=True)`는 기존 파일을 읽어 병합을 메모리에서
+    - **LOCAL 병합류는 읽되 절대 쓰지 않는다.** `Phase.INSTALL` 단위 둘(`LocalWiringUnit` →
+      `wire_workspace` · `ClaudeMdUnit`)은 `ctx.dry_run`에서 기존 파일을 읽어 병합을 메모리에서
       계산하므로 `unmergeable_*` 판정이 실제 배선과 같고, 대상 작업 폴더는 불변이다
       (`tests/compiler/test_dry_run.py`가 스냅샷으로 고정).
     - **`out_dir`는 dry-run일 때만 생략할 수 있다**(실제 컴파일에서 생략하면 `ValueError`).
@@ -162,7 +213,7 @@
       skill_files_dir/extra_server_defs/resolved_hooks의 단일 진실, `MainWindow.compile_inputs`
       한 줄 위임)를 컴파일 다이얼로그와 MCP `compile_check`가 함께 쓴다. 한쪽만 고치면
       "검사는 통과했는데 컴파일하면 경고가 뜬다"가 된다.
-    - `_copy_files_tree`는 dry-run에서도 **같은 순회 코드**로 목록을 만든다(열거를 따로
+    - `FilesTreeUnit`(→ `units/sink._copy_files_tree`)은 dry-run에서도 **같은 순회 코드**로 목록을 만든다(열거를 따로
       구현하면 계획과 실행이 언젠가 어긋난다). 같은 작업에서 `CompileResult.copied_files`가
       files/ 복사분에 **대입**되어 skill-files/ 복사분을 지우던 버그도 고쳤다(이제 이어 붙인다).
 
@@ -230,16 +281,16 @@
       플러그인 이름으로 네임스페이스를 가르는 것은 `schemas/<플러그인>.json`과 같은 이유(WP-NS)고,
       `files/` 밖에 두는 것은 공용 files/ 트리 복사와 섞이지 않게 하기 위해서다. 본문 참조는 타깃 중립
       `${ROOT}/guides/<플러그인>/…`(ROOT 확장 대상 kind에 두 가이드 kind를 넣었다).
-    - **계획 kind는 둘이다** — `"guide_workflow"`/`"guide_blackboard"`(`emit/guides.WORKFLOW_GUIDE_KIND`·
-      `BLACKBOARD_GUIDE_KIND`). `_PlannedOutput`에 구분 필드를 새로 만들지 않는다: kind가 곧 쓰기 루프의 텍스트
-      생성 분기 키이고, 모르는 kind는 `ValueError`로 컴파일을 죽인다. `token_report.CONTEXT_KINDS`에 둘 다 들어가
-      리포트에 별도 줄로 실리고, `TokenReport.notice()`가 "공통 안내 파일 ≈N토큰은 포인터를 받은 컴포넌트가
+    - **계획 kind는 둘이다** — `plan_kinds.GUIDE_WORKFLOW`/`GUIDE_BLACKBOARD`(`emit/guides`의
+      `WORKFLOW_GUIDE_KIND`/`BLACKBOARD_GUIDE_KIND`가 그것을 재-export한다). `PlannedOutput`에 구분 필드를 새로
+      만들지 않는다: kind가 곧 그 행을 쓸 단위의 id이고, 모르는 kind는 `ValueError`로 컴파일을 죽인다
+      (`units.registry.unit_for`). 두 행은 `token_kind=CONTEXT`·`is_guide=True`로 선언돼 리포트에 별도 줄로 실리고, `TokenReport.notice()`가 "공통 안내 파일 ≈N토큰은 포인터를 받은 컴포넌트가
       실행될 때마다 추가로 실린다"를 덧붙인다(파일당 임계 판정의 의미는 바꾸지 않는다 — 임계는 "SKILL.md 500줄"
       권고의 토큰 환산이고 가이드도 같은 기준의 파일이다).
     - **게이트**: workflow.md는 프로젝트 그래프에 배치 노드가 1개 이상일 때, blackboard.md는 블랙보드
       `class_definitions`가 1개 이상일 때 내용을 갖는다. 그 위에 **포인터가 하나도 나가지 않으면 파일을 만들지
       않는다**(고아 파일 없음 — 대상 집합은 `_plan_outputs`가 파일을 내는 집합과 **같은 함수**
-      `emitted_components`로 센다).
+      `emitted_components`로 센다 — 계획 쪽은 `ComponentUnit`이 같은 `emits_output()`을 본다).
     - **workflow.md 5절**: ① 이 워크플로가 도는 방식(스킬 = 단계, 출력 이벤트 = 갈래, 가드, 전이 스킬,
       에이전트 위임, fork sync/async, 선언형·참조·배경 스킬) ② 진행 기록(`state/__progress__.json` 구조,
       `progress read|set` 옵션 전부, exit 3의 뜻, `note`에 갈래를 적는 이유, 에이전트 위임 시 2회 갱신,
@@ -282,8 +333,8 @@
       사용자에게 되물을 수도 없다.
     - **테스트**: `tests/compiler/test_guides.py`(본문·게이트·포인터 대상·CLI 문자열 파서 일치),
       `test_plugin_namespace.py`(가이드 경로 + 가이드 텍스트에 `${ROOT}`/`${CLAUDE_` 부재 + 블랙보드 포인터를
-      받은 모든 컴포넌트에 확장된 `--schemas` 경로 1회 이상), `test_token_report.py`(두 kind가 CONTEXT_KINDS에
-      있고 별도 항목으로 나타난다), `test_output_language.py`(가이드 픽스처).
+      받은 모든 컴포넌트에 확장된 `--schemas` 경로 1회 이상), `test_token_report.py`(두 계획 행이
+      `TokenKind.CONTEXT`·`is_guide`로 선언되고 별도 항목으로 나타난다), `test_output_language.py`(가이드 픽스처).
 
 출력은 결정적(같은 모델 → 같은 텍스트), LF 줄바꿈, UTF-8(BOM 없음). 텍스트 생성(`compile_skill`/`compile_agent`)은 파일시스템과 분리되어 문자열 단위 테스트 가능.
 

@@ -28,8 +28,8 @@ from daedalus.compiler.emit import (
 )
 from daedalus.compiler.emit.guides import GUIDE_KINDS, compile_guide
 from daedalus.compiler.emit.wrapped import compile_wrapped_runner
-from daedalus.compiler.plan import _plan_outputs
 from daedalus.compiler.project_compiler import compile_project
+from daedalus.compiler.units import CompileContext, Planner
 from daedalus.compiler.workspace import render_rule
 from daedalus.model.plugin.skill import WrappedSkill
 from daedalus.model.serialize import deserialize_project, serialize_project
@@ -98,11 +98,19 @@ def facade_hashes() -> dict[str, str]:
 # ─────────────────── compile_project — 산출 파일 · 계획 순서 ───────────────────
 
 def _compile_case(project, kwargs: dict, out_root: Path):
-    plan, _gate_errors, _plan_warnings = _plan_outputs(
-        project,
+    """계획은 **전체 단위**로 뽑는다 — 파사드(`_plan_outputs`)로는 `out_dir`·
+    `files_dir`가 없어 `files_tree`/LOCAL 병합 행이 보이지 않는다(§4-c).
+    `compile_project`가 실제로 도는 계획과 같은 것을 스냅샷해야 순서가 계약이다.
+    """
+    ctx = CompileContext.build(
+        project, out_dir=out_root,
+        files_dir=kwargs.get("files_dir"),
         skill_files_dir=kwargs.get("skill_files_dir"),
         resolved_hooks=kwargs.get("resolved_hooks"),
+        settings_filename=kwargs.get("settings_filename", "settings.json"),
+        dry_run=True,
     )
+    plan, _gate_errors, _plan_warnings = Planner().plan(ctx)
     result = compile_project(project, out_root, **kwargs)
     return plan, result
 
@@ -126,8 +134,12 @@ def project_hashes_and_plans() -> tuple[dict[str, str], dict[str, dict]]:
                         path.read_bytes()
                     )
             plans[key] = {
+                # `exclusive`까지 싣는다 — 경로 충돌 게이트·`skipped` 보고의
+                # 대상 집합이 곧 이 플래그이고, 그것이 바뀌면 MCP compile_check
+                # 응답 형상이 바뀐다(WP-5).
                 "plan": [
-                    [item.rel_path.as_posix(), item.kind, item.label] for item in plan
+                    [item.rel_path.as_posix(), item.kind, item.label, item.exclusive]
+                    for item in plan
                 ],
                 "written": [_rel(p, root) for p in result.written],
                 "copied_files": [_rel(p, root) for p in result.copied_files],

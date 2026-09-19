@@ -87,10 +87,10 @@ LOCAL 플러그인이 설치 대상 작업 폴더에 남기는 **항상 컨텍�
   close가 open보다 앞이면 `unmergeable_claude_md` 경고만 내고 물러난다. 구역의 끝을
   추측하면 그 뒤의 사용자 내용을 통째로 날린다.
 - 구현은 `compiler/workspace.py`의 순수 함수 `merge_claude_md`이고, 파일 읽기·쓰기는
-  `project_compiler._merge_claude_md_region`이 한다. **산출 계획(`_plan_outputs`)에
+  `compiler/units/install.ClaudeMdUnit`이 한다(`Phase.INSTALL`). **경로 충돌 게이트와 `skipped`에
   넣지 않는 이유**: 이 파일은 쓰기 전에 읽어야 하고 결과가 기존 내용에 달려 있어
-  "경로 하나 = 산출 하나"라는 계획의 전제와 맞지 않는다(`.mcp.json` 병합이
-  `_wire_local_install`에 따로 있는 것과 같은 이유).
+  "경로 하나 = 산출 하나"라는 계획의 전제와 맞지 않는다 — 계획 행은 오르되
+  `exclusive=False`다(`.mcp.json` 병합이 `LocalWiringUnit`에 따로 있는 것과 같은 이유).
 
 ### 검증
 

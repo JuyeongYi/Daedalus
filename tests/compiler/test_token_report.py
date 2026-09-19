@@ -14,6 +14,7 @@ from pathlib import Path
 from daedalus.compiler import compile_project
 from daedalus.compiler.token_report import (
     DEFAULT_FILE_TOKEN_THRESHOLD,
+    TokenKind,
     TokenReport,
     estimate_tokens,
 )
@@ -51,8 +52,8 @@ def test_estimate_is_monotonic_in_length():
 
 def test_report_totals_and_no_notice_under_threshold():
     report = TokenReport()
-    report.add("skills/a/SKILL.md", "skill", "a" * 40)
-    report.add("agents/b.md", "agent", "b" * 80)
+    report.add("skills/a/SKILL.md", "skill", "a" * 40, token_kind=TokenKind.CONTEXT)
+    report.add("agents/b.md", "agent", "b" * 80, token_kind=TokenKind.CONTEXT)
     assert report.total_chars == 120
     assert report.total_tokens == 10 + 20
     assert report.over_threshold() == []
@@ -64,11 +65,13 @@ def test_report_notice_only_for_context_kinds():
     """설정 파일(schemas/hooks)은 대화 컨텍스트에 실리지 않으므로 임계로 재지 않는다."""
     big = "a" * (DEFAULT_FILE_TOKEN_THRESHOLD * 4 + 400)
     report = TokenReport()
-    report.add("schemas/p.json", "schemas_json", big)
+    report.add(
+        "schemas/p.json", "schemas_json", big, token_kind=TokenKind.TOTAL_ONLY,
+    )
     assert report.notice() is None
     assert report.total_tokens > DEFAULT_FILE_TOKEN_THRESHOLD
 
-    report.add("skills/fat/SKILL.md", "skill", big)
+    report.add("skills/fat/SKILL.md", "skill", big, token_kind=TokenKind.CONTEXT)
     notice = report.notice()
     assert notice is not None
     assert "skills/fat/SKILL.md" in notice
@@ -78,7 +81,9 @@ def test_report_notice_only_for_context_kinds():
 def test_report_entry_shape():
     """항목은 값만 들고, 임계 판정은 리포트가 한다 — 진실이 둘이면 안 된다."""
     report = TokenReport()
-    entry = report.add("skills/a/SKILL.md", "skill", "hello")
+    entry = report.add(
+        "skills/a/SKILL.md", "skill", "hello", token_kind=TokenKind.CONTEXT,
+    )
     assert (entry.path, entry.kind, entry.chars) == ("skills/a/SKILL.md", "skill", 5)
     assert report.threshold == DEFAULT_FILE_TOKEN_THRESHOLD
     assert not hasattr(entry, "over_threshold")
@@ -152,18 +157,53 @@ def test_token_rules_are_not_registered_as_validation_rules():
 # ─────────────────── 공통 안내 파일 (WP-FK2 C3) ───────────────────
 
 
-def test_guide_kinds_are_context_kinds():
-    """가이드도 모델이 Read로 읽는 산문이다 — 임계 판정 대상이다.
+def _guide_project() -> PluginProject:
+    """가이드 둘이 모두 계획에 오르는 프로젝트 — 배치된 스킬 + 블랙보드."""
+    from daedalus.model.fsm.blackboard import Blackboard, DynamicClass, DynamicField
+    from daedalus.model.fsm.event import CompletionEvent
+    from daedalus.model.fsm.state import SimpleState
+    from daedalus.model.fsm.transition import Transition
+    from daedalus.model.fsm.variable import FieldType
 
-    kind 문자열의 단일 진실은 `emit/guides.py`다. 리터럴로 단언하면 개명했을 때
-    토큰 리포트만 조용히 가이드를 못 알아본다(임계 대상에서 빠지고 고지 줄이
-    사라진다) — 그래서 상수를 임포트해 **세 자리가 같은 값을 쓰는지**를 고정한다.
+    a, b = make_procedural("a"), make_procedural("b")
+    project = PluginProject(
+        name="p", skills=[a, b],
+        blackboard=Blackboard(class_definitions=[DynamicClass(
+            name="Task", description="d",
+            fields=[DynamicField(name="step", field_type=FieldType.INT)],
+        )]),
+    )
+    sa, sb = SimpleState(name="a", skill_ref=a), SimpleState(name="b", skill_ref=b)
+    project.graph.states += [sa, sb]
+    project.graph.transitions.append(
+        Transition(source=sa, target=sb, trigger=CompletionEvent(name="done"))
+    )
+    return project
+
+
+def test_guide_kinds_are_declared_context_and_guide():
+    """가이드도 모델이 Read로 읽는 산문이다 — 임계 판정 대상이고 고지 줄 대상이다.
+
+    종전에는 이 사실이 `token_report.CONTEXT_KINDS`라는 kind 문자열 **사본**에
+    적혀 있어, 개명하면 토큰 리포트만 조용히 가이드를 못 알아봤다. 이제 판정은
+    산출 계획이 선언한다(WP-5) — 그래서 **계획 행의 선언**을 직접 본다.
+    kind 문자열의 소유자가 `compiler/plan_kinds.py` 하나임도 함께 고정한다.
     """
+    from daedalus.compiler import plan_kinds
     from daedalus.compiler.emit.guides import GUIDE_KINDS
-    from daedalus.compiler.token_report import CONTEXT_KINDS, _GUIDE_KINDS
+    from daedalus.compiler.token_report import TokenKind
+    from daedalus.compiler.units import CompileContext, Gate
+    from daedalus.compiler.units.docs import GUIDE_UNITS
 
-    assert set(GUIDE_KINDS) <= CONTEXT_KINDS
-    assert set(GUIDE_KINDS) == set(_GUIDE_KINDS)
+    assert GUIDE_KINDS is plan_kinds.GUIDE_KINDS
+
+    project = _guide_project()
+    ctx = CompileContext.build(project, dry_run=True)
+    rows = [row for unit in GUIDE_UNITS for row in unit.plan(ctx, Gate())]
+    assert [row.kind for row in rows] == list(GUIDE_KINDS)
+    for row in rows:
+        assert row.token_kind is TokenKind.CONTEXT
+        assert row.is_guide is True
 
 
 def test_report_lists_each_guide_as_its_own_entry(tmp_path):
@@ -200,10 +240,13 @@ def test_notice_adds_a_line_about_the_shared_guides():
     """가이드 토큰은 포인터를 받은 컴포넌트가 실행될 때마다 **추가로** 실린다."""
     big = "a" * (DEFAULT_FILE_TOKEN_THRESHOLD * 4 + 400)
     report = TokenReport()
-    report.add("skills/fat/SKILL.md", "skill", big)
+    report.add("skills/fat/SKILL.md", "skill", big, token_kind=TokenKind.CONTEXT)
     assert "공통 안내 파일" not in report.notice()
 
-    report.add("guides/p/workflow.md", "guide_workflow", "b" * 400)
+    report.add(
+        "guides/p/workflow.md", "guide_workflow", "b" * 400,
+        token_kind=TokenKind.CONTEXT, is_guide=True,
+    )
     notice = report.notice()
     assert "공통 안내 파일 ≈100토큰" in notice
     assert "실행될 때마다 추가로 실립니다" in notice
@@ -212,8 +255,11 @@ def test_notice_adds_a_line_about_the_shared_guides():
 def test_guides_line_shows_even_when_nothing_is_over_threshold():
     """가이드는 임계(5,000)를 넘을 일이 없다 — 초과 문단에만 붙이면 영영 안 보인다."""
     report = TokenReport()
-    report.add("skills/a/SKILL.md", "skill", "a" * 400)
-    report.add("guides/p/workflow.md", "guide_workflow", "b" * 400)
+    report.add("skills/a/SKILL.md", "skill", "a" * 400, token_kind=TokenKind.CONTEXT)
+    report.add(
+        "guides/p/workflow.md", "guide_workflow", "b" * 400,
+        token_kind=TokenKind.CONTEXT, is_guide=True,
+    )
     assert report.over_threshold() == []
     notice = report.notice()
     assert notice is not None

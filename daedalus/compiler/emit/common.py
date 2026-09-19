@@ -5,7 +5,7 @@
 최소 단위: enum 값 추출, config 선언 기본값 조회, 본문 블록/블록 결합,
 빌드 타깃 판정, 프로젝트 그래프 placement 판정, **산출 파일 보유 판정**.
 
-마지막 하나(`emits_output_file`)는 emit 밖의 `compiler/plan.py`도 부른다 —
+마지막 하나(`emits_output_file`)는 emit 밖의 `compiler/units/`도 부른다 —
 "누가 산출 파일을 갖는가"의 실체가 계획(plan)과 포인터 판정(guides) 두 벌이면
 고아 가이드 파일이나 가리킬 파일이 없는 포인터가 조용히 생긴다(원칙 1).
 """
@@ -67,7 +67,7 @@ def emits_output_file(component) -> bool:
 
     판정의 실체는 컴포넌트 자신의 `emits_output()`이다(`OUTPUT_LOCATION` 선언 ×
     `is_active()`). 여기 남아 있는 것은 컴파일러 어휘의 이름 하나뿐이다 —
-    `plan._plan_outputs`의 제외 규칙과 `guides`의 포인터 판정이 같은 함수를
+    `units.components.ComponentUnit`의 제외 규칙과 `guides`의 포인터 판정이 같은 함수를
     부르는 것이 원래의 목적이었고, 이제는 같은 **메서드**를 부른다.
 
     종전 사다리가 열거하던 제외 대상(참조 용도·비활성 랩핑 스킬)은

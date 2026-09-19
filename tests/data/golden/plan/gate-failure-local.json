@@ -3,22 +3,38 @@
     [
       ".claude/skills/Bad Name/SKILL.md",
       "skill",
-      "스킬 'Bad Name'"
+      "스킬 'Bad Name'",
+      true
     ],
     [
       ".claude/skills/dupe/SKILL.md",
       "skill",
-      "스킬 'dupe'"
+      "스킬 'dupe'",
+      true
     ],
     [
       ".claude/skills/dupe/SKILL.md",
       "skill",
-      "스킬 'dupe'"
+      "스킬 'dupe'",
+      true
     ],
     [
       ".claude/agents/aide.md",
       "agent",
-      "에이전트 'aide'"
+      "에이전트 'aide'",
+      true
+    ],
+    [
+      ".mcp.json",
+      "local_wiring",
+      ".mcp.json + .claude/settings.json (LOCAL 설치 배선)",
+      false
+    ],
+    [
+      ".claude/CLAUDE.md",
+      "claude_md",
+      ".claude/CLAUDE.md (플러그인 구역)",
+      false
     ]
   ],
   "written": [],

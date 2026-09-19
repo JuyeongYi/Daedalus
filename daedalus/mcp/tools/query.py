@@ -431,8 +431,9 @@ class QueryTools(_BaseTools):
         `token_notice` 한 줄. 검증 경고가 아니라 **정보성 계기판**이다 —
         컴파일을 막지 않고 산출 텍스트도 바꾸지 않는다.
         """
+        from daedalus.compiler import plan_kinds
         from daedalus.compiler.emit import compile_agent, compile_skill
-        from daedalus.compiler.token_report import TokenReport
+        from daedalus.compiler.token_report import TokenKind, TokenReport
         from daedalus.model.plugin.agent import Agent
 
         comp = self._find_component(name)
@@ -451,7 +452,14 @@ class QueryTools(_BaseTools):
                 comp, project=project, resolved_hooks=self._window.resolved_hooks(),
             )
         report = TokenReport()
-        entry = report.add(comp.name, "agent" if is_agent else "skill", text)
+        # 미리보기는 컨텍스트 산출이다 — 실제 컴파일에서도 임계 판정 대상이라
+        # 같은 구간으로 센다(원칙 1). 계획 kind 문자열은 `plan_kinds`가 소유한다.
+        entry = report.add(
+            comp.name,
+            plan_kinds.AGENT if is_agent else plan_kinds.SKILL,
+            text,
+            token_kind=TokenKind.CONTEXT,
+        )
         return {
             "name": comp.name,
             "kind": self._component_kind(comp),

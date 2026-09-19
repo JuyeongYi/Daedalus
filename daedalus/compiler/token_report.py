@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
+from enum import StrEnum
 
 # 스킬 하나(SKILL.md)의 산출 텍스트 임계 — 넘으면 정보성 고지 1줄.
 #
@@ -38,25 +39,27 @@ from dataclasses import dataclass, field
 # 보조 파일로 내리기)을 문구에 함께 적는다.
 DEFAULT_FILE_TOKEN_THRESHOLD = 5000
 
-# 임계 판정 대상 kind — 모델 컨텍스트에 산문으로 실리는 산출물만 본다.
-# hooks.json/schemas.json/plugin.json은 CC가 설정으로 읽을 뿐 대화 컨텍스트에
-# 실리지 않으므로 총합에는 넣되 임계로 재지 않는다.
-# 공통 안내 파일(guides/<플러그인>/…)도 모델이 Read로 읽는 산문이므로 같은
-# 기준의 파일이다 — 포인터를 받은 컴포넌트가 실행될 때마다 추가로 실린다.
-CONTEXT_KINDS: frozenset[str] = frozenset(
-    {
-        "skill", "agent", "wrapped_runner", "workspace_rule", "claude_md",
-        "guide_workflow", "guide_blackboard",
-    }
-)
-
-#: 가이드 kind — notice()가 "포인터를 받은 컴포넌트마다 추가로 실린다"를 덧붙일
-#: 때 쓴다. 문자열의 단일 진실은 `compiler/emit/guides.py`이고 여기는 임계 판정
-#: 전용 사본이라 임포트 방향(token_report → emit)을 만들지 않는다.
-_GUIDE_KINDS: frozenset[str] = frozenset({"guide_workflow", "guide_blackboard"})
-
 _ASCII_CHARS_PER_TOKEN = 4.0
 _WIDE_CHARS_PER_TOKEN = 1.5
+
+
+class TokenKind(StrEnum):
+    """항목 1건이 토큰 계기판에서 **어떻게 세어지는가** (WP-5).
+
+    종전에는 이 판정이 `CONTEXT_KINDS`라는 kind 문자열 집합이었다 — 계획
+    kind의 사본을 토큰 리포트가 따로 들고 있었고, 개명하면 리포트만 조용히
+    산출을 못 알아봤다(임계 대상에서 빠지고 고지 줄이 사라진다). 이제 판정은
+    산출 계획이 선언하고(`PlannedOutput.token_kind`) 리포트는 그 선언을
+    읽기만 한다 — 리포트는 kind 문자열을 **비교하지 않는다**.
+
+    CONTEXT — 모델 컨텍스트에 산문으로 실린다. 파일당 임계 판정 대상.
+    TOTAL_ONLY — CC가 설정으로 읽을 뿐 대화 컨텍스트에 실리지 않는다
+        (hooks.json/schemas.json/plugin.json). 총합에는 넣되 임계로 재지 않는다.
+    NONE — 계상하지 않는다(복사 산출 등).
+    """
+    CONTEXT = "context"
+    TOTAL_ONLY = "total"
+    NONE = "none"
 
 
 def estimate_tokens(text: str) -> int:
@@ -84,6 +87,10 @@ class TokenEstimate:
     kind: str
     chars: int
     tokens: int
+    #: 계상 방식 — 산출 계획이 선언한다(`PlannedOutput.token_kind`).
+    token_kind: TokenKind = TokenKind.NONE
+    #: 공통 안내 파일인가 — notice()의 "추가로 실린다" 줄 대상.
+    is_guide: bool = False
 
     # 임계 판정은 **리포트가 한다**(`TokenReport.over_threshold`) — 항목이
     # 스스로 판정하면 모듈 상수를 보게 되어 리포트의 `threshold` 필드와
@@ -96,10 +103,20 @@ class TokenReport:
     entries: list[TokenEstimate] = field(default_factory=list)
     threshold: int = DEFAULT_FILE_TOKEN_THRESHOLD
 
-    def add(self, path: str, kind: str, text: str) -> TokenEstimate:
+    def add(
+        self, path: str, kind: str, text: str, *,
+        token_kind: TokenKind, is_guide: bool = False,
+    ) -> TokenEstimate:
+        """항목 1건을 계상한다.
+
+        `token_kind`는 **호출자가 명시한다**(기본값 없음) — 쓰기 루프는 계획
+        행의 선언(`PlannedOutput.token_kind`)을, 미리보기는 컨텍스트 산출임을
+        스스로 안다. 기본값을 두면 새 호출자가 조용히 틀린 구간에 들어간다.
+        """
         entry = TokenEstimate(
             path=path, kind=kind, chars=len(text or ""),
             tokens=estimate_tokens(text or ""),
+            token_kind=token_kind, is_guide=is_guide,
         )
         self.entries.append(entry)
         return entry
@@ -116,7 +133,7 @@ class TokenReport:
         """임계를 넘은 컨텍스트 산출물 — 토큰 내림차순."""
         hits = [
             e for e in self.entries
-            if e.kind in CONTEXT_KINDS and e.tokens > self.threshold
+            if e.token_kind is TokenKind.CONTEXT and e.tokens > self.threshold
         ]
         return sorted(hits, key=lambda e: (-e.tokens, e.path))
 
@@ -144,7 +161,7 @@ class TokenReport:
                 f"실립니다 — 큰 절을 skill-files/로 내려 필요할 때만 읽게 하는 것을 "
                 f"검토하세요."
             )
-        guides = sum(e.tokens for e in self.entries if e.kind in _GUIDE_KINDS)
+        guides = sum(e.tokens for e in self.entries if e.is_guide)
         if guides:
             parts.append(
                 f"공통 안내 파일 ≈{guides:,}토큰은 포인터를 받은 컴포넌트가 "

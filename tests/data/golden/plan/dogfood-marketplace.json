@@ -3,147 +3,176 @@
     [
       "skills/graph-orient/SKILL.md",
       "skill",
-      "스킬 'graph-orient'"
+      "스킬 'graph-orient'",
+      true
     ],
     [
       "skills/graph-design/SKILL.md",
       "skill",
-      "스킬 'graph-design'"
+      "스킬 'graph-design'",
+      true
     ],
     [
       "skills/graph-wire/SKILL.md",
       "skill",
-      "스킬 'graph-wire'"
+      "스킬 'graph-wire'",
+      true
     ],
     [
       "skills/graph-state/SKILL.md",
       "skill",
-      "스킬 'graph-state'"
+      "스킬 'graph-state'",
+      true
     ],
     [
       "skills/plugin-verify/SKILL.md",
       "skill",
-      "스킬 'plugin-verify'"
+      "스킬 'plugin-verify'",
+      true
     ],
     [
       "skills/plugin-compile/SKILL.md",
       "skill",
-      "스킬 'plugin-compile'"
+      "스킬 'plugin-compile'",
+      true
     ],
     [
       "skills/daedalus-model/SKILL.md",
       "skill",
-      "스킬 'daedalus-model'"
+      "스킬 'daedalus-model'",
+      true
     ],
     [
       "skills/cc-plugin-spec/SKILL.md",
       "skill",
-      "스킬 'cc-plugin-spec'"
+      "스킬 'cc-plugin-spec'",
+      true
     ],
     [
       "skills/graph-author/SKILL.md",
       "skill",
-      "스킬 'graph-author'"
+      "스킬 'graph-author'",
+      true
     ],
     [
       "skills/blackboard-cli/SKILL.md",
       "skill",
-      "스킬 'blackboard-cli'"
+      "스킬 'blackboard-cli'",
+      true
     ],
     [
       "skills/workspace-docs/SKILL.md",
       "skill",
-      "스킬 'workspace-docs'"
+      "스킬 'workspace-docs'",
+      true
     ],
     [
       "skills/session-wrap/SKILL.md",
       "skill",
-      "스킬 'session-wrap'"
+      "스킬 'session-wrap'",
+      true
     ],
     [
       "skills/scope-freeze/SKILL.md",
       "skill",
-      "스킬 'scope-freeze'"
+      "스킬 'scope-freeze'",
+      true
     ],
     [
       "skills/sdfsdf/SKILL.md",
       "skill",
-      "스킬 'sdfsdf'"
+      "스킬 'sdfsdf'",
+      true
     ],
     [
       "agents/graph-surgeon.md",
       "agent",
-      "에이전트 'graph-surgeon'"
+      "에이전트 'graph-surgeon'",
+      true
     ],
     [
       "agents/body-writer.md",
       "agent",
-      "에이전트 'body-writer'"
+      "에이전트 'body-writer'",
+      true
     ],
     [
       "agents/env-configurator.md",
       "agent",
-      "에이전트 'env-configurator'"
+      "에이전트 'env-configurator'",
+      true
     ],
     [
       "agents/tooling-scout.md",
       "agent",
-      "에이전트 'tooling-scout'"
+      "에이전트 'tooling-scout'",
+      true
     ],
     [
       "agents/verify-analyst.md",
       "agent",
-      "에이전트 'verify-analyst'"
+      "에이전트 'verify-analyst'",
+      true
     ],
     [
       "hooks/hooks.json",
       "hooks_json",
-      "hooks.json (lifecycle hooks)"
+      "hooks.json (lifecycle hooks)",
+      true
     ],
     [
       "hooks/scripts/check-daedalus-mcp.sh",
       "hook_script",
-      "훅 스크립트 check-daedalus-mcp.sh"
+      "훅 스크립트 check-daedalus-mcp.sh",
+      true
     ],
     [
       "hooks/scripts/guard-blackboard-schema.sh",
       "hook_script",
-      "훅 스크립트 guard-blackboard-schema.sh"
+      "훅 스크립트 guard-blackboard-schema.sh",
+      true
     ],
     [
       "hooks/scripts/validate-on-save.sh",
       "hook_script",
-      "훅 스크립트 validate-on-save.sh"
+      "훅 스크립트 validate-on-save.sh",
+      true
     ],
     [
       "hooks/scripts/log-tool-usage.sh",
       "hook_script",
-      "훅 스크립트 log-tool-usage.sh"
+      "훅 스크립트 log-tool-usage.sh",
+      true
     ],
     [
       "hooks/scripts/__progress__.sh",
       "hook_script",
-      "훅 스크립트 __progress__.sh"
+      "훅 스크립트 __progress__.sh",
+      true
     ],
     [
       "guides/daedalus/workflow.md",
       "guide_workflow",
-      "guides/daedalus/workflow.md (shared workflow guide)"
+      "guides/daedalus/workflow.md (shared workflow guide)",
+      true
     ],
     [
       "guides/daedalus/blackboard.md",
       "guide_blackboard",
-      "guides/daedalus/blackboard.md (shared blackboard guide)"
+      "guides/daedalus/blackboard.md (shared blackboard guide)",
+      true
     ],
     [
       "schemas/daedalus.json",
       "schemas_json",
-      "schemas/daedalus.json (blackboard class definitions)"
+      "schemas/daedalus.json (blackboard class definitions)",
+      true
     ],
     [
       ".claude-plugin/plugin.json",
       "plugin_manifest",
-      "plugin.json (플러그인 매니페스트)"
+      "plugin.json (플러그인 매니페스트)",
+      true
     ]
   ],
   "written": [

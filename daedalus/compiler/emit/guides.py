@@ -26,6 +26,7 @@
 """
 from __future__ import annotations
 
+from daedalus.compiler import plan_kinds
 from daedalus.compiler.emit.common import (
     _graph_placements,
     _graph_placements_any,
@@ -36,11 +37,13 @@ from daedalus.model.plugin.placement import is_edge_placeable, is_reference_plac
 from daedalus.model.plugin.roles import BodySource, Bucket, PlacementRole
 from daedalus.model.plugin.variables import ROOT_TOKEN
 
-#: 산출 계획 kind — 가이드가 둘이므로 kind도 둘이다(`_PlannedOutput`에 구분 필드를
-#: 새로 만들지 않는다. kind가 곧 쓰기 루프의 텍스트 생성 분기 키다).
-WORKFLOW_GUIDE_KIND = "guide_workflow"
-BLACKBOARD_GUIDE_KIND = "guide_blackboard"
-GUIDE_KINDS: tuple[str, ...] = (WORKFLOW_GUIDE_KIND, BLACKBOARD_GUIDE_KIND)
+#: 산출 계획 kind — 가이드가 둘이므로 kind도 둘이다(`PlannedOutput`에 구분 필드를
+#: 새로 만들지 않는다. kind가 곧 그 행을 쓸 단위의 id다). 문자열의 소유자는
+#: `compiler/plan_kinds.py` 하나이고 여기서는 **재-export**한다(WP-5) — 종전
+#: 임포트 경로(`from ...emit.guides import WORKFLOW_GUIDE_KIND`)는 무수정이다.
+WORKFLOW_GUIDE_KIND = plan_kinds.GUIDE_WORKFLOW
+BLACKBOARD_GUIDE_KIND = plan_kinds.GUIDE_BLACKBOARD
+GUIDE_KINDS: tuple[str, ...] = plan_kinds.GUIDE_KINDS
 
 GUIDES_DIRNAME = "guides"
 

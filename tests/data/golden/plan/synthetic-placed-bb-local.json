@@ -3,107 +3,146 @@
     [
       ".claude/skills/placed-procedural/SKILL.md",
       "skill",
-      "스킬 'placed-procedural'"
+      "스킬 'placed-procedural'",
+      true
     ],
     [
       ".claude/skills/sync-fork/SKILL.md",
       "skill",
-      "스킬 'sync-fork'"
+      "스킬 'sync-fork'",
+      true
     ],
     [
       ".claude/skills/async-fork/SKILL.md",
       "skill",
-      "스킬 'async-fork'"
+      "스킬 'async-fork'",
+      true
     ],
     [
       ".claude/skills/knowledge/SKILL.md",
       "skill",
-      "스킬 'knowledge'"
+      "스킬 'knowledge'",
+      true
     ],
     [
       ".claude/skills/edge-helper/SKILL.md",
       "skill",
-      "스킬 'edge-helper'"
+      "스킬 'edge-helper'",
+      true
     ],
     [
       ".claude/skills/ref-with-hooks/SKILL.md",
       "skill",
-      "스킬 'ref-with-hooks'"
+      "스킬 'ref-with-hooks'",
+      true
     ],
     [
       ".claude/skills/wrapped-state/SKILL.md",
       "skill",
-      "스킬 'wrapped-state'"
+      "스킬 'wrapped-state'",
+      true
     ],
     [
       ".claude/agents/wrapped-state.md",
       "wrapped_runner",
-      "랩핑 스킬 'wrapped-state'의 실행 서브에이전트"
+      "랩핑 스킬 'wrapped-state'의 실행 서브에이전트",
+      true
     ],
     [
       ".claude/agents/worker.md",
       "agent",
-      "에이전트 'worker'"
+      "에이전트 'worker'",
+      true
     ],
     [
       ".claude/agents/fork-base.md",
       "agent",
-      "에이전트 'fork-base'"
+      "에이전트 'fork-base'",
+      true
     ],
     [
       ".claude/skills/placed-procedural/readme.txt",
       "skill_file",
-      "스킬 파일 'placed-procedural/readme.txt'"
+      "스킬 파일 'placed-procedural/readme.txt'",
+      true
     ],
     [
       ".claude/skills/placed-procedural/assets/notes.txt",
       "skill_file",
-      "스킬 파일 'placed-procedural/assets/notes.txt'"
+      "스킬 파일 'placed-procedural/assets/notes.txt'",
+      true
     ],
     [
       "hooks/scripts/guard-bash.sh",
       "hook_script",
-      "훅 스크립트 guard-bash.sh"
+      "훅 스크립트 guard-bash.sh",
+      true
     ],
     [
       "hooks/scripts/fmt-on-edit.sh",
       "hook_script",
-      "훅 스크립트 fmt-on-edit.sh"
+      "훅 스크립트 fmt-on-edit.sh",
+      true
     ],
     [
       "hooks/scripts/notify-stop.sh",
       "hook_script",
-      "훅 스크립트 notify-stop.sh"
+      "훅 스크립트 notify-stop.sh",
+      true
     ],
     [
       "hooks/scripts/ref-only.sh",
       "hook_script",
-      "훅 스크립트 ref-only.sh"
+      "훅 스크립트 ref-only.sh",
+      true
     ],
     [
       "hooks/scripts/__progress__.sh",
       "hook_script",
-      "훅 스크립트 __progress__.sh"
+      "훅 스크립트 __progress__.sh",
+      true
     ],
     [
       ".claude/rules/golden-rule.md",
       "workspace_rule",
-      "rules/golden-rule.md (workspace rule)"
+      "rules/golden-rule.md (workspace rule)",
+      true
     ],
     [
       "guides/golden/workflow.md",
       "guide_workflow",
-      "guides/golden/workflow.md (shared workflow guide)"
+      "guides/golden/workflow.md (shared workflow guide)",
+      true
     ],
     [
       "guides/golden/blackboard.md",
       "guide_blackboard",
-      "guides/golden/blackboard.md (shared blackboard guide)"
+      "guides/golden/blackboard.md (shared blackboard guide)",
+      true
     ],
     [
       "schemas/golden.json",
       "schemas_json",
-      "schemas/golden.json (blackboard class definitions)"
+      "schemas/golden.json (blackboard class definitions)",
+      true
+    ],
+    [
+      "files",
+      "files_tree",
+      "files/ (공용 파일 트리)",
+      false
+    ],
+    [
+      ".mcp.json",
+      "local_wiring",
+      ".mcp.json + .claude/settings.json (LOCAL 설치 배선)",
+      false
+    ],
+    [
+      ".claude/CLAUDE.md",
+      "claude_md",
+      ".claude/CLAUDE.md (플러그인 구역)",
+      false
     ]
   ],
   "written": [

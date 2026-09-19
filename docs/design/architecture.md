@@ -35,9 +35,11 @@ GUI는 PySide6 노드 에디터(`view/`), 앱 내장 MCP 서버(`mcp/`)가 CC와
 | `model/validation/` | Validator — `machine_rules` + `project_rules/`(그룹 믹스인), 등급은 `severity.WARNING_RULES` |
 | `model/package.py`·`outline.py`·`templates.py` | 폴더=프로젝트/`.ddpj` · 본문 아웃라인 파생 인덱스 · 시작 템플릿 |
 | `compiler/emit/` | 모델 → 텍스트(SKILL.md/agent .md/hooks/manifest/schemas, 랩핑 실행 에이전트 `wrapped.py`). 재-export 파사드 |
-| `compiler/plan.py` | 산출 계획 — `_plan_outputs`(경로 집합) + 이름 규약·경로 충돌·훅 스크립트 이름 게이트 |
-| `compiler/project_compiler.py` | `compile_project` — 검증 게이트 + (plan.py 계획) + 쓰기 + LOCAL 설치 배선. 계획 쪽 이름 재-export |
-| `compiler/workspace.py`·`wiring.py`·`token_report.py` | CLAUDE.md 구역 병합·rules 렌더 · `.mcp.json`/settings 병합 · 토큰 리포트(표시 전용) |
+| `compiler/units/` | **컴파일 참여자** — 산출 종류 하나 = `CompileUnit` 하나(WP-5). 계약(`base`/`context`/`gate`/`sink`/`paths`) + 단위 12개(`components`/`hooks`/`docs`/`trees`/`install`) + `registry`(선언 순서 `UNITS`·`UNIT_BY_ID`·`Planner`) |
+| `compiler/plan_kinds.py` | 산출 계획 kind 문자열의 **유일한 소유자**(리프 — 아무것도 임포트하지 않는다) |
+| `compiler/plan.py` | 계획 파사드 — `_plan_outputs`/`_PlannedOutput`/경로 헬퍼를 `units/`의 **같은 객체**로 재-export |
+| `compiler/project_compiler.py` | `compile_project` — 검증 게이트 + 2단계(`Phase.WRITE`/`INSTALL`) 루프 + 진단 스캔 2건. 계획 쪽 이름 재-export |
+| `compiler/workspace.py`·`wiring.py`·`token_report.py` | CLAUDE.md 구역 병합·rules 렌더 · `.mcp.json`/settings 병합 · 토큰 리포트(표시 전용, 계상 구간은 `TokenKind`) |
 | `mcp/` | 앱 내장 MCP 서버 — `tools/`(도메인 믹스인), `service.py`(HTTP 수명주기), `invoker.py`(메인 스레드 마샬링) |
 | `cli/` | `daedalus-bb` — 블랙보드 read/init/write/validate/list + progress |
 | `view/app.py` | MainWindow **골격** — 실체는 협력 객체 6종(`session_io`/`compile_actions`/`launch_actions`/`validation_actions`/`graph_io`/`component_actions`)에 있고 창에는 한 줄 위임만 |
@@ -63,7 +65,7 @@ GUI는 PySide6 노드 에디터(`view/`), 앱 내장 MCP 서버(`mcp/`)가 CC와
 | 테스트 | 고정하는 것 |
 |--------|-------------|
 | `tests/compiler/test_golden_outputs.py` | 공개 파사드 9종(`compile_skill`/`compile_agent`/`compile_wrapped_runner`/`compile_hooks_json`/`compile_hook_scripts`/`compile_schemas_json`/`compile_plugin_manifest`/`compile_guide`/`render_rule`)과 `compile_project`가 쓴 **모든 파일**의 sha256. 파사드 9종이 전부 최소 1건의 산출을 냈는지도 함께 본다 |
-| `tests/compiler/test_plan_order_golden.py` | 계획·쓰기 **순서** — `plan` / `written` / `copied_files` / `errors+warnings(rule, source)` / 게이트 실패 시 `skipped`. 기존 스위트는 순서를 거의 `set`으로만 비교해 "내용은 같은데 순서가 달라졌다"가 조용히 통과한다 |
+| `tests/compiler/test_plan_order_golden.py` | 계획·쓰기 **순서** — `plan`(행마다 `rel_path`/`kind`/`label`/`exclusive`) / `written` / `copied_files` / `errors+warnings(rule, source)` / 게이트 실패 시 `skipped`. 기존 스위트는 순서를 거의 `set`으로만 비교해 "내용은 같은데 순서가 달라졌다"가 조용히 통과한다. 계획은 **파사드가 아니라 `Planner`로** 뽑는다(WP-5) — 파사드에는 `out_dir`/`files_dir`가 없어 `files_tree` 행이 보이지 않는다 |
 | `tests/model/test_golden_project_json.py` | 동결 사본의 로드→저장 바이트 + 왕복 안정성(두 번째 저장도 같다) |
 | `tests/model/test_fork_split_migration.py` | fork 2종 분리 마이그레이션의 **실물 표본**도 같은 동결 사본을 읽는다 — 살아 있는 작업 사본을 읽으면 깨끗한 체크아웃에서 스위트가 깨진다(구버전 내용이 없다) |
 
@@ -98,8 +100,8 @@ python -m tests.data.golden.regen --refresh-dogfood   # 동결 사본 자체를 
 |---|---|---|---|
 | `tests/test_polymorphism_ratchet.py` `RATCHET` ① | 컴포넌트/설정 클래스 29종을 두 번째 인자로 갖는 `isinstance` | **111 사이트 / 34 파일** | **23 / 8** — compiler·serialize 둘 다 0(WP-4가 `ser.py` 11을 걷었다). 남은 최대치는 `registry_panel.py` 10(WP-7)·`app.py` 4(WP-7) |
 | 〃 ② | 컴포넌트 형상 속성 12종(`config`/`body`/`fsm`/`transfer_on`/`call_agents`/`when_to_use`/`usage`/`enabled`/`reference_placements`/`source`/`output_events`/`output_event_defs`)을 문자열로 묻는 `getattr`/`hasattr`. 첫 인자가 `project`/`cfg`/`config`/`doc`이면 제외(컴포넌트 형상이 아니다) | **123 사이트 / 41 파일** | **33 / 12**(WP-4 무변 — WP-7·WP-8이 다음 주인) |
-| `tests/test_kind_literals.py` `RATCHET` ① | 컴포넌트 kind 16종이 `Compare` 피연산자·`dict` 키·`set`/`tuple`/`list` 원소로 쓰인 자리. 허용 파일 `model/serialize/migrate.py`(구버전 파일 문자열 해석이 정본)는 세지 않는다 | **157 사이트 / 26 파일** | **83 / 20** — WP-3이 레지스트리로(역직렬화·생성·전환·MCP 어휘·매트릭스 키), WP-4가 `deser_plugin`의 마지막 11(`_CONFIG_KINDS` + `_deser_config` 사다리)을 선언으로 흡수 |
-| 〃 ② plan kind | plan kind 14종. `agent`/`skill`이 컴포넌트 어휘와 겹치므로 `compiler/**`·`mcp/tools/query.py`에서만 센다. 최종 소유자는 WP-5가 신설할 `compiler/plan_kinds.py` 하나 | **22 사이트 / 3 파일** | **22 / 3**(무변 — WP-5 소관) |
+| `tests/test_kind_literals.py` `RATCHET` ① | 컴포넌트 kind 16종이 `Compare` 피연산자·`dict` 키·`set`/`tuple`/`list` 원소로 쓰인 자리. 허용 파일 `model/serialize/migrate.py`(구버전 파일 문자열 해석이 정본)는 세지 않는다 | **157 사이트 / 26 파일** | **80 / 18** — WP-3이 레지스트리로(역직렬화·생성·전환·MCP 어휘·매트릭스 키), WP-4가 `deser_plugin`의 마지막 11을, WP-5가 쓰기 루프의 `skill`/`agent`/`wrapped_runner` 사다리를 흡수 |
+| 〃 ② plan kind | plan kind 14종. `agent`/`skill`이 컴포넌트 어휘와 겹치므로 `compiler/**`·`mcp/tools/query.py`에서만 센다. 소유자는 `compiler/plan_kinds.py` 하나(허용 파일) | **22 사이트 / 3 파일** | **1 / 1** — WP-5가 쓰기 루프 사다리 12와 `token_report`의 kind 사본 2를 걷었다. 남은 1건은 `mcp/tools/query.py`의 응답 키 `"claude_md"`로 **계획 kind가 아닌 오탐**이라 더 내려가지 않는다 |
 
 ②의 속성 목록에 있는 `output_events`/`output_event_defs`는 **오늘 모델에 없는
 이름**이다(WP-2d가 `output_ports()`/`call_ports()`로 걷어냈다). 목록에 남겨 두는
@@ -168,6 +170,7 @@ WP-1 D9에서 삭제해 목록에서 빠졌다.
 | 테스트 | 고정하는 것 |
 |--------|-------------|
 | `tests/compiler/test_emit_import_acyclic.py` | `compiler/emit/*` 모듈 간 임포트 방향. **모듈 레벨 간선은 비순환**(오늘 통과)이고 `common`은 리프다. 함수 안 지연 임포트까지 포함한 최종 계약은 **오늘 통과하지 않는다** — `sections ↔ wrapped`, `agent → sections → wrapped → agent` 순환이 지연 임포트로 살아 있다(`sections.py:350`·`wrapped.py:118,169`). 단언을 느슨하게 하는 대신 `xfail(strict=True)`로 기록했다: WP-6이 방향을 정리하면 그 표식이 실패해 제거를 강제한다 |
+| `tests/compiler/test_unit_contract.py` | **`CompileUnit` 계약**(WP-5) — 단위 id 유일·선언 순서 고정, 모든 계획 행이 `mode`/`phase`/`expands_root`/`token_kind`를 **선언**함(드라이버의 kind 튜플로 되돌아가지 않는다), `render()` 2회 동일(순수), `plan()`이 주입 경로 밖 파일을 읽지 않음(`Path.read_text` 감시 — 원칙 4), 파사드 계획 ⊂ 전체 계획이고 차집합이 정확히 `{files_tree}`, `OUTPUT_LOCATION`이 NONE인 컴포넌트는 예외 없이 건너뛰고 **이름 게이트도 받지 않음**(WP-9 선행 조건) |
 | `tests/model/test_component_missing_keys.py` | **부재 의미론** — `transfer_on` 키가 없는 스킬 dict는 `[]`로 로드된다. dataclass 기본값은 `[EventDef("done")]`이라 선언형 엔진이 기본값으로 떨어지면 키 없는 파일에 출력 포트가 **발명**되고 `transfer_on_not_empty`가 에러에서 조용한 통과로 뒤집힌다. JSON 골든은 *키가 있는* 파일만 지키므로 이 차이는 따로 잡아야 한다 |
 | `tests/model/plugin/test_capability_surface.py` | **능력 표면**(WP-2a) — 구체 9종 × ClassVar 13칸 전수, `fields()`에 ClassVar가 새지 않음(R5), `WorkflowComponent`에 메서드 없음(R2), 능력 메서드가 오늘의 판정(`emits_output_file`/`is_reference_usage`/`placement.*`/`has_external_body`)과 **같은 답**을 냄, `new()` ↔ `make_component` 9종 필드 단위 등가. 호출자 치환 WP(2b~2d)의 동작 불변을 미리 고정하는 게이트다 |
 | `tests/model/fsm/test_state_is_kind_neutral.py` | **fsm 레이어는 컴포넌트 종류를 모른다**(WP-2b, Q35) — `model/fsm/state.py` 소스에 구체 컴포넌트 클래스 이름이 하나도 없고 `SimpleState.skill_ref`의 주석이 `PluginComponent | None`임을 AST로 고정한다. 종류 유니온은 런타임이 읽지 않는 표라 낡아도 아무것도 실패하지 않았다(카탈로그 M11 👻) |
@@ -373,15 +376,41 @@ daedalus/
 │   │   │                   #   가이드 본문에는 ${ROOT} 등 치환 변수를 쓰지 않는다(<SCHEMAS> 자리표시자)
 │   │   ├── hooks.py        #   compile_hooks_json/compile_hook_scripts (진행 상태 합성 훅 포함)
 │   │   └── manifest.py     #   compile_plugin_manifest/compile_schemas_json + 경로 변수 확장(expand_root_token)
-│   ├── plan.py             # 산출 계획(WP-FK2 C0 분해, 이동만) — _PlannedOutput/_plan_outputs/_hook_script_name_conflicts/
-│   │                       #   _iter_tree_files/_is_link_like/_skill_dir_name/SKILL_FILES_DIRNAME/_OUTPUT_NAME_RE.
-│   │                       #   "무엇이 어디로 나가는가"와 계획 단계 게이트(이름 규약·경로 충돌·훅 스크립트 이름)만 담는다.
-│   │                       #   project_compiler가 전부 재-export한다(기존 임포트 경로 불변 — tests/compiler/test_plan_facade.py가 고정).
+│   ├── plan_kinds.py       # 산출 계획 kind 14종의 **유일한 소유자**(WP-5) — 리프 모듈(아무것도 임포트하지 않는다).
+│   │                       #   emit/guides.py의 WORKFLOW_GUIDE_KIND/BLACKBOARD_GUIDE_KIND/GUIDE_KINDS는 여기서 재-export한 것이다.
+│   │                       #   tests/test_kind_literals.py가 "리터럴은 이 파일에만"을 AST로 강제한다.
+│   ├── units/              # **컴파일 참여자**(WP-5 — 지시문 "컴파일 과정에 참여하는 것들을 인터페이스로 묶는다"의 실체)
+│   │   ├── base.py         #   CompileUnit(ABC: plan/emit, render 기본 None) → TextUnit/CopyUnit/MergeUnit ·
+│   │   │                   #   PlannedOutput(계획 행 — rel_path/label/subject/kind/component/script_name/src_path +
+│   │   │                   #   **선언** mode·phase·expands_root·token_kind·is_guide·exclusive·payload) · OutputMode · Phase.
+│   │   │                   #   kind가 곧 그 행을 쓸 단위의 id다 — 드라이버는 kind를 비교하지 않는다(C2~C5 소멸).
+│   │   ├── context.py      #   CompileContext(frozen) — compile_project 인자와 1:1(원칙 4 주입). is_local/cc_prefix 정규화 1곳.
+│   │   ├── gate.py         #   Gate — check_project_name(모든 컴포넌트 에러보다 앞·문구가 다르다)/check_output_name/fail/warn.
+│   │   ├── sink.py         #   OutputSink — 쓰기·복사·병합·토큰 계상의 유일한 실행자. dry_run·${ROOT} 확장·LF/UTF-8·
+│   │   │                   #   out_root None 규약을 아는 곳이 하나라 "새 단위가 dry_run을 깜빡"이 불가능하다. + MergeOutcome.
+│   │   ├── paths.py        #   _OUTPUT_NAME_RE/SKILL_FILES_DIRNAME/_skill_dir_name/_hook_script_name_conflicts/
+│   │   │                   #   _iter_tree_files/_is_link_like (plan.py에서 이동만 — AST 동일).
+│   │   ├── components.py   #   ComponentUnit(bucket) ×2 — 스킬/에이전트/랩핑 러너. **게이트(emits_output())가 앞**이라
+│   │   │                   #   산출 없는 종류는 이름 게이트도 받지 않는다(WP-9 ExternalAgent의 선행 조건).
+│   │   ├── hooks.py        #   HooksUnit — hooks.json(MARKET 전용) + 훅 스크립트. **계획 단계에서 1회 렌더해 payload**에 메모.
+│   │   ├── docs.py         #   WorkspaceRuleUnit · GuideUnit ×2(GUIDE_UNITS) · SchemasUnit · ManifestUnit.
+│   │   ├── trees.py        #   SkillFilesUnit(COPY_FILE — 파일 1건 = 행 1개라 경로 충돌 게이트 대상) ·
+│   │   │                   #   FilesTreeUnit(COPY_TREE, exclusive=False).
+│   │   ├── install.py      #   LocalWiringUnit · ClaudeMdUnit — Phase.INSTALL, exclusive=False(사용자 파일 병합).
+│   │   └── registry.py     #   UNITS(선언 순서 = 계획 순서 = 쓰기 순서) · UNIT_BY_ID · unit_for(없으면 ValueError + 등록 목록) ·
+│   │                       #   Planner(계획 + 경로 충돌 게이트). 새 산출은 단위 1개 + 이 튜플 1줄이다.
+│   ├── plan.py             # 계획 파사드(WP-FK2 C0 → WP-5, 이동만) — _plan_outputs(종전 시그니처)/_PlannedOutput(= units.base.
+│   │                       #   PlannedOutput 별칭)/경로 헬퍼 6종을 units/의 **같은 객체**로 재-export.
+│   │                       #   파사드는 out_dir·files_dir를 모르므로 files_tree 행이 보이지 않는다 — 전체 계획은
+│   │                       #   Planner().plan(CompileContext.build(...)). project_compiler가 다시 재-export한다
+│   │                       #   (기존 임포트 경로 불변 — tests/compiler/test_plan_facade.py가 같은 객체임을 고정).
 │   ├── project_compiler.py # compile_project(project, out_dir=None, files_dir=None, resolved_hooks=None, dry_run=False) → CompileResult
-│   │                       #   (검증 게이트 + 파일 쓰기. 계획은 plan.py)
-│   │                       # files_dir(WP-FR, 선택): 실존 디렉토리면 <out>/files/ 정렬 순회 복사(_copy_files_tree, 심볼릭 링크 미추종) +
+│   │                       #   = 게이트 + **2단계 루프**(WP-5): ① Phase.WRITE(계획 순서로 단위 emit) ② 진단 스캔 2건
+│   │                       #   (dangling_file_ref/dangling_skill_file_ref — 파일시스템을 읽으므로 드라이버 소유)
+│   │                       #   ③ Phase.INSTALL(LOCAL 배선 + CLAUDE.md 구역). 단계가 둘인 이유가 ②다.
+│   │                       # files_dir(WP-FR, 선택): 실존 디렉토리면 <out>/files/ 정렬 순회 복사(FilesTreeUnit, 심볼릭 링크 미추종) +
 │   │                       #   dangling_file_ref 스캔(_scan_dangling_file_refs). 생략 시 기존 산출 완전 불변(하위 호환).
-│   │                       # LOCAL 빌드는 컴파일이 곧 설치(WP-MW) — .claude/ 반입 + _wire_local_install(컴파일 정책 15번 참조).
+│   │                       # LOCAL 빌드는 컴파일이 곧 설치(WP-MW) — .claude/ 반입 + LocalWiringUnit(컴파일 정책 15번 참조).
 │   │                       # dry_run(G3): 파일을 하나도 쓰지 않는 예행 — 컴파일 정책 18번 참조.
 │   ├── workspace.py        # merge_claude_md(existing, plugin, title, body) → (새 내용|None, 경고|None) (WP-WD) — .claude/CLAUDE.md의
 │                           #   `<!-- daedalus:<플러그인> open/close -->` 구역만 갈아끼운다. 구역 밖 불가침·플러그인 여럿 공존·재빌드
@@ -397,7 +426,10 @@ daedalus/
 │   │                       #   깨진 JSON 불가침. LOCAL 컴파일과 앱 "Claude Code 실행" 메뉴가 공유하는 단일 진실. 순수 stdlib.
 │   │                       #   dry_run(G3): 읽고 병합을 메모리에서 계산하되 **쓰지 않는다** — written/unmergeable 판정은 동일.
 │   └── token_report.py     # 토큰 비용 리포트(A5-lite) — estimate_tokens(문자수 휴리스틱)/TokenEstimate/TokenReport/
-│                           #   DEFAULT_FILE_TOKEN_THRESHOLD/CONTEXT_KINDS. **표시 전용**이다: 산출 텍스트 불변,
+│                           #   DEFAULT_FILE_TOKEN_THRESHOLD/**TokenKind**(CONTEXT/TOTAL_ONLY/NONE — 계상 구간을 호출자가
+│                           #   명시한다. 종전 CONTEXT_KINDS/_GUIDE_KINDS는 계획 kind의 **사본**이라 개명하면 리포트만
+│                           #   조용히 못 알아봤다 → WP-5에서 PlannedOutput.token_kind/is_guide 선언으로).
+│                           #   **표시 전용**이다: 산출 텍스트 불변,
 │                           #   임계 초과는 검증 규칙이 아니라 정보성 1줄(notice()). 순수 stdlib(외부 토크나이저 금지).
 │                           #   **임계 판정은 리포트만 한다** — TokenEstimate는 값만 들고, 항목 단위 판정 property를
 │                           #   두면 모듈 상수를 봐서 TokenReport.threshold와 진실이 둘이 된다. 리포트 전체를 dict로

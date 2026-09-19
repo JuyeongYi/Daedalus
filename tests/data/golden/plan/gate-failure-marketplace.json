@@ -3,27 +3,32 @@
     [
       "skills/Bad Name/SKILL.md",
       "skill",
-      "스킬 'Bad Name'"
+      "스킬 'Bad Name'",
+      true
     ],
     [
       "skills/dupe/SKILL.md",
       "skill",
-      "스킬 'dupe'"
+      "스킬 'dupe'",
+      true
     ],
     [
       "skills/dupe/SKILL.md",
       "skill",
-      "스킬 'dupe'"
+      "스킬 'dupe'",
+      true
     ],
     [
       "agents/aide.md",
       "agent",
-      "에이전트 'aide'"
+      "에이전트 'aide'",
+      true
     ],
     [
       ".claude-plugin/plugin.json",
       "plugin_manifest",
-      "plugin.json (플러그인 매니페스트)"
+      "plugin.json (플러그인 매니페스트)",
+      true
     ]
   ],
   "written": [],

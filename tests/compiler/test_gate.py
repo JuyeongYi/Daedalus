@@ -252,3 +252,37 @@ def test_skipped_includes_all_planned_outputs(tmp_path):
     labels = [label for _, label in result.skipped]
     assert any("Bad Name" in lb for lb in labels), labels
     assert any("a1" in lb for lb in labels)
+
+
+def test_skipped_labels_are_exactly_the_exclusive_plan(tmp_path):
+    """`skipped` == 계획의 **`exclusive=True` 행** (WP-5).
+
+    WP-5가 계획에 더한 행(files_tree/local_wiring/claude_md)은 "경로 하나 =
+    산출 하나"를 만족하지 않아 `exclusive=False`다 — 종전에도 계획 밖이라
+    게이트 검사를 받지 않았고 `skipped`에도 실리지 않았다. 섞이는 순간 MCP
+    `compile_check` 응답의 `skipped` 형상이 바뀌므로 양쪽을 **순서까지**
+    맞춰 고정한다.
+    """
+    from daedalus.compiler.units import CompileContext, Planner
+    from daedalus.model.plugin.enums import BuildTarget
+
+    files = tmp_path / "files"
+    files.mkdir()
+    (files / "a.txt").write_bytes(b"A")
+    project = PluginProject(name="p", skills=[make_procedural(name="Bad Name")])
+    project.build_target = BuildTarget.LOCAL  # local_wiring/claude_md 행을 태운다
+
+    out = tmp_path / "out"
+    result = compile_project(project, out, files_dir=files)
+    assert not result.ok
+
+    plan, _errors, _warnings = Planner().plan(CompileContext.build(
+        project, out_dir=out, files_dir=files, dry_run=True,
+    ))
+    assert [label for _reason, label in result.skipped] == [
+        item.label for item in plan if item.exclusive
+    ]
+    # 비-exclusive 행이 실제로 계획에 있었는데도 빠졌음을 함께 고정한다.
+    assert [item.kind for item in plan if not item.exclusive] == [
+        "files_tree", "local_wiring", "claude_md",
+    ]
