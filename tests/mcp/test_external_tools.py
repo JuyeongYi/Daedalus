@@ -76,7 +76,7 @@ def test_remove_unknown_folder_rejected(tools):
         tools.remove_marketplace_folder("C:/never")
 
 
-def test_list_wrappable_skills(tools, marketplace):
+def test_list_external_plugins(tools, marketplace):
     tools.add_marketplace_folder(str(marketplace), "mkt")
     out = tools.list_external_plugins()
     plugins = out["marketplace_folders"][0]["plugins"]

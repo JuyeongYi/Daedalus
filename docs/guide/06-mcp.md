@@ -103,7 +103,7 @@ daedalus --no-mcp          # 서버를 띄우지 않습니다
 
 ## 3. 무엇을 할 수 있나
 
-도구는 모두 87개입니다. 영역별로 대표 도구만 추렸습니다. 전체 목록은 **[MCP 도구 지도](../MCP.md)** 에 있습니다.
+도구는 모두 85개입니다. 영역별로 대표 도구만 추렸습니다. 전체 목록은 **[MCP 도구 지도](../MCP.md)** 에 있습니다.
 
 | 영역 | 대표 도구 | 할 수 있는 일 |
 |------|-----------|---------------|
@@ -116,7 +116,7 @@ daedalus --no-mcp          # 서버를 띄우지 않습니다
 | 훅 | `create_hook`, `set_component_hooks` | 훅 라이브러리, 프리셋, 전역 훅 복사 |
 | 본문 | `set_component_body`, `set_body_section` | 스킬·에이전트 본문 편집 |
 | 작업 폴더 문서·설정 | `set_claude_md`, `create_rule` | `.claude/CLAUDE.md` 구역, 규칙, 설정 베이크 ([LOCAL 전용 기능](05-local-only-features.md) |
-| 외부 플러그인 | `list_wrappable_skills`, `set_external_plugins` | 다른 플러그인 스킬을 감싸 쓰기 |
+| 외부 플러그인 | `list_external_plugins`, `set_external_plugins` | 다른 플러그인 카탈로그 조회·사용 선언 |
 | 세션 | `save_project`, `open_project` | 저장·열기·새 프로젝트·패키지·템플릿 |
 | undo | `undo`, `redo` | 되돌리기·다시 하기 |
 
@@ -251,5 +251,5 @@ fork 에이전트에는 출력 포트가 없으므로 `set_transfer_on`은 이�
 
 ## 더 보기
 
-- [MCP 도구 지도](../MCP.md) — 87개 도구 전체 목록과 영역별 설명
+- [MCP 도구 지도](../MCP.md) — 85개 도구 전체 목록과 영역별 설명
 - [개념 설명](01-concept.md) · [레지스트리](02-registry.md) · [LOCAL과 마켓플레이스](04-local-vs-marketplace.md) · [LOCAL 전용 기능](05-local-only-features.md)

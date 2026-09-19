@@ -295,13 +295,14 @@
   거절한다(위 "프론트매터 필드" 절의 P4 규약 — 매트릭스 FIXED 행. `context`도 같다).
 - **`place_component`는 배치 게이트를 가진다(A4).** 판정의 실체는
   `model/plugin/placement.is_state_placeable` 하나이고 캔버스 드롭·레지스트리 드래그·"여기에
-  만들기"와 공용이다. 거부는 **갈 곳을 말한다** — 참조 용도는 `place_reference`, declarative·
-  transfer·fork_agent는 "배치되지 않는 종류"다. 이미 배치된 컴포넌트를 다시 주면
-  usage를 `"state"`로 고정하고(캔버스는 물어서 고정한다) 고정+배치를 `MacroCommand` **1 undo**로
-  묶은 뒤 응답에 `usage_fixed: "state"`를 싣는다(오케스트레이터 확정 2026-09-18 — 오늘 되던 배치를 이유
-  없이 깨지 않는다). **이미 배치된 컴포넌트도 거절한다** — 캔버스 드롭의 "이미 배치됨" 조기 반환과
+  만들기"와 공용이다. 거부는 **갈 곳을 말한다** — 참조로 배치되는 종류(참조 스킬)는
+  `place_reference`, declarative·transfer·fork_agent는 "배치되지 않는 종류"다.
+  **이미 배치된 컴포넌트도 거절한다** — 캔버스 드롭의 "이미 배치됨" 조기 반환과
   같은 가드다(없으면 MCP만 같은 스킬을 두 노드로 놓아 `no_duplicate_skill_ref`로 컴파일이 막힌다).
   캔버스는 조용히 무시하지만 MCP는 이유와 갈 곳(`move_state`)을 말한다.
+  (용도 고정 + 배치를 `MacroCommand` 1 undo로 묶고 응답에 `usage_fixed: "state"`를 싣던
+  2026-09-18 오케스트레이터 확정은 **WP-10 랩핑 스킬 퇴역으로 소멸했다** — 용도 스위치를 가진
+  종류가 0이라 고정할 것이 없다. 되살리지 않는다.)
 - **`connect_states`는 이 판정을 쓰지 않는다.** 도착이 위임 대상인가는 컴포넌트의
   `DELEGATION_TARGET` 선언으로 판정한다(WP-2d) — 배치 판정으로 갈아끼우면 스킬 대상에도 True가
   되어 **모든 스킬 간 전이가 호출 포트를 요구**하게 된다. fork 에이전트는 선언상 위임 대상이지만
