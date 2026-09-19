@@ -89,7 +89,7 @@ KIND_DECLARATION_FILES: frozenset[str] = frozenset({
 #: 어휘가 겹치는 오탐이고(모듈 docstring "측정의 정직성"), 고치면 응답 형상이
 #: 바뀐다. 0으로 내릴 수 없는 유일한 자리라 여기 적어 둔다.
 RATCHET: dict[str, int] = {
-    "component_kind_sites": 79,
+    "component_kind_sites": 78,
     "component_kind_files": 17,
     "plan_kind_sites": 1,
     "plan_kind_files": 1,
