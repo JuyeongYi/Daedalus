@@ -29,9 +29,9 @@ GUI는 PySide6 노드 에디터(`view/`), 앱 내장 MCP 서버(`mcp/`)가 CC와
 | 경로 | 역할 |
 |------|------|
 | `model/fsm/` | 순수 FSM(상태·전이·가드·액션·블랙보드·Section/EventDef). 재귀 순회 단일 진실은 `walk.py` |
-| `model/plugin/` | 플러그인 메타데이터 — config 계층·스킬/에이전트·**종류 레지스트리(`kinds.py` — 등록 지점 단일화)**·도구·훅(`hook_store`는 파일시스템을 아는 유일한 훅 모듈)·필드 매트릭스·경로 변수·외부 플러그인 카탈로그(`wrap_catalog`/`plugin_cache`) |
+| `model/plugin/` | 플러그인 메타데이터 — config 계층(+**직렬화 선언** `SERIALIZED_FIELDS`/`serial_fields.py`)·스킬/에이전트·**종류 레지스트리(`kinds.py` — 등록 지점 단일화)**·도구·훅(`hook_store`는 파일시스템을 아는 유일한 훅 모듈)·필드 매트릭스·경로 변수·외부 플러그인 카탈로그(`wrap_catalog`/`plugin_cache`) |
 | `model/project.py` | `PluginProject` 최상위 컨테이너 + 이름 변경/삭제/참조 판정 순수 함수 |
-| `model/serialize/` | 모델↔JSON(format 2, 안정 ID) — `ser`←`migrate`←`deser_fsm`←`deser_plugin`←`deser` 단방향, `__init__`은 재-export 파사드 |
+| `model/serialize/` | 모델↔JSON(format 2, 안정 ID) — `component_fields`(리프)←`ser`←`migrate`←`deser_fsm`←`deser_plugin`←`deser` 단방향, `__init__`은 재-export 파사드 |
 | `model/validation/` | Validator — `machine_rules` + `project_rules/`(그룹 믹스인), 등급은 `severity.WARNING_RULES` |
 | `model/package.py`·`outline.py`·`templates.py` | 폴더=프로젝트/`.ddpj` · 본문 아웃라인 파생 인덱스 · 시작 템플릿 |
 | `compiler/emit/` | 모델 → 텍스트(SKILL.md/agent .md/hooks/manifest/schemas, 랩핑 실행 에이전트 `wrapped.py`). 재-export 파사드 |
@@ -94,11 +94,11 @@ python -m tests.data.golden.regen --refresh-dogfood   # 동결 사본 자체를 
 봐서는 안 보이기 때문이다 — WP-0 기준선이 없으면 "34"가 좋은 값인지 알 수 없다.
 표와 dict가 어긋나면 dict가 옳다.
 
-| 테스트 · 표 | 세는 것 | WP-0 기준선 (2026-09-19) | 현재 (WP-3 완료) |
+| 테스트 · 표 | 세는 것 | WP-0 기준선 (2026-09-19) | 현재 (WP-4 완료) |
 |---|---|---|---|
-| `tests/test_polymorphism_ratchet.py` `RATCHET` ① | 컴포넌트/설정 클래스 29종을 두 번째 인자로 갖는 `isinstance` | **111 사이트 / 34 파일** | **34 / 9** — compiler는 0. 남은 최대치는 `serialize/ser.py` 11(WP-4)·`registry_panel.py` 10(WP-7) |
-| 〃 ② | 컴포넌트 형상 속성 12종(`config`/`body`/`fsm`/`transfer_on`/`call_agents`/`when_to_use`/`usage`/`enabled`/`reference_placements`/`source`/`output_events`/`output_event_defs`)을 문자열로 묻는 `getattr`/`hasattr`. 첫 인자가 `project`/`cfg`/`config`/`doc`이면 제외(컴포넌트 형상이 아니다) | **123 사이트 / 41 파일** | **33 / 12** (WP-7·WP-8이 다음 주인) |
-| `tests/test_kind_literals.py` `RATCHET` ① | 컴포넌트 kind 16종이 `Compare` 피연산자·`dict` 키·`set`/`tuple`/`list` 원소로 쓰인 자리. 허용 파일 `model/serialize/migrate.py`(구버전 파일 문자열 해석이 정본)는 세지 않는다 | **157 사이트 / 26 파일** | **94 / 21** — WP-3이 레지스트리로 흡수(역직렬화·생성·전환·MCP 어휘·매트릭스 키) |
+| `tests/test_polymorphism_ratchet.py` `RATCHET` ① | 컴포넌트/설정 클래스 29종을 두 번째 인자로 갖는 `isinstance` | **111 사이트 / 34 파일** | **23 / 8** — compiler·serialize 둘 다 0(WP-4가 `ser.py` 11을 걷었다). 남은 최대치는 `registry_panel.py` 10(WP-7)·`app.py` 4(WP-7) |
+| 〃 ② | 컴포넌트 형상 속성 12종(`config`/`body`/`fsm`/`transfer_on`/`call_agents`/`when_to_use`/`usage`/`enabled`/`reference_placements`/`source`/`output_events`/`output_event_defs`)을 문자열로 묻는 `getattr`/`hasattr`. 첫 인자가 `project`/`cfg`/`config`/`doc`이면 제외(컴포넌트 형상이 아니다) | **123 사이트 / 41 파일** | **33 / 12**(WP-4 무변 — WP-7·WP-8이 다음 주인) |
+| `tests/test_kind_literals.py` `RATCHET` ① | 컴포넌트 kind 16종이 `Compare` 피연산자·`dict` 키·`set`/`tuple`/`list` 원소로 쓰인 자리. 허용 파일 `model/serialize/migrate.py`(구버전 파일 문자열 해석이 정본)는 세지 않는다 | **157 사이트 / 26 파일** | **83 / 20** — WP-3이 레지스트리로(역직렬화·생성·전환·MCP 어휘·매트릭스 키), WP-4가 `deser_plugin`의 마지막 11(`_CONFIG_KINDS` + `_deser_config` 사다리)을 선언으로 흡수 |
 | 〃 ② plan kind | plan kind 14종. `agent`/`skill`이 컴포넌트 어휘와 겹치므로 `compiler/**`·`mcp/tools/query.py`에서만 센다. 최종 소유자는 WP-5가 신설할 `compiler/plan_kinds.py` 하나 | **22 사이트 / 3 파일** | **22 / 3**(무변 — WP-5 소관) |
 
 ②의 속성 목록에 있는 `output_events`/`output_event_defs`는 **오늘 모델에 없는
@@ -218,12 +218,21 @@ daedalus/
 │   │                       #   재귀 골격과 얽혀 있어 순회만 떼면 경로 라벨 불변을 보장할 수 없다(주석으로 명시).
 │   ├── plugin/       # Claude 플러그인 메타데이터
 │   │   ├── enums.py        # ModelType, EffortLevel, PermissionMode, AgentField, FieldEmit, BuildTarget(WP-TG) 등
-│   │   ├── config.py       # ComponentConfig(ABC) → SkillConfig(ABC) → StepSkillConfig(ABC) → ProceduralSkillConfig /
+│   │   ├── config.py       # + **SERIALIZED_FIELDS ClassVar + to_dict/from_dict**(WP-4) — 저장 키·순서·부재값의 단일 진실.
+│   │   │                   #   MRO 누적이 아니라 각 클래스가 명시 튜플을 선언한다(AgentConfig는 color가 background보다 **앞**).
+│   │   │                   #   tests/model/plugin/test_serialize_symmetry.py가 fields(cls) 이름 집합과의 등치를 강제(M8 소멸)
+│   │   │                   # ComponentConfig(ABC) → SkillConfig(ABC) → StepSkillConfig(ABC) → ProceduralSkillConfig /
 │   │   │                   #   ForkSkillConfig(ABC, +BUILTIN_FORK_AGENTS) → SyncForkSkillConfig·AsyncForkSkillConfig,
 │   │   │                   #   WrappedSkillConfig, DeclarativeSkillConfig, TransferSkillConfig, ReferenceSkillConfig,
 │   │   │                   #   AgentConfigBase(ABC) → AgentConfig(+background·isolation)·ForkAgentConfig
 │   │   ├── roles.py        # 능력 표면의 어휘 — Bucket/PlacementRole/BodySource/OutputLocation (순수 enum, 아무것도 임포트하지 않는다).
 │   │   │                   #   plugin 패키지 임포트 방향의 뿌리: roles ← base ← config ← skill/agent
+│   │   ├── serial_fields.py# 설정 직렬화의 **필드 선언 어휘**(WP-4) — FieldSpec(name/codec/missing) + 코덱 8종
+│   │   │                   #   (RAW·LIST·STR·BOOL·STR_OR_DEFAULT·ENUM·ENUM_OPT·ENUM_OR_STR) + enum 헬퍼
+│   │   │                   #   `_to_enum`/`_enum_val`/`_enum_opt`의 **단일 진실**(serialize/deser_fsm·__init__이 이름으로 수입).
+│   │   │                   #   `missing`은 **키 부재값**이고 dataclass 기본값과 다를 수 있다 — `model` 부재→None(backlog D10),
+│   │   │                   #   `usage` 부재→"state". 센티널 `_USE_DEFAULT`면 그 키를 생성자에 아예 넘기지 않는다.
+│   │   │                   #   roles와 나란한 리프다(config만이 임포트한다)
 │   │   ├── base.py         # PluginComponent(ABC) — name/description + **능력 표면**(종류 ClassVar 13개·형상 기본값·
 │   │   │                   #   인스턴스 훅 effective_placement/is_active/emits_output/can_delete·형상 조회·참조·new()/creation_defaults()),
 │   │   │                   #   WorkflowComponent(ABC) — fsm **필드 홀더. 메서드 금지**(MRO에서 PluginComponent 기본 구현에 가려진다)
@@ -255,7 +264,7 @@ daedalus/
 │   │   │                   #   값은 전부 ClassVar 선언에서 **파생**된다 — 손으로 적는 칸이 없다.
 │   │   │                   #   조회: spec_for(인스턴스 — 종류 행 없는 값은 TypeError) / spec_by_kind(kind, bucket=, subject= — 버킷
 │   │   │                   #   밖 kind는 거절) / spec_by_config_kind / kinds_in / config_kinds_in / convert_family_kinds / bucket_of.
-│   │   │                   #   소비자: 역직렬화(_deser_skill/_deser_agent/_CONFIG_KINDS) · view/actions/creation.make_component ·
+│   │   │                   #   소비자: 역직렬화(_deser_skill/_deser_agent/_deser_config) · view/actions/creation.make_component ·
 │   │   │                   #   fork_skill.KINDS·convert_skill_kind · mcp/tools/props._SKILL_KINDS/_AGENT_KINDS · component_commands._bucket.
 │   │   │                   #   **plugin 패키지의 리프 소비자다** — 어느 plugin 모듈도 kinds를 임포트하지 않는다(임포트하면 곧 순환)
 │   │   └── workspace_doc.py# WorkspaceDoc(name, body, paths, id) — .claude/CLAUDE.md 구역과 .claude/rules/<name>.md의 편집 단위(WP-WD).
@@ -303,17 +312,27 @@ daedalus/
 │   │                       #   `daedalus/templates/<id>.json`(serialize 산출 format 2)이고 로드는 기존
 │   │                       #   deserialize_project를 그대로 탄다 — 전용 파서 없음. Qt 무관 순수 stdlib.
 │   ├── serialize/           # 모델↔JSON dict 직렬화 (안정 ID 기반, format 2). 구 serialize.py(1,437줄)를 WP-SZ로
-│   │   │                   #   패키지 분해(이동만·동작 불변). 의존 방향 ser ← migrate ← deser_fsm ← deser_plugin ← deser 단방향(순환 없음)
+│   │   │                   #   패키지 분해(이동만·동작 불변). 의존 방향 component_fields ← ser ← migrate ← deser_fsm ← deser_plugin ← deser 단방향(순환 없음)
 │   │   ├── __init__.py     #   재-export 파사드 — 분해 전 모듈의 모든 속성(public + 테스트가 쓰는 _ser_tool/_deser_tool
 │   │   │                   #   등 _헬퍼 + 부수 임포트) 보존. `from daedalus.model.serialize import …` 기존 경로 무수정 동작
-│   │   ├── ser.py          #   정방향 — serialize_project + _ser_* 전부. FORMAT_VERSION의 단일 진실(쓰는 쪽이 선언)
+│   │   ├── component_fields.py # 컴포넌트 수준 **표 구동 엔진**(WP-4) — KEY_ORDER[bucket](스킬/에이전트 키 순서가 다르다:
+│   │   │                   #   스킬은 body→config, 에이전트는 config→body) · DESER_ORDER(**부수효과** 순서 — 경고가 쌓이는 순서라
+│   │   │                   #   키 순서와 일부러 다르다) · COMPONENT_MISSING={"transfer_on": list}(부재값이 dataclass 기본값과
+│   │   │                   #   다른 유일한 필드 — 없으면 키 없는 파일에 포트 `done`이 발명된다) + ser_component/deser_component.
+│   │   │                   #   **형제를 하나도 임포트하지 않는 리프다** — FSM/EventDef/config 코덱을 호출자가 주입한다
+│   │   │                   #   (직접 임포트하면 ser → component_fields → ser 순환)
+│   │   ├── ser.py          #   정방향 — serialize_project + _ser_* 전부. FORMAT_VERSION의 단일 진실(쓰는 쪽이 선언).
+│   │   │                   #   _ser_config/_ser_skill/_ser_agent는 WP-4 이후 **한 줄 파사드**(config.to_dict() / ser_component)
 │   │   ├── migrate.py      #   v1→v2 단방향 마이그레이션 집약 — _migrate_v1/_promote_local_skills/_v1_all_machines/
 │   │   │                   #   _v1_scrub_number + _deser_section(v1 sections 트리 전용이라 여기 — deser에 두면 순환)
 │   │   │                   #   + migrate_skill_context/needs_skill_context_migration(스킬 context·agent 퇴역 — format 2에도 적용)
 │   │   ├── deser_fsm.py    #   역방향 FSM 계층 — _Registry(id→객체, dangling 경고. 그것을 소비하는 최하위 계층이라
-│   │   │                   #   여기 산다) + _to_enum/변수/전략/액션/가드/이벤트/블랙보드/상태/전이/머신
-│   │   ├── deser_plugin.py #   역방향 플러그인 계층 — 본문/포트(EventDef)/config/정책/스킬/에이전트/참조 배치/
-│   │   │                   #   훅/작업 폴더 문서/도구. deser_fsm만 수입(역방향 없음)
+│   │   │                   #   여기 산다) + 변수/전략/액션/가드/이벤트/블랙보드/상태/전이/머신.
+│   │   │                   #   `_to_enum`은 WP-4에서 plugin/serial_fields.py로 옮겨 갔고 여기서는 이름으로 수입(경로·파사드 보존)
+│   │   ├── deser_plugin.py #   역방향 플러그인 계층 — 본문/포트(EventDef)/config/스킬/에이전트/참조 배치/
+│   │   │                   #   훅/작업 폴더 문서/도구. deser_fsm + component_fields를 수입(역방향 없음).
+│   │   │                   #   _deser_config는 **한 줄 파사드**(레지스트리로 클래스 조회 → config_cls.from_dict) —
+│   │   │                   #   종류 사다리 7갈래와 `_CONFIG_KINDS` 튜플이 WP-4에서 사라졌다
 │   │   └── deser.py        #   역방향 오케스트레이터 — 2-pass deserialize_project. 두 형제의 이름을 전부
 │   │                       #   재수입하므로 `serialize.deser` 경로와 파사드 항등(`serialize._deser_tool is
 │   │                       #   deser._deser_tool`)이 분해 전과 동일하게 성립한다

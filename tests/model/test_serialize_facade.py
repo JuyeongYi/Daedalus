@@ -175,10 +175,14 @@ def test_facade_reexports_are_submodule_objects():
 
 
 def test_dependency_direction_is_acyclic():
-    """의존 방향 ser ← migrate ← deser_fsm ← deser_plugin ← deser 고정.
+    """의존 방향 component_fields ← ser ← migrate ← deser_fsm ← deser_plugin ← deser 고정.
 
     역방향 임포트는 순환을 만든다. deser.py는 오케스트레이터라 형제 넷을 전부
     수입하고(재-export 포함), FSM 계층은 아무 형제도 수입하지 않는다.
+
+    `component_fields`(WP-4의 컴포넌트 표 구동 엔진)는 **새 리프**다 — 형제를
+    하나도 임포트하지 않고, FSM/EventDef/config 코덱을 호출자가 주입한다.
+    직접 임포트했다면 `ser → component_fields → ser` 순환이 됐다.
     """
     import ast
     from pathlib import Path
@@ -194,10 +198,11 @@ def test_dependency_direction_is_acyclic():
                     found.add(node.module.rsplit(".", 1)[-1])
         return found
 
-    assert imported_siblings("ser.py") == set()
+    assert imported_siblings("component_fields.py") == set()
+    assert imported_siblings("ser.py") == {"component_fields"}
     assert imported_siblings("migrate.py") == {"ser"}
     assert imported_siblings("deser_fsm.py") == set()
-    assert imported_siblings("deser_plugin.py") == {"deser_fsm"}
+    assert imported_siblings("deser_plugin.py") == {"component_fields", "deser_fsm"}
     assert imported_siblings("deser.py") == {
         "ser", "migrate", "deser_fsm", "deser_plugin",
     }

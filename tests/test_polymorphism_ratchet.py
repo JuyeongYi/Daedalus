@@ -55,16 +55,19 @@ SHAPE_ATTRS: frozenset[str] = frozenset({
 #: 첫 인자가 이것들이면 컴포넌트 형상 질문이 아니다(프로젝트/설정/문서 조회).
 SHAPE_EXCLUDED_SUBJECTS: frozenset[str] = frozenset({"project", "cfg", "config", "doc"})
 
-#: 실측 기준선 (2026-09-19, WP-3 완료 — 종류 레지스트리 `kinds.py`). **내리기만 한다.**
-#: compiler 패키지의 컴포넌트 대상 isinstance·형상 getattr는 **둘 다 0**이다.
-#: WP-3은 ①의 수를 **바꾸지 않았다**: `component_commands._bucket`의 사다리가
-#: 사라진 자리를 `kinds::spec_for`의 타입 가드가 정확히 채웠다(그 하나가 명세가
-#: 예정한 최종 면제 2건 중 하나다 — 레지스트리 조회의 입구).
-#: 남은 사이트는 직렬화 사다리(`ser.py` 11 — WP-4)와 kind 표(레지스트리 패널·
-#: app 탭·에디터 위젯 맵), 미리보기 분기로, 각각 WP-6/WP-7/WP-8/WP-10이 소유한다.
+#: 실측 기준선 (2026-09-19, WP-4 완료 — 직렬화 선언화). **내리기만 한다.**
+#: compiler 패키지의 컴포넌트 대상 isinstance·형상 getattr는 **둘 다 0**이고,
+#: WP-4가 `serialize/ser.py`도 0으로 비웠다(11 → 0 — `_ser_config` 사다리 8 +
+#: `_ser_skill`/`_ser_agent` 형상 가드 3이 `SERIALIZED_FIELDS` 선언과
+#: `component_fields`의 키 순서 표로 대체됐다).
+#: 남은 사이트는 kind 표(레지스트리 패널 10·app 탭 4)와 미리보기·wrapped 전용
+#: 분기로, 각각 WP-6/WP-7/WP-8/WP-10이 소유한다.
+#: 형상 getattr 래칷(②)은 WP-4가 건드리지 않았다 — 직렬화 경로의 남은 두 사이트
+#: (`deser.deserialize_project`의 `fsm`)는 프로젝트 그래프 2-pass 질문이지
+#: 컴포넌트 조립 질문이 아니라 여기서 죽지 않는다.
 RATCHET: dict[str, int] = {
-    "isinstance_sites": 34,
-    "isinstance_files": 9,
+    "isinstance_sites": 23,
+    "isinstance_files": 8,
     "shape_attr_sites": 33,
     "shape_attr_files": 12,
 }
@@ -265,10 +268,11 @@ def test_exemptions_point_at_live_sites():
 def test_scanner_sees_the_known_hotspots():
     """스캐너가 조용히 0을 세지 않는지 — 알려진 집중 지점을 확인한다."""
     modules = {module for module, _l, _q, _w in scan_isinstance()}
-    # WP-2c가 `compiler.emit.skill`을 0으로 비운다 — 아직 남은 집중 지점으로
-    # 교체한다(단언 수는 그대로다. 표적을 지우면 스캐너가 조용히 0을 세도 통과한다).
+    # WP-2c가 `compiler.emit.skill`을, WP-4가 `model.serialize.ser`를 0으로
+    # 비운다 — 아직 남은 집중 지점으로 교체한다(단언 수는 그대로다.
+    # 표적을 지우면 스캐너가 조용히 0을 세도 통과한다).
     assert "view.panels.registry_panel" in modules
-    assert "model.serialize.ser" in modules
+    assert "view.app" in modules
     shape_modules = {module for module, _l, _q, _w in scan_shape_attrs()}
     # WP-2b가 `model.project`를, WP-2c가 `compiler.emit.sections`를 비웠다 —
     # 같은 이유로 남은 집중 지점(WP-2d·WP-7 소관)으로 교체한다.

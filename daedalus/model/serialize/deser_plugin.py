@@ -13,33 +13,11 @@ from __future__ import annotations
 
 from typing import Any
 
-import dataclasses
-
-from daedalus.model.fsm.join import JoinStrategy
 from daedalus.model.fsm.section import EventDef
 from daedalus.model.plugin.agent import Agent, AgentDefinition
-from daedalus.model.plugin.config import (
-    WrappedSkillConfig,
-    AgentConfig,
-    AsyncForkSkillConfig,
-    DeclarativeSkillConfig,
-    ForkAgentConfig,
-    ProceduralSkillConfig,
-    ReferenceSkillConfig,
-    SyncForkSkillConfig,
-    TransferSkillConfig,
-)
-from daedalus.model.plugin.kinds import config_kinds_in, spec_by_kind
+from daedalus.model.plugin.kinds import spec_by_config_kind, spec_by_kind
 from daedalus.model.plugin.roles import Bucket
-from daedalus.model.plugin.enums import (
-    AgentColor,
-    AgentIsolation,
-    EffortLevel,
-    MemoryScope,
-    ModelType,
-    PermissionMode,
-    SkillShell,
-)
+from daedalus.model.plugin.enums import SkillShell
 from daedalus.model.plugin.hook import HookDef, HookEvent
 from daedalus.model.plugin.tool import (
     BuiltinTool,
@@ -49,6 +27,7 @@ from daedalus.model.plugin.tool import (
 )
 from daedalus.model.plugin.workspace_doc import WorkspaceDoc
 from daedalus.model.project import ReferencePlacement
+from daedalus.model.serialize.component_fields import deser_component
 from daedalus.model.serialize.deser_fsm import (
     _Registry,
     _deser_machine,
@@ -75,109 +54,23 @@ def _deser_eventdef(d: dict) -> EventDef:
 
 # ── config / policy ──
 
-#: 읽을 수 있는 config `kind` 전수 — **레지스트리에서 파생**한다(WP-3).
-#: 미지 kind는 **ValueError**다(조용한 강등 금지 — 원칙 5). 키 자체가 없으면
-#: "미지"가 아니라 "미기재"라 None을 돌려주고 호출자가 자기 분기의 기본 config를
-#: 쓴다(구버전·손편집 파일).
-#:
-#: 베껴 쓴 목록이었을 때는 새 종류가 여기 빠지면 그 종류의 설정이 통째로
-#: "알 수 없는 config"로 거절돼 프로젝트가 아예 열리지 않았다 — 그리고 그
-#: 사실을 알려 주는 것은 사용자의 버그 리포트뿐이었다.
-_CONFIG_KINDS: tuple[str, ...] = (
-    config_kinds_in(Bucket.SKILLS) + config_kinds_in(Bucket.AGENTS)
-)
-
-
 def _deser_config(d: dict) -> Any:
+    """설정 dict → 설정 객체 — 클래스는 **레지스트리**가, 필드는 **선언**이 정한다.
+
+    한 줄 파사드다 (WP-4). 종전에는 여기 종류별 if 사다리 7갈래가 있었고, 그
+    앞에는 읽을 수 있는 kind를 다시 열거한 `_CONFIG_KINDS` 튜플이 있었다 —
+    새 종류를 더하고 가지를 빠뜨리면 그 종류의 설정이 통째로 "알 수 없는
+    config"로 거절돼 프로젝트가 아예 열리지 않았고, 그 사실을 알려 주는 것은
+    사용자의 버그 리포트뿐이었다(M4).
+
+    미지 kind는 **ValueError**다(조용한 강등 금지 — 원칙 5). 키 자체가 없으면
+    "미지"가 아니라 "미기재"라 `None`을 돌려주고 호출자가 자기 분기의 기본
+    config를 쓴다(구버전·손편집 파일).
+    """
     kind = d.get("kind")
     if kind is None:
         return None
-    if kind not in _CONFIG_KINDS:
-        raise ValueError(
-            f"알 수 없는 config 종류: {kind!r} "
-            f"(사용 가능: {', '.join(_CONFIG_KINDS)})"
-        )
-    model = d.get("model")
-    model_v = _to_enum(ModelType, model, model)  # ModelType | str — enum 실패 시 문자열 보존
-    effort = _to_enum(EffortLevel, d.get("effort"))
-    hooks = d.get("hooks")
-
-    if kind == "wrapped":
-        # WP-WR — source는 외부 스킬 참조 문자열(plugin@marketplace:skill).
-        # usage 키 부재는 구버전 파일 — 그때는 state 용도만 있었다.
-        c = WrappedSkillConfig(
-            source=d.get("source", ""),
-            usage=str(d.get("usage", "state") or ""),
-            enabled=bool(d.get("enabled", True)),
-            disable_model_invocation=d.get("disable_model_invocation"),  # tri-state
-            user_invocable=d.get("user_invocable"),
-        )
-    elif kind == "procedural":
-        c = ProceduralSkillConfig(
-            # tri-state (A8) — 키 부재는 **미지정(None)**이다. 저장된 true/false는
-            # 그대로 왕복한다(스크럽 금지 — 사용자가 명시 지정한 값이다).
-            disable_model_invocation=d.get("disable_model_invocation"),
-            user_invocable=d.get("user_invocable"),
-            shell=_to_enum(SkillShell, d.get("shell"), SkillShell.BASH),
-        )
-    elif kind in ("sync_fork", "async_fork"):
-        fork_cls = SyncForkSkillConfig if kind == "sync_fork" else AsyncForkSkillConfig
-        c = fork_cls(
-            disable_model_invocation=d.get("disable_model_invocation"),  # tri-state (A8)
-            user_invocable=d.get("user_invocable"),
-            shell=_to_enum(SkillShell, d.get("shell"), SkillShell.BASH),
-            agent=d.get("agent") or "general-purpose",
-        )
-    elif kind == "declarative":
-        c = DeclarativeSkillConfig(
-            disable_model_invocation=d.get("disable_model_invocation"),  # tri-state (A8)
-            user_invocable=d.get("user_invocable"),
-        )
-    elif kind == "transfer":
-        c = TransferSkillConfig(
-            disable_model_invocation=d.get("disable_model_invocation", False),
-            user_invocable=d.get("user_invocable", False),
-            shell=_to_enum(SkillShell, d.get("shell"), SkillShell.BASH),
-        )
-    elif kind == "reference":
-        c = ReferenceSkillConfig(user_invocable=d.get("user_invocable", False))
-    elif kind in ("agent", "fork_agent"):
-        common = dict(
-            tools=d.get("tools"),
-            disallowed_tools=d.get("disallowed_tools"),
-            permission_mode=_to_enum(
-                PermissionMode, d.get("permission_mode"), PermissionMode.DEFAULT
-            ),
-            max_turns=d.get("max_turns"),
-            skills=list(d.get("skills", [])),
-            mcp_servers=d.get("mcp_servers"),
-            memory=_to_enum(MemoryScope, d.get("memory")),
-            color=_to_enum(AgentColor, d.get("color")),
-        )
-        if kind == "fork_agent":
-            # background·isolation은 fork 에이전트에 없다 — 파일에 남아 있어도
-            # 흡수하지 않는다(퇴역 개념의 잔재 금지).
-            c = ForkAgentConfig(**common)
-        else:
-            c = AgentConfig(
-                **common,
-                background=d.get("background", False),
-                isolation=_to_enum(
-                    AgentIsolation, d.get("isolation"), AgentIsolation.NONE
-                ),
-            )
-    else:  # pragma: no cover — _CONFIG_KINDS 게이트가 앞에서 걸러낸다
-        raise ValueError(f"알 수 없는 config 종류: {kind!r}")
-
-    c.model = model_v
-    c.effort = effort
-    c.hooks = hooks
-    # SkillConfig 공통
-    if hasattr(c, "argument_hint"):
-        c.argument_hint = d.get("argument_hint")
-        c.allowed_tools = list(d.get("allowed_tools", []))
-        c.paths = d.get("paths")
-    return c
+    return spec_by_config_kind(kind).config_cls.from_dict(d)
 
 
 # ── skill / agent ──
@@ -202,39 +95,31 @@ def _coerce_config(config, expected_cls, *, kind: str, name: str, reg: _Registry
 
 
 def _build_component(d: dict, reg: _Registry, spec) -> Any:
-    """행이 가리키는 클래스로 컴포넌트 한 개를 조립한다 — **필드 유무가 분기다**.
+    """행이 가리키는 클래스로 컴포넌트 한 개를 조립한다 — 표 구동 엔진의 파사드.
 
-    종류별 if 사다리(M5) 대신 `dataclasses.fields`로 "이 종류가 fsm/포트/
-    when_to_use를 갖는가"를 묻는다. 사다리였을 때는 종류를 하나 더할 때마다
+    "이 종류가 fsm/포트/when_to_use를 갖는가"는 종류별 if 사다리가 아니라
+    `dataclasses.fields`가 답하고(`component_fields.deser_component`), 키 부재값은
+    `COMPONENT_MISSING` 표가 답한다. 사다리였을 때는 종류를 하나 더할 때마다
     가지를 하나 더 쳐야 했고, 빠뜨리면 그 종류만 "알 수 없는 종류"로 거절됐다.
 
     부수효과가 있는 호출의 **순서는 종전 그대로**다(config dict → fsm →
-    config 강제 → 나머지). `reg.warnings`가 쌓이는 순서가 곧 사용자가 보는
-    경고 순서라, 순서를 바꾸면 동작 불변이 아니다.
+    config 강제 → 나머지 — `component_fields.DESER_ORDER`). `reg.warnings`가
+    쌓이는 순서가 곧 사용자가 보는 경고 순서라, 순서를 바꾸면 동작 불변이 아니다.
     """
-    cls = spec.component_cls
-    field_names = {f.name for f in dataclasses.fields(cls)}
     name = d.get("name", "")
     raw_config = _deser_config(d["config"]) if d.get("config") else None
-
-    kwargs: dict[str, Any] = {"name": name, "description": d.get("description", "")}
-    if "fsm" in field_names:
-        kwargs["fsm"] = _deser_machine(d["fsm"], reg, parent_bb=None)
-    kwargs["config"] = _coerce_config(
-        raw_config, spec.config_cls, kind=spec.kind, name=name, reg=reg
+    component = deser_component(
+        d,
+        spec,
+        deser_machine=lambda raw: _deser_machine(raw, reg, parent_bb=None),
+        make_config=lambda: _coerce_config(
+            raw_config, spec.config_cls, kind=spec.kind, name=name, reg=reg
+        ),
+        deser_body=_deser_body,
+        deser_eventdef=_deser_eventdef,
+        new_id=_new_id,
     )
-    kwargs["body"] = _deser_body(d)
-    if "when_to_use" in field_names:
-        kwargs["when_to_use"] = d.get("when_to_use", "")
-    for port in ("transfer_on", "call_agents"):
-        # 키 부재(구버전 파일) → 빈 목록, 경고 없음. dataclass 기본값으로
-        # 떨어지면 키 없는 파일에 포트 `done`이 **발명**된다(§2-d 부재 의미론).
-        if port in field_names:
-            kwargs[port] = [_deser_eventdef(e) for e in d.get(port, [])]
-
-    sid = d.get("id") or _new_id()
-    component = cls(**kwargs, id=sid)
-    reg.components[sid] = component
+    reg.components[component.id] = component
     return component
 
 

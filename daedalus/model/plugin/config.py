@@ -5,6 +5,17 @@ from dataclasses import dataclass, field
 from typing import Any, ClassVar
 
 from daedalus.model.plugin.roles import Bucket
+from daedalus.model.plugin.serial_fields import (
+    BOOL,
+    ENUM,
+    ENUM_OPT,
+    ENUM_OR_STR,
+    LIST,
+    RAW,
+    STR,
+    STR_OR_DEFAULT,
+    FieldSpec,
+)
 from daedalus.model.plugin.enums import (
     AgentColor,
     AgentIsolation,
@@ -32,9 +43,22 @@ class ComponentConfig(ABC):
     고쳐야 한다는 사실을 아무도 알려 주지 않는다. 네임스페이스를 인수로 받는
     이유는 **동명-다른타입**(스킬 "x"와 에이전트 "x")이 공존할 수 있어서다 —
     네임스페이스를 안 보면 무관한 참조를 오갱신한다.
+
+    `SERIALIZED_FIELDS`는 "이 설정이 저장 파일에 무엇을 어떤 순서로 쓰는가"의
+    단일 진실이다 (WP-4). **MRO 역순 누적이 아니라 각 클래스가 명시 튜플로
+    선언한다** — 누적이면 선언 순서와 JSON 키 순서가 상속 그래프에 숨어 버리고,
+    오늘 `AgentConfig`처럼 `color`가 `background`보다 **앞**에 나가는(필드 순서와
+    다른) 사실을 표현할 수 없다. 선언 순서 = JSON 키 순서다.
     """
 
     KIND: ClassVar[str]
+    SERIALIZED_FIELDS: ClassVar[tuple[FieldSpec, ...]] = (
+        # `model`의 키 부재값은 **None**이다 — dataclass 기본값(INHERIT)과 다르다.
+        # 오늘의 결함이지만(backlog D10) 고치면 저장 파일 해석이 바뀌므로 보존한다.
+        FieldSpec("model", ENUM_OR_STR(ModelType), missing=None),
+        FieldSpec("effort", ENUM_OPT(EffortLevel)),
+        FieldSpec("hooks", RAW),
+    )
 
     model: ModelType | str = ModelType.INHERIT
     effort: EffortLevel | None = None
@@ -49,6 +73,30 @@ class ComponentConfig(ABC):
     def kind(self) -> str:
         """설정 종류 식별자 — 구체 클래스는 ``return self.KIND``."""
 
+    # ── 직렬화 (WP-4 — `_ser_config`/`_deser_config` 사다리를 흡수했다) ──
+
+    def to_dict(self) -> dict[str, Any]:
+        """설정 → JSON 호환 dict. 첫 키는 다형성 태그 `kind`."""
+        out: dict[str, Any] = {"kind": self.kind}
+        for spec in type(self).SERIALIZED_FIELDS:
+            out[spec.name] = spec.codec.encode(getattr(self, spec.name))
+        return out
+
+    @classmethod
+    def from_dict(cls, d: dict) -> Any:
+        """저장 dict → 설정. 키 부재는 `FieldSpec.missing`(기본: dataclass 기본값).
+
+        `kind`는 여기서 보지 않는다 — 어느 클래스로 읽을지는 호출자가 레지스트리
+        (`kinds.spec_by_config_kind`)로 이미 정했다. 여기서 또 물으면 같은 판정이
+        두 곳에 생긴다(원칙 1).
+        """
+        kwargs: dict[str, Any] = {}
+        for spec in cls.SERIALIZED_FIELDS:
+            use, value = spec.read(d)
+            if use:
+                kwargs[spec.name] = value
+        return cls(**kwargs)
+
     def name_refs(self, namespace: Bucket) -> list[str]:
         """이 설정이 가리키는 ``namespace`` 컴포넌트 이름 목록 (기본 없음)."""
         return []
@@ -61,6 +109,16 @@ class ComponentConfig(ABC):
 @dataclass
 class SkillConfig(ComponentConfig, ABC):
     """스킬 공통 프론트매터."""
+
+    SERIALIZED_FIELDS: ClassVar[tuple[FieldSpec, ...]] = (
+        ComponentConfig.SERIALIZED_FIELDS
+        + (
+            FieldSpec("argument_hint", RAW),
+            FieldSpec("allowed_tools", LIST),
+            FieldSpec("paths", RAW),
+        )
+    )
+
     argument_hint: str | None = None
     allowed_tools: list[str] = field(default_factory=list)
     paths: list[str] | None = None
@@ -73,13 +131,23 @@ class StepSkillConfig(SkillConfig, ABC):
     `kind`를 정의하지 않으므로 추상이다(인스턴스화 금지) — 종류를 말하지 않는
     단계 설정은 존재하지 않는다.
     """
-# 진입 의미론 두 필드는 **tri-state**다 (A8): None = 미지정(프론트매터 키 생략 →
-# CC 기본값에 위임) / True·False = 명시 지정. 순수 bool이면 "기본값을 쓴다"와
-# "기본값과 같은 값을 못 박았다"가 구분되지 않아, 캔버스 프리셋의 "일반 상태로"
-# (두 필드 미지정)를 표현할 수 없다. 컴파일은 기존 규칙 그대로 동작한다 —
-# "OPTIONAL 값이 선언 기본값과 같으면 생략"에서 선언 기본값이 None이 되므로
-# None은 생략되고 명시 True/False는 발행된다(`user-invocable: true`가 나가는 것은
-# 사용자가 진입점으로 못 박았다는 뜻이라 정상이다).
+
+    SERIALIZED_FIELDS: ClassVar[tuple[FieldSpec, ...]] = (
+        SkillConfig.SERIALIZED_FIELDS
+        + (
+            FieldSpec("disable_model_invocation", RAW),
+            FieldSpec("user_invocable", RAW),
+            FieldSpec("shell", ENUM(SkillShell, SkillShell.BASH)),
+        )
+    )
+
+    # 진입 의미론 두 필드는 **tri-state**다 (A8): None = 미지정(프론트매터 키 생략 →
+    # CC 기본값에 위임) / True·False = 명시 지정. 순수 bool이면 "기본값을 쓴다"와
+    # "기본값과 같은 값을 못 박았다"가 구분되지 않아, 캔버스 프리셋의 "일반 상태로"
+    # (두 필드 미지정)를 표현할 수 없다. 컴파일은 기존 규칙 그대로 동작한다 —
+    # "OPTIONAL 값이 선언 기본값과 같으면 생략"에서 선언 기본값이 None이 되므로
+    # None은 생략되고 명시 True/False는 발행된다(`user-invocable: true`가 나가는 것은
+    # 사용자가 진입점으로 못 박았다는 뜻이라 정상이다).
     disable_model_invocation: bool | None = None
     user_invocable: bool | None = None
     shell: SkillShell = SkillShell.BASH
@@ -115,6 +183,11 @@ class ForkSkillConfig(StepSkillConfig, ABC):
     2026-09-17) 그 값은 매트릭스 전용 FIXED 필드라 config에 두지 않는다.
     즉 "어느 fork인가"는 구체 클래스(= `kind`)만이 답한다.
     """
+
+    SERIALIZED_FIELDS: ClassVar[tuple[FieldSpec, ...]] = (
+        StepSkillConfig.SERIALIZED_FIELDS
+        + (FieldSpec("agent", STR_OR_DEFAULT("general-purpose")),)
+    )
 
     agent: str = "general-purpose"
 
@@ -176,6 +249,20 @@ class WrappedSkillConfig(SkillConfig):
     파일(키 부재)은 True.
     """
     KIND: ClassVar[str] = "wrapped"
+    SERIALIZED_FIELDS: ClassVar[tuple[FieldSpec, ...]] = (
+        SkillConfig.SERIALIZED_FIELDS
+        + (
+            # `source`는 **RAW**다 — 저장 파일의 명시적 `null`이 그대로 들어오는
+            # 것이 오늘의 계약이고, 그 날것을 견디는 쪽은
+            # `WrappedSkill.external_source` 하나다(원칙 1).
+            FieldSpec("source", RAW),
+            # 키 부재는 구버전 파일 — 그때는 state 용도만 있었다.
+            FieldSpec("usage", STR, missing="state"),
+            FieldSpec("enabled", BOOL),
+            FieldSpec("disable_model_invocation", RAW),
+            FieldSpec("user_invocable", RAW),
+        )
+    )
     #: ``usage``의 "참조 용도" 값. 판정하는 쪽이 리터럴을 복제하면 값이 바뀔 때
     #: 한쪽만 고쳐져 조용히 어긋난다 — 선언은 값을 가진 클래스에 둔다.
     USAGE_REFERENCE: ClassVar[str] = "reference"
@@ -194,6 +281,13 @@ class WrappedSkillConfig(SkillConfig):
 @dataclass
 class DeclarativeSkillConfig(SkillConfig):
     KIND: ClassVar[str] = "declarative"
+    SERIALIZED_FIELDS: ClassVar[tuple[FieldSpec, ...]] = (
+        SkillConfig.SERIALIZED_FIELDS
+        + (
+            FieldSpec("disable_model_invocation", RAW),
+            FieldSpec("user_invocable", RAW),
+        )
+    )
 
     # tri-state — ProceduralSkillConfig의 같은 필드 주석 참조 (A8).
     disable_model_invocation: bool | None = None
@@ -212,6 +306,22 @@ class AgentConfigBase(ComponentConfig, ABC):
     `AgentConfig`의 필드 순서가 종전(`… memory, background, isolation, color`)과
     같아진다(2026-09-17 실측).
     """
+
+    SERIALIZED_FIELDS: ClassVar[tuple[FieldSpec, ...]] = (
+        ComponentConfig.SERIALIZED_FIELDS
+        + (
+            FieldSpec("tools", RAW),
+            FieldSpec("disallowed_tools", RAW),
+            FieldSpec(
+                "permission_mode", ENUM(PermissionMode, PermissionMode.DEFAULT)
+            ),
+            FieldSpec("max_turns", RAW),
+            FieldSpec("skills", LIST),
+            FieldSpec("mcp_servers", RAW),
+            FieldSpec("memory", ENUM_OPT(MemoryScope)),
+        )
+    )
+
     tools: list[str] | None = None
     disallowed_tools: list[str] | None = None
     permission_mode: PermissionMode = PermissionMode.DEFAULT
@@ -236,6 +346,16 @@ class AgentConfig(AgentConfigBase):
     """워크플로 에이전트(캔버스 노드) 설정."""
 
     KIND: ClassVar[str] = "agent"
+    #: `color`가 `background`·`isolation`보다 **앞**이다 — dataclass 필드 순서와
+    #: 다르지만 저장 파일의 키 순서가 그렇다(바꾸면 JSON 바이트가 바뀐다).
+    SERIALIZED_FIELDS: ClassVar[tuple[FieldSpec, ...]] = (
+        AgentConfigBase.SERIALIZED_FIELDS
+        + (
+            FieldSpec("color", ENUM_OPT(AgentColor)),
+            FieldSpec("background", RAW),
+            FieldSpec("isolation", ENUM(AgentIsolation, AgentIsolation.NONE)),
+        )
+    )
 
     background: bool = False
     isolation: AgentIsolation = AgentIsolation.NONE
@@ -256,6 +376,9 @@ class ForkAgentConfig(AgentConfigBase):
     """
 
     KIND: ClassVar[str] = "fork_agent"
+    SERIALIZED_FIELDS: ClassVar[tuple[FieldSpec, ...]] = (
+        AgentConfigBase.SERIALIZED_FIELDS + (FieldSpec("color", ENUM_OPT(AgentColor)),)
+    )
 
     color: AgentColor | None = None
 
@@ -269,6 +392,14 @@ class TransferSkillConfig(SkillConfig):
     """전이 엣지 전용 스킬 설정. user_invocable은 항상 False (UI 노출 불필요)."""
 
     KIND: ClassVar[str] = "transfer"
+    SERIALIZED_FIELDS: ClassVar[tuple[FieldSpec, ...]] = (
+        SkillConfig.SERIALIZED_FIELDS
+        + (
+            FieldSpec("disable_model_invocation", RAW),
+            FieldSpec("user_invocable", RAW),
+            FieldSpec("shell", ENUM(SkillShell, SkillShell.BASH)),
+        )
+    )
 
     disable_model_invocation: bool = False
     user_invocable: bool = False   # fixed — transfer skills are never user-invocable
@@ -284,6 +415,9 @@ class ReferenceSkillConfig(SkillConfig):
     """참조 스킬 설정. 워크플로우에 참여하지 않는 참고용 노드."""
 
     KIND: ClassVar[str] = "reference"
+    SERIALIZED_FIELDS: ClassVar[tuple[FieldSpec, ...]] = (
+        SkillConfig.SERIALIZED_FIELDS + (FieldSpec("user_invocable", RAW),)
+    )
 
     user_invocable: bool = False
 

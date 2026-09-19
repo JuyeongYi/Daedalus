@@ -742,6 +742,15 @@ Tier 2다. 출발점은 2026-05 조사(ClaudeManager가 만든 plain 셸 스크�
 
 ## 5. 기능 잔여
 
+- **`config.model` 키 부재가 `None`으로 로드된다 (D10 — 2026-09-19 실측, WP-4가 보존)**.
+  `ComponentConfig.model`의 선언 기본값은 `ModelType.INHERIT`인데, 저장 파일에 `model` 키가
+  없으면 `None`이 들어온다(종전 `_deser_config`의 `_to_enum(ModelType, None, None)`, 오늘은
+  `FieldSpec("model", …, missing=None)`). 두 값은 프론트매터 배출에서 같은 결과를 내지만
+  (둘 다 키를 내지 않는다) 모델 상태로서는 다르고, `supports_model_effort`/MCP 조회가 읽는
+  값도 다르다. **고치면 저장 파일 해석이 바뀐다**(오래된 파일의 `model`이 INHERIT가 된다) —
+  그래서 WP-4는 부재 의미론을 선언으로 **보존**하고 고치지 않았다. 고칠지는 사용자 확정
+  대상이고, 바꾸는 순간 `tests/model/plugin/test_serialize_symmetry.py`의
+  `test_model_missing_key_loads_as_none_not_the_declared_default`가 이유를 찍고 실패한다.
 - **스킬 훅 정정의 남은 일** (정정 자체는 2026-09-13 완료 — `docs/design/hooks.md` "스킬 훅").
   ① `project/daedalus_cc_plugin`의 `graph-orient`(check-daedalus-mcp)·`graph-state`
   (guard-blackboard-schema, validate-on-save) 훅 참조를 틀린 경고에 따라 지웠다. 세 훅 모두 전역으로

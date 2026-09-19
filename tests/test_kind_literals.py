@@ -68,14 +68,18 @@ KIND_DECLARATION_FILES: frozenset[str] = frozenset({
     "model.plugin.skill", "model.plugin.agent", "model.plugin.config",
 })
 
-#: 실측 기준선 (2026-09-19, WP-3 완료 — 종류 레지스트리 `kinds.py`). **내리기만 한다.**
+#: 실측 기준선 (2026-09-19, WP-4 완료 — 직렬화 선언화). **내리기만 한다.**
 #: WP-3이 걷어낸 자리: `field_matrix`의 표 키 9(→ `XxxConfig.KIND` 참조) ·
-#: `deser_plugin`의 `_CONFIG_KINDS`/`step_kinds`/종류 사다리/"사용 가능" 문구 2 ·
+#: `deser_plugin`의 `step_kinds`/종류 해소 사다리/"사용 가능" 문구 2 ·
 #: `creation.factories` 람다 9 · `fork_skill.KINDS`/`_KIND_CLASSES` ·
-#: `props._SKILL_KINDS`/`_AGENT_KINDS`. 남은 자리의 주인은 WP-5~WP-8이다.
+#: `props._SKILL_KINDS`/`_AGENT_KINDS`.
+#: WP-4가 걷어낸 자리: `deser_plugin`의 `_CONFIG_KINDS` 튜플과 `_deser_config`
+#: 종류 사다리 11 → **0**(패키지 전체에서 모듈 하나가 통째로 빠졌다).
+#: 직렬화는 이제 kind 문자열을 **비교하지 않는다** — 레지스트리에 묻고
+#: 설정 클래스의 `SERIALIZED_FIELDS`를 읽는다. 남은 자리의 주인은 WP-5~WP-8이다.
 RATCHET: dict[str, int] = {
-    "component_kind_sites": 94,
-    "component_kind_files": 21,
+    "component_kind_sites": 83,
+    "component_kind_files": 20,
     "plan_kind_sites": 22,
     "plan_kind_files": 3,
 }

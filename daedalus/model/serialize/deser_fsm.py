@@ -62,6 +62,10 @@ from daedalus.model.fsm.variable import (
     Variable,
     VariableScope,
 )
+# `_to_enum`의 단일 진실은 모델 쪽 `plugin/serial_fields.py`다(WP-4) —
+# 설정 코덱과 이 모듈이 **같은** enum 복원 규칙을 써야 하기 때문이다.
+# 이름으로 수입해 `deser_fsm._to_enum` 경로와 파사드를 그대로 보존한다.
+from daedalus.model.plugin.serial_fields import _to_enum
 
 
 # ── 2-pass 컨텍스트 ──
@@ -102,17 +106,6 @@ class _Registry:
     def run_pending(self) -> None:
         for fn in self._pending:
             fn()
-
-
-# ── enum 복원 헬퍼 ──
-
-def _to_enum(enum_cls: Any, val: Any, default: Any = None) -> Any:
-    if val is None:
-        return default
-    try:
-        return enum_cls(val)
-    except ValueError:
-        return default
 
 
 # ── 변수 / 액션 / 전략 / 이벤트 / 가드 ──

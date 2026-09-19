@@ -42,38 +42,14 @@ from daedalus.model.fsm.strategy import (
 )
 from daedalus.model.fsm.transition import Transition
 from daedalus.model.fsm.variable import Variable
-from daedalus.model.plugin.agent import Agent, AgentDefinition
-from daedalus.model.plugin.config import (
-    WrappedSkillConfig,
-    AgentConfig,
-    AgentConfigBase,
-    DeclarativeSkillConfig,
-    ForkSkillConfig,
-    ReferenceSkillConfig,
-    StepSkillConfig,
-    TransferSkillConfig,
-)
+from daedalus.model.plugin.agent import Agent
+from daedalus.model.plugin.base import PluginComponent
 from daedalus.model.plugin.hook import HookDef
-from daedalus.model.plugin.skill import (
-    StepSkill,
-    TransferSkill,
-    WrappedSkill,
-)
 from daedalus.model.plugin.tool import BuiltinTool, MCPTool, Tool, UserDefinedTool
 from daedalus.model.project import PluginProject, ReferencePlacement
+from daedalus.model.serialize.component_fields import ser_component
 
 FORMAT_VERSION = 2
-
-
-# ───────────────────────── enum 헬퍼 ─────────────────────────
-
-def _enum_val(e: Any) -> Any:
-    """enum 이면 .value, 아니면 그대로 (model: ModelType | str 처럼 union 대응)."""
-    return e.value if hasattr(e, "value") and not isinstance(e, str) else e
-
-
-def _enum_opt(e: Any) -> Any:
-    return None if e is None else _enum_val(e)
 
 
 # ═══════════════════════ 직렬화 (serialize) ═══════════════════════
@@ -393,111 +369,34 @@ def _ser_eventdef(e: EventDef) -> dict:
 # ── config / policy ──
 
 def _ser_config(c: Any) -> dict:
-    """ComponentConfig 계열 — kind 태그 + 모든 필드."""
-    d: dict[str, Any] = {
-        "kind": c.kind,
-        "model": _enum_val(c.model),
-        "effort": _enum_opt(c.effort),
-        "hooks": c.hooks,
-    }
-    # SkillConfig 공통
-    if hasattr(c, "argument_hint"):
-        d["argument_hint"] = c.argument_hint
-        d["allowed_tools"] = list(c.allowed_tools)
-        d["paths"] = c.paths
-    if isinstance(c, WrappedSkillConfig):
-        d.update(
-            source=c.source,
-            # usage(사용자 확정 2026-09-07): ""(미정)/"state"/"reference" — 최초
-            # 배치가 고정한다. 키를 항상 내보내 ""도 왕복한다(키 부재는 구버전
-            # = "state"로 로드).
-            usage=c.usage,
-            # enabled — 랩핑 스킬은 지울 수 없고 이것으로 끈다(키 부재는 True).
-            enabled=c.enabled,
-            disable_model_invocation=c.disable_model_invocation,
-            user_invocable=c.user_invocable,
-        )
-    elif isinstance(c, StepSkillConfig):
-        # ForkSkillConfig는 형제가 아니라 하위 클래스라 같은 분기를 타고 agent만 더한다.
-        d.update(
-            disable_model_invocation=c.disable_model_invocation,
-            user_invocable=c.user_invocable,
-            shell=c.shell.value,
-        )
-        if isinstance(c, ForkSkillConfig):
-            d["agent"] = c.agent
-    elif isinstance(c, DeclarativeSkillConfig):
-        d.update(
-            disable_model_invocation=c.disable_model_invocation,
-            user_invocable=c.user_invocable,
-        )
-    elif isinstance(c, TransferSkillConfig):
-        d.update(
-            disable_model_invocation=c.disable_model_invocation,
-            user_invocable=c.user_invocable,
-            shell=c.shell.value,
-        )
-    elif isinstance(c, ReferenceSkillConfig):
-        d["user_invocable"] = c.user_invocable
-    elif isinstance(c, AgentConfigBase):
-        d.update(
-            tools=c.tools,
-            disallowed_tools=c.disallowed_tools,
-            permission_mode=c.permission_mode.value,
-            max_turns=c.max_turns,
-            skills=list(c.skills),
-            mcp_servers=c.mcp_servers,
-            memory=_enum_opt(c.memory),
-            color=_enum_opt(c.color),
-        )
-        # background/isolation은 워크플로 에이전트에만 있다 — fork 에이전트는
-        # 스킬 종류가 백그라운드를 정하고 isolation은 적용되지 않는다.
-        if isinstance(c, AgentConfig):
-            d.update(background=c.background, isolation=c.isolation.value)
-    return d
+    """ComponentConfig 계열 → dict — **설정이 스스로 답한다** (WP-4).
+
+    한 줄 파사드다. 종전에는 여기 `isinstance` 사다리 8갈래가 "이 설정이 어떤
+    필드를 갖는가"를 다시 판정했고, 새 필드를 더하고 분기를 잊으면 그 필드가
+    저장에서 **조용히 사라졌다**(M8 👻). 실체는 각 설정 클래스의
+    `SERIALIZED_FIELDS` 선언이고 `test_serialize_symmetry`가 `fields()`와의
+    등치를 강제한다.
+    """
+    return c.to_dict()
 
 
 # ── skill / agent ──
 
 def _ser_skill(s: Any) -> dict:
-    d: dict[str, Any] = {
-        "kind": s.kind,
-        "id": s.id,
-        "name": s.name,
-        "description": s.description,
-        "when_to_use": s.when_to_use,
-        "body": s.body,
-        "config": _ser_config(s.config),
-    }
-    if isinstance(s, (StepSkill, TransferSkill, WrappedSkill)):
-        d["fsm"] = _ser_machine(s.fsm)
-    if isinstance(s, (StepSkill, WrappedSkill)):
-        d["transfer_on"] = [_ser_eventdef(e) for e in s.transfer_on]
-        d["call_agents"] = [_ser_eventdef(e) for e in s.call_agents]
-    return d
+    """스킬 → dict — 키 순서·필드 유무는 `component_fields` 표가 답한다 (WP-4)."""
+    return _ser_component(s)
 
 
 def _ser_agent(a: Agent) -> dict:
-    """에이전트 → dict. 그래프 유도 필드는 **워크플로 에이전트에만** 쓴다 —
-    fork 에이전트에는 fsm·포트·배치가 아예 없다(퇴역 개념의 잔재를 남기지 않는다).
+    """에이전트 → dict. 그래프 유도 필드는 **가진 종류에만** 나간다 —
+    fork 에이전트에는 fsm·포트가 아예 없다(퇴역 개념의 잔재를 남기지 않는다).
     """
-    d: dict[str, Any] = {
-        "kind": a.kind,
-        "id": a.id,
-        "name": a.name,
-        "description": a.description,
-        "config": _ser_config(a.config),
-        "body": a.body,
-    }
-    if isinstance(a, AgentDefinition):
-        d.update({
-            "fsm": _ser_machine(a.fsm),
-            # WP-AF — 출력 포트. v1 파일의 ExitPoint는 _migrate_v1이 승계한다.
-            "transfer_on": [_ser_eventdef(e) for e in a.transfer_on],
-            # 에이전트 호출 포트(2026-09-12) — 키 부재인 구버전 파일은 빈 목록으로 로드된다.
-            "call_agents": [_ser_eventdef(e) for e in a.call_agents],
-        })
-    return d
+    return _ser_component(a)
+
+
+def _ser_component(c: PluginComponent) -> dict:
+    """두 버킷 공통 진입점 — 표 구동 엔진에 FSM/EventDef 인코더를 주입한다."""
+    return ser_component(c, ser_machine=_ser_machine, ser_eventdef=_ser_eventdef)
 
 
 def _ser_ref_placement(r: ReferencePlacement) -> dict:

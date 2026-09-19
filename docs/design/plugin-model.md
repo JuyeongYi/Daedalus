@@ -163,16 +163,29 @@ no-op가 된다. 그래서 `PluginComponent`가 **선언(ClassVar) + 인스턴�
 무관한 참조를 오갱신한다. 오버라이드는 `ForkSkillConfig`(`agent` → AGENTS)와
 `AgentConfigBase`(`skills` → SKILLS) 둘뿐이고, 그 사실 자체를 테스트가 양방향으로 고정한다.
 
-> **오늘의 상태(WP-2c 완료).** **model·compiler 두 계층의 호출자가 전부 이
+여기에 **직렬화 계약**이 붙는다(WP-4): `SERIALIZED_FIELDS: ClassVar[tuple[FieldSpec, ...]]`
++ `to_dict()`/`from_dict()`. 선언 순서 = 저장 파일의 키 순서이고, **각 클래스가 명시 튜플을
+선언한다**(MRO 역순 누적이 아니다 — `AgentConfig`는 `color`가 `background`보다 앞이라
+누적으로는 표현되지 않는다). `FieldSpec(name, codec, missing)`과 코덱 8종은
+`model/plugin/serial_fields.py`에 있고, `missing`이 **키 부재값**이다(dataclass 기본값과
+다를 수 있다 — `model` 부재→`None`, `usage` 부재→`"state"`. 자세한 규칙과 근거는
+`fsm-model.md` "안정 ID + 직렬화"). 규칙은 능력 표면의 다른 선언과 같다: **dataclass 필드를
+더하면 `SERIALIZED_FIELDS`에도 한 줄을 더한다** — 잊으면
+`tests/model/plugin/test_serialize_symmetry.py`가 그 자리에서 이름을 찍고 실패한다(종전에는
+그 값이 저장에서 조용히 사라졌다).
+
+> **오늘의 상태(WP-4 완료).** **model·compiler 두 계층의 호출자가 전부 이
 > 표면을 쓴다** — 배치 판정(`placement.*`·`is_reference_usage`), 검증 규칙의
 > 술어(`REQUIRES_OUTPUT_PORTS`·`known_outgoing_events()`·`IS_FORK_BASE`·
 > `external_source`/`external_plugin_refs()`·`hook_refs()`·`config.name_refs`),
 > `project.rename_component`/`project_state_machines`/`remove_component`,
 > `fsm.SimpleState.skill_ref`의 타입, 그리고 컴파일러의 산출 판정
 > (`emits_output_file` = `emits_output()` 파사드)·포인터 판정·절 적용 게이트·
-> 위임 대상 이름 해소(`agent_invocation_name`). model 계층에 남은 컴포넌트 대상
-> `isinstance`는 `serialize/ser.py`의 직렬화 사다리(WP-4가 철거) **하나뿐**이고,
-> **compiler 계층에는 하나도 없다** — 형상 `getattr`도 0이다.
+> 위임 대상 이름 해소(`agent_invocation_name`). WP-4가 `serialize/ser.py`의 직렬화
+> 사다리 11건을 마지막으로 걷어내 **model·compiler 두 계층 모두 컴포넌트 대상
+> `isinstance`가 0**이다 — 예외는 레지스트리 조회의 입구 `kinds.spec_for`의 타입
+> 가드와 역직렬화 안전망 `deser_plugin._coerce_config` 둘뿐이고, 둘 다 명세가
+> 예정한 잔존 면제다. 형상 `getattr`도 compiler는 0이다.
 >
 > **능력 표면에는 소비자 없는 메서드가 없다.** WP-2a가 표면을 선언하면서
 > `tests/test_dead_code.py`의 allowlist에 배선 예정 WP와 함께 얹어 두었던 항목은
@@ -193,7 +206,9 @@ no-op가 된다. 그래서 `PluginComponent`가 **선언(ClassVar) + 인스턴�
 
 "종류가 몇 가지인가"라는 사실은 여섯 벌로 흩어져 있었다 — 역직렬화의 `step_kinds`·
 `_CONFIG_KINDS`·"사용 가능" 문구 2개, 뷰의 생성 람다 9개와 전환 표 2개, MCP의
-`_SKILL_KINDS`/`_AGENT_KINDS`. 표가 여러 벌이면 새 종류를 더할 때 **어디를 고쳐야
+`_SKILL_KINDS`/`_AGENT_KINDS`. (`_CONFIG_KINDS`는 WP-3이 레지스트리 파생으로 바꿨고
+WP-4가 통째로 지웠다 — `_deser_config`가 `spec_by_config_kind(kind).config_cls.from_dict`
+한 줄이 되면서 "읽을 수 있는 kind 목록"을 따로 들 이유가 없어졌다.) 표가 여러 벌이면 새 종류를 더할 때 **어디를 고쳐야
 하는지 아무도 말해 주지 않고**, 빠뜨린 자리는 예외가 아니라 조용한 부재가 된다:
 팔레트에서 사라지고, MCP가 "알 수 없는 종류"로 거절하고, 저장 파일에서 읽히지 않는다.
 

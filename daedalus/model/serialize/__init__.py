@@ -149,12 +149,13 @@ from daedalus.model.project import (
 )
 
 # ── 분해된 구현 재-export ──
+# enum 헬퍼는 WP-4에서 모델 쪽(`plugin/serial_fields.py`)으로 옮겨갔다 —
+# 설정 코덱과 같은 함수를 쓰기 위해서다. 이름은 파사드에 그대로 남는다.
+from daedalus.model.plugin.serial_fields import _enum_opt, _enum_val
 from daedalus.model.serialize.ser import (
     FORMAT_VERSION,
     _KNOWN_STATE_KINDS,
     _KNOWN_TOOL_KINDS,
-    _enum_opt,
-    _enum_val,
     _ser_action,
     _ser_actions,
     _ser_agent,
