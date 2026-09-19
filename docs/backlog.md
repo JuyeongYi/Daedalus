@@ -874,16 +874,14 @@ Tier 2다. 출발점은 2026-05 조사(ClaudeManager가 만든 plain 셸 스크�
   (`tests/test_code_hygiene.py`)의 범위는 **`daedalus/` 생산 소스뿐**이라고 2026-09-19에
   명문화했고(그 파일 docstring), 그래서 이 파일은 상한 밖이다. `tests/` 전체에서 800줄을
   넘는 유일한 파일이다. 봉합선은 기능별이다 — 문법 강조 · 슬래시 메뉴 · TOC · 검색.
-- **사후 확정 대기 — 명세가 "사용자 확정 대상"으로 표시했으나 확정 기록 없이 구현된 4건**
+- **사후 확정 대기 — 명세가 "사용자 확정 대상"으로 표시했으나 확정 기록 없이 구현된 3건**
   (2026-09-19). 전부 커밋·출하됐고 되돌리는 것이 더 큰 변경이라 되돌리지 않되, 확정 표식을
   지어내지도 않는다(CLAUDE.md 원칙 10). 확정을 받으면 `(사용자 확정 <날짜>)`를 해당 설계
   문서에 붙이고 이 항목을 지운다:
   ① 산출 없는 종류는 이름 게이트를 받지 않는다(`docs/design/agents.md`, `tests/compiler/test_gate.py`)
-  ② `WrappedSkill` 단방향 마이그레이션(`serialize/migrate.py` — 구버전 랩핑 스킬을 외부
-     에이전트/참조 스킬로 흡수, 되돌릴 수 없다)
-  ③ `AgentDefinition`의 퇴역 필드 4종 + `model/plugin/policy.py` 삭제(저장 파일의 4키가
+  ② `AgentDefinition`의 퇴역 필드 4종 + `model/plugin/policy.py` 삭제(저장 파일의 4키가
      단방향 드롭된다)
-  ④ `handle_node_moved`/`handle_waypoint_moved` 삭제 — `docs/design/editor.md`의 존치
+  ③ `handle_node_moved`/`handle_waypoint_moved` 삭제 — `docs/design/editor.md`의 존치
      결정을 뒤집은 것이다.
 
 - **클립보드 의존 테스트** — `tests/view/editors/test_hook_panel.py` 복사 테스트와

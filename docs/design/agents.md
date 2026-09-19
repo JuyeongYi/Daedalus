@@ -282,15 +282,10 @@ external plugin agent on node `X` has no usable `source` …"*, 서술 자리(�
 참조 문서)이다. 외부 **스킬**은 이제 감싸지 않는다: 플러그인을 사용 선언하면 CC가
 그 스킬들을 네이티브로 로드하므로 우리가 대신 인보크할 이유가 없다.
 
-저장 파일은 `serialize.migrate.migrate_wrapped_retirement`가 **단방향으로 흡수**한다
-(원칙 7 — 호환 잔재를 모델에 남기지 않는다):
-
-| 옛 상태 | 새 종류 | 비고 |
-|---|---|---|
-| `usage == "state"`(미정·키 부재 포함) | `external_agent` | `source`·`transfer_on`·`call_agents` 승계, fsm 드롭. **source가 이제 에이전트 이름을 가리킨다**는 경고 1건 |
-| `usage == "reference"` | `reference_skill` | 본문 첫 줄에 `Source: \`<source>\``를 남긴다(정본이 외부라는 사실을 조용히 잃지 않는다) |
-| `enabled == False` | 드롭 | 산출에도 배선에도 나가지 않던 것이라 이관할 산출이 없다. 참조 배치도 함께 걷는다 |
-
-**안정 id를 보존**하므로 그래프의 `skill_ref`가 스킬 목록 → 에이전트 목록 이동을
-그대로 따라온다. 변환 규칙과 경고 문구는 `tests/model/test_migrate_wrapped_retirement.py`
-가 고정한다.
+**저장 파일은 이관하지 않는다 — 후방 호환을 버린다 (사용자 확정 2026-09-19).**
+`wrapped_skill`이 남은 format 2 파일은 로드 시 레지스트리가 미지 종류로 **거부**한다
+(`ValueError`, 조용한 강등 없음 — 원칙 5). 퇴역 당일 단방향 흡수 마이그레이션
+(`migrate_wrapped_retirement`)을 함께 냈으나 같은 날 사용자 결정으로 걷었다: 이 종류를
+저장한 파일은 사용자 작업 사본에 없고, 새 종류(`ExternalAgent`·`ReferenceSkill`)로 다시
+그리는 편이 옛 용도 값을 추측해 옮기는 것보다 정직하다. 동결 dogfood 사본
+(`tests/data/golden/dogfood.daedalus.json`)은 이관된 저장 형태로 다시 동결했다.

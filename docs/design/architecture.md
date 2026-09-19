@@ -128,7 +128,7 @@ python -m tests.data.golden.regen --refresh-dogfood   # 동결 사본 자체를 
 | 시험 | 예측 | 실측 | 초과분의 성격 |
 |---|---|---|---|
 | **F1** 새 종류 추가(`ExternalAgent`, WP-9 + 리뷰 반영) | 생산 5 파일, 컴파일러 편집 0 | **생산 18 파일**(그중 컴파일러 4: `emit/{common,sections,skill_sections,agent_sections}.py`) | 종류 등록·필드 어휘·매트릭스는 예측대로 5 파일이다. 나머지는 ① **위임 산문** — 외부 에이전트를 부르는 문장·단서가 emitter 4곳의 텍스트라 새 종류가 문장을 얻으려면 그 텍스트를 고쳐야 한다(절 표가 아니라 문구의 문제) ② **enum 어휘**(`AgentField.SOURCE` 신설) ③ **검증·뱃지·미리보기**가 "산출 없는 종류"를 처음 만난 자리 |
-| **F2** 종류 퇴역(`WrappedSkill`, WP-10 3커밋 + 리뷰 반영) | 19 터치 | **생산 62 파일**(삭제 2: `emit/wrapped.py`·`view/actions/wrapped_usage.py`), 문서·테스트 포함 **135 파일**(삭제 8) | 클래스·emitter·용도 스위치 삭제는 예측 규모다. 초과분은 ① **MCP 도구 재지정**(`wrap.py` → `external.py`) ② 랩핑을 근거로 들던 **주석·docstring 전수** ③ 마이그레이션(단방향 흡수)과 그 고정 테스트 |
+| **F2** 종류 퇴역(`WrappedSkill`, WP-10 3커밋 + 리뷰 반영) | 19 터치 | **생산 62 파일**(삭제 2: `emit/wrapped.py`·`view/actions/wrapped_usage.py`), 문서·테스트 포함 **135 파일**(삭제 8) | 클래스·emitter·용도 스위치 삭제는 예측 규모다. 초과분은 ① **MCP 도구 재지정**(`wrap.py` → `external.py`) ② 랩핑을 근거로 들던 **주석·docstring 전수** ③ 마이그레이션(단방향 흡수)과 그 고정 테스트 — 이 ③은 같은 날 후방 호환 폐기(사용자 확정 2026-09-19)로 다시 삭제됐다 |
 | **F5** 기존 스위트 편집 | 5건 | **51 파일**(`git diff --diff-filter=M tests/`) | 대부분은 래칫·패리티·골든 재생성의 파급이고, 단언을 느슨하게 한 편집은 없다 |
 
 파일 크기(F8, 신규 모듈은 <300줄 목표): `emit/section_plan.py` **405** ·

@@ -297,14 +297,14 @@
       ]
     },
     {
-      "kind": "fork_skill",
+      "kind": "sync_fork_skill",
       "id": "d9bebaaac3cd42bdbbea9dcde7ebc559",
       "name": "plugin-verify",
       "description": "프로젝트를 검증하고 경고를 원인별로 해석해 무엇을 고쳐야 하는지 정한다.",
       "when_to_use": "그래프 편집이 일단락되어 컴파일 가능 여부를 판정하고 경고를 해석해야 할 때.",
       "body": "# 검증 — 에러는 막고 경고는 해석한다\n\n컴파일 게이트는 에러 1건이면 파일을 하나도 만들지 않는다. 경고는 통과하지만,\n통과한다고 무시해도 된다는 뜻이 아니다 — 경고마다 \"왜 나왔고 무엇을 의미하는가\"를\n해석하고 나서 넘어간다.\n\n## 1. `validate_project`\n\n에러와 경고가 구분되어 온다. 에러부터 처리한다.\n\n## 2. 에러 — 무조건 고친다\n\n빈번한 것들:\n\n- **transfer_on_not_empty** — 출력 포트 미선언. 배선 단계로 되돌린다.\n- **duplicate_component_name** — 컴파일 디렉토리가 충돌한다. 이름을 바꾼다.\n- **no_duplicate_skill_ref** — 같은 컴포넌트 중복 배치. 참조 스킬로 바꿀 일이다.\n- **choice_completeness** — 선택 노드의 갈래 불완전.\n\n## 3. 경고 — 원인별 해석\n\n- **dangling_\\*** 계열(hook/tool/blackboard/string) — 참조 오타이거나 삭제\n  잔재다. 거의 항상 고쳐야 한다.\n- **trigger_unknown_event** — 포트 rename 뒤 남은 고아 전이. 배선 단계 소관.\n- **orphan_blackboard_field** — 진짜 고아면 필드를 지우고, 쓸 노드의 선언이\n  빠진 것이면 선언을 채운다.\n- **invalid_component_name**(불일치) — 검증에서는 경고지만 **컴파일 게이트에서\n  에러로 승격**된다. 지금 고쳐라.\n- **mcp_agent_in_marketplace_build** — 빌드 타깃과 설계가 어긋났다. 타깃을\n  local로 바꿀지 에이전트에서 MCP를 뺄지는 설계 결정이다 — 네가 정하지 마라.\n  **fix-content**로 나가며 보고에 \"설계 결정 필요: <무엇과 무엇 중 선택>\"을\n  적는다(이 스킬은 서브에이전트에서 돌아 사용자에게 직접 물을 수 없다 — 보고를\n  받은 메인이 묻는다).\n- **missing_mcp_server_def** — 컴파일 시점 경고다. `set_mcp_server_def`로 서버\n  정의를 등록하면 해소된다(graph-tools 소관).\n\n\n## 4. 산출 미리보기\n\n에러 0건이면 `compile_preview`로 실제 산출 텍스트를 확인한다. **빈 본문과 빈\nwhen_to_use는 검증기가 잡지 않는다** — 산출을 읽고 껍데기 스킬이 없는지, 다음\n단계·진입 맥락 단락이 의도대로 실렸는지 본다.\n\n## 완료 갈림길\n\n- 에러 0건 + 경고 해석 완료 → **pass**\n- 고칠 것이 남았으면 **경고의 계열에 맞는 갈래**로 넘긴다.\n  `VerifyResult.blocking`에 **무엇을 왜 고쳐야 하는지** 기록하고 넘긴다 —\n  받은 쪽은 그 목록만 고치고 전체를 다시 훑지 않는다.\n\n| 갈래 | 계열 | 대표 규칙 |\n|---|---|---|\n| **fix-wiring** | 포트·전이·트리거 | transfer_on_not_empty, trigger_unknown_event, choice_completeness, no_duplicate_skill_ref |\n| **fix-content** | 본문·프론트매터 | invalid_component_name, dangling_hook_ref, dangling_tool_ref, dangling_string_reference |\n| **fix-state** | 블랙보드 | dangling_blackboard_ref, orphan_blackboard_field, invalid_blackboard_field_type |\n| **fix-docs** | 작업 폴더 문서 | invalid_rule_name, duplicate_rule_name, rule_body_frontmatter |\n\n여러 계열이 섞였으면 **에러가 속한 계열 우선**, 에러가 없으면 건수가 많은\n계열로 간다 — 그 단계의 재검증(done → 이 스킬)이 나머지 계열을 다시 짚는다.",
       "config": {
-        "kind": "fork",
+        "kind": "sync_fork",
         "model": "sonnet",
         "effort": "medium",
         "hooks": null,
@@ -774,563 +774,176 @@
       }
     },
     {
-      "kind": "wrapped_skill",
+      "kind": "reference_skill",
       "id": "cf52117325c5407bb0f4c0bafa26c4f3",
       "name": "claude-md-guide",
       "description": "외부 배경 지식 — CLAUDE.md 품질 기준(claude-md-improver). 작업 폴더 문서를 쓸 때 무엇이 좋은 CLAUDE.md인지 참고한다.",
       "when_to_use": "",
-      "body": "",
+      "body": "Source: `claude-md-management@claude-plugins-official:claude-md-improver`\n",
       "config": {
-        "kind": "wrapped",
+        "kind": "reference",
         "model": "inherit",
         "effort": null,
         "hooks": null,
         "argument_hint": null,
         "allowed_tools": [],
         "paths": null,
-        "source": "claude-md-management@claude-plugins-official:claude-md-improver",
-        "usage": "reference",
-        "enabled": true,
-        "disable_model_invocation": null,
         "user_invocable": null
-      },
-      "fsm": {
-        "id": "e30824f204514e388c6785915ed74473",
-        "name": "claude-md-guide_fsm",
-        "states": [
-          {
-            "kind": "simple",
-            "id": "0f57475ac28f441dbdb02573def826f6",
-            "name": "start",
-            "on_entry_start": [],
-            "on_entry": [],
-            "on_entry_end": [],
-            "on_exit_start": [],
-            "on_exit": [],
-            "on_exit_end": [],
-            "on_active": [],
-            "custom_events": {},
-            "inputs": [],
-            "outputs": [],
-            "reads": [],
-            "writes": [],
-            "skill_ref": null
-          }
-        ],
-        "transitions": [],
-        "initial_state": "0f57475ac28f441dbdb02573def826f6",
-        "final_states": [],
-        "blackboard": {
-          "class_definitions": [],
-          "variables": {}
-        }
-      },
-      "transfer_on": [
-        {
-          "name": "done",
-          "color": "#4488ff",
-          "description": ""
-        }
-      ],
-      "call_agents": []
+      }
     },
     {
-      "kind": "wrapped_skill",
+      "kind": "reference_skill",
       "id": "eed048cb96064441b69faf34fdd4a805",
       "name": "skill-authoring-guide",
       "description": "외부 배경 지식 — 스킬 저작 규범(plugin-dev:skill-development). 본문·description·점진 공개를 어떻게 쓰는지 참고한다.",
       "when_to_use": "",
-      "body": "",
+      "body": "Source: `plugin-dev@claude-plugins-official:skill-development`\n",
       "config": {
-        "kind": "wrapped",
+        "kind": "reference",
         "model": "inherit",
         "effort": null,
         "hooks": null,
         "argument_hint": null,
         "allowed_tools": [],
         "paths": null,
-        "source": "plugin-dev@claude-plugins-official:skill-development",
-        "usage": "reference",
-        "enabled": true,
-        "disable_model_invocation": null,
         "user_invocable": null
-      },
-      "fsm": {
-        "id": "f695e9eb20a847469cd22d91933461e3",
-        "name": "skill-authoring-guide_fsm",
-        "states": [
-          {
-            "kind": "simple",
-            "id": "92f9c488c876449e990d4014356c877d",
-            "name": "start",
-            "on_entry_start": [],
-            "on_entry": [],
-            "on_entry_end": [],
-            "on_exit_start": [],
-            "on_exit": [],
-            "on_exit_end": [],
-            "on_active": [],
-            "custom_events": {},
-            "inputs": [],
-            "outputs": [],
-            "reads": [],
-            "writes": [],
-            "skill_ref": null
-          }
-        ],
-        "transitions": [],
-        "initial_state": "92f9c488c876449e990d4014356c877d",
-        "final_states": [],
-        "blackboard": {
-          "class_definitions": [],
-          "variables": {}
-        }
-      },
-      "transfer_on": [
-        {
-          "name": "done",
-          "color": "#4488ff",
-          "description": ""
-        }
-      ],
-      "call_agents": []
+      }
     },
     {
-      "kind": "wrapped_skill",
+      "kind": "reference_skill",
       "id": "5df0ce8bda354a24b0d545da759b4838",
       "name": "skill-eval-guide",
       "description": "외부 배경 지식 — 스킬 품질·평가(skill-creator). description 트리거 정확도와 eval로 본문 품질을 재는 방법을 참고한다.",
       "when_to_use": "",
-      "body": "",
+      "body": "Source: `skill-creator@claude-plugins-official:skill-creator`\n",
       "config": {
-        "kind": "wrapped",
+        "kind": "reference",
         "model": "inherit",
         "effort": null,
         "hooks": null,
         "argument_hint": null,
         "allowed_tools": [],
         "paths": null,
-        "source": "skill-creator@claude-plugins-official:skill-creator",
-        "usage": "reference",
-        "enabled": true,
-        "disable_model_invocation": null,
         "user_invocable": null
-      },
-      "fsm": {
-        "id": "353b8de9e8c9499bb3fe2a50be2715f6",
-        "name": "skill-eval-guide_fsm",
-        "states": [
-          {
-            "kind": "simple",
-            "id": "46faa863fbb2410990d2105519322e97",
-            "name": "start",
-            "on_entry_start": [],
-            "on_entry": [],
-            "on_entry_end": [],
-            "on_exit_start": [],
-            "on_exit": [],
-            "on_exit_end": [],
-            "on_active": [],
-            "custom_events": {},
-            "inputs": [],
-            "outputs": [],
-            "reads": [],
-            "writes": [],
-            "skill_ref": null
-          }
-        ],
-        "transitions": [],
-        "initial_state": "46faa863fbb2410990d2105519322e97",
-        "final_states": [],
-        "blackboard": {
-          "class_definitions": [],
-          "variables": {}
-        }
-      },
-      "transfer_on": [
-        {
-          "name": "done",
-          "color": "#4488ff",
-          "description": ""
-        }
-      ],
-      "call_agents": []
+      }
     },
     {
-      "kind": "wrapped_skill",
+      "kind": "reference_skill",
       "id": "382c2823a3734c05924262436d3ea715",
       "name": "mcp-integration-guide",
       "description": "외부 배경 지식 — 플러그인 MCP 배선(plugin-dev:mcp-integration). 서버 유형·.mcp.json·경로 변수 규약을 참고한다.",
       "when_to_use": "",
-      "body": "",
+      "body": "Source: `plugin-dev@claude-plugins-official:mcp-integration`\n",
       "config": {
-        "kind": "wrapped",
+        "kind": "reference",
         "model": "inherit",
         "effort": null,
         "hooks": null,
         "argument_hint": null,
         "allowed_tools": [],
         "paths": null,
-        "source": "plugin-dev@claude-plugins-official:mcp-integration",
-        "usage": "reference",
-        "enabled": true,
-        "disable_model_invocation": null,
         "user_invocable": null
-      },
-      "fsm": {
-        "id": "bf826ff106764eb8a7bf12e3493a52e3",
-        "name": "mcp-integration-guide_fsm",
-        "states": [
-          {
-            "kind": "simple",
-            "id": "c89d71cdf9de44229c2a7dd896689e2b",
-            "name": "start",
-            "on_entry_start": [],
-            "on_entry": [],
-            "on_entry_end": [],
-            "on_exit_start": [],
-            "on_exit": [],
-            "on_exit_end": [],
-            "on_active": [],
-            "custom_events": {},
-            "inputs": [],
-            "outputs": [],
-            "reads": [],
-            "writes": [],
-            "skill_ref": null
-          }
-        ],
-        "transitions": [],
-        "initial_state": "c89d71cdf9de44229c2a7dd896689e2b",
-        "final_states": [],
-        "blackboard": {
-          "class_definitions": [],
-          "variables": {}
-        }
-      },
-      "transfer_on": [
-        {
-          "name": "done",
-          "color": "#4488ff",
-          "description": ""
-        }
-      ],
-      "call_agents": []
+      }
     },
     {
-      "kind": "wrapped_skill",
+      "kind": "reference_skill",
       "id": "38ffc4f1f2704ea1a197d9f5d30095e6",
       "name": "automation-recommender-guide",
       "description": "외부 배경 지식 — 자동화 추천(claude-code-setup). 어떤 훅·스킬·MCP·서브에이전트가 이 코드베이스에 맞는지 판단이 서지 않을 때 참고한다.",
       "when_to_use": "",
-      "body": "",
+      "body": "Source: `claude-code-setup@claude-plugins-official:claude-automation-recommender`\n",
       "config": {
-        "kind": "wrapped",
+        "kind": "reference",
         "model": "inherit",
         "effort": null,
         "hooks": null,
         "argument_hint": null,
         "allowed_tools": [],
         "paths": null,
-        "source": "claude-code-setup@claude-plugins-official:claude-automation-recommender",
-        "usage": "reference",
-        "enabled": true,
-        "disable_model_invocation": null,
         "user_invocable": null
-      },
-      "fsm": {
-        "id": "775dcd0f1a794b5a819bb16d0f5893e9",
-        "name": "automation-recommender-guide_fsm",
-        "states": [
-          {
-            "kind": "simple",
-            "id": "138be706652043a38ae7aca12497befa",
-            "name": "start",
-            "on_entry_start": [],
-            "on_entry": [],
-            "on_entry_end": [],
-            "on_exit_start": [],
-            "on_exit": [],
-            "on_exit_end": [],
-            "on_active": [],
-            "custom_events": {},
-            "inputs": [],
-            "outputs": [],
-            "reads": [],
-            "writes": [],
-            "skill_ref": null
-          }
-        ],
-        "transitions": [],
-        "initial_state": "138be706652043a38ae7aca12497befa",
-        "final_states": [],
-        "blackboard": {
-          "class_definitions": [],
-          "variables": {}
-        }
-      },
-      "transfer_on": [
-        {
-          "name": "done",
-          "color": "#4488ff",
-          "description": ""
-        }
-      ],
-      "call_agents": []
+      }
     },
     {
-      "kind": "wrapped_skill",
+      "kind": "reference_skill",
       "id": "323fcfe0f51b4a7ea4dcfd6a53b1741a",
       "name": "hookify-rules-guide",
       "description": "외부 배경 지식 — hookify 규칙 문법(hookify:writing-rules). 원치 않는 행동을 막는 훅 규칙을 어떻게 쓰는지 참고한다.",
       "when_to_use": "",
-      "body": "",
+      "body": "Source: `hookify@claude-plugins-official:writing-rules`\n",
       "config": {
-        "kind": "wrapped",
+        "kind": "reference",
         "model": "inherit",
         "effort": null,
         "hooks": null,
         "argument_hint": null,
         "allowed_tools": [],
         "paths": null,
-        "source": "hookify@claude-plugins-official:writing-rules",
-        "usage": "reference",
-        "enabled": true,
-        "disable_model_invocation": null,
         "user_invocable": null
-      },
-      "fsm": {
-        "id": "bf14200cdf09448596865cb93c70717a",
-        "name": "hookify-rules-guide_fsm",
-        "states": [
-          {
-            "kind": "simple",
-            "id": "a75698aa3c5742c487389d8431c97e11",
-            "name": "start",
-            "on_entry_start": [],
-            "on_entry": [],
-            "on_entry_end": [],
-            "on_exit_start": [],
-            "on_exit": [],
-            "on_exit_end": [],
-            "on_active": [],
-            "custom_events": {},
-            "inputs": [],
-            "outputs": [],
-            "reads": [],
-            "writes": [],
-            "skill_ref": null
-          }
-        ],
-        "transitions": [],
-        "initial_state": "a75698aa3c5742c487389d8431c97e11",
-        "final_states": [],
-        "blackboard": {
-          "class_definitions": [],
-          "variables": {}
-        }
-      },
-      "transfer_on": [
-        {
-          "name": "done",
-          "color": "#4488ff",
-          "description": ""
-        }
-      ],
-      "call_agents": []
+      }
     },
     {
-      "kind": "wrapped_skill",
+      "kind": "reference_skill",
       "id": "1d6a895ff416418b8bc256044bee6070",
       "name": "hook-authoring-guide",
       "description": "외부 배경 지식 — CC 훅 저작(plugin-dev:hook-development). 이벤트 종류·matcher 제약·프롬프트 훅 API를 참고한다.",
       "when_to_use": "",
-      "body": "",
+      "body": "Source: `plugin-dev@claude-plugins-official:hook-development`\n",
       "config": {
-        "kind": "wrapped",
+        "kind": "reference",
         "model": "inherit",
         "effort": null,
         "hooks": null,
         "argument_hint": null,
         "allowed_tools": [],
         "paths": null,
-        "source": "plugin-dev@claude-plugins-official:hook-development",
-        "usage": "reference",
-        "enabled": true,
-        "disable_model_invocation": null,
         "user_invocable": null
-      },
-      "fsm": {
-        "id": "bc53502a8c3c4511a62132952402d642",
-        "name": "hook-authoring-guide_fsm",
-        "states": [
-          {
-            "kind": "simple",
-            "id": "530da020083b4439a5eeddcd82bfb108",
-            "name": "start",
-            "on_entry_start": [],
-            "on_entry": [],
-            "on_entry_end": [],
-            "on_exit_start": [],
-            "on_exit": [],
-            "on_exit_end": [],
-            "on_active": [],
-            "custom_events": {},
-            "inputs": [],
-            "outputs": [],
-            "reads": [],
-            "writes": [],
-            "skill_ref": null
-          }
-        ],
-        "transitions": [],
-        "initial_state": "530da020083b4439a5eeddcd82bfb108",
-        "final_states": [],
-        "blackboard": {
-          "class_definitions": [],
-          "variables": {}
-        }
-      },
-      "transfer_on": [
-        {
-          "name": "done",
-          "color": "#4488ff",
-          "description": ""
-        }
-      ],
-      "call_agents": []
+      }
     },
     {
-      "kind": "wrapped_skill",
+      "kind": "reference_skill",
       "id": "dadf05d8f629474a9c35b7d9aaac81a4",
       "name": "agent-authoring-guide",
       "description": "외부 배경 지식 — 서브에이전트 저작(plugin-dev:agent-development). 시스템 프롬프트·트리거 조건·도구 지정 규범을 참고한다.",
       "when_to_use": "",
-      "body": "",
+      "body": "Source: `plugin-dev@claude-plugins-official:agent-development`\n",
       "config": {
-        "kind": "wrapped",
+        "kind": "reference",
         "model": "inherit",
         "effort": null,
         "hooks": null,
         "argument_hint": null,
         "allowed_tools": [],
         "paths": null,
-        "source": "plugin-dev@claude-plugins-official:agent-development",
-        "usage": "reference",
-        "enabled": true,
-        "disable_model_invocation": null,
         "user_invocable": null
-      },
-      "fsm": {
-        "id": "16807eb6d46a4bb0b70a99a824bdf450",
-        "name": "agent-authoring-guide_fsm",
-        "states": [
-          {
-            "kind": "simple",
-            "id": "e182869a0d8440dbb297a7506a556556",
-            "name": "start",
-            "on_entry_start": [],
-            "on_entry": [],
-            "on_entry_end": [],
-            "on_exit_start": [],
-            "on_exit": [],
-            "on_exit_end": [],
-            "on_active": [],
-            "custom_events": {},
-            "inputs": [],
-            "outputs": [],
-            "reads": [],
-            "writes": [],
-            "skill_ref": null
-          }
-        ],
-        "transitions": [],
-        "initial_state": "e182869a0d8440dbb297a7506a556556",
-        "final_states": [],
-        "blackboard": {
-          "class_definitions": [],
-          "variables": {}
-        }
-      },
-      "transfer_on": [
-        {
-          "name": "done",
-          "color": "#4488ff",
-          "description": ""
-        }
-      ],
-      "call_agents": []
+      }
     },
     {
-      "kind": "wrapped_skill",
+      "kind": "reference_skill",
       "id": "12883bfee4ed4acca64d2be557808bc9",
       "name": "plugin-structure-guide",
       "description": "외부 배경 지식 — 플러그인 구조·매니페스트(plugin-dev:plugin-structure). 디렉토리 배치·plugin.json·자동 발견 규약을 참고한다.",
       "when_to_use": "",
-      "body": "",
+      "body": "Source: `plugin-dev@claude-plugins-official:plugin-structure`\n",
       "config": {
-        "kind": "wrapped",
+        "kind": "reference",
         "model": "inherit",
         "effort": null,
         "hooks": null,
         "argument_hint": null,
         "allowed_tools": [],
         "paths": null,
-        "source": "plugin-dev@claude-plugins-official:plugin-structure",
-        "usage": "reference",
-        "enabled": true,
-        "disable_model_invocation": null,
         "user_invocable": null
-      },
-      "fsm": {
-        "id": "3186a5523fc343da98222f7f02832272",
-        "name": "plugin-structure-guide_fsm",
-        "states": [
-          {
-            "kind": "simple",
-            "id": "2653e3a4d5334008915fab94dc144170",
-            "name": "start",
-            "on_entry_start": [],
-            "on_entry": [],
-            "on_entry_end": [],
-            "on_exit_start": [],
-            "on_exit": [],
-            "on_exit_end": [],
-            "on_active": [],
-            "custom_events": {},
-            "inputs": [],
-            "outputs": [],
-            "reads": [],
-            "writes": [],
-            "skill_ref": null
-          }
-        ],
-        "transitions": [],
-        "initial_state": "2653e3a4d5334008915fab94dc144170",
-        "final_states": [],
-        "blackboard": {
-          "class_definitions": [],
-          "variables": {}
-        }
-      },
-      "transfer_on": [
-        {
-          "name": "done",
-          "color": "#4488ff",
-          "description": ""
-        }
-      ],
-      "call_agents": []
+      }
     },
     {
-      "kind": "fork_skill",
+      "kind": "sync_fork_skill",
       "id": "45f751464bb84fbe95d74aef8f04ddeb",
       "name": "sdfsdf",
       "description": "",
       "when_to_use": "",
       "body": "",
       "config": {
-        "kind": "fork",
+        "kind": "sync_fork",
         "model": "inherit",
         "effort": null,
         "hooks": null,
@@ -1389,6 +1002,47 @@
       "id": "6a500c27767e443789499e6e711333bd",
       "name": "graph-surgeon",
       "description": "대규모 그래프 재배선을 별도 컨텍스트에서 수행한다.",
+      "config": {
+        "kind": "agent",
+        "model": "opus",
+        "effort": "high",
+        "hooks": {
+          "check-daedalus-mcp": {}
+        },
+        "tools": [
+          "mcp__daedalus__get_project",
+          "mcp__daedalus__get_component",
+          "mcp__daedalus__get_selection",
+          "mcp__daedalus__get_history",
+          "mcp__daedalus__create_state",
+          "mcp__daedalus__move_state",
+          "mcp__daedalus__rename_state",
+          "mcp__daedalus__delete_state",
+          "mcp__daedalus__connect_states",
+          "mcp__daedalus__disconnect_states",
+          "mcp__daedalus__set_transition",
+          "mcp__daedalus__set_transfer_on",
+          "mcp__daedalus__add_agent_call",
+          "mcp__daedalus__remove_agent_call",
+          "mcp__daedalus__place_component",
+          "mcp__daedalus__set_state_access",
+          "mcp__daedalus__validate_project",
+          "mcp__daedalus__undo",
+          "mcp__daedalus__redo"
+        ],
+        "disallowed_tools": null,
+        "permission_mode": "acceptEdits",
+        "max_turns": 25,
+        "skills": [],
+        "mcp_servers": [
+          "daedalus"
+        ],
+        "memory": null,
+        "color": "cyan",
+        "background": false,
+        "isolation": "none"
+      },
+      "body": "# 대규모 그래프 재배선\n\n호출자가 캔버스를 크게 갈아엎는 작업을 넘겼다. 별도 컨텍스트에서 도는 이유는\n호출자의 대화를 수십 번의 편집 호출로 오염시키지 않기 위해서다.\n\n## 작업 규율\n\n- **조사 없이 자르지 마라.** 먼저 `get_project`로 전체 그래프를 훑어 고칠 목록을\n  만들고, 그 목록대로만 편집한다. 목록에 없는 것을 \"겸사겸사\" 고치지 마라 —\n  호출자가 의도한 범위를 넘는다.\n- **모든 편집은 사용자의 undo 스택에 들어간다.** 되돌릴 수 있지만, 수십 개의\n  편집을 되돌리는 것은 사용자에게 고역이다. 편집 전에 계획을 확정하라.\n- **분기 의미론을 지켜라.** 노드와 선만 만들면 분기가 표현되지 않는다. 여러 갈래로\n  나가는 노드는 `set_transfer_on`으로 갈래를 선언하고 각 전이에 trigger를 물려라.\n  에이전트로 가는 전이는 `add_agent_call`로 만든 호출 포트에서만 나갈 수 있다.\n- **끝나면 검증하라.** `validate_project`가 에러 0인 상태로 반환한다. 경고는\n  원인과 함께 보고에 적는다.\n\n## 보고\n\n완료 시 무엇을 바꿨는지 요약한다: 만든/지운 전이 수, 선언한 포트, 남은 경고.\n블랙보드 `GraphDraft.wired`에 배선 완료 여부를 기록한다.\n\n재배선을 끝낼 수 없으면(범위 불명확, 해소 불가 검증 에러) **blocked**로 끝내라 —\n남은 목록과 막힌 이유를 보고에 적는다. 절반쯤 자른 그래프를 done으로 보고하는\n것이 최악이다: 호출자는 완료로 믿고 다음 단계로 넘어간다.\n",
       "fsm": {
         "id": "90eb57ad384b4cc480eb22e8785a8eab",
         "name": "graph-surgeon_fsm",
@@ -1527,73 +1181,6 @@
           "variables": {}
         }
       },
-      "config": {
-        "kind": "agent",
-        "model": "opus",
-        "effort": "high",
-        "hooks": {
-          "check-daedalus-mcp": {}
-        },
-        "tools": [
-          "mcp__daedalus__get_project",
-          "mcp__daedalus__get_component",
-          "mcp__daedalus__get_selection",
-          "mcp__daedalus__get_history",
-          "mcp__daedalus__create_state",
-          "mcp__daedalus__move_state",
-          "mcp__daedalus__rename_state",
-          "mcp__daedalus__delete_state",
-          "mcp__daedalus__connect_states",
-          "mcp__daedalus__disconnect_states",
-          "mcp__daedalus__set_transition",
-          "mcp__daedalus__set_transfer_on",
-          "mcp__daedalus__add_agent_call",
-          "mcp__daedalus__remove_agent_call",
-          "mcp__daedalus__place_component",
-          "mcp__daedalus__set_state_access",
-          "mcp__daedalus__validate_project",
-          "mcp__daedalus__undo",
-          "mcp__daedalus__redo"
-        ],
-        "disallowed_tools": null,
-        "permission_mode": "acceptEdits",
-        "max_turns": 25,
-        "skills": [],
-        "mcp_servers": [
-          "daedalus"
-        ],
-        "memory": null,
-        "background": false,
-        "isolation": "none",
-        "color": "cyan"
-      },
-      "execution_policy": {
-        "mode": "fixed",
-        "count": 1,
-        "join": "all",
-        "join_count": null
-      },
-      "body": "# 대규모 그래프 재배선\n\n호출자가 캔버스를 크게 갈아엎는 작업을 넘겼다. 별도 컨텍스트에서 도는 이유는\n호출자의 대화를 수십 번의 편집 호출로 오염시키지 않기 위해서다.\n\n## 작업 규율\n\n- **조사 없이 자르지 마라.** 먼저 `get_project`로 전체 그래프를 훑어 고칠 목록을\n  만들고, 그 목록대로만 편집한다. 목록에 없는 것을 \"겸사겸사\" 고치지 마라 —\n  호출자가 의도한 범위를 넘는다.\n- **모든 편집은 사용자의 undo 스택에 들어간다.** 되돌릴 수 있지만, 수십 개의\n  편집을 되돌리는 것은 사용자에게 고역이다. 편집 전에 계획을 확정하라.\n- **분기 의미론을 지켜라.** 노드와 선만 만들면 분기가 표현되지 않는다. 여러 갈래로\n  나가는 노드는 `set_transfer_on`으로 갈래를 선언하고 각 전이에 trigger를 물려라.\n  에이전트로 가는 전이는 `add_agent_call`로 만든 호출 포트에서만 나갈 수 있다.\n- **끝나면 검증하라.** `validate_project`가 에러 0인 상태로 반환한다. 경고는\n  원인과 함께 보고에 적는다.\n\n## 보고\n\n완료 시 무엇을 바꿨는지 요약한다: 만든/지운 전이 수, 선언한 포트, 남은 경고.\n블랙보드 `GraphDraft.wired`에 배선 완료 여부를 기록한다.\n\n재배선을 끝낼 수 없으면(범위 불명확, 해소 불가 검증 에러) **blocked**로 끝내라 —\n남은 목록과 막힌 이유를 보고에 적는다. 절반쯤 자른 그래프를 done으로 보고하는\n것이 최악이다: 호출자는 완료로 믿고 다음 단계로 넘어간다.\n",
-      "reference_placements": [],
-      "graph_layout": {
-        "cb18bfdb234446ef8a6bddcf5d0a0ad5": [
-          0.0,
-          100.0
-        ],
-        "5d64f44a9b8442428cf2ed42a51be0f0": [
-          220.0,
-          0.0
-        ],
-        "3c064c3de9c4412b9756a969be37811a": [
-          470.0,
-          0.0
-        ],
-        "2c26b93aa373476dbabbd85da6e0cc53": [
-          602.9292577634706,
-          180.00165244354196
-        ]
-      },
-      "edge_layout": {},
       "transfer_on": [
         {
           "name": "done",
@@ -1613,6 +1200,40 @@
       "id": "2a363db3872c456e891748d2be405b92",
       "name": "body-writer",
       "description": "컴포넌트 본문·프론트매터를 별도 컨텍스트에서 작성한다 — graph-author가 목록이 길어 한 컨텍스트에 안 담길 때 위임.",
+      "config": {
+        "kind": "agent",
+        "model": "opus",
+        "effort": "high",
+        "hooks": {
+          "check-daedalus-mcp": {}
+        },
+        "tools": [
+          "mcp__daedalus__get_project",
+          "mcp__daedalus__get_component",
+          "mcp__daedalus__list_component_fields",
+          "mcp__daedalus__set_component_field",
+          "mcp__daedalus__set_component_body",
+          "mcp__daedalus__set_component_description",
+          "mcp__daedalus__set_component_when_to_use",
+          "mcp__daedalus__get_body_outline",
+          "mcp__daedalus__get_body_section",
+          "mcp__daedalus__set_body_section",
+          "mcp__daedalus__compile_preview",
+          "mcp__daedalus__undo"
+        ],
+        "disallowed_tools": null,
+        "permission_mode": "acceptEdits",
+        "max_turns": 30,
+        "skills": [],
+        "mcp_servers": [
+          "daedalus"
+        ],
+        "memory": null,
+        "color": null,
+        "background": false,
+        "isolation": "none"
+      },
+      "body": "# 본문 작성 위임\n\ngraph-author로부터 위임받은 컴포넌트의 본문과 프론트매터를 채운다.\n\n## 입력\n\n호출 시 `note`에 대상 컴포넌트 이름이 기록돼 있다. `get_component`로 현재\n상태를 확인하고 빈 곳(body/when_to_use/allowed_tools 등)을 채워라.\n\n## 작성 원칙\n\n- **왜를 적어라.** \"X를 하라\"보다 \"Y가 깨지므로 X를 하라\"가 지시를 지키게 한다.\n- 다음 단계·작업 재개·블랙보드 단락은 **컴파일러가 자동으로 붙인다** — 본문에\n  직접 쓰면 이중이 된다.\n- `list_component_fields`로 그 컴포넌트가 받는 필드를 확인하고\n  `set_component_field`로 채운다. 짐작으로 필드명을 넘기지 마라.\n- `compile_preview`로 산출 결과를 확인해 껍데기가 아닌지 본다.\n\n## 완료 갈림길\n\n- 대상 컴포넌트의 본문·프론트매터를 채웠으면 **done**으로 보고한다.\n- 대상을 찾을 수 없거나(이름 오타·삭제됨) 작성에 필요한 정보(목표·역할)가\n  부족하면 **failed** — 무엇이 막혔는지 첫 줄에 명시하고 임의로 지어내지 마라.\n  빈 본문을 그럴듯한 추측으로 채우는 것이 최악이다.\n",
       "fsm": {
         "id": "c71181a884c5435d8d40b0a9b4d008c2",
         "name": "body-writer_fsm",
@@ -1643,49 +1264,6 @@
           "variables": {}
         }
       },
-      "config": {
-        "kind": "agent",
-        "model": "opus",
-        "effort": "high",
-        "hooks": {
-          "check-daedalus-mcp": {}
-        },
-        "tools": [
-          "mcp__daedalus__get_project",
-          "mcp__daedalus__get_component",
-          "mcp__daedalus__list_component_fields",
-          "mcp__daedalus__set_component_field",
-          "mcp__daedalus__set_component_body",
-          "mcp__daedalus__set_component_description",
-          "mcp__daedalus__set_component_when_to_use",
-          "mcp__daedalus__get_body_outline",
-          "mcp__daedalus__get_body_section",
-          "mcp__daedalus__set_body_section",
-          "mcp__daedalus__compile_preview",
-          "mcp__daedalus__undo"
-        ],
-        "disallowed_tools": null,
-        "permission_mode": "acceptEdits",
-        "max_turns": 30,
-        "skills": [],
-        "mcp_servers": [
-          "daedalus"
-        ],
-        "memory": null,
-        "background": false,
-        "isolation": "none",
-        "color": null
-      },
-      "execution_policy": {
-        "mode": "fixed",
-        "count": 1,
-        "join": "all",
-        "join_count": null
-      },
-      "body": "# 본문 작성 위임\n\ngraph-author로부터 위임받은 컴포넌트의 본문과 프론트매터를 채운다.\n\n## 입력\n\n호출 시 `note`에 대상 컴포넌트 이름이 기록돼 있다. `get_component`로 현재\n상태를 확인하고 빈 곳(body/when_to_use/allowed_tools 등)을 채워라.\n\n## 작성 원칙\n\n- **왜를 적어라.** \"X를 하라\"보다 \"Y가 깨지므로 X를 하라\"가 지시를 지키게 한다.\n- 다음 단계·작업 재개·블랙보드 단락은 **컴파일러가 자동으로 붙인다** — 본문에\n  직접 쓰면 이중이 된다.\n- `list_component_fields`로 그 컴포넌트가 받는 필드를 확인하고\n  `set_component_field`로 채운다. 짐작으로 필드명을 넘기지 마라.\n- `compile_preview`로 산출 결과를 확인해 껍데기가 아닌지 본다.\n\n## 완료 갈림길\n\n- 대상 컴포넌트의 본문·프론트매터를 채웠으면 **done**으로 보고한다.\n- 대상을 찾을 수 없거나(이름 오타·삭제됨) 작성에 필요한 정보(목표·역할)가\n  부족하면 **failed** — 무엇이 막혔는지 첫 줄에 명시하고 임의로 지어내지 마라.\n  빈 본문을 그럴듯한 추측으로 채우는 것이 최악이다.\n",
-      "reference_placements": [],
-      "graph_layout": {},
-      "edge_layout": {},
       "transfer_on": [
         {
           "name": "done",
@@ -1705,36 +1283,6 @@
       "id": "48fb2be4813d4f9cb536c3ca4cf7f94c",
       "name": "env-configurator",
       "description": "설치 환경 구성을 별도 컨텍스트에서 처리한다 — 작업 폴더 문서·규칙·설정·훅을 한 번에 정리한다.",
-      "fsm": {
-        "id": "bfcb09a1220046e0b21f965cdcb37a27",
-        "name": "env-configurator_fsm",
-        "states": [
-          {
-            "kind": "entry_point",
-            "id": "ba2df6df579845fe9df191853d5353ac",
-            "name": "entry",
-            "on_entry_start": [],
-            "on_entry": [],
-            "on_entry_end": [],
-            "on_exit_start": [],
-            "on_exit": [],
-            "on_exit_end": [],
-            "on_active": [],
-            "custom_events": {},
-            "inputs": [],
-            "outputs": [],
-            "reads": [],
-            "writes": []
-          }
-        ],
-        "transitions": [],
-        "initial_state": "ba2df6df579845fe9df191853d5353ac",
-        "final_states": [],
-        "blackboard": {
-          "class_definitions": [],
-          "variables": {}
-        }
-      },
       "config": {
         "kind": "agent",
         "model": "inherit",
@@ -1768,20 +1316,41 @@
         "skills": [],
         "mcp_servers": null,
         "memory": null,
+        "color": null,
         "background": false,
-        "isolation": "none",
-        "color": null
-      },
-      "execution_policy": {
-        "mode": "fixed",
-        "count": 1,
-        "join": "all",
-        "join_count": null
+        "isolation": "none"
       },
       "body": "# 설치 환경 구성 — 작업 폴더에 남길 것을 한 번에 정리한다\n\n호출자가 넘긴 범위 안에서, 이 플러그인이 **설치 대상 작업 폴더에 남기는 것**을\n전부 구성한다. 본 설계 흐름(그래프·본문)과 관심사가 다르고 텍스트가 길어 별도\n컨텍스트로 위임된 일이다.\n\n다루는 것은 넷이다:\n\n1. **`.claude/CLAUDE.md` 구역** — 매 세션 항상 실리는 최소한. 플러그인의 존재,\n   진입 스킬, 지켜야 할 핵심 규약 한두 줄. `set_claude_md`.\n2. **`.claude/rules/<이름>.md`** — 특정 경로를 만질 때만 필요한 규칙.\n   `create_rule` + `set_rule_paths`(glob). paths를 비우면 항상 로드되므로,\n   항상 필요한 내용이면 CLAUDE.md 구역이 맞는지 다시 판단하라.\n   **본문 맨 위에 `---` 프론트매터를 직접 쓰지 마라** — paths는 전용 도구로\n   지정한다(직접 쓰면 `---`가 두 번 나가 `rule_body_frontmatter` 경고).\n3. **작업 폴더 설정** — 지켜지지 않으면 곤란한 것만(`permissions.deny` 등).\n   `get_workspace_settings`/`set_workspace_settings`. hooks 키는 거부된다 —\n   훅의 정본은 훅 라이브러리다.\n4. **훅** — 반복 강제·감시·차단. `create_hook`으로 정의하고\n   `set_component_hooks`로 **부착**한다. 부착하지 않으면 산출에 실리지 않는다.\n\n## 판단 기준\n\n- 문서는 **읽히기를 기대하는 것**, 설정·훅은 **강제되는 것**이다. 지켜지지\n  않으면 곤란한 것을 문서에만 적어 두지 마라.\n- CLAUDE.md 구역과 paths 없는 rule은 **매 세션 컨텍스트 비용**이다. 한 줄이\n  곧 사용료이므로 짧을수록 좋다.\n- 빌드 타깃이 MARKETPLACE면 1~3은 배출되지 않는다 — 그때는 훅만 다루고 나머지는\n  손대지 않는다(내용을 넣으면 경고만 쌓인다).\n\n## 넣을 것이 없으면 넣지 않는다\n\n억지로 채우지 마라. 빈 문서·빈 설정은 아무것도 배출하지 않는다.\n\n## 막혔을 때\n\n빌드 타깃이나 설치 대상 폴더, 권한 범위가 정해지지 않아 결정할 수 없으면\n지어내지 말고 **blocked**로 나가라 — 무엇이 정해져야 하는지 함께 보고한다.\n\n## 완료\n\n`list_workspace_docs`와 `get_workspace_settings`로 최종 상태를 확인하고, 무엇을\n넣었는지(문서 이름·규칙 paths·설정 키·훅 이름과 부착 대상) 보고한 뒤 **done**.\n",
-      "reference_placements": [],
-      "graph_layout": {},
-      "edge_layout": {},
+      "fsm": {
+        "id": "bfcb09a1220046e0b21f965cdcb37a27",
+        "name": "env-configurator_fsm",
+        "states": [
+          {
+            "kind": "entry_point",
+            "id": "ba2df6df579845fe9df191853d5353ac",
+            "name": "entry",
+            "on_entry_start": [],
+            "on_entry": [],
+            "on_entry_end": [],
+            "on_exit_start": [],
+            "on_exit": [],
+            "on_exit_end": [],
+            "on_active": [],
+            "custom_events": {},
+            "inputs": [],
+            "outputs": [],
+            "reads": [],
+            "writes": []
+          }
+        ],
+        "transitions": [],
+        "initial_state": "ba2df6df579845fe9df191853d5353ac",
+        "final_states": [],
+        "blackboard": {
+          "class_definitions": [],
+          "variables": {}
+        }
+      },
       "transfer_on": [
         {
           "name": "done",
@@ -1801,6 +1370,32 @@
       "id": "8dac3cc11bcc4fe79fba7894036a0925",
       "name": "tooling-scout",
       "description": "각 단계가 무엇으로 일할지 별도 컨텍스트에서 조사한다 — 내장 도구·기존 MCP·동봉 스크립트·신규 제작 중 조달 방법을 정해 온다.",
+      "config": {
+        "kind": "agent",
+        "model": "inherit",
+        "effort": null,
+        "hooks": null,
+        "tools": [
+          "mcp__daedalus__get_project",
+          "mcp__daedalus__get_component",
+          "mcp__daedalus__list_tool_candidates",
+          "mcp__daedalus__list_wrappable_skills",
+          "mcp__daedalus__set_external_plugins",
+          "mcp__daedalus__set_mcp_server_def",
+          "mcp__daedalus__validate_project",
+          "mcp__daedalus__compile_check"
+        ],
+        "disallowed_tools": null,
+        "permission_mode": "default",
+        "max_turns": null,
+        "skills": [],
+        "mcp_servers": null,
+        "memory": null,
+        "color": null,
+        "background": false,
+        "isolation": "none"
+      },
+      "body": "# 도구 조달 조사 — 각 단계는 무엇으로 일하는가\n\n구조가 완성돼도 단계가 쓸 도구가 없으면 그 지침은 실행 불가능한 소망이다.\n호출자가 넘긴 범위의 노드를 하나씩 보며 **\"이 단계는 어떤 도구로 이 일을\n하는가\"**를 묻고, 조달 방법을 정해 온다. 조사·비교가 길어 별도 컨텍스트로\n위임된 일이다.\n\n## 판정 순서\n\n노드마다 필요한 능력을 적고, 아래 순서로 조달 방법을 고른다. 위가 쌀수록 좋다 —\n아래로 갈수록 만들고 유지할 것이 늘어난다.\n\n1. **CC 내장 도구로 충분** (Read/Write/Edit/Bash/Glob/Grep/WebFetch …)\n   → 조달 없음. 본문 작성 단계에서 `allowed_tools`만 좁힌다.\n2. **기존 MCP 서버가 이미 제공** (`mcp__<서버>__<도구>`)\n   → 도구 이름을 기록하고 **서버 정의를 `set_mcp_server_def`로 등록**한다.\n   정의가 없으면 로컬 빌드가 설치 배선을 못 해 `missing_mcp_server_def`\n   경고가 난다. **사용 선언된 외부 플러그인이 자기 `.mcp.json`으로 제공하는\n   서버는 정의가 필요 없다** — 플러그인 활성화가 함께 가져온다\n   (`list_wrappable_skills`의 `mcp_servers`).\n3. **반복 스크립트/검증 로직이 필요** (파서, 포맷 변환, 일괄 검사)\n   → CLI 스크립트를 `files/`에 동봉하고 본문이 `${ROOT}/files/` 아래 경로로\n   참조, 실행 단계의 `allowed_tools`에 `Bash`를 연다. 프롬프트로 매번 시키는\n   것보다 스크립트 하나가 결정적이고 싸다.\n4. **새 CLI 도구를 만들어야 함** — 3의 동봉 스크립트로 감당이 안 될 때다:\n   런타임·의존성 설치가 필요하거나, 이 플러그인 밖에서도 재사용하거나,\n   성능이 스크립트 수준을 넘어야 하는 경우.\n   → **먼저 인터페이스를 계약으로 확정**하라: 도구 이름, 인자, 출력 형식\n   (LLM이 파싱하므로 JSON이나 고정 포맷), 실패 시 종료 코드. 구현은 이\n   플러그인 범위 밖의 **별도 작업**이므로 그 사실을 함께 보고한다.\n5. **새 MCP 서버를 만들어야 함** (세션 유지 서비스, GUI 연동, 외부 시스템)\n   → 가장 비싸다. 상태 없는 단발 실행이면 CLI(4)로 충분하다 — MCP가 필요한\n   것은 살아 있는 프로세스와 대화해야 할 때뿐이다.\n\n## 이미 있는 것부터 본다\n\n새로 만들자고 결론 내기 전에 **외부 플러그인 카탈로그를 먼저 훑어라**:\n`list_wrappable_skills`가 등록된 마켓플레이스 폴더의 플러그인·스킬·MCP 서버를\n보여준다. 필요한 능력을 이미 제공하는 플러그인이 있으면 `set_external_plugins`로\n사용 선언하는 것이 4·5번보다 압도적으로 싸다 — 빌드가 의존성을 자동 배선한다.\n\n## 점검 항목\n\n- 본문에 \"~를 실행한다\"고 썼는데 그 도구가 어디에도 없는 단계\n- `mcp__` 도구를 참조하는데 정의도 없고 플러그인도 제공하지 않는 서버\n- 에이전트가 도구 미지정(전 도구 상속)인 채로 남아 있는 것 — 과하다\n\n## 완료\n\n노드별 조달 결정(내장/기존 MCP/외부 플러그인/동봉 CLI/신규)을 정리해\n`GraphDraft`에 기록하고, 결정 목록과 그 근거를 보고한 뒤 **done**.\n결정된 도구 목록이 본문 작성 단계에서 `allowed_tools`/`tools` 프론트매터가 된다.\n\n## 막혔을 때\n\n새로 만들어야 한다는 결론인데 그 범위를 호출자가 승인하지 않았거나, 노드의\n목적이 불명확해 필요한 능력을 못 정하면 지어내지 말고 **blocked**로 나가라.\n",
       "fsm": {
         "id": "6a4eaa73eda94d6686b29aa7b4081830",
         "name": "tooling-scout_fsm",
@@ -1831,41 +1426,6 @@
           "variables": {}
         }
       },
-      "config": {
-        "kind": "agent",
-        "model": "inherit",
-        "effort": null,
-        "hooks": null,
-        "tools": [
-          "mcp__daedalus__get_project",
-          "mcp__daedalus__get_component",
-          "mcp__daedalus__list_tool_candidates",
-          "mcp__daedalus__list_wrappable_skills",
-          "mcp__daedalus__set_external_plugins",
-          "mcp__daedalus__set_mcp_server_def",
-          "mcp__daedalus__validate_project",
-          "mcp__daedalus__compile_check"
-        ],
-        "disallowed_tools": null,
-        "permission_mode": "default",
-        "max_turns": null,
-        "skills": [],
-        "mcp_servers": null,
-        "memory": null,
-        "background": false,
-        "isolation": "none",
-        "color": null
-      },
-      "execution_policy": {
-        "mode": "fixed",
-        "count": 1,
-        "join": "all",
-        "join_count": null
-      },
-      "body": "# 도구 조달 조사 — 각 단계는 무엇으로 일하는가\n\n구조가 완성돼도 단계가 쓸 도구가 없으면 그 지침은 실행 불가능한 소망이다.\n호출자가 넘긴 범위의 노드를 하나씩 보며 **\"이 단계는 어떤 도구로 이 일을\n하는가\"**를 묻고, 조달 방법을 정해 온다. 조사·비교가 길어 별도 컨텍스트로\n위임된 일이다.\n\n## 판정 순서\n\n노드마다 필요한 능력을 적고, 아래 순서로 조달 방법을 고른다. 위가 쌀수록 좋다 —\n아래로 갈수록 만들고 유지할 것이 늘어난다.\n\n1. **CC 내장 도구로 충분** (Read/Write/Edit/Bash/Glob/Grep/WebFetch …)\n   → 조달 없음. 본문 작성 단계에서 `allowed_tools`만 좁힌다.\n2. **기존 MCP 서버가 이미 제공** (`mcp__<서버>__<도구>`)\n   → 도구 이름을 기록하고 **서버 정의를 `set_mcp_server_def`로 등록**한다.\n   정의가 없으면 로컬 빌드가 설치 배선을 못 해 `missing_mcp_server_def`\n   경고가 난다. **사용 선언된 외부 플러그인이 자기 `.mcp.json`으로 제공하는\n   서버는 정의가 필요 없다** — 플러그인 활성화가 함께 가져온다\n   (`list_wrappable_skills`의 `mcp_servers`).\n3. **반복 스크립트/검증 로직이 필요** (파서, 포맷 변환, 일괄 검사)\n   → CLI 스크립트를 `files/`에 동봉하고 본문이 `${ROOT}/files/` 아래 경로로\n   참조, 실행 단계의 `allowed_tools`에 `Bash`를 연다. 프롬프트로 매번 시키는\n   것보다 스크립트 하나가 결정적이고 싸다.\n4. **새 CLI 도구를 만들어야 함** — 3의 동봉 스크립트로 감당이 안 될 때다:\n   런타임·의존성 설치가 필요하거나, 이 플러그인 밖에서도 재사용하거나,\n   성능이 스크립트 수준을 넘어야 하는 경우.\n   → **먼저 인터페이스를 계약으로 확정**하라: 도구 이름, 인자, 출력 형식\n   (LLM이 파싱하므로 JSON이나 고정 포맷), 실패 시 종료 코드. 구현은 이\n   플러그인 범위 밖의 **별도 작업**이므로 그 사실을 함께 보고한다.\n5. **새 MCP 서버를 만들어야 함** (세션 유지 서비스, GUI 연동, 외부 시스템)\n   → 가장 비싸다. 상태 없는 단발 실행이면 CLI(4)로 충분하다 — MCP가 필요한\n   것은 살아 있는 프로세스와 대화해야 할 때뿐이다.\n\n## 이미 있는 것부터 본다\n\n새로 만들자고 결론 내기 전에 **외부 플러그인 카탈로그를 먼저 훑어라**:\n`list_wrappable_skills`가 등록된 마켓플레이스 폴더의 플러그인·스킬·MCP 서버를\n보여준다. 필요한 능력을 이미 제공하는 플러그인이 있으면 `set_external_plugins`로\n사용 선언하는 것이 4·5번보다 압도적으로 싸다 — 빌드가 의존성을 자동 배선한다.\n\n## 점검 항목\n\n- 본문에 \"~를 실행한다\"고 썼는데 그 도구가 어디에도 없는 단계\n- `mcp__` 도구를 참조하는데 정의도 없고 플러그인도 제공하지 않는 서버\n- 에이전트가 도구 미지정(전 도구 상속)인 채로 남아 있는 것 — 과하다\n\n## 완료\n\n노드별 조달 결정(내장/기존 MCP/외부 플러그인/동봉 CLI/신규)을 정리해\n`GraphDraft`에 기록하고, 결정 목록과 그 근거를 보고한 뒤 **done**.\n결정된 도구 목록이 본문 작성 단계에서 `allowed_tools`/`tools` 프론트매터가 된다.\n\n## 막혔을 때\n\n새로 만들어야 한다는 결론인데 그 범위를 호출자가 승인하지 않았거나, 노드의\n목적이 불명확해 필요한 능력을 못 정하면 지어내지 말고 **blocked**로 나가라.\n",
-      "reference_placements": [],
-      "graph_layout": {},
-      "edge_layout": {},
       "transfer_on": [
         {
           "name": "done",
@@ -1881,42 +1441,12 @@
       "call_agents": []
     },
     {
-      "kind": "agent",
+      "kind": "fork_agent",
       "id": "7c47be71ae1d4c83ab00ca97dbf5ef1f",
       "name": "verify-analyst",
       "description": "읽기 전용 검증 분석가 — fork 스킬 plugin-verify의 fork 에이전트. 그래프를 고치지 않고 검증 결과를 해석해 보고만 한다.",
-      "fsm": {
-        "id": "72e36b95c8b74f01aad20afd087e0f5a",
-        "name": "verify-analyst_fsm",
-        "states": [
-          {
-            "kind": "entry_point",
-            "id": "7c9f6d13098a4a829dc49fc634f0c582",
-            "name": "entry",
-            "on_entry_start": [],
-            "on_entry": [],
-            "on_entry_end": [],
-            "on_exit_start": [],
-            "on_exit": [],
-            "on_exit_end": [],
-            "on_active": [],
-            "custom_events": {},
-            "inputs": [],
-            "outputs": [],
-            "reads": [],
-            "writes": []
-          }
-        ],
-        "transitions": [],
-        "initial_state": "7c9f6d13098a4a829dc49fc634f0c582",
-        "final_states": [],
-        "blackboard": {
-          "class_definitions": [],
-          "variables": {}
-        }
-      },
       "config": {
-        "kind": "agent",
+        "kind": "fork_agent",
         "model": "inherit",
         "effort": null,
         "hooks": {
@@ -1941,28 +1471,9 @@
           "daedalus"
         ],
         "memory": null,
-        "background": false,
-        "isolation": "none",
         "color": null
       },
-      "execution_policy": {
-        "mode": "fixed",
-        "count": 1,
-        "join": "all",
-        "join_count": null
-      },
-      "body": "# 검증 분석가 — 읽고 해석하고 보고한다\n\n너는 Daedalus 프로젝트의 검증 결과를 해석하는 분석가다. 무엇을 할지(검증 절차·갈래 기준)는\n작업 지시로 따로 온다. 이 파일은 네 역할과 한계를 정한다.\n\n## 고치지 않는다\n\n그래프·본문·프론트매터를 직접 고치지 마라 — 편집 도구가 없는 것은 의도다. 고칠 것은\n\"무엇을, 왜\"로 정리해 블랙보드 `VerifyResult.blocking`에 적고, 그것을 고칠 단계로 넘긴다.\n검증 단계가 몰래 고치면 받는 쪽이 무엇이 바뀌었는지 모르고, 사용자의 undo 이력도 뒤섞인다.\n\n## 해석한다\n\n- 경고를 건수로 넘기지 마라. 규칙마다 \"왜 나왔고 무엇을 의미하는가\"를 한 줄로 적는다.\n- 프론트매터 키 케이싱·빌드 타깃 제약 같은 규격 판단은 미리 올라온 `cc-plugin-spec`을,\n  컴포넌트 종류·포트 의미론은 `daedalus-model`을 근거로 삼는다. 짐작으로 판단하지 마라.\n- 설계 결정이 필요한 경고(두 방향 중 선택)는 네가 고르지 말고 보고에 선택지를 적는다.\n\n## 보고한다\n\n작업 지시의 보고 양식(첫 줄 `EXIT: … / NEXT: …`)을 지킨다. 본문에는 에러·경고를 계열별로\n묶어 해석과 함께 적는다. 사용자에게 직접 묻지 마라 — 너는 서브에이전트라 보고를 받은\n메인 대화가 묻는다.\n",
-      "reference_placements": [],
-      "graph_layout": {},
-      "edge_layout": {},
-      "transfer_on": [
-        {
-          "name": "done",
-          "color": "#4488ff",
-          "description": ""
-        }
-      ],
-      "call_agents": []
+      "body": "# 검증 분석가 — 읽고 해석하고 보고한다\n\n너는 Daedalus 프로젝트의 검증 결과를 해석하는 분석가다. 무엇을 할지(검증 절차·갈래 기준)는\n작업 지시로 따로 온다. 이 파일은 네 역할과 한계를 정한다.\n\n## 고치지 않는다\n\n그래프·본문·프론트매터를 직접 고치지 마라 — 편집 도구가 없는 것은 의도다. 고칠 것은\n\"무엇을, 왜\"로 정리해 블랙보드 `VerifyResult.blocking`에 적고, 그것을 고칠 단계로 넘긴다.\n검증 단계가 몰래 고치면 받는 쪽이 무엇이 바뀌었는지 모르고, 사용자의 undo 이력도 뒤섞인다.\n\n## 해석한다\n\n- 경고를 건수로 넘기지 마라. 규칙마다 \"왜 나왔고 무엇을 의미하는가\"를 한 줄로 적는다.\n- 프론트매터 키 케이싱·빌드 타깃 제약 같은 규격 판단은 미리 올라온 `cc-plugin-spec`을,\n  컴포넌트 종류·포트 의미론은 `daedalus-model`을 근거로 삼는다. 짐작으로 판단하지 마라.\n- 설계 결정이 필요한 경고(두 방향 중 선택)는 네가 고르지 말고 보고에 선택지를 적는다.\n\n## 보고한다\n\n작업 지시의 보고 양식(첫 줄 `EXIT: … / NEXT: …`)을 지킨다. 본문에는 에러·경고를 계열별로\n묶어 해석과 함께 적는다. 사용자에게 직접 묻지 마라 — 너는 서브에이전트라 보고를 받은\n메인 대화가 묻는다.\n"
     }
   ],
   "reference_placements": [

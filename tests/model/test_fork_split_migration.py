@@ -9,7 +9,6 @@ format은 그대로(2)고 **내용**이 구버전인 파일을 로드 시 흡수
 from __future__ import annotations
 
 import copy
-import json
 
 from daedalus.model.plugin.agent import AgentDefinition, ForkAgent
 from daedalus.model.plugin.config import (
@@ -25,14 +24,6 @@ from daedalus.model.serialize import (
     needs_fork_split_migration,
     serialize_project,
 )
-from tests.data.golden.corpus import DOGFOOD_JSON
-
-#: 저장소가 스스로를 만드는 프로젝트(dogfood) — 구버전 파일의 실물 표본이다.
-#: 살아 있는 작업 사본(`project/daedalus_cc_plugin/.daedalus.json`)이 **아니라**
-#: WP-0이 커밋한 **동결 사본**을 읽는다: 그 파일은 사용자의 작업 사본이라 편집·
-#: 커밋 여부에 따라 내용이 바뀌고, 깨끗한 체크아웃에서는 아래 두 단언이 기대하는
-#: 구버전 내용을 담고 있지 않다(스위트가 작업 트리 상태에 의존하면 안 된다).
-DOGFOOD = DOGFOOD_JSON
 
 
 def _legacy_fork_project() -> dict:
@@ -175,38 +166,6 @@ def test_v1_context_fork_skill_gets_no_double_warning():
     assert type(project.skills[0]) is SyncForkSkill
     assert any("fork 스킬로 바꿨습니다" in w for w in warnings)
     assert not any("미배치 fork" in w for w in warnings)
-
-
-# ── 실물 표본: dogfood 동결 사본 (tests/data/golden) ────────────────────
-
-def test_dogfood_project_migrates_only_the_referenced_unplaced_agent():
-    data = json.loads(DOGFOOD.read_text(encoding="utf-8"))
-    warnings: list[str] = []
-    project = deserialize_project(data, collect_warnings=warnings)
-
-    by_name = {a.name: a for a in project.agents}
-    # ① fork 스킬 `plugin-verify`가 참조하는 미배치 에이전트만 fork 에이전트가 된다.
-    assert type(by_name["verify-analyst"]) is ForkAgent
-    # ③ 배치된 에이전트들은 워크플로 에이전트로 남는다.
-    for name in ("graph-surgeon", "body-writer", "env-configurator", "tooling-scout"):
-        assert type(by_name[name]) is AgentDefinition, name
-    # ② 외부 이름(`hookify:conversation-analyzer`)은 프로젝트 에이전트가 아니다.
-    assert "hookify:conversation-analyzer" not in by_name
-    assert sum("fork 에이전트 종류로 이관" in w for w in warnings) == 1
-    # 구 fork 스킬은 전부 동기 fork가 된다.
-    fork_names = {s.name for s in project.skills if isinstance(s, SyncForkSkill)}
-    assert {"plugin-verify", "sdfsdf"} <= fork_names
-
-
-def test_dogfood_project_roundtrips_after_migration():
-    """이관된 프로젝트는 저장 → 로드가 왕복한다(자기가 쓴 파일을 자기가 읽는다)."""
-    data = json.loads(DOGFOOD.read_text(encoding="utf-8"))
-    once = deserialize_project(data)
-    saved = serialize_project(once)
-    assert needs_fork_split_migration(saved) is False
-    twice = deserialize_project(saved)
-    assert [type(a) for a in twice.agents] == [type(a) for a in once.agents]
-    assert [type(s) for s in twice.skills] == [type(s) for s in once.skills]
 
 
 # ── 새 형식 왕복 ────────────────────────────────────────────────────────
