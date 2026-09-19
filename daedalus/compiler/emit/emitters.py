@@ -105,6 +105,11 @@ class ComponentEmitter(ABC):
     def guide_pointer(self) -> GuidePointerRule:
         return plan_for_kind(self.kind).guide_pointer
 
+    @property
+    def tracks_progress(self) -> bool:
+        """진행 사슬에 끼는 종류인가 — OUTCOME 절이 자기 배치를 보는가."""
+        return plan_for_kind(self.kind).tracks_progress
+
     def outputs(self, component) -> list[EmittedFile]:
         """이 컴포넌트가 내는 산출 파일 0..N개.
 

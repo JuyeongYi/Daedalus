@@ -128,6 +128,16 @@ class SectionPlan:
     sections: tuple[SectionId, ...]
     outcome_style: OutcomeStyle = OutcomeStyle.NEXT_STEPS
     guide_pointer: GuidePointerRule = GuidePointerRule.NONE
+    #: **진행 사슬에 끼는 종류인가** — 종전 조립 분기의
+    #: `PLACEMENT not in (EDGE, REFERENCE)` 게이트(C10)를 선언으로 옮긴 것이다.
+    #: 거짓이면 OUTCOME은 자기 그래프 배치를 **보지 않는다**(= 빈 배치 목록):
+    #: 진행 기록 갱신 지시도, 터미널 "작업 완료"도 내지 않는다. 엣지 스킬(전이)과
+    #: 참조 노드 스킬은 자기 placement를 소유하지 않기 때문이다 — 전이 스킬이
+    #: `current`를 소유하지 않는다는 규약(`compiler.md` 정책 6-a-④)과 같은 사실
+    #: 이고, 게이트를 잃으면 손으로 만든 `.ddpj`(전이·참조 스킬이 상태 노드의
+    #: `skill_ref`로 박힌 형상 — 역직렬화는 placement 검사를 하지 않는다)에서
+    #: 같은 파일이 '## Progress Record'와 정반대의 `--current` 지시를 함께 낸다.
+    tracks_progress: bool = True
 
 
 # ─────────────────────────── 종류별 절 튜플 ───────────────────────────
@@ -184,6 +194,8 @@ SECTION_PLANS: dict[str, SectionPlan] = {
             SectionId.OUTCOME,
         ),
         guide_pointer=GuidePointerRule.MAIN_IF_ANY_PLACEMENT,
+        # 전이 스킬은 배치가 아니라 엣지 위의 단계라 `current`를 소유하지 않는다.
+        tracks_progress=False,
     ),
     ReferenceSkill.KIND: SectionPlan(
         sections=(
@@ -192,6 +204,8 @@ SECTION_PLANS: dict[str, SectionPlan] = {
             SectionId.REQUIREMENTS_MCP,
             SectionId.OUTCOME,
         ),
+        # 참조 스킬은 여러 노드에 링크되는 자료라 자기 placement가 없다.
+        tracks_progress=False,
     ),
     WrappedSkill.KIND: SectionPlan(
         sections=(
@@ -341,7 +355,11 @@ def _provide_outcome(component, project, emitter) -> list[str]:
     """
     if project is None:
         return []
-    placements = _graph_placements(component, project)
+    # 진행 사슬에 끼지 않는 종류(전이·참조)는 자기 배치를 **보지 않는다** —
+    # 선언은 절 표의 `tracks_progress`다(종전 배치 클래스 튜플 게이트, C10).
+    placements = (
+        _graph_placements(component, project) if emitter.tracks_progress else []
+    )
     next_blocks = _next_steps_section(component, project)
     has_outgoing = any(
         t.source is p

@@ -99,6 +99,15 @@ AST로 강제) `emit/guides.py`의 `WORKFLOW_GUIDE_KIND`/`BLACKBOARD_GUIDE_KIND`
   (= 절 생략)을 돌려준다.
 - **OUTCOME은 provider 하나다** — "다음 단계"·fork "## Report"·"## Finishing Up" 셋은 같은 갈래
   목록에서 나오고 서로 배타적이다. 나누면 placement·outgoing 계산이 세 벌이 된다.
+- **진행 사슬에 끼는 종류는 절 표가 선언한다** (`SectionPlan.tracks_progress`, 기본 참). 거짓이면
+  OUTCOME이 **자기 그래프 배치를 보지 않는다** — 진행 기록 갱신 지시(`--current`)도, 터미널
+  "## Finishing Up"도 내지 않는다. `TransferEmitter`·`ReferenceEmitter` 둘만 거짓이다: 전이 스킬은
+  배치가 아니라 엣지 위의 단계라 `current`를 소유하지 않고(정책 6-a-④), 참조 스킬은 여러 노드에
+  링크되는 자료라 자기 placement가 없다. 종전 조립 분기의 `PLACEMENT not in (EDGE, REFERENCE)`
+  게이트가 여기로 왔다 — GUI는 이 배치를 만들지 않지만 역직렬화는 `skill_ref`의 placement 역할을
+  검사하지 않으므로(`serialize/deser_fsm.py`), 손편집·구버전 `.ddpj`에서 전이 스킬이 상태 노드에
+  박혀 있으면 게이트 없이는 같은 파일이 '## Progress Record'와 정반대의 지시를 함께 낸다
+  (`tests/compiler/test_emitters.py`).
 - **`WrappedEmitter`만 산출이 둘이다**(SKILL.md + `agents/<랩퍼>.md` 실행 서브에이전트, WP-WR).
   러너는 절 표를 거치지 않는 손수 조립기(`compile_wrapped_runner`)를 **축자 호출**한다 —
   가이드 포인터가 붙지 않는 것이 오늘의 산출이고, 그 누락은 backlog D8이다.

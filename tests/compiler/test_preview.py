@@ -120,9 +120,12 @@ def test_preview_declares_the_token_section_the_real_compile_uses():
 
 # ── 진입점 게이트 ────────────────────────────────────────────────────
 
-#: 미리보기를 여는 표면 3곳 (`_SRC` 기준 상대 POSIX 경로).
+#: 미리보기를 여는 표면 4곳 (`_SRC` 기준 상대 POSIX 경로).
+#: `docs/design/editor.md` "컴파일 미리보기"의 진입점 목록과 같은 수여야 한다 —
+#: 엣지 메뉴는 전이 스킬이 노드가 아니라 엣지에 붙어 생긴 네 번째 표면이다.
 _PREVIEW_ENTRY_POINTS = (
     "view/canvas/context_menus.py",       # 캔버스 노드 우클릭
+    "view/canvas/scene.py",               # 전이 엣지 우클릭 (전이 스킬)
     "view/panels/registry_panel.py",      # 레지스트리 우클릭
     "view/editors/frontmatter_panel.py",  # 프론트매터 패널 버튼
 )

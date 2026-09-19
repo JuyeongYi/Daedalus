@@ -599,6 +599,8 @@ class FsmScene(QGraphicsScene):
         _create_and_assign_transfer_skill로 갈라 두어, 씬을 파생시키는 경우에도
         메뉴 조립 자체는 이 한 곳만 남는다.
         """
+        from daedalus.compiler.preview import can_preview
+
         tvm = item.transition_vm
         transition = tvm.model
 
@@ -628,6 +630,15 @@ class FsmScene(QGraphicsScene):
             preview_act = menu.addAction(
                 f"컴파일 미리보기 ({transition.skill_ref.name})…"
             )
+            # 비활성 판정은 진입점 넷이 **같은 함수**를 쓴다(원칙 1) — 산출
+            # 자리가 아예 없는 종류(`OUTPUT_LOCATION is NONE`)는 미리볼 것이
+            # 없다. 여기만 빼 두면 그런 종류가 생기는 날 눌러도 아무 일이 없는
+            # 메뉴 항목이 남는다(`tests/compiler/test_preview.py`).
+            if preview_act is not None and not can_preview(transition.skill_ref):
+                preview_act.setEnabled(False)
+                preview_act.setToolTip(
+                    "이 종류는 산출 파일이 없어 미리볼 것이 없습니다."
+                )
 
         # 트리거 지정 (A9-8) — 실체는 view/actions/transitions.py.
         trigger_actions = context_menus.add_trigger_menu(menu, tvm)

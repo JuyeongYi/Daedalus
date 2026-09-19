@@ -742,6 +742,16 @@ Tier 2다. 출발점은 2026-05 조사(ClaudeManager가 만든 plain 셸 스크�
 
 ## 5. 기능 잔여
 
+- **랩핑 스킬의 실행 서브에이전트 산출에 가이드 포인터가 없다 (D8 — 2026-09-19 실측, WP-6이 봉인)**.
+  랩핑 스킬은 파일을 둘 낸다(SKILL.md + `agents/<이름>.md` 실행 서브에이전트). 앞의 것은 절 표를
+  거치면서 공통 안내 파일 포인터(`guides/<플러그인>/workflow.md`·`blackboard.md` 1줄)를 받지만,
+  뒤의 것(`compiler/emit/wrapped.compile_wrapped_runner`)은 표를 거치지 않는 **손수 조립기**라
+  포인터가 붙지 않는다. 실행 서브에이전트도 워크플로 안에서 도는 컨텍스트이므로 포인터를 받는
+  것이 맞지만, WP-6은 **동작 불변 리팩토링**이라 고치면 산출 바이트가 바뀐다 —
+  `WrappedEmitter.render`가 `RUNNER_PAYLOAD` 행에서 종전 함수를 축자 호출하는 것으로 **봉인**했다
+  (`docs/design/compiler.md` WP-6 절). 고치는 대신 **WP-10(WrappedSkill 퇴역)에서 조립기가 클래스와
+  함께 사라지는 것**이 계획이다. 그 전에 고치려면 골든(`tests/data/golden/*.sha256`)을 같은
+  커밋에서 재생성해야 한다.
 - **`config.model` 키 부재가 `None`으로 로드된다 (D10 — 2026-09-19 실측, WP-4가 보존)**.
   `ComponentConfig.model`의 선언 기본값은 `ModelType.INHERIT`인데, 저장 파일에 `model` 키가
   없으면 `None`이 들어온다(종전 `_deser_config`의 `_to_enum(ModelType, None, None)`, 오늘은

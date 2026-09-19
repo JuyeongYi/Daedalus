@@ -20,6 +20,7 @@ from daedalus.compiler.emit.emitters import (
     RUNNER_PAYLOAD,
     ComponentEmitter,
     EmittedFile,
+    compile_skill,
     emitter_for,
 )
 from daedalus.compiler.emit.section_plan import (
@@ -30,8 +31,17 @@ from daedalus.compiler.emit.section_plan import (
     provider_for,
 )
 from daedalus.compiler.units.paths import output_path
-from daedalus.model.plugin.roles import Bucket, OutputLocation
-from tests.compiler.builders import make_agent, make_procedural
+from daedalus.model.fsm.state import SimpleState
+from daedalus.model.fsm.transition import Transition
+from daedalus.model.plugin.kinds import KIND_REGISTRY
+from daedalus.model.plugin.roles import Bucket, OutputLocation, PlacementRole
+from daedalus.model.project import PluginProject
+from tests.compiler.builders import (
+    make_agent,
+    make_procedural,
+    make_reference,
+    make_transfer,
+)
 
 
 # ── 조회 실패는 이유와 선택지를 말한다 ────────────────────────────────
@@ -129,3 +139,59 @@ def test_render_is_deterministic():
     skill = make_procedural()
     emitter = emitter_for(skill)
     assert emitter.render(skill) == emitter.render(skill)
+
+
+# ── 진행 사슬에 끼는 종류 (`tracks_progress`) ─────────────────────────
+
+def _legacy_project_with(skill) -> PluginProject:
+    """**전이·참조 스킬이 상태 노드에 박힌** 손편집/구버전 `.ddpj` 형상.
+
+    GUI는 이런 배치를 만들지 않지만 역직렬화는 막지 않는다 —
+    `serialize/deser_fsm.py`의 `skill_ref` 해소는 id 조회뿐이고
+    placement 역할을 검사하지 않는다. 그래서 저장 파일에 이 형상이 있으면
+    그대로 로드돼 컴파일된다.
+    """
+    project = PluginProject(name="legacy")
+    project.skills.append(skill)
+    odd = SimpleState(name="odd")
+    odd.skill_ref = skill
+    tail = SimpleState(name="tail")
+    project.graph.states.extend([odd, tail])
+    project.graph.transitions.append(Transition(source=odd, target=tail))
+    return project
+
+
+def test_transfer_skill_never_claims_the_progress_current_pointer():
+    """전이 스킬은 상태 노드에 박혀 있어도 `--current`를 지시하지 않는다.
+
+    같은 파일의 '## Progress Record'가 "`current`는 건드리지 말라"고 말하므로
+    (`docs/design/compiler.md` 정책 6-a-④), 진행 갱신 지시가 함께 나가면 산출이
+    자기 자신과 모순된다. 종전 조립 분기의 `PLACEMENT not in (EDGE, REFERENCE)`
+    게이트가 이것을 막았고, 지금은 절 표의 `tracks_progress=False`가 막는다.
+    """
+    skill = make_transfer()
+    text = compile_skill(skill, project=_legacy_project_with(skill))
+    assert "--current" not in text
+    # 전이 스킬이 내는 진행 지시는 '## Progress Record'의 메모 한 줄뿐이다.
+    assert "## Progress Record" in text
+    assert "--note" in text
+
+
+def test_reference_skill_never_gets_a_terminal_finishing_section():
+    """참조 스킬은 자기 placement가 없어 '작업 완료'의 주체가 아니다."""
+    skill = make_reference()
+    project = _legacy_project_with(skill)
+    project.graph.transitions.clear()  # 터미널 배치 형상
+    text = compile_skill(skill, project=project)
+    assert "## Finishing Up" not in text
+    assert "--current" not in text
+
+
+@pytest.mark.parametrize("kind", sorted(SECTION_PLANS))
+def test_only_edge_and_reference_kinds_opt_out_of_progress(kind):
+    """선언이 종류의 배치 역할과 어긋나지 않는다 (표의 조용한 오타 방지)."""
+    component_cls = KIND_REGISTRY[kind].component_cls
+    expected = component_cls.PLACEMENT not in (
+        PlacementRole.EDGE, PlacementRole.REFERENCE,
+    )
+    assert SECTION_PLANS[kind].tracks_progress is expected
