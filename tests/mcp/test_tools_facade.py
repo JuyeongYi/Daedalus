@@ -26,11 +26,12 @@ _PRE_SPLIT_MODULE_ATTRS = [
 # `_hook_summary`는 이름은 그대로지만 소유가 HookTools → _BaseTools로 옮겨졌고
 # 축약본이 됐다(Q1/S2). 전문은 새 멤버 `_hook_detail`/도구 `get_hook`이 맡는다 —
 # 이 목록은 "분해 전 표면이 여전히 있는가"를 보는 것이므로 새 멤버는 넣지 않는다.
+# `_component_kind`는 `str(comp.kind)` 한 줄짜리 래퍼라 2026-09-19(WP-8)에
+# 제거됐다 — `kind`는 모든 컴포넌트의 추상 property이므로 호출자가 직접 읽는다.
 _PRE_SPLIT_CLASS_MEMBERS = [
     "_body_text",
     "_build_hook_handler",
     "_coerce_field_value",
-    "_component_kind",
     "_components",
     "_config_field_types",
     "_find_component",

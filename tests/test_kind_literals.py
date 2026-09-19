@@ -93,9 +93,11 @@ KIND_DECLARATION_FILES: frozenset[str] = frozenset({
 #: `component_actions._COMPONENT_TITLES` 9 · `kind_switch_row`의 라벨·툴팁 6 ·
 #: `creation.NO_PLACE_KINDS` 3 — 전부 `view/kind_ui.KIND_UI` 한 표로 모였고
 #: 그 표의 키는 리터럴이 아니라 **클래스 선언 참조**(`ProceduralSkill.KIND`)다.
+#: WP-8이 걷어낸 자리: MCP의 종류·필드 허용 목록이 kinds 레지스트리와
+#: `SKILL_FIELD_MATRIX`에서 파생되면서 `props.py`가 들고 있던 리터럴이 사라졌다.
 RATCHET: dict[str, int] = {
-    "component_kind_sites": 26,
-    "component_kind_files": 12,
+    "component_kind_sites": 20,
+    "component_kind_files": 11,
     "plan_kind_sites": 1,
     "plan_kind_files": 1,
 }

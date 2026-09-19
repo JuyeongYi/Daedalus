@@ -1,5 +1,5 @@
 # daedalus/mcp/tools/props.py
-"""컴포넌트 생성·속성 도구 — 생성/이름/설명/프론트매터 필드/프로젝트 속성 (WP-RF-3b).
+"""컴포넌트 생성·속성 도구 — 생성/이름/설명/프로젝트 속성 (WP-RF-3b · WP-8 ①).
 
 **계층: GUI 어댑터다 (WP-RF-2 명시).** core(model/compiler)가 아니라
 MainWindow·ProjectViewModel·CommandStack·body_documents 등 view 표면에 결합된
@@ -13,14 +13,21 @@ from __future__ import annotations
 
 from typing import Any
 
+from daedalus.model.plugin.enums import SkillField
 from daedalus.model.plugin.kinds import config_kinds_in
+from daedalus.model.plugin.placement import is_canvas_placeable_role
 from daedalus.model.plugin.roles import Bucket
 
-from ._base import _BaseTools
+from .fields import FieldTools
+from .placement_prose import placement_role_prose
 
 
-class PropsTools(_BaseTools):
-    """컴포넌트 생성 + 속성/프론트매터 편집 + 프로젝트 속성."""
+class PropsTools(FieldTools):
+    """컴포넌트 생성 + 이름·설명·프로젝트 속성 편집.
+
+    프론트매터 필드 도구(`list_component_fields`/`set_component_field`)는
+    기저 `FieldTools`(`fields.py`)에 있다 — 한 파일에 두 책임을 두지 않는다(WP-8 ①).
+    """
 
     #: create_skill이 받는 종류 (에이전트는 create_agent가 따로 맡는다).
     #: **레지스트리에서 파생**한다(WP-3) — 손으로 적어 두면 새 종류가 GUI에는
@@ -28,6 +35,49 @@ class PropsTools(_BaseTools):
     _SKILL_KINDS = config_kinds_in(Bucket.SKILLS)
     #: create_agent가 받는 종류 — 워크플로 에이전트 / fork 스킬의 실행 기반.
     _AGENT_KINDS = config_kinds_in(Bucket.AGENTS)
+
+    @staticmethod
+    def _config_field_names(kind: str) -> frozenset[str]:
+        """이 config 종류가 **실제로 가진** 필드 이름 (P3).
+
+        생성 인자(`fork_agent`/`source`/`usage`)가 어느 종류에 유효한지는
+        손으로 적은 kind 목록이 아니라 **그 종류의 config 클래스**가 답한다 —
+        목록을 따로 들면 새 종류가 인자를 갖고도 거절당하고(👻), 그 거절은
+        테스트도 컴파일도 실패시키지 않는다.
+        """
+        from dataclasses import fields as dataclass_fields
+
+        from daedalus.model.plugin.kinds import spec_by_config_kind
+
+        return frozenset(
+            f.name for f in dataclass_fields(spec_by_config_kind(kind).config_cls)
+        )
+
+    @classmethod
+    def _reject_arg_the_kind_cannot_hold(
+        cls, bucket: Bucket, kind: str, arg: str, field: str, absent: str
+    ) -> None:
+        """그 종류의 config에 없는 필드를 가리키는 생성 인자를 거절한다 (P3).
+
+        거절은 **이유와 선택지**를 말한다(원칙 5) — 어느 종류가 이 인자를 받는지는
+        레지스트리를 훑어 만든다. 순서는 선언 순서라 결정적이다.
+        """
+        from dataclasses import fields as dataclass_fields
+
+        from daedalus.model.plugin.kinds import KIND_REGISTRY
+
+        if field in cls._config_field_names(kind):
+            return
+        owners = [
+            spec.config_kind
+            for spec in KIND_REGISTRY.values()
+            if spec.bucket is bucket
+            and any(f.name == field for f in dataclass_fields(spec.config_cls))
+        ]
+        raise ValueError(
+            f"{arg}는 설정에 '{field}'를 가진 종류 전용입니다 — "
+            f"'{kind}'에는 {absent}. 사용 가능: {', '.join(owners) or '(없음)'}"
+        )
 
     def _create_component(
         self,
@@ -48,7 +98,6 @@ class PropsTools(_BaseTools):
         캔버스 메뉴와 완전히 같은 경로다.
         """
         from daedalus.model.plugin.kinds import spec_by_config_kind
-        from daedalus.model.plugin.placement import is_canvas_placeable_role
         from daedalus.view.actions.creation import create_and_place, make_component
 
         win = self._window
@@ -62,13 +111,16 @@ class PropsTools(_BaseTools):
             raise ValueError(
                 "x와 y는 함께 주어야 합니다 — 한쪽만으로는 배치 좌표가 정해지지 않습니다."
             )
-        # 배치 불가 목록을 따로 들지 않는다(WP-7 ②) — 종류의 `PLACEMENT`
-        # 선언이 답한다. 음성 목록은 `is_canvas_placeable`과 어긋나도 조용했다.
-        if not is_canvas_placeable_role(spec_by_config_kind(kind).placement):
+        # 배치 가능성은 종류 목록이 아니라 **배치 역할 선언**이 답한다(P5) —
+        # 음성 목록(`NO_PLACE_KINDS`)은 `is_canvas_placeable`과 어긋나도
+        # 조용했다(WP-7 ②). 판정의 실체는 `model.plugin.placement` 하나이고,
+        # 여기서 enum 비교를 손으로 적으면 갈린다(원칙 1). 컴포넌트가 아직
+        # 없으므로(만들기 전에 거절한다) 역할을 받는 입구를 쓴다.
+        role = spec_by_config_kind(kind).placement
+        if not is_canvas_placeable_role(role):
             raise ValueError(
                 f"'{kind}' 종류는 캔버스에 노드로 배치되지 않습니다 "
-                "(declarative는 배경 지식, transfer는 전이 위의 단계, "
-                "fork_agent는 fork 스킬의 실행 기반입니다) — x/y 없이 만드세요."
+                f"({placement_role_prose(role)}) — x/y 없이 만드세요."
             )
         component = create_and_place(
             self._scene, win, kind, name, float(x), float(y), description,
@@ -98,7 +150,8 @@ class PropsTools(_BaseTools):
         sync는 `background: false`로 부른 쪽이 보고를 기다리고, async는
         `background: true`로 보고가 작업 알림으로 온다. 2026-09-17).
 
-        fork_agent: kind="sync_fork"/"async_fork" 전용 — fork 에이전트(프론트매터 `agent`).
+        fork_agent: 설정에 `agent`를 가진 종류(sync_fork/async_fork) 전용 —
+        fork 에이전트(프론트매터 `agent`).
         내장(general-purpose/Explore/Plan), 사용 선언한 외부 플러그인 에이전트
         (`플러그인:이름`), 프로젝트의 **fork 에이전트** 중 하나(정확 일치).
         생략하면 general-purpose. 절차형 ↔ fork 2종 전환은 `convert_skill`.
@@ -106,7 +159,8 @@ class PropsTools(_BaseTools):
         노드에 링크된 reference는 컴파일 시 에이전트 skills 프론트매터에 자동
         합류된다(로컬 스킬은 퇴역, WP-RF-1c).
 
-        source(WP-WR): kind="wrapped" 전용 — `플러그인[@마켓]:스킬` 형식으로
+        source(WP-WR): 설정에 `source`를 가진 종류(wrapped) 전용 —
+        `플러그인[@마켓]:스킬` 형식으로
         감쌀 외부 스킬을 지정한다(`list_wrappable_skills`가 후보와 source
         문자열을 준다). source의 플러그인이 external_plugins에 미선언이면
         **선언까지 함께** 1 undo로 들어가고, x/y를 함께 주면 배치까지 같은
@@ -132,25 +186,29 @@ class PropsTools(_BaseTools):
             raise ValueError(
                 f"알 수 없는 스킬 종류 '{kind}'. 사용 가능: {', '.join(self._SKILL_KINDS)}"
             )
-        if fork_agent and kind not in ("sync_fork", "async_fork"):
-            raise ValueError(
-                f"fork_agent는 kind='sync_fork'/'async_fork' 전용입니다 — '{kind}' 스킬은 "
-                "서브에이전트를 지정하지 않습니다(나머지 스킬은 fork·agent 지정 불가)."
-            )
         if fork_agent:
+            self._reject_arg_the_kind_cannot_hold(
+                Bucket.SKILLS, kind, "fork_agent", SkillField.AGENT.value,
+                "본문을 실행할 서브에이전트 개념이 없습니다",
+            )
             from daedalus.view.actions.fork_skill import validate_fork_agent
 
             validate_fork_agent(self._project, fork_agent)
-        if source and kind != "wrapped":
-            raise ValueError(
-                f"source는 kind='wrapped' 전용입니다 — '{kind}' 스킬에는 감쌀 "
-                "외부 스킬 개념이 없습니다."
+        if source:
+            self._reject_arg_the_kind_cannot_hold(
+                Bucket.SKILLS, kind, "source", SkillField.SOURCE.value,
+                "감쌀 외부 스킬 개념이 없습니다",
             )
-        if usage and not source:
-            raise ValueError(
-                "usage는 kind='wrapped'+source와 함께만 씁니다 — 용도는 랩핑 "
-                "스킬의 개념입니다(state/reference)."
+        if usage:
+            self._reject_arg_the_kind_cannot_hold(
+                Bucket.SKILLS, kind, "usage", "usage",
+                "용도 선택 개념이 없습니다",
             )
+            if not source:
+                raise ValueError(
+                    "usage는 source와 함께만 씁니다 — 용도는 랩핑 스킬이 감싼 "
+                    "외부 스킬을 어떻게 쓸지의 선택입니다(state/reference)."
+                )
         self._reject_duplicate_name(name)
         if source:
             if (x is None) != (y is None):
@@ -178,7 +236,9 @@ class PropsTools(_BaseTools):
             kind, name, description, x, y, agent=fork_agent or None
         )
         out: dict[str, Any] = {"created": name, "kind": kind, "placed": placed}
-        if kind in ("sync_fork", "async_fork"):
+        # 실행 기반을 응답에 싣는 것은 "그 설정에 `agent`가 있는 종류"의
+        # 성질이다 — fork 2종을 이름으로 열거하던 자리(P3).
+        if SkillField.AGENT.value in self._config_field_names(kind):
             out["fork_agent"] = fork_agent or "general-purpose"
         return out
 
@@ -355,7 +415,7 @@ class PropsTools(_BaseTools):
         comp = self._find_component(name)
         if not supports_entry_presets(comp):
             raise ValueError(
-                f"'{name}'({self._component_kind(comp)})에는 진입점 프리셋을 적용할 "
+                f"'{name}'({comp.kind})에는 진입점 프리셋을 적용할 "
                 "수 없습니다 — user_invocable/disable_model_invocation이 고정되어 "
                 "있거나(transfer/reference) 그 필드 자체가 없는 종류(에이전트)입니다."
             )
@@ -511,188 +571,3 @@ class PropsTools(_BaseTools):
             script=f'set_mcp_server_def("{name}", ...)',
         ))
         return {"server": name, "action": action, "old": old, "new": updated.get(name)}
-
-    # --- 프론트매터 필드 ---
-
-    @staticmethod
-    def _config_field_types(config: Any) -> dict[str, Any]:
-        """config 클래스의 필드 이름 → 선언 타입.
-
-        `from __future__ import annotations` 때문에 dataclass의 `f.type`은 문자열이라
-        쓸 수 없다 — `get_type_hints`로 실제 타입 객체를 얻는다.
-        """
-        from typing import get_type_hints
-
-        try:
-            return get_type_hints(type(config))
-        except Exception:  # noqa: BLE001 — 힌트를 못 얻어도 편집은 막지 않는다
-            return {}
-
-    @staticmethod
-    def _coerce_field_value(target: Any, value: Any, field: str) -> Any:
-        """입력 값을 config 필드의 선언 타입으로 맞춘다.
-
-        MCP로 오는 값은 JSON이라 문자열/리스트/불리언뿐이다. enum 필드는 값
-        문자열로 받아 멤버로 바꾸고, 틀리면 허용 목록을 알려준다 — 조용히
-        문자열이 들어가면 컴파일 산출이 이상해질 때까지 드러나지 않는다.
-        """
-        import enum
-        from typing import get_args, get_origin
-
-        raw_args = get_args(target)
-        optional = type(None) in raw_args
-        args = [a for a in raw_args if a is not type(None)]
-        if args:
-            target = args[0]
-        origin = get_origin(target)
-
-        # None = 미지정으로 되돌리기 (A8 tri-state). Optional 선언(`bool | None`
-        # 등)일 때만 받는다 — 아무 필드에나 null을 허용하면 non-Optional 필드에
-        # None이 들어가 타입 계약이 깨진다.
-        if value is None:
-            if optional:
-                return None
-            raise ValueError(
-                f"'{field}'는 미지정(null)을 받지 않습니다 — 값을 주세요."
-            )
-
-        if origin in (list, set):
-            if not isinstance(value, (list, tuple)):
-                raise ValueError(f"'{field}'는 목록이어야 합니다.")
-            return [str(v) for v in value]
-        if isinstance(target, type) and issubclass(target, enum.Enum):
-            try:
-                return target(value)
-            except ValueError:
-                allowed = ", ".join(str(m.value) for m in target)
-                raise ValueError(
-                    f"'{field}'의 값 '{value}'이 올바르지 않습니다. 사용 가능: {allowed}"
-                ) from None
-        if target is bool:
-            # bool(value)를 쓰면 안 된다 — MCP 클라이언트가 불리언을 문자열로
-            # 보내는 경우가 실재하고, bool("false")는 True다(실사고: 라이브
-            # 프로젝트의 user_invocable=false 지정이 조용히 True로 저장됐다).
-            if isinstance(value, bool):
-                return value
-            if isinstance(value, str):
-                low = value.strip().lower()
-                if low in ("true", "1"):
-                    return True
-                if low in ("false", "0"):
-                    return False
-            raise ValueError(
-                f"'{field}'는 불리언입니다 — true 또는 false로 주세요 "
-                f"(받은 값: {value!r})."
-            )
-        if target is int:
-            return int(value)
-        return value
-
-    def list_component_fields(self, name: str) -> dict[str, Any]:
-        """이 컴포넌트가 받는 프론트매터 필드와 현재 값.
-
-        스킬과 에이전트는 받는 필드가 다르고, 스킬은 종류(procedural/sync_fork/
-        async_fork/declarative/transfer/reference/wrapped)마다, 에이전트는
-        종류(agent/fork_agent)마다 또 다르다. 짐작으로 set_component_field를
-        부르지 않도록 실제 목록을 돌려준다. `emit`은 그 필드가 어디로 나가는지다
-        (frontmatter / body / settings).
-        """
-        import enum
-        from typing import get_args
-
-        from daedalus.model.plugin.field_matrix import matrix_for
-
-        comp = self._find_component(name)
-        config = getattr(comp, "config", None)
-        if config is None:
-            raise ValueError(f"'{name}'에는 config가 없습니다.")
-
-        # 표를 고르는 규칙의 실체는 model의 `matrix_for` 하나다 — 조용한
-        # 빈 dict 폴백(예전 버그)도, 이유를 못 말하는 맨 첨자도 쓰지 않는다.
-        matrix = matrix_for(comp)
-
-        hints = self._config_field_types(config)
-        out: list[dict[str, Any]] = []
-        for fld, rule in matrix.items():
-            attr = fld.value
-            if not hasattr(config, attr):
-                continue
-            current = getattr(config, attr)
-            entry: dict[str, Any] = {
-                "field": attr,
-                "frontmatter_key": fld.frontmatter_key,
-                "emit": rule.emit.value,
-                "visibility": rule.visibility.value,
-                "current": getattr(current, "value", current),
-            }
-            target = hints.get(attr)
-            args = [a for a in get_args(target) if a is not type(None)]
-            base = args[0] if args else target
-            if isinstance(base, type) and issubclass(base, enum.Enum):
-                entry["choices"] = [str(m.value) for m in base]
-            out.append(entry)
-        return {"component": comp.name, "kind": self._component_kind(comp), "fields": out}
-
-    def set_component_field(
-        self, name: str, field: str, value: Any
-    ) -> dict[str, Any]:
-        """스킬/에이전트 프론트매터 필드 하나를 설정한다.
-
-        field는 `list_component_fields`가 돌려주는 이름(model / tools /
-        permission_mode / allowed_tools / …). value는 JSON 값이며 enum 필드는 값
-        문자열로 준다(예: model="sonnet", permission_mode="acceptEdits").
-        목록 필드는 배열로 준다.
-
-        **null = 미지정**(A8). `user_invocable` / `disable_model_invocation`처럼
-        tri-state인 필드에 null을 주면 프론트매터 키 자체가 생략되어 CC 기본값에
-        위임된다 — "기본값과 같은 값을 못 박는 것"과 다르다. Optional로 선언되지
-        않은 필드에 null을 주면 거절한다.
-
-        description / when_to_use / hooks는 전용 도구를 쓴다.
-        """
-        from daedalus.view.commands.attr_commands import SetAttrCmd
-
-        comp = self._find_component(name)
-        config = getattr(comp, "config", None)
-        if config is None:
-            raise ValueError(f"'{name}'에는 config가 없습니다.")
-        if field == "hooks":
-            raise ValueError("훅 참조는 set_component_hooks를 쓰세요.")
-        if field == "usage":
-            raise ValueError(
-                "usage는 직접 설정할 수 없습니다 — 랩핑 스킬의 용도는 최초 "
-                "배치(또는 create_skill의 usage 인자)가 고정하며, 한 스킬 두 "
-                "용도는 금지입니다(WP-WR). 바꾸려면 스킬을 지우고 다시 만드세요."
-            )
-        if not hasattr(config, field):
-            known = [
-                f["field"] for f in self.list_component_fields(name)["fields"]
-            ]
-            raise ValueError(
-                f"'{self._component_kind(comp)}'에는 '{field}' 필드가 없습니다. "
-                f"사용 가능: {', '.join(known)}"
-            )
-
-        if field == "agent":
-            # fork 에이전트 — 틀린 이름은 CC가 조용히 general-purpose로 돌리므로 여기서 거절한다.
-            from daedalus.view.actions.fork_skill import validate_fork_agent
-
-            validate_fork_agent(self._project, value if isinstance(value, str) else "")
-        hints = self._config_field_types(config)
-        coerced = self._coerce_field_value(hints.get(field), value, field)
-        old = getattr(config, field)
-        self._vm.execute(
-            SetAttrCmd(
-                config,
-                field,
-                coerced,
-                label=f"'{name}' {field} 변경",
-                script=f'set_component_field("{name}", "{field}", ...)',
-            )
-        )
-        return {
-            "component": comp.name,
-            "field": field,
-            "old": getattr(old, "value", old),
-            "new": getattr(coerced, "value", coerced),
-        }

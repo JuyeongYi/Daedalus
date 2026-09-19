@@ -181,13 +181,24 @@
   **새 dict**를 넘겨 undo 가능(제자리 수정이면 undo가 같은 객체를 가리킨다). LOCAL 컴파일의
   설치 배선(`missing_mcp_server_def` 경고 해소)에 쓰인다. `get_project`가 `mcp_server_defs`를 포함.
 - **프론트매터 필드:** `list_component_fields`(필드 목록 + 현재값 + enum 선택지 + emit 위치)와
-  `set_component_field`(SetAttrCmd 경유 — undo 가능). 대상 필드 집합은
+  `set_component_field`(SetAttrCmd 경유 — undo 가능). **설정 가능한 필드 = 그 종류의 매트릭스에서
+  FIXED가 아닌 행**이다(WP-8 P4). 예전 게이트는 `hasattr(config, field)`여서 ① 매트릭스에 없는
+  필드(fork의 `allowed_tools` — fork에서는 에이전트 도구가 이긴다)와 ② 종류가 고정하는 FIXED
+  필드(transfer·reference의 `user_invocable` 등)를 받아 저장하고는 산출에서 조용히 버렸다. 지금은
+  둘 다 이유를 말하며 거절한다(FIXED는 고정값과 `convert_skill`을, 나머지는 그 종류의 필드
+  목록을). **거절의 "사용 가능" 목록은 setter가 실제로 받는 이름만** 싣는다 — FIXED 행과 전용 도구
+  필드를 빼지 않으면 같은 호출이 거절할 이름을 선택지로 내놓는다(원칙 5는 이유와 **선택지**를 요구한다).
+  전용 도구로 안내하며 거절하는 필드는 셋이다: `hooks`→`set_component_hooks`, `usage`→
+  `change_wrapped_usage`, `enabled`→`set_wrapped_enabled`. `enabled`는 `WrappedSkillConfig`의
+  dataclass 필드지만 매트릭스 행이 없어 P4 게이트가 "필드가 없습니다"로 거절하게 됐던 자리다 —
+  사실도 아니고 갈 곳도 못 말하므로 포인터 분기를 두었다(WP-8 리뷰 반영). 대상 필드 집합은
   `model/plugin/field_matrix.matrix_for(component)`가 고른다(WP-FK2) — 키는 `component.config.kind`
   이고, 컴파일러·편집기가 부르는 것과 **같은 함수**다. 맨 첨자는 kind가 표와 어긋나는 날 앱을
   죽이고 `.get(kind, {})`는 조용한 빈 폼을 내므로, 어느 종류가 어느 표에 없는지 말하는
   `ValueError`만 남겼다. 매트릭스가 늘면 도구가 따라간다. 타입 강제는
   `_config_field_types`(`get_type_hints` — `from __future__ import annotations` 탓에 dataclass의
-  `f.type`이 문자열이라 그대로 쓸 수 없다) + `_coerce_field_value`가 맡고, 잘못된 enum 값은
+  `f.type`이 문자열이라 그대로 쓸 수 없다) + `_coerce_field_value`가 맡고(두 헬퍼와 필드 도구 2종은
+  `mcp/tools/fields.py` — `props.py`가 693줄 두 책임이라 WP-8에서 갈라 나왔다), 잘못된 enum 값은
   선택지를 나열하며 **거부**한다(조용히 문자열이 들어가면 컴파일 산출이 이상해질 때까지 안 드러난다).
   `hooks`는 `set_component_hooks`로 안내하며 거절한다.
 - **카탈로그 후보 조회 (G9):** `list_tool_candidates()` — 읽기 전용. ALLOWED_TOOLS/TOOLS/
@@ -253,9 +264,10 @@
 
 | 도구 | 파라미터 | 받는 값 |
 |------|----------|---------|
-| `create_skill` | `kind` | `procedural` · `sync_fork` · `async_fork` · `declarative` · `transfer` · `reference` · `wrapped` |
-| `create_skill` | `fork_agent` | `sync_fork`/`async_fork` **전용** — 내장 fork 에이전트, `플러그인:이름`, 또는 프로젝트의 fork 에이전트 이름(정확 일치). 생략하면 `general-purpose` |
-| `create_agent` | `kind` | `agent`(워크플로 에이전트 — 캔버스 노드) · `fork_agent`(fork 스킬의 실행 기반 — fsm·포트·배치 없음) |
+| `create_skill` | `kind` | `config_kinds_in(Bucket.SKILLS)` **파생** — 오늘 `procedural` · `sync_fork` · `async_fork` · `declarative` · `transfer` · `reference` · `wrapped`(선언 순서) |
+| `create_skill` | `fork_agent` | 설정에 `agent`를 가진 종류(오늘 `sync_fork`/`async_fork`) **전용** — 내장 fork 에이전트, `플러그인:이름`, 또는 프로젝트의 fork 에이전트 이름(정확 일치). 생략하면 `general-purpose` |
+| `create_skill` | `source` / `usage` | 설정에 `source`/`usage`를 가진 종류(오늘 `wrapped`) **전용**. `usage`는 `source`와 함께만 |
+| `create_agent` | `kind` | `config_kinds_in(Bucket.AGENTS)` 파생 — `agent`(워크플로 에이전트 — 캔버스 노드) · `fork_agent`(fork 스킬의 실행 기반 — fsm·포트·배치 없음) |
 | `convert_skill` | `to` | `procedural` · `sync_fork` · `async_fork` (3-way) |
 
 - **읽는 쪽과 쓰는 쪽의 철자가 다르다.** 조회(`get_project`의 스킬·에이전트 행, `get_component`,
@@ -263,18 +275,25 @@
   `async_fork_skill` · `declarative_skill` · `transfer_skill` · `reference_skill` · `wrapped_skill` ·
   `agent` · `fork_agent`)를 싣고, 쓰는 쪽 파라미터는 위 표의 **짧은 형**을 받는다. 판정의 실체가
   다르기 때문이다 — 읽는 쪽은 모델이 스스로 말하는 `kind` 프로퍼티(원칙 1), 쓰는 쪽은 도구의
-  생성 어휘(`_SKILL_KINDS`)다. 둘을 섞어 넣으면 거절된다(조용히 받지 않는다 — 원칙 5).
+  생성 어휘(`_SKILL_KINDS` = `config_kinds_in(Bucket.SKILLS)`)다. 둘을 섞어 넣으면 거절된다(조용히
+  받지 않는다 — 원칙 5).
+- **생성 인자의 유효 종류는 손으로 적지 않는다 (WP-8 P3).** `fork_agent`/`source`/`usage`는 그
+  종류의 **config 클래스에 그 필드가 있을 때만** 받는다(`spec_by_config_kind(kind).config_cls`의
+  dataclass 필드 조회 한 곳). 거절 문구의 "사용 가능" 목록도 레지스트리를 훑어 만들므로, 새 종류가
+  그 필드를 선언하면 인자가 자동으로 열린다 — kind 목록을 따로 들던 시절에는 빠뜨린 인자가
+  **거절되는데 아무도 실패하지 않았다**(👻). 응답의 `fork_agent` 키도 같은 파생이다.
 - **`create_agent(kind="fork_agent", x=, y=)`는 거절한다.** fork 에이전트는 그래프 노드가 아니다.
-  판정은 종류의 `PLACEMENT` 선언 하나다(`placement.is_canvas_placeable_role` — WP-7 ②에서 음성 목록
-  `creation.NO_PLACE_KINDS`가 삭제됐다). 좌표를 조용히 무시하면 "배치했는데 아무 데도 없는" 상태가 된다.
+  판정은 종류의 **배치 역할 선언** 하나다 — `placement.is_canvas_placeable_role(spec_by_config_kind(kind).placement)`가
+  거절을 답한다(WP-7 ②/WP-8. 음성 목록 상수 `creation.NO_PLACE_KINDS`는 소비자 0으로 퇴역).
+  좌표를 조용히 무시하면 "배치했는데 아무 데도 없는" 상태가 된다.
 - **`convert_skill`은 3-way다.** sync↔async는 같은 fork라 `agent`를 보존하고 버리는 것이 없다
   (복사는 **대상 config 클래스의 필드 기준** — 부모 클래스 기준으로 복사하면 `ForkSkillConfig`에만
   있는 `agent`가 `dropped`에도 안 잡힌 채 기본값으로 리셋된다). procedural→fork는 `allowed_tools`,
   fork→procedural은 `agent`를 `dropped`로 보고한다. 실체는 GUI 종류 전환 버튼과 같은
   `view/actions/fork_skill.convert_skill_kind`다.
 - **`background`는 노출되지 않는다.** fork 두 종류를 가르는 값이지만 매트릭스 전용 FIXED 필드라
-  config에 기록되지 않는다 — `hasattr(config, field)` 게이트가 `list_component_fields`에서
-  자동으로 빼고 `set_component_field`에서 자동으로 거절한다(`context`·`agent`와 같은 규약).
+  config에 기록되지 않는다 — `list_component_fields`가 싣지 않고 `set_component_field`가
+  거절한다(위 "프론트매터 필드" 절의 P4 규약 — 매트릭스 FIXED 행. `context`도 같다).
 - **`place_component`는 배치 게이트를 가진다(A4).** 판정의 실체는
   `model/plugin/placement.is_state_placeable` 하나이고 캔버스 드롭·레지스트리 드래그·"여기에
   만들기"와 공용이다. 거부는 **갈 곳을 말한다** — 참조 용도는 `place_reference`, declarative·

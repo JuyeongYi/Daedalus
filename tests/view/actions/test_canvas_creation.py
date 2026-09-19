@@ -86,13 +86,30 @@ def test_creates_reference_as_reference_node(window):
     assert window._project.reference_placements[0].skill_name == "doc"
 
 
-#: 캔버스에 **아무 노드로도 놓이지 않는** 종류. WP-7 ②에서 생산 코드의 음성
-#: 목록(`creation.NO_PLACE_KINDS`)은 삭제됐다 — 판정의 실체는 종류의
+#: 캔버스에 **아무 노드로도 놓이지 않는** 종류. WP-7 ②/WP-8에서 생산 코드의
+#: 음성 목록(`creation.NO_PLACE_KINDS`)은 삭제됐다 — 판정의 실체는 종류의
 #: `PLACEMENT` 선언 하나이고, 여기서는 **오늘의 집합이 그대로인지**를 고정한다.
 _NO_PLACE_KINDS = frozenset({"declarative", "transfer", "fork_agent"})
 
 
-@pytest.mark.parametrize("kind", sorted(_NO_PLACE_KINDS))
+def _non_canvas_kinds() -> list[str]:
+    """캔버스에 **아무 노드로도** 놓이지 않는 config 종류 — 선언에서 파생.
+
+    파라미터 목록은 선언에서 유도한다(새 종류가 생기면 자동으로 따라온다).
+    위의 `_NO_PLACE_KINDS`는 그 유도 결과가 **오늘의 집합과 같은지** 고정하는
+    핀이다 — 목록과 판정이 어긋나면 한쪽만 고친 날 조용히 엉뚱한 노드가 생긴다.
+    """
+    from daedalus.model.plugin.kinds import KIND_REGISTRY
+    from daedalus.model.plugin.placement import is_canvas_placeable_role
+
+    return sorted(
+        spec.config_kind
+        for spec in KIND_REGISTRY.values()
+        if not is_canvas_placeable_role(spec.placement)
+    )
+
+
+@pytest.mark.parametrize("kind", _non_canvas_kinds())
 def test_no_place_kinds_are_created_only(window, kind):
     """declarative/transfer/fork_agent는 캔버스 노드가 아니다 — 만들기만 한다.
 
@@ -130,6 +147,7 @@ def test_no_place_kinds_match_canvas_placeable(window):
         if not is_canvas_placeable_role(spec.placement)
     }
     assert derived == _NO_PLACE_KINDS
+    assert set(_non_canvas_kinds()) == _NO_PLACE_KINDS
     for kind in CONFIG_KIND_INDEX:
         comp = make_component(window, kind, f"probe-{kind}")
         assert comp is not None

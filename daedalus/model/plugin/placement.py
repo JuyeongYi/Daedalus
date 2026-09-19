@@ -4,13 +4,13 @@
 **두 판정이다.** 하나로 합치면 참조 스킬 경로가 죽는다:
 
 - `is_state_placeable` — 그래프에 **SimpleState 노드**로 놓을 수 있는가.
-- `is_canvas_placeable` — 캔버스에 끌어놓거나 "여기에 만들기"로 놓을 수 있는가
-  (상태 노드 **또는** 참조 노드로).
+- `is_canvas_placeable` — 캔버스에 놓을 수 있는가(상태 노드 **또는** 참조 노드로).
+  컴포넌트가 아직 없는 자리(생성 인자의 kind 문자열·레지스트리 선언)에서는
+  역할만 아는 `is_canvas_placeable_role`을 부른다 — 같은 실체의 두 입구다.
 - `is_edge_placeable` — 전이 엣지에 붙는가(전이 스킬).
 
-캔버스 드롭·레지스트리 드래그·"여기에 만들기"·MCP `place_component`가 전부
-여기를 부른다 — 음성 목록(NO_PLACE_KINDS 등)을 표면마다 따로 들고 있으면
-어긋난다(원칙 1).
+캔버스 드롭·레지스트리 드래그·MCP `place_component`/`create_skill(x, y)`가
+전부 여기를 부른다 — 같은 enum 비교를 표면마다 손으로 적으면 어긋난다(원칙 1).
 
 **판정의 실체는 컴포넌트 자신이다**(WP-2b). 여기 있는 것은 "어떤 배치 역할이
 무슨 이름으로 불리는가"라는 어휘 번역뿐이고, 종류 목록은 없다 — 새 종류는
@@ -60,9 +60,11 @@ def is_canvas_placeable_role(role: PlacementRole) -> bool:
 
     MCP `create_skill(x=, y=)`처럼 **만들기 전에** 거절해야 하는 자리는 kind
     문자열밖에 갖고 있지 않다(종전 `creation.NO_PLACE_KINDS` 음성 목록이 그
-    자리였고, 목록과 판정이 어긋나도 아무도 알려 주지 않았다). 종류의
-    `PLACEMENT` 선언을 그대로 물어 두 답이 갈리지 않게 한다 —
-    `is_canvas_placeable`은 이 함수의 인스턴스 판본이다.
+    자리였고, 목록과 판정이 어긋나도 아무도 알려 주지 않았다). 만들고 나서
+    못 놓는다고 하면 이름만 남는다. 레지스트리 선언(`KindSpec.placement`)을
+    훑는 테스트도 같은 자리다. 종류의 `PLACEMENT` 선언을 그대로 물어 두 답이
+    갈리지 않게 한다 — `is_canvas_placeable`은 이 함수의 인스턴스 판본이고,
+    본문을 손으로 베껴 쓰면 STATE/REFERENCE 비교가 표면마다 갈린다(원칙 1).
     """
     return role in (PlacementRole.STATE, PlacementRole.REFERENCE)
 

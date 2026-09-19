@@ -43,7 +43,9 @@ MainThreadInvoker로 마샬링한다). 여기서 스레드 안전성을 다시 �
 #   body.py       — 본문 (set_component_body/get_body_outline/get_body_section/
 #                   set_body_section)
 #   props.py      — 생성·속성 (create_skill/create_agent/rename_component/
-#                   description/when_to_use/field/project_properties/set_mcp_server_def)
+#                   description/when_to_use/project_properties/set_mcp_server_def)
+#   fields.py     — 프론트매터 필드 (list_component_fields/set_component_field —
+#                   props.py에서 분리, WP-8 ①. PropsTools의 기저라 표면은 그대로)
 #   wrap.py       — 랩핑 카탈로그 (list_wrappable_skills/list_plugin_roots/
 #                   add_plugin_root/remove_plugin_root — WP-WR D2)
 from __future__ import annotations

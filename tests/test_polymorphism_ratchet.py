@@ -70,11 +70,15 @@ SHAPE_EXCLUDED_SUBJECTS: frozenset[str] = frozenset({"project", "cfg", "config",
 #: 형상 getattr 래칷(②)은 WP-4가 건드리지 않았다 — 직렬화 경로의 남은 두 사이트
 #: (`deser.deserialize_project`의 `fsm`)는 프로젝트 그래프 2-pass 질문이지
 #: 컴포넌트 조립 질문이 아니라 여기서 죽지 않는다.
+#: WP-8이 MCP의 종류·필드 허용을 레지스트리·`SKILL_FIELD_MATRIX`에서 파생시키며
+#: `mcp/tools/props`의 형상 getattr을 걷었다(33 → 25). WP-7·WP-8을 합치면 형상
+#: 래칫은 23/10파일이고, 병합 후 **재실측한 값**을 잠갔다 — 두 가지의 감소분을
+#: 더하면 겹치는 자리를 두 번 세게 된다.
 RATCHET: dict[str, int] = {
     "isinstance_sites": 4,
     "isinstance_files": 2,
-    "shape_attr_sites": 31,
-    "shape_attr_files": 11,
+    "shape_attr_sites": 23,
+    "shape_attr_files": 10,
 }
 
 #: 정당한 잔존 사이트 — `module::qualname`. 면제는 **사유와 철거 주체**를 적는다.
