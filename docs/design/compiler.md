@@ -290,6 +290,22 @@ AST로 강제) `emit/guides.py`의 `WORKFLOW_GUIDE_KIND`/`BLACKBOARD_GUIDE_KIND`
     받는 쪽 에이전트의 "## Invocation Contract"(13번)는 호출자가 스킬이든 에이전트든 같은
     경로로 유도되므로 별도 처리가 없다.
 
+19-b. **위임 대상 이름과 외부 에이전트 단서 (WP-9)**: "이 노드에게 위임할 때 CC가 찾는 이름"의
+    실체는 `emit/common.delegation_target_name(component)` 하나다 — 정본이 외부인 노드
+    (`external_source`)는 `플러그인[@마켓]:이름` **원문**이고(우리 산출에 그 이름의 파일이 없다),
+    그 밖에는 컴포넌트 이름이다. "## Next Steps"(6-b)·"## Entry Context"(13)·FSM 절차 서술·
+    "## Delegation"(19)이 전부 이 함수를 부른다 — 표면마다 다른 이름을 말하면 같은 노드가
+    두 물건이 된다(원칙 1). **본문을 누가 실행하는가**를 묻는 `agent_invocation_name`(20번,
+    fork 스킬의 `config.agent`)과는 다른 질문이라 한 함수로 묶지 않는다: 묶으면 위임 대상이
+    없는 종류가 `general-purpose`로 답한다.
+    산출 파일이 없는 종류(`OUTPUT_LOCATION is NONE`)로 가는 위임에는
+    `external_delegation_suffix`가 `EXTERNAL_DELEGATION_NOTE`를 붙인다 — *"external plugin
+    agent — it knows neither this workflow nor the blackboard: put everything it needs in the
+    prompt, record the result yourself, and pick the branch below from its report"*. 그 에이전트는
+    우리 플러그인이 만든 파일이 아니라 진행 기록 규약도 출력 포트 어휘도 모른다. 이 문장이
+    없으면 부르는 쪽이 "출력 포트 이름으로 끝내라"를 그대로 지시하고, 외부 에이전트는 그
+    규약을 모른 채 다르게 답한다.
+
 20. **fork 스킬 2종 (2026-09-13, 2종 분리 2026-09-17, `emit/fork.py`)**: CC는 fork 스킬 본문을 `agent`
     서브에이전트의 작업 지시로 쓴다(모델·실측은 `plugin-model.md` "fork 스킬"). 종류는 `SyncForkSkill`(동기)와
     `AsyncForkSkill`(비동기) 둘이고, **산출을 가르는 것은 클래스가 아니라 매트릭스**다(`config.kind` →
