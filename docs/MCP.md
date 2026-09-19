@@ -78,7 +78,7 @@ GUI가 켜지면 `127.0.0.1`에 Streamable HTTP로 뜬다.
 | `create_skill` | `kind` | `procedural` · `sync_fork` · `async_fork` · `declarative` · `transfer` · `reference` |
 | `create_skill` | `fork_agent` | 설정에 `agent`를 가진 종류(`sync_fork`/`async_fork`) 전용 — 내장 fork 에이전트, `플러그인:이름`, 또는 프로젝트의 fork 에이전트 이름. 생략하면 `general-purpose` |
 | `create_agent` | `kind` | `agent`(워크플로 에이전트 — 캔버스 노드) · `fork_agent`(fork 스킬의 실행 기반) · `external_agent`(다른 플러그인의 에이전트를 **노드로**) · `external_fork_agent`(같은 것을 **fork 실행 기반으로**). 뒤 둘은 산출 파일이 없고 `source`로 정본을 가리킨다 |
-| `create_agent` | `source` | `external_agent`/`external_fork_agent` 전용 — `플러그인[@마켓]:이름` 원문(CC가 찾는 이름, 정확 일치). `list_external_plugins`의 에이전트 행 `agent_type`이 그 값이다. 다른 종류에 주면 거절한다. 나중에 바꿀 때는 `set_component_field(name, "source", …)` |
+| `create_agent` | `source` | `external_agent`/`external_fork_agent` 전용 — `플러그인[@마켓]:이름` 원문(CC가 찾는 이름, 정확 일치). `list_external_plugins`의 에이전트 행 `agent_type`이 그 값이다. 다른 종류에 주면 거절한다. **그 플러그인이 아직 사용 선언되지 않았으면 같은 요청에서 선언한다**(응답 `declared_plugin`, 1 undo). 같은 source가 이미 등록돼 있으면 거절한다 — 역할은 등록할 때 하나로 고정된다. 나중에 바꿀 때는 `set_component_field(name, "source", …)` |
 | `convert_skill` | `to` | `procedural` · `sync_fork` · `async_fork` |
 
 - **읽는 쪽 `kind`는 철자가 다르다.** 조회 응답(`get_project`의 스킬·에이전트 행, `get_component`,
@@ -126,7 +126,7 @@ LOCAL 빌드가 설치 대상 작업 폴더에 남기는 `.claude/CLAUDE.md` 구
 
 `list_external_plugins` · `fetch_plugin_skills` · `list_marketplace_folders` · `add_marketplace_folder` · `remove_marketplace_folder` · `set_external_plugins`
 
-외부 플러그인 카탈로그를 훑고 사용 선언할 때 쓴다 — 선언한 플러그인의 에이전트는 `ExternalAgent` 노드로 부른다. **선언한 플러그인의 스킬은 fork 에이전트의 `skills`로 쓴다** — 스킬 행의 `skill_ref`(`@마켓`을 뗀 `플러그인:스킬`)를 `set_component_field(name, "skills", [...])`에 그대로 넣는다(외부 플러그인 스킬의 유일한 사용 경로, WP-B 사용자 확정 2026-09-19). 같은 행의 `used_by`가 지금 그 참조를 쓰는 프로젝트 에이전트 이름을 말한다. **`fetch_plugin_skills`만 인터넷에 나간다** — 사용자가 그 플러그인을 지목했을 때만이고, 카탈로그를 열거나 새로고침하는 것만으로는 절대 받지 않는다.
+외부 플러그인 카탈로그를 훑고 사용 선언할 때 쓴다 — 선언한 플러그인의 에이전트는 `create_agent(kind="external_agent"|"external_fork_agent", source=…)`로 **등록**해서 쓴다(GUI 레지스트리 🔌 탭과 같은 경로). 에이전트 행의 `registered_as`(`external_agent`/`external_fork_agent`/`null`)와 `registered_name`이 이미 등록했는지를 말한다 — `null`이면 아직 미등록이고, 값이 있으면 **그 역할로 고정**돼 다른 역할로는 등록할 수 없다. **선언한 플러그인의 스킬은 fork 에이전트의 `skills`로 쓴다** — 스킬 행의 `skill_ref`(`@마켓`을 뗀 `플러그인:스킬`)를 `set_component_field(name, "skills", [...])`에 그대로 넣는다(외부 플러그인 스킬의 유일한 사용 경로, WP-B 사용자 확정 2026-09-19). 같은 행의 `used_by`가 지금 그 참조를 쓰는 프로젝트 에이전트 이름을 말한다. **`fetch_plugin_skills`만 인터넷에 나간다** — 사용자가 그 플러그인을 지목했을 때만이고, 카탈로그를 열거나 새로고침하는 것만으로는 절대 받지 않는다.
 
 ### 세션 (7)
 

@@ -784,17 +784,10 @@ Tier 2다. 출발점은 2026-05 조사(ClaudeManager가 만든 plain 셸 스크�
   `remove_listener` 3건을 부르고, 탭 편집기를 닫을 때 `_on_notify_fn`을 끊는다. 다만 재현 조건이
   없으므로 **재현 테스트를 먼저 만든다**(헤드리스 스위트는 `confirm_discard_changes` 스텁으로
   닫기 확인을 지나치므로 지금 이 경로를 밟지 않는다).
-- **외부 플러그인 참조의 마켓 표기 불일치 — 양쪽 경고로 유지한다 (WP-EX, 2026-09-19)**.
-  `_check_external_plugins`의 매칭은 **설치 식별자 정확 일치**라 `alpha@mkt` 선언과 `alpha:x`
-  참조가 서로를 못 본다(`undeclared_external_plugin` + `unused_external_plugin` 두 경고).
-  fork 실행 기반으로 등록한 외부 에이전트의 `source`는 **bare 이름**이어야 하므로(CC가 찾는
-  이름, 실측) 마켓을 붙여 선언한 프로젝트에서는 이 쌍이 늘 뜬다 — 도그푸드 프로젝트의
-  `hookify:conversation-analyzer`가 그 사례다. 선언 쪽을 `partition("@")[0]`로도 비교하는 수선은
-  WP-B(외부 스킬 `skills:` 참조)가 같은 함수에서 소유한다 — 두 WP가 같은 줄을 고치지 않도록
-  거기로 모았다. 오늘 상태: 경고 2건 + 컴파일 성공.
-  - 종전 항목 "미선언 등급 비대칭"은 **해소됐다** — fork 쪽 에러 규칙
-    `fork_agent_undeclared_plugin`이 WP-EX에서 퇴역하고, 미선언은
-    `undeclared_external_plugin`(경고) 한 갈래가 됐다.
+(외부 플러그인 참조의 마켓 표기 불일치 · 미선언 등급 비대칭 — **해소됨**. 매칭 정책은
+`config.plugin_ids_match` 하나가 됐고(WP-B), 등록 여부 판정도 같은 술어를 쓰는
+`wrap_catalog.registered_external_component` 하나다(WP-C). 미선언은
+`undeclared_external_plugin`(경고) 한 갈래다 — `docs/design/agents.md`·`validation.md` 참조.)
 - **위임 이름 접두 비대칭 (WP-9 리뷰에서 재확인, 2026-09-19)**. 마켓 빌드에서 fork 스킬
   프론트매터의 `agent:`는 `agent_invocation_name`이 `<프로젝트>:<이름>`으로 내는데, 같은 빌드의
   위임 산문("## Next Steps"·"## Delegation")은 `delegation_target_name`이 내는 **맨 이름**이다
@@ -865,7 +858,9 @@ Tier 2다. 출발점은 2026-05 조사(ClaudeManager가 만든 plain 셸 스크�
   줄이려면 **편집기 폼이 `FieldRule`에서 접근자를 받는** 설계가 선행돼야 한다 — 그 WP가
   잔여 9건(frontmatter_panel 6 + component_editor 3)을 소유한다.
 - **`wrap_catalog` 개명** — `WrappedSkill`은 WP-10에서 퇴역했고 MCP 쪽은 `tools/wrap.py` →
-  `tools/external.py`로 개명됐다. 남은 것은 `model/plugin/wrap_catalog.py`(609줄)와
+  `tools/external.py`로 개명됐다. 남은 것은 `model/plugin/wrap_catalog.py`(729줄 —
+  WP-C의 등록 판정 유도 함수가 합류했다. ~800줄 경계에 붙었으므로 개명과 함께
+  "스캔"과 "프로젝트 유도 질문"을 두 모듈로 가르는 것을 함께 검토한다)와
   `view/editors/wrap_catalog_dialog.py`다 — 실제 책임은 외부 플러그인의 **스킬과 에이전트**
   카탈로그이고(`_scan_agents`가 `ExternalAgent`의 source 정본을 만든다) docstring은 고쳐
   두었다. `external_catalog.py`/`external_catalog_dialog.py`로 옮기고 기존 경로를 재-export

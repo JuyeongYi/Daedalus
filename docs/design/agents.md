@@ -299,9 +299,24 @@ used_plugin_skill_refs(project)`)을 자동완성 후보로 준다(`app.set_proj
   `used_plugin_agents`). 마켓 이름 해소: 등록 시 명시 > 폴더
   `.claude-plugin/marketplace.json`의 name > bare.
 - **"이 프로젝트가 이미 쓰는 source"의 단일 진실은 `project_external_sources`**다 —
-  창의 ✔와 MCP `list_external_plugins`의 `already_used`가 같은 함수를 부른다
-  (원칙 1·2). 종류도 버킷도 묻지 않고 `external_source`만 보므로 외부 정본을 갖는
-  새 종류는 선언 한 줄로 합류한다.
+  종류도 버킷도 묻지 않고 `external_source`만 보므로 외부 정본을 갖는 새 종류는
+  선언 한 줄로 합류한다.
+- **"이 외부 에이전트를 이미 등록했는가"는 `registered_external_component(project,
+  source)`** 하나가 답한다(WP-C) — 레지스트리 🔌 탭의 미등록 목록, 등록 액션의 역할
+  고정 거절, MCP `list_external_plugins`의 `registered_as`/`registered_name`, 카탈로그
+  창의 ✔이 전부 이 함수를 부른다(원칙 1·2). 비교는 **원문 정확 일치가 아니라**
+  `config.external_source_refs_match`다: 플러그인 부분은 `plugin_ids_match`(마켓 표기
+  비대칭 완화), 이름 부분은 정확 일치. 카탈로그는 `agent_type`을 bare로 내고 사용자가
+  적은 `source`는 마켓을 달고 있을 수 있어서, 원문으로 세면 **이미 등록한 에이전트가
+  미등록 목록에 또 나온다**. `unregistered_plugin_agents(project, catalog=None)`이
+  그 차집합이다.
+- **"이 외부 스킬 참조를 누가 쓰는가"는 `skill_ref_users(project)`**다 — 🧷 탭의 ✔,
+  MCP `used_by`, 카탈로그 창의 스킬 ✔이 같은 답을 말한다. 키는
+  `normalize_external_skill_ref`로 bare 형식(`플러그인:스킬`)이다.
+- **유도 함수는 카탈로그를 주입받을 수 있다** — `used_plugin_agents` /
+  `used_plugin_skill_refs` / `unregistered_plugin_agents`의 `catalog` 인자. 파일시스템을
+  읽는 것은 `scan_catalog` 하나이고, 레지스트리 패널은 그 결과를 캐시해 넘긴다(매
+  재그리기마다 폴더를 훑으면 화면이 멈춘다 — WP-C).
 - **원본 파일 해소는 버킷이 규약을 고른다** — `resolve_source_file(component)`가
   스킬이면 `skills/<이름>/SKILL.md`, 에이전트면 `agents/<이름>.md`를 찾는다.
   편집기의 "원본 열기" 버튼이 쓴다.
@@ -312,7 +327,43 @@ used_plugin_skill_refs(project)`)을 자동완성 후보로 준다(`app.set_proj
   `singleShot(0, self, refresh)`로 미룬다(itemChanged를 쏜 아이템을 같은 호출에서
   `clear()`로 파괴하면 간헐 access violation — 실측. 수신 컨텍스트 덕에 닫힌
   다이얼로그에 발화하지 않는다). **이 창의 동작은 등록·선언뿐이다**(사용자 확정 —
-  배선은 빌드 소관이라 생성 버튼 없음).
+  배선은 빌드 소관이라 생성 버튼 없음). 에이전트 행의 ✔는 "그 정본을 등록한
+  컴포넌트가 있다", 스킬 행의 ✔는 "그 참조를 `skills:`에 가진 에이전트가 있다"로
+  뜻이 다르다(WP-B에서 외부 스킬이 컴포넌트가 아니게 된 뒤의 사실이다).
+
+### 등록 표면 — 레지스트리 🔌/🧷 탭 (WP-C, 2026-09-19)
+
+카탈로그 창이 **사용 선언**의 자리라면, 레지스트리 도크는 **등록**의 자리다.
+
+- **🔌 EXTERNAL AGENTS 탭 하나에 두 종류.** `ExternalAgent`(그래프 노드)와
+  `ExternalForkAgent`(fork 실행 기반)는 `KindUI.section_group`이 같아 한 섹션을
+  나눠 쓴다(사용자 확정 — 역할만 다를 뿐 출처가 같은 것을 탭 두 개로 나누면 "이
+  플러그인의 에이전트를 어디서 찾나"가 두 곳이 된다). 항목의 역할은 종류 아이콘이
+  말한다(🔌 / 🔌🧩). 드래그 가능 여부는 섹션이 아니라 **항목마다**
+  `is_canvas_placeable`이 정하므로 fork 기반은 그대로 드래그 불가다.
+- **탭 하단 = 미등록 목록.** `unregistered_plugin_agents`가 낸 것을 회색·기울임꼴로
+  그리고, 우클릭 메뉴는 섹션이 담는 종류에서 **파생**한다("🔌 그래프 노드로 등록" /
+  "🔌🧩 fork 에이전트로 등록" — 명사는 `is_fork_base` 선언이 고른다).
+- **등록의 실체는 `view/actions/external_registration.register_external_agent`**
+  하나이고 MCP `create_agent(kind, source=)`도 같은 함수를 부른다(원칙 1). 하는 일:
+  ① 같은 정본이 이미 등록돼 있으면 **거절**(역할 고정, 이유 + 그 컴포넌트 이름)
+  ② 이름은 마이그레이션과 같은 규칙(`model/plugin/names.external_ref_name_candidates`
+  → 참조 이름, 충돌하면 `<플러그인>-<이름>`, 둘 다 컴포넌트 이름 규약으로 정규화)
+  ③ 플러그인이 미선언이면 **같은 `MacroCommand` 안에서** `external_plugins`에 더한다
+  — 선언 없는 등록은 빌드가 배선을 내지 않아 런타임에 조용히 사라진다(원칙 5).
+  전부 1 undo 단위다.
+- **🧷 EXTERNAL SKILLS 탭**은 컴포넌트 종류가 아닌 **카탈로그 항목** 섹션이다
+  (`view/panels/external_registry.ExternalSkillsSection`) — `used_plugin_skill_refs`
+  목록에 `skill_ref_users`의 ✔를 붙이고, 우클릭 "fork 에이전트 skills에 추가 ▸"가
+  `skills` 칸을 가진 에이전트를 역할별로(fork 에이전트 / 워크플로 에이전트) 낸다.
+  실체는 `add_skill_ref_to_agent`(`SetAttrCmd(agent.config, "skills", 새 리스트)`,
+  값이 같으면 커맨드를 쌓지 않는다).
+- **두 탭의 "+"는 카탈로그 창을 연다** — 정본이 저쪽 플러그인 파일이라 이름을 물어
+  만들 수 없다. 판정은 `BODY_SOURCE=EXTERNAL` 선언 파생이지 종류 목록이 아니다.
+- **스캔 시점.** 카탈로그는 파일시스템을 읽으므로 `_rebuild`마다 부르지 않는다 —
+  프로젝트를 바꿀 때와 카탈로그 창이 닫힐 때(`RegistryPanel.refresh_catalog`)만
+  다시 훑고 결과를 캐시한다. 사용 선언이 바뀌었을 때는 다시 훑지 않는다(선언 필터는
+  그릴 때 걸린다). 테스트 봉합선은 `wrap_catalog.scan_catalog` 몽키패치다.
 - **실물의 출처는 세 곳, 기준은 "설치했는가"가 아니라 "실물을 읽었는가"**
   (사용자 확정 2026-09-07): 마켓플레이스는 `marketplace.json`에 플러그인을 **선언**만
   하고 실물은 따로 온다(실측: 공식 마켓 291개 선언 / 저장소 동봉 40개).
