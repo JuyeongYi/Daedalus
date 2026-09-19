@@ -184,12 +184,24 @@ class ComponentEditor(QWidget):
 
 
 class _WrappedSourcePanel(QWidget):
-    """랩핑 스킬의 중앙 패널 (WP-WR, 사용자 확정) — 본문 편집기 대신 원본
-    경로 표시 + "원본 열기" 버튼만.
+    """본문 정본이 **외부**인 컴포넌트의 중앙 패널 — 본문 편집기 대신 원본
+    경로 표시 + "원본 열기" 버튼.
 
-    본문의 정본은 source가 가리키는 외부 스킬이고 인보크 지시는 빌드가
-    생성한다 — 여기서 편집할 본문이라는 것 자체가 없다. 원본 해석은
+    본문의 정본은 source가 가리키는 외부 스킬/에이전트이고 인보크 지시는
+    빌드가 생성한다 — 여기서 편집할 본문이라는 것 자체가 없다. 원본 해석은
     `wrap_catalog.resolve_skill_file`(등록된 마켓플레이스 폴더 기준)이다.
+
+    용도(`usage`)·활성(`enabled`) 두 스위치는 **그 스위치를 가진 종류에만**
+    그린다(오늘은 랩핑 스킬 하나 — `KindUI.has_enable_toggle`). 종류를
+    열거하지 않고 뷰 선언을 보는 이유는, 외부 정본을 갖는 새 종류(WP-9 외부
+    플러그인 에이전트)가 생겼을 때 **누르면 남의 필드를 건드리는 버튼**이
+    조용히 따라붙지 않게 하기 위해서다.
+
+    같은 이유로 **문구의 명사와 "원본 열기" 버튼도 선언에서 나온다**(WP-9 리뷰
+    반영). 스위치만 게이트하고 산문이 스킬로 굳어 있으면, 외부 에이전트
+    편집기가 "`플러그인[@마켓]:스킬`을 지정하세요"라고 **틀린 지시**를 하고,
+    카탈로그가 SKILL.md만 해소하는 탓에 버튼은 언제나 "찾지 못했습니다"만
+    돌려준다 — 둘 다 없는 사실을 말하는 UI다(원칙 5).
     """
 
     def __init__(self, component, parent: QWidget | None = None) -> None:
@@ -198,9 +210,19 @@ class _WrappedSourcePanel(QWidget):
 
         from PySide6.QtWidgets import QLabel, QLineEdit, QPushButton, QVBoxLayout
 
+        from daedalus.model.plugin.wrap_catalog import can_resolve_source
+        from daedalus.view.kind_ui import ui_for
+
+        # 용도·활성 스위치를 가진 종류인가 (오늘은 랩핑 스킬 하나).
+        self._has_usage_switches = ui_for(component).has_enable_toggle
+        # 정본이 무엇으로 불리는가 — 버킷이 답한다(스킬 산출 vs 에이전트 산출).
+        self._noun = "에이전트" if component.BUCKET is Bucket.AGENTS else "스킬"
+        # 카탈로그가 원본 파일을 찾아 줄 수 있는 버킷인가.
+        self._can_open_source = can_resolve_source(component)
+
         lay = QVBoxLayout(self)
         lay.addStretch()
-        lay.addWidget(QLabel("본문 정본 (외부 스킬) — 인보크 지시는 빌드가 생성"))
+        lay.addWidget(QLabel("본문 정본 (외부) — 인보크 지시는 빌드가 생성"))
         self._w_source = QLineEdit()
         self._w_source.setReadOnly(True)
         lay.addWidget(self._w_source)
@@ -213,6 +235,7 @@ class _WrappedSourcePanel(QWidget):
             "등록된 마켓플레이스 폴더에서 원본 SKILL.md를 찾아 연다"
         )
         self._btn_open.clicked.connect(self.open_source)
+        self._btn_open.setVisible(self._can_open_source)
         lay.addWidget(self._btn_open)
         # 용도 전환 (WP-WR) — 최초 배치가 고정하지만 **바꿀 길은 있어야 한다**
         # (사용자 보고 2026-09-07). 배치가 남아 있으면 무엇이 지워지는지 묻는다.
@@ -224,6 +247,8 @@ class _WrappedSourcePanel(QWidget):
         self._btn_enabled = QPushButton("")
         self._btn_enabled.clicked.connect(self.toggle_enabled)
         lay.addWidget(self._btn_enabled)
+        for widget in (self._w_usage, self._btn_usage, self._btn_enabled):
+            widget.setVisible(self._has_usage_switches)
         self._w_status = QLabel("")
         self._w_status.setWordWrap(True)
         lay.addWidget(self._w_status)
@@ -267,8 +292,16 @@ class _WrappedSourcePanel(QWidget):
             )
         if not source:
             self._w_status.setText(
-                "source가 비어 있습니다 — 좌측 프론트매터에서 "
-                "`플러그인[@마켓]:스킬`을 지정하세요."
+                f"source가 비어 있습니다 — 좌측 프론트매터에서 외부 "
+                f"{self._noun} source를 `플러그인[@마켓]:이름` 형식으로 "
+                f"지정하세요."
+            )
+        elif not self._can_open_source:
+            self._w_status.setText(
+                f"외부 {self._noun}의 원본 파일은 아직 열 수 없습니다 — "
+                f"카탈로그는 플러그인의 SKILL.md만 훑습니다. 정본은 그 "
+                f"플러그인이 소유하고, 우리 산출에는 부르는 쪽의 위임 지시만 "
+                f"나갑니다."
             )
         elif not enabled:
             self._w_status.setText(

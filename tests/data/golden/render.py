@@ -11,6 +11,10 @@
     copied_files·findings·skipped)은 정렬하지 않는다 — 그 순서가 골든이다.
   - 텍스트가 없는 파사드(`compile_hooks_json` → None 등)는 해시 대신
     :data:`NO_OUTPUT` 표지를 남긴다. "없음"과 "빈 문자열"이 구분돼야 한다.
+  - **산출 자리가 없는 종류**(`OUTPUT_LOCATION is NONE` — 외부 플러그인
+    에이전트)는 emitter 자체가 없어 파사드를 부를 수 없다. 건너뛰지 않고
+    :data:`NO_EMITTER` 표지를 남긴다 — 골든 파일에 "이 컴포넌트는 아무것도
+    내지 않는다"가 **적혀 있어야** 나중에 emitter가 생기는 변화가 diff로 보인다.
 """
 from __future__ import annotations
 
@@ -31,6 +35,7 @@ from daedalus.compiler.emit.wrapped import compile_wrapped_runner
 from daedalus.compiler.project_compiler import compile_project
 from daedalus.compiler.units import CompileContext, Planner
 from daedalus.compiler.workspace import render_rule
+from daedalus.model.plugin.roles import OutputLocation
 from daedalus.model.plugin.skill import WrappedSkill
 from daedalus.model.serialize import deserialize_project, serialize_project
 
@@ -38,6 +43,15 @@ from tests.data.golden.corpus import DOGFOOD_JSON, iter_cases
 
 #: 파사드가 "이 프로젝트에는 산출이 없다"고 답했을 때의 표지 (해시 자리).
 NO_OUTPUT = "none"
+
+#: 그 **종류**에 산출 자리가 아예 없을 때의 표지 (WP-9). `NO_OUTPUT`과 다르다:
+#: 저쪽은 "이번에는 낼 것이 없다"이고 이쪽은 "이 종류는 파일을 내지 않는다"다.
+NO_EMITTER = "no-emitter"
+
+
+def _emitting(component) -> bool:
+    """이 컴포넌트에 산출 emitter가 있는가 (`compiler.preview.can_preview`와 같은 술어)."""
+    return type(component).OUTPUT_LOCATION is not OutputLocation.NONE
 
 
 def _digest(text: str | None) -> str:
@@ -78,8 +92,9 @@ def facade_hashes() -> dict[str, str]:
                     compile_wrapped_runner(skill)
                 )
         for agent in project.agents:
-            out[f"{prefix}/compile_agent/{agent.name}"] = _digest(
-                compile_agent(agent, project)
+            out[f"{prefix}/compile_agent/{agent.name}"] = (
+                _digest(compile_agent(agent, project))
+                if _emitting(agent) else NO_EMITTER
             )
         out[f"{prefix}/compile_hooks_json"] = _digest(compile_hooks_json(project))
         for filename, body in compile_hook_scripts(project):

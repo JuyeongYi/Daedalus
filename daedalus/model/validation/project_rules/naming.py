@@ -67,7 +67,9 @@ class _NamingRules:
                     message=(
                         f"'{comp.name}'의 source가 비었거나 형식이 "
                         f"어긋납니다({source!r}) — `플러그인[@마켓]:이름` 형식으로 "
-                        f"지정하세요. 컴파일 산출의 인보크 지시가 생략됩니다."
+                        f"지정하세요. 부를 이름이 없으므로 컴파일 산출은 이름을 "
+                        f"지어내지 않습니다 — 그 지시가 빠지거나 고쳐야 한다는 "
+                        f"표시로 나갑니다."
                     ),
                     source=comp.name,
                     subject=comp,

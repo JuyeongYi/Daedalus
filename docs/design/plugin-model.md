@@ -3,7 +3,7 @@
 > CLAUDE.md에서 이관한 설계 기록(2026-09-12, 원문 그대로). 코드와 어긋나면 코드가
 > 정본이다 — 발견 즉시 이 문서를 고친다. 색인은 루트 `CLAUDE.md`의 "설계 문서" 절.
 
-## 스킬 7종과 에이전트 2종
+## 스킬 7종과 에이전트 3종
 
 | 종류 | `kind` | 본질 | FSM·배치 |
 |------|--------|------|---------|
@@ -16,6 +16,7 @@
 | WrappedSkill | `wrapped_skill` | 다른 플러그인 스킬의 랩핑(WP-WR) | 본문 없음 — 정본은 config.source의 외부 스킬(런타임 참조). 배치·transfer_on은 procedural과 동일(단일 배치) |
 | AgentDefinition | `agent` | 별도 컨텍스트의 작업자 — **워크플로 에이전트**(캔버스 노드) | **내부 FSM 퇴역(WP-AF)** — 절차는 본문, 결과 분기는 transfer_on |
 | ForkAgent | `fork_agent` | fork 스킬의 **실행 기반** (2026-09-17) | fsm·포트 없음, **캔버스 배치 불가**. 산출은 워크플로 에이전트와 같은 `agents/<이름>.md` |
+| ExternalAgent | `external_agent` | 다른 플러그인의 서브에이전트를 워크플로 노드로(WP-9) | fsm 없음, **캔버스 상태 노드**(포트 있음). 정본은 `config.source`의 외부 에이전트라 **산출 파일이 없다** |
 
 ### 클래스 계층 — "구체 클래스가 구체 클래스를 상속하지 않는다"
 
@@ -31,7 +32,8 @@ PluginComponent(ABC)                      base.py  (name, description, abstract 
 │   ├── DeclarativeSkill / TransferSkill / ReferenceSkill
 └── Agent(PluginComponent, ABC)           agent.py  # 추상 — config·안정 id 공통
     ├── AgentDefinition(Agent, WorkflowComponent)  kind "agent"
-    └── ForkAgent(Agent)                            kind "fork_agent"
+    ├── ForkAgent(Agent)                            kind "fork_agent"
+    └── ExternalAgent(Agent)                        kind "external_agent"  # WP-9 — 산출 없음
 ```
 
 - `StepSkill`은 예전의 `ForkSkill ⊂ ProceduralSkill` 상속이 지탱하던 **"워크플로 단계 스킬"** 판정의 새 이름이다.
@@ -104,8 +106,13 @@ no-op가 된다. 그래서 `PluginComponent`가 **선언(ClassVar) + 인스턴�
 | `HAS_INTERNAL_FSM` | `bool` | `False` | legacy 내부 FSM 절의 대상인가(오늘 `AgentDefinition`만) |
 
 **종류별 값 (전수).** 표의 정본은 코드이고
-`tests/model/plugin/test_capability_surface.py::EXPECTED_DECLARATIONS`가 9종 × 13칸을
+`tests/model/plugin/test_capability_surface.py::EXPECTED_DECLARATIONS`가 10종 × 13칸을
 통째로 고정한다 — 표만 고치거나 클래스만 고치는 편집이 조용히 지나가지 않는다.
+
+`ExternalAgent`(WP-9)가 이 표면의 **수용 시험**이다: 그래프 노드이면서
+(`PLACEMENT=STATE`) 내부 FSM도 산출 파일도 없는 조합은 종전
+`isinstance(agent, AgentDefinition)` boolean 하나로는 표현되지 않았다. 세 선언으로
+쪼갠 덕에 계획·포인터·미리보기·포트 패널이 **한 줄도 고쳐지지 않고** 옳게 답한다.
 
 | 클래스 | 선언 (기본값과 다른 것만) |
 |--------|---------------------------|
@@ -121,6 +128,7 @@ no-op가 된다. 그래서 `PluginComponent`가 **선언(ClassVar) + 인스턴�
 | `Agent` | `BUCKET=AGENTS`, `OUTPUT_LOCATION=AGENT_FILE`, `DELEGATION_TARGET=True`, `RUNS_IN_SUBAGENT=True` |
 | `AgentDefinition` | `KIND`, `CONFIG_CLS`, `PLACEMENT=STATE`, `REQUIRES_OUTPUT_PORTS=True`, `HAS_INTERNAL_FSM=True` |
 | `ForkAgent` | `KIND`, `CONFIG_CLS`, `IS_FORK_BASE=True` |
+| `ExternalAgent` | `KIND`, `CONFIG_CLS`, `PLACEMENT=STATE`, `OUTPUT_LOCATION=NONE`, `BODY_SOURCE=EXTERNAL`, `REQUIRES_OUTPUT_PORTS=True` |
 
 **인스턴스 훅 (종류 선언이 아니라 상태가 답한다).** `effective_placement()` ·
 `is_active()` · `emits_output()` · `can_delete()`. 오늘 오버라이드하는 클래스는
@@ -135,7 +143,10 @@ no-op가 된다. 그래서 `PluginComponent`가 **선언(ClassVar) + 인스턴�
 소비자가 0이 되어 삭제했다(`tests/test_dead_code.py` 규칙 A).
 `StepSkill`은 호출 포트도 합법 이벤트 집합에 넣고 `AgentDefinition`은 넣지 않는
 비대칭이 남아 있다 — 오늘 `machine_rules`가 그렇게 동작하고, 넓히면 경고가 사라지는
-동작 변경이라 `docs/backlog.md`(D9)다.
+동작 변경이라 `docs/backlog.md`(D9)다. **`ExternalAgent`는 `StepSkill` 쪽 규약을
+따른다**(출력 포트 + 호출 포트): 새 종류에는 보존할 종전 동작이 없으므로 D9의
+비대칭을 복제할 이유가 없고, 좁게 잡으면 호출 포트에서 뽑은 전이가 전부
+`trigger_unknown_event` 오탐이 된다.
 
 **참조.** `external_plugin_refs()`(배선을 요구하는 외부 플러그인 설치 id, 꺼 둔 것은
 제외) · `external_source`(`플러그인:이름` 원문) · `delegated_agent_name()`(본문을 실제로
@@ -152,9 +163,10 @@ no-op가 된다. 그래서 `PluginComponent`가 **선언(ClassVar) + 인스턴�
 - 생성 시드 = "사용자가 새로 만들 때 무엇으로 시작하는가". 새 에이전트는 출력 포트
   `done` 하나로 태어나야 한다(없으면 배치 즉시 `transfer_on_not_empty`).
 
-오버라이드는 둘이다: `ForkSkill`(config의 `agent` 시드) · `AgentDefinition`(`transfer_on`).
+오버라이드는 셋이다: `ForkSkill`(config의 `agent` 시드) ·
+`AgentDefinition`/`ExternalAgent`(`transfer_on`).
 `test_capability_surface`가 `new()`와 `view/actions/creation.make_component`의 결과를
-9종 × 필드 단위로 비교한다 — WP-3이 그 표를 지워도 만들어지는 물건이 달라지지 않는다는
+10종 × 필드 단위로 비교한다 — WP-3이 그 표를 지워도 만들어지는 물건이 달라지지 않는다는
 게이트다.
 
 **config 쪽 절반 (`ComponentConfig`).** `KIND` ClassVar(구체만) + 이름 참조 계약
@@ -291,8 +303,14 @@ fork 스킬 참조자로 섞여 든다 — 에이전트 편집기의
 ## SKILL_FIELD_MATRIX / AGENT_FIELD_MATRIX
 
 `SKILL_FIELD_MATRIX`의 키는 **7종**이다 — `procedural`, `sync_fork`, `async_fork`, `declarative`, `wrapped`,
-`transfer`, `reference`. `AGENT_FIELD_MATRIX`의 키는 **2종** — `agent`, `fork_agent`.
+`transfer`, `reference`. `AGENT_FIELD_MATRIX`의 키는 **3종** — `agent`, `fork_agent`, `external_agent`.
 매트릭스에 없는 필드는 그 종류에 **없다**(부재 = 비적용).
+
+- **산출 파일이 없는 종류는 프론트매터 필드를 갖지 않는다** (WP-9). `external_agent` 표는
+  `name`/`description`/`source` 세 행뿐이고 셋 다 `FieldEmit.NONE`이다 — "편집 필드이지만
+  어떤 산출 텍스트에도 나가지 않는다". model·tools·permission_mode 따위를 남기면 편집기와
+  MCP `set_component_field`가 값을 받아 놓고 아무 일도 하지 않는다(원칙 5). 산출 유무 ↔
+  배출 행 유무는 `tests/test_kind_registry_parity.py`가 양방향으로 고정한다.
 
 - `context`·`agent`·`background` 세 행은 **fork 두 표에만** 있다(사용자 확정 2026-09-17). `context`는
   `FieldRule(F, fixed_value="fork")`, `background`는 `FieldRule(F, fixed_value=False|True)` — 종류가 곧 값이라
@@ -321,7 +339,7 @@ class FieldRule:
 프론트매터로 올라가면서 "호출 파라미터" 본문 단락과 그 emit 함수(`_invocation_section_agent`)가 삭제됐고,
 소비자 없이 남아 있던 `INVOCATION` 멤버와 `frontmatter_panel`의 그룹 분기도 퇴역했다(WP-0c — 원칙 7).
 
-`field_matrix.py`는 순수 모델(Qt 무관)이다. 편집 위젯 매핑은 view 측 `daedalus/view/editors/field_widgets.py`의 `FIELD_WIDGETS: dict[SkillField, type[QWidget]]`(1차원, kind 무관)과 `AGENT_FIELD_WIDGETS: dict[AgentField, type[QWidget]]`로 분리되어 있다. 프론트매터 키는 `SkillField.frontmatter_key` property가 제공한다 (kebab-case, `WHEN_TO_USE`는 None — description/본문 합류는 컴파일러 정책). `AgentField.frontmatter_key`는 **camelCase**(`permissionMode`/`disallowedTools`/`maxTurns`/`mcpServers`, WP-LA에서 확정) — 스킬 프론트매터의 kebab-case와 **규약이 다르므로 한쪽을 보고 다른 쪽을 유추하면 안 된다**. 이전에는 케이싱 미확정이라 kebab-case를 잠정값으로 썼는데, 그 키들은 CC가 인식하지 못해 조용히 무시된다(CC 공식 sub-agents 문서 필드 표 기준, 2026-08 확인). FIXED 필드는 편집기 비노출이며 `fixed_value`는 컴파일러 출력 시 강제(config에 미기록). `AGENT_FIELD_MATRIX`는 에이전트 종류별 표 2개(`agent`/`fork_agent`)다.
+`field_matrix.py`는 순수 모델(Qt 무관)이다. 편집 위젯 매핑은 view 측 `daedalus/view/editors/field_widgets.py`의 `FIELD_WIDGETS: dict[SkillField, type[QWidget]]`(1차원, kind 무관)과 `AGENT_FIELD_WIDGETS: dict[AgentField, type[QWidget]]`로 분리되어 있다. 프론트매터 키는 `SkillField.frontmatter_key` property가 제공한다 (kebab-case, `WHEN_TO_USE`는 None — description/본문 합류는 컴파일러 정책). `AgentField.frontmatter_key`는 **camelCase**(`permissionMode`/`disallowedTools`/`maxTurns`/`mcpServers`, WP-LA에서 확정) — 스킬 프론트매터의 kebab-case와 **규약이 다르므로 한쪽을 보고 다른 쪽을 유추하면 안 된다**. 이전에는 케이싱 미확정이라 kebab-case를 잠정값으로 썼는데, 그 키들은 CC가 인식하지 못해 조용히 무시된다(CC 공식 sub-agents 문서 필드 표 기준, 2026-08 확인). FIXED 필드는 편집기 비노출이며 `fixed_value`는 컴파일러 출력 시 강제(config에 미기록). `AGENT_FIELD_MATRIX`는 에이전트 종류별 표 3개(`agent`/`fork_agent`/`external_agent`)다. `AgentField.SOURCE.frontmatter_key`는 `SkillField.SOURCE`와 같이 **None**이다 — 외부 에이전트는 산출 파일 자체가 없고, 프론트매터 키로 내면 CC가 모르는 키라 조용히 무시된다.
 
 **표와 config는 같은 사실을 말한다 (2026-09-18).** 표에 있는 **비-FIXED** 필드는 그 종류의 config 클래스에 실제로 선언돼 있어야 한다 — 없으면 편집기가 위젯을 그려 주고 그 편집이 아무 데도 남지 않는 반면(유령 인스턴스 속성 → 저장 한 번에 소멸), MCP `list_component_fields`는 `hasattr`로 건너뛰어 **같은 종류에 대해 GUI와 MCP가 다른 필드 목록**을 말한다(원칙 1·2·5). `tests/model/plugin/test_field_matrix.py::test_every_editable_matrix_field_exists_on_the_config`가 전 종류를 전수 고정한다. 이 규칙으로 걸린 세 행(`declarative`/`reference`의 `shell`, `reference`의 `disable_model_invocation`)은 표에서 **삭제**했다 — 두 config는 그 필드를 선언한 적이 없고 직렬화도 그 키를 왕복하지 않는다(`ser.py`의 declarative/reference 분기).
 

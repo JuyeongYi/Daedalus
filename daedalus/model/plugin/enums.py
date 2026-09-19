@@ -4,10 +4,18 @@ from enum import Enum
 
 
 class FieldEmit(Enum):
-    """컴파일러가 필드를 배출할 위치 — 프론트매터 직출 / 본문 합류 / 설정 파일(.mcp.json, settings 등)."""
+    """컴파일러가 필드를 배출할 위치 — 프론트매터 직출 / 본문 합류 / 설정 파일(.mcp.json, settings 등).
+
+    `NONE`은 **배출되지 않는 편집 필드**다(WP-9). 산출 파일을 내지 않는 종류
+    (`OutputLocation.NONE` — 외부 플러그인 서브에이전트)의 필드가 여기 속한다:
+    편집기·MCP는 값을 받고 저장하지만 어떤 산출 텍스트에도 나가지 않는다.
+    `FRONTMATTER`로 두면 `FieldRule.emit`("배출할 위치")이 거짓말을 하고,
+    행 자체를 빼면 편집 표면이 사라진다.
+    """
     FRONTMATTER = "frontmatter"
     BODY = "body"
     SETTINGS = "settings"
+    NONE = "none"
 
 
 class ModelType(Enum):
@@ -152,10 +160,15 @@ class AgentField(Enum):
     BACKGROUND = "background"
     ISOLATION = "isolation"
     MCP_SERVERS = "mcp_servers"
+    SOURCE = "source"  # WP-9 외부 플러그인 에이전트 전용 — 외부 에이전트 참조
 
     @property
-    def frontmatter_key(self) -> str:
+    def frontmatter_key(self) -> str | None:
         """CC 서브에이전트 프론트매터의 실제 키 — **camelCase** (WP-LA에서 확정).
+
+        `SOURCE`는 `None`이다(`SkillField.SOURCE`와 같은 규약) — 외부 플러그인
+        에이전트를 가리키는 참조일 뿐이고, 그 종류는 산출 파일 자체가 없다.
+        프론트매터 키로 내면 CC가 모르는 키라 조용히 무시된다.
 
         공식 sub-agents 문서의 필드 표 기준(2026-08 확인): `disallowedTools`,
         `permissionMode`, `maxTurns`, `mcpServers`. 단일 단어 필드는 그대로다.
@@ -163,5 +176,7 @@ class AgentField(Enum):
         CC가 인식하지 못해 **조용히 무시**된다 — 스킬 프론트매터(`allowed-tools`
         등 kebab-case)와 규약이 다르므로 한쪽을 보고 다른 쪽을 유추하면 안 된다.
         """
+        if self is AgentField.SOURCE:
+            return None
         head, *rest = self.value.split("_")
         return head + "".join(word.capitalize() for word in rest)

@@ -102,11 +102,18 @@ def badges_for(component: object) -> list[tuple[str, str]]:
     # (미지정도 표시 — 배치는 됐는데 소스가 빈 노드를 화면에서 바로 잡는다).
     # 종류가 아니라 `BODY_SOURCE` 선언이 답한다(WP-7 ②) — 종류로 물으면
     # 정본이 외부인 새 종류에 뱃지가 **조용히** 붙지 않는다.
+    #
+    # 아이콘·종류 이름도 선언에서 가져온다(WP-9 리뷰 반영): 술어만 종류 중립이고
+    # 문구가 랩핑 스킬로 굳어 있으면, 외부 플러그인 **에이전트** 노드가 캔버스에서
+    # 🔗 "랩핑 스킬"로 불린다(스멜 ⑤ — 두 번째 종류가 이 줄에 닿는 순간 드러났다).
     from daedalus.model.plugin.skill import has_external_body
 
     if has_external_body(component):
+        from daedalus.view.kind_ui import ui_for
+
+        ui = ui_for(component)
         source = component.external_source or "(source 미지정)"
-        result.append(("🔗", f"랩핑 스킬 — 본문 정본: {source}"))
+        result.append((ui.icon, f"{ui.section_label} — 본문 정본(외부): {source}"))
 
     # 진입 의미론 (A8) — user_invocable × disable_model_invocation을 **한 뱃지로**
     # 합친다. 두 필드가 따로 뱃지를 달면 "유저 전용 진입점"에 뱃지가 둘 붙어

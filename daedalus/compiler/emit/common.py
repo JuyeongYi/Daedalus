@@ -17,6 +17,7 @@ from enum import Enum
 from typing import Any
 
 from daedalus.model.plugin.config import ComponentConfig
+from daedalus.model.plugin.roles import OutputLocation
 
 
 def _enum_value(v: Any) -> Any:
@@ -165,6 +166,102 @@ def agent_invocation_name(component, project) -> str:
     if _is_local_build(project):
         return agent
     return f"{getattr(project, 'name', '')}:{agent}"
+
+
+# ───────────────────── 그래프 노드에게 위임할 때 쓰는 이름 ─────────────────────
+
+
+def delegation_target_name(component) -> str | None:
+    """그래프에서 **이 노드에게 위임**할 때 CC가 찾는 이름 (WP-9).
+
+    정본이 외부인 노드(외부 플러그인 서브에이전트)는 `플러그인[@마켓]:이름`
+    원문이 곧 그 이름이다 — 우리 산출에는 그 이름의 파일이 없고, CC는 설치된
+    플러그인에서 정확 일치로 찾는다. 그 밖에는 컴포넌트 이름 그대로다.
+
+    **원문이 비었거나 형식이 깨졌으면 `None`**이다(WP-9 리뷰 반영). 종전에는
+    `source or name`이라 노드 이름(`critic`)이나 플러그인 id(`review-pack`)가
+    그대로 위임 지시에 실렸는데, 둘 다 CC가 찾을 수 없는 이름이라 산출이 **없는
+    에이전트를 지목**했다 — 컴파일은 경고(`external_source_missing`)만 내고
+    성공하므로 그 거짓말이 그대로 나간다. 이름이 없으면 지어내지 않는다(원칙 5);
+    무엇을 대신 말할지는 부르는 자리가 정한다(`delegate_to_phrase` /
+    `delegation_source_label`).
+
+    `agent_invocation_name`과 묻는 것이 다르다: 그쪽은 "이 컴포넌트의 **본문**을
+    누가 실행하는가"(fork 스킬의 `agent` 필드)이고, 여기는 "이 **노드 자신**을
+    어떻게 부르는가"다. 한 함수로 묶으면 워크플로 에이전트가
+    `general-purpose`로 답한다(위임 대상이 없는 종류의 폴백).
+    """
+    source = component.external_source
+    if source is None:
+        return component.name
+    _plugin_id, ref_name = parse_wrapped_source(source)
+    return source if ref_name else None
+
+
+#: 외부 플러그인 서브에이전트에게 위임할 때 호출자 산출에 붙는 단서 (WP-9).
+#:
+#: 이 에이전트는 **우리 플러그인이 만든 파일이 아니다** — 워크플로도 블랙보드도
+#: 진행 기록 규약도 모른다. 그래서 ① 필요한 맥락을 전부 프롬프트에 담고
+#: ② 결과 기록은 호출자가 직접 하며 ③ 어느 갈래로 이어질지도 호출자가 보고를
+#: 읽고 고른다. 이 문장이 없으면 부르는 쪽이 "출력 포트 이름으로 끝내라"를
+#: 그대로 지시하고, 외부 에이전트는 그 규약을 모른 채 다르게 답한다.
+EXTERNAL_DELEGATION_NOTE = (
+    "external plugin agent — it knows neither this workflow nor the blackboard: "
+    "put everything it needs in the prompt, record the result yourself, and pick "
+    "the branch below from its report"
+)
+
+
+def external_delegation_suffix(component) -> str:
+    """위임 지시 뒤에 붙는 외부 에이전트 단서 — 해당 없으면 빈 문자열."""
+    if type(component).OUTPUT_LOCATION is not OutputLocation.NONE:
+        return ""
+    return f" ({EXTERNAL_DELEGATION_NOTE})"
+
+
+#: 부를 이름이 없는 위임 지시 자리에 나가는 문구 (WP-9 리뷰 반영).
+#:
+#: 없는 이름을 적어 두면 CC는 그 서브에이전트를 못 찾고 조용히 범용으로 돌거나
+#: 실패한다 — 어느 쪽이든 왜 그랬는지 알 수 없다. 그래서 산출은 이름 대신
+#: **무엇이 비었고 어디를 고쳐야 하는지**를 말하고, 추측하지 말라고 못 박는다.
+_UNNAMED_DELEGATION = (
+    "cannot delegate — the external plugin agent on node `{node}` has no usable "
+    "`source` (`plugin[@marketplace]:name`), so there is no agent name to call: "
+    "say so in your report and stop here instead of guessing an agent"
+)
+
+
+def delegate_to_phrase(component, *, note: bool = True) -> str:
+    """"이 노드에게 위임하라" 지시 문구 — 이름을 **지어내지 않는다** (WP-9).
+
+    위임 지시를 내는 세 자리("## Next Steps"·"## Delegation"·FSM 절차 래더)가
+    공유한다. 같은 노드를 표면마다 다르게 부르면 원칙 1 위반이고, 그중 한 자리만
+    깨진 source를 걸러도 나머지가 없는 이름을 내보낸다.
+
+    `note=False`는 단서(`EXTERNAL_DELEGATION_NOTE`)를 붙이지 않는 자리다 —
+    legacy 내부 FSM 절차 래더(`emit/sections._describe_node_action`)는 종전부터
+    단서 없이 한 줄만 냈고, 붙이면 구버전 프로젝트의 산출 바이트가 바뀐다.
+    """
+    name = delegation_target_name(component)
+    if name is None:
+        return _UNNAMED_DELEGATION.format(node=component.name)
+    phrase = f"delegate to agent `{name}`"
+    if note:
+        phrase += external_delegation_suffix(component)
+    return phrase
+
+
+def delegation_source_label(component) -> str:
+    """"어디에서 돌아왔는가"를 말하는 서술형 표지 — 진입 맥락 전용 (WP-9).
+
+    지시가 아니라 서술이라 고치라는 말을 담지 않는다. 다만 부를 이름이 없을 때
+    노드 이름을 ``agent `critic```으로 내보내면 진입 맥락도 없는 에이전트를
+    지목하므로, 그때는 **노드를 가리키는 말**로 바꾼다.
+    """
+    name = delegation_target_name(component)
+    if name is None:
+        return f"the external plugin agent on node `{component.name}`"
+    return f"agent `{name}`"
 
 
 # ─────────────────────────── 프로젝트 그래프 placement ───────────────────────────

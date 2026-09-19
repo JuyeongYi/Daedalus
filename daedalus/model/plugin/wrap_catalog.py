@@ -34,6 +34,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from daedalus.model.plugin import plugin_cache
+from daedalus.model.plugin.roles import Bucket
 
 MARKETPLACES_FILENAME = "external_marketplaces.json"
 
@@ -519,6 +520,19 @@ def resolve_skill_file(source: str) -> Path | None:
             if md.is_file():
                 return md
     return None
+
+
+def can_resolve_source(component) -> bool:
+    """이 컴포넌트의 원본 파일을 카탈로그가 찾아 줄 수 있는가 (WP-9 리뷰 반영).
+
+    카탈로그가 훑는 것은 플러그인의 `skills/<이름>/SKILL.md` 하나뿐이라, 정본이
+    외부인 **에이전트**(WP-9)의 원본은 해소하지 못한다. 그래서 "원본 열기"를
+    보여 줄지를 종류가 아니라 **버킷**으로 묻는다 — 누르면 언제나 "찾지
+    못했습니다"만 내놓는 버튼은 조용한 실패다(원칙 5).
+
+    외부 에이전트 파일(`agents/<이름>.md`) 해소는 `docs/backlog.md`에 있다.
+    """
+    return component.BUCKET is Bucket.SKILLS
 
 
 def project_wrapped_sources(project) -> set[str]:

@@ -287,6 +287,9 @@ class _FrontmatterPanel(QScrollArea):
                 group_order = {
                     FieldEmit.FRONTMATTER: 0,
                     FieldEmit.BODY: 0,
+                    # 배출되지 않는 편집 필드(WP-9 외부 에이전트의 source)도
+                    # 첫 그룹이다 — "— Settings —" 구분 라벨 위에 온다.
+                    FieldEmit.NONE: 0,
                     FieldEmit.SETTINGS: 2,
                 }
                 items.sort(key=lambda kv: group_order[kv[1].emit])  # stable — 그룹 내 선언 순서 유지

@@ -249,6 +249,7 @@ daedalus/
 │   │                   #   (WP-2b 이후 **한 줄 파사드** — effective_placement()/is_active()가 실체)
 │   │   │                   #   + 종류별 능력 선언(KIND/CONFIG_CLS/PLACEMENT/…)과 오버라이드. 인스턴스 훅을 덮는 유일한 클래스가 WrappedSkill이다
 │   │   ├── agent.py        # Agent(ABC) → AgentDefinition(워크플로 — 캔버스 노드) / ForkAgent(fork 스킬 실행 기반, WP-FK2)
+│   │   │                   #   / ExternalAgent(외부 플러그인 에이전트를 노드로 — 산출 파일 없음, WP-9)
 │   │   ├── placement.py    # 배치 역할 판정 **네 개**(is_state_placeable=포트 소유 판정 겸임/is_canvas_placeable/is_edge_placeable/is_reference_placed — 실체는 effective_placement()).
 │   │   │                   #   enum 비교를 손으로 적는 자리는 없다 — 참조 배치 질문은 compiler/emit(guides·sections)·validation(naming)까지 전부 is_reference_placed다 +
 │   │   │                   #   placement_role_of(비-컴포넌트 관용의 단일 진실) + fork 역참조 fork_skills_using(config.name_refs(AGENTS) 기반).
@@ -364,7 +365,9 @@ daedalus/
 │   │   ├── __init__.py     #   재-export 파사드 — 분해 전 emit.py의 모든 속성(public + 테스트가 쓰는 _헬퍼) 그대로 제공,
 │   │   │                   #   기존 `from daedalus.compiler.emit import …` 임포트 전부 무수정 동작(test_emit_facade.py가 고정)
 │   │   ├── common.py       #   공용 헬퍼(리프) — _enum_value/_config_default/_MISSING/_body_block/_join_blocks/_build_target/_is_local_build/_graph_placements(_any)/
-│   │   │                   #   emits_output_file(component.emits_output() 파사드)/agent_invocation_name(위임 대상 이름 해소 — 빌드 타깃별)/
+│   │   │                   #   emits_output_file(component.emits_output() 파사드)/agent_invocation_name(본문을 실행하는 서브에이전트 이름 — 빌드 타깃별)/
+│   │   │                   #   delegation_target_name(그래프 노드에게 위임할 때의 이름 — 깨진 source는 None)·delegate_to_phrase/delegation_source_label
+│   │   │                   #   (지시·서술 자리의 문구, 이름이 없으면 지어내지 않는다)·external_delegation_suffix·EXTERNAL_DELEGATION_NOTE(WP-9)/
 │   │   │                   #   parse_wrapped_source·external_skill_name(WP-6: 순수 문자열 파싱이라 리프로 — sections↔wrapped 순환 해소)
 │   │   ├── frontmatter.py  #   YAML 표기(_yaml_scalar/_yaml_list/_yaml_block_lines) + 스킬 프론트매터(_frontmatter_lines_skill)·_compose_description
 │   │   ├── sections.py     #   공용 단락 — 가드/트리거·FSM 절차 서술(_describe_fsm)·요구 환경 MCP(referenced_mcp_servers)·블랙보드(_blackboard_section)·tool_shelf·
@@ -403,7 +406,10 @@ daedalus/
 │   │                       #   token_kind + rel_path) · preview_path · can_preview. GUI 3곳과 MCP compile_preview가
 │   │                       #   같은 함수를 부른다(원칙 1·2 — 종전에는 표면마다 isinstance(comp, Agent)였다).
 │   │                       #   **산출 게이트를 거치지 않는다**: 참조 용도·비활성 랩핑 스킬도 렌더된다.
-│   │                       #   거절 대상은 OUTPUT_LOCATION이 NONE인 종류뿐(can_preview False + ValueError).
+│   │                       #   거절 대상은 OUTPUT_LOCATION이 NONE인 종류뿐 — can_preview False이고,
+│   │                       #   preview_component가 **먼저 그 게이트를 확인해** "산출 파일이 없어 미리볼 것이
+│   │                       #   없다, 부르는 쪽을 미리보라"는 ValueError를 낸다(WP-9 리뷰: MCP는 can_preview를
+│   │                       #   부르지 않아 emitter 미등록이라는 내부 사정이 사용자에게 보였다).
 │   ├── plan_kinds.py       # 산출 계획 kind 14종의 **유일한 소유자**(WP-5) — 리프 모듈(아무것도 임포트하지 않는다).
 │   │                       #   emit/guides.py의 WORKFLOW_GUIDE_KIND/BLACKBOARD_GUIDE_KIND/GUIDE_KINDS는 여기서 재-export한 것이다.
 │   │                       #   tests/test_kind_literals.py가 "리터럴은 이 파일에만"을 AST로 강제한다.

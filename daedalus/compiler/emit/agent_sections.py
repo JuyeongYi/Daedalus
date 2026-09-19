@@ -27,6 +27,8 @@ from daedalus.compiler.emit.common import (
     _build_target,
     _config_default,
     _is_local_build,
+    delegate_to_phrase,
+    delegation_target_name,
 )
 from daedalus.compiler.emit.frontmatter import (
     _compose_description,
@@ -411,7 +413,8 @@ def _agent_delegation_section(agent: AgentDefinition, project=None) -> list[str]
     if graph is None:
         return []
     port_desc = {e.name: (e.description or "").strip() for e in agent.call_agents}
-    entries: list[tuple[str, str, str, str]] = []  # (port, callee, desc, guard)
+    # (port, 정렬키, desc, guard, 위임 지시 문구)
+    entries: list[tuple[str, str, str, str, str]] = []
     seen: set[tuple[str, str]] = set()
     for trans in getattr(graph, "transitions", []) or []:
         if getattr(trans.source, "skill_ref", None) is not agent:
@@ -424,9 +427,16 @@ def _agent_delegation_section(agent: AgentDefinition, project=None) -> list[str]
         if (port, callee.name) in seen:
             continue
         seen.add((port, callee.name))
-        entries.append(
-            (port, callee.name, port_desc.get(port, ""), _describe_guard(getattr(trans, "guard", None)))
-        )
+        entries.append((
+            port,
+            # 정렬은 부르는 이름으로 — 이름이 없는(깨진 source) 대상만 노드
+            # 이름으로 자리를 잡는다. 지시 문구가 정렬을 바꾸면 안 된다.
+            delegation_target_name(callee) or callee.name,
+            port_desc.get(port, ""),
+            _describe_guard(getattr(trans, "guard", None)),
+            # 부르는 이름·외부 에이전트 단서는 **대상이 정한다**(WP-9).
+            delegate_to_phrase(callee),
+        ))
     if not entries:
         return []
     entries.sort(key=lambda e: (e[0], e[1]))
@@ -440,8 +450,8 @@ def _agent_delegation_section(agent: AgentDefinition, project=None) -> list[str]
             "matters in your own final report."
         ),
     ]
-    for port, callee, desc, guard in entries:
-        line = f"- `{port}` → delegate to agent `{callee}`" if port else f"- delegate to agent `{callee}`"
+    for port, _sort_name, desc, guard, phrase in entries:
+        line = f"- `{port}` → {phrase}" if port else f"- {phrase}"
         if guard:
             line += f" [guard: {guard}]"
         if desc:

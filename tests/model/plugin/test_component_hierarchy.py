@@ -13,7 +13,12 @@ import pytest
 
 from daedalus.model.fsm.machine import StateMachine
 from daedalus.model.fsm.state import SimpleState
-from daedalus.model.plugin.agent import Agent, AgentDefinition, ForkAgent
+from daedalus.model.plugin.agent import (
+    Agent,
+    AgentDefinition,
+    ExternalAgent,
+    ForkAgent,
+)
 from daedalus.model.plugin.base import PluginComponent
 from daedalus.model.plugin.config import (
     AgentConfig,
@@ -68,6 +73,7 @@ def _components() -> list[object]:
         ReferenceSkill(name="r", description="d"),
         AgentDefinition(fsm=_fsm(), name="a", description="d"),
         ForkAgent(name="fa", description="d"),
+        ExternalAgent(name="ea", description="d"),
     ]
 
 
@@ -169,6 +175,12 @@ def test_dataclass_field_order_is_unchanged():
     assert list(inspect.signature(ForkAgent).parameters) == [
         "name", "description", "config", "body", "id",
     ]
+    # WP-9 — 외부 플러그인 에이전트. AgentDefinition에서 `fsm`만 빠진 순서다
+    # (내부 FSM이 없다). 포트는 있다 — 갈래를 부르는 쪽이 고른다.
+    assert list(inspect.signature(ExternalAgent).parameters) == [
+        "name", "description", "config", "body", "transfer_on",
+        "call_agents", "id",
+    ]
 
 
 def test_config_field_order_is_unchanged():
@@ -213,6 +225,7 @@ _EXPECTED_KINDS = {
     "reference_skill": "reference",
     "agent": "agent",
     "fork_agent": "fork_agent",
+    "external_agent": "external_agent",
 }
 
 
