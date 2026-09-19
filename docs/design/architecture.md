@@ -44,6 +44,7 @@ GUI는 PySide6 노드 에디터(`view/`), 앱 내장 MCP 서버(`mcp/`)가 CC와
 | `cli/` | `daedalus-bb` — 블랙보드 read/init/write/validate/list + progress |
 | `view/app.py` | MainWindow **골격** — 실체는 협력 객체 7종(`session_io`/`compile_actions`/`launch_actions`/`validation_actions`/`graph_io`/`component_actions`/`editor_tabs`)에 있고 창에는 한 줄 위임만 |
 | `view/editor_tabs.py` | `EditorTabs(window)` — 고정 탭 6개 구축 + 컴포넌트 편집 탭 수명주기(열기·닫기·제목 동기화·프론트매터 재구축) + 탭 전환의 undo 스택 배선. 탭 인덱스 상수·`_tab_prefix`의 소유자 |
+| `view/kind_ui.py` | **뷰의 종류 표** `KIND_UI` — 아이콘·섹션 라벨·색·탭 라벨·노드 스타일·다이얼로그 제목·편집기 팩토리·탭 접두·전환 라벨. 모델 레지스트리와 **kind 문자열로만** 연결(import 방향 view → model) |
 | `view/actions/` | **UI 무관 편집 액션** — 캔버스 메뉴·에디터·MCP가 공유하는 기능의 실체 |
 | `view/canvas/`·`commands/`·`editors/`·`panels/`·`viewmodel/`·`widgets/` | 노드 캔버스 · undo 커맨드 · 속성 편집기 · 독 패널 · VM(notify 채널) · 공용 위젯(마크다운 에디터 패키지, TagInput) |
 
@@ -99,7 +100,7 @@ python -m tests.data.golden.regen --refresh-dogfood   # 동결 사본 자체를 
 
 | 테스트 · 표 | 세는 것 | WP-0 기준선 (2026-09-19) | 현재 (WP-4 완료) |
 |---|---|---|---|
-| `tests/test_polymorphism_ratchet.py` `RATCHET` ① | 컴포넌트/설정 클래스 29종을 두 번째 인자로 갖는 `isinstance` | **111 사이트 / 34 파일** | **23 / 8** — compiler·serialize 둘 다 0(WP-4가 `ser.py` 11을 걷었다). 남은 최대치는 `registry_panel.py` 10(WP-7)·`app.py` 4(WP-7) |
+| `tests/test_polymorphism_ratchet.py` `RATCHET` ① | 컴포넌트/설정 클래스 29종을 두 번째 인자로 갖는 `isinstance` | **111 사이트 / 34 파일** | **4 / 2** — compiler·serialize·view 전부 0(WP-7이 뷰의 kind 표 여섯 벌을 `KIND_UI` 하나로 모았다). 남은 4는 레지스트리 조회 1(`kinds::spec_for`)과 랩핑 전용 3(`wrapped_usage` — WP-10) |
 | 〃 ② | 컴포넌트 형상 속성 12종(`config`/`body`/`fsm`/`transfer_on`/`call_agents`/`when_to_use`/`usage`/`enabled`/`reference_placements`/`source`/`output_events`/`output_event_defs`)을 문자열로 묻는 `getattr`/`hasattr`. 첫 인자가 `project`/`cfg`/`config`/`doc`이면 제외(컴포넌트 형상이 아니다) | **123 사이트 / 41 파일** | **33 / 12**(WP-4 무변 — WP-7·WP-8이 다음 주인) |
 | `tests/test_kind_literals.py` `RATCHET` ① | 컴포넌트 kind 16종이 `Compare` 피연산자·`dict` 키·`set`/`tuple`/`list` 원소로 쓰인 자리. 허용 파일 `model/serialize/migrate.py`(구버전 파일 문자열 해석이 정본)는 세지 않는다 | **157 사이트 / 26 파일** | **80 / 18** — WP-3이 레지스트리로(역직렬화·생성·전환·MCP 어휘·매트릭스 키), WP-4가 `deser_plugin`의 마지막 11을, WP-5가 쓰기 루프의 `skill`/`agent`/`wrapped_runner` 사다리를 흡수 |
 | 〃 ② plan kind | plan kind 14종. `agent`/`skill`이 컴포넌트 어휘와 겹치므로 `compiler/**`·`mcp/tools/query.py`에서만 센다. 소유자는 `compiler/plan_kinds.py` 하나(허용 파일) | **22 사이트 / 3 파일** | **1 / 1** — WP-5가 쓰기 루프 사다리 12와 `token_report`의 kind 사본 2를 걷었다. 남은 1건은 `mcp/tools/query.py`의 응답 키 `"claude_md"`로 **계획 kind가 아닌 오탐**이라 더 내려가지 않는다 |
@@ -576,6 +577,17 @@ daedalus/
     │                       #   **탭 인덱스 상수(_FSM_TAB_INDEX … _FIXED_TAB_INDEXES·_LOCAL_ONLY_TAB_INDEXES·_LAST_FIXED_TAB_INDEX)와
     │                       #   _tab_prefix의 소유자**다 — app.py가 **같은 객체**를 재-export한다(테스트·validation_actions가 app 경로로 임포트).
     │                       #   상태(_tabs/_open_tabs/_fsm_scene/고정 패널)는 계속 윈도우 소유이고 self._w.<attr>로 읽고 쓴다.
+    ├── kind_ui.py          # **뷰의 종류 표** KIND_UI (WP-7 ② — 카탈로그 V1~V15 흡수). 한 행 = 한 종류의 화면 표면:
+    │                       #   icon(레지스트리 행) / section_label·section_color(섹션) / tab_label(탭) / node_style(캔버스 상태 노드,
+    │                       #   None=상태 노드가 아니다) / dialog_title(이름 입력) / editor_factory(편집 탭 위젯 — **호출 가능 객체**,
+    │                       #   위젯 클래스를 값으로 들지 않고 안에서 지연 임포트) / tab_prefix(에이전트 🤖·🧩) /
+    │                       #   switch_label·switch_tooltip(종류 전환, CONVERT_FAMILY가 있는 종류만) / has_enable_toggle(랩핑) /
+    │                       #   first_placement_prompt(최초 배치 질문 — 랩핑 용도. 팝업 자체는 FsmScene._ask_wrapped_usage 봉합선).
+    │                       #   조회는 ui_for(component)/ui_by_kind/ui_by_config_kind + DIALOG_TITLES·switch_noun.
+    │                       #   **미지 종류는 이유와 선택지를 말하는 ValueError**다 — 예전에는 표에서 빠진 종류가 아이콘 없는 행·
+    │                       #   빈 상태와 구분되지 않는 회색 노드·열리지 않는 탭으로 **조용히** 나타났다(👻).
+    │                       #   **자동 생성하지 않는다** — 모델 레지스트리를 순회해 기본값을 주면 그 회귀가 되돌아온다.
+    │                       #   parity(tests/test_kind_registry_parity.py)와 fail-loud(tests/test_registry_failure_is_loud.py)가 고정.
     ├── session_io.py       # SessionIO(window) — 저장/열기/최근 목록/패키지(.ddpj) (WP-RF-3e에서 app.py로부터 추출).
     │                       # 프로젝트 패키지(WP-PK): 열기/저장이 **폴더** 단위. open_project_dialog(폴더 선택)/open_file_dialog(구버전 파일 직접)/
     │                       #   save_project_as(폴더 선택 — 형식이 새 형식으로 바뀌는 유일한 지점)/export_package_dialog/import_package_dialog.
@@ -649,8 +661,8 @@ daedalus/
     │   ├── fork_skill.py   #   fork 스킬(2026-09-13) — fork_agent_choices(fork 에이전트 후보 세 종류)/validate_fork_agent/skill_kind_of/
     │   │                   #     KINDS(3-way: procedural/sync_fork/async_fork)/convert_skill_kind(대상 config 클래스
     │   │                   #     기준 필드 복사, config·__class__ 교체 + resync_bracket을 묶어 1 undo). 피커·캔버스 메뉴·MCP 공용 실체
-    │   ├── creation.py     #   생성+배치 — NO_PLACE_KINDS(= model/plugin/placement.is_canvas_placeable의 음성 거울
-    │   │                   #     상수 — 판정의 실체는 placement 쪽이고 레지스트리·캔버스도 그 함수를 부른다)/create_wrapped_skill(WP-WR —
+    │   ├── creation.py     #   생성+배치 — (NO_PLACE_KINDS 음성 목록은 WP-7 ②에서 삭제됐다: 만들기 전 거절은
+    │   │                   #     placement.is_canvas_placeable_role(spec.placement) — 선언 하나가 두 판정을 함께 답한다)/create_wrapped_skill(WP-WR —
     │   │                   #     생성+선언+배치 1 undo, WRAPPED_SOURCE_MIME_PREFIX)/
     │   │                   #     ("여기에 만들기" 빈 캔버스 메뉴(A9-9)·CREATABLE_KINDS는 퇴역 — 정확한 이름 타이핑 요구, 사용자 확정)/
     │   │                   #     make_component(창의 _make_fsm 재사용 — 레지스트리와 같은 물건이어야 한다)/create_and_place.
@@ -728,8 +740,12 @@ daedalus/
     │                       #                              (WP-2d) — 단일 배치 노드만 포트를 갖는다. MCP `ports.py`의 두 게이트와 같은 술어.
     │                       #     reference_link_panel.py— _ReferenceLinkPanel
     │                       #     kind_switch_row.py     — 절차형 ↔ 동기/비동기 fork **3-way** 전환 버튼·안내 행
-    │                       #                              (build_kind_switch_row, 800줄 예산 때문에 분리)
-    │                       #     kind_matrix.py         — matrix_for(component) → (규칙 표, 위젯 표, is_agent). **얇은 어댑터**다 —
+    │                       #                              (build_kind_switch_row, 800줄 예산 때문에 분리). 라벨·툴팁·명사형의
+    │                       #                              실체는 kind_ui.KIND_UI(switch_label/switch_tooltip/switch_noun)다 —
+    │                       #                              캔버스 우클릭 "종류 전환" 서브메뉴도 같은 행을 읽는다(WP-7 ②).
+    │                       #     kind_matrix.py         — matrix_for(component) → (규칙 표, 위젯 표, is_agent). 위젯 표는 **버킷
+    │                       #                              선언**(spec_for(c).bucket)이 고른다(WP-7 ② — isinstance(c, Agent)로 물으면
+    │                       #                              에이전트 버킷의 새 종류가 스킬 위젯 표로 그려진다). **얇은 어댑터**다 —
     │                       #                              표 선택의 실체는 model.plugin.field_matrix.matrix_for이고(컴파일러는 뷰를
     │                       #                              임포트할 수 없다) 여기서는 뷰에만 있는 위젯 표를 짝지어 준다. 800줄 예산 분리
     │                       #     field_adapters.py      — _WIDGET_ADAPTERS 표(위 설명) + _adapter_for. WP-E에서 frontmatter_panel에서

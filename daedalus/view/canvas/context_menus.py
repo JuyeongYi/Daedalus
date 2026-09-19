@@ -189,7 +189,7 @@ def add_component_actions_menu(scene, menu: QMenu, state_vm: StateViewModel) -> 
     # 절차형 ↔ 동기/비동기 fork 전환 (3-way) — 실체는
     # actions/fork_skill.convert_skill_kind. 편집기 버튼과 같은 라벨을 쓴다.
     from daedalus.view.actions.fork_skill import KINDS, skill_kind_of
-    from daedalus.view.editors.kind_switch_row import KIND_LABELS
+    from daedalus.view.kind_ui import ui_by_config_kind
 
     kind = skill_kind_of(component)
     if kind is not None:
@@ -197,7 +197,7 @@ def add_component_actions_menu(scene, menu: QMenu, state_vm: StateViewModel) -> 
         for target in KINDS:
             if target == kind or sub is None:
                 continue
-            conv_act = sub.addAction(KIND_LABELS[target])
+            conv_act = sub.addAction(ui_by_config_kind(target).switch_label)
             if conv_act is not None:
                 dispatch[conv_act] = (
                     lambda c=component, t=target: convert_on_canvas(scene, c, t)

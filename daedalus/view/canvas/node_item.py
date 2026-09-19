@@ -20,22 +20,11 @@ _PORT_R = 6.0
 _PORT_SPACING = 22.0
 _PORT_PAD = 12.0
 
-_TYPE_STYLE: dict[str | None, tuple[str, str, str, str]] = {
-    # 헤더 라벨 "PROCEDURAL"은 형용사라 어색 — 배치는 플러그인 FSM의 상태이므로
-    # STATE로 표기 (사용자 확정). 종류 구분은 색·아이콘이 담당.
-    "procedural_skill": ("#1a2a1a", "#4a8a4a", "STATE", "⚙"),
-    # fork 스킬 2종 — 서브에이전트에서 도는 단계. 다른 종류와 겹치지 않는 구리색
-    # (사용자 확정 2026-09-13 — "색은 아예 별도 색상으로"). 비동기는 진한 구리 + ⏳.
-    # fork 에이전트는 배치되지 않으므로 여기 항목이 없다.
-    "sync_fork_skill":  ("#2a1f14", "#c07a3a", "STATE", "🍴"),
-    "async_fork_skill": ("#1f1610", "#8a5a2a", "STATE", "🍴⏳"),
-    # 랩핑 스킬(WP-WR)도 배치되면 플러그인 FSM의 상태라 헤더는 STATE지만,
-    # 본문 정본이 외부에 있다는 것이 한눈에 보여야 한다 — 레지스트리 🔗 탭과
-    # 같은 보라 계열 + 🔗 아이콘. 이 항목이 없어 wrapped가 기본 스타일(빈
-    # 상태와 구분되지 않는 회청색)로 그려졌다(사용자 보고 2026-09-07).
-    "wrapped_skill":    ("#241a2a", "#8a5aaa", "STATE", "🔗"),
-    "declarative_skill": ("#2a2a1a", "#8a8a4a", "DECLARATIVE", "📄"),
-    "agent":             ("#2a1a1a", "#8a4a4a", "AGENT",       "🤖"),
+#: **의사 상태(pseudo state)와 빈 노드**의 스타일 — 컴포넌트 종류가 아니다.
+#: 종류별 스타일은 `view/kind_ui.KIND_UI`의 `node_style`이 소유한다(WP-7 ②) —
+#: 예전에는 두 사실이 한 dict에 섞여 있어 새 종류가 빠져도 **빈 노드와 구분되지
+#: 않는 기본 스타일**로 조용히 그려졌다(랩핑 스킬 회귀, 사용자 보고 2026-09-07).
+_PSEUDO_STYLE: dict[str | None, tuple[str, str, str, str]] = {
     "entry_point":       ("#1a1a3a", "#4488ff", "▶ ENTRY",     ""),
     "exit_point":        ("#2a1a1a", "#cc6666", "⏹ EXIT",      ""),
     None:                ("#1a1a2a", "#334466", "STATE",        ""),
@@ -184,18 +173,20 @@ class StateNodeItem(DraggableItemMixin, QGraphicsItem):
             return
 
         model = self._state_vm.model
-        kind: str | None = None
         if isinstance(model, ExitPoint):
-            bg_str, _, header_label, icon = _TYPE_STYLE["exit_point"]
+            bg_str, _, header_label, icon = _PSEUDO_STYLE["exit_point"]
             border_str = model.color
-            kind = "exit_point"
         elif isinstance(model, EntryPoint):
-            bg_str, border_str, header_label, icon = _TYPE_STYLE["entry_point"]
-            kind = "entry_point"
+            bg_str, border_str, header_label, icon = _PSEUDO_STYLE["entry_point"]
         else:
+            # 종류 스타일의 단일 진실은 `KIND_UI[kind].node_style`이다 — 상태
+            # 노드가 아닌 종류(전이·참조·fork 에이전트)는 None이고, 그때만 빈
+            # 노드와 같은 기본 스타일로 그린다.
+            from daedalus.view.kind_ui import ui_for
+
             ref = model.skill_ref if hasattr(model, "skill_ref") else None  # type: ignore[union-attr]
-            kind = ref.kind if ref is not None else None
-            bg_str, border_str, header_label, icon = _TYPE_STYLE.get(kind, _TYPE_STYLE[None])
+            style = ui_for(ref).node_style if ref is not None else None
+            bg_str, border_str, header_label, icon = style or _PSEUDO_STYLE[None]
         border_color = QColor(border_str)
         outline = QColor(node_border_color(model, border_str))
         active_border = outline.lighter(160) if self.isSelected() else outline

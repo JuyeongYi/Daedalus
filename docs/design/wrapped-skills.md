@@ -80,10 +80,11 @@
   (`_canvas_cleanup_commands`)으로 참조 노드·전이·상태를 걷어내고 전환까지
   MacroCommand **1 undo**. 표면: 랩핑 편집기의 "용도를 …로 바꾸기" 버튼
   (배치가 있으면 QMessageBox로 확인) / MCP `set_wrapped_usage(name, usage,
-  force=)`. **캔버스 시각 구분**(같은 보고): `node_item._TYPE_STYLE`에
-  `wrapped_skill`(보라 + 🔗 — 없어서 빈 상태와 같은 기본 스타일로 그려졌다),
-  `ref_node_item`은 모델 kind가 wrapped면 "🔗 EXT REFERENCE" + 보라(우리
-  문서 참조는 산출 파일이 있고 외부 참조는 없다).
+  force=)`. **캔버스 시각 구분**(같은 보고): `kind_ui.KIND_UI[wrapped].node_style`
+  (보라 + 🔗 — 없어서 빈 상태와 같은 기본 스타일로 그려졌다. WP-7 ② 전에는
+  `node_item._TYPE_STYLE`이었다), `ref_node_item`은 **본문 정본이 외부인**
+  참조 노드에 "🔗 EXT REFERENCE" + 보라를 준다(종류가 아니라 `BODY_SOURCE`가
+  판정 — 우리 문서 참조는 산출 파일이 있고 외부 참조는 없다).
 - **삭제 불가 — 대신 비활성화**(사용자 확정 2026-09-07): 랩핑 스킬은 **어느
   경로로도 지울 수 없다**(GUI 레지스트리·캔버스·MCP `delete_component` 전부
   거절 — 실체는 `ComponentActions.delete_component`가 지나는 한 지점이고,

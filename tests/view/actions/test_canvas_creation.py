@@ -12,11 +12,7 @@ from daedalus.model.plugin.skill import (
     SyncForkSkill,
 )
 from daedalus.model.project import PluginProject
-from daedalus.view.actions.creation import (
-    NO_PLACE_KINDS,
-    create_and_place,
-    make_component,
-)
+from daedalus.view.actions.creation import create_and_place, make_component
 from daedalus.view.app import MainWindow
 
 
@@ -90,7 +86,13 @@ def test_creates_reference_as_reference_node(window):
     assert window._project.reference_placements[0].skill_name == "doc"
 
 
-@pytest.mark.parametrize("kind", sorted(NO_PLACE_KINDS))
+#: 캔버스에 **아무 노드로도 놓이지 않는** 종류. WP-7 ②에서 생산 코드의 음성
+#: 목록(`creation.NO_PLACE_KINDS`)은 삭제됐다 — 판정의 실체는 종류의
+#: `PLACEMENT` 선언 하나이고, 여기서는 **오늘의 집합이 그대로인지**를 고정한다.
+_NO_PLACE_KINDS = frozenset({"declarative", "transfer", "fork_agent"})
+
+
+@pytest.mark.parametrize("kind", sorted(_NO_PLACE_KINDS))
 def test_no_place_kinds_are_created_only(window, kind):
     """declarative/transfer/fork_agent는 캔버스 노드가 아니다 — 만들기만 한다.
 
@@ -110,14 +112,28 @@ def test_no_place_kinds_are_created_only(window, kind):
 
 
 def test_no_place_kinds_match_canvas_placeable(window):
-    """음성 목록 상수와 양성 판정이 어긋나지 않는다(원칙 1)."""
-    from daedalus.model.plugin.placement import is_canvas_placeable
+    """선언(`PLACEMENT`)에서 파생한 음성 집합이 양성 판정과 같다(원칙 1).
 
-    assert NO_PLACE_KINDS == frozenset({"declarative", "transfer", "fork_agent"})
-    for kind in NO_PLACE_KINDS:
+    **양방향이다** — 놓이지 않는다고 적힌 종류는 실제로 못 놓고, 그 밖의
+    종류는 놓인다. 선언 판정(`is_canvas_placeable_role`)과 인스턴스 판정
+    (`is_canvas_placeable`)이 갈리면 "만들 때는 거절, 드래그는 허용" 같은
+    표면별 어긋남이 생긴다.
+    """
+    from daedalus.model.plugin.kinds import CONFIG_KIND_INDEX
+    from daedalus.model.plugin.placement import (
+        is_canvas_placeable,
+        is_canvas_placeable_role,
+    )
+
+    derived = {
+        k for k, spec in CONFIG_KIND_INDEX.items()
+        if not is_canvas_placeable_role(spec.placement)
+    }
+    assert derived == _NO_PLACE_KINDS
+    for kind in CONFIG_KIND_INDEX:
         comp = make_component(window, kind, f"probe-{kind}")
         assert comp is not None
-        assert not is_canvas_placeable(comp)
+        assert is_canvas_placeable(comp) is (kind not in _NO_PLACE_KINDS)
 
 
 def test_creation_is_one_undo_unit(window):

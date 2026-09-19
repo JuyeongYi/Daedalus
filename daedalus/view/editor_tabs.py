@@ -57,14 +57,12 @@ def _tab_prefix(component: object) -> str:
     스킬은 접두가 없고(대다수), 워크플로 에이전트 🤖 / fork 에이전트 🧩다.
     탭 텍스트 동기화(`sync_tab_titles`)와 탭 생성이 **같은 함수**를 써야
     이름 변경 때 접두가 사라지지 않는다.
-    """
-    from daedalus.model.plugin.agent import Agent, ForkAgent
 
-    if isinstance(component, ForkAgent):
-        return "🧩 "
-    if isinstance(component, Agent):
-        return "🤖 "
-    return ""
+    **한 줄 파사드다**(WP-7 ②): 실체는 뷰의 종류 표 `KIND_UI[kind].tab_prefix`다.
+    """
+    from daedalus.view.kind_ui import ui_for
+
+    return ui_for(component).tab_prefix
 
 
 class EditorTabs:
@@ -235,16 +233,14 @@ class EditorTabs:
     # --- 컴포넌트 편집 탭 ---
 
     def open_component(self, component: object) -> None:
-        """레지스트리에서 더블클릭 → SkillEditor/AgentEditor 탭 열기."""
-        from daedalus.model.plugin.agent import Agent
-        from daedalus.model.plugin.skill import (
-            DeclarativeSkill,
-            ReferenceSkill,
-            StepSkill,
-            TransferSkill,
-            WrappedSkill,
-        )
-        from daedalus.view.editors.skill_editor import SkillEditor
+        """레지스트리에서 더블클릭 → 종류가 선언한 편집기 탭 열기.
+
+        **종류별 클래스 전수 열거가 있던 자리다**(V14): `isinstance(component,
+        (StepSkill, DeclarativeSkill, …))` 튜플에 빠진 종류는 예외도 안 내고
+        **탭이 그냥 안 열렸다**. 이제 종류가 자기 편집기를 선언한다
+        (`KIND_UI[kind].editor_factory`) — 없는 종류는 시끄럽게 실패한다.
+        """
+        from daedalus.view.kind_ui import ui_for
 
         w = self._w
         name = getattr(component, "name", None)
@@ -255,36 +251,23 @@ class EditorTabs:
             w._tabs.setCurrentIndex(w._open_tabs[comp_id])
             return
 
-        if isinstance(component, Agent):
-            from daedalus.view.editors.agent_editor import AgentEditor
-            editor = AgentEditor(
-                component, on_notify_fn=w._project_vm.notify, project=w._project,
-                project_vm=w._project_vm,
-            )
-            # AgentEditor._component_editor._fm.renamed → 이름 변경 처리
-            fm = getattr(getattr(editor, "_component_editor", None), "_fm", None)
-            if fm is not None and hasattr(fm, "renamed"):
-                fm.renamed.connect(w._on_component_renamed)
-            idx = w._tabs.addTab(editor, f"{_tab_prefix(component)}{name}")
-            w._open_tabs[comp_id] = idx
-            w._tabs.setCurrentIndex(idx)
-        elif isinstance(
-            component,
-            # StepSkill = 절차형 + fork 2종 — fork 스킬도 같은 편집기를 쓴다
-            # (ProceduralSkill로 좁히면 fork 스킬 탭이 조용히 안 열린다).
-            (StepSkill, DeclarativeSkill, TransferSkill, ReferenceSkill, WrappedSkill),
-        ):
-            editor = SkillEditor(
-                component, on_notify_fn=w._project_vm.notify,
-                project_vm=w._project_vm,
-            )
-            # SkillEditor._editor._fm.renamed → 이름 변경 처리
-            fm = getattr(getattr(editor, "_editor", None), "_fm", None)
-            if fm is not None and hasattr(fm, "renamed"):
-                fm.renamed.connect(w._on_component_renamed)
-            idx = w._tabs.addTab(editor, name)
-            w._open_tabs[comp_id] = idx
-            w._tabs.setCurrentIndex(idx)
+        ui = ui_for(component)
+        editor = ui.editor_factory(
+            component, on_notify_fn=w._project_vm.notify, project=w._project,
+            project_vm=w._project_vm,
+        )
+        # 편집기의 프론트매터 패널 renamed → 이름 변경 처리. 패널이 걸린 속성
+        # 이름은 편집기마다 다르다(SkillEditor._editor / AgentEditor._component_editor)
+        # — `rebuild_component_frontmatter`와 **같은 조회**를 쓴다.
+        inner = getattr(editor, "_editor", None) or getattr(
+            editor, "_component_editor", None
+        )
+        fm = getattr(inner, "_fm", None)
+        if fm is not None and hasattr(fm, "renamed"):
+            fm.renamed.connect(w._on_component_renamed)
+        idx = w._tabs.addTab(editor, f"{ui.tab_prefix}{name}")
+        w._open_tabs[comp_id] = idx
+        w._tabs.setCurrentIndex(idx)
 
     def rebuild_component_frontmatter(self, component: object) -> None:
         """열려 있는 편집 탭의 프론트매터 폼을 현재 종류로 다시 만든다. 없으면 무동작.

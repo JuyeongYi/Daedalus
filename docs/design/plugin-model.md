@@ -275,8 +275,9 @@ WP-4가 통째로 지웠다 — `_deser_config`가 `spec_by_config_kind(kind).co
 새 에이전트 종류가 포트 편집기를 조용히 잃는다. fork 사용자 목록 패널의 게이트는 `IS_FORK_BASE` 선언이다. 같은 enum 비교를 손으로
 적으면 표면마다 답이 갈린다(원칙 1).
 
-캔버스 드롭(`scene.py`)·레지스트리 드래그·"여기에 만들기"(`creation.NO_PLACE_KINDS`)·MCP `place_component`가
-전부 이것을 부른다(음성 목록 3벌 → 양성 판정, 원칙 1). `DeclarativeSkill`·`TransferSkill`·`ForkAgent`는 False다.
+캔버스 드롭(`scene.py`)·레지스트리 드래그·MCP `place_component`/`create_*(x=, y=)`가 전부 이것을 부른다
+(음성 목록 3벌 → 양성 판정, 원칙 1). 인스턴스가 아직 없는 자리(만들기 전 거절)는 같은 판정의 선언 판본
+`is_canvas_placeable_role(spec.placement)`을 쓴다 — WP-7 ②에서 `creation.NO_PLACE_KINDS` 음성 목록이 삭제됐다. `DeclarativeSkill`·`TransferSkill`·`ForkAgent`는 False다.
 같은 모듈의 `fork_skills_using(agent, project)`는 **fork 역참조의 단일 진실**이다 —
 필터는 `name in s.config.name_refs(Bucket.AGENTS)`(Q14)라 종류 이름을 묻지 않는다 —
 `delegated_agent_name()`(Q33)을 쓰면 랩핑 스킬이 **자기 이름의 러너**를 답해 에이전트와 동명인 랩퍼가
@@ -461,7 +462,8 @@ background를 지정할 수 없다.
   `used_plugin_agents`) ③ 프로젝트의 **ForkAgent 전부**(이름순). `validate_fork_agent`는 워크플로 에이전트
   이름을 받으면 그 사실을 이름으로 말하고 대안을 제시한다(원칙 5).
 - **전환은 3-way다** — `procedural` ↔ `sync_fork` ↔ `async_fork`(`actions/fork_skill.KINDS`). 명시 액션이고
-  (편집기 `kind_switch_row`의 버튼 3개·캔버스 우클릭 "종류 전환" 서브메뉴·MCP `convert_skill(to=)`), 실체는
+  (편집기 `kind_switch_row`의 버튼 3개·캔버스 우클릭 "종류 전환" 서브메뉴 — 라벨·툴팁·명사형은 둘 다
+  `kind_ui.KIND_UI`의 `switch_label`/`switch_tooltip`/`switch_noun`을 읽는다·MCP `convert_skill(to=)`), 실체는
   `convert_skill_kind` 하나다. 객체를 새로 만들지 않고 `config`와 `__class__`를 바꾸는 `SetAttrCmd` 2개를
   `MacroCommand` **1 undo**로 묶는다 — 그래프 참조·본문 문서·열린 탭이 끊기지 않는다(세 클래스의 필드
   레이아웃이 같아 가능하다).
@@ -492,8 +494,9 @@ background를 지정할 수 없다.
   DeclarativeSkill로 강등하지 않는다(`_deser_tool` 선례, 원칙 5).
 - **편집기·캔버스:** 동기 fork는 구리색 `#c07a3a` 🍴, 비동기 fork는 진한 구리 `#8a5a2a` 🍴⏳
   (사용자 확정 2026-09-13 "색은 아예 별도 색상으로"). 레지스트리 탭은 🍴 SYNC FORK / 🍴⏳ ASYNC FORK /
-  🧩 FORK AGENTS 셋이 늘었고 — 섹션 키·`tab_labels`·`_ICON` **세 표가 동시에** 커버해야 한다
-  (`tab_labels[kind]`가 맨 첨자라 누락 시 레지스트리 패널 전체가 안 뜬다. 커버리지 테스트가 고정) —
+  🧩 FORK AGENTS 셋이 늘었고 — 섹션·탭 라벨·아이콘은 WP-7 ②에서 `view/kind_ui.KIND_UI` **한 행**이
+  되었다(예전에는 세 표가 동시에 커버해야 했다. 지금은 행이 없으면 팔레트 구축이 그 종류 이름을 찍고
+  죽는다 — parity·fail-loud 테스트가 고정) —
   🧩 탭의 항목은 드래그 불가다. AGENT 피커(`ForkAgentComboBox` — 후보 밖 저장값도 보인다), 안내문
   "도구는 fork 에이전트가, 모델·effort는 이 스킬 값이(비우면 fork 에이전트 값)". ForkAgent 편집 탭은
   🧩 접두를 달고 출력/호출 포트 패널 대신 **"🍴 사용하는 fork 스킬"** 읽기 전용 패널을 보인다.

@@ -47,11 +47,9 @@ class PropsTools(_BaseTools):
         `create_and_place`의 `MacroCommand`로 묶여 **1 undo 단위**가 된다(G14) —
         캔버스 메뉴와 완전히 같은 경로다.
         """
-        from daedalus.view.actions.creation import (
-            NO_PLACE_KINDS,
-            create_and_place,
-            make_component,
-        )
+        from daedalus.model.plugin.kinds import spec_by_config_kind
+        from daedalus.model.plugin.placement import is_canvas_placeable_role
+        from daedalus.view.actions.creation import create_and_place, make_component
 
         win = self._window
         if x is None and y is None:
@@ -64,7 +62,9 @@ class PropsTools(_BaseTools):
             raise ValueError(
                 "x와 y는 함께 주어야 합니다 — 한쪽만으로는 배치 좌표가 정해지지 않습니다."
             )
-        if kind in NO_PLACE_KINDS:
+        # 배치 불가 목록을 따로 들지 않는다(WP-7 ②) — 종류의 `PLACEMENT`
+        # 선언이 답한다. 음성 목록은 `is_canvas_placeable`과 어긋나도 조용했다.
+        if not is_canvas_placeable_role(spec_by_config_kind(kind).placement):
             raise ValueError(
                 f"'{kind}' 종류는 캔버스에 노드로 배치되지 않습니다 "
                 "(declarative는 배경 지식, transfer는 전이 위의 단계, "

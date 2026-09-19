@@ -216,13 +216,13 @@ def test_node_item_port_color_from_event_def(qapp):
 
 
 def test_node_item_entry_point_style(qapp):
-    from daedalus.view.canvas.node_item import _TYPE_STYLE
-    assert "entry_point" in _TYPE_STYLE
+    from daedalus.view.canvas.node_item import _PSEUDO_STYLE
+    assert "entry_point" in _PSEUDO_STYLE
 
 
 def test_node_item_exit_point_style(qapp):
-    from daedalus.view.canvas.node_item import _TYPE_STYLE
-    assert "exit_point" in _TYPE_STYLE
+    from daedalus.view.canvas.node_item import _PSEUDO_STYLE
+    assert "exit_point" in _PSEUDO_STYLE
 
 
 def test_entry_point_no_input_port(qapp):

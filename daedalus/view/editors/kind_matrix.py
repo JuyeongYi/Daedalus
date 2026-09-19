@@ -22,11 +22,16 @@ def matrix_for(component: object) -> tuple[dict[Any, Any], dict[Any, type], bool
             표에도 없으면 조용한 빈 폼 대신 **이유를 말하는 실패**가 난다
             (예전에 `.get(kind, {})` 폴백이 빈 프론트매터 폼 회귀를 냈다).
     """
-    from daedalus.model.plugin.agent import Agent
     from daedalus.model.plugin.field_matrix import matrix_for as model_matrix_for
+    from daedalus.model.plugin.kinds import spec_for
+    from daedalus.model.plugin.roles import Bucket
     from daedalus.view.editors.field_widgets import AGENT_FIELD_WIDGETS, FIELD_WIDGETS
 
-    is_agent = isinstance(component, Agent)
+    # 규칙 표를 **먼저** 고른다 — 미지 종류의 거절 문구(어느 표에도 없다)가
+    # 버킷 조회의 TypeError보다 호출자에게 쓸모 있다(종전 순서 그대로다).
     rules = model_matrix_for(component)
+    # 위젯 표는 **버킷 선언**이 고른다(WP-7 ②) — `isinstance(c, Agent)`로 물으면
+    # 에이전트 버킷의 새 종류가 스킬 위젯 표로 그려진다.
+    is_agent = spec_for(component).bucket is Bucket.AGENTS
     widget_map = AGENT_FIELD_WIDGETS if is_agent else FIELD_WIDGETS
     return rules, widget_map, is_agent
