@@ -68,16 +68,19 @@ class ExternalTools(_BaseTools):
         폴더가 없으면 `add_marketplace_folder`로 먼저 등록한다.
         """
         from daedalus.model.plugin import wrap_catalog
-        from daedalus.model.plugin.config import is_external_skill_ref
+        from daedalus.model.plugin.config import normalize_external_skill_ref
 
         project = self._project
         used_sources = wrap_catalog.project_external_sources(project)
         declared = set(getattr(project, "external_plugins", None) or [])
+        # 참조 수집은 config에 묻고(종류 불문), 키는 CC가 찾는 bare 형식으로
+        # 정규화한다 — `@마켓`이 붙은 참조도 같은 스킬을 쓰는 것으로 센다(그
+        # 표기 자체는 검증 경고 `external_skill_ref_marketplace`가 짚는다).
         skill_ref_users: dict[str, list[str]] = {}
         for agent in getattr(project, "agents", None) or []:
-            for ref in getattr(agent.config, "skills", None) or []:
-                if is_external_skill_ref(ref):
-                    skill_ref_users.setdefault(ref, []).append(agent.name)
+            for ref in agent.config.external_skill_refs():
+                key = normalize_external_skill_ref(ref)
+                skill_ref_users.setdefault(key, []).append(agent.name)
         folders_out: list[dict[str, Any]] = []
         unfetched_total = 0
         for folder, plugins in wrap_catalog.scan_catalog():
@@ -121,7 +124,6 @@ class ExternalTools(_BaseTools):
                             "description": s.description,
                             "source": s.source,
                             "skill_ref": s.skill_ref,
-                            "already_used": s.source in used_sources,
                             "used_by": sorted(skill_ref_users.get(s.skill_ref, [])),
                         }
                         for s in p.skills

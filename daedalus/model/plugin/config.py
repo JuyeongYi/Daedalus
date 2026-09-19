@@ -38,19 +38,60 @@ def is_external_skill_ref(name: str) -> bool:
     return ":" in name
 
 
-def external_plugin_id_declared(plugin_id: str, declared: set[str]) -> bool:
-    """설치 식별자 매칭 — 정확 일치 또는 bare(``@마켓`` 제외) 일치.
+def bare_plugin_id(plugin_id: str) -> str:
+    """설치 식별자(``플러그인[@마켓]``)에서 ``@마켓``을 뗀 플러그인 이름."""
+    return plugin_id.partition("@")[0]
 
-    외부 스킬 참조(``플러그인:스킬``)의 플러그인 부분은 마켓 표기가 없는
-    bare 이름이다 — 선언이 ``플러그인@마켓``이어도 이 완화로 맞는다
-    (`validation/project_rules/fork.py`의 ``declared = {p.partition("@")[0]
-    for p in ...}`` 선례와 같은 판단). 양쪽 다 bare로 낮춰 비교하므로
-    ``plugin_id``에 ``@마켓``이 섞여 들어와도(수동 입력) 대칭적으로 맞는다.
+
+def plugin_ids_match(a: str, b: str) -> bool:
+    """설치 식별자 둘이 같은 플러그인을 가리키는가 — **매칭 정책의 단일 진실**.
+
+    정확 일치, 또는 **한쪽만 bare**일 때 bare 이름 일치다. 양쪽 다 마켓을
+    달고 있으면 정확 일치만 인정한다(``alpha@mkt1`` ≠ ``alpha@mkt2`` — 다른
+    설치 대상). 완화가 필요한 이유는 카탈로그 자신이 마켓 표기를 **비대칭**으로
+    내기 때문이다: 선언(`external_plugins`)은 ``플러그인@마켓``이고, 에이전트
+    `agent_type`·스킬 `skill_ref`는 CC가 찾는 이름 그대로 ``플러그인:이름``
+    (bare)이다(WP-9·WP-B 실측). 그 표준 경로를 따르기만 해도 경고가 뜨면
+    안 된다(원칙 5 — 경고는 진짜 불일치에만). 참조의 출처(``source``냐
+    ``skills`` 항목이냐)로 정책을 가르지 않는다(원칙 1, 2026-09-19 리뷰).
     """
-    if plugin_id in declared:
+    if a == b:
         return True
-    bare = plugin_id.partition("@")[0]
-    return bare in declared or bare in {d.partition("@")[0] for d in declared}
+    if "@" in a and "@" in b:
+        return False
+    return bare_plugin_id(a) == bare_plugin_id(b)
+
+
+def external_plugin_id_declared(plugin_id: str, declared: set[str]) -> bool:
+    """``plugin_id``가 선언 집합의 어느 항목과 `plugin_ids_match`하는가."""
+    return any(plugin_ids_match(plugin_id, d) for d in declared)
+
+
+def declared_external_plugin_ids(project) -> set[str]:
+    """`project.external_plugins` 선언을 공백 정리한 집합 (빈 항목 제외)."""
+    return {
+        str(p).strip()
+        for p in getattr(project, "external_plugins", None) or []
+        if str(p).strip()
+    }
+
+
+def external_skill_ref_has_marketplace(ref: str) -> bool:
+    """외부 스킬 참조의 플러그인 부분에 ``@마켓``이 붙어 있는가.
+
+    CC는 fork 에이전트 ``skills:``의 외부 스킬을 마켓 표기 **없는** 이름으로
+    찾는다(실측, CC 2.1.278). 붙이면 산출은 원문 그대로 나가고 런타임에
+    조용히 해소되지 않으므로 검증이 짚는다(`external_skill_ref_marketplace`).
+    """
+    return is_external_skill_ref(ref) and "@" in ref.partition(":")[0]
+
+
+def normalize_external_skill_ref(ref: str) -> str:
+    """외부 스킬 참조를 CC가 찾는 형식 ``플러그인:스킬``(bare)로 정규화한다."""
+    plugin_id, sep, skill_name = ref.partition(":")
+    if not sep:
+        return ref
+    return f"{bare_plugin_id(plugin_id.strip())}:{skill_name.strip()}"
 
 
 @dataclass
@@ -131,17 +172,20 @@ class ComponentConfig(ABC):
         """``namespace``의 이름 ``old``를 ``new``로 **제자리** 치환 (기본 무동작)."""
         return None
 
-    def external_plugin_refs(self) -> list[str]:
-        """이 설정이 요구하는 외부 플러그인 설치 id 목록 (기본 없음).
+    def external_skill_refs(self) -> list[str]:
+        """이 설정의 **외부 플러그인 스킬 참조**(``플러그인:스킬`` 원문) 목록 (기본 없음).
 
-        `AgentConfigBase`만 오버라이드한다(``skills``의 외부 스킬 참조, WP-B) —
-        `ExternalAgentConfig`의 ``source``는 **여기 합류하지 않는다**.
-        `_check_external_plugins`가 두 매칭 정책(정확 일치 / bare 완화)을
-        가르는 신호가 바로 이 기본값 유무다: 이 메서드가 낸 id만 bare
-        완화를 받는다 — CC가 fork 에이전트 `skills:`로 외부 스킬을 찾을 때는
-        마켓 표기를 아예 쓰지 않아(실측) 그 참조에 항상 시장 정보가 없지만,
-        `ExternalAgent.source`는 사용자가 마켓 유무를 **직접 선택**하므로
-        bare와 `@마켓` 선언은 진짜 다른 설치 대상이다(정확 일치 유지).
+        `AgentConfigBase`만 오버라이드한다(``skills`` 항목, WP-B).
+        """
+        return []
+
+    def external_plugin_refs(self) -> list[str]:
+        """이 설정이 배선을 요구하는 외부 플러그인 설치 id 목록 (기본 없음).
+
+        `PluginComponent.external_plugin_refs()`의 기본 구현이 이것을 그대로
+        돌려준다 — 컴포넌트가 다른 외부 정본(`ExternalAgent.source`)을 가지면
+        그 클래스가 오버라이드한다. 매칭 정책은 출처와 무관하게 하나다
+        (`plugin_ids_match`).
         """
         return []
 
@@ -334,9 +378,8 @@ class AgentConfigBase(ComponentConfig, ABC):
         if namespace is Bucket.SKILLS and isinstance(self.skills, list):
             self.skills = [new if s == old else s for s in self.skills]
 
-    def external_plugin_refs(self) -> list[str]:
-        """``skills``의 외부 플러그인 스킬 참조(``플러그인:스킬``)가 가리키는
-        플러그인 설치 id 목록 (WP-B).
+    def external_skill_refs(self) -> list[str]:
+        """``skills`` 항목 중 외부 플러그인 스킬 참조(``플러그인:스킬``) 원문.
 
         형식이 깨진 참조(플러그인 부분이 비었거나 스킬 이름이 없음)는
         건너뛴다 — CC가 못 찾으면 조용히 무시하는 실패이고, 이 종류의 참조에는
@@ -348,10 +391,15 @@ class AgentConfigBase(ComponentConfig, ABC):
             if not is_external_skill_ref(s):
                 continue
             plugin_id, _, skill_name = s.partition(":")
-            plugin_id = plugin_id.strip()
-            if plugin_id and skill_name.strip():
-                refs.append(plugin_id)
+            if plugin_id.strip() and skill_name.strip():
+                refs.append(s)
         return refs
+
+    def external_plugin_refs(self) -> list[str]:
+        """외부 스킬 참조가 가리키는 플러그인 설치 id — 참조에 적힌 **원문 그대로**
+        (``@마켓``을 떼지 않는다 — 떼면 `external_skill_ref_marketplace` 경고와
+        어긋난 사실을 검증이 못 본다). 선언과의 대조는 `plugin_ids_match`."""
+        return [ref.partition(":")[0].strip() for ref in self.external_skill_refs()]
 
 
 @dataclass

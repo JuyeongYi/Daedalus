@@ -11,7 +11,10 @@ from daedalus.model.plugin.config import (
     TransferSkillConfig,
     ForkSkillConfig,
     external_plugin_id_declared,
+    external_skill_ref_has_marketplace,
     is_external_skill_ref,
+    normalize_external_skill_ref,
+    plugin_ids_match,
 )
 from daedalus.model.plugin.roles import Bucket
 from daedalus.model.plugin.enums import (
@@ -172,12 +175,29 @@ def test_is_external_skill_ref_by_colon():
     assert is_external_skill_ref("") is False
 
 
-def test_external_plugin_id_declared_exact_and_bare():
+def test_external_plugin_id_declared_exact_and_one_side_bare():
+    """정확 일치 또는 한쪽만 bare — 양쪽 다 마켓을 달고 다르면 불일치."""
     assert external_plugin_id_declared("alpha", {"alpha"}) is True
     assert external_plugin_id_declared("alpha", {"alpha@mkt"}) is True
     assert external_plugin_id_declared("alpha@mkt", {"alpha"}) is True
+    assert external_plugin_id_declared("alpha@mkt", {"alpha@mkt"}) is True
+    assert external_plugin_id_declared("alpha@mkt1", {"alpha@mkt2"}) is False
     assert external_plugin_id_declared("alpha", {"beta@mkt"}) is False
     assert external_plugin_id_declared("alpha", set()) is False
+
+
+def test_plugin_ids_match_is_symmetric():
+    assert plugin_ids_match("alpha", "alpha@mkt") and plugin_ids_match("alpha@mkt", "alpha")
+    assert not plugin_ids_match("alpha@a", "alpha@b")
+
+
+def test_external_skill_ref_marketplace_helpers():
+    assert external_skill_ref_has_marketplace("beta@mkt:lint") is True
+    assert external_skill_ref_has_marketplace("beta:lint") is False
+    assert external_skill_ref_has_marketplace("local") is False
+    assert normalize_external_skill_ref("beta@mkt:lint") == "beta:lint"
+    assert normalize_external_skill_ref("beta:lint") == "beta:lint"
+    assert normalize_external_skill_ref("local") == "local"
 
 
 def test_agent_config_base_name_refs_excludes_external_skill_refs():
@@ -188,8 +208,11 @@ def test_agent_config_base_name_refs_excludes_external_skill_refs():
     assert cfg.name_refs(Bucket.AGENTS) == []
 
 
-def test_agent_config_base_external_plugin_refs_extracts_bare_plugin_id():
+def test_agent_config_base_external_plugin_refs_keeps_plugin_part_verbatim():
+    """플러그인 부분은 적힌 그대로 — `@마켓`을 떼지 않는다(검증이 그 표기를
+    `external_skill_ref_marketplace`로 짚어야 하므로 여기서 지우면 안 된다)."""
     cfg = AgentConfig(skills=["local-a", "alpha:review", "beta@mkt:lint"])
+    assert cfg.external_skill_refs() == ["alpha:review", "beta@mkt:lint"]
     assert cfg.external_plugin_refs() == ["alpha", "beta@mkt"]
 
 

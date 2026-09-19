@@ -249,15 +249,14 @@ class FieldTools(_BaseTools):
 
         실체는 `comp.external_plugin_refs()`(config의 것을 합친 컴포넌트
         판정, WP-B) 하나다 — 프로젝트 검증의 `undeclared_external_plugin`과
-        같은 술어를 쓴다(`external_plugin_id_declared` — bare/`@마켓` 완화).
+        같은 술어를 쓴다(`external_plugin_id_declared` → `plugin_ids_match`).
         """
-        from daedalus.model.plugin.config import external_plugin_id_declared
+        from daedalus.model.plugin.config import (
+            declared_external_plugin_ids,
+            external_plugin_id_declared,
+        )
 
-        declared = {
-            str(p).strip()
-            for p in getattr(self._project, "external_plugins", None) or []
-            if str(p).strip()
-        }
+        declared = declared_external_plugin_ids(self._project)
         missing = sorted({
             plugin_id
             for plugin_id in comp.external_plugin_refs()

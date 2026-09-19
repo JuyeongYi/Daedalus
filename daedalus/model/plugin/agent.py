@@ -114,11 +114,6 @@ class AgentDefinition(Agent, WorkflowComponent):
         """
         return frozenset(e.name for e in self.output_ports())
 
-    def external_plugin_refs(self) -> list[str]:
-        """``config.skills``의 외부 플러그인 스킬 참조(WP-B)가 요구하는
-        플러그인 설치 id — 실체는 `config.external_plugin_refs()` 하나다."""
-        return list(self.config.external_plugin_refs())
-
     @classmethod
     def creation_defaults(cls, *, name: str, agent: str | None) -> dict[str, Any]:
         """새 에이전트는 출력 포트 `done` 하나로 태어난다.
@@ -150,11 +145,6 @@ class ForkAgent(Agent):
     @property
     def kind(self) -> str:
         return self.KIND
-
-    def external_plugin_refs(self) -> list[str]:
-        """``config.skills``의 외부 플러그인 스킬 참조(WP-B)가 요구하는
-        플러그인 설치 id — `AgentDefinition`과 같은 위임."""
-        return list(self.config.external_plugin_refs())
 
 
 @dataclass

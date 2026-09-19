@@ -15,6 +15,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from daedalus.compiler.emit.common import parse_external_source
 from daedalus.compiler.emit.manifest import compile_plugin_manifest
 from daedalus.model.fsm.machine import StateMachine
@@ -280,11 +282,24 @@ def test_unused_external_plugin_warns():
     assert all(e.is_warning for e in issues if e.rule == "unused_external_plugin")
 
 
-def test_marketplace_mismatch_is_both_warnings():
-    """alpha@mkt 선언 ↔ alpha 참조는 다른 설치 대상 — 양쪽 경고."""
+def test_bare_source_matches_marketplace_declaration():
+    """카탈로그의 `agent_type`은 bare(`alpha:skill`)이고 선언은 `alpha@mkt`다 —
+    표준 경로를 따르기만 한 프로젝트에 경고가 뜨면 안 된다(2026-09-19 리뷰:
+    종전 "정확 일치" 테스트가 고정하던 동작은 카탈로그의 비대칭을 오탐하는
+    버그였다)."""
     project = PluginProject(name="p")
     project.agents.append(_external(source="alpha:skill"))
     project.external_plugins.append("alpha@mkt")
+    rules = [e.rule for e in Validator.validate_project(project)]
+    assert "undeclared_external_plugin" not in rules
+    assert "unused_external_plugin" not in rules
+
+
+def test_cross_marketplace_mismatch_is_both_warnings():
+    """양쪽 다 마켓을 달고 다르면 다른 설치 대상 — 완화 없이 양쪽 경고."""
+    project = PluginProject(name="p")
+    project.agents.append(_external(source="alpha@mkt1:skill"))
+    project.external_plugins.append("alpha@mkt2")
     rules = [e.rule for e in Validator.validate_project(project)]
     assert "undeclared_external_plugin" in rules
     assert "unused_external_plugin" in rules
@@ -304,11 +319,11 @@ def test_same_source_multiple_components_is_normal():
 
 # ─── WP-B: 외부 플러그인 스킬 참조(`config.skills`의 `플러그인:스킬`) ───
 #
-# 이 참조는 `AgentDefinition`/`ForkAgent`의 `config.external_plugin_refs()`가
-# 낸다 — CC가 fork 에이전트 `skills:`로 외부 스킬을 프리로드할 때는 마켓
-# 표기를 쓰지 않으므로(실측, CC 2.1.278) bare 이름과 `플러그인@마켓` 선언이
-# 맞아야 한다. `ExternalAgent.source`(위 테스트들)와는 반대 정책이다 — 그
-# 쪽은 마켓 유무를 사용자가 직접 고르므로 정확 일치를 유지한다.
+# 이 참조는 `config.external_plugin_refs()`가 내고 `PluginComponent`의 기본
+# 구현이 그대로 위임한다 — CC가 fork 에이전트 `skills:`로 외부 스킬을
+# 프리로드할 때는 마켓 표기를 쓰지 않으므로(실측, CC 2.1.278) bare 이름과
+# `플러그인@마켓` 선언이 맞아야 한다. 매칭 정책은 `ExternalAgent.source`와
+# 같다(`plugin_ids_match` — 한쪽만 bare면 완화).
 
 
 def _agent_with_skills(name: str = "worker", skills=()) -> AgentDefinition:
@@ -336,8 +351,39 @@ def test_external_skill_ref_matches_marketplace_qualified_declaration():
 def test_external_skill_ref_undeclared_plugin_warns():
     project = PluginProject(name="p")
     project.agents.append(_agent_with_skills(skills=["alpha:review"]))
+    rules = [e.rule for e in Validator.validate_project(project)]
+    assert "undeclared_external_plugin" in rules
+    # 외부 참조는 프로젝트 스킬 이름이 아니다 — dangling으로 오탐하지 않는다.
+    assert "dangling_string_reference" not in rules
+
+
+def test_external_skill_ref_with_marketplace_suffix_warns():
+    """`beta@mkt:lint`는 CC가 못 찾는 형식 — 선언과는 맞아도 전용 경고가 뜬다."""
+    project = PluginProject(name="p")
+    project.agents.append(_agent_with_skills(skills=["beta@mkt:lint"]))
+    project.external_plugins.append("beta@mkt")
     issues = Validator.validate_project(project)
-    assert "undeclared_external_plugin" in [e.rule for e in issues]
+    rules = [e.rule for e in issues]
+    assert "external_skill_ref_marketplace" in rules
+    assert "undeclared_external_plugin" not in rules
+    assert all(e.is_warning for e in issues if e.rule == "external_skill_ref_marketplace")
+    assert "beta:lint" in next(
+        e.message for e in issues if e.rule == "external_skill_ref_marketplace"
+    )
+
+
+@pytest.mark.parametrize("target", [BuildTarget.LOCAL, BuildTarget.MARKETPLACE])
+def test_external_skill_ref_is_emitted_verbatim_in_agent_frontmatter(target):
+    """`skills:` 프론트매터는 외부 참조를 원문 그대로 낸다 — 두 타깃 모두."""
+    from daedalus.compiler.emit import compile_agent
+
+    project = PluginProject(name="p", build_target=target)
+    agent = _agent_with_skills(skills=["alpha:review"])
+    project.agents.append(agent)
+    project.external_plugins.append("alpha@mkt")
+    text = compile_agent(agent, project)
+    frontmatter = text.split("---")[1]
+    assert "alpha:review" in frontmatter
 
 
 def test_local_skill_name_in_agent_skills_is_not_an_external_ref():

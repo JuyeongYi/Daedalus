@@ -80,7 +80,9 @@ class CataloguedSkill:
         plugin_id, sep, skill_name = self.source.partition(":")
         if not sep:
             return self.source
-        return f"{plugin_id.partition('@')[0]}:{skill_name}"
+        from daedalus.model.plugin.config import bare_plugin_id
+
+        return f"{bare_plugin_id(plugin_id)}:{skill_name}"
 
 
 @dataclass

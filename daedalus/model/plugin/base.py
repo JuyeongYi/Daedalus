@@ -169,8 +169,14 @@ class PluginComponent(ABC):
     # ── 참조 ──────────────────────────────────────────────────────────────
 
     def external_plugin_refs(self) -> list[str]:
-        """이 컴포넌트가 배선을 요구하는 외부 플러그인 설치 id 목록 (정렬) — Q15."""
-        return []
+        """이 컴포넌트가 배선을 요구하는 외부 플러그인 설치 id 목록 — Q15.
+
+        기본은 **설정에 위임**한다(`config.external_plugin_refs()` — 에이전트
+        ``skills``의 외부 스킬 참조, WP-B). 외부 정본을 따로 가진 종류
+        (`ExternalAgent.source`)만 오버라이드한다 — 새 에이전트 종류는 아무것도
+        안 해도 config 참조가 합류한다.
+        """
+        return list(self.config.external_plugin_refs())
 
     @property
     def external_source(self) -> str | None:

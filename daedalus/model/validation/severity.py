@@ -67,6 +67,7 @@ WARNING_RULES: frozenset[str] = frozenset({
     "external_source_missing",  # 외부 정본 참조(source) 형식 불일치
     "unused_external_plugin",  # 선언했는데 아무 컴포넌트도 참조 안 함
     "undeclared_external_plugin",  # 외부 정본이 미선언 플러그인을 가리킴
+    "external_skill_ref_marketplace",  # skills 외부 참조에 @마켓 — CC가 못 찾는 형식
     "external_plugin_no_marketplace",  # WP-WR — 컴파일러 emit (bare 선언은 enabledPlugins 불가)
     "invalid_component_name",  # 빈 이름 제외는 is_warning에서 처리
     # 도구(tool_shelf) 경고
