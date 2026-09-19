@@ -73,13 +73,23 @@ def test_concept_guide_kind_table_has_one_row_per_kind():
     )
 
 
-def test_registry_guide_tab_table_has_one_row_per_kind():
-    """안내서 02의 탭 표 = 레지스트리 탭 수. 탭 아이콘까지 맞춘다."""
+def test_registry_guide_tab_table_has_one_row_per_tab():
+    """안내서 02의 탭 표 = 레지스트리가 **실제로 만드는 탭** 전수.
+
+    종류 수가 아니라 탭 수다(WP-C) — `KindUI.section_group`이 같은 종류는 한 탭을
+    나눠 쓰고(🔌), 종류가 아닌 카탈로그 탭도 하나 있다(🧷). 기대값을 패널의 탭
+    파생에서 만들어야 그룹이 늘거나 줄 때 문서가 함께 실패한다.
+    """
+    from daedalus.view.panels.external_registry import ExternalSkillsSection
+    from daedalus.view.panels.registry_panel import _section_specs
+
     text = (_DOCS / "guide" / "02-registry.md").read_text(encoding="utf-8")
     rows = _table_rows(text, "탭 라벨은 아이콘 하나뿐입니다.")
-    assert len(rows) == len(KIND_REGISTRY)
+    expected = {spec.ui.tab_label for spec in _section_specs()}
+    expected.add(ExternalSkillsSection.tab_label)
+    assert len(rows) == len(expected)
     icons = {row.split("|")[1].strip() for row in rows}
-    assert icons == {ui.tab_label for ui in KIND_UI.values()}
+    assert icons == expected
 
 
 @pytest.mark.parametrize(

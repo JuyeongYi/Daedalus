@@ -303,14 +303,22 @@ class TestComponentKindTables:
     }
 
     def test_registry_sections_match_the_kind_set(self, qapp):
+        """**섹션이 아니라 종류 배정**을 고정한다 — 섹션은 종류보다 적을 수 있다.
+
+        `KindUI.section_group`이 같은 종류는 한 탭을 나눠 쓴다(WP-C). 고정해야
+        하는 사실은 "어느 종류도 갈 곳이 없지 않다"이고, 그것은 배정표
+        (`_section_of_kind`)가 답한다.
+        """
         panel = RegistryPanel()
-        assert set(panel._sections) == self._KINDS
+        assert set(panel._section_of_kind) == self._KINDS
 
     def test_every_section_kind_has_a_dialog_title(self, qapp):
         from daedalus.view.component_actions import ComponentActions
 
         panel = RegistryPanel()
-        missing = set(panel._sections) - set(ComponentActions._COMPONENT_TITLES)
+        missing = set(panel._section_of_kind) - set(
+            ComponentActions._COMPONENT_TITLES
+        )
         assert not missing, f"이름 다이얼로그 제목 누락: {sorted(missing)}"
 
     def test_every_kind_has_a_factory(self, qapp):

@@ -62,6 +62,27 @@ def plugin_ids_match(a: str, b: str) -> bool:
     return bare_plugin_id(a) == bare_plugin_id(b)
 
 
+def external_source_refs_match(a: str, b: str) -> bool:
+    """외부 정본 참조 둘(``플러그인[@마켓]:이름``)이 **같은 대상**을 가리키는가.
+
+    플러그인 부분은 `plugin_ids_match`(마켓 표기 비대칭 완화)로, 이름 부분은
+    정확 일치로 본다 — 카탈로그가 내는 `agent_type`은 bare(``hookify:doctor``)
+    인데 사용자가 선언한 `source`는 마켓을 달고 있을 수 있고(``hookify@mkt:doctor``),
+    그 둘을 다르게 세면 **이미 등록한 에이전트가 미등록 목록에 또 나온다**.
+
+    이름에 콜론이 더 있을 수 있다(에이전트 하위 폴더 — ``plugin:review:security``)
+    므로 **첫 콜론**에서만 가른다. 콜론이 없는 참조는 형식이 깨진 것이라
+    원문 정확 일치로만 같다고 본다.
+    """
+    plugin_a, sep_a, name_a = a.partition(":")
+    plugin_b, sep_b, name_b = b.partition(":")
+    if not sep_a or not sep_b:
+        return a.strip() == b.strip()
+    return name_a.strip() == name_b.strip() and plugin_ids_match(
+        plugin_a.strip(), plugin_b.strip()
+    )
+
+
 def external_plugin_id_declared(plugin_id: str, declared: set[str]) -> bool:
     """``plugin_id``가 선언 집합의 어느 항목과 `plugin_ids_match`하는가."""
     return any(plugin_ids_match(plugin_id, d) for d in declared)

@@ -339,6 +339,15 @@ class MainWindow(QMainWindow):
         self._registry_panel.new_component_requested.connect(self._on_new_component)
         self._registry_panel.component_delete_requested.connect(self._on_delete_component)
         self._registry_panel.component_preview_requested.connect(self._on_preview_component)
+        # 외부 정본 탭(🔌/🧷) — 등록·추가의 실체는 actions/external_registration,
+        # "+"는 카탈로그 창이다(빈 이름으로 만들 수 없는 종류들).
+        self._registry_panel.catalog_requested.connect(self._show_wrap_catalog)
+        self._registry_panel.external_agent_register_requested.connect(
+            self._on_register_external_agent
+        )
+        self._registry_panel.external_skill_attach_requested.connect(
+            self._on_attach_external_skill
+        )
         self._fsm_scene.node_double_clicked.connect(self._open_component)
         self._active_stack.add_listener(self._update_undo_redo)
 
@@ -614,10 +623,26 @@ class MainWindow(QMainWindow):
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(cat_dir)))
 
     def _show_wrap_catalog(self) -> None:
-        """도구 메뉴 — 외부 플러그인 카탈로그 창 (WP-WR, D2)."""
-        from daedalus.view.editors.wrap_catalog_dialog import WrapCatalogDialog
+        """도구 메뉴 · 레지스트리 🔌/🧷 탭의 "+" — 외부 플러그인 카탈로그 창."""
+        from daedalus.view.actions.external_registration import show_catalog
 
-        WrapCatalogDialog(self).exec()
+        show_catalog(self)
+
+    def _on_register_external_agent(self, agent_type: str, kind: str) -> None:
+        """🔌 탭 미등록 목록 → 컴포넌트 등록 (1 undo — 사용 선언까지 함께)."""
+        from daedalus.view.actions.external_registration import (
+            register_from_registry,
+        )
+
+        register_from_registry(self, agent_type, kind)
+
+    def _on_attach_external_skill(self, skill_ref: str, agent: object) -> None:
+        """🧷 탭 → 에이전트 `skills`에 외부 스킬 참조 추가 (undo 가능)."""
+        from daedalus.view.actions.external_registration import (
+            attach_from_registry,
+        )
+
+        attach_from_registry(self, skill_ref, agent)
 
     def _open_project_catalogue(self) -> None:
         """도구 메뉴 — 프로젝트 카탈로그 폴더를 탐색기로 연다 (없으면 만든다)."""

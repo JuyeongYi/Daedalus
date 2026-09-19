@@ -512,9 +512,15 @@ def discover_plugins(folder: MarketplaceFolder) -> list[CataloguedPlugin]:
     return plugins
 
 
+#: 카탈로그 스캔 결과 — (마켓플레이스 폴더, 발견된 플러그인들) 쌍 목록.
+#: 파일시스템을 읽는 것은 `scan_catalog` 하나이고, 나머지 유도 함수는 이 값을
+#: **주입받을 수 있다**(WP-C — GUI가 캐시해 매 재그리기의 폴더 훑기를 없앤다).
+Catalog = list[tuple["MarketplaceFolder", list["CataloguedPlugin"]]]
+
+
 def scan_catalog(
     folders: list[MarketplaceFolder] | None = None,
-) -> list[tuple[MarketplaceFolder, list[CataloguedPlugin]]]:
+) -> Catalog:
     """전체 카탈로그: 등록 순서대로 (마켓플레이스 폴더, 발견된 플러그인들) 쌍 목록."""
     if folders is None:
         folders = load_marketplaces()
@@ -604,14 +610,18 @@ def used_plugin_mcp_servers(project) -> list[str]:
     return sorted(names)
 
 
-def used_plugin_agents(project) -> list[CataloguedAgent]:
+def used_plugin_agents(project, catalog: Catalog | None = None) -> list[CataloguedAgent]:
     """사용 선언한 외부 플러그인이 동봉한 에이전트 (`agent_type` 순 — 결정적).
 
-    fork 에이전트 후보 중 "외부 플러그인 에이전트"의 단일 진실이다(2026-09-13).
+    레지스트리 🔌 탭의 "미등록 외부 에이전트" 목록(WP-C)과 MCP
+    `list_external_plugins`의 등록 판정이 같은 모집단을 본다.
     **선언하지 않은 플러그인의 에이전트는 넣지 않는다** — 활성화되지 않은 플러그인의
     에이전트는 런타임에 없고, fork는 못 찾으면 조용히 범용으로 떨어진다(실측).
-    `used_plugin_mcp_servers`와 같은 선언 판정을 쓴다. 파일시스템을 읽으므로
-    검증기·컴파일러는 부르지 않고 호출 환경이 주입한다(resolved_hooks와 같은 경계).
+    `used_plugin_mcp_servers`와 같은 선언 판정을 쓴다.
+
+    `catalog`를 주면 **파일시스템을 읽지 않는다** — 매 `_rebuild`마다 폴더를
+    훑으면 화면이 멈추므로 GUI는 스캔 결과를 캐시해 넘긴다(WP-C). 주지 않으면
+    직접 스캔한다. 어느 쪽이든 검증기·컴파일러는 부르지 않는다.
     """
     declared = {
         str(p).strip()
@@ -621,7 +631,7 @@ def used_plugin_agents(project) -> list[CataloguedAgent]:
     if not declared:
         return []
     found: dict[str, CataloguedAgent] = {}
-    for _folder, plugins in scan_catalog():
+    for _folder, plugins in (scan_catalog() if catalog is None else catalog):
         for plugin in plugins:
             if plugin.plugin_id in declared:
                 for agent in plugin.agents:
@@ -629,7 +639,48 @@ def used_plugin_agents(project) -> list[CataloguedAgent]:
     return [found[key] for key in sorted(found)]
 
 
-def used_plugin_skill_refs(project) -> list[str]:
+def registered_external_component(project, source: str):
+    """이 프로젝트에서 그 외부 정본을 이미 등록한 컴포넌트 (없으면 ``None``).
+
+    "등록됐는가"의 **단일 술어**다(원칙 1) — 🔌 탭의 미등록 목록,
+    등록 액션의 역할 고정 거절, MCP `list_external_plugins`의 `registered_as`가
+    전부 이것을 부른다. 비교는 `config.external_source_refs_match`라
+    ``hookify:x``와 ``hookify@mkt:x``를 다르게 세지 않는다.
+    """
+    from daedalus.model.plugin.config import external_source_refs_match
+
+    source = (source or "").strip()
+    if not source:
+        return None
+    for component in [
+        *(getattr(project, "skills", None) or []),
+        *(getattr(project, "agents", None) or []),
+    ]:
+        existing = component.external_source
+        if existing and external_source_refs_match(existing, source):
+            return component
+    return None
+
+
+def unregistered_plugin_agents(
+    project, catalog: Catalog | None = None
+) -> list[CataloguedAgent]:
+    """사용 선언한 플러그인의 에이전트 중 **아직 컴포넌트로 등록되지 않은** 것.
+
+    레지스트리 🔌 탭 하단 목록의 단일 진실이다(WP-C). `project_external_sources`
+    와의 **집합 차**로 계산하지 않는다 — 원문 정확 일치가 되어 마켓 표기만 다른
+    같은 에이전트를 미등록으로 또 보여 준다(`registered_external_component`).
+    """
+    return [
+        agent
+        for agent in used_plugin_agents(project, catalog)
+        if registered_external_component(project, agent.agent_type) is None
+    ]
+
+
+def used_plugin_skill_refs(
+    project, catalog: Catalog | None = None
+) -> list[str]:
     """사용 선언한 외부 플러그인의 스킬 참조(``플러그인:스킬``) 목록 (이름순).
 
     fork 에이전트 ``skills`` TagInput 후보의 단일 진실이다(WP-B, 2026-09-19)
@@ -637,7 +688,8 @@ def used_plugin_skill_refs(project) -> list[str]:
     agents`와 같은 선언 판정을 쓴다: 선언하지 않은 플러그인의 스킬은 후보에
     넣지 않는다(활성화되지 않으면 CC가 못 찾아 조용히 로드하지 않는다).
     파일시스템을 읽으므로 검증기·컴파일러는 부르지 않고 호출 환경(GUI
-    app.set_project)이 주입한다.
+    app.set_project)이 주입한다. `catalog`를 주면 스캔하지 않는다
+    (레지스트리 🧷 탭이 캐시한 결과를 넘긴다 — WP-C).
     """
     declared = {
         str(p).strip()
@@ -647,9 +699,31 @@ def used_plugin_skill_refs(project) -> list[str]:
     if not declared:
         return []
     refs: set[str] = set()
-    for _folder, plugins in scan_catalog():
+    for _folder, plugins in (scan_catalog() if catalog is None else catalog):
         for plugin in plugins:
             if plugin.plugin_id in declared:
                 for skill in plugin.skills:
                     refs.add(skill.skill_ref)
     return sorted(refs)
+
+
+def skill_ref_users(project) -> dict[str, list[str]]:
+    """외부 스킬 참조 → 그 참조를 `config.skills`에 가진 에이전트 이름들 (이름순).
+
+    키는 CC가 찾는 bare 형식으로 정규화한다(`config.normalize_external_skill_ref`)
+    — ``@마켓``이 붙은 참조도 같은 스킬을 쓰는 것으로 센다(그 표기 자체는
+    `external_skill_ref_marketplace` 경고가 짚는다).
+
+    레지스트리 🧷 탭의 ✔ 표시와 MCP `list_external_plugins`의 `used_by`가
+    **같은 함수**를 부른다(원칙 1·2). 파일시스템을 읽지 않는다 —
+    `project_external_sources`와 같은 지위의 모델 질문이다.
+    """
+    from daedalus.model.plugin.config import normalize_external_skill_ref
+
+    users: dict[str, set[str]] = {}
+    for agent in getattr(project, "agents", None) or []:
+        for ref in agent.config.external_skill_refs():
+            users.setdefault(normalize_external_skill_ref(ref), set()).add(
+                agent.name
+            )
+    return {key: sorted(names) for key, names in users.items()}

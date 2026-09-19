@@ -51,10 +51,22 @@ _COLOR_USED = QColor("#448844")
 _COLOR_MUTED = QColor("#888888")
 
 
-#: 트리의 ✔ 표시 판정 — 실체는 모델(`wrap_catalog.project_external_sources`)이고
-#: MCP `list_external_plugins`가 **같은 함수**를 부른다(원칙 1·2). 이 이름은
-#: 창 안 호출부와 기존 임포트를 위한 별칭으로만 남는다.
+#: 트리의 ✔ 표시 판정 — 실체는 모델이고 MCP `list_external_plugins`·레지스트리
+#: 🔌/🧷 탭이 **같은 함수**를 부른다(원칙 1·2). 이 이름은 창 안 호출부와 기존
+#: 임포트를 위한 별칭으로만 남는다.
 project_external_sources = wrap_catalog.project_external_sources
+
+
+def _registered_note(project, agent_type: str) -> list[str] | None:
+    """이 외부 에이전트를 등록한 컴포넌트가 있으면 그 사실을 말하는 한 줄.
+
+    판정은 레지스트리 🔌 탭·MCP `registered_as`와 **같은 술어**다
+    (`wrap_catalog.registered_external_component`).
+    """
+    component = wrap_catalog.registered_external_component(project, agent_type)
+    if component is None:
+        return None
+    return [f"'{component.name}'({component.kind})로 등록됨"]
 
 
 class WrapCatalogDialog(QDialog):
@@ -178,7 +190,9 @@ class WrapCatalogDialog(QDialog):
         """트리 재구성. (항목 수 | None=폴더 없음, 사용 선언된 플러그인 수)."""
         self._tree.clear()
         project = getattr(self._window, "_project", None)
-        used_sources = project_external_sources(project)
+        # 에이전트는 **등록 여부**(컴포넌트), 스킬은 **참조 여부**(fork 에이전트
+        # `skills:`)가 ✔의 뜻이다 — 두 사실은 모델 함수가 답한다(원칙 1).
+        skill_users = wrap_catalog.skill_ref_users(project)
         declared = set(getattr(project, "external_plugins", None) or [])
         catalog = wrap_catalog.scan_catalog()
         if not catalog:
@@ -256,27 +270,33 @@ class WrapCatalogDialog(QDialog):
                     0, Qt.CheckState.Checked if used else Qt.CheckState.Unchecked
                 )
                 parent_item.addChild(plugin_item)
-                # 스킬 행과 에이전트 행은 같은 규약이다 — source(에이전트는
-                # `agent_type`)가 이 프로젝트의 외부 정본 집합에 있으면 ✔.
+                # 스킬과 에이전트는 **쓰이는 방식이 다르다**(WP-B/WP-C):
+                # 에이전트는 컴포넌트로 등록되고, 스킬은 fork 에이전트의
+                # `skills:` 참조가 된다. ✔의 근거도 각자의 모델 판정이다.
                 rows = [
-                    ("skill", f"📄 {s.name}", s.description, s.source)
+                    (
+                        "skill", f"📄 {s.name}", s.description, s.source,
+                        skill_users.get(s.skill_ref) or None,
+                    )
                     for s in plugin.skills
                 ] + [
-                    ("agent", f"🤖 {a.name}", a.description, a.agent_type)
+                    (
+                        "agent", f"🤖 {a.name}", a.description, a.agent_type,
+                        _registered_note(project, a.agent_type),
+                    )
                     for a in plugin.agents
                 ]
-                for row_kind, label, description, source in rows:
+                for row_kind, label, description, source, users in rows:
                     total += 1
-                    already = source in used_sources
-                    text = f"{label} ✔" if already else label
+                    text = f"{label} ✔" if users else label
                     row_item = QTreeWidgetItem([text, description])
                     row_item.setToolTip(0, source)
                     row_item.setData(0, _ROLE_KIND, row_kind)
                     row_item.setData(0, _ROLE_SOURCE, source)
-                    if already:
+                    if users:
                         row_item.setForeground(0, _COLOR_USED)
                         row_item.setToolTip(
-                            0, f"{source} — 이미 이 프로젝트가 쓰고 있습니다"
+                            0, f"{source} — {', '.join(users)}"
                         )
                     plugin_item.addChild(row_item)
                 plugin_item.setExpanded(

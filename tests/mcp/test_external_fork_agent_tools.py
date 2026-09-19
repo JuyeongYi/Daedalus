@@ -40,13 +40,18 @@ def test_create_agent_accepts_the_new_kind_and_seeds_the_source(tools):
     assert out == {
         "created": "critic", "kind": "external_fork_agent",
         "placed": False, "source": _SOURCE,
+        # 미선언 플러그인은 **같은 요청에서** 사용 선언된다 (WP-C) — 선언 없는
+        # 등록은 빌드가 배선을 내지 않아 런타임에 조용히 사라진다.
+        "declared_plugin": "review-pack@mkt",
     }
     agent = tools._project.agents[0]
     assert agent.kind == "external_fork_agent"
     assert agent.config.source == _SOURCE
-    # 등록은 편집이다 — 한 번의 undo로 되돌아간다.
+    assert tools._project.external_plugins == ["review-pack@mkt"]
+    # 등록은 편집이다 — 선언까지 **한 번의** undo로 되돌아간다.
     tools.undo()
     assert tools._project.agents == []
+    assert tools._project.external_plugins == []
 
 
 def test_create_agent_source_also_works_for_the_node_role(tools):

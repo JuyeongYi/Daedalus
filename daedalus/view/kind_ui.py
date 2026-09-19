@@ -53,6 +53,10 @@ from daedalus.model.plugin.skill import (
 #: 어휘를 쓰게 한다("동기 fork 스킬로 전환" ↔ "동기 fork 스킬로 전환됨").
 _SWITCH_SUFFIX = "로 전환"
 
+#: 외부 정본 에이전트 두 종류가 나눠 쓰는 레지스트리 탭의 그룹 키 (WP-C) —
+#: 🔌 EXTERNAL AGENTS 한 탭에 그래프 노드 역할과 fork 기반 역할이 함께 산다.
+EXTERNAL_AGENTS_GROUP = "external_agents"
+
 
 # ─────────────────────────── 편집기 팩토리 ───────────────────────────
 
@@ -97,6 +101,15 @@ class KindUI:
     """편집 탭 위젯 팩토리 — `(component, *, on_notify_fn, project, project_vm)` (V13/V14)."""
     tab_prefix: str = ""
     """편집 탭 제목 접두 — 종류가 한눈에 보이게(에이전트 2종만)."""
+    section_group: str | None = None
+    """레지스트리에서 **한 탭을 나눠 쓰는** 그룹 키 (WP-C). ``None`` = 자기 혼자
+    한 탭이다(기본).
+
+    같은 그룹 키를 가진 종류들은 레지스트리 섹션 하나에 함께 담기고, 그 섹션의
+    라벨·색·탭 라벨은 **레지스트리 선언 순서상 첫 멤버**의 행에서 온다(표를 하나
+    더 두지 않는다). 역할이 갈릴 뿐 출처가 같은 종류(외부 노드 / 외부 fork)를
+    탭 두 개로 나누면 "이 플러그인의 에이전트를 어디서 찾나"가 두 곳이 된다
+    (사용자 확정 2026-09-19). 항목의 역할은 종류 아이콘이 말한다."""
     switch_label: str | None = None
     """종류 전환 버튼 라벨 — `CONVERT_FAMILY`가 있는 종류만 (V12)."""
     switch_tooltip: str | None = None
@@ -210,6 +223,7 @@ KIND_UI: dict[str, KindUI] = {
         dialog_title="새 External Agent",
         editor_factory=_agent_editor,
         tab_prefix="🔌 ",
+        section_group=EXTERNAL_AGENTS_GROUP,
     ),
     # 외부 플러그인 에이전트를 **fork 실행 기반**으로 쓰는 역할(WP-EX). 같은
     # 자톤에 fork 에이전트의 🧩를 겹쳐 "외부 + fork"를 한눈에 말한다 — 배치되지
@@ -223,6 +237,7 @@ KIND_UI: dict[str, KindUI] = {
         dialog_title="새 External Fork Agent",
         editor_factory=_agent_editor,
         tab_prefix="🔌🧩 ",
+        section_group=EXTERNAL_AGENTS_GROUP,
     ),
 }
 
