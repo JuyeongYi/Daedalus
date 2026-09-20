@@ -81,41 +81,43 @@ _ASYNC_INTRO = (
 )
 
 
-def _async_progress_precondition(cli: str, skill_name: str) -> str:
-    """비동기 fork 보고의 진행 명령 **앞**에 오는 선행 조건 1줄 — 오케스트레이터 확정 (2026-09-18).
+def _async_progress_precondition(read_tool: str, skill_name: str) -> str:
+    """비동기 fork 보고의 진행 호출 **앞**에 오는 선행 조건 1줄 — 오케스트레이터 확정 (2026-09-18).
 
     진행 파일은 플러그인당 항목이 하나라 "지금 도는 비동기 단계"를 적을 자리가
-    없다. 그래서 소유권 규약을 3단으로 둔다: ① 호출자가 넘길 때 `--current <이
-    fork>`로 소유권을 넘기고(`emit/skill.py` `_async_fork_handoff_note`) ② 보고가
+    없다. 그래서 소유권 규약을 3단으로 둔다: ① 호출자가 넘길 때 `current=<이
+    fork>`로 소유권을 넘기고(`emit/skill_sections.py` `_async_fork_handoff_note`) ② 보고가
     도착하면 메인이 `current`가 **아직 이 스킬인지** 확인한 뒤에만 갱신하며
     ③ 재개 규칙이 "도는 중인 비동기 fork가 current면 기다리는 중"이라고 말한다.
     이 확인이 없으면 뒤늦게 온 보고가 이미 앞으로 나간 워크플로의 `current`를
     과거로 되돌린다(조용한 실패).
     """
     return (
-        f"- Main conversation: run `{cli} read` first. Only if `current` is still "
-        f"`{skill_name}` run the progress command below and continue with NEXT; "
+        f"- Main conversation: call `{read_tool}` first. Only if `current` is still "
+        f"`{skill_name}` make the progress call below and continue with NEXT; "
         f"if it moved on, do not touch the progress file — report this result to "
         f"the user and stop."
     )
 
 
 def fork_report_section(
-    cli: str, branch_lines: str, *,
+    set_tool: str, branch_lines: str, *,
     terminal: bool, background: bool, skill_name: str,
+    read_tool: str = "",
 ) -> list[str]:
     """배치된 fork 스킬의 "## Report" — Next Steps·진행 기록 규칙을 대신한다.
 
-    cli: `daedalus-bb … progress` 접두. branch_lines: Next Steps와 같은 갈래 목록
-    (없으면 ""). terminal: 나가는 전이가 없는 마지막 단계인가.
+    set_tool/read_tool: 진행 기록 MCP 도구 이름(WP-BM). branch_lines: Next Steps와
+    같은 갈래 목록(없으면 ""). terminal: 나가는 전이가 없는 마지막 단계인가.
     background: 비동기 fork인가 — 도입 문구와 선행 조건이 갈린다.
-    skill_name: 이 스킬의 이름 — 선행 조건이 지목하고, 진행 명령의
-    `--completed`/`--prev` 자리에 그대로 박힌다(한 블록 안에서 이름과
+    skill_name: 이 스킬의 이름 — 선행 조건이 지목하고, 진행 호출의
+    `completed`/`prev` 자리에 그대로 박힌다(한 블록 안에서 이름과
     `<this skill>` 자리표시자를 섞지 않는다 — 통째로 구체적이어야 한다).
     """
     intro = _ASYNC_INTRO if background else _SYNC_INTRO
     pre = (
-        _async_progress_precondition(cli, skill_name) + "\n" if background else ""
+        _async_progress_precondition(read_tool, skill_name) + "\n"
+        if background else ""
     )
     if terminal:
         return [
@@ -124,8 +126,9 @@ def fork_report_section(
             "This skill is the last step of the workflow. Start your report with "
             "the line `EXIT: done / NEXT: (end)`, and end it with:\n"
             + pre
-            + f'- Main conversation: run `{cli} set --completed {skill_name} '
-            '--current done --note "<result summary>"`.',
+            + f'- Main conversation: call `{set_tool}` with '
+            f'`completed=["{skill_name}"]`, `current="done"`, '
+            '`note="<result summary>"`.',
         ]
     blocks = ["## Report", intro]
     if branch_lines:
@@ -133,10 +136,11 @@ def fork_report_section(
     blocks.append(
         "Start your report with one line in the form `EXIT: <branch> / NEXT: "
         "/<skill>` (for a branch that delegates, `NEXT: agent <name>`). End it "
-        "with the progress command for the main conversation, filled in:\n"
+        "with the progress call for the main conversation, filled in:\n"
         + pre
-        + f"- Main conversation: run `{cli} set --completed {skill_name} "
-        f"--current <next target> --prev {skill_name} --note \"<branch> — "
-        '<one-line handoff>\"`, then continue with NEXT.'
+        + f'- Main conversation: call `{set_tool}` with '
+        f'`completed=["{skill_name}"]`, `current="<next target>"`, '
+        f'`prev="{skill_name}"`, `note="<branch> — <one-line handoff>"`, '
+        'then continue with NEXT.'
     )
     return blocks

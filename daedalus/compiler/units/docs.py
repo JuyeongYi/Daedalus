@@ -2,15 +2,21 @@
 """프로젝트 수준 텍스트 산출 단위 (WP-5, 이동만).
 
 작업 폴더 규칙 문서(LOCAL 전용) · 공통 안내 파일 2종 · 블랙보드 스키마 ·
-플러그인 매니페스트. 넷 다 "프로젝트 하나에 파일 0..1개"라 구조가 같고,
-합류 조건과 렌더 함수만 다르다.
+플러그인 매니페스트 · 마켓플레이스 `.mcp.json`. 다섯 다 "프로젝트 하나에 파일
+0..1개"라 구조가 같고, 합류 조건과 렌더 함수만 다르다.
 """
 from __future__ import annotations
 
+import json
 from pathlib import PurePosixPath
 
 from daedalus.compiler import plan_kinds
 from daedalus.compiler.emit import compile_plugin_manifest, compile_schemas_json
+from daedalus.compiler.emit.blackboard_tools import (
+    bb_server_entry,
+    bb_server_name,
+    bb_server_needed,
+)
 from daedalus.compiler.emit.guides import (
     blackboard_guide_referenced,
     compile_guide,
@@ -162,6 +168,66 @@ class ManifestUnit(TextUnit):
 
     def render(self, planned, ctx) -> str:
         return compile_plugin_manifest(ctx.project)
+
+
+class McpJsonUnit(TextUnit):
+    """`.mcp.json` — MARKETPLACE 빌드의 플러그인 루트 MCP 서버 정의 (WP-BM).
+
+    블랙보드 stdio 서버(`bb-<플러그인>`)를 플러그인이 **직접 들고 간다**. CC는
+    플러그인 루트의 이 파일을 읽어 서버를 띄우고, `${CLAUDE_PLUGIN_ROOT}` 치환도
+    여기서 동작한다(실측 2026-09-20 — `docs/design/blackboard.md`). 그래서 설치한
+    사람이 손으로 배선할 것이 없다.
+
+    LOCAL 빌드에는 이 단위가 없다 — 컴파일이 곧 설치라 **작업 폴더의**
+    `.mcp.json`에 병합해야 하고, 그 경로는 사용자 파일을 읽어 합치는
+    `LocalWiringUnit`이 전담한다(같은 파일을 두 단위가 쓰면 뒤가 앞을 덮는다).
+
+    사용자가 정의한 MCP 서버(`mcp_server_defs`)는 여기 싣지 않는다 — 마켓플레이스
+    빌드에서 그것은 "설치한 환경에 이미 있어야 하는 것"이고, 에이전트 산출의
+    "## Requirements" 단락이 그렇게 말한다. 우리가 소유한 서버만 우리가 싣는다.
+    """
+
+    id = plan_kinds.MCP_JSON
+
+    def plan(self, ctx, gate) -> list[PlannedOutput]:
+        if ctx.is_local or not bb_server_needed(ctx.project):
+            return []
+        _warn_if_name_taken(ctx, gate)
+        return [PlannedOutput(
+            rel_path=PurePosixPath(".mcp.json"),
+            label=".mcp.json (blackboard MCP server)",
+            subject=ctx.project,
+            kind=plan_kinds.MCP_JSON,
+            component=ctx.project,
+            token_kind=TokenKind.TOTAL_ONLY,
+        )]
+
+    def render(self, planned, ctx) -> str:
+        entry = {bb_server_name(ctx.project): bb_server_entry(ctx.project)}
+        return json.dumps({"mcpServers": entry}, ensure_ascii=False, indent=2) + "\n"
+
+
+def _warn_if_name_taken(ctx, gate) -> None:
+    """사용자 정의 서버가 `bb-<플러그인>` 이름을 이미 쓰고 있으면 경고 (WP-BM).
+
+    두 정의가 같은 이름을 다투면 어느 쪽이 이기든 한쪽이 **조용히** 사라진다 —
+    블랙보드 도구가 안 보이거나, 사용자 서버가 엉뚱한 프로세스로 바뀐다.
+    """
+    name = bb_server_name(ctx.project)
+    defs = dict(ctx.extra_server_defs or {})
+    defs.update(getattr(ctx.project, "mcp_server_defs", None) or {})
+    if name not in defs:
+        return
+    gate.warn(ValidationError(
+        rule="bb_server_name_taken",
+        message=(
+            f"MCP 서버 이름 '{name}'을 프로젝트 정의가 이미 쓰고 있습니다 — 이 "
+            f"이름은 블랙보드 서버가 쓰는 규약 이름({name} = bb-<플러그인 이름>)"
+            f"이라 둘 중 하나가 조용히 가려집니다. 사용자 정의 쪽 이름을 바꾸세요."
+        ),
+        source=name,
+        subject=ctx.project,
+    ))
 
 
 #: 가이드 단위 2개 — 선언 순서가 계획 순서다.

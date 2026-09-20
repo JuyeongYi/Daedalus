@@ -131,3 +131,68 @@ class _ForkRules:
                 path=(f"agent:{agent.name}",),
             ))
         return errors
+
+    @staticmethod
+    def _check_fork_blackboard_tools_reachable(project) -> list[ValidationError]:
+        """bb_tools_unreachable (경고) — 블랙보드를 쓰는 fork 스킬의 기반이
+        **산출 파일이 없는** 에이전트(등록된 외부 fork 에이전트)일 때 (WP-BM).
+
+        블랙보드 도구 권한은 프론트매터가 부여하는데, fork 스킬의 SKILL.md는 그
+        서브에이전트의 도구를 늘리지 못한다 — 권한을 실을 수 있는 유일한 파일은
+        **fork 에이전트의 .md**다. 그 정본이 남의 플러그인에 있으면 우리가 쓸
+        파일이 없다.
+
+        조용히 넘기면 그 fork는 런타임에 블랙보드 도구를 못 보고, 캔버스의
+        📖/✏ 선언은 아무 효과도 내지 않는다(원칙 5). 다만 그 에이전트의
+        `tools`가 비어 있으면(= 전부 상속) 실제로는 보일 수도 있어 **경고**다.
+        """
+        from daedalus.model.plugin.roles import OutputLocation
+
+        errors: list[ValidationError] = []
+        agents = {a.name: a for a in getattr(project, "agents", None) or []}
+        for skill in getattr(project, "skills", None) or []:
+            if not type(skill).RUNS_IN_SUBAGENT:
+                continue
+            if not _declares_blackboard_access(skill, project):
+                continue
+            base = agents.get(skill.delegated_agent_name() or "")
+            if base is None or type(base).OUTPUT_LOCATION is not OutputLocation.NONE:
+                continue
+            errors.append(ValidationError(
+                rule="bb_tools_unreachable",
+                message=(
+                    f"fork 스킬 '{skill.name}'은 블랙보드를 읽거나 쓰지만, 실행 "
+                    f"기반 '{base.name}'은 정본이 다른 플러그인에 있어 산출 파일이 "
+                    f"없습니다 — 블랙보드 도구 권한을 실을 자리가 없습니다. 그 "
+                    f"에이전트의 도구 목록이 비어 있지 않으면 이 fork는 런타임에 "
+                    f"블랙보드 도구를 보지 못합니다. 자체 fork 에이전트를 기반으로 "
+                    f"쓰거나, 이 단계의 블랙보드 접근 선언을 지우세요."
+                ),
+                source=skill.name,
+                subject=skill,
+            ))
+        return errors
+
+
+def _declares_blackboard_access(skill, project) -> bool:
+    """이 스킬이 블랙보드를 읽거나 쓰는가 — 자체 FSM + 그래프 배치의 선언 합집합.
+
+    컴파일러의 `emit/sections._component_access_union`과 **같은 질문**이다.
+    검증기는 컴파일러를 임포트할 수 없어(경계 계약) 여기에 모델 표현을 둔다 —
+    두 곳이 보는 대상(상태의 `reads`/`writes`)은 같은 필드다.
+    """
+    from daedalus.model.fsm.walk import iter_states
+
+    def _has(state) -> bool:
+        return bool(getattr(state, "reads", None) or getattr(state, "writes", None))
+
+    for sm in skill.state_machines():
+        if any(_has(state) for state in iter_states(sm)):
+            return True
+    graph = getattr(project, "graph", None)
+    if graph is None:
+        return False
+    return any(
+        getattr(node, "skill_ref", None) is skill and _has(node)
+        for node in getattr(graph, "states", None) or []
+    )

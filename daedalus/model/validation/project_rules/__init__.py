@@ -142,6 +142,8 @@ class _ProjectRules(
         # fork 에이전트 (2026-09-13)
         errors.extend(_ForkRules._check_fork_agents(project))
         errors.extend(_ForkRules._check_unused_fork_agents(project))
+        # 블랙보드 도구 권한을 실을 파일이 없는 fork — WP-BM
+        errors.extend(_ForkRules._check_fork_blackboard_tools_reachable(project))
         # 작업 폴더 문서 — WP-WD
         errors.extend(_WorkspaceDocRules._check_workspace_docs(project))
         return errors

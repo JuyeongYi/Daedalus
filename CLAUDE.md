@@ -72,7 +72,7 @@ pytest는 `python -m pytest`로 실행한다 (`pytest` 직접 실행 시 command
 | `hooks.md` | 훅 3단 구조·핸들러 5종·배출 규칙·`enabled`, 라이프사이클 피커(A10), 규격 드리프트 감시(A4), 전역 훅 2단 스코프(A1) |
 | `validation.md` | Validator 구성, 머신 수준·프로젝트 수준 규칙 표, skip_rules |
 | `project-files.md` | 시작 템플릿(A7), 폴더=프로젝트·`.ddpj`(WP-PK), 공용 `files/`(WP-FR), 스킬별 `skill-files/`(WP-SF) |
-| `compiler.md` | 산출 구조(MARKETPLACE/LOCAL/`guides/<플러그인>/`), 컴파일 정책 1~21번(게이트·다음 단계·작업 재개·진입 맥락·LOCAL 설치·dry-run·토큰 리포트·위임·fork 스킬 2종·에이전트 종류별 본문·공통 안내 파일), 산출 언어 |
+| `compiler.md` | 산출 구조(MARKETPLACE/LOCAL/`guides/<플러그인>/`), 컴파일 정책 1~22번(게이트·다음 단계·작업 재개·진입 맥락·LOCAL 설치·dry-run·토큰 리포트·위임·fork 스킬 2종·에이전트 종류별 본문·공통 안내 파일·블랙보드 MCP 서버 배선과 권한 유도), 산출 언어 |
 
 `docs/guide/`는 **사용자 안내서**다(번호 = 읽는 순서: 01 컨셉 · 02 레지스트리 · 03 블랙보드 · 04 로컬 vs 마켓 ·
 05 로컬 전용 기능 · 06 MCP). 설계 정본이 아니므로 기능을 바꾸면 해당 안내서도 같은 커밋에서 맞춘다.

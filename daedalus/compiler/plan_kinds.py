@@ -33,6 +33,7 @@ GUIDE_WORKFLOW = "guide_workflow"
 GUIDE_BLACKBOARD = "guide_blackboard"
 SCHEMAS_JSON = "schemas_json"
 PLUGIN_MANIFEST = "plugin_manifest"
+MCP_JSON = "mcp_json"
 
 # ── LOCAL 설치 (MERGE, Phase.INSTALL) ──
 LOCAL_WIRING = "local_wiring"

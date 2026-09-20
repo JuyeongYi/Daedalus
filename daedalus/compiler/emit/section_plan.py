@@ -58,7 +58,8 @@ from daedalus.compiler.emit.skill_sections import (
     _async_fork_targets,
     _entry_context_section,
     _next_steps_section,
-    _progress_cli,
+    _progress_read,
+    _progress_set,
     _progress_terminal_section,
     _progress_update_note,
     _resume_preamble_section,
@@ -103,6 +104,35 @@ class OutcomeStyle(StrEnum):
     FORK_REPORT_ASYNC = "fork_async"   # 비동기 fork — 보고가 늦게 닿는다
 
 
+class ProgressUse(StrEnum):
+    """이 종류가 진행 기록(`state/__progress__.json`)에 무엇을 하는가 (WP-BM).
+
+    **진행 산문을 내는 표와 진행 도구 권한을 유도하는 표가 같아야 한다** — 갈리면
+    "명령은 적혀 있는데 도구가 없다"(혹은 그 반대)가 조용히 성립한다(원칙 1·5).
+    그래서 선언을 이 표에 둔다.
+
+    - ``NONE``  진행 기록에 관여하지 않는다(에이전트 2종·참조 스킬).
+    - ``READ``  읽기만 한다 — fork 스킬은 진입 맥락을 위해 읽지만 **쓰지 않는다**
+      (기록은 보고를 받은 메인 대화가 한다).
+    - ``WRITE`` 쓰기만 한다 — 전이 스킬은 `note`만 남기고 `current`를 소유하지
+      않아 재개 프리앰블(읽기)도 없다.
+    - ``OWNER`` 읽고 쓴다 — 배치된 절차형·선언형 스킬.
+    """
+
+    NONE = "none"
+    READ = "read"
+    WRITE = "write"
+    OWNER = "owner"
+
+    @property
+    def reads(self) -> bool:
+        return self in (ProgressUse.READ, ProgressUse.OWNER)
+
+    @property
+    def writes(self) -> bool:
+        return self in (ProgressUse.WRITE, ProgressUse.OWNER)
+
+
 class GuidePointerRule(StrEnum):
     """공통 안내 파일 포인터를 받는 규칙 — 판정은 `pointer_rules.py`가 한다."""
 
@@ -129,6 +159,10 @@ class SectionPlan:
     #: `skill_ref`로 박힌 형상 — 역직렬화는 placement 검사를 하지 않는다)에서
     #: 같은 파일이 '## Progress Record'와 정반대의 `--current` 지시를 함께 낸다.
     tracks_progress: bool = True
+    #: 진행 기록 쓰임 — 프론트매터의 블랙보드 도구 권한이 이 선언에서 나온다
+    #: (`emit/blackboard_tools.py`). `tracks_progress`와 별개인 이유: 전이 스킬은
+    #: 자기 배치를 보지 않으면서도(`tracks_progress=False`) `note`는 남긴다.
+    progress_use: ProgressUse = ProgressUse.OWNER
 
 
 # ─────────────────────────── 종류별 절 튜플 ───────────────────────────
@@ -158,11 +192,14 @@ SECTION_PLANS: dict[str, SectionPlan] = {
         sections=_STEP_SKILL_SECTIONS,
         outcome_style=OutcomeStyle.FORK_REPORT_SYNC,
         guide_pointer=GuidePointerRule.FORK_IF_PLACED,
+        # fork는 진입 맥락을 위해 읽기만 한다 — 기록은 보고를 받은 메인 몫이다.
+        progress_use=ProgressUse.READ,
     ),
     AsyncForkSkill.KIND: SectionPlan(
         sections=_STEP_SKILL_SECTIONS,
         outcome_style=OutcomeStyle.FORK_REPORT_ASYNC,
         guide_pointer=GuidePointerRule.FORK_IF_PLACED,
+        progress_use=ProgressUse.READ,
     ),
     DeclarativeSkill.KIND: SectionPlan(
         sections=(
@@ -184,6 +221,7 @@ SECTION_PLANS: dict[str, SectionPlan] = {
         guide_pointer=GuidePointerRule.MAIN_IF_ANY_PLACEMENT,
         # 전이 스킬은 배치가 아니라 엣지 위의 단계라 `current`를 소유하지 않는다.
         tracks_progress=False,
+        progress_use=ProgressUse.WRITE,
     ),
     ReferenceSkill.KIND: SectionPlan(
         sections=(
@@ -193,6 +231,7 @@ SECTION_PLANS: dict[str, SectionPlan] = {
         ),
         # 참조 스킬은 여러 노드에 링크되는 자료라 자기 placement가 없다.
         tracks_progress=False,
+        progress_use=ProgressUse.NONE,
     ),
     AgentDefinition.KIND: SectionPlan(
         sections=(
@@ -206,6 +245,8 @@ SECTION_PLANS: dict[str, SectionPlan] = {
             SectionId.BLACKBOARD,
         ),
         guide_pointer=GuidePointerRule.MAIN_IF_PLACED,
+        # 에이전트는 진행 기록을 쓰지 않는다 — 위임한 스킬이 두 번 갱신한다.
+        progress_use=ProgressUse.NONE,
     ),
     ForkAgent.KIND: SectionPlan(
         sections=(
@@ -215,6 +256,9 @@ SECTION_PLANS: dict[str, SectionPlan] = {
             SectionId.TOOL_SHELF,
             SectionId.BLACKBOARD,
         ),
+        # fork 에이전트 자신은 진행 기록에 관여하지 않는다 — 다만 자기를 쓰는
+        # fork 스킬의 선언(`READ`)을 `bb_tools_for`가 물려준다.
+        progress_use=ProgressUse.NONE,
     ),
 }
 
@@ -332,11 +376,12 @@ def _provide_outcome(component, project, emitter) -> list[str]:
     if is_fork and placements:
         # 갈래 목록은 Next Steps와 같은 것을 쓰되, 실행 지시가 아니라 보고 양식이다.
         return list(fork_report_section(
-            _progress_cli(project),
+            _progress_set(project),
             next_blocks[-1] if next_blocks else "",
             terminal=not has_outgoing,
             background=emitter.outcome_style is OutcomeStyle.FORK_REPORT_ASYNC,
             skill_name=component.name,
+            read_tool=_progress_read(project),
         ))
     if next_blocks:
         if placements:
@@ -347,7 +392,7 @@ def _provide_outcome(component, project, emitter) -> list[str]:
             bg_targets = _async_fork_targets(component, project)
             if bg_targets:
                 note += "\n" + _async_fork_handoff_note(
-                    _progress_cli(project), bg_targets,
+                    _progress_set(project), bg_targets,
                 )
             next_blocks[-1] = next_blocks[-1] + "\n\n" + note
         return list(next_blocks)

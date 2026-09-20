@@ -16,6 +16,12 @@ import daedalus.compiler.emit as emit
 # 프로덕션 호출이 0이 되어 2026-09-06에 제거됐다. _skill_kind_key는 WP-6에서
 # 제거됐다 — 하던 일(매트릭스 부재를 이유와 함께 거절)은 `_frontmatter_lines_skill`
 # 안의 `matrix_for(skill)`가 그대로 한다(같은 호출의 사본이었다).
+# WP-BM에서 `_progress_cli`와 `_PROGRESS_MANUAL_FALLBACK`이 **퇴역**했다 —
+# 블랙보드 표면이 CLI에서 MCP 도구로 바뀌어 두 이름이 가리키던 개념(셸 명령
+# 접두·손편집 폴백) 자체가 없다. 이 목록은 분해 시점의 기록이지 늘어나는
+# 레지스트리가 아니므로, 후속 이름(`_progress_set`/`_progress_read`/
+# `_TOOLS_MISSING_FALLBACK`)은 여기 올리지 않는다 — 퇴역 개념은 흔적 없이
+# 지운다(원칙 7).
 _PRE_SPLIT_ATTRS = [
     "AGENT_FIELD_MATRIX",
     "AgentDefinition",
@@ -61,7 +67,6 @@ _PRE_SPLIT_ATTRS = [
     "_PROGRESS_SCRIPT_NAME",
     "_PROGRESS_SCRIPT_REF",
     "_PROGRESS_SESSION_START_COMMAND",
-    "_PROGRESS_MANUAL_FALLBACK",
     "_YAML_RESERVED",
     "_agent_hook_groups",
     "_agent_mcp_server_names",
@@ -111,7 +116,6 @@ _PRE_SPLIT_ATTRS = [
     "_next_steps_section",
     "_ordered_states",
     "_progress_hook_entry",
-    "_progress_cli",
     "_progress_terminal_section",
     "_progress_update_note",
     "_resume_preamble_section",

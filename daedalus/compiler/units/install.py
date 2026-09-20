@@ -18,6 +18,11 @@ from pathlib import PurePosixPath
 
 from daedalus.compiler import plan_kinds
 from daedalus.compiler.emit import compile_hooks_json, referenced_mcp_servers
+from daedalus.compiler.emit.blackboard_tools import (
+    bb_server_entry,
+    bb_server_name,
+    bb_server_needed,
+)
 from daedalus.compiler.emit.manifest import external_plugin_ids
 from daedalus.compiler.token_report import TokenKind
 from daedalus.compiler.units.base import MergeUnit, OutputMode, Phase, PlannedOutput
@@ -66,6 +71,26 @@ class LocalWiringUnit(MergeUnit):
         defs.update(getattr(project, "mcp_server_defs", None) or {})  # 프로젝트가 우선
         referenced = referenced_mcp_servers(project)
         entries = {name: defs[name] for name in referenced if name in defs}
+        # 블랙보드 서버(WP-BM)는 **우리가 소유한** 정의라 프로젝트의
+        # `mcp_server_defs`를 거치지 않는다 — 사용자가 지울 수 있는 값이면
+        # 프론트매터의 도구 권한만 남고 서버가 없는 산출이 나온다(원칙 5).
+        # 같은 이름을 사용자가 쓰고 있으면 덮지 않고 경고한다.
+        if bb_server_needed(project):
+            bb_name = bb_server_name(project)
+            if bb_name in defs:
+                sink.warn(ValidationError(
+                    rule="bb_server_name_taken",
+                    message=(
+                        f"MCP 서버 이름 '{bb_name}'을 프로젝트 정의가 이미 쓰고 "
+                        f"있어 블랙보드 서버를 배선하지 못했습니다 — 이 이름은 "
+                        f"블랙보드 서버의 규약 이름(bb-<플러그인 이름>)입니다. "
+                        f"사용자 정의 쪽 이름을 바꾸세요."
+                    ),
+                    source=bb_name,
+                    subject=project,
+                ))
+            else:
+                entries[bb_name] = bb_server_entry(project)
         provided = set(ctx.provided_server_names or ())
         for name in referenced:
             if name not in defs and name not in provided:

@@ -20,9 +20,9 @@ from daedalus.compiler.emit.common import (
     delegate_to_phrase,
     delegation_source_label,
 )
+from daedalus.compiler.emit.blackboard_names import bb_tool
 from daedalus.compiler.emit.sections import _transition_condition
 from daedalus.model.fsm.machine import StateMachine
-from daedalus.model.plugin.variables import ROOT_TOKEN
 
 
 # ─────────────────────────── 프로젝트 그래프: 다음 단계 ───────────────────────────
@@ -165,16 +165,20 @@ def _next_steps_section(component, project) -> list[str]:
 # state/__progress__.json 규약 — 플러그인 FSM(프로젝트 그래프)의 진행 위치를 담는
 # 단일 파일. 스킬 내부 FSM 상태는 기록하지 않는다(사용자 확정 설계).
 
-def _progress_cli(project) -> str:
-    """진행 파일을 다루는 CLI 접두 — `daedalus-bb --schemas <스키마> progress`.
+def _progress_set(project) -> str:
+    """진행 기록을 갱신하는 MCP 도구 이름 (WP-BM).
 
-    갱신을 CLI에 맡기는 이유(WP-NS/D13): 진행 파일은 최상위 키가 플러그인 이름인
+    갱신을 도구에 맡기는 이유(WP-NS/D13): 진행 파일은 최상위 키가 플러그인 이름인
     **공유 파일**이라, 손편집을 시키면 "남의 키는 건드리지 말라"는 병합을 모델이
     매번 정확히 해내야 한다. 한 번만 놓쳐도 파일을 통째 덮어써 다른 플러그인의
-    진행 기록이 사라진다. CLI는 그 병합을 코드로 보장한다.
+    진행 기록이 사라진다. 도구는 그 병합을 코드로 보장한다.
     """
-    plugin = getattr(project, "name", "") or "plugin"
-    return f"daedalus-bb --schemas {ROOT_TOKEN}/schemas/{plugin}.json progress"
+    return bb_tool(project, "progress_set")
+
+
+def _progress_read(project) -> str:
+    """진행 항목을 읽는 MCP 도구 이름."""
+    return bb_tool(project, "progress_read")
 
 
 def _progress_update_note(project) -> str:
@@ -185,12 +189,13 @@ def _progress_update_note(project) -> str:
     바로 아래의 단일 템플릿이 그대로 실행될 공산이 커서, 규칙을 통째로 가이드로
     보내면 위임 갈래에서 조용히 한 번만 갱신된다.
     """
-    cli = _progress_cli(project)
+    tool = _progress_set(project)
     return (
         "Before handing off, record progress:\n"
-        f"- `{cli} set --completed <this skill> --current <next target> "
-        '--prev <this skill> --note "<branch you took> — <one-line handoff>"`\n'
-        "If the branch delegates to an agent, run this twice — see the workflow guide."
+        f'- call `{tool}` with `completed=["<this skill>"]`, '
+        '`current="<next target>"`, `prev="<this skill>"`, '
+        '`note="<branch you took> — <one-line handoff>"`\n'
+        "If the branch delegates to an agent, call it twice — see the workflow guide."
     )
 
 
@@ -216,7 +221,7 @@ def _async_fork_targets(component, project) -> list[str]:
     return sorted(names - {""})
 
 
-def _async_fork_handoff_note(cli: str, names: list[str]) -> str:
+def _async_fork_handoff_note(tool: str, names: list[str]) -> str:
     """비동기 fork로 넘기는 갈래의 진행 기록 규약 — 오케스트레이터 확정 (2026-09-18), 1단계.
 
     진행 파일은 플러그인당 항목이 하나뿐이라 "지금 도는 비동기 단계"를 적을 자리가
@@ -227,10 +232,10 @@ def _async_fork_handoff_note(cli: str, names: list[str]) -> str:
     shown = ", ".join(f"`{n}`" for n in names)
     return (
         f"Handing off to a background fork ({shown}) is still a handoff. For that "
-        f"branch use this instead of the command above: `{cli} set --completed "
-        "<this skill> --current <that fork> --prev <this skill> --note "
-        '"awaiting background fork"`, then do not block on it — that fork\'s '
-        "report says what to record next."
+        f'branch call `{tool}` with `completed=["<this skill>"]`, '
+        '`current="<that fork>"`, `prev="<this skill>"`, '
+        '`note="awaiting background fork"` instead of the call above, then do not '
+        "block on it — that fork's report says what to record next."
     )
 
 
@@ -239,8 +244,8 @@ def _transfer_progress_note(project) -> str:
 
     "`current`를 소유하지 않는다"는 규약은 워크플로 가이드 2절이 말한다.
     """
-    cli = _progress_cli(project)
-    return f'- `{cli} set --note "<what happened>"`'
+    tool = _progress_set(project)
+    return f'- call `{tool}` with `note="<what happened>"`'
 
 
 def _resume_preamble_section(project, skill_name: str) -> list[str]:
@@ -251,11 +256,13 @@ def _resume_preamble_section(project, skill_name: str) -> list[str]:
     조건을 떼고 명령만 남기면 가이드의 일반형("항목이 없으면 지금 불린 스킬이
     시작점이다")과 워크플로 중간 스킬의 `--current <나>` 기록이 충돌한다.
     """
-    cli = _progress_cli(project)
+    read_tool = _progress_read(project)
+    set_tool = _progress_set(project)
     body = (
-        f"Run `{cli} read` first; this skill is `{skill_name}`. Follow the resume "
-        f"rules in the workflow guide. If it exits 3 (no entry for this plugin "
-        f"yet), this invocation is the start: `{cli} set --current {skill_name}`."
+        f"Call `{read_tool}` first; this skill is `{skill_name}`. Follow the resume "
+        f"rules in the workflow guide. If it comes back with error kind "
+        f"`not_found` (no entry for this plugin yet), this invocation is the "
+        f"start: call `{set_tool}` with `current=\"{skill_name}\"`."
     )
     return ["## Resuming Work", body]
 
@@ -368,13 +375,13 @@ def _progress_terminal_section(project) -> list[str]:
 
     잔여는 명령 1줄이다(수동 폴백은 워크플로 가이드 2절).
     """
-    cli = _progress_cli(project)
+    tool = _progress_set(project)
     return [
         "## Finishing Up",
         (
             "This skill is the last step of the workflow:\n"
-            f'- `{cli} set --completed <this skill> --current done '
-            '--note "<result summary>"`'
+            f'- call `{tool}` with `completed=["<this skill>"]`, '
+            '`current="done"`, `note="<result summary>"`'
         ),
     ]
 

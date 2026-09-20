@@ -52,6 +52,7 @@ _WARN_RULES = frozenset({
     "no_agent_to_agent",  # 2026-09-12 — 중첩 스폰 허용으로 에러 → 경고
     "fork_model_overrides_agent",  # 2026-09-13 — fork에서 에이전트 값이 무시됨
     "unused_fork_agent",  # WP-FK2 — 아무 fork 스킬도 부르지 않는 fork 에이전트
+    "bb_tools_unreachable",  # WP-BM — 외부 fork 기반이라 도구 권한을 실을 파일이 없다
     "invalid_blackboard_field_type",
     "choice_completeness_missing_else",
     "parallel_join_count",
@@ -81,6 +82,7 @@ _WARN_RULES = frozenset({
     "hook_matcher_matches_nothing",  # WP-HS
     "missing_mcp_server_def",  # WP-MW — 아래 _EXTERNALLY_EMITTED_RULES 참조
     "unmergeable_settings_json",  # WP-MW
+    "bb_server_name_taken",  # WP-BM — 아래 _EXTERNALLY_EMITTED_RULES 참조
     "dangling_skill_file_ref",  # WP-SF — 아래 _EXTERNALLY_EMITTED_RULES 참조
     "unknown_skill_files_dir",  # WP-SF
     "skill_dir_token_in_agent",  # WP-SF
@@ -101,6 +103,7 @@ _EXTERNALLY_EMITTED_RULES = frozenset({
     "dangling_skill_file_ref",  # daedalus/compiler/project_compiler.py 소관 (WP-SF)
     "unknown_skill_files_dir",  # daedalus/compiler/project_compiler.py 소관 (WP-SF)
     "external_plugin_no_marketplace",  # daedalus/compiler/project_compiler.py 소관 (WP-WR)
+    "bb_server_name_taken",  # daedalus/compiler/units/{install,docs}.py 소관 (WP-BM)
 })
 
 

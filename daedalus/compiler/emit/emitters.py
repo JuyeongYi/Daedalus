@@ -25,6 +25,7 @@ from dataclasses import dataclass
 from typing import ClassVar
 
 from daedalus.compiler import plan_kinds
+from daedalus.compiler.emit.blackboard_tools import bb_tools_for
 from daedalus.compiler.emit.common import _join_blocks
 from daedalus.compiler.emit.fork import fork_frontmatter_lines
 from daedalus.compiler.emit.frontmatter import (
@@ -136,7 +137,10 @@ class SkillEmitter(ComponentEmitter, ABC):
     plan_kind = plan_kinds.SKILL
     label_fmt = "스킬 '{name}'"
     def frontmatter_block(self, component, project, resolved_hooks) -> str:
-        lines = _frontmatter_lines_skill(component)
+        # 블랙보드 권한 유도(WP-BM) — 스킬의 `allowed-tools`는 권한 **부여**라
+        # 합류가 곧 "이 스킬은 블랙보드를 만질 수 있다"이다. fork 스킬은 빈
+        # 목록을 받는다(도구를 부여하는 것은 그 fork 에이전트의 파일이다).
+        lines = _frontmatter_lines_skill(component, bb_tools_for(component, project))
         lines = self.adjust_frontmatter(lines, component, project)
         # 스킬 훅 — 스킬이 활성인 동안만 걸린다(2026-09-13 실측: 플러그인 스킬도
         # 동작). settings.json과 같은 3단 구조라 한 줄 키-값이 아니라 블록으로 낸다.
@@ -189,11 +193,12 @@ class AgentEmitter(ComponentEmitter, ABC):
     label_fmt = "에이전트 '{name}'"
 
     def frontmatter_block(self, component, project, resolved_hooks) -> str:
-        lines = _frontmatter_lines_agent(component, project)
+        bb_tools = bb_tools_for(component, project)
+        lines = _frontmatter_lines_agent(component, project, bb_tools)
         # LOCAL 빌드에서만 hooks/mcpServers가 프론트매터로 나간다 (WP-LA)
-        lines.extend(
-            _local_settings_frontmatter_lines(component, project, resolved_hooks)
-        )
+        lines.extend(_local_settings_frontmatter_lines(
+            component, project, resolved_hooks, bb_tools,
+        ))
         return _frontmatter_block(lines)
 
 
