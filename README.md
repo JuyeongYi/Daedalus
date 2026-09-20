@@ -33,9 +33,9 @@ uv tool install git+https://github.com/JuyeongYi/Daedalus.git
 | 명령 | 용도 |
 |------|------|
 | `daedalus` | GUI 편집기 (앱 내장 MCP 서버 포함) |
-| `daedalus-bb` | 블랙보드·진행 상태 CLI — **컴파일된 플러그인이 런타임에 호출한다** |
+| `daedalus-bb` | 블랙보드·진행 상태 **stdio MCP 서버** — 컴파일된 플러그인의 `.mcp.json`이 이것을 띄우고, 산출된 스킬·에이전트가 그 도구를 부른다 |
 
-`daedalus-bb`가 함께 설치되는 것이 중요하다. 산출된 스킬 본문이 블랙보드를 읽고 쓸 때 이 명령을 부르므로, 없으면 모델이 상태 JSON을 손으로 편집하는 경로로 물러난다.
+`daedalus-bb`가 함께 설치되는 것이 중요하다. 산출된 플러그인의 `.mcp.json`이 이 실행 파일로 서버를 띄우고 스킬·에이전트 프론트매터가 그 도구를 권한으로 받으므로, 없으면 도구가 아예 보이지 않는다.
 
 특정 리비전을 고정하거나 갱신·제거하려면:
 
@@ -111,7 +111,7 @@ daedalus/
 │   ├── workspace.py# .claude/CLAUDE.md 구역 병합
 │   └── token_report.py # 산출물 토큰 비용 추정 (표시 전용)
 ├── mcp/            # 앱 내장 MCP 서버 — Claude Code와 협업하는 창구
-├── cli/            # daedalus-bb — 설치 대상에서 도는 런타임 CLI
+├── cli/            # daedalus-bb — 설치 대상에서 도는 블랙보드 stdio MCP 서버 + 코어
 ├── templates/      # 시작 템플릿 시드 파일
 └── view/           # PySide6 노드 에디터
 ```
@@ -144,7 +144,7 @@ daedalus/
 - 설계 시점에 클래스·필드를 정의하고, 각 상태가 `reads`/`writes`로 접근을 **선언**한다
 - 컴파일이 그 선언을 산출 본문에 구체화하고, 캔버스는 뱃지로 보여 준다
 - 런타임 상태는 작업 폴더의 `state/<플러그인>/<클래스>.json`이고 스키마는 `schemas/<플러그인>.json`이다 — 이름으로 갈라 두어 한 작업 폴더에 플러그인이 여럿 깔려도 서로 덮지 않는다
-- 조작은 `daedalus-bb`가 전담한다. 스키마 검증·원자적 쓰기·낙관적 잠금을 코드가 보장하므로, 모델이 JSON을 손으로 만들다 스키마를 어기는 경로가 막힌다
+- 조작은 `daedalus-bb` 서버의 도구가 전담한다. 스키마 검증·원자적 쓰기·낙관적 잠금을 코드가 보장하므로, 모델이 JSON을 손으로 만들다 스키마를 어기는 경로가 막힌다. 노드의 reads/writes 선언은 그대로 프론트매터 권한이 된다
 
 ### 빌드 타깃
 
@@ -218,7 +218,7 @@ GUI가 켜지면 `127.0.0.1`에 Streamable HTTP로 MCP 서버가 함께 뜬다(�
 - [x] 컴파일러 — SKILL.md / 에이전트 .md / plugin.json / hooks.json / schemas / files 복사
 - [x] 빌드 타깃(마켓플레이스 · 로컬) + LOCAL 설치 배선(.mcp.json · settings · CLAUDE.md 구역 · rules)
 - [x] 앱 내장 MCP 서버 (도구 85종)
-- [x] 블랙보드·진행 상태 CLI (`daedalus-bb`)
+- [x] 블랙보드·진행 상태 stdio MCP 서버 (`daedalus-bb`)
 - [x] 외부 플러그인 사용 선언·카탈로그 · 외부 에이전트 노드 · 에이전트 중첩 호출
 - [ ] 남은 항목은 [`docs/backlog.md`](docs/backlog.md) — 컴파일러 Tier 2(도구·스크립트 실행), 컴파일 분할(A5), 평가 루프(A1), 스토어 빌드·링크(WP-LK)
 

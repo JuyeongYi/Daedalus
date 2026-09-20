@@ -9,8 +9,8 @@
 
 도구는 7개이고 코어 함수와 1:1이다. **실패는 예외가 아니라 결과로 낸다** —
 ``{"ok": false, "error": {"kind": ..., "message": ..., "detail": [...]}}``.
-kind는 종전 exit code와 1:1이다(3 not_found / 2 usage / 1 rejected). 소비자가
-모델이므로 stderr 진단은 ``message``에 합친다.
+kind는 셋뿐이다(`not_found`/`usage`/`rejected`). 소비자가 모델이므로 종전 CLI가
+stderr로 내던 진단은 ``message``에 합친다.
 
 진입 인자는 CLI와 같다: ``daedalus-bb --schemas PATH [--state-dir DIR]``.
 **스키마 파일은 기동 시점에 읽지 않는다** — 읽으면 스키마가 없는 작업 폴더에서
@@ -45,7 +45,7 @@ def server_name(plugin: str) -> str:
 
 
 def _error_result(exc: BlackboardError) -> dict[str, Any]:
-    """코어 실패 → 도구 결과. kind가 종전 exit code를 대신한다."""
+    """코어 실패 → 도구 결과. 모델이 읽는 값이므로 예외로 끊지 않는다."""
     error: dict[str, Any] = {"kind": exc.kind, "message": exc.message}
     if exc.detail:
         error["detail"] = exc.detail

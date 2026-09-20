@@ -1,4 +1,4 @@
-"""블랙보드 CLI write의 lost update 방지 — 낙관적 잠금 + 재시도 (A6).
+"""블랙보드 write의 lost update 방지 — 낙관적 잠금 + 재시도 (A6).
 
 병렬 서브에이전트가 같은 클래스를 갱신하면, 읽기-수정-쓰기 사이에 남이 쓴
 내용을 통째로 덮어써 **한쪽 갱신이 조용히 사라졌다**.
@@ -6,7 +6,7 @@
 끼어드는 쓰기는 `write_state_checked`를 감싸 시뮬레이션한다 — 실제 경쟁과
 같은 지점(비교 직전)에 파일을 바꿔치기해야 재시도 경로가 실제로 돈다.
 봉합선은 **코어**(`daedalus.cli.core`)다: 재시도 루프가 거기 있으므로 표면
-(CLI·MCP 서버)이 무엇이든 같은 지점에서 경쟁을 재현한다.
+(MCP 서버)이 무엇이든 같은 지점에서 경쟁을 재현한다.
 """
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ from pathlib import Path
 import pytest
 
 from daedalus.cli import core
-from daedalus.cli.blackboard import main
+from daedalus.cli.core import BlackboardError
 
 SCHEMAS = {
     "Task": {
@@ -41,17 +41,11 @@ def workspace(tmp_path: Path) -> Path:
 
 
 @pytest.fixture
-def run(workspace: Path, capsys):
-    def _run(*argv: str):
-        code = main([
-            "--state-dir", str(workspace / "state"),
-            "--schemas", str(workspace / "schemas" / "schemas.json"),
-            *argv,
-        ])
-        captured = capsys.readouterr()
-        return code, captured.err
+def write(workspace: Path):
+    def _write(**ops):
+        return core.write_class(SCHEMAS, workspace / "state", "Task", **ops)
 
-    return _run
+    return _write
 
 
 def _state(workspace: Path) -> dict:
@@ -75,32 +69,32 @@ def _interloper(workspace: Path, monkeypatch, times: int):
     return calls
 
 
-def test_normal_write_still_works(run, workspace):
-    """경쟁이 없으면 종전 그대로 — 한 번에 쓰고 exit 0."""
-    assert run("write", "Task", "--set", "title=A")[0] == 0
+def test_normal_write_still_works(write, workspace):
+    """경쟁이 없으면 종전 그대로 — 한 번에 쓴다."""
+    write(sets={"title": "A"})
     assert _state(workspace)["title"] == "A"
 
 
-def test_conflict_retries_and_keeps_both_changes(run, workspace, monkeypatch):
+def test_conflict_retries_and_keeps_both_changes(write, workspace, monkeypatch):
     """충돌하면 다시 읽어 적용한다 — 두 쓰기가 모두 살아남는다."""
-    run("write", "Task", "--set", "title=A")
+    write(sets={"title": "A"})
     calls = _interloper(workspace, monkeypatch, times=1)
 
-    code, err = run("write", "Task", "--set", "title=B")
-    assert code == 0
+    notes: list[str] = []
+    write(sets={"title": "B"}, on_note=notes.append)
     assert calls["n"] == 1
-    assert "다시 읽어 적용한다" in err
+    assert any("다시 읽어 적용한다" in note for note in notes)
 
     state = _state(workspace)
     assert state["title"] == "B"          # 내 갱신
     assert state["owner"] == "other-1"    # 남의 갱신 (덮어쓰지 않았다)
 
 
-def test_conflict_on_first_write_of_missing_file(run, workspace, monkeypatch):
+def test_conflict_on_first_write_of_missing_file(write, workspace, monkeypatch):
     """파일이 없던 상태에서 남이 먼저 만들어도 그 내용을 살린다."""
     calls = _interloper(workspace, monkeypatch, times=1)
 
-    assert run("write", "Task", "--set", "title=B")[0] == 0
+    write(sets={"title": "B"})
     assert calls["n"] == 1
     state = _state(workspace)
     assert state["title"] == "B"
@@ -108,25 +102,26 @@ def test_conflict_on_first_write_of_missing_file(run, workspace, monkeypatch):
 
 
 def test_persistent_conflict_fails_without_losing_the_other_write(
-    run, workspace, monkeypatch
+    write, workspace, monkeypatch
 ):
-    """계속 충돌하면 exit 1 + 안내. 남의 마지막 쓰기는 그대로 남는다."""
-    run("write", "Task", "--set", "title=A")
+    """계속 충돌하면 `rejected` + 안내. 남의 마지막 쓰기는 그대로 남는다."""
+    write(sets={"title": "A"})
     calls = _interloper(workspace, monkeypatch, times=99)
 
-    code, err = run("write", "Task", "--set", "title=B")
-    assert code == 1
+    with pytest.raises(BlackboardError) as excinfo:
+        write(sets={"title": "B"})
+    assert excinfo.value.kind == "rejected"
     assert calls["n"] == core._WRITE_MAX_ATTEMPTS
-    assert "다른 프로세스가 계속 고쳤다" in err
+    assert "다른 프로세스가 계속 고쳤다" in excinfo.value.message
 
     state = _state(workspace)
     assert state["title"] == "A"  # 내 갱신은 반영되지 않았다
     assert state["owner"] == f"other-{core._WRITE_MAX_ATTEMPTS}"
 
 
-def test_append_is_reapplied_on_top_of_the_other_write(run, workspace, monkeypatch):
-    """`--append`도 새 내용 위에 다시 적용된다 — 원소가 사라지지 않는다."""
-    run("write", "Task", "--set", "title=A", "--append", "tags=x")
+def test_append_is_reapplied_on_top_of_the_other_write(write, workspace, monkeypatch):
+    """`append`도 새 내용 위에 다시 적용된다 — 원소가 사라지지 않는다."""
+    write(sets={"title": "A"}, appends={"tags": "x"})
 
     real = core.write_state_checked
     fired = {"done": False}
@@ -141,21 +136,22 @@ def test_append_is_reapplied_on_top_of_the_other_write(run, workspace, monkeypat
 
     monkeypatch.setattr(core, "write_state_checked", _patched)
 
-    assert run("write", "Task", "--append", "tags=y")[0] == 0
+    write(appends={"tags": "y"})
     assert _state(workspace)["tags"] == ["x", "from-other", "y"]
 
 
-def test_validation_failure_does_not_retry(run, workspace, monkeypatch):
+def test_validation_failure_does_not_retry(write, workspace, monkeypatch):
     """검증 실패는 재시도할 이유가 없다 — 다시 읽어도 같은 값이 같은 위반이다."""
     # title은 required인데 초기 객체가 그것을 빈 문자열로 채운 뒤 지울 수는
     # 없으므로, 스키마 밖 위반을 만들기 위해 required 필드를 지운 파일에서 시작한다.
     (workspace / "state" / "Task.json").write_text('{"owner": "x"}', encoding="utf-8")
     calls = _interloper(workspace, monkeypatch, times=99)
 
-    code, err = run("write", "Task", "--set", "owner=y")
-    assert code == 1
+    with pytest.raises(BlackboardError) as excinfo:
+        write(sets={"owner": "y"})
+    assert excinfo.value.kind == "rejected"
     assert calls["n"] == 0  # 쓰기 시도 자체를 하지 않았다
-    assert "검증 실패" in err
+    assert excinfo.value.detail  # 위반 목록이 결과로 따라온다
 
 
 def test_write_state_checked_detects_change(tmp_path):

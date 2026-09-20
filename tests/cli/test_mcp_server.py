@@ -5,8 +5,8 @@
 1. **1:1 대응** — 도구 이름·인자·결과가 종전 CLI 명령과 같은 시나리오에서
    같은 값을 낸다(파라미터화한 매핑 표).
 2. **오류는 결과다** — 실패해도 예외를 던지지 않고
-   ``{"ok": false, "error": {"kind": ...}}``를 돌려주며, kind는 종전 exit
-   code와 1:1이다.
+   ``{"ok": false, "error": {"kind": ...}}``를 돌려준다. kind는 셋뿐이고
+   (`not_found`/`usage`/`rejected`) 그것이 실패 어휘의 전부다.
 3. **stdio 왕복** — 실제 MCP 클라이언트가 서버 프로세스를 띄워 도구를 부를 수
    있다(핸들러를 직접 부르는 나머지 테스트가 못 보는 배선: 도구 등록, 스키마
    생성, 전송).
@@ -19,7 +19,7 @@ from pathlib import Path
 
 import pytest
 
-from daedalus.cli.core import KIND_TO_EXIT, EXIT_INVALID, EXIT_NO_FILE, EXIT_USAGE
+from daedalus.cli.core import ERROR_KINDS
 from daedalus.cli.mcp_server import (
     TOOL_NAMES,
     TOOLS,
@@ -209,15 +209,16 @@ def test_progress_set_preserves_other_plugin_entries(tmp_path: Path):
     assert data["alpha"]["current"] == "a1"
 
 
-# ─────────────────────────── 오류 kind ↔ 옛 exit code ───────────────────────────
+# ─────────────────────────── 오류 kind ───────────────────────────
 
 
-@pytest.mark.parametrize(
-    "kind,exit_code",
-    [("not_found", EXIT_NO_FILE), ("usage", EXIT_USAGE), ("rejected", EXIT_INVALID)],
-)
-def test_kind_maps_one_to_one_onto_the_old_exit_code(kind, exit_code):
-    assert KIND_TO_EXIT[kind] == exit_code
+def test_the_failure_vocabulary_is_exactly_three_kinds():
+    """산출 가이드가 설명하는 kind 집합과 코어가 내는 집합이 같아야 한다.
+
+    모델은 이 세 단어로만 분기한다 — 넷째가 생기면 가이드가 침묵한 채 모델이
+    모르는 값을 받는다(원칙 5).
+    """
+    assert ERROR_KINDS == ("not_found", "usage", "rejected")
 
 
 @pytest.mark.parametrize(
@@ -342,3 +343,11 @@ def test_stdio_round_trip_lists_and_calls_a_tool(tmp_path: Path):
     names, payload = anyio.run(_exercise)
     assert set(names) == set(TOOL_NAMES)
     assert "Task" in payload
+
+
+def test_an_unregistered_kind_is_refused_loudly():
+    """넷째 kind를 조용히 만들 수 없다 — 가이드가 설명하지 못하는 값이 새면 안 된다."""
+    from daedalus.cli.core import BlackboardError
+
+    with pytest.raises(ValueError, match="등록되지 않은 오류 kind"):
+        BlackboardError("weird", "…")

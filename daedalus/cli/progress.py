@@ -26,19 +26,19 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from daedalus.cli import core
 from daedalus.cli.core import (
-    _WRITE_MAX_ATTEMPTS,
     PROGRESS_FILENAME,
     BlackboardError,
     NoteFn,
-    _emit_note,
     not_found_error,
-    read_raw,
     rejected_error,
     usage_error,
-    write_state,
-    write_state_checked,
 )
+
+# 원자적 쓰기·낙관적 잠금은 **모듈 경유로** 부른다(`core.write_state_checked`) —
+# 이름으로 끌어오면 봉합선이 둘이 된다(코어 쪽 패치가 여기 닿지 않는다).
+# 경쟁을 재현하는 테스트가 한 지점만 감싸면 되도록 진입을 하나로 둔다.
 
 #: 항목의 필드 — 없는 필드는 쓰지 않는다(빈 값으로 채우면 "설정했다"와 구분이 안 된다).
 _ENTRY_FIELDS = ("current", "completed", "note", "prev", "updated")
@@ -63,7 +63,7 @@ def load_progress(path: Path) -> tuple[dict[str, Any], str | None]:
     깨진 JSON과 **구형식 파일은 거부한다.** 기존 런타임 데이터를 마이그레이션하지
     않기로 했지만(D11), 그것이 조용히 덮어써도 된다는 뜻은 아니다.
     """
-    raw = read_raw(path)
+    raw = core.read_raw(path)
     if raw is None:
         return {}, None
     try:
@@ -142,7 +142,7 @@ def set_entry(
     "남이 방금 썼다"는 뜻이므로 다시 읽어 적용하면 대개 한 번에 끝난다.
     """
     path = progress_path(state_dir)
-    for attempt in range(1, _WRITE_MAX_ATTEMPTS + 1):
+    for attempt in range(1, core._WRITE_MAX_ATTEMPTS + 1):
         data, raw = load_progress(path)
         entry = _merge_entry(
             data.get(plugin) or {},
@@ -154,19 +154,19 @@ def set_entry(
         data[plugin] = entry
         if raw is None:
             path.parent.mkdir(parents=True, exist_ok=True)
-            write_state(path, data)
+            core.write_state(path, data)
             return entry
-        if write_state_checked(path, data, raw):
+        if core.write_state_checked(path, data, raw):
             return entry
-        _emit_note(
+        core._emit_note(
             on_note,
             f"다른 프로세스가 {path.as_posix()}를 먼저 갱신했다 — 다시 읽는다 "
-            f"({attempt}/{_WRITE_MAX_ATTEMPTS}).",
+            f"({attempt}/{core._WRITE_MAX_ATTEMPTS}).",
         )
     raise rejected_error(
         # 블랙보드 write의 재시도 소진(`core.write_class`)과 **같은 상황·같은 계약**
         # 이다: 사용법이 틀린 것이 아니라 "쓰기가 반영되지 않았다"이다.
-        f"쓰지 않았다 — {path.as_posix()}를 {_WRITE_MAX_ATTEMPTS}번 시도하는 동안 "
+        f"쓰지 않았다 — {path.as_posix()}를 {core._WRITE_MAX_ATTEMPTS}번 시도하는 동안 "
         f"매번 다른 프로세스가 먼저 갱신했다."
     )
 

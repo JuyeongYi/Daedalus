@@ -343,7 +343,7 @@ AST로 강제) `emit/guides.py`의 `WORKFLOW_GUIDE_KIND`/`BLACKBOARD_GUIDE_KIND`
       쓰기가 어색하고, 메인에는 SKILL.md가 보이지 않는다. 대신 **보고가 지시가 된다**: 배치된 fork는
       "## Next Steps"/진행 갱신 규칙/"## Finishing Up" 대신 **"## Report"**(`fork_report_section`)를 낸다 —
       갈래 목록(Next Steps와 같은 줄) + 보고 첫 줄 `EXIT: <branch> / NEXT: /<skill>` + 끝에 메인이 실행할
-      `daedalus-bb … progress set …` 명령. 터미널 배치면 `EXIT: done / NEXT: (end)` + `--current done`.
+      `progress_set` 호출. 터미널 배치면 `EXIT: done / NEXT: (end)` + `current="done"`.
       갈래 목록·`EXIT/NEXT` 양식·진행 명령은 **두 종류가 같다**. 도입 문구와 선행 조건만 갈린다.
     - **비동기 fork의 도입 문구는 "메인은 기다리지 않는다"라고 단정하지 않는다**: `background: true`여도
       비대화 `claude -p`/Agent SDK, `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1`, 같은 스킬이 아직 도는 중의 재호출,

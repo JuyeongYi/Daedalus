@@ -14,9 +14,11 @@
 실제로 만들어내는 형상(``type``/``properties``/``required``/``items``/
 ``uniqueItems``)만 다루는 최소 구현이다. 범용 JSON Schema 구현이 아니다.
 
-오류 kind는 셋이고, 종전 CLI의 exit code와 1:1이다:
-``not_found``(3 — 대상 상태 파일 없음) / ``usage``(2 — 사용법·스키마·IO 오류) /
-``rejected``(1 — 검증 실패, 낙관적 잠금 재시도 소진).
+오류 kind는 셋이다: ``not_found``(대상 상태 파일 없음) ·
+``usage``(사용법·스키마·IO 오류) · ``rejected``(쓰기가 반영되지 않았다 — 검증
+실패 또는 낙관적 잠금 재시도 소진). 종전 CLI의 exit code 3/2/1과 1:1이었고,
+그 표면이 폐기되면서 **kind가 유일한 어휘**가 됐다(퇴역 개념은 흔적 없이 —
+원칙 7. exit code 상수는 남기지 않는다).
 """
 from __future__ import annotations
 
@@ -34,22 +36,14 @@ DEFAULT_STATE_ROOT = "state"
 PROGRESS_FILENAME = "__progress__.json"
 PROGRESS_CLASS = "__progress__"
 
-EXIT_OK = 0
-EXIT_INVALID = 1
-EXIT_USAGE = 2
-EXIT_NO_FILE = 3
-
 #: 오류 kind — 값이 그대로 MCP 결과의 `error.kind`가 된다.
 KIND_NOT_FOUND = "not_found"
 KIND_USAGE = "usage"
 KIND_REJECTED = "rejected"
 
-#: kind → 종전 CLI exit code. 이 표가 두 표면의 계약을 하나로 묶는다.
-KIND_TO_EXIT: dict[str, int] = {
-    KIND_NOT_FOUND: EXIT_NO_FILE,
-    KIND_USAGE: EXIT_USAGE,
-    KIND_REJECTED: EXIT_INVALID,
-}
+#: 실패의 종류는 셋뿐이다 — 새 kind를 더하려면 산출 가이드의 설명도 함께
+#: 늘려야 한다(모델은 이 세 단어로만 분기한다).
+ERROR_KINDS: tuple[str, ...] = (KIND_NOT_FOUND, KIND_USAGE, KIND_REJECTED)
 
 # write의 낙관적 잠금 재시도 횟수. 충돌은 "남이 방금 썼다"는 뜻이므로 다시
 # 읽어 적용하면 대개 한 번에 끝난다 — 무한 재시도는 살아 있는 락 경쟁에서
@@ -63,21 +57,22 @@ NoteFn = Callable[[str], None]
 class BlackboardError(Exception):
     """코어가 내는 단 하나의 실패 — kind가 원인의 종류를 말한다.
 
-    ``detail``은 사람이 줄 단위로 읽을 부가 정보(검증 위반 목록 등)다. 문자열
-    한 줄에 욱여넣지 않는 이유는 소비자가 둘이기 때문이다 — CLI는 stderr에
-    줄로 풀고, MCP 서버는 결과 JSON의 배열로 낸다.
+    ``detail``은 줄 단위로 읽을 부가 정보(검증 위반 목록 등)다. 문자열 한 줄에
+    욱여넣지 않는 이유는 표면이 그것을 배열로 내기 때문이다 — 모델이 위반을
+    하나씩 보고 고칠 수 있어야 한다.
     """
 
     def __init__(self, kind: str, message: str, detail: list[str] | None = None) -> None:
+        if kind not in ERROR_KINDS:
+            # 산출 가이드는 kind 셋만 설명한다 — 넷째가 조용히 새면 모델이
+            # 모르는 값을 받고 분기하지 못한다(원칙 5).
+            raise ValueError(
+                f"등록되지 않은 오류 kind: {kind!r} — 등록: {', '.join(ERROR_KINDS)}"
+            )
         super().__init__(message)
         self.kind = kind
         self.message = message
         self.detail = list(detail) if detail else []
-
-    @property
-    def code(self) -> int:
-        """종전 CLI exit code — kind와 1:1."""
-        return KIND_TO_EXIT[self.kind]
 
 
 def usage_error(message: str, detail: list[str] | None = None) -> BlackboardError:
@@ -702,11 +697,12 @@ def validate_classes(
 ) -> dict[str, Any]:
     """상태 파일 검증 — 위반이 있어도 **결과로** 돌려준다(예외가 아니다).
 
-    이름을 생략한 전 클래스 순회에서 상태 파일 부재는 고장이 아니다(아직
-    초기화되지 않았을 뿐) — ``missing``으로 보고한다. 반면 **이름을 명시한**
-    호출에서 그 파일이 없으면 `read`와 같은 뜻이다(`validate_code`가 3으로
-    옮긴다). 물어본 대상이 없다는 것 자체가 대답이고, 결과만 훑는 호출자가
-    "검사했고 정상"으로 오해하면 안 된다.
+    ``ok``는 **"물어본 것이 전부 있고 전부 유효한가"**다. 그래서 두 가지가
+    거짓으로 만든다: ① 위반이 하나라도 있다 ② **이름을 명시한** 호출에서 그
+    파일이 없다. ②가 참인 이유는 물어본 대상이 없다는 것 자체가 대답이기
+    때문이다 — 결과만 훑는 호출자가 "검사했고 정상"으로 오해하면 안 된다
+    (종전 CLI의 exit 3과 같은 판정이다). 반면 이름을 생략한 전 클래스 순회에서
+    부재는 고장이 아니다(아직 초기화되지 않았을 뿐) — ``missing``으로만 보고한다.
     """
     names = list(names or [])
     if names:
@@ -747,17 +743,8 @@ def validate_classes(
                 f"init {missing[0]} 로 만들라.",
             )
     return {
-        "ok": not violations,
+        "ok": not violations and not (names and missing),
         "checked": checked,
         "missing": missing,
         "violations": violations,
     }
-
-
-def validate_code(result: dict[str, Any], named: bool) -> int:
-    """검증 결과 → 종전 CLI exit code. 위반이 있으면 그쪽이 우선(1)."""
-    if result["violations"]:
-        return EXIT_INVALID
-    if named and result["missing"]:
-        return EXIT_NO_FILE
-    return EXIT_OK

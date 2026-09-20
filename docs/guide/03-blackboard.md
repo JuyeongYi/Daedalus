@@ -39,7 +39,7 @@ Claude는 컨텍스트가 바뀌면 앞에서 한 일을 모릅니다. 이런 �
 | 타입 | `string` · `int` · `float` · `bool` 네 가지 |
 | 컬렉션 | `none`(값 하나) · `list`(목록) · `set`(중복 없는 목록) |
 | required | 켜면 이 필드는 항상 채워져 있어야 합니다 |
-| default | 초기값. `daedalus-bb init`이 파일을 처음 만들 때 씁니다 |
+| default | 초기값. `init` 도구가 파일을 처음 만들 때 씁니다 |
 
 "문자열 목록"은 타입 `string` × 컬렉션 `list`로 만듭니다. 목록 자체를 타입으로 고르는 방식은 없습니다.
 
@@ -142,87 +142,84 @@ CLI 사용법·상태 파일 전체 목록·읽기-수정-쓰기 규칙은 **이
 **접근 선언이 하나도 없으면 단락 자체가 나오지 않습니다.** 덧붙일 고유 정보가 없기 때문입니다 —
 그 컴포넌트도 가이드 포인터는 그대로 받습니다.
 
-### `${ROOT}` — 빌드 타깃마다 경로가 달라지는 부분
+### 스키마 경로는 `.mcp.json`이 쥡니다
 
-컴포넌트 본문의 CLI 명령은 스키마 경로를 `--schemas ${ROOT}/schemas/<플러그인>.json`으로 적습니다.
-`${ROOT}`는 컴파일할 때 빌드 타깃에 맞게 바뀝니다.
+컴포넌트 본문에는 경로가 나오지 않습니다. 스키마 경로는 서버를 띄우는 `.mcp.json`의 인자로만
+쓰이고, 빌드 타깃에 따라 달라집니다.
 
-| 빌드 타깃 | `${ROOT}` → | 스키마 파일이 있는 곳 |
-|-----------|-------------|----------------------|
-| 마켓플레이스 | `${CLAUDE_PLUGIN_ROOT}` | 플러그인 폴더 안 |
-| 로컬 | `${CLAUDE_PROJECT_DIR}` | 작업 폴더 안 |
+| 빌드 타깃 | `.mcp.json` 위치 | `--schemas` 인자 | 도구 이름 |
+|-----------|------------------|------------------|-----------|
+| 마켓플레이스 | 플러그인 루트 | `${CLAUDE_PLUGIN_ROOT}/schemas/<플러그인>.json` | `mcp__plugin_<플러그인>_bb-<플러그인>__<도구>` |
+| 로컬 | 작업 폴더 | `schemas/<플러그인>.json` | `mcp__bb-<플러그인>__<도구>` |
 
-`state/`에는 `${ROOT}`가 붙지 않습니다. 두 타깃 모두 상태는 **작업 폴더**에 쌓입니다.
+**마켓플레이스 빌드에서는 도구 이름에 플러그인 네임스페이스가 붙습니다**(Claude Code가 붙입니다 —
+실측 확인). 컴파일러가 알아서 맞춘 이름을 프론트매터와 본문에 적으므로 신경 쓸 것은 없지만,
+`/mcp`로 서버 목록을 볼 때 이름이 길게 보이는 이유가 이것입니다.
 
-**가이드 파일 본문에는 `${ROOT}`를 쓰지 않습니다.** Claude Code는 이 변수를 **스킬·에이전트 파일
-안에서만** 바꿔 줍니다 — 가이드는 모델이 Read 도구로 읽는 평범한 파일이라 `${CLAUDE_PLUGIN_ROOT}`가
-글자 그대로 보이고, Bash로도 풀리지 않습니다. 그래서 가이드는 경로 자리에 `<SCHEMAS>` 자리표시자를
-쓰고 "너를 여기로 보낸 스킬·에이전트 파일에 적힌 `--schemas` 경로를 그대로 쓰라"고 말합니다.
-대신 **포인터를 받은 파일에는 실제 경로가 든 명령이 최소 한 줄 남습니다** — 진행 명령이 없는
-컴포넌트(에이전트·미배치 스킬)에는 포인터 줄에 `State CLI: …` 한 줄이 함께 붙습니다.
+상태는 두 타깃 모두 **작업 폴더**의 `state/<플러그인>/`에 쌓입니다. 스키마가 절대경로여도
+파일 이름(stem)만 써서 상태 폴더를 정하기 때문입니다.
 
-## 5. `daedalus-bb` CLI
+## 5. 블랙보드 도구
 
-컴파일된 스킬·에이전트가 실행 중에 부르는 명령입니다. Daedalus를 설치하면 함께 깔립니다
-(따로 `pip`/`uv`로 설치하라고 시키지 마세요. 같은 이름의 무관한 패키지가 깔릴 수 있습니다).
+컴파일된 스킬·에이전트가 실행 중에 부르는 MCP 도구입니다. 서버 실행 파일은 Daedalus를 설치하면
+함께 깔립니다(따로 `pip`/`uv`로 설치하라고 시키지 마세요. 같은 이름의 무관한 패키지가 깔릴 수
+있습니다).
 
-### 왜 파일을 직접 고치지 않고 CLI를 거치나
+### 왜 파일을 직접 고치지 않고 도구를 거치나
 
 - **스키마 검증.** LLM이 JSON을 손으로 만들면 타입을 틀리거나 required 필드를 빠뜨립니다.
   `write`는 검증을 통과해야만 기록합니다. 실패하면 파일은 그대로입니다.
 - **원자적 쓰기.** 임시 파일에 쓴 뒤 한 번에 교체합니다. 반쯤 쓰인 파일이 남지 않습니다.
 - **동시 쓰기 보호.** 병렬 에이전트가 같은 파일을 고치면 한쪽 갱신이 사라질 수 있습니다.
   `write`는 쓰기 직전에 파일이 그 사이 바뀌었는지 보고, 바뀌었으면 다시 읽어 같은 수정을 새 내용 위에 적용합니다(최대 3번).
+- **권한이 곧 선언.** 캔버스의 📖/✏ 뱃지가 프론트매터의 도구 목록이 됩니다. 읽기만 선언한
+  단계는 `write` 도구를 아예 보지 못합니다.
 
-### 명령
+### 도구
 
-전역 옵션은 **명령 앞**에 씁니다.
-
-```
-daedalus-bb --schemas <경로> [--state-dir DIR] <명령>
-```
-
-- `--schemas` — **필수.** 상태 폴더도 여기서 정해집니다: 스키마 파일 이름이 `demo.json`이면 `state/demo/`.
-- `--state-dir` — 상태 폴더를 직접 지정할 때만.
-
-| 명령 | 하는 일 |
-|------|---------|
-| `read <Class> [--field NAME]` | 파일 전체 또는 필드 하나를 JSON으로 출력 |
-| `init <Class> [--force]` | 스키마로 초기 파일 생성(required 필드만 채움). 이미 있으면 거부, `--force`면 다시 만듦 |
-| `write <Class> --set f=v [--append f=v] [--remove f=v]` | 읽기-수정-쓰기. 파일이 없으면 초기 객체에서 시작 |
-| `validate [Class ...]` | 상태 파일 검사. 생략하면 모든 클래스 |
-| `list` | 클래스·필드 목록과 파일 위치 |
-| `progress read` | 이 플러그인의 진행 기록 출력 |
-| `progress set [--current S] [--completed S]... [--note T] [--prev S]` | 진행 기록 갱신 |
+| 도구 | 인자 | 하는 일 |
+|------|------|---------|
+| `list` | — | 클래스·필드 목록과 파일 위치 |
+| `read` | `cls`, `field?` | 파일 전체 또는 필드 하나 |
+| `init` | `cls`, `force?` | 스키마로 초기 파일 생성(required 필드만 채움). 이미 있으면 거부, `force=true`면 다시 만듦 |
+| `write` | `cls`, `set?`, `append?`, `remove?` | 읽기-수정-쓰기. 파일이 없으면 초기 객체에서 시작 |
+| `validate` | `classes?` | 상태 파일 검사. 생략하면 모든 클래스 |
+| `progress_read` | — | 이 플러그인의 진행 기록 |
+| `progress_set` | `current?`, `completed?`, `note?`, `prev?` | 진행 기록 갱신 |
 
 `write` 값 규칙:
 
-- `--set`은 스키마 타입으로 변환합니다. bool은 `true/1/yes/y/on`, `false/0/no/n/off`.
-- 목록 필드는 `--append`/`--remove`로 원소 단위로 다룹니다. 통째로 넣으려면 `--set failures='["a","b"]'`.
-- `--remove`는 일치하는 원소를 **모두** 지웁니다. `set` 필드는 중복이 자동으로 빠집니다.
+- `set`/`append`/`remove`는 전부 `{필드: 값}` 객체입니다.
+- 값은 JSON 타입 그대로 써도 되고 문자열로 써도 됩니다 — 문자열이면 스키마 타입으로 변환합니다
+  (bool은 `true/1/yes/y/on`, `false/0/no/n/off`).
+- 목록 필드는 `append`/`remove`로 원소 단위로 다룹니다(값이 배열이면 여러 개). 통째로 넣으려면
+  `set={"failures": ["a","b"]}`.
+- `remove`는 일치하는 원소를 **모두** 지웁니다. `set` 필드는 중복이 자동으로 빠집니다.
 - 적용 순서는 set → append → remove.
 
-### 종료 코드와 출력
+### 실패했을 때
 
-| 코드 | 뜻 |
-|------|-----|
-| 0 | 성공 |
-| 1 | 쓰기가 반영되지 않음 — 검증 실패, 또는 동시 쓰기 재시도 소진 |
-| 2 | 사용법·스키마·IO 오류. 없는 클래스/필드 이름, 타입으로 바꿀 수 없는 값(`--set attempt=abc`)도 여기 |
-| 3 | 대상 파일 없음 — `read`, 클래스를 **지정한** `validate`, 기록 없는 `progress read` |
+도구는 예외로 끊지 않고 **결과로** 알려 줍니다:
 
-stdout에는 JSON만, 안내·오류 메시지는 stderr로 나갑니다. 단 **오류일 때 stdout은 비어 있습니다**
-(`validate`만 실패해도 `{"ok": false, "violations": [...]}`를 냅니다). 그러니 종료 코드부터 확인하세요.
-없는 클래스나 필드를 적으면 쓸 수 있는 이름을 stderr에 알려 줍니다.
+```json
+{"ok": false, "error": {"kind": "rejected", "message": "…", "detail": ["Task.title: …"]}}
+```
 
-### CLI가 없을 때
+| `kind` | 뜻 |
+|--------|-----|
+| `not_found` | 대상 파일(또는 진행 기록)이 아직 없습니다. `init`으로 만드세요 |
+| `usage` | 없는 클래스/필드 이름, 타입으로 바꿀 수 없는 값 등. `message`가 쓸 수 있는 이름을 알려 줍니다 |
+| `rejected` | 쓰기가 반영되지 않았습니다 — 검증 실패(`detail`에 위반 목록) 또는 동시 쓰기 재시도 소진. **파일은 그대로입니다** |
 
-본문 지시는 먼저 `command -v daedalus-bb`로 CLI가 있는지 확인하게 합니다.
-없거나 판단할 수 없으면(POSIX 셸이 아닌 환경 등) 파일을 **직접** 고치되, 세 가지 규칙을 지키게 합니다.
+`validate`는 실패를 오류가 아니라 결과로 냅니다: `{"ok": false, "violations": [...]}`.
+`ok`는 "물어본 것이 전부 있고 전부 유효한가"이므로, 이름을 **지정한** `validate`에서 그 파일이
+없으면 `ok`는 거짓입니다(클래스를 지정하지 않은 전체 검사에서는 미초기화가 고장이 아닙니다).
 
-1. 고치기 전에 항상 읽는다(읽기 → 수정 → 쓰기).
-2. 파일이 없으면 스키마를 보고 만든다.
-3. required 필드는 항상 채운다.
+### 도구가 보이지 않을 때
+
+서버가 떠 있지 않다는 뜻입니다. 산출된 가이드는 그때 **파일을 손으로 고치지 말고 사용자에게
+알리라**고 말합니다 — 진행 파일은 여러 플러그인이 나눠 쓰고 상태 파일은 쓰기 전 검증을 거치므로,
+손편집 한 번이 남의 기록을 지우거나 다음 단계를 깨뜨릴 수 있기 때문입니다.
 
 ### 진행 파일 `state/__progress__.json`
 
@@ -242,10 +239,10 @@ stdout에는 JSON만, 안내·오류 메시지는 stderr로 나갑니다. 단 **
 ```
 
 - 파일은 `state/` 바로 아래 **하나**이고, 최상위 키가 플러그인 이름입니다. 여러 플러그인이 한 파일을 나눠 씁니다.
-- 그래서 갱신은 `daedalus-bb progress set`이 맡습니다. 자기 플러그인 키만 고치고 남의 키는 건드리지 않습니다.
-  `--completed`는 중복 없이 쌓이고, `updated`는 자동으로 적힙니다.
-- 컴파일된 스킬은 "다음 단계로 넘기기 전에 `progress set`을 실행하라"는 지시를 받습니다.
-  CLI가 없으면 손으로 고치되 **자기 키만** 고치라고 못 박습니다.
+- 그래서 갱신은 `progress_set` 도구가 맡습니다. 자기 플러그인 키만 고치고 남의 키는 건드리지 않습니다.
+  `completed`는 중복 없이 쌓이고, `updated`는 자동으로 적힙니다.
+- 컴파일된 스킬은 "다음 단계로 넘기기 전에 `progress_set`을 호출하라"는 지시를 받습니다.
+  도구가 없으면 손으로 고치지 말고 사용자에게 알리라고 못 박습니다.
 - 기본적으로 SessionStart 훅이 합성되어, 세션이 시작될 때 이 파일 내용을 Claude에게 보여 줍니다
   (프로젝트 속성의 "세션 시작 시 진행 상태 자동 주입"으로 끌 수 있습니다).
 - `validate`는 이 파일을 검사하지 않습니다. 스키마 밖 파일이기 때문입니다.
@@ -297,19 +294,21 @@ set_state_access(node="verify", reads=["DesignGoal"], writes=["VerifyResult"])
 `VerifyResult.attempt`, `VerifyResult.passed`도 `fix`가 안 본다면, `verify`가 클래스 전체를 쓰니 고아 경고는 뜨지 않습니다.
 
 **③ 본문에는 할 일만** — 예: `verify` 본문 "`DesignGoal.acceptance` 항목마다 테스트로 확인하고 실패한 항목을 기록한다."
-파일 경로나 CLI 사용법은 쓰지 않아도 됩니다. 컴파일러가 Shared State 단락에 넣어 줍니다.
+파일 경로나 도구 사용법은 쓰지 않아도 됩니다. 컴파일러가 Shared State 단락에 넣어 줍니다.
 
 **④ 실행 중 실제로 일어나는 일** (플러그인 이름 `demo`, 마켓플레이스 빌드)
 
-```bash
+```
 # verify 단계
-daedalus-bb --schemas ${CLAUDE_PLUGIN_ROOT}/schemas/demo.json read DesignGoal
-daedalus-bb --schemas ${CLAUDE_PLUGIN_ROOT}/schemas/demo.json write VerifyResult \
-  --set passed=false --append failures="로그인 실패 시 메시지 없음"
+mcp__plugin_demo_bb-demo__read    cls="DesignGoal"
+mcp__plugin_demo_bb-demo__write   cls="VerifyResult", set={"passed": false},
+                                  append={"failures": "로그인 실패 시 메시지 없음"}
 
 # fix 단계
-daedalus-bb --schemas ${CLAUDE_PLUGIN_ROOT}/schemas/demo.json read VerifyResult --field failures
+mcp__plugin_demo_bb-demo__read    cls="VerifyResult", field="failures"
 ```
+
+(로컬 빌드였다면 도구 이름은 `mcp__bb-demo__read`처럼 짧습니다.)
 
 작업 폴더에는 `state/demo/DesignGoal.json`, `state/demo/VerifyResult.json`이 생기고,
 단계가 넘어갈 때마다 `state/__progress__.json`의 `demo` 항목이 갱신됩니다.
@@ -321,4 +320,4 @@ daedalus-bb --schemas ${CLAUDE_PLUGIN_ROOT}/schemas/demo.json read VerifyResult 
 
 - 같은 대화 안이면 블랙보드는 필요 없습니다. 다른 컨텍스트로 넘길 때만 씁니다.
 - 노드에 reads/writes를 선언하면 본문이 짧아지고 경고로 실수를 잡을 수 있습니다.
-- 실행 중 읽기·쓰기는 `daedalus-bb`가 검증과 안전한 쓰기를 맡습니다.
+- 실행 중 읽기·쓰기는 블랙보드 MCP 도구가 맡습니다 — 검증·원자적 쓰기·동시 쓰기 보호까지.

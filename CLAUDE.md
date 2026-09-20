@@ -65,7 +65,7 @@ pytest는 `python -m pytest`로 실행한다 (`pytest` 직접 실행 시 command
 | `plugin-model.md` | 스킬 **6종**·에이전트 4종 표와 클래스 계층, 배치 가능 판정, fork 스킬 2종(sync/async)·fork 에이전트 종류·3-way 전환·마이그레이션·실측, `SKILL_FIELD_MATRIX`/`AGENT_FIELD_MATRIX`/`matrix_for`/`FieldRule`, `FieldType`, 진입 의미론 tri-state + 진입점 프리셋(A8), config 계층 |
 | `fsm-model.md` | CompositeState/Region/조인, FSM+블랙보드 하이브리드, body·Section·EventDef, 입력 포트 퇴역(WP-IP), `PluginProject.graph`(EntryPoint 격하 WP-EP), CompletionEvent, 전략 패턴, 안정 ID + 직렬화·마이그레이션 |
 | `agents.md` | 에이전트 **네 종류**(워크플로/fork/외부 노드/외부 fork, WP-FK2·WP-9·WP-EX), 외부 정본 역할 고정, 내부 FSM 퇴역(WP-AF), 출력 포트, 로컬 스킬 승격, 그래프 유도 호출 계약(WP-CT), 외부 플러그인 카탈로그·클론 캐시, 랩핑 스킬 퇴역(WP-10, 후방 호환 없음) |
-| `blackboard.md` | 최상위 블랙보드·JSON Schema 매핑, 상태 reads/writes 접근 선언(WP-BB), `daedalus-bb` CLI 계약(WP-BB1) |
+| `blackboard.md` | 최상위 블랙보드·JSON Schema 매핑, 상태 reads/writes 접근 선언(WP-BB), `daedalus-bb` stdio MCP 서버 계약(WP-BB1/WP-BM — 도구 7개·오류 kind 3종·CLI 폐기) |
 | `workspace-and-build-target.md` | 빌드 타깃(WP-TG), 작업 폴더 문서 `.claude/CLAUDE.md` 구역·rules `paths:`(WP-WD/A13), 작업 폴더 설정 베이크(WP-WS) |
 | `editor.md` | 본문 부분 접근(WP-BO), 엣지 경유점(WP-ER), 드래그 이동(WP-DM), 본문 undo 스택(WP-BU), 삭제 커맨드(A2), 미저장 변경 확인 |
 | `mcp-server.md` | 앱 내장 MCP 서버 — 전송·스레드·SDK 호환, 도구 영역별 규약, 패리티 원칙 상세 |
