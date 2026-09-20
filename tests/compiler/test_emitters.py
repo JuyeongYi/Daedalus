@@ -160,7 +160,7 @@ def _legacy_project_with(skill) -> PluginProject:
 
 
 def test_transfer_skill_never_claims_the_progress_current_pointer():
-    """전이 스킬은 상태 노드에 박혀 있어도 `--current`를 지시하지 않는다.
+    """전이 스킬은 상태 노드에 박혀 있어도 `current`를 지시하지 않는다.
 
     같은 파일의 '## Progress Record'가 "`current`는 건드리지 말라"고 말하므로
     (`docs/design/compiler.md` 정책 6-a-④), 진행 갱신 지시가 함께 나가면 산출이
@@ -169,10 +169,10 @@ def test_transfer_skill_never_claims_the_progress_current_pointer():
     """
     skill = make_transfer()
     text = compile_skill(skill, project=_legacy_project_with(skill))
-    assert "--current" not in text
+    assert "current=" not in text
     # 전이 스킬이 내는 진행 지시는 '## Progress Record'의 메모 한 줄뿐이다.
     assert "## Progress Record" in text
-    assert "--note" in text
+    assert "`note=" in text
 
 
 def test_reference_skill_never_gets_a_terminal_finishing_section():
@@ -182,7 +182,7 @@ def test_reference_skill_never_gets_a_terminal_finishing_section():
     project.graph.transitions.clear()  # 터미널 배치 형상
     text = compile_skill(skill, project=project)
     assert "## Finishing Up" not in text
-    assert "--current" not in text
+    assert "current=" not in text
 
 
 @pytest.mark.parametrize("kind", sorted(SECTION_PLANS))

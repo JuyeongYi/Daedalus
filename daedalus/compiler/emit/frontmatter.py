@@ -116,12 +116,17 @@ def _yaml_block_lines(value: Any, indent: int = 0) -> list[str]:
 
 def _frontmatter_lines_skill(
     skill: Skill,
+    bb_tools: list[str] | tuple[str, ...] = (),
 ) -> list[str]:
     """스킬 프론트매터 키-값 줄 목록 (--- 구분선 제외).
 
     name/description은 항상 출력(REQUIRED). when_to_use는 description에 합류하므로
     여기서는 직출하지 않는다. 나머지는 매트릭스 emit==FRONTMATTER + visibility 규칙.
 
+    ``bb_tools``(WP-BM): 이 스킬의 블랙보드 접근 선언에서 유도된 MCP 도구 이름.
+    ``allowed-tools``에 **합류**한다 — 스킬의 그 키는 *권한 부여*라 다른 도구를
+    막지 않으므로, 더하는 것이 곧 "이 스킬은 블랙보드를 만질 수 있다"이다.
+    유도는 호출자(emitter)가 한다: 이 모듈은 YAML 표기만 안다.
     """
     # 표를 고르는 규칙의 실체는 model의 `matrix_for` 하나다(config.kind가 키).
     matrix = matrix_for(skill)
@@ -149,6 +154,11 @@ def _frontmatter_lines_skill(
             continue
         if sfield is SkillField.DESCRIPTION:
             lines.append(f"{key}: {_yaml_scalar(_compose_description(skill))}")
+            continue
+        if sfield is SkillField.ALLOWED_TOOLS and bb_tools:
+            declared = list(getattr(config, "allowed_tools", None) or [])
+            merged = declared + [t for t in bb_tools if t not in declared]
+            lines.append(_format_kv(key, merged))
             continue
 
         emitted = _emit_skill_field(sfield, rule, config, key)

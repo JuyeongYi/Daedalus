@@ -7,7 +7,7 @@
 
 **컴파일러 패턴:** 순수 모델(`model/`) → 컴파일러(`compiler/`) → 플러그인 파일.
 GUI는 PySide6 노드 에디터(`view/`), 앱 내장 MCP 서버(`mcp/`)가 CC와의 협업 창구,
-블랙보드 CLI `daedalus-bb`(`cli/`)가 설치 대상 작업 폴더에서 런타임 상태를 다룬다.
+블랙보드 stdio MCP 서버 `daedalus-bb`(`cli/`)가 설치 대상 작업 폴더에서 런타임 상태를 다룬다.
 
 **경계 계약 (`tests/test_import_contracts.py`가 소스 AST로 강제):**
 - core = `model/` + `compiler/` + `mcp/endpoint.py` + `cli/`. core는 Qt 바인딩
@@ -41,7 +41,7 @@ GUI는 PySide6 노드 에디터(`view/`), 앱 내장 MCP 서버(`mcp/`)가 CC와
 | `compiler/project_compiler.py` | `compile_project` — 검증 게이트 + 2단계(`Phase.WRITE`/`INSTALL`) 루프 + 진단 스캔 2건. 계획 쪽 이름 재-export |
 | `compiler/workspace.py`·`wiring.py`·`token_report.py` | CLAUDE.md 구역 병합·rules 렌더 · `.mcp.json`/settings 병합 · 토큰 리포트(표시 전용, 계상 구간은 `TokenKind`) |
 | `mcp/` | 앱 내장 MCP 서버 — `tools/`(도메인 믹스인), `service.py`(HTTP 수명주기), `invoker.py`(메인 스레드 마샬링) |
-| `cli/` | `daedalus-bb` — 블랙보드 read/init/write/validate/list + progress |
+| `cli/` | `daedalus-bb` — 블랙보드 stdio MCP 서버(도구 7개: list/read/init/write/validate/progress_read/progress_set). 코어(`core.py`·`progress.py`)는 출력 채널이 없고 실패는 `BlackboardError(kind)`다 |
 | `view/app.py` | MainWindow **골격** — 실체는 협력 객체 7종(`session_io`/`compile_actions`/`launch_actions`/`validation_actions`/`graph_io`/`component_actions`/`editor_tabs`)에 있고 창에는 한 줄 위임만 |
 | `view/editor_tabs.py` | `EditorTabs(window)` — 고정 탭 6개 구축 + 컴포넌트 편집 탭 수명주기(열기·닫기·제목 동기화·프론트매터 재구축) + 탭 전환의 undo 스택 배선. 탭 인덱스 상수·`_tab_prefix`의 소유자 |
 | `view/kind_ui.py` | **뷰의 종류 표** `KIND_UI` — 아이콘·섹션 라벨·색·탭 라벨·노드 스타일·다이얼로그 제목·편집기 팩토리·탭 접두·전환 라벨. 모델 레지스트리와 **kind 문자열로만** 연결(import 방향 view → model) |
@@ -138,9 +138,10 @@ python -m tests.data.golden.regen --refresh-dogfood   # 동결 사본 자체를 
 목표를 넘는데, 그 405줄의 절반 이상이 **절 선언 표와 그 근거 주석**이라 쪼개면
 "한 종류의 산출 선언을 한눈에 본다"는 이 파일의 존재 이유가 사라진다 — 1,200
 상한과 800 권고 아래라 그대로 둔다. `daedalus/` 전체에서 800줄을 넘는 파일은
-`view/widgets/markdown/editor.py` 928 · `view/canvas/scene.py` 879 ·
-`cli/blackboard.py` 851 셋이고(`docs/backlog.md` §7), 리팩토링이 만든 파일은
-하나도 없다.
+`view/widgets/markdown/editor.py` 928 · `view/canvas/scene.py` 879 둘이고
+(`docs/backlog.md` §7), 리팩토링이 만든 파일은 하나도 없다. 종전 851줄이던
+`cli/blackboard.py`는 WP-BM에서 `core.py`(코어)·`mcp_server.py`(표면)로 갈라지고
+argparse 진입점이 폐기되면서 목록에서 빠졌다.
 
 ### 죽은 코드 게이트 (`tests/test_dead_code.py`)
 
@@ -160,8 +161,10 @@ python -m tests.data.golden.regen --refresh-dogfood   # 동결 사본 자체를 
 76종이 그 모듈의 `TOOL_NAMES` 튜플에서 `getattr`로 디스패치되기 때문이다. 범위를
 `daedalus/` 전체로 넓히지 **않는** 것이 핵심이다: 이름이 우연히 겹치는 무관한
 리터럴이 고아 심볼을 조용히 살려 낸다. 실제 사례가 `_MachineRules.validate`로,
-`cli/blackboard.py`의 `add_parser("validate")`와 `__main__.py`의
-`SimpleState(name="validate")` 때문에 게이트를 통과하고 있었다. 새 디스패치 표가
+종전 CLI의 `add_parser("validate")`와 `__main__.py`의
+`SimpleState(name="validate")` 때문에 게이트를 통과하고 있었다. (그래서 WP-BM의
+블랙보드 서버는 도구 이름을 문자열로 디스패치하지 않고 `TOOLS` 선언 표로 두고,
+핸들러 메서드에 `tool_` 접두를 붙여 동명 심볼과 섞이지 않게 했다.) 새 디스패치 표가
 생기면 그 모듈을 **명시로** 등재한다.
 
 자동 면제: dunder, 그리고 **외부 기저 클래스를 (간접적으로도) 상속한 클래스의
@@ -211,7 +214,7 @@ WP-1 D9에서 삭제해 목록에서 빠졌다.
 **컴파일러 패턴:** 순수 모델(model/) → 컴파일러(compiler/) → 플러그인 파일
 
 현재 구현 범위: **model/ + view/ + compiler/ + mcp/ + cli/** (FSM 코어 + 플러그인 메타데이터 + PySide6 에디터 +
-SKILL.md/agent .md/plugin.json/hooks/schemas 생성 + 앱 내장 MCP 서버(WP-MCP) + 블랙보드 CLI `daedalus-bb`(WP-BB1)).
+SKILL.md/agent .md/plugin.json/.mcp.json/hooks/schemas 생성 + 앱 내장 MCP 서버(WP-MCP) + 블랙보드 stdio MCP 서버 `daedalus-bb`(WP-BB1/WP-BM)).
 
 **경계 계약 (WP-RF-2, B안 — 물리 이동 없음):** core = `model/` + `compiler/` + `mcp/endpoint.py` + `cli/`.
 core는 Qt 바인딩(PySide6/PyQt6/shiboken6)·GUI 레이어(`daedalus.view`)·MCP SDK(`mcp`)·`uvicorn`을
@@ -221,6 +224,9 @@ core가 아니라 **GUI 어댑터**(MainWindow·VM·커맨드 스택 결합 표�
 `mcp/invoker.py`의 Qt 의존과 `mcp/service.py`의 SDK/uvicorn 의존은 의도된 설계다. view→compiler 방향
 임포트는 정상(컴파일러 패턴의 방향과 일치). **`cli/`는 core 금지 목록에 더해 `daedalus.model`도 임포트할
 수 없다**(WP-BB1 — 설치 대상 프로젝트에서 도는 물건이라 검증 정본이 산출 `schemas/<플러그인>.json` 파일 자체다).
+`cli/`가 stdio MCP 서버를 내면서도 이 계약이 사는 이유는 **SDK 버전 흡수를 `mcp_compat.py` 한 곳에
+가뒀기** 때문이다(core 스코프 밖, 모델 무의존 — 앱 내장 서버와 공유). 계약을 느슨하게 하는 대신
+의존을 한 파일에 모았다(WP-BM).
 
 ```
 daedalus/
@@ -431,7 +437,9 @@ daedalus/
 │   │   ├── guides.py       #   공통 안내 파일(WP-FK2 C3) — compile_workflow_guide/compile_blackboard_guide/compile_guide,
 │   │   │                   #   포인터 문구 guide_pointer_line/_insert_guide_pointer, guide_rel_path, GUIDE_KINDS,
 │   │   │                   #   workflow_guide_referenced/blackboard_guide_referenced(고아 파일 방지) + pointer_rules 재-export.
-│   │   │                   #   가이드 본문에는 ${ROOT} 등 치환 변수를 쓰지 않는다(<SCHEMAS> 자리표시자)
+│   │   │                   #   가이드 본문에는 ${ROOT} 등 치환 변수를 쓰지 않는다 — WP-BM 이후 쓸 일도 없다(도구 이름에 경로가 없다)
+│   │   ├── blackboard_names.py #  블랙보드 서버 이름·--schemas 인자·.mcp.json 항목·타깃별 도구 이름 (WP-BM, 리프)
+│   │   ├── blackboard_tools.py #  선언(reads/writes/ProgressUse) → 도구 권한 유도 + bb_server_needed (WP-BM)
 │   │   ├── hooks.py        #   compile_hooks_json/compile_hook_scripts (진행 상태 합성 훅 포함)
 │   │   └── manifest.py     #   compile_plugin_manifest/compile_schemas_json + 경로 변수 확장(expand_root_token)
 │   ├── preview.py          # **컴파일 미리보기의 단일 진입점**(WP-6) — preview_component(텍스트 + plan_kind +
@@ -462,7 +470,7 @@ daedalus/
 │   │   │                   #   **게이트(emits_output())가 앞**이라 산출 없는 종류는 이름 게이트도 받지 않는다
 │   │   │                   #   (WP-9 ExternalAgent의 선행 조건 — emitter도 없어 emitter_for가 먼저 돌면 죽는다).
 │   │   ├── hooks.py        #   HooksUnit — hooks.json(MARKET 전용) + 훅 스크립트. **계획 단계에서 1회 렌더해 payload**에 메모.
-│   │   ├── docs.py         #   WorkspaceRuleUnit · GuideUnit ×2(GUIDE_UNITS) · SchemasUnit · ManifestUnit.
+│   │   ├── docs.py         #   WorkspaceRuleUnit · GuideUnit ×2(GUIDE_UNITS) · SchemasUnit · ManifestUnit · McpJsonUnit(WP-BM, 마켓 `.mcp.json`).
 │   │   ├── trees.py        #   SkillFilesUnit(COPY_FILE — 파일 1건 = 행 1개라 경로 충돌 게이트 대상) ·
 │   │   │                   #   FilesTreeUnit(COPY_TREE, exclusive=False).
 │   │   ├── install.py      #   LocalWiringUnit · ClaudeMdUnit — Phase.INSTALL, exclusive=False(사용자 파일 병합).
@@ -567,16 +575,21 @@ daedalus/
 ├── templates/        # 시작 템플릿 시드 파일(A7) — `<id>.json` 3개. **손으로 쓴 JSON이 아니라
 │                     #   serialize_project의 산출(format 2)**이고 model/templates.py가 읽는다.
 │                     #   패키지 데이터라 pyproject의 [tool.setuptools.package-data]에 등재돼 있다.
-├── cli/              # 블랙보드 CLI (WP-RF-2 신설 → WP-BB1 구현) — C+A 설계: uv tool install로 앱과 함께 설치되고,
-│   │                 #   컴파일 산출의 블랙보드 지시가 런타임에 이 CLI를 호출해 work 폴더의 state/를 읽고 쓴다.
+├── mcp_compat.py     # MCP SDK 버전 흡수(FastMCP/MCPServer) 한 곳 — 앱 내장 서버와 블랙보드 서버가 공유.
+│                     #   **모델 무의존**이고 core 스코프 밖이라 cli/의 순수 stdlib 계약을 깨지 않는다(WP-BM).
+├── cli/              # 블랙보드 런타임 (WP-RF-2 신설 → WP-BB1 → WP-BM) — C+A 설계: uv tool install로 앱과
+│   │                 #   함께 설치되고, 컴파일 산출의 `.mcp.json`이 이 실행 파일로 stdio 서버를 띄운다.
 │   │                 #   core 경계 소속 — Qt·view·MCP SDK·uvicorn 금지 + **daedalus.model도 금지**(순수 stdlib).
-│   ├── blackboard.py # daedalus-bb 진입점·인자 계약·스키마·상태 IO (pyproject [project.scripts] 등록 완료).
-│   │                 #   read/init/write/validate/list + 최소 JSON Schema 검증기
-│   │                 #   (type/properties/required/items/uniqueItems) + 원자적 쓰기·낙관적 잠금.
-│   │                 #   상세는 "블랙보드 CLI (WP-BB1)" 개념 섹션 참조.
-│   └── progress.py   # progress read/set — state/__progress__.json (WP-NS/D13). 최상위 키가 플러그인
-│                     #   이름인 **공유 파일**이라 병합을 코드가 보장한다. blackboard의 쓰기·잠금 재사용
-│                     #   (순환 회피로 blackboard 쪽 dispatch만 지역 임포트).
+│   │                 #   종전 argparse CLI(blackboard.py)는 WP-BM에서 폐기. 패키지 이름만 남았다(개명은 backlog).
+│   ├── core.py       # 판정의 실체 — 스키마 로드·최소 JSON Schema 검증기(type/properties/required/items/
+│   │                 #   uniqueItems)·초기 객체·코어션·원자적 쓰기·낙관적 잠금·명령 함수.
+│   │                 #   **출력 채널이 없다**: 값을 돌려주고 실패는 BlackboardError(kind ∈ ERROR_KINDS)다.
+│   ├── progress.py   # 진행 파일(state/__progress__.json, WP-NS/D13) — 같은 규약. 최상위 키가 플러그인
+│   │                 #   이름인 **공유 파일**이라 병합을 코드가 보장한다. 쓰기·잠금은 core 모듈 경유 호출
+│   │                 #   (이름으로 끌어오면 경쟁 재현 봉합선이 둘이 된다).
+│   └── mcp_server.py # 표면 — 도구 7개(TOOLS 선언 표, 핸들러는 tool_ 접두) + stdio 진입
+│                     #   (pyproject [project.scripts] daedalus-bb). 실패는 예외가 아니라 결과다.
+│                     #   상세는 "블랙보드 stdio MCP 서버 (WP-BB1 → WP-BM)" 개념 섹션 참조.
 └── view/             # PySide6 기반 노드 에디터
     ├── recent.py           # 최근 프로젝트 목록(WP-RP) — ~/.daedalus/recent.json 읽기/쓰기 (Qt 무관 순수 stdlib).
     │                       #   load/save/push/remove/clear + MAX_RECENT. 기록 실패는 삼킨다(endpoint.py와 같은 정책).

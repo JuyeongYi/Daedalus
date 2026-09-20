@@ -106,15 +106,18 @@ FSM(Finite State Machine, 유한 상태 기계)은 "지금 어느 단계에 있�
 3. **컴파일** — 스키마 파일(`schemas/<플러그인>.json`)이 나오고, 각 스킬 본문에 "무엇을 읽고 쓰는지"가 적힙니다.
 4. **실행할 때** — 상태는 작업 폴더의 `state/<플러그인>/<클래스>.json`에 저장됩니다.
 
-읽고 쓰기는 `daedalus-bb` 명령이 맡습니다. Daedalus를 설치하면 함께 깔립니다.
+읽고 쓰기는 **MCP 도구**가 맡습니다. 컴파일된 플러그인이 `.mcp.json`으로 작은 서버
+(`bb-<플러그인>`)를 띄우고, 각 스킬·에이전트는 자기가 선언한 reads/writes만큼의 도구를
+프론트매터 권한으로 받습니다. 서버 실행 파일 `daedalus-bb`는 Daedalus를 설치하면 함께 깔립니다.
 
-```bash
-daedalus-bb --schemas <스키마 경로> write Review --append issues="로그인 버튼 누락"
-daedalus-bb --schemas <스키마 경로> read Review --field approved
+```
+mcp__bb-demo__write   cls="Review", append={"issues": "로그인 버튼 누락"}
+mcp__bb-demo__read    cls="Review", field="approved"
 ```
 
-Claude가 JSON을 손으로 만들면 형식을 어기기 쉽습니다. `daedalus-bb`는 쓰기 전에 스키마로 검사하고
+Claude가 JSON을 손으로 만들면 형식을 어기기 쉽습니다. `write` 도구는 쓰기 전에 스키마로 검사하고
 (틀리면 파일을 바꾸지 않습니다), 파일을 한 번에 바꿔 써서 도중에 끊겨도 깨지지 않게 합니다.
+캔버스의 ✏/📖 뱃지가 곧 그 권한이라, 선언하지 않은 단계는 도구 자체를 보지 못합니다.
 
 **언제 쓰나 / 안 쓰나**
 
@@ -153,7 +156,7 @@ Claude가 JSON을 손으로 만들면 형식을 어기기 쉽습니다. `daedalu
 | 파일 | 담는 것 |
 |------|---------|
 | `guides/<플러그인>/workflow.md` | 워크플로 개념 · 진행 기록 · 재개 규칙 · 진입 맥락 읽는 법 · fork 보고 양식 |
-| `guides/<플러그인>/blackboard.md` | 상태 파일 목록 · `daedalus-bb` 사용법 · 읽기-수정-쓰기 규칙 |
+| `guides/<플러그인>/blackboard.md` | 상태 파일 목록 · 블랙보드 도구 사용법 · 오류 종류 · 읽기-수정-쓰기 규칙 |
 
 각 스킬·에이전트 파일에는 프론트매터 바로 아래에 **한 줄짜리 포인터**만 들어갑니다
 ("시작하기 전에 이 파일을 읽어라"). 거기 남는 단락은 그 컴포넌트에만 해당하는

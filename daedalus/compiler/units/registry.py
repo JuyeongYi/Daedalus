@@ -17,6 +17,7 @@ from daedalus.compiler.units.context import CompileContext
 from daedalus.compiler.units.docs import (
     GUIDE_UNITS,
     ManifestUnit,
+    McpJsonUnit,
     SchemasUnit,
     WorkspaceRuleUnit,
 )
@@ -37,6 +38,7 @@ UNITS: tuple[CompileUnit, ...] = (
     *GUIDE_UNITS,
     SchemasUnit(),
     ManifestUnit(),
+    McpJsonUnit(),
     FilesTreeUnit(),
     LocalWiringUnit(),
     ClaudeMdUnit(),

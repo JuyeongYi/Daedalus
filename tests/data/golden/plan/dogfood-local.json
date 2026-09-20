@@ -273,6 +273,7 @@
     "guides/daedalus/workflow.md",
     "guides/daedalus/blackboard.md",
     "schemas/daedalus.json",
+    ".mcp.json",
     ".claude/settings.json",
     ".claude/CLAUDE.md"
   ],

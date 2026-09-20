@@ -16,7 +16,7 @@ dependencies = [
 
 [project.scripts]
 daedalus = "daedalus.__main__:main"
-daedalus-bb = "daedalus.cli.blackboard:main"
+daedalus-bb = "daedalus.cli.mcp_server:main"
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]

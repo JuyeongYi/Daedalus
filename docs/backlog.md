@@ -269,8 +269,8 @@ CC가 그 간극을 재는 도구(`claude plugin eval`)를 내놓았고, Daedalu
 |---|---|---|
 | 에이전트 위임 전이(call_agents 포트) | `tool_used` + `tool: Task` + `input_match`(에이전트 이름) | 조사 결과 "agent 호출 자체는 불가, tool_used regex로 대리 가능" — 서브에이전트 호출 도구의 입력 형상이 공식 미기재라 regex가 스펙 변경에 취약하다. 생성 파일에 fragile 주석을 명시한다 |
 | TransferSkill 수행(A11 — 전이 위의 1:1 중간 상태) | `tool_used` + `tool: Skill` + idiom regex(전이 스킬 이름) | 출발 스킬 지시("follow transition skill X")를 모델이 Skill 인보크가 아니라 본문 인라인 수행으로 따를 수도 있다 — 미인보크가 곧 규약 위반은 아니다 |
-| 블랙보드 reads 선언 | `tool_used` + `tool: Bash` + `input_match`(`daedalus-bb read <Class>`) | 모델이 CLI 대신 Read 도구로 읽어도 규약 위반이 아니다(CLI는 "있으면 우선"이지 강제가 아니다 — WP-BB2 fail-open) |
-| 블랙보드 스키마 적합성 | `tool_used` Bash `daedalus-bb validate` 또는 `trace` 타깃 regex | 그레이더는 셸을 실행하지 못하므로 "validate를 돌렸는가"까지만 — 통과 여부는 trace 로그 형상(공식 미기재)에 의존한다. v1 스켈레톤에서 제외 권고(D7) |
+| 블랙보드 reads 선언 | `tool_used` + `tool: mcp__bb-<플러그인>__read` | WP-BM으로 표면이 MCP 도구가 되면서 `input_match`로 셸 명령을 긁을 필요가 없어졌다 — 도구 이름 자체가 단언 대상이다 |
+| 블랙보드 스키마 적합성 | `tool_used` `mcp__bb-<플러그인>__validate` 또는 `trace` 타깃 regex | "validate를 불렀는가"까지만 — 통과 여부는 trace 로그 형상(공식 미기재)에 의존한다. v1 스켈레톤에서 제외 권고(D7) |
 
 대리 검증은 **기본 생성에 넣되 파일 안에 근거와 한계를 주석으로 남긴다** —
 지우는 것도, 강화하는 것도 사람이 파일을 보고 판단할 수 있어야 한다(원칙 2).
@@ -449,7 +449,7 @@ hold the departing skill after this branch fires.
    타입 이름·idiom regex는 `compiler/evals.py`의 모듈 상수로만 존재하게 한다 —
    스펙이 바뀌면 고칠 곳이 하나다.
 3. **테스트는 네트워크 무접근:** 생성 텍스트의 형상(키 집합·타입 이름)을
-   벤더링 스냅샷 문서와의 문자열 일치로 고정한다 — `daedalus-bb` CLI 지시
+   벤더링 스냅샷 문서와의 문자열 일치로 고정한다 — `daedalus-bb` 도구 지시
    드리프트를 `test_blackboard_section.py`가 파서와의 문자열 일치로 막는 것과
    같은 수법.
 4. **실행 스모크는 후속 범위다.** 이 환경에서 early access 게이트가 닫혀 있어
@@ -470,7 +470,7 @@ hold the departing skill after this branch fires.
 | D4 | 케이스 단위 | ⓐ 갈래당 1케이스 ⓑ 스킬당 1케이스(그레이더 병렬) | **ⓐ** — pass/fail 표가 곧 갈래 커버리지가 되고, 한 프롬프트가 한 갈래만 타면 되므로 시나리오 작성이 성립한다(§4-1) |
 | D5 | 블랙보드 단언의 강도 | ⓐ `file_exists`만 ⓑ + required 필드당 존재 regex ⓒ + `llm` 스키마 적합성 판사 | **ⓑ** — ⓐ는 빈 파일도 통과하고, ⓒ는 결정적 검사를 주관 판사에 맡겨 노이즈만 는다. required 필드 regex는 스키마에서 결정적으로 유도된다. 값의 의미 판정은 사람 소유 `llm` 그레이더 자리로 남긴다(§3-3) |
 | D6 | `scaffold_script`로 진행 파일 시드 | ⓐ 시드(출발 스킬에서 재개) ⓑ 시드 없이 프롬프트가 처음부터 유도 | **ⓐ** — 중간 갈래 케이스가 선행 단계 전체의 재현에 의존하면 비결정·고비용이고, WP-RS 재개 규약을 그대로 쓰는 것이라 별도 발명이 없다. 진입점(첫 배치) 케이스는 시드 없이 생성한다 |
-| D7 | `daedalus-bb validate` 실행 단언 포함 | ⓐ v1 제외 ⓑ `tool_used` Bash 대리 ⓒ trace regex | **ⓐ** — CLI 사용은 강제가 아니라 "있으면 우선"(fail-open)이라 미실행이 규약 위반이 아니고, trace 형상은 공식 미기재다. 스키마 적합성의 결정적 부분은 D5-ⓑ가 담당한다 |
+| D7 | `validate` 호출 단언 포함 | ⓐ v1 제외 ⓑ `tool_used` 대리 ⓒ trace regex | **ⓐ** — 미호출이 그 자체로 규약 위반은 아니고(쓰기 경로가 이미 검증 게이트를 거친다), trace 형상은 공식 미기재다. 스키마 적합성의 결정적 부분은 D5-ⓑ가 담당한다 |
 | D8 | 에이전트 위임 대리 그레이더(`tool_used` Task) 포함 | ⓐ 포함 + fragile 주석 ⓑ 제외(사람이 필요 시 추가) | **ⓐ** — 위임 갈래에 그레이더가 하나도 없으면 케이스가 빈 껍데기가 된다. 주석에 근거·한계를 남겨 사람이 지우거나 강화할 수 있게 한다(§3-2) |
 | D9 | 고아 케이스(그래프에서 사라진 갈래) 처리 | ⓐ auto 파일만 삭제 + 사람 파일 남으면 경고 ⓑ 디렉토리째 삭제 ⓒ 건드리지 않고 경고만 | **ⓐ** — 사람이 쓴 시나리오를 지우는 것은 "내가 쓴 게 사라졌다"(WP-WD와 같은 결)이고, ⓒ는 죽은 auto 그레이더가 스위트를 영구 빨강으로 만든다 |
 
@@ -662,7 +662,7 @@ junction(폴더)·하드링크(파일)는 **무권한이지만 같은 볼륨 전
   6. **MARKETPLACE 빌드는 MCP 서버 정의를 싣지 않는데 경고가 없다** — `missing_mcp_server_def`는 LOCAL 배선에서만 나온다.
   7. ~~**Entry Context가 진행 파일을 직접 읽으라고 지시한다**~~ — **해소(2026-09-17, WP-FK2 C3)**. 도입 5문장이
      한 문장(`Check \`prev\` and the branch in \`note\` …`)으로 줄면서 파일 경로 언급이 사라졌고, 읽는 법은
-     워크플로 가이드 4절이 `daedalus-bb … progress read`로 통일해 말한다.
+     워크플로 가이드 4절이 `progress_read` 도구로 통일해 말한다.
   8. **위생** — 안 쓰는 import: `edge_item.py` Qt, `ref_edge_item.py` QRectF (2026-09-18 pyflakes 실측 — 이 둘뿐이다)
      + `scene.py`의 `Command` 중복 임포트(:31 모듈 수준 ↔ :503 함수 지역 — 지역 쪽이 잉여)
      (재-export 파사드 `emit/__init__`·`deser.py`·`markdown_editor.py`는 의도적).
@@ -817,7 +817,6 @@ Tier 2다. 출발점은 2026-05 조사(ClaudeManager가 만든 plain 셸 스크�
 |------|-----|
 | `view/widgets/markdown/editor.py` | 928 |
 | `view/canvas/scene.py` | 879 |
-| `cli/blackboard.py` | 851 |
 
 `view/app.py`는 761줄로 내려가 목록에서 빠졌고(WP-RF-3e 분해 + 이후 이동),
 `compiler/project_compiler.py`도 371줄이다(WP-5의 `plan.py`/`units/` 분해). 리팩토링이
@@ -886,5 +885,13 @@ Tier 2다. 출발점은 2026-05 조사(ClaudeManager가 만든 plain 셸 스크�
   `tests/view/test_mcp_info_dialog.py::test_copy_button_puts_snippet_on_clipboard`는 다른 프로세스가 Windows 클립보드를
   잡고 있으면 실패한다(코드 변경 없이 재현). 복사할 텍스트를 반환값으로 검증하고 클립보드 쓰기는 얇은 어댑터로
   분리하는 쪽이 낫다.
-- **`daedalus-bb progress` 동시 쓰기 테스트 없음** — 낙관적 잠금을 재사용만 했다.
-  `tests/cli/test_blackboard_concurrency.py`와 같은 모양으로 추가할 가치가 있다.
+- **`daedalus/cli` 패키지 이름** — 이제 그 안에 CLI가 없다(WP-BM에서 argparse 진입점
+  폐기, 표면은 stdio MCP 서버 하나). 개명하려면 `tests/test_import_contracts.py`의
+  스코프 상수와 `pyproject`의 콘솔 스크립트 경로를 함께 옮겨야 한다 — 이동만이라
+  위험은 낮지만 WP-BM 범위 밖이라 남긴다.
+- **도그푸드 프로젝트의 CLI 호출 훅 2개** — `project/daedalus_cc_plugin/`의
+  `validate-on-save`/`guard-blackboard-schema` 훅이 `daedalus-bb <서브커맨드>`를 셸로
+  부른다. 그 실행 파일은 이제 stdio MCP 서버라 그 호출은 동작하지 않는다. **사용자
+  파일이라 WP-BM이 건드리지 않았다** — 훅을 지우거나 다른 수단으로 바꾸는 것은
+  사용자가 정한다(훅에서 MCP 도구를 부를 수단은 없으므로, 필요하면 코어를 부르는
+  작은 스크립트를 따로 두는 쪽이 현실적이다).

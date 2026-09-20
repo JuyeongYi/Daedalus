@@ -59,6 +59,10 @@ WARNING_RULES: frozenset[str] = frozenset({
     "fork_model_overrides_agent",
     # WP-FK2 — 아무 fork 스킬도 부르지 않는 fork 에이전트(산출되지만 미실행).
     "unused_fork_agent",
+    # WP-BM — 블랙보드를 쓰는 fork 스킬의 기반이 외부 fork 에이전트라 도구
+    # 권한을 실을 파일이 없다. 그 에이전트의 tools가 비어 있으면(전부 상속)
+    # 실제로는 보일 수도 있어 에러가 아니라 경고다.
+    "bb_tools_unreachable",
     # WP-M FSM 의미론 경고
     "choice_completeness_missing_else",
     "parallel_join_count",
@@ -102,6 +106,9 @@ WARNING_RULES: frozenset[str] = frozenset({
     # 소관(dangling_file_ref와 동일 정책 — 검증기는 파일시스템 무접근).
     "missing_mcp_server_def",
     "unmergeable_settings_json",
+    # WP-BM — 사용자 정의 MCP 서버가 블랙보드 서버의 규약 이름을 이미 쓴다.
+    # 검사·발급은 컴파일러 소관(units/install.py·units/docs.py).
+    "bb_server_name_taken",
     # WP-WD — .claude/CLAUDE.md 구역 병합 실패(손상된 표식). 파일을 건드리지 않고
     # 경고만 낸다 — 구역의 끝을 추측하면 사용자 내용을 지운다. emit은 컴파일러 소관.
     "unmergeable_claude_md",

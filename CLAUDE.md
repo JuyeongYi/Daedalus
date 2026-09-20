@@ -65,14 +65,14 @@ pytest는 `python -m pytest`로 실행한다 (`pytest` 직접 실행 시 command
 | `plugin-model.md` | 스킬 **6종**·에이전트 4종 표와 클래스 계층, 배치 가능 판정, fork 스킬 2종(sync/async)·fork 에이전트 종류·3-way 전환·마이그레이션·실측, `SKILL_FIELD_MATRIX`/`AGENT_FIELD_MATRIX`/`matrix_for`/`FieldRule`, `FieldType`, 진입 의미론 tri-state + 진입점 프리셋(A8), config 계층 |
 | `fsm-model.md` | CompositeState/Region/조인, FSM+블랙보드 하이브리드, body·Section·EventDef, 입력 포트 퇴역(WP-IP), `PluginProject.graph`(EntryPoint 격하 WP-EP), CompletionEvent, 전략 패턴, 안정 ID + 직렬화·마이그레이션 |
 | `agents.md` | 에이전트 **네 종류**(워크플로/fork/외부 노드/외부 fork, WP-FK2·WP-9·WP-EX), 외부 정본 역할 고정, 내부 FSM 퇴역(WP-AF), 출력 포트, 로컬 스킬 승격, 그래프 유도 호출 계약(WP-CT), 외부 플러그인 카탈로그·클론 캐시, 랩핑 스킬 퇴역(WP-10, 후방 호환 없음) |
-| `blackboard.md` | 최상위 블랙보드·JSON Schema 매핑, 상태 reads/writes 접근 선언(WP-BB), `daedalus-bb` CLI 계약(WP-BB1) |
+| `blackboard.md` | 최상위 블랙보드·JSON Schema 매핑, 상태 reads/writes 접근 선언(WP-BB), `daedalus-bb` stdio MCP 서버 계약(WP-BB1/WP-BM — 도구 7개·오류 kind 3종·CLI 폐기) |
 | `workspace-and-build-target.md` | 빌드 타깃(WP-TG), 작업 폴더 문서 `.claude/CLAUDE.md` 구역·rules `paths:`(WP-WD/A13), 작업 폴더 설정 베이크(WP-WS) |
 | `editor.md` | 본문 부분 접근(WP-BO), 엣지 경유점(WP-ER), 드래그 이동(WP-DM), 본문 undo 스택(WP-BU), 삭제 커맨드(A2), 미저장 변경 확인 |
 | `mcp-server.md` | 앱 내장 MCP 서버 — 전송·스레드·SDK 호환, 도구 영역별 규약, 패리티 원칙 상세 |
 | `hooks.md` | 훅 3단 구조·핸들러 5종·배출 규칙·`enabled`, 라이프사이클 피커(A10), 규격 드리프트 감시(A4), 전역 훅 2단 스코프(A1) |
 | `validation.md` | Validator 구성, 머신 수준·프로젝트 수준 규칙 표, skip_rules |
 | `project-files.md` | 시작 템플릿(A7), 폴더=프로젝트·`.ddpj`(WP-PK), 공용 `files/`(WP-FR), 스킬별 `skill-files/`(WP-SF) |
-| `compiler.md` | 산출 구조(MARKETPLACE/LOCAL/`guides/<플러그인>/`), 컴파일 정책 1~21번(게이트·다음 단계·작업 재개·진입 맥락·LOCAL 설치·dry-run·토큰 리포트·위임·fork 스킬 2종·에이전트 종류별 본문·공통 안내 파일), 산출 언어 |
+| `compiler.md` | 산출 구조(MARKETPLACE/LOCAL/`guides/<플러그인>/`), 컴파일 정책 1~22번(게이트·다음 단계·작업 재개·진입 맥락·LOCAL 설치·dry-run·토큰 리포트·위임·fork 스킬 2종·에이전트 종류별 본문·공통 안내 파일·블랙보드 MCP 서버 배선과 권한 유도), 산출 언어 |
 
 `docs/guide/`는 **사용자 안내서**다(번호 = 읽는 순서: 01 컨셉 · 02 레지스트리 · 03 블랙보드 · 04 로컬 vs 마켓 ·
 05 로컬 전용 기능 · 06 MCP). 설계 정본이 아니므로 기능을 바꾸면 해당 안내서도 같은 커밋에서 맞춘다.

@@ -90,9 +90,12 @@ def test_placed_fork_waits_and_reports_instead_of_next_steps(flavor):
     assert "## Report" in text
     assert "EXIT: <branch> / NEXT:" in text
     assert "`next`" in text  # 갈래 목록은 유지
-    assert "Main conversation: run `daedalus-bb" in text
+    assert "Main conversation: call `mcp__plugin_p_bb-p__progress_set`" in text
     # 보고 블록은 통째로 구체적이다 — 이름과 자리표시자를 섞지 않는다.
-    assert "--completed scout --current <next target> --prev scout" in text
+    assert (
+        '`completed=["scout"]`, `current="<next target>"`, `prev="scout"`'
+        in text
+    )
     assert "<this skill>" not in text
     assert "## Next Steps" not in text
     assert "## Resuming Work" not in text
@@ -111,7 +114,7 @@ def test_placed_terminal_fork_reports_end(flavor):
     fork = _fork(flavor=flavor)
     text = compile_skill(fork, project=_placed(fork, with_next=False))
     assert "EXIT: done / NEXT: (end)" in text
-    assert "--completed scout --current done" in text
+    assert '`completed=["scout"]`, `current="done"`' in text
     assert "<this skill>" not in text
     assert "## Finishing Up" not in text
 
@@ -156,17 +159,15 @@ def test_async_fork_report_gates_progress_on_current(terminal):
     fork = _fork(flavor="async")
     text = compile_skill(fork, project=_placed(fork, with_next=not terminal))
     pre = (
-        "- Main conversation: run `daedalus-bb --schemas ${ROOT}"
-        "/schemas/p.json progress read` first. Only if `current` is still "
-        "`scout` run the progress command below and continue with NEXT; if it "
-        "moved on, do not touch the progress file — report this result to the "
-        "user and stop."
+        "- Main conversation: call `mcp__plugin_p_bb-p__progress_read` first. "
+        "Only if `current` is still `scout` make the progress call below and "
+        "continue with NEXT; if it moved on, do not touch the progress file — "
+        "report this result to the user and stop."
     )
     assert pre in text
     # 선행 조건은 진행 명령 **앞**에 온다(같은 목록의 앞 항목).
     assert text.index(pre) < text.index(
-        "- Main conversation: run `daedalus-bb --schemas ${ROOT}"
-        "/schemas/p.json progress set"
+        "- Main conversation: call `mcp__plugin_p_bb-p__progress_set`"
     )
 
 
@@ -218,13 +219,13 @@ def test_caller_hands_current_to_async_fork():
     caller, project = _caller_of(fork)
     text = compile_skill(caller, project=project)
     assert "Handing off to a background fork (`scout`)" in text
-    assert '--note "awaiting background fork"' in text
+    assert '`note="awaiting background fork"`' in text
     # 일반 진행 명령은 그대로 남는다(비동기 갈래만 규약이 다르다).
-    assert "--completed <this skill> --current <next target>" in text
+    assert '`completed=["<this skill>"]`, `current="<next target>"`' in text
     # 두 명령이 쌓이므로 어느 쪽이 이기는지 말한다(리뷰 지적).
-    assert "For that branch use this instead of the command above:" in text
-    assert text.index("--current <next target>") < text.index(
-        "For that branch use this instead of the command above:"
+    assert "instead of the call above" in text
+    assert text.index('`current="<next target>"`') < text.index(
+        "instead of the call above"
     )
 
 

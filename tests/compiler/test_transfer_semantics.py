@@ -434,9 +434,9 @@ def test_transfer_progress_note_does_not_own_current(scenario):
     project, _alpha, _beta, _agent, validate, _handoff = scenario
     text = compile_skill(validate, project=project)
     section = _section(text, "## Progress Record")
-    assert "progress set --note" in section
-    # 잔여는 명령 1줄이다 — `--current`를 쓰라는 지시가 섞이지 않는다.
-    assert "--current" not in section
+    assert '__progress_set` with `note=' in section
+    # 잔여는 호출 1줄이다 — `current`를 쓰라는 지시가 섞이지 않는다.
+    assert "current=" not in section
     guide = compile_workflow_guide(project)
     assert "not at a position in the workflow" in guide
     assert "leaves `current` as the caller set it" in guide
@@ -448,7 +448,7 @@ def test_caller_and_transfer_instructions_agree(scenario):
     caller = _section(compile_skill(alpha, project=project), "## Next Steps")
     assert "invoke transition skill `validate`" in caller
     # 출발 쪽은 current를 **다음 대상**으로 옮기라고 말한다(T가 아니라).
-    assert "--current <next target>" in caller
+    assert '`current="<next target>"`' in caller
 
 
 def test_reuse_message_carries_the_one_to_one_logic(scenario):

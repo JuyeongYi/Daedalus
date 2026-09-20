@@ -227,6 +227,12 @@
       "plugin_manifest",
       "plugin.json (플러그인 매니페스트)",
       true
+    ],
+    [
+      ".mcp.json",
+      "mcp_json",
+      ".mcp.json (blackboard MCP server)",
+      true
     ]
   ],
   "written": [
@@ -267,7 +273,8 @@
     "guides/daedalus/workflow.md",
     "guides/daedalus/blackboard.md",
     "schemas/daedalus.json",
-    ".claude-plugin/plugin.json"
+    ".claude-plugin/plugin.json",
+    ".mcp.json"
   ],
   "copied_files": [],
   "findings": [

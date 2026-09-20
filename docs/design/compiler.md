@@ -7,7 +7,7 @@
 `resolved_hooks`(A1)는 호출자가 주입하는 이름→HookDef 사전 — 컴파일러는 파일시스템에서 훅을 읽지 않는다("전역 훅 2단 스코프" 섹션 참조).
 `dry_run`(G3)은 파일을 하나도 쓰지 않는 예행 — 컴파일 정책 18번 참조(`out_dir`는 이때만 생략 가능).
 
-## 컴파일 참여자 — `CompileUnit` 12개 (WP-5)
+## 컴파일 참여자 — `CompileUnit` 13개 (WP-5)
 
 **산출 종류 하나 = 단위 하나다.** 종전에는 산출 종류마다 지식이 세 자리에 흩어져 있었다 —
 계획(`plan._plan_outputs`의 한 문단), 쓰기(`project_compiler`의 kind 사다리), 그리고 "이 kind는
@@ -38,15 +38,16 @@ AST로 강제) `emit/guides.py`의 `WORKFLOW_GUIDE_KIND`/`BLACKBOARD_GUIDE_KIND`
 | 6·7 | `GuideUnit` ×2 | `guide_workflow`, `guide_blackboard` | TEXT | WRITE | `guides/<플러그인>/…` | ✔ | CONTEXT(`is_guide`) | ✔ | `workflow_guide_referenced` / `blackboard_guide_referenced` |
 | 8 | `SchemasUnit` | `schemas_json` | TEXT | WRITE | `schemas/<프로젝트>.json` | ✘ | TOTAL_ONLY | ✔ | `compile_schemas_json(...) is not None` |
 | 9 | `ManifestUnit` | `plugin_manifest` | TEXT | WRITE | `.claude-plugin/plugin.json` | ✘ | TOTAL_ONLY | ✔ | MARKETPLACE |
-| 10 | `FilesTreeUnit` | `files_tree` | COPY_TREE | WRITE | `files/` | – | – | **✘** | `files_dir.is_dir()` (`clear_first = not is_local`) |
-| 11 | `LocalWiringUnit` | `local_wiring` | MERGE | **INSTALL** | `.mcp.json` + `.claude/<settings>` | – | – | **✘** | LOCAL |
-| 12 | `ClaudeMdUnit` | `claude_md` | MERGE | **INSTALL** | `.claude/CLAUDE.md` | ✘ | CONTEXT | **✘** | LOCAL |
+| 10 | `McpJsonUnit` | `mcp_json` | TEXT | WRITE | `.mcp.json` | ✘ | TOTAL_ONLY | ✔ | MARKETPLACE ∧ `bb_server_needed(project)` (WP-BM — 정책 22번) |
+| 11 | `FilesTreeUnit` | `files_tree` | COPY_TREE | WRITE | `files/` | – | – | **✘** | `files_dir.is_dir()` (`clear_first = not is_local`) |
+| 12 | `LocalWiringUnit` | `local_wiring` | MERGE | **INSTALL** | `.mcp.json` + `.claude/<settings>` | – | – | **✘** | LOCAL |
+| 13 | `ClaudeMdUnit` | `claude_md` | MERGE | **INSTALL** | `.claude/CLAUDE.md` | ✘ | CONTEXT | **✘** | LOCAL |
 
-**`exclusive`**: 경로 충돌 게이트와 `skipped` 보고의 대상인가. 트리 복사·병합(10~12)은 "경로 하나 =
+**`exclusive`**: 경로 충돌 게이트와 `skipped` 보고의 대상인가. 트리 복사·병합(11~13)은 "경로 하나 =
 산출 하나"라는 계획의 전제를 만족하지 않아 `False`다 — 종전에도 계획 밖이라 검사를 받지 않았고
 `skipped`에도 실리지 않았다(MCP `compile_check` 응답 형상 불변).
 
-**`Phase`가 둘인 이유**: `WRITE`(1~10) 뒤, `INSTALL`(11~12) 앞에 **드라이버가 소유한 진단 스캔
+**`Phase`가 둘인 이유**: `WRITE`(1~11) 뒤, `INSTALL`(12~13) 앞에 **드라이버가 소유한 진단 스캔
 2건**(`dangling_file_ref`/`dangling_skill_file_ref`)이 있다. 파일시스템을 읽는 판정이라 산출이
 아니고, 한 루프로 합치면 경고 순서가 조용히 바뀐다(`tests/compiler/test_plan_order_golden.py`).
 
@@ -181,18 +182,18 @@ AST로 강제) `emit/guides.py`의 `WORKFLOW_GUIDE_KIND`/`BLACKBOARD_GUIDE_KIND`
    올라오기 때문이다. 그래서 계획 수립 전에 라이브러리 쪽에서 판정한다(같은 훅 안의 중복은 `script_files`가 번호로 유일화하므로 대상 아님).
 9. **plugin.json 매니페스트**: `compile_plugin_manifest(project)`가 `project.name`/`description`/`version`으로 `.claude-plugin/plugin.json`을 무조건 생성한다. 키 순서 `name`→`description`(빈 문자열이면 키 생략)→`version`.
 10. **블랙보드 단락 (WP-BB / WP-FK2 C3)**: `_blackboard_section(project, component)`이 "## Shared State (Blackboard)" 단락을 배출한다 — 단계 스킬(fork 2종 포함)의 tool_shelf 단락 뒤·"Next Steps" 앞, 그리고 에이전트 `.md`(워크플로·fork) 본문 마지막.
-    **총론·CLI 사용법·규칙은 여기 없다** — 스킬마다 글자 하나 다르지 않게 반복되던 문장이라 `guides/<플러그인>/blackboard.md`로 뺐다(정책 21번). 여기 남는 것은 이 컴포넌트에만 해당하는 사실뿐이다: "This skill/agent reads: …" / "writes: …" 한두 줄 + 그 접근이 닿는 클래스의 `state/<플러그인>/<Class>.json` 파일 목록(description 병기).
+    **총론·도구 사용법·규칙은 여기 없다** — 스킬마다 글자 하나 다르지 않게 반복되던 문장이라 `guides/<플러그인>/blackboard.md`로 뺐다(정책 21번). 여기 남는 것은 이 컴포넌트에만 해당하는 사실뿐이다: "This skill/agent reads: …" / "writes: …" 한두 줄 + 그 접근이 닿는 클래스의 `state/<플러그인>/<Class>.json` 파일 목록(description 병기).
     **return이 셋이다** — ① 블랙보드 `class_definitions`가 0개 ② 접근 선언(자체 FSM 재귀 + 그래프 placement의 reads/writes) 합집합이 비었다 → **둘 다 단락 자체를 생략**한다(가이드가 이미 전부 말하고 있어 덧붙일 고유 정보가 없다) ③ 본문. 예전의 "합집합이 비면 전 클래스 일반 안내" 폴백은 없어졌다.
     `component`는 **필수 위치 인자**다 — 기본값 None을 남기면 "컴포넌트를 빠뜨린 호출 = 단락이 통째로 사라짐"이 아무 말 없이 성립한다(원칙 5).
-    CLI 명령·옵션 이름이 `daedalus/cli/blackboard.py`의 실제 파서와 일치하는지는 이제 `tests/compiler/test_guides.py`가 문자열 일치로 고정한다(cli는 model/emit을 임포트할 수 없어 상수 공유 대신 테스트로 드리프트를 막는다).
+    도구 이름·인자가 `daedalus/cli/mcp_server.py`의 실제 서버 표면과 일치하는지는 `tests/compiler/test_guides.py`가 `TOOLS` 표와 시그니처로 고정한다.
 11. **`## Requirements` 자동 언급 (WP-TM)**: `_mcp_servers_from_tools(tools)`가 도구 문자열 목록에서 `mcp__<server>__` 접두의 서버 이름 집합을 추출한다(이름순 정렬 — 결정적). 스킬은 `skill.config.allowed_tools`를 스캔해 서버가 있으면(local 여부·project 인수 여부와 무관) `## Next Steps` 단락 앞에 신규 `## Requirements` 단락(`_mcp_requirement_section_skill`)을 배출한다(없으면 단락 생략). 에이전트는 `config.tools`에서 추출한 서버를 기존 SETTINGS `## Requirements` 단락(`_settings_note_agent`, 7번 항목)의 `mcp_servers` 선언과 합쳐 하나의 `MCP servers connected: …` 줄로 병합한다(중복 없음).
-12. **작업 재개 (WP-RS / WP-FK2 C3)** — 저장 단위는 **플러그인 FSM(프로젝트 그래프 배치)의 위치**다(스킬 내부 FSM 상태는 다루지 않음 — 사용자 확정 설계). 규약 파일 `state/__progress__.json` — **최상위 키가 플러그인 이름**이고 그 아래에 항목(`current`/`completed`/`note`/`prev`/`updated`)이 온다(WP-NS/D13. `prev`는 WP-IC에서 추가된 직전 출처 스킬 이름). 파일은 `state/` 루트에 **하나로 남는다** — 블랙보드가 `state/<플러그인>/`로 갈라지는 것과 다른 이유는, 워크스페이스 전체를 한눈에 보는 것이 이 파일의 목적이고 스키마 밖 규약 파일이라 클래스 순회 대상도 아니기 때문이다. **갱신은 `daedalus-bb progress` 서브커맨드가 전담한다** — 공유 파일의 병합을 산문으로 시키면 모델이 한 번만 놓쳐도 남의 진행 기록이 통째로 사라진다.
-    **규약의 산문(파일 구조·옵션 전부·exit 3의 뜻·수동 폴백·`note`에 갈래를 적는 이유·전이 스킬이 `current`를 소유하지 않는다는 규칙)은 워크플로 가이드 2절로 갔다**(정책 21번). 컴포넌트 산출에 남는 것은 **그 컴포넌트의 이름이 들어가는 줄**뿐이다.
-    - **재개 프리앰블**: 프로젝트 그래프에 배치된 `ProceduralSkill`·`DeclarativeSkill`(미배치·에이전트 .md 제외, **fork 2종 제외** — 서브에이전트는 재개 판단을 하지 않는다, 정책 20번)에 한해 `_resume_preamble_section`이 프론트매터·포인터 직후·본문 앞에 "## Resuming Work"를 배출한다. 잔여는 두 문장이다: `Run <cli> read first; this skill is <name>. Follow the resume rules in the workflow guide.` + `If it exits 3 (no entry for this plugin yet), this invocation is the start: <cli> set --current <name>.` **exit 3의 조건절을 잔여에 남긴다** — 조건을 떼고 명령만 남기면 가이드 3절의 일반형("항목이 없으면 지금 불린 스킬이 시작점이다")과 워크플로 중간 스킬의 `--current <나>` 기록이 충돌한다. placement 판정은 "Next Steps"(6-b번)와 같은 `_graph_placements`(skill_ref identity)를 공유한다.
-    - **다음 단계 갱신 규칙**: 배치 스킬의 "## Next Steps" 끝에 `_progress_update_note(project)`가 합류한다 — **명령 1줄**(`set --completed <this skill> --current <next target> --prev <this skill> --note "<branch> — <handoff>"`) + 한 절(`If the branch delegates to an agent, run this twice — see the workflow guide.`). 에이전트 위임 갈래의 2회 갱신 단서를 **잔여에 남기는** 이유: 규칙을 통째로 가이드로 보내면 갈래 줄 바로 아래의 단일 템플릿이 그대로 실행돼 위임 갈래에서 조용히 한 번만 갱신된다.
-    - **비동기 fork 인계 규약**: 그 스킬의 outgoing 갈래가 `AsyncForkSkill`을 가리키면 진행 명령 뒤에 `_async_fork_handoff_note` 1줄이 더 붙는다(`--current <that fork> --note "awaiting background fork"` — 정책 20번의 3단 규약 ①단계).
-    - **터미널 배치**: **placement의 실제 outgoing 전이가 0개**인 배치는 "Next Steps" 대신 `_progress_terminal_section`이 "## Finishing Up"(자신을 `completed`에 추가 + `current`를 `"done"`으로) **명령 1줄**을 배출한다. 판정은 "다음 단계 문구 생성 실패"가 아니다 — outgoing 타깃이 빈 상태(skill_ref=None)뿐이라 문구가 안 나와도 터미널이 아니며 이때는 아무 단락도 배출하지 않는다.
-    - **TransferSkill**: **project에 placement가 1개 이상**일 때 본문 끝에 "## Progress Record" 헤딩 + `_transfer_progress_note(project)` **명령 1줄**(`set --note "<what happened>"`)을 배출한다(진행 파일이 존재하지 않는 프로젝트에서의 고아 지시 방지). "`current`를 소유하지 않는다"는 규약 문장은 가이드 2절이 말한다.
+12. **작업 재개 (WP-RS / WP-FK2 C3)** — 저장 단위는 **플러그인 FSM(프로젝트 그래프 배치)의 위치**다(스킬 내부 FSM 상태는 다루지 않음 — 사용자 확정 설계). 규약 파일 `state/__progress__.json` — **최상위 키가 플러그인 이름**이고 그 아래에 항목(`current`/`completed`/`note`/`prev`/`updated`)이 온다(WP-NS/D13. `prev`는 WP-IC에서 추가된 직전 출처 스킬 이름). 파일은 `state/` 루트에 **하나로 남는다** — 블랙보드가 `state/<플러그인>/`로 갈라지는 것과 다른 이유는, 워크스페이스 전체를 한눈에 보는 것이 이 파일의 목적이고 스키마 밖 규약 파일이라 클래스 순회 대상도 아니기 때문이다. **갱신은 블랙보드 MCP 서버의 `progress_read`/`progress_set` 도구가 전담한다**(WP-BM — 정책 22번) — 공유 파일의 병합을 산문으로 시키면 모델이 한 번만 놓쳐도 남의 진행 기록이 통째로 사라진다.
+    **규약의 산문(파일 구조·인자 전부·오류 kind의 뜻·도구가 없을 때의 지침·`note`에 갈래를 적는 이유·전이 스킬이 `current`를 소유하지 않는다는 규칙)은 워크플로 가이드 2절로 갔다**(정책 21번). 컴포넌트 산출에 남는 것은 **그 컴포넌트의 이름이 들어가는 줄**뿐이다.
+    - **재개 프리앰블**: 프로젝트 그래프에 배치된 `ProceduralSkill`·`DeclarativeSkill`(미배치·에이전트 .md 제외, **fork 2종 제외** — 서브에이전트는 재개 판단을 하지 않는다, 정책 20번)에 한해 `_resume_preamble_section`이 프론트매터·포인터 직후·본문 앞에 "## Resuming Work"를 배출한다. 잔여는 두 문장이다: `Call <progress_read> first; this skill is <name>. Follow the resume rules in the workflow guide.` + `If it comes back with error kind not_found (no entry for this plugin yet), this invocation is the start: call <progress_set> with current="<name>".` **`not_found` 조건절을 잔여에 남긴다** — 조건을 떼고 명령만 남기면 가이드 3절의 일반형("항목이 없으면 지금 불린 스킬이 시작점이다")과 워크플로 중간 스킬의 `--current <나>` 기록이 충돌한다. placement 판정은 "Next Steps"(6-b번)와 같은 `_graph_placements`(skill_ref identity)를 공유한다.
+    - **다음 단계 갱신 규칙**: 배치 스킬의 "## Next Steps" 끝에 `_progress_update_note(project)`가 합류한다 — **호출 1줄**(`call <progress_set> with completed=["<this skill>"], current="<next target>", prev="<this skill>", note="<branch> — <handoff>"`) + 한 절(`If the branch delegates to an agent, call it twice — see the workflow guide.`). 에이전트 위임 갈래의 2회 갱신 단서를 **잔여에 남기는** 이유: 규칙을 통째로 가이드로 보내면 갈래 줄 바로 아래의 단일 템플릿이 그대로 실행돼 위임 갈래에서 조용히 한 번만 갱신된다.
+    - **비동기 fork 인계 규약**: 그 스킬의 outgoing 갈래가 `AsyncForkSkill`을 가리키면 진행 호출 뒤에 `_async_fork_handoff_note` 1줄이 더 붙는다(`current="<that fork>", note="awaiting background fork"` — 정책 20번의 3단 규약 ①단계).
+    - **터미널 배치**: **placement의 실제 outgoing 전이가 0개**인 배치는 "Next Steps" 대신 `_progress_terminal_section`이 "## Finishing Up"(자신을 `completed`에 추가 + `current`를 `"done"`으로) **호출 1줄**을 배출한다. 판정은 "다음 단계 문구 생성 실패"가 아니다 — outgoing 타깃이 빈 상태(skill_ref=None)뿐이라 문구가 안 나와도 터미널이 아니며 이때는 아무 단락도 배출하지 않는다.
+    - **TransferSkill**: **project에 placement가 1개 이상**일 때 본문 끝에 "## Progress Record" 헤딩 + `_transfer_progress_note(project)` **호출 1줄**(`call <progress_set> with note="<what happened>"`)을 배출한다(진행 파일이 존재하지 않는 프로젝트에서의 고아 지시 방지). "`current`를 소유하지 않는다"는 규약 문장은 가이드 2절이 말한다.
     - **SessionStart 훅 합성**: `PluginProject.emit_progress_hook: bool = True`(직렬화 왕복, 구버전 키 부재 시 기본 True)이고 프로젝트 그래프에 placement가 1개 이상이면, `compile_hooks_json`이 `hook_library`를 오염시키지 않고 컴파일 시점에 SessionStart 이벤트에 진행 상태 주입 커맨드(`cat state/__progress__.json 2>/dev/null || true`)를 합성해 합류시킨다(사용자 정의 SessionStart 훅 뒤에 이어붙어 공존). `emit_progress_hook=False`이거나 placement가 0개면 합성 훅 미배출. 토글은 프로젝트 속성 다이얼로그의 "세션 시작 시 진행 상태 자동 주입 (SessionStart 훅)" 체크박스. 합성 커맨드는 POSIX 셸 전제(`cat`/`||`) — 비POSIX 환경에서는 토글로 끄는 것이 대응책(훅 프리셋과 동일한 전제).
 12-a. **종류를 묻는 자리의 술어 (WP-2c)**: 산출 조립의 분기는 **컴포넌트 클래스가 아니라 능력 선언**을 본다 — 컴파일러에
     남은 컴포넌트 대상 `isinstance`는 0이다. 대응표: "산출 파일을 내는가"=`emits_output()`(파사드 `emits_output_file`) ·
@@ -342,7 +343,7 @@ AST로 강제) `emit/guides.py`의 `WORKFLOW_GUIDE_KIND`/`BLACKBOARD_GUIDE_KIND`
       쓰기가 어색하고, 메인에는 SKILL.md가 보이지 않는다. 대신 **보고가 지시가 된다**: 배치된 fork는
       "## Next Steps"/진행 갱신 규칙/"## Finishing Up" 대신 **"## Report"**(`fork_report_section`)를 낸다 —
       갈래 목록(Next Steps와 같은 줄) + 보고 첫 줄 `EXIT: <branch> / NEXT: /<skill>` + 끝에 메인이 실행할
-      `daedalus-bb … progress set …` 명령. 터미널 배치면 `EXIT: done / NEXT: (end)` + `--current done`.
+      `progress_set` 호출. 터미널 배치면 `EXIT: done / NEXT: (end)` + `current="done"`.
       갈래 목록·`EXIT/NEXT` 양식·진행 명령은 **두 종류가 같다**. 도입 문구와 선행 조건만 갈린다.
     - **비동기 fork의 도입 문구는 "메인은 기다리지 않는다"라고 단정하지 않는다**: `background: true`여도
       비대화 `claude -p`/Agent SDK, `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1`, 같은 스킬이 아직 도는 중의 재호출,
@@ -371,7 +372,7 @@ AST로 강제) `emit/guides.py`의 `WORKFLOW_GUIDE_KIND`/`BLACKBOARD_GUIDE_KIND`
     - fork 에이전트 산출은 7-b 항목 참조.
 
 21. **공통 안내 파일 (WP-FK2 C3, `compiler/emit/guides.py` + 대상 판정 `compiler/emit/pointer_rules.py`)**: 워크플로 개념·진행 기록 규약·재개 규칙·진입 맥락
-    읽는 법·fork 보고 양식·블랙보드 CLI 사용법은 스킬마다 **글자 하나 다르지 않은 같은 문장**이었다. 배치된 스킬이
+    읽는 법·fork 보고 양식·블랙보드 도구 사용법은 스킬마다 **글자 하나 다르지 않은 같은 문장**이었다. 배치된 스킬이
     열이면 같은 산문이 열 번 산출되고 그 토큰은 걸릴 때마다 실린다(A12 — 반복은 곧 사용료). 그래서 공통 문장은
     파일 둘로 모으고 각 컴포넌트 산출에는 **포인터 1줄**만 남긴다.
     - **산출 위치**는 두 빌드 타깃 공통으로 `<out>/guides/<플러그인>/workflow.md`·`blackboard.md`다 —
@@ -390,28 +391,28 @@ AST로 강제) `emit/guides.py`의 `WORKFLOW_GUIDE_KIND`/`BLACKBOARD_GUIDE_KIND`
       `emitted_components`로 센다 — 계획 쪽은 `ComponentUnit`이 같은 `emits_output()`을 본다).
     - **workflow.md 5절**: ① 이 워크플로가 도는 방식(스킬 = 단계, 출력 이벤트 = 갈래, 가드, 전이 스킬,
       에이전트 위임, fork sync/async, 선언형·참조·배경 스킬) ② 진행 기록(`state/__progress__.json` 구조,
-      `progress read|set` 옵션 전부, exit 3의 뜻, `note`에 갈래를 적는 이유, 에이전트 위임 시 2회 갱신,
-      전이 스킬은 `current`를 소유하지 않는다, 비동기 fork 인계, 수동 폴백) ③ 재개 규칙(current가 나 / 다른
-      스킬이면 사용자 확인 / **도는 중인 비동기 fork면 확인 대상이 아니다** / exit 3이면 지금 불린 스킬이
-      시작점) ④ 진입 맥락 읽는 법(`prev` + `note`의 갈래, 위임 복귀 시 `prev`) ⑤ fork 보고 양식
-      (`EXIT: <branch> / NEXT: /<skill>` | `NEXT: agent <name>` | `NEXT: (end)` + 끝의 진행 명령).
+      `progress_read`/`progress_set` 인자 전부, `not_found`의 뜻, `note`에 갈래를 적는 이유, 에이전트 위임 시
+      2회 갱신, 전이 스킬은 `current`를 소유하지 않는다, 비동기 fork 인계, **도구가 없을 때의 지침**)
+      ③ 재개 규칙(current가 나 / 다른 스킬이면 사용자 확인 / **도는 중인 비동기 fork면 확인 대상이 아니다**
+      / `not_found`면 지금 불린 스킬이 시작점) ④ 진입 맥락 읽는 법(`prev` + `note`의 갈래, 위임 복귀 시 `prev`) ⑤ fork 보고 양식
+      (`EXIT: <branch> / NEXT: /<skill>` | `NEXT: agent <name>` | `NEXT: (end)` + 끝의 진행 호출).
       **2·3절 앞에 한 문장**이 "이 두 절은 메인 대화 전용이다 — 포크된 서브에이전트라면 진행 기록을 갱신하지도
       사용자에게 묻지도 말라"고 못 박는다. 다만 **읽기는 막지 않는다**: fork 산출에도 "## Entry Context"가
-      나가고 그 지시를 이행할 유일한 수단이 `progress read`라, 읽기까지 금지하면 한 산출이 서로 모순되는 두
+      나가고 그 지시를 이행할 유일한 수단이 `progress_read`라, 읽기까지 금지하면 한 산출이 서로 모순되는 두
       지시를 낸다(원칙 5).
     - **blackboard.md**: 상태 파일 위치(`state/<플러그인>/<Class>.json`)와 전 클래스 목록(description 병기),
-      `daedalus-bb` CLI 사용법(`command -v` 존재 확인 → `read`/`write --set`/`validate`, `--schemas`가 필수이고
-      상태 폴더를 정한다, 설치 명령은 지시하지 않는다), 읽기-수정-쓰기 3줄 규칙.
+      블랙보드 **도구 5종** 사용법(`list`/`read`/`init`/`write`/`validate` — 이름은 유도된 실제 도구 이름을
+      그대로 적는다), **오류 kind 3종**(`not_found`/`usage`/`rejected`)의 뜻, 도구가 없을 때의 지침,
+      읽기-수정-쓰기 3줄 규칙. 설치 명령은 지시하지 않는다(서버는 Daedalus와 함께 깔린다).
     - **가이드 본문에는 `${ROOT}`도 어떤 CC 치환 변수도 쓰지 않는다.** 치환은 **스킬·에이전트 content에서만**
       일어나고(공식 plugins-reference 치환 표 확인 2026-09-17) 가이드는 모델이 Read 도구로 읽는 평범한 파일이라
-      토큰이 리터럴로 보인다. 같은 문서가 "Bash로 실행하는 명령의 환경에도 없다"고 못 박으므로 Bash로도 해소되지
-      않는다. 그래서 경로 자리에는 `<SCHEMAS>` 자리표시자를 쓰고 "너를 보낸 스킬/에이전트 파일에 적힌
-      `--schemas <경로>`를 그대로 쓰라"고 말한다.
-    - **그 대가로, 포인터를 받은 컴포넌트 산출에는 확장되는 실제 경로를 가진 명령이 최소 1줄 남는다.**
-      배치된 단계 스킬은 진행 명령(`_progress_cli`)이 이미 그 역할을 하지만 에이전트 종류들
-      에이전트·미배치 스킬에는 진행 명령이 없다 — 그럴 때 포인터 줄에 `State CLI: \`daedalus-bb --schemas
-      ${ROOT}/schemas/<플러그인>.json …\`` 한 줄을 덧붙인다. 판정은 **조립된 블록에서 직접** 한다(`--schemas
-      ${ROOT}/schemas/` 접두가 이미 있는가) — 컴포넌트 종류로 다시 유도하면 산출과 판정이 언젠가 어긋난다.
+      토큰이 리터럴로 보인다. **WP-BM으로 그것이 문제가 아니게 됐다** — 가이드가 말해야 할 것이 "경로를 낀
+      셸 명령"에서 **도구 이름**으로 바뀌었고 도구 이름에는 경로가 없다. 종전의 `<SCHEMAS>` 자리표시자와
+      "너를 보낸 파일에 적힌 `--schemas <경로>`를 쓰라"는 우회는 통째로 사라졌다.
+    - **포인터 줄에는 `Blackboard tools:` 한 줄이 **무조건** 따라붙는다** — `mcp__…__*` 접두와 서버 이름
+      (`bb-<플러그인>`)을 말한다. 종전 `State CLI:` 줄이 조건부였던 이유(자리표시자를 채울 실제 경로가 그
+      파일에 남아야 한다)는 없어졌고, 대신 **도구가 보이지 않을 때 무엇이 안 떠 있는지** 말할 수 있어야
+      한다는 이유가 남았다(원칙 5).
     - **포인터 위치·대상**: 프론트매터 블록 **직후**(`blocks.insert(1, …)`), 다른 어떤 단락보다 앞.
 
       | 대상 | workflow.md | blackboard.md |
@@ -427,15 +428,60 @@ AST로 강제) `emit/guides.py`의 `WORKFLOW_GUIDE_KIND`/`BLACKBOARD_GUIDE_KIND`
       fork를 일반 포인터 대상에 넣으면 가이드 2·3절이 fork 자신의 "## Report"와 정면으로 충돌한다 — 컴파일러가
       fork에서 "## Resuming Work"를 **일부러** 빼는 근거를 포인터가 도로 들여오는 셈이고, fork 서브에이전트는
       사용자에게 되물을 수도 없다.
-    - **테스트**: `tests/compiler/test_guides.py`(본문·게이트·포인터 대상·CLI 문자열 파서 일치),
-      `test_plugin_namespace.py`(가이드 경로 + 가이드 텍스트에 `${ROOT}`/`${CLAUDE_` 부재 + 블랙보드 포인터를
-      받은 모든 컴포넌트에 확장된 `--schemas` 경로 1회 이상), `test_token_report.py`(두 계획 행이
+    - **테스트**: `tests/compiler/test_guides.py`(본문·게이트·포인터 대상·도구 이름 ↔ 서버 표면 일치),
+      `test_plugin_namespace.py`(가이드 경로 + 가이드 텍스트에 `${ROOT}`/`${CLAUDE_`/`<SCHEMAS>` 부재 +
+      블랙보드 포인터를 받은 모든 컴포넌트가 서버 이름을 말한다), `test_token_report.py`(두 계획 행이
       `TokenKind.CONTEXT`·`is_guide`로 선언되고 별도 항목으로 나타난다), `test_output_language.py`(가이드 픽스처).
+
+22. **블랙보드 MCP 서버 배선과 권한 유도 (WP-BM, `compiler/emit/blackboard_names.py` +
+    `blackboard_tools.py`)**: 블랙보드·진행 기록 조작의 표면은 stdio MCP 서버 하나다
+    (`daedalus/cli/mcp_server.py`). 컴파일러는 그 서버를 **배선**하고, 노드의 reads/writes 선언을
+    **프론트매터 권한**으로 번역한다 — 캔버스의 📖/✏ 뱃지와 산출 권한이 같은 사실을 말한다(원칙 1).
+    - **서버 이름**은 `bb-<플러그인>`이다. 한 작업 폴더에 Daedalus 플러그인이 여럿이면 스키마와 상태
+      폴더가 다르므로 서버도 각각이다(`schemas/<플러그인>.json`과 같은 WP-NS 규약).
+    - **`.mcp.json`은 타깃이 가른다.** MARKETPLACE는 플러그인 루트에 파일을 **새로 낸다**
+      (`units/docs.McpJsonUnit`, 계획 kind `mcp_json`) — `args`는 `["--schemas",
+      "${CLAUDE_PLUGIN_ROOT}/schemas/<플러그인>.json"]`이고 그 치환은 실제로 동작한다(실측 2026-09-20 —
+      `docs/design/blackboard.md`). LOCAL은 컴파일이 곧 설치라 **작업 폴더의** `.mcp.json`에 병합하고
+      (`units/install.LocalWiringUnit` → `wiring.wire_workspace`) 경로는 작업 폴더 상대
+      `schemas/<플러그인>.json`이다. 사용자 정의 MCP 서버(`mcp_server_defs`)는 마켓 빌드의 이 파일에
+      싣지 않는다 — 그것은 "설치한 환경에 이미 있어야 하는 것"이고 에이전트 산출의 `## Requirements`가
+      그렇게 말한다. 우리가 소유한 서버만 우리가 싣는다.
+    - **배선 게이트는 "권한을 받은 파일이 하나라도 나가는가"**(`bb_server_needed`)다. "블랙보드 클래스가
+      있는가"가 아니다 — 진행 기록만 쓰는 워크플로(클래스 0개)도 서버가 필요하고, 클래스만 정의하고
+      아무도 읽고 쓰지 않으면 서버를 띄울 이유가 없다. `.mcp.json`과 프론트매터가 같은 판정을 쓰므로
+      "도구는 선언됐는데 서버가 없다"가 성립하지 않는다.
+    - **도구 이름은 빌드 타깃이 가른다**(실측 2026-09-20, CC 2.1.278). LOCAL은
+      `mcp__bb-<플러그인>__<도구>`, MARKETPLACE는 CC가 플러그인 네임스페이스를 붙여
+      `mcp__plugin_<플러그인>_bb-<플러그인>__<도구>`다. **접두 없는 이름은 존재하지 않는다** — 그것을
+      `tools:`에 적은 프로브는 도구를 하나도 못 봤다. 유도의 단일 진실은 `bb_tool_prefix()`다.
+    - **선언 → 도구**: reads → `read`·`list` / writes → `init`·`write`·`validate` / 진행 기록 → 종류의
+      `ProgressUse` 선언(`emit/section_plan.py`의 절 표)이 `progress_read`·`progress_set` 중 어느 쪽을
+      주는지 가른다. **진행 산문을 내는 표와 권한을 유도하는 표가 같은 표**여야 "명령은 적혀 있는데
+      도구가 없다"가 생기지 않는다. 배치된 절차형·선언형은 `OWNER`(읽기+쓰기), fork 2종은 `READ`
+      (기록은 보고를 받은 메인 몫), 전이 스킬은 `WRITE`(`note`만), 참조 스킬·에이전트 2종은 `NONE`.
+    - **표면별 합류 규칙**: 스킬 `allowed-tools`는 **권한 부여**라 선언된 목록에 합류한다(다른 도구를
+      막지 않는다). 에이전트 `tools`는 **제한 목록**이라 값이 있을 때만 합류한다 — 없으면(= 전부 상속)
+      건드리지 않는다. 없던 목록을 만들면 그 순간 나머지 도구가 전부 막힌다. LOCAL에서는 `mcpServers`
+      프론트매터도 같은 유도(`_mcp_servers_from_tools`)를 타 `bb-<플러그인>`이 자연 합류한다.
+    - **fork의 비대칭**: `context: fork` 스킬의 SKILL.md는 서브에이전트의 도구를 늘리지 못하므로
+      **빈 목록**이고, 권한은 그 **fork 에이전트의 .md**가 대신 진다(`bb_tools_for`가 `fork_skills_using`
+      으로 접근을 물려받는다). 등록된 **외부** fork 에이전트는 산출 파일이 없어 못 진다 — 그 자리를
+      검증 경고 `bb_tools_unreachable`(경고 등급: 그 에이전트의 `tools`가 비어 있으면 실제로는 보일 수도
+      있다)이 말한다.
+    - **이름 충돌**: 사용자 정의 서버가 `bb-<플러그인>`을 이미 쓰면 덮지 않고 경고
+      `bb_server_name_taken`을 낸다(두 정의가 다투면 어느 쪽이 이기든 한쪽이 조용히 사라진다).
+    - **모듈이 둘인 이유**: 이름·`.mcp.json` 값은 리프 `blackboard_names.py`에, 유도는 그 위
+      `blackboard_tools.py`에 있다. 이름은 산문을 만드는 낮은 층(`skill_sections`·`guides`)도 필요로
+      하는데 유도는 절 표(`section_plan`)를 읽어야 해서 그 층보다 위다 — 한 모듈에 두면 순환이 된다
+      (`tests/compiler/test_emit_import_acyclic.py`).
+    - **테스트**: `tests/compiler/test_blackboard_tools.py`(선언 → 도구, 표면별 합류, fork 비대칭,
+      타깃별 이름·`.mcp.json`, 이름 충돌 경고), `tests/cli/test_mcp_server.py`(서버 쪽 1:1 계약).
 
 출력은 결정적(같은 모델 → 같은 텍스트), LF 줄바꿈, UTF-8(BOM 없음). 텍스트 생성(`compile_skill`/`compile_agent`)은 파일시스템과 분리되어 문자열 단위 테스트 가능.
 
 **산출 언어는 영어다 (A12).** 컴파일러가 **생성하는** 텍스트(헤딩·지시문·조건
-문구·FSM 절차 서술·진행 상태 규칙·블랙보드 CLI 지시 …)는 전부 영어이고,
+문구·FSM 절차 서술·진행 상태 규칙·블랙보드 도구 지시 …)는 전부 영어이고,
 **사용자가 입력한 값**(body, description, when_to_use, transfer_on/call_agents
 description, 블랙보드 클래스·필드 설명 …)은 손대지 않고 그대로 나간다 — 한국어
 값이 영어 문장 안에 삽입되는 형태(`— <desc>` 병기)는 정상이다.

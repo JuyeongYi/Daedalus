@@ -6,7 +6,7 @@
   2. 포인터 — 프론트매터 직후 1줄, 대상별로 문구가 다르다(fork는 보고 전용).
   3. 경로 규약 — 가이드에는 치환 변수가 없고(`<SCHEMAS>` 자리표시자), 포인터를
      받은 컴포넌트에는 확장되는 실제 경로가 남는다.
-  4. CLI 문자열이 `daedalus/cli/blackboard.py`의 실제 파서와 일치한다
+  4. 도구 이름·인자가 `daedalus/cli/mcp_server.py`의 실제 서버 표면과 일치한다
      (원래 `test_blackboard_section.py`가 지키던 계약 — 문장이 옮겨 갔으니
      고정도 함께 옮긴다).
   5. 결정적 — 같은 모델 → 같은 텍스트.
@@ -147,7 +147,7 @@ def test_pointer_names_both_guides_when_both_exist():
     text = compile_skill(a, project=project)
     assert (
         f"Before you start, read `{_WF}` (how this workflow runs, progress record, "
-        f"reports) and `{_BB}` (shared state and the daedalus-bb CLI)." in text
+        f"reports) and `{_BB}` (shared state and its tools)." in text
     )
 
 
@@ -269,26 +269,39 @@ def test_guides_have_no_substitution_tokens(kind):
 
 
 @pytest.mark.parametrize("kind", [WORKFLOW_GUIDE_KIND, BLACKBOARD_GUIDE_KIND])
-def test_guides_explain_the_schemas_placeholder(kind):
+def test_guides_name_the_tools_literally(kind):
+    """자리표시자가 없다 (WP-BM) — 도구 이름에는 경로가 없어 우회할 것이 없다.
+
+    종전에는 `<SCHEMAS>` 자리표시자 + "너를 보낸 파일의 `--schemas` 경로를
+    쓰라"는 우회가 있었다. 도구 이름은 치환 변수를 타지 않으므로 가이드가
+    **그대로** 적는다.
+    """
     project, _, _ = _placed_pair(blackboard=_blackboard())
     text = compile_guide(project, kind)
-    assert "<SCHEMAS>" in text
-    assert (
-        "use the `--schemas <path>` value written in the skill or agent file that "
-        "sent you here" in text
-    )
+    assert "<SCHEMAS>" not in text
+    assert "--schemas" not in text
+    assert "mcp__plugin_p_bb-p__" in text
 
 
-def test_placed_skill_keeps_its_progress_command_instead_of_a_state_cli_line():
-    """배치 스킬에는 진행 명령이 이미 확장 경로를 남긴다 — 줄을 더하지 않는다."""
+def test_pointer_line_names_the_server_for_every_pointed_component():
+    """포인터를 받으면 **무조건** 서버·도구 접두 한 줄이 따라온다 (WP-BM).
+
+    종전 `State CLI:` 줄은 "이 산출에 확장되는 스키마 경로가 없을 때만" 붙는
+    조건부였다. 도구 이름에는 경로가 없으므로 그 조건이 사라졌고, 대신 도구가
+    안 보일 때 **무엇이 안 떠 있는지** 말할 수 있도록 서버 이름을 남긴다.
+    """
     project, a, _ = _placed_pair(blackboard=_blackboard())
     text = compile_skill(a, project=project)
     assert "State CLI:" not in text
-    assert "--schemas ${ROOT}/schemas/p.json progress" in text
+    assert "--schemas" not in text
+    assert (
+        "Blackboard tools: `mcp__plugin_p_bb-p__*` (MCP server `bb-p`) — "
+        "the guide lists them." in text
+    )
 
 
 @pytest.mark.parametrize("kind", ["agent", "fork_agent", "unplaced"])
-def test_components_without_a_progress_command_get_a_state_cli_line(kind):
+def test_components_without_a_progress_command_get_a_tools_line(kind):
     project, _, _ = _placed_pair(blackboard=_blackboard())
     if kind == "unplaced":
         comp = make_procedural("idle")
@@ -303,19 +316,14 @@ def test_components_without_a_progress_command_get_a_state_cli_line(kind):
         comp = ForkAgent(name="helper", description="Helper.", body="Work.")
         project.agents.append(comp)
         text = compile_agent(comp, project=project)
-    assert (
-        "State CLI: `daedalus-bb --schemas ${ROOT}/schemas/p.json "
-        "<read|write|validate> ...`" in text
-    )
+    assert "Blackboard tools: `mcp__plugin_p_bb-p__*`" in text
 
 
-def test_state_cli_line_is_emitted_without_a_blackboard_too():
-    """가이드 종류와 무관하게 확장 경로가 남는다.
+def test_tools_line_is_emitted_without_a_blackboard_too():
+    """가이드 종류와 무관하게 서버 이름이 남는다.
 
-    블랙보드 클래스가 없으면 포인터는 워크플로 가이드만 가리키는데, 그 가이드도
-    "너를 보낸 파일에 적힌 `--schemas` 경로를 쓰라"고 말한다 — 경로가 없으면
-    가이드가 거짓을 말한다(원칙 5). 배치 에이전트에는 진행 명령이 없으므로
-    포인터 줄이 그 경로를 지고 간다.
+    블랙보드 클래스가 없어도 진행 기록은 같은 서버가 쥐고 있으므로, 워크플로
+    가이드만 가리키는 컴포넌트도 "어느 서버인가"를 알아야 한다(원칙 5).
     """
     project, _, _ = _placed_pair()
     worker = make_agent("worker")
@@ -323,37 +331,17 @@ def test_state_cli_line_is_emitted_without_a_blackboard_too():
     project.graph.states.append(SimpleState(name="worker", skill_ref=worker))
     text = compile_agent(worker, project=project)
     assert _WF in text
-    assert (
-        "State CLI: `daedalus-bb --schemas ${ROOT}/schemas/p.json "
-        "progress <read|set> ...`" in text
-    )
+    assert "Blackboard tools: `mcp__plugin_p_bb-p__*` (MCP server `bb-p`)" in text
 
 
-def test_body_that_merely_names_the_schema_path_still_gets_a_state_cli_line():
-    """판정은 "경로가 보이는가"가 아니라 "`--schemas <경로>` 명령이 남아 있는가"다.
-
-    사용자 body가 스키마 경로를 언급하기만 해도 줄이 사라지면, 가이드의
-    `<SCHEMAS>` 자리표시자를 채울 명령이 그 파일에 하나도 없게 된다.
-    """
-    project, _, _ = _placed_pair(blackboard=_blackboard())
-    worker = make_agent("worker")
-    worker.body = "See the schema at ${ROOT}/schemas/p.json for field names."
-    project.agents.append(worker)
-    text = compile_agent(worker, project=project)
-    assert (
-        "State CLI: `daedalus-bb --schemas ${ROOT}/schemas/p.json "
-        "<read|write|validate> ...`" in text
-    )
-
-
-def test_a_component_without_a_pointer_gets_no_state_cli_line():
-    """자리표시자를 채울 의무는 포인터를 받은 컴포넌트에만 있다."""
+def test_a_component_without_a_pointer_gets_no_tools_line():
+    """서버를 말할 의무는 포인터를 받은 컴포넌트에만 있다."""
     project, _, _ = _placed_pair()
     idle = make_procedural("idle")
     project.skills.append(idle)
     text = compile_skill(idle, project=project)
     assert "guides/" not in text
-    assert "State CLI:" not in text
+    assert "Blackboard tools:" not in text
 
 
 def test_pointer_targets_are_exactly_the_components_that_get_a_file():
@@ -402,58 +390,45 @@ def test_pointer_path_expands_per_build_target(tmp_path, target, expected):
 # ─────────────────── 4) CLI 문자열 ↔ 실제 파서 ───────────────────
 
 
-def test_blackboard_guide_cli_matches_the_actual_cli_surface():
-    """가이드에 적힌 명령·옵션 이름이 daedalus/cli/blackboard.py 파서와 일치한다."""
-    from daedalus.cli.blackboard import build_parser
+def test_blackboard_guide_names_match_the_actual_server_surface():
+    """가이드에 적힌 도구 이름이 실제 서버의 도구·인자와 일치한다 (WP-BM).
+
+    산문과 서버가 어긋나면 모델이 없는 도구를 부르거나 없는 인자를 넘긴다.
+    """
+    import inspect
+
+    from daedalus.cli.mcp_server import TOOLS
 
     project, _, _ = _placed_pair(blackboard=_blackboard())
     text = compile_blackboard_guide(project)
 
-    parser = build_parser()
-    sub_actions = [
-        action
-        for action in parser._subparsers._group_actions  # type: ignore[union-attr]
-        if hasattr(action, "choices")
-    ]
-    commands = set(sub_actions[0].choices.keys())
-    assert {"read", "write", "validate"} <= commands
+    by_name = dict(TOOLS)
+    assert {"list", "read", "init", "write", "validate"} <= set(by_name)
+    write_args = set(inspect.signature(by_name["write"]).parameters) - {"self"}
+    assert {"cls", "set", "append", "remove"} <= write_args
 
-    write_parser = sub_actions[0].choices["write"]
-    write_option_strings = {
-        s for action in write_parser._actions for s in action.option_strings
-    }
-    assert {"--set", "--append", "--remove"} <= write_option_strings
-
-    assert "daedalus-bb" in text
-    for token in ("read <Class>", "write <Class>", "validate",
-                  "--set", "--append", "--remove"):
+    for name in ("list", "read", "init", "write", "validate"):
+        assert f"mcp__plugin_p_bb-p__{name}`" in text
+    for token in ("`cls`", "`field`", "`set`", "`append`", "`remove`"):
         assert token in text
 
 
-def test_workflow_guide_progress_cli_matches_the_actual_cli_surface():
-    from daedalus.cli.blackboard import build_parser
+def test_workflow_guide_progress_names_match_the_actual_server_surface():
+    import inspect
+
+    from daedalus.cli.mcp_server import TOOLS
 
     project, _, _ = _placed_pair()
     text = compile_workflow_guide(project)
 
-    parser = build_parser()
-    sub_actions = [
-        action
-        for action in parser._subparsers._group_actions  # type: ignore[union-attr]
-        if hasattr(action, "choices")
-    ]
-    progress = sub_actions[0].choices["progress"]
-    progress_subs = [
-        a for a in progress._actions if hasattr(a, "choices") and a.choices
-    ][0].choices
-    assert {"read", "set"} <= set(progress_subs)
-    set_options = {
-        s for action in progress_subs["set"]._actions for s in action.option_strings
-    }
-    assert {"--current", "--completed", "--note", "--prev"} <= set_options
+    by_name = dict(TOOLS)
+    assert {"progress_read", "progress_set"} <= set(by_name)
+    set_args = set(inspect.signature(by_name["progress_set"]).parameters) - {"self"}
+    assert {"current", "completed", "note", "prev"} <= set_args
 
-    for token in ("progress read", "progress set", "--current", "--completed",
-                  "--note", "--prev"):
+    for token in ("mcp__plugin_p_bb-p__progress_read",
+                  "mcp__plugin_p_bb-p__progress_set",
+                  "`current`", "`completed`", "`note`", "`prev`"):
         assert token in text
 
 
@@ -466,12 +441,21 @@ def test_cli_directive_does_not_instruct_package_install():
     assert "ships with Daedalus" in text
 
 
-def test_blackboard_guide_keeps_the_cli_check_before_the_rules():
+def test_blackboard_guide_keeps_the_tool_section_before_the_rules():
     project, _, _ = _placed_pair(blackboard=_blackboard())
     text = compile_blackboard_guide(project)
-    assert text.index("command -v daedalus-bb") < text.index(
+    assert text.index("## Blackboard tools") < text.index(
         "- Always read a state file before changing it"
     )
+
+
+def test_blackboard_guide_explains_the_error_kinds():
+    """오류 kind 셋의 뜻을 가이드가 말한다 — exit code 해석 계층의 대체물이다."""
+    project, _, _ = _placed_pair(blackboard=_blackboard())
+    text = compile_blackboard_guide(project)
+    for kind in ("not_found", "usage", "rejected"):
+        assert f"`{kind}`" in text
+    assert "the file is unchanged" in text
 
 
 # ─────────────────── 5) 본문 계약 (제2부 C3·결정 항목 1 ③) ───────────────────
@@ -521,11 +505,18 @@ def test_workflow_guide_carries_the_report_format_section():
         assert form in text
 
 
-def test_workflow_guide_carries_the_manual_fallback_once():
+def test_workflow_guide_carries_the_missing_tools_fallback_once():
+    """도구가 없을 때의 지침은 **고치지 말고 말하라**다 (WP-BM).
+
+    종전 폴백은 "CLI가 없으면 손으로 고치되 남의 키는 건드리지 말라"였다.
+    손편집이야말로 이 도구들이 막으려던 것이고(공유 파일·스키마 검증), 그
+    지침을 남겨 두면 서버가 안 떠 있을 때마다 모델이 정확히 그 사고를 낸다.
+    """
     project, a, _ = _placed_pair()
     text = compile_workflow_guide(project)
-    assert text.count("edit `state/__progress__.json` by hand") == 1
-    # 컴포넌트 잔여에는 더 이상 없다(반복을 없애는 것이 이 WP의 목적이다).
+    assert text.count("do not edit the state files or the progress file") == 1
+    assert "by hand: they are validated on write" in text
+    # 컴포넌트 잔여에는 없다(반복을 없애는 것이 공통 안내 파일의 목적이다).
     assert "by hand" not in compile_skill(a, project=project)
 
 

@@ -140,7 +140,7 @@ from daedalus.compiler.emit.sections import (
     referenced_mcp_servers,
 )
 from daedalus.compiler.emit.guides import (
-    _PROGRESS_MANUAL_FALLBACK,
+    _TOOLS_MISSING_FALLBACK,
     _insert_guide_pointer,
     blackboard_guide_referenced,
     compile_blackboard_guide,
@@ -159,7 +159,8 @@ from daedalus.compiler.emit.skill import (
     _next_step_condition,
     _next_step_invoke_line,
     _next_steps_section,
-    _progress_cli,
+    _progress_read,
+    _progress_set,
     _progress_terminal_section,
     _progress_update_note,
     _resume_preamble_section,

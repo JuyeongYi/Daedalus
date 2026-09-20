@@ -152,10 +152,26 @@ def _cli_source_files() -> list[Path]:
     return sorted(root.rglob("*.py")) if root.is_dir() else []
 
 
-def test_cli_scope_covers_blackboard_module():
+def test_cli_scope_covers_the_core_and_server_modules():
     """CLI 스캔 대상 고정 — 파일이 빠지면 계약이 조용히 무력화된다."""
     names = {f.relative_to(DAEDALUS_ROOT.parent).as_posix() for f in _cli_source_files()}
-    assert "daedalus/cli/blackboard.py" in names
+    assert "daedalus/cli/core.py" in names
+    assert "daedalus/cli/mcp_server.py" in names
+
+
+def test_blackboard_server_reaches_the_sdk_through_mcp_compat():
+    """블랙보드 표면이 MCP 서버가 돼도 `daedalus/cli/**`는 SDK를 직접 쓰지 않는다.
+
+    WP-BM 스펙은 cli 스코프에 `mcp` 임포트를 허용할 것을 예상했지만, SDK 버전
+    흡수를 `daedalus/mcp_compat.py`(core 스코프 **밖**) 한 곳에 모으면 그럴
+    필요가 없다 — 계약을 느슨하게 하는 대신 의존을 한 파일에 가뒀다. 그
+    파일이 SDK를 실제로 임포트하는지까지 여기서 고정한다(비면 계약이 이름만
+    남는다).
+    """
+    compat = DAEDALUS_ROOT / "mcp_compat.py"
+    assert compat.is_file()
+    assert _scan_file(compat), "mcp_compat이 SDK를 임포트하지 않는다 — 흡수 지점이 비었다"
+    assert compat not in _core_source_files()
 
 
 def test_cli_does_not_import_daedalus_model():

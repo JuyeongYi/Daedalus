@@ -127,6 +127,12 @@
       true
     ],
     [
+      ".mcp.json",
+      "mcp_json",
+      ".mcp.json (blackboard MCP server)",
+      true
+    ],
+    [
       "files",
       "files_tree",
       "files/ (공용 파일 트리)",
@@ -152,7 +158,8 @@
     "guides/golden/workflow.md",
     "guides/golden/blackboard.md",
     "schemas/golden.json",
-    ".claude-plugin/plugin.json"
+    ".claude-plugin/plugin.json",
+    ".mcp.json"
   ],
   "copied_files": [
     "skills/placed-procedural/readme.txt",

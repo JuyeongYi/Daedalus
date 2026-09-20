@@ -63,12 +63,21 @@ from daedalus.model.plugin.hook import HookDef
 
 
 
-def _frontmatter_lines_agent(agent: AgentDefinition, project=None) -> list[str]:
+def _frontmatter_lines_agent(
+    agent: AgentDefinition,
+    project=None,
+    bb_tools: list[str] | tuple[str, ...] = (),
+) -> list[str]:
     """에이전트 프론트매터 줄 목록 (emit==FRONTMATTER 만).
 
     마켓플레이스 빌드에서는 CC가 무시하는 필드(`permissionMode` 등)를 아예 내지
     않는다 — 값이 파일에 남아 있으면 걸린 줄 알지만 실제로는 아무 일도 일어나지
     않기 때문이다(WP-EL). 판정의 단일 진실은 `agent_field_supported`.
+
+    ``bb_tools``(WP-BM): 블랙보드 접근에서 유도된 MCP 도구 이름. 에이전트의
+    ``tools``는 스킬의 `allowed-tools`와 달리 **제한 목록**이라, 값이 없으면
+    (= 전부 상속) 건드리지 않는다 — 없던 목록을 만들면 그 순간 나머지 도구가
+    전부 막힌다. 목록이 이미 있을 때만 합류한다.
     """
     from daedalus.model.plugin.field_matrix import agent_field_supported
 
@@ -98,6 +107,14 @@ def _frontmatter_lines_agent(agent: AgentDefinition, project=None) -> list[str]:
             merged = _agent_skills_list(agent, project)
             if merged:
                 lines.append(_format_kv(key, merged))
+            continue
+        if afield is AgentField.TOOLS and bb_tools:
+            declared = list(getattr(config, "tools", None) or [])
+            if not declared:
+                continue  # 전부 상속 — 목록을 만들면 오히려 막는다
+            lines.append(_format_kv(
+                key, declared + [t for t in bb_tools if t not in declared]
+            ))
             continue
 
         emitted = _emit_agent_field(afield, rule, config, key)
@@ -206,7 +223,10 @@ def _agent_hook_groups(
 
 
 def _local_settings_frontmatter_lines(
-    agent: AgentDefinition, project, resolved_hooks: dict[str, HookDef] | None = None
+    agent: AgentDefinition,
+    project,
+    resolved_hooks: dict[str, HookDef] | None = None,
+    bb_tools: list[str] | tuple[str, ...] = (),
 ) -> list[str]:
     """LOCAL 빌드에서만 나가는 에이전트 프론트매터 줄 — hooks / mcpServers (WP-LA).
 
@@ -224,7 +244,11 @@ def _local_settings_frontmatter_lines(
     if hook_groups:
         lines.append(f"{AgentField.HOOKS.frontmatter_key}:")
         lines.extend(_yaml_block_lines(hook_groups, 2))
-    servers = _agent_mcp_server_names(agent)
+    # 블랙보드 서버도 같은 유도를 탄다(WP-BM) — 도구 이름에서 서버를 뽑는
+    # 규칙이 하나라 `mcpServers`와 `tools`가 다른 말을 할 수 없다.
+    servers = sorted(
+        set(_agent_mcp_server_names(agent)) | set(_mcp_servers_from_tools(bb_tools))
+    )
     if servers:
         # 이름 참조 형태(리스트) — 이미 세션에 설정된 서버를 가리킨다.
         # 인라인 정의는 모델에 서버 설정 자체가 없으므로 지원 범위 밖이다.

@@ -100,11 +100,17 @@ def test_two_projects_do_not_share_any_output_path(tmp_path):
 
 
 @pytest.mark.parametrize("target", [BuildTarget.MARKETPLACE, BuildTarget.LOCAL])
-def test_skill_body_points_at_namespaced_schemas(target):
+def test_skill_body_points_at_the_namespaced_server(target):
+    """WP-BM 이후 산출이 가리키는 것은 경로가 아니라 **서버 이름**이다.
+
+    스키마 경로는 `.mcp.json`의 서버 인자로 옮겨 갔다 — 산출 본문에는 남지
+    않는다. 네임스페이스 계약(WP-NS)은 서버 이름이 진다.
+    """
     project, skill = _project("my-plugin", target)
     text = _skill_text(project, skill)
-    assert "schemas/my-plugin.json" in text
+    assert "bb-my-plugin" in text
     assert "schemas/schemas.json" not in text
+    assert "--schemas" not in text
 
 
 @pytest.mark.parametrize("target", [BuildTarget.MARKETPLACE, BuildTarget.LOCAL])
@@ -146,8 +152,8 @@ def test_agent_body_is_namespaced_too():
     agent.transfer_on = [EventDef(name="done")]
     project.agents.append(agent)
     text = expand_root_token(compile_agent(agent, project=project), project)
-    # 에이전트에는 진행 명령이 없으므로 포인터 줄이 확장된 스키마 경로를 남긴다.
-    assert "schemas/my-plugin.json" in text
+    # 에이전트에도 포인터 줄이 서버 이름을 남긴다.
+    assert "MCP server `bb-my-plugin`" in text
 
 
 # ─────────────────── 공통 안내 파일의 경로 규약 (WP-FK2 C3) ───────────────────
@@ -170,13 +176,17 @@ def test_guides_carry_no_substitution_tokens(kind):
     assert text
     assert "${ROOT}" not in text
     assert "${CLAUDE_" not in text
-    assert "<SCHEMAS>" in text
+    # WP-BM — 자리표시자 자체가 사라졌다(도구 이름에는 경로가 없다).
+    assert "<SCHEMAS>" not in text
+    assert "mcp__plugin_my-plugin_bb-my-plugin__" in text
 
 
-def test_every_blackboard_pointer_target_keeps_an_expanded_schemas_path(tmp_path):
-    """블랙보드 포인터를 받은 산출에는 확장된 `--schemas` 경로가 1회 이상 남는다.
+def test_every_blackboard_pointer_target_names_the_server(tmp_path):
+    """블랙보드 포인터를 받은 산출은 **어느 서버를 쓰는지** 말한다 (WP-BM).
 
-    가이드의 `<SCHEMAS>` 자리표시자를 채울 근거가 그 파일에 있어야 한다.
+    종전에는 확장된 `--schemas` 경로가 그 자리에 있었다(가이드의 `<SCHEMAS>`
+    자리표시자를 채울 근거). 도구 이름에는 경로가 없으므로 남기는 것은 서버
+    이름이다 — 도구가 안 보일 때 무엇이 안 떠 있는지 말할 수 있어야 한다.
     """
     from daedalus.compiler.project_compiler import compile_project
     from daedalus.model.fsm.state import SimpleState
@@ -203,7 +213,11 @@ def test_every_blackboard_pointer_target_keeps_an_expanded_schemas_path(tmp_path
     for rel in ("skills/collect/SKILL.md", "skills/idle/SKILL.md",
                 "agents/worker.md", "agents/base.md"):
         text = (tmp_path / rel).read_text(encoding="utf-8")
-        assert "${CLAUDE_PLUGIN_ROOT}/schemas/my-plugin.json" in text, rel
+        assert "MCP server `bb-my-plugin`" in text, rel
+    # 그 서버는 플러그인 루트의 `.mcp.json`이 실제로 정의한다.
+    mcp = (tmp_path / ".mcp.json").read_text(encoding="utf-8")
+    assert "bb-my-plugin" in mcp
+    assert "${CLAUDE_PLUGIN_ROOT}/schemas/my-plugin.json" in mcp
 
 
 @pytest.mark.parametrize("target", [BuildTarget.MARKETPLACE, BuildTarget.LOCAL])

@@ -91,8 +91,10 @@ def test_no_access_declarations_omits_the_section_entirely():
     assert "## Shared State (Blackboard)" not in text
     assert "This skill reads" not in text
     assert "This skill writes" not in text
-    # 총론·CLI·규칙 문장은 컴포넌트 산출에서 사라졌다.
-    assert "command -v daedalus-bb" not in text
+    # 총론·도구 사용법·규칙 문장은 컴포넌트 산출에서 사라졌다 — 포인터 줄의
+    # "Blackboard tools:" 한 줄만 남는다(어느 서버인지 말하는 자리).
+    assert "## Blackboard tools" not in text
+    assert "`progress_set`" not in text
     assert "Rules:\n- Always read a state file" not in text
 
 
@@ -109,16 +111,21 @@ def test_compile_agent_has_blackboard_section_at_end():
     )
 
 
-def test_no_class_definitions_no_cli_directive():
-    """블랙보드 정의가 없으면 가이드도 포인터도 없다 — CLI 이름이 아예 안 나온다."""
+def test_no_class_definitions_no_tool_directive():
+    """블랙보드 정의가 없으면 가이드도 포인터도 없다 — 도구 이름이 아예 안 나온다."""
     a = make_procedural(name="a")
     project = PluginProject(name="p", skills=[a])
     text = compile_skill(a, project=project)
-    assert "daedalus-bb" not in text
+    assert "bb-p__" not in text
 
 
 def test_only_the_declared_access_changes_the_output():
-    """선언 유무의 차이는 이 단락 하나뿐이다 — 다른 단락으로 새지 않았음을 고정."""
+    """선언의 차이는 두 자리에만 나타난다 — 이 단락과 유도된 도구 권한.
+
+    WP-BM 전에는 단락 하나뿐이었다. 이제 reads 선언이 프론트매터의
+    `allowed-tools`로도 번역되므로(캔버스 📖 뱃지와 산출 권한이 같은 사실을
+    말한다) 두 자리다 — 그 **둘 말고는** 새지 않았음을 고정한다.
+    """
     def _text(declare: bool) -> str:
         a = make_procedural(name="a")
         b = make_procedural(name="b")
@@ -135,10 +142,19 @@ def test_only_the_declared_access_changes_the_output():
         )
         return compile_skill(a, project=project)
 
-    with_decl, without = _text(True), _text(False)
-    start = with_decl.index("## Shared State (Blackboard)")
-    end = with_decl.index("## Next Steps")
-    assert with_decl[:start] + with_decl[end:] == without
+    def _strip(text: str) -> str:
+        """블랙보드 단락과 `allowed-tools` 줄을 뺀 나머지."""
+        lines = [
+            line for line in text.splitlines(keepends=True)
+            if not line.startswith("allowed-tools:")
+        ]
+        rest = "".join(lines)
+        head = "## Shared State (Blackboard)"
+        if head not in rest:
+            return rest
+        return rest[:rest.index(head)] + rest[rest.index("## Next Steps"):]
+
+    assert _strip(_text(True)) == _strip(_text(False))
 
 
 # ─────────────────────── WP-BB Part D-2: 접근 선언 기반 구체화 ───────────────────────

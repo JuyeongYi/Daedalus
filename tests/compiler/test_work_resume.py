@@ -52,18 +52,19 @@ def _placed_terminal():
 
 
 def test_placed_skill_has_resume_preamble_with_name():
-    """잔여는 이름이 들어가는 줄 + exit 3 조건절 — 일반형은 워크플로 가이드(WP-FK2 C3)."""
+    """잔여는 이름이 들어가는 줄 + `not_found` 조건절 — 일반형은 워크플로 가이드(WP-FK2 C3)."""
     project, a, _ = _placed_pair()
     text = compile_skill(a, project=project)
     assert "## Resuming Work" in text
     assert "this skill is `a`" in text
     assert "Follow the resume rules in the workflow guide." in text
-    # exit 3의 조건절은 잔여에 남는다 — 떼면 "여기서 시작하고 기록하라"가
+    # `not_found`의 조건절은 잔여에 남는다 — 떼면 "여기서 시작하고 기록하라"가
     # 가이드의 일반형과 충돌한다.
     assert (
-        "If it exits 3 (no entry for this plugin yet), this invocation is the "
-        "start: `daedalus-bb --schemas ${ROOT}/schemas/p.json progress set "
-        "--current a`." in text
+        "If it comes back with error kind `not_found` (no entry for this plugin "
+        "yet), this invocation is the start: call "
+        '`mcp__plugin_p_bb-p__progress_set` with `current="a"`.'
+        in text
     )
     # 일반 재개 규칙·수동 폴백은 더 이상 스킬마다 반복되지 않는다.
     assert "stop and confirm with the user" not in text
@@ -83,11 +84,11 @@ def test_placed_skill_next_steps_has_progress_update_rule():
     project, a, _ = _placed_pair()
     text = compile_skill(a, project=project)
     assert "## Next Steps" in text
-    assert "progress set --completed <this skill>" in text
+    assert '__progress_set` with `completed=["<this skill>"]`' in text
     assert "## Finishing Up" not in text
     # 갱신 규칙은 "다음 단계" 단락 뒤쪽에 위치한다.
     assert text.index("## Next Steps") < text.index(
-        "progress set --completed <this skill>"
+        '__progress_set` with `completed=["<this skill>"]`'
     )
 
 
@@ -97,7 +98,7 @@ def test_terminal_placement_gets_completion_section_instead_of_next_steps():
     assert "## Resuming Work" in text  # 배치된 ProceduralSkill이므로 프리앰블은 여전히 있음
     assert "## Finishing Up" in text
     assert "## Next Steps" not in text
-    assert "--current done" in text
+    assert '`current="done"`' in text
 
 
 # ── 2) 미배치 스킬 / 에이전트 .md / 로컬 스킬: 단락 부재 ──
@@ -139,7 +140,7 @@ def test_transfer_skill_has_progress_note():
     edge = make_transfer("edge-skill")
     text = compile_skill(edge, project=project)
     assert "## Progress Record" in text
-    assert "progress set --note" in text
+    assert '__progress_set` with `note=' in text
     # transfer는 전이 위의 중간 상태지 워크플로 위치가 아니다 — `current`를
     # 건드리지 말라는 규약은 워크플로 가이드 2절이 말한다(WP-FK2 C3).
     assert "not a position in the workflow" not in text
@@ -313,7 +314,7 @@ def test_placed_declarative_gets_progress_sections():
     )
     text = compile_skill(d, project=project)
     assert "## Resuming Work" in text
-    assert "progress set --completed <this skill>" in text
+    assert '__progress_set` with `completed=["<this skill>"]`' in text
 
 
 def test_update_rule_mentions_two_phase_agent_update():
@@ -322,7 +323,7 @@ def test_update_rule_mentions_two_phase_agent_update():
     text = compile_skill(a, project=project)
     # 잔여에 남는 이유: 갈래 줄 바로 아래의 단일 템플릿이 그대로 실행될 공산이
     # 크다 — 규칙을 통째로 가이드로 보내면 위임 갈래에서 한 번만 갱신된다.
-    assert "If the branch delegates to an agent, run this twice" in text
+    assert "If the branch delegates to an agent, call it twice" in text
 
 
 def test_terminal_section_adds_self_to_completed():
@@ -330,4 +331,4 @@ def test_terminal_section_adds_self_to_completed():
     project, c = _placed_terminal()
     text = compile_skill(c, project=project)
     assert "## Finishing Up" in text
-    assert "progress set --completed <this skill>" in text
+    assert '__progress_set` with `completed=["<this skill>"]`' in text

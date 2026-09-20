@@ -378,7 +378,7 @@ def test_string_rescue_is_scoped_to_declared_dispatch_sources():
     """디스패치 표가 아닌 모듈의 문자열은 아무것도 되살리지 않는다.
 
     범위를 넓히면 이름이 우연히 겹치는 무관한 리터럴이 고아 심볼을 조용히
-    살린다 — 실제 사례: `_MachineRules.validate`는 `cli/blackboard.py`의
+    살린다 — 실제 사례: `_MachineRules.validate`는 종전 CLI의
     `add_parser("validate")`와 `__main__.py`의 `SimpleState(name="validate")`
     때문에 게이트를 통과했었다. 그 심볼이 지금은 **allowlist 사유와 함께**
     잡혀 있어야 한다.

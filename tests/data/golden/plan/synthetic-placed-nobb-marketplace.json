@@ -115,6 +115,12 @@
       true
     ],
     [
+      ".mcp.json",
+      "mcp_json",
+      ".mcp.json (blackboard MCP server)",
+      true
+    ],
+    [
       "files",
       "files_tree",
       "files/ (공용 파일 트리)",
@@ -138,7 +144,8 @@
     "hooks/scripts/ref-only.sh",
     "hooks/scripts/__progress__.sh",
     "guides/golden/workflow.md",
-    ".claude-plugin/plugin.json"
+    ".claude-plugin/plugin.json",
+    ".mcp.json"
   ],
   "copied_files": [
     "skills/placed-procedural/readme.txt",

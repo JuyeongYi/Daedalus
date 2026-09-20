@@ -1,33 +1,32 @@
-# daedalus/cli/blackboard.py
-"""블랙보드 CLI (``daedalus-bb``) — work 폴더의 ``state/`` 파일 읽기/쓰기/검증.
+# daedalus/cli/core.py
+"""블랙보드 코어 — 스키마 검증·코어션·원자적 쓰기·낙관적 잠금 (WP-BM).
 
-컴파일 산출(스킬·에이전트 본문의 블랙보드 지시)이 런타임에 이 CLI를 호출한다.
-소비자가 LLM이므로 **stdout에 나가는 것은 JSON뿐**이고, 진단·안내는 stderr로 나간다.
-성공 경로는 stdout에 JSON 한 덩이를 낸다. 오류 경로(exit 2/3, init·write의 exit 1)는
-stdout에 **아무것도 쓰지 않는다** — ``validate``만 예외로, 검증에 실패해도
-``{"ok": false, "violations": [...]}``를 stdout에 낸다. 즉 stdout을 무조건
-``json.loads``에 먹이지 말고 exit code로 먼저 갈라야 한다.
+**출력 채널이 없다.** 모든 함수는 값을 돌려주고 실패는 :class:`BlackboardError`로
+낸다 — 진단 문장은 예외의 ``message``/``detail``에 담긴다. 진행 상황처럼
+성공 경로에서도 알려야 하는 문장은 호출자가 넘긴 ``on_note`` 콜백으로 나간다.
+그래서 같은 코어를 stdio MCP 서버(:mod:`daedalus.cli.mcp_server`)가 그대로
+재사용한다 — 서버는 예외를 ``{"ok": false, "error": {...}}`` 결과로 옮기기만 한다.
 
-검증의 단일 진실은 **컴파일 산출물 ``schemas/schemas.json`` 파일 자체**다.
-CLI는 설치 대상 프로젝트(플러그인이 깔린 작업 폴더)에서 돌고, 그곳에는
-Daedalus 모델도 프로젝트 파일도 없다 — 있는 것은 산출된 스키마뿐이다.
-그래서 이 모듈은 ``daedalus.model``을 임포트하지 않으며(순수 stdlib),
-검증기는 산출 스키마가 실제로 만들어내는 형상
-(``type``/``properties``/``required``/``items``/``uniqueItems``)만 다루는
-최소 구현이다. 범용 JSON Schema 구현이 아니다.
+검증의 단일 진실은 **컴파일 산출 ``schemas/<플러그인>.json`` 파일 자체**다.
+코어는 플러그인이 설치된 작업 폴더에서 돌고, 그곳에는 Daedalus 모델도 프로젝트
+파일도 없다 — 있는 것은 산출된 스키마뿐이다. 그래서 이 모듈은
+``daedalus.model``을 임포트하지 않으며(순수 stdlib), 검증기는 산출 스키마가
+실제로 만들어내는 형상(``type``/``properties``/``required``/``items``/
+``uniqueItems``)만 다루는 최소 구현이다. 범용 JSON Schema 구현이 아니다.
 
-exit code: 0 성공 / 1 검증 실패 / 2 사용법·스키마·IO 오류 /
-3 대상 상태 파일 없음(``read``, 그리고 클래스를 **명시한** ``validate``).
+오류 kind는 셋이다: ``not_found``(대상 상태 파일 없음) ·
+``usage``(사용법·스키마·IO 오류) · ``rejected``(쓰기가 반영되지 않았다 — 검증
+실패 또는 낙관적 잠금 재시도 소진). 종전 CLI의 exit code 3/2/1과 1:1이었고,
+그 표면이 폐기되면서 **kind가 유일한 어휘**가 됐다(퇴역 개념은 흔적 없이 —
+원칙 7. exit code 상수는 남기지 않는다).
 """
 from __future__ import annotations
 
-import argparse
 import json
 import os
-import sys
 import tempfile
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 #: 상태 파일 트리의 루트. 실제 블랙보드 상태는 `state/<플러그인>/`로 갈라지고
 #: (WP-NS), 진행 파일만 이 루트에 하나로 남는다(D13).
@@ -37,49 +36,85 @@ DEFAULT_STATE_ROOT = "state"
 PROGRESS_FILENAME = "__progress__.json"
 PROGRESS_CLASS = "__progress__"
 
-EXIT_OK = 0
-EXIT_INVALID = 1
-EXIT_USAGE = 2
-EXIT_NO_FILE = 3
+#: 오류 kind — 값이 그대로 MCP 결과의 `error.kind`가 된다.
+KIND_NOT_FOUND = "not_found"
+KIND_USAGE = "usage"
+KIND_REJECTED = "rejected"
+
+#: 실패의 종류는 셋뿐이다 — 새 kind를 더하려면 산출 가이드의 설명도 함께
+#: 늘려야 한다(모델은 이 세 단어로만 분기한다).
+ERROR_KINDS: tuple[str, ...] = (KIND_NOT_FOUND, KIND_USAGE, KIND_REJECTED)
 
 # write의 낙관적 잠금 재시도 횟수. 충돌은 "남이 방금 썼다"는 뜻이므로 다시
 # 읽어 적용하면 대개 한 번에 끝난다 — 무한 재시도는 살아 있는 락 경쟁에서
 # 프로세스가 돌아오지 않게 만들 뿐이라 상한을 둔다.
 _WRITE_MAX_ATTEMPTS = 3
 
+#: 성공 경로의 진단 문장을 받는 콜백. 없으면 문장은 버려진다.
+NoteFn = Callable[[str], None]
 
-class CliError(Exception):
-    """사용자에게 stderr로 알리고 정해진 코드로 끝내는 오류."""
 
-    def __init__(self, message: str, code: int = EXIT_USAGE) -> None:
+class BlackboardError(Exception):
+    """코어가 내는 단 하나의 실패 — kind가 원인의 종류를 말한다.
+
+    ``detail``은 줄 단위로 읽을 부가 정보(검증 위반 목록 등)다. 문자열 한 줄에
+    욱여넣지 않는 이유는 표면이 그것을 배열로 내기 때문이다 — 모델이 위반을
+    하나씩 보고 고칠 수 있어야 한다.
+    """
+
+    def __init__(self, kind: str, message: str, detail: list[str] | None = None) -> None:
+        if kind not in ERROR_KINDS:
+            # 산출 가이드는 kind 셋만 설명한다 — 넷째가 조용히 새면 모델이
+            # 모르는 값을 받고 분기하지 못한다(원칙 5).
+            raise ValueError(
+                f"등록되지 않은 오류 kind: {kind!r} — 등록: {', '.join(ERROR_KINDS)}"
+            )
         super().__init__(message)
+        self.kind = kind
         self.message = message
-        self.code = code
+        self.detail = list(detail) if detail else []
+
+
+def usage_error(message: str, detail: list[str] | None = None) -> BlackboardError:
+    return BlackboardError(KIND_USAGE, message, detail)
+
+
+def not_found_error(message: str) -> BlackboardError:
+    return BlackboardError(KIND_NOT_FOUND, message)
+
+
+def rejected_error(message: str, detail: list[str] | None = None) -> BlackboardError:
+    return BlackboardError(KIND_REJECTED, message, detail)
+
+
+def _emit_note(on_note: NoteFn | None, message: str) -> None:
+    if on_note is not None:
+        on_note(message)
 
 
 # ─────────────────────────── 스키마 로딩·조회 ───────────────────────────
 
 
 def load_schemas(path: Path) -> dict[str, dict]:
-    """schemas.json → {클래스명: 스키마 object}. 형식이 어긋나면 CliError(2)."""
+    """schemas.json → {클래스명: 스키마 object}. 형식이 어긋나면 usage 오류."""
     if not path.is_file():
-        raise CliError(
+        raise usage_error(
             f"스키마 파일이 없다: {path.as_posix()}\n"
             "--schemas 로 경로를 지정하거나 플러그인을 다시 컴파일하라."
         )
     try:
         raw = path.read_text(encoding="utf-8")
     except OSError as exc:  # pragma: no cover - 권한 등 환경 의존
-        raise CliError(f"스키마 파일을 읽을 수 없다: {path.as_posix()}: {exc}") from exc
+        raise usage_error(f"스키마 파일을 읽을 수 없다: {path.as_posix()}: {exc}") from exc
     try:
         data = json.loads(raw)
     except ValueError as exc:
-        raise CliError(f"스키마 JSON 파싱 실패: {path.as_posix()}: {exc}") from exc
+        raise usage_error(f"스키마 JSON 파싱 실패: {path.as_posix()}: {exc}") from exc
     if not isinstance(data, dict):
-        raise CliError(f"스키마 최상위가 JSON 객체가 아니다: {path.as_posix()}")
+        raise usage_error(f"스키마 최상위가 JSON 객체가 아니다: {path.as_posix()}")
     for name, schema in data.items():
         if not isinstance(schema, dict):
-            raise CliError(f"스키마 항목 '{name}'이 JSON 객체가 아니다: {path.as_posix()}")
+            raise usage_error(f"스키마 항목 '{name}'이 JSON 객체가 아니다: {path.as_posix()}")
     return data
 
 
@@ -91,7 +126,7 @@ def class_schema(schemas: dict[str, dict], name: str) -> dict:
     if name in schemas:
         return schemas[name]
     available = ", ".join(_class_names(schemas)) or "(없음)"
-    raise CliError(f"클래스 '{name}'이 스키마에 없다. 가용 클래스: {available}")
+    raise usage_error(f"클래스 '{name}'이 스키마에 없다. 가용 클래스: {available}")
 
 
 def _properties(schema: dict) -> dict[str, dict]:
@@ -113,7 +148,7 @@ def field_schema(schema: dict, cls: str, field: str) -> dict:
     if field in props:
         return props[field]
     available = ", ".join(props) or "(없음)"
-    raise CliError(f"필드 '{field}'가 클래스 '{cls}'에 없다. 가용 필드: {available}")
+    raise usage_error(f"필드 '{field}'가 클래스 '{cls}'에 없다. 가용 필드: {available}")
 
 
 # ─────────────────────────── 타입 형상 ───────────────────────────
@@ -203,7 +238,7 @@ _FALSE_WORDS = ("false", "0", "no", "n", "off")
 
 
 def coerce_scalar(raw: str, prop: dict, where: str) -> Any:
-    """명령줄 문자열 → 스키마 스칼라 타입 값."""
+    """문자열 → 스키마 스칼라 타입 값."""
     declared = _json_type(prop)
     text = raw.strip()
     if declared == "string":
@@ -212,19 +247,19 @@ def coerce_scalar(raw: str, prop: dict, where: str) -> Any:
         try:
             return int(text, 10)
         except ValueError:
-            raise CliError(f"{where}: 정수가 아니다: {raw!r}") from None
+            raise usage_error(f"{where}: 정수가 아니다: {raw!r}") from None
     if declared == "number":
         try:
             return float(text)
         except ValueError:
-            raise CliError(f"{where}: 수가 아니다: {raw!r}") from None
+            raise usage_error(f"{where}: 수가 아니다: {raw!r}") from None
     if declared == "boolean":
         low = text.lower()
         if low in _TRUE_WORDS:
             return True
         if low in _FALSE_WORDS:
             return False
-        raise CliError(
+        raise usage_error(
             f"{where}: 불리언이 아니다: {raw!r} "
             f"(허용: {'/'.join(_TRUE_WORDS)} · {'/'.join(_FALSE_WORDS)})"
         )
@@ -232,9 +267,9 @@ def coerce_scalar(raw: str, prop: dict, where: str) -> Any:
         try:
             value = json.loads(raw)
         except ValueError:
-            raise CliError(f"{where}: JSON 객체가 아니다: {raw!r}") from None
+            raise usage_error(f"{where}: JSON 객체가 아니다: {raw!r}") from None
         if not isinstance(value, dict):
-            raise CliError(f"{where}: JSON 객체가 아니다: {raw!r}")
+            raise usage_error(f"{where}: JSON 객체가 아니다: {raw!r}")
         return value
     if declared == "array":
         return coerce_array(raw, prop, where)
@@ -246,19 +281,37 @@ def coerce_scalar(raw: str, prop: dict, where: str) -> Any:
 
 
 def coerce_array(raw: str, prop: dict, where: str) -> list:
-    """컬렉션 필드의 ``--set`` 값 — JSON 배열 통째. set이면 중복 제거."""
+    """컬렉션 필드의 통째 대입 값 — JSON 배열 문자열. set이면 중복 제거."""
     try:
         value = json.loads(raw)
     except ValueError:
-        raise CliError(
+        raise usage_error(
             f"{where}: 컬렉션 필드의 --set 값은 JSON 배열이어야 한다 "
             f"(예: --set {where.rsplit('.', 1)[-1]}='[\"a\",\"b\"]'): {raw!r}"
         ) from None
     if not isinstance(value, list):
-        raise CliError(f"{where}: 컬렉션 필드의 --set 값은 JSON 배열이어야 한다: {raw!r}")
+        raise usage_error(f"{where}: 컬렉션 필드의 --set 값은 JSON 배열이어야 한다: {raw!r}")
     if _unique_items(prop):
         return _dedupe(value)
     return value
+
+
+def coerce_value(raw: Any, prop: dict, where: str) -> Any:
+    """입력 값 하나 → 스키마 타입 값 (문자열이면 코어션, 아니면 JSON 타입 그대로).
+
+    CLI는 값을 언제나 문자열로 받았지만 MCP 도구는 JSON 타입을 그대로 받는다
+    (``{"count": 3}``). 그래서 판정을 하나로 둔다: **문자열이면** 종전 코어션
+    규칙을 그대로 적용하고, 그 밖의 JSON 값은 손대지 않는다. 손대지 않은
+    값의 타입이 스키마와 어긋나면 쓰기 직전 검증 게이트가 잡는다(원칙 5 —
+    조용히 고치지 않는다).
+
+    예외는 ``string`` 필드다 — 문자열 값은 코어션 대상이 아니라 그대로다.
+    """
+    if isinstance(raw, str):
+        return coerce_scalar(raw, prop, where)
+    if isinstance(raw, list) and _unique_items(prop):
+        return _dedupe(raw)
+    return raw
 
 
 def _dedupe(values: list) -> list:
@@ -339,7 +392,7 @@ def validate_object(obj: Any, schema: dict, cls: str) -> list[str]:
     for name, value in obj.items():
         prop = props.get(name)
         if prop is None:
-            # 스키마 밖 키는 허용(JSON Schema 기본) — CLI로는 들어올 수 없다.
+            # 스키마에 없는 키는 허용(JSON Schema 기본) — 쓰기 경로로는 들어올 수 없다.
             continue
         _check_value(value, prop, f"{cls}.{name}", out)
     return out
@@ -353,17 +406,17 @@ def state_path(state_dir: Path, cls: str) -> Path:
 
 
 def read_state(path: Path) -> Any:
-    """상태 파일 파싱. 없으면 CliError(3), 깨졌으면 CliError(2)."""
+    """상태 파일 파싱. 없으면 not_found, 깨졌으면 usage."""
     if not path.is_file():
-        raise CliError(f"상태 파일이 없다: {path.as_posix()}", EXIT_NO_FILE)
+        raise not_found_error(f"상태 파일이 없다: {path.as_posix()}")
     try:
         raw = path.read_text(encoding="utf-8")
     except OSError as exc:  # pragma: no cover - 권한 등 환경 의존
-        raise CliError(f"상태 파일을 읽을 수 없다: {path.as_posix()}: {exc}") from exc
+        raise usage_error(f"상태 파일을 읽을 수 없다: {path.as_posix()}: {exc}") from exc
     try:
         return json.loads(raw)
     except ValueError as exc:
-        raise CliError(f"상태 파일 JSON 파싱 실패: {path.as_posix()}: {exc}") from exc
+        raise usage_error(f"상태 파일 JSON 파싱 실패: {path.as_posix()}: {exc}") from exc
 
 
 def read_raw(path: Path) -> str | None:
@@ -378,7 +431,7 @@ def read_raw(path: Path) -> str | None:
     except FileNotFoundError:
         return None
     except OSError as exc:  # pragma: no cover - 권한 등 환경 의존
-        raise CliError(f"상태 파일을 읽을 수 없다: {path.as_posix()}: {exc}") from exc
+        raise usage_error(f"상태 파일을 읽을 수 없다: {path.as_posix()}: {exc}") from exc
 
 
 def write_state_checked(path: Path, obj: Any, expected_raw: str | None) -> bool:
@@ -419,22 +472,38 @@ def write_state(path: Path, obj: Any) -> None:
         raise
 
 
-# ─────────────────────────── 출력 ───────────────────────────
+# ─────────────────────────── 경로 유도 ───────────────────────────
 
 
-def _emit(value: Any) -> None:
-    """stdout에 JSON 한 덩이 — 기계 소비자(LLM)를 위한 유일한 출력 채널."""
-    sys.stdout.write(json.dumps(value, ensure_ascii=False, indent=2) + "\n")
+def plugin_name(schemas_path: Path) -> str:
+    """스키마 파일 이름이 곧 플러그인 이름이다 (WP-NS 명명 규약 `schemas/<이름>.json`)."""
+    return schemas_path.stem
 
 
-def _note(message: str) -> None:
-    sys.stderr.write(message + "\n")
+def resolve_state_dir(state_dir: str | None, schemas_path: Path) -> Path:
+    """`--state-dir` 유도 — 명시하지 않으면 `state/<스키마 stem>`.
+
+    인자 **하나**가 스키마와 상태 위치를 모두 결정하게 만드는 장치다(D10). 따로
+    받으면 `--state-dir` 누락이 **조용히** 네임스페이스 밖에 쓰는 사고가 된다 —
+    검증까지 통과하므로 아무도 눈치채지 못한다(`--schemas` 누락은 파일이 없어
+    시끄럽게 실패한다).
+
+    스키마가 절대경로여도(마켓플레이스 빌드의 `${CLAUDE_PLUGIN_ROOT}/…`) **stem만**
+    쓰므로 상태는 항상 작업 폴더 상대로 남는다 — 상태까지 플러그인 디렉토리로
+    따라가면 작업 폴더마다 달라야 할 데이터가 섞인다.
+    """
+    if state_dir:
+        return Path(state_dir)
+    return Path(DEFAULT_STATE_ROOT) / plugin_name(schemas_path)
 
 
 # ─────────────────────────── 명령 ───────────────────────────
 
 
-def _cmd_list(schemas: dict[str, dict], state_dir: Path, schemas_path: Path) -> int:
+def list_classes(
+    schemas: dict[str, dict], state_dir: Path, schemas_path: Path
+) -> dict[str, Any]:
+    """스키마의 클래스·필드 목록."""
     classes: list[dict[str, Any]] = []
     for name, schema in schemas.items():
         props = _properties(schema)
@@ -459,132 +528,136 @@ def _cmd_list(schemas: dict[str, dict], state_dir: Path, schemas_path: Path) -> 
         item["file"] = state_path(state_dir, name).as_posix()
         item["fields"] = fields
         classes.append(item)
-    _emit(
-        {
-            "schemas": schemas_path.as_posix(),
-            "state_dir": state_dir.as_posix(),
-            "classes": classes,
-        }
-    )
-    return EXIT_OK
+    return {
+        "schemas": schemas_path.as_posix(),
+        "state_dir": state_dir.as_posix(),
+        "classes": classes,
+    }
 
 
-def _cmd_read(schemas: dict[str, dict], state_dir: Path, cls: str, field: str | None) -> int:
+def read_value(
+    schemas: dict[str, dict], state_dir: Path, cls: str, field: str | None
+) -> Any:
+    """상태 파일 전체 또는 필드 값. 필드 오타는 파일 유무보다 **먼저** 판정한다."""
     schema = class_schema(schemas, cls)
     if field is not None:
-        field_schema(schema, cls, field)  # 존재 검사 — 없으면 CliError(2)
+        field_schema(schema, cls, field)  # 존재 검사 — 없으면 usage
     obj = read_state(state_path(state_dir, cls))
     if field is None:
-        _emit(obj)
-        return EXIT_OK
+        return obj
     if not isinstance(obj, dict):
-        raise CliError(f"{cls}: 상태 파일 최상위가 JSON 객체가 아니다")
-    _emit(obj.get(field))
-    return EXIT_OK
+        raise usage_error(f"{cls}: 상태 파일 최상위가 JSON 객체가 아니다")
+    return obj.get(field)
 
 
-def _cmd_init(schemas: dict[str, dict], state_dir: Path, cls: str, force: bool) -> int:
+def init_class(
+    schemas: dict[str, dict],
+    state_dir: Path,
+    cls: str,
+    force: bool = False,
+    on_note: NoteFn | None = None,
+) -> dict:
+    """스키마 기반 초기 객체를 만들어 쓴다. 이미 있으면 usage(force면 재생성)."""
     schema = class_schema(schemas, cls)
     path = state_path(state_dir, cls)
     if path.exists() and not force:
-        raise CliError(
-            f"이미 존재한다: {path.as_posix()} (재생성하려면 --force)"
-        )
+        raise usage_error(f"이미 존재한다: {path.as_posix()} (재생성하려면 --force)")
     obj = initial_object(schema)
     violations = validate_object(obj, schema, cls)
     if violations:  # 스키마 자체가 초기 객체를 통과시키지 못하는 경우
-        _report_violations(violations)
-        return EXIT_INVALID
+        raise rejected_error(
+            f"'{cls}'의 초기 객체가 스키마 검증을 통과하지 못해 만들지 않았다.",
+            violations,
+        )
     write_state(path, obj)
-    _note(f"생성: {path.as_posix()}")
-    _emit(obj)
-    return EXIT_OK
-
-
-def _split_assignment(raw: str, option: str) -> tuple[str, str]:
-    if "=" not in raw:
-        raise CliError(f"{option} 값은 FIELD=VALUE 형식이어야 한다: {raw!r}")
-    name, _, value = raw.partition("=")
-    name = name.strip()
-    if not name:
-        raise CliError(f"{option} 값의 필드 이름이 비었다: {raw!r}")
-    return name, value
-
-
-def _apply_operations(
-    obj: dict,
-    schema: dict,
-    cls: str,
-    sets: list[str],
-    appends: list[str],
-    removes: list[str],
-) -> None:
-    """--set → --append → --remove 순으로 제자리 적용."""
-    for raw in sets:
-        name, value = _split_assignment(raw, "--set")
-        prop = field_schema(schema, cls, name)
-        where = f"{cls}.{name}"
-        if _is_collection(prop):
-            obj[name] = coerce_array(value, prop, where)
-        else:
-            obj[name] = coerce_scalar(value, prop, where)
-    for raw in appends:
-        name, value = _split_assignment(raw, "--append")
-        prop = field_schema(schema, cls, name)
-        where = f"{cls}.{name}"
-        _require_collection(prop, where, "--append")
-        current = obj.get(name)
-        if not isinstance(current, list):
-            current = []
-        element = coerce_scalar(value, _items_schema(prop), where)
-        current = list(current) + [element]
-        obj[name] = _dedupe(current) if _unique_items(prop) else current
-    for raw in removes:
-        name, value = _split_assignment(raw, "--remove")
-        prop = field_schema(schema, cls, name)
-        where = f"{cls}.{name}"
-        _require_collection(prop, where, "--remove")
-        current = obj.get(name)
-        if not isinstance(current, list):
-            # 제거는 없는 것을 만들지 않는다 — 키가 없으면 그대로 없고, 리스트가
-            # 아닌 값(스키마 위반)은 손대지 않는다(빈 배열로 덮으면 고장을 조용히
-            # 지운다. 그 위반은 아래 검증 게이트가 잡아 쓰기를 막는다).
-            coerce_scalar(value, _items_schema(prop), where)  # 값 형식은 여전히 검사
-            continue
-        element = coerce_scalar(value, _items_schema(prop), where)
-        # 원소 단위 제거 — 같은 값이 여러 번 있으면 전부 없앤다
-        # ("--remove f=v 이후 v는 f에 없다"가 기대 동작이다).
-        obj[name] = [
-            item
-            for item in current
-            if not (item == element and type(item) is type(element))
-        ]
+    _emit_note(on_note, f"생성: {path.as_posix()}")
+    return obj
 
 
 def _require_collection(prop: dict, where: str, option: str) -> None:
     if not _is_collection(prop):
-        raise CliError(
+        raise usage_error(
             f"{where}: {option}는 컬렉션 필드에만 쓸 수 있다 "
             f"(이 필드는 {_json_type(prop) or 'any'}) — --set 을 쓰라"
         )
 
 
-def _cmd_write(
+def apply_operations(
+    obj: dict,
+    schema: dict,
+    cls: str,
+    sets: dict[str, Any],
+    appends: dict[str, Any],
+    removes: dict[str, Any],
+) -> None:
+    """set → append → remove 순으로 제자리 적용.
+
+    값은 JSON 타입 그대로 받되 문자열이면 코어션 규칙이 돈다(`coerce_value`).
+    `append`의 값이 배열이면 **원소 여럿**을 차례로 덧붙인다 — 스칼라 하나만
+    받으면 "여러 개를 더한다"를 표현할 길이 없어 호출이 반복된다.
+    """
+    for name, raw in sets.items():
+        prop = field_schema(schema, cls, name)
+        where = f"{cls}.{name}"
+        if _is_collection(prop) and isinstance(raw, str):
+            obj[name] = coerce_array(raw, prop, where)
+        else:
+            obj[name] = coerce_value(raw, prop, where)
+    for name, raw in appends.items():
+        prop = field_schema(schema, cls, name)
+        where = f"{cls}.{name}"
+        _require_collection(prop, where, "append")
+        current = obj.get(name)
+        if not isinstance(current, list):
+            current = []
+        items = raw if isinstance(raw, list) else [raw]
+        elements = [coerce_value(item, _items_schema(prop), where) for item in items]
+        current = list(current) + elements
+        obj[name] = _dedupe(current) if _unique_items(prop) else current
+    for name, raw in removes.items():
+        prop = field_schema(schema, cls, name)
+        where = f"{cls}.{name}"
+        _require_collection(prop, where, "remove")
+        items = raw if isinstance(raw, list) else [raw]
+        elements = [coerce_value(item, _items_schema(prop), where) for item in items]
+        current = obj.get(name)
+        if not isinstance(current, list):
+            # 제거는 없는 것을 만들지 않는다 — 키가 없으면 그대로 없고, 리스트가
+            # 아닌 값(스키마 위반)은 손대지 않는다(빈 배열로 덮으면 고장을 조용히
+            # 지운다. 그 위반은 아래 검증 게이트가 잡아 쓰기를 막는다).
+            continue
+        # 원소 단위 제거 — 같은 값이 여러 번 있으면 전부 없앤다
+        # ("remove f=v 이후 v는 f에 없다"가 기대 동작이다).
+        obj[name] = [
+            item
+            for item in current
+            if not any(item == e and type(item) is type(e) for e in elements)
+        ]
+
+
+def write_class(
     schemas: dict[str, dict],
     state_dir: Path,
     cls: str,
-    sets: list[str],
-    appends: list[str],
-    removes: list[str],
-) -> int:
+    sets: dict[str, Any] | None = None,
+    appends: dict[str, Any] | None = None,
+    removes: dict[str, Any] | None = None,
+    on_note: NoteFn | None = None,
+) -> dict:
+    """읽기-수정-쓰기 (검증 통과 시에만 기록). 쓴 뒤의 객체를 돌려준다.
+
+    낙관적 잠금 + 재시도. 남이 그 사이에 썼으면 **다시 읽어 수정을 새 내용
+    위에 다시 적용한다** — 병합할 수 없는 충돌이 아니라 잃어버린 갱신을 막는
+    것이 목적이므로, 되풀이하면 두 쓰기가 모두 살아남는다.
+    """
     schema = class_schema(schemas, cls)
+    sets = sets or {}
+    appends = appends or {}
+    removes = removes or {}
     if not (sets or appends or removes):
-        raise CliError("--set / --append / --remove 중 최소 하나가 필요하다")
+        raise usage_error("set / append / remove 중 최소 하나가 필요하다")
     path = state_path(state_dir, cls)
 
-    # 낙관적 잠금 + 재시도. 남이 그 사이에 썼으면 **다시 읽어 수정을 새
-    # 내용 위에 다시 적용한다** — 병합할 수 없는 충돌이 아니라 잃어버린 갱신을
-    # 막는 것이 목적이므로, 되풀이하면 두 쓰기가 모두 살아남는다.
     for attempt in range(1, _WRITE_MAX_ATTEMPTS + 1):
         expected_raw = read_raw(path)
         if expected_raw is None:
@@ -592,51 +665,51 @@ def _cmd_write(
         else:
             obj = read_state(path)
             if not isinstance(obj, dict):
-                raise CliError(
+                raise usage_error(
                     f"{cls}: 상태 파일 최상위가 JSON 객체가 아니다: {path.as_posix()}"
                 )
             obj = dict(obj)
-        _apply_operations(obj, schema, cls, sets, appends, removes)
+        apply_operations(obj, schema, cls, sets, appends, removes)
         violations = validate_object(obj, schema, cls)
         if violations:
-            _report_violations(violations)
-            _note(f"쓰지 않았다 — {path.as_posix()}는 그대로다.")
-            return EXIT_INVALID
+            raise rejected_error(
+                f"쓰지 않았다 — {path.as_posix()}는 그대로다.", violations
+            )
         if write_state_checked(path, obj, expected_raw):
-            _emit(obj)
-            return EXIT_OK
-        _note(
+            return obj
+        _emit_note(
+            on_note,
             f"{path.as_posix()}가 읽은 뒤에 바뀌었다 — 다시 읽어 적용한다 "
-            f"({attempt}/{_WRITE_MAX_ATTEMPTS})."
+            f"({attempt}/{_WRITE_MAX_ATTEMPTS}).",
         )
 
-    _note(
+    raise rejected_error(
         f"쓰지 않았다 — {path.as_posix()}를 {_WRITE_MAX_ATTEMPTS}번 시도하는 동안 "
         f"다른 프로세스가 계속 고쳤다. 동시 쓰기를 줄이거나 잠시 뒤 다시 시도하라."
     )
-    return EXIT_INVALID
 
 
-def _report_violations(violations: list[str]) -> None:
-    _note("검증 실패:")
-    for line in violations:
-        _note(f"  - {line}")
+def validate_classes(
+    schemas: dict[str, dict],
+    state_dir: Path,
+    names: list[str] | None = None,
+    on_note: NoteFn | None = None,
+) -> dict[str, Any]:
+    """상태 파일 검증 — 위반이 있어도 **결과로** 돌려준다(예외가 아니다).
 
-
-def _cmd_validate(schemas: dict[str, dict], state_dir: Path, names: list[str]) -> int:
-    """상태 파일 검증.
-
-    이름을 생략한 전 클래스 순회에서 상태 파일 부재는 고장이 아니다(아직
-    초기화되지 않았을 뿐) — ``missing``으로 보고하고 exit 0. 반면 **이름을
-    명시한** 호출에서 그 파일이 없으면 exit 3(``read``와 같은 뜻)이다. 물어본
-    대상이 없다는 것 자체가 대답이고, exit code만 보는 호출자가 "검사했고
-    정상"으로 오해하면 안 된다. 위반이 있으면 그쪽이 우선(exit 1).
+    ``ok``는 **"물어본 것이 전부 있고 전부 유효한가"**다. 그래서 두 가지가
+    거짓으로 만든다: ① 위반이 하나라도 있다 ② **이름을 명시한** 호출에서 그
+    파일이 없다. ②가 참인 이유는 물어본 대상이 없다는 것 자체가 대답이기
+    때문이다 — 결과만 훑는 호출자가 "검사했고 정상"으로 오해하면 안 된다
+    (종전 CLI의 exit 3과 같은 판정이다). 반면 이름을 생략한 전 클래스 순회에서
+    부재는 고장이 아니다(아직 초기화되지 않았을 뿐) — ``missing``으로만 보고한다.
     """
+    names = list(names or [])
     if names:
         for name in names:
             class_schema(schemas, name)  # 존재 검사
             if name == PROGRESS_CLASS:
-                raise CliError(
+                raise usage_error(
                     f"'{PROGRESS_CLASS}'는 스키마 밖 규약 파일이라 검증 대상이 아니다"
                 )
         targets = list(names)
@@ -654,198 +727,24 @@ def _cmd_validate(schemas: dict[str, dict], state_dir: Path, names: list[str]) -
             continue
         try:
             obj = read_state(path)
-        except CliError as exc:
+        except BlackboardError as exc:
             violations.append(f"{name}: {exc.message}")
             checked.append(name)
             continue
         checked.append(name)
         violations.extend(validate_object(obj, schemas[name], name))
 
-    result = {
-        "ok": not violations,
+    if missing:
+        _emit_note(on_note, "상태 파일 없음(검증 생략): " + ", ".join(missing))
+        if names:
+            _emit_note(
+                on_note,
+                "지정한 클래스의 상태 파일이 없다 — 먼저 "
+                f"init {missing[0]} 로 만들라.",
+            )
+    return {
+        "ok": not violations and not (names and missing),
         "checked": checked,
         "missing": missing,
         "violations": violations,
     }
-    if violations:
-        _report_violations(violations)
-    if missing:
-        _note("상태 파일 없음(검증 생략): " + ", ".join(missing))
-        if names:
-            _note(
-                "지정한 클래스의 상태 파일이 없다 — 먼저 "
-                f"'daedalus-bb init {missing[0]}' 로 만들라."
-            )
-    _emit(result)
-    if violations:
-        return EXIT_INVALID
-    if names and missing:
-        return EXIT_NO_FILE
-    return EXIT_OK
-
-
-# ─────────────────────────── 진입점 ───────────────────────────
-
-
-def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        prog="daedalus-bb",
-        description="Daedalus 블랙보드 상태 파일(state/) 읽기·쓰기·검증 CLI.",
-    )
-    parser.add_argument(
-        "--state-dir",
-        default=None,
-        metavar="DIR",
-        help=(
-            f"상태 파일 폴더 "
-            f"(기본: {DEFAULT_STATE_ROOT}/<--schemas 파일 이름>)"
-        ),
-    )
-    # 필수다. 기본값을 두면 빠뜨렸을 때 "그 파일이 없다"고만 답해 **무엇이 빠졌는지**
-    # 말해 주지 않는다 (WP-NS/D10).
-    parser.add_argument(
-        "--schemas",
-        required=True,
-        metavar="PATH",
-        help="블랙보드 스키마 파일 (필수) — 예: schemas/<플러그인>.json",
-    )
-    sub = parser.add_subparsers(dest="command", metavar="<command>", required=True)
-
-    read_p = sub.add_parser("read", help="상태 파일 전체 또는 필드 값 출력")
-    read_p.add_argument("cls", metavar="Class")
-    read_p.add_argument("--field", metavar="NAME", default=None)
-
-    init_p = sub.add_parser("init", help="스키마 기반 초기 객체 생성")
-    init_p.add_argument("cls", metavar="Class")
-    init_p.add_argument("--force", action="store_true", help="이미 있어도 재생성")
-
-    write_p = sub.add_parser("write", help="읽기-수정-쓰기 (검증 통과 시에만 기록)")
-    write_p.add_argument("cls", metavar="Class")
-    write_p.add_argument(
-        "--set", dest="sets", action="append", default=[], metavar="FIELD=VALUE"
-    )
-    write_p.add_argument(
-        "--append", dest="appends", action="append", default=[], metavar="FIELD=VALUE"
-    )
-    write_p.add_argument(
-        "--remove", dest="removes", action="append", default=[], metavar="FIELD=VALUE"
-    )
-
-    validate_p = sub.add_parser("validate", help="상태 파일 검증 (생략 시 전 클래스)")
-    validate_p.add_argument("classes", nargs="*", metavar="Class")
-
-    sub.add_parser("list", help="스키마의 클래스·필드 목록")
-
-    progress_p = sub.add_parser("progress", help="진행 상태 파일 읽기·갱신")
-    progress_sub = progress_p.add_subparsers(
-        dest="progress_command", metavar="<subcommand>", required=True
-    )
-    progress_sub.add_parser("read", help="이 플러그인의 진행 항목 출력")
-    progress_set = progress_sub.add_parser("set", help="이 플러그인의 진행 항목 갱신")
-    progress_set.add_argument("--current", metavar="SKILL", default=None)
-    progress_set.add_argument(
-        "--completed", action="append", default=[], metavar="SKILL"
-    )
-    progress_set.add_argument("--note", metavar="TEXT", default=None)
-    progress_set.add_argument("--prev", metavar="SKILL", default=None)
-    return parser
-
-
-def _plugin_name(schemas_path: Path) -> str:
-    """스키마 파일 이름이 곧 플러그인 이름이다 (WP-NS 명명 규약 `schemas/<이름>.json`)."""
-    return schemas_path.stem
-
-
-def _resolve_state_dir(args: argparse.Namespace, schemas_path: Path) -> Path:
-    """`--state-dir` 유도 — 명시하지 않으면 `state/<스키마 stem>`.
-
-    인자 **하나**가 스키마와 상태 위치를 모두 결정하게 만드는 장치다(D10). 따로
-    받으면 `--state-dir` 누락이 **조용히** 네임스페이스 밖에 쓰는 사고가 된다 —
-    검증까지 통과하므로 아무도 눈치채지 못한다(`--schemas` 누락은 파일이 없어
-    시끄럽게 실패한다).
-
-    스키마가 절대경로여도(마켓플레이스 빌드의 `${CLAUDE_PLUGIN_ROOT}/…`) **stem만**
-    쓰므로 상태는 항상 작업 폴더 상대로 남는다 — 상태까지 플러그인 디렉토리로
-    따라가면 작업 폴더마다 달라야 할 데이터가 섞인다.
-    """
-    if args.state_dir:
-        return Path(args.state_dir)
-    return Path(DEFAULT_STATE_ROOT) / _plugin_name(schemas_path)
-
-
-def _dispatch(args: argparse.Namespace) -> int:
-    schemas_path = Path(args.schemas)
-    state_dir = _resolve_state_dir(args, schemas_path)
-
-    if args.command == "progress":
-        # 지역 임포트 — progress 모듈이 이 모듈의 원자적 쓰기·잠금 헬퍼를 쓰므로
-        # 최상단에서 부르면 순환 임포트가 된다.
-        from daedalus.cli import progress as progress_mod
-
-        plugin = _plugin_name(schemas_path)
-        if args.progress_command == "read":
-            return progress_mod.cmd_read(state_dir, plugin)
-        return progress_mod.cmd_set(
-            state_dir,
-            plugin,
-            current=args.current,
-            completed=list(args.completed),
-            note=args.note,
-            prev=args.prev,
-        )
-
-    schemas = load_schemas(schemas_path)
-
-    if args.command == "list":
-        return _cmd_list(schemas, state_dir, schemas_path)
-    if args.command == "read":
-        return _cmd_read(schemas, state_dir, args.cls, args.field)
-    if args.command == "init":
-        return _cmd_init(schemas, state_dir, args.cls, args.force)
-    if args.command == "write":
-        return _cmd_write(
-            schemas, state_dir, args.cls, args.sets, args.appends, args.removes
-        )
-    if args.command == "validate":
-        return _cmd_validate(schemas, state_dir, args.classes)
-    raise CliError(f"알 수 없는 명령: {args.command}")  # pragma: no cover
-
-
-def _force_utf8_streams() -> None:
-    """stdout/stderr를 UTF-8로 고정한다.
-
-    Windows에서 파이프로 넘길 때 Python은 로케일 인코딩(cp949 등)을 쓰는데,
-    이 CLI의 출력을 읽는 쪽(CC/LLM)은 UTF-8로 읽는다 — 그대로 두면 한국어
-    진단 메시지가 깨진 바이트로 전달된다. 테스트의 capsys처럼 reconfigure를
-    갖지 않는 스트림도 있으므로 조용히 넘어간다.
-    """
-    for stream in (sys.stdout, sys.stderr):
-        reconfigure = getattr(stream, "reconfigure", None)
-        if reconfigure is None:
-            continue
-        try:
-            reconfigure(encoding="utf-8")
-        except (ValueError, OSError):  # pragma: no cover - 환경 의존
-            pass
-
-
-def main(argv: list[str] | None = None) -> int:
-    """``daedalus-bb`` 진입점 — 반환값이 그대로 exit code."""
-    _force_utf8_streams()
-    parser = build_parser()
-    try:
-        args = parser.parse_args(argv)
-    except SystemExit as exc:  # argparse의 --help(0) / 사용법 오류(2)
-        return int(exc.code or 0)
-    try:
-        return _dispatch(args)
-    except CliError as exc:
-        _note(exc.message)
-        return exc.code
-    except OSError as exc:
-        _note(f"입출력 오류: {exc}")
-        return EXIT_USAGE
-
-
-if __name__ == "__main__":  # pragma: no cover
-    sys.exit(main())

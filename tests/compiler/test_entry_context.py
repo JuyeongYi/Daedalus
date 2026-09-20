@@ -221,7 +221,7 @@ def test_entry_context_agent_source_phrase():
 
 def test_progress_update_note_mentions_prev():
     note = _progress_update_note(PluginProject(name="p"))
-    assert "--prev <this skill>" in note
+    assert '`prev="<this skill>"`' in note
 
 
 def test_resume_preamble_json_example_includes_prev():
@@ -235,7 +235,7 @@ def test_resume_preamble_json_example_includes_prev():
         Transition(source=sa, target=sb, trigger=CompletionEvent(name="done"))
     )
     text = compile_skill(a, project=project)
-    assert "--prev <this skill>" in text
+    assert '`prev="<this skill>"`' in text
 
 
 # ── 5) 호출 계약 — 그래프에서만 유도 (WP-CT — 수동 카드 개념 없음) ──
