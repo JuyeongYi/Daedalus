@@ -17,6 +17,7 @@ from typing import Any, Callable
 from daedalus.mcp import endpoint
 from daedalus.mcp.invoker import MainThreadInvoker
 from daedalus.mcp.tools import DaedalusTools
+from daedalus.mcp_compat import server_factory
 
 TOOL_NAMES = (
     # 읽기 — 사람이 지금 무엇을 보고 있는지까지 포함한다
@@ -189,22 +190,9 @@ class DaedalusMCPService:
 
         return caller
 
-    @staticmethod
-    def _server_factory() -> Any:
-        """SDK 버전에 맞는 서버 클래스를 고른다.
-
-        mcp 2.0에서 ``FastMCP``가 ``MCPServer``로 대체됐다. 두 클래스는 여기서
-        쓰는 표면(``name``/``instructions`` 생성자 인자, ``add_tool``,
-        ``streamable_http_app``)이 동일하므로 클래스만 갈아끼우면 된다.
-        """
-        try:
-            from mcp.server import MCPServer  # mcp >= 2.0
-
-            return MCPServer
-        except ImportError:
-            from mcp.server.fastmcp import FastMCP  # mcp 1.x
-
-            return FastMCP
+    #: SDK 버전 흡수의 실체는 `daedalus.mcp_compat` 하나다 (WP-BM) — 블랙보드
+    #: stdio 서버도 같은 팩토리를 쓴다. 종전 이름은 파사드로 남긴다.
+    _server_factory = staticmethod(server_factory)
 
     def _build_server(self) -> Any:
         server_cls = self._server_factory()

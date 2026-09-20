@@ -140,3 +140,29 @@ daedalus-bb --schemas <경로> [--state-dir DIR] <command>
   `tests/compiler/test_guides.py`가 따로 고정한다 — 예전에는 `test_blackboard_section.py`가 맡았다)(손으로 쓴 픽스처만 쓰면 컴파일러가 형상을 바꿔도 CLI 테스트는 전부 초록인
   채 런타임만 깨진다). `BLACKBOARD_FIELD_TYPES` 밖 legacy 타입(ANY/JSON/bare LIST)도 경고
   등급이라 실제로 산출에 나오므로 함께 고정한다.
+
+## 실측 — 플러그인 `.mcp.json` 도구의 가시성과 이름 (CC 2.1.278, 2026-09-20)
+
+WP-BM 단계 0. 스크래치패드에 최소 플러그인(`.claude-plugin/plugin.json` + `.mcp.json` +
+`agents/probe.md` + `context: fork` 스킬)을 만들고 `claude --plugin-dir <경로> -p "/fkprobe"`로
+쟀다. 판정은 서브에이전트 전사(`~/.claude/projects/<cwd>/<세션>/subagents/*.jsonl`)의 도구
+호출 성공 여부다.
+
+1. **보인다.** 플러그인 `.mcp.json`이 띄우는 MCP 서버의 도구는 **fork 서브에이전트에서도**
+   보이고 호출된다(전사의 `agentType`이 `fkprobe:probe`, 도구 호출 결과가 서버의 반환값).
+   그 에이전트의 `tools:` 제한 목록에 도구 이름을 적어 두면 그 하나만 보인다. 그래서 fork
+   산출도 블랙보드 도구를 직접 쓸 수 있다 — "메인 대화가 대신 기록한다"는 규약은 진행
+   **기록의 소유권** 때문에 남는 것이지 도구가 닿지 않아서가 아니다.
+2. **이름에 플러그인 네임스페이스가 붙는다.** 플러그인이 제공한 서버의 도구는
+   `mcp__plugin_<플러그인>_<서버>__<도구>`다(실측: 플러그인 `fkprobe`, 서버 `bb-fkprobe` →
+   `mcp__plugin_fkprobe_bb-fkprobe__probe_ping`). 접두 없는 `mcp__<서버>__<도구>`는 **존재하지
+   않는다** — 그 이름을 `tools:`에 적은 프로브는 도구를 찾지 못했다. 서버 이름의 하이픈은
+   그대로 남는다(치환되지 않는다).
+3. **작업 폴더 `.mcp.json`은 접두가 없다.** 같은 서버를 작업 폴더의 `.mcp.json`으로 띄우면
+   이름은 `mcp__bb-fkprobe__probe_ping`이다. 즉 **도구 이름이 빌드 타깃에 따라 갈린다** —
+   유도의 단일 진실은 `compiler/emit/blackboard_tools.py::bb_tool_prefix()`다.
+4. `${CLAUDE_PLUGIN_ROOT}` 치환은 플러그인 `.mcp.json`의 `args`에서 **동작한다**(같은 프로브의
+   서버가 그 경로로 떴다). 마켓플레이스 빌드가 스키마 절대 경로를 넘길 수 있는 근거다.
+5. 곁다리 확인: fork 스킬의 `agent:`는 플러그인 빌드에서 **`플러그인:이름`**이어야 한다.
+   접두 없는 이름(`probe`)을 적은 첫 프로브는 전사의 `agentType`이 `general-purpose`로 떨어졌다
+   — 조용한 폴백이라 산출이 틀려도 아무 말이 없다(`agents.md`의 이름 해소 규칙과 일치).

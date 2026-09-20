@@ -5,6 +5,8 @@
 
 끼어드는 쓰기는 `write_state_checked`를 감싸 시뮬레이션한다 — 실제 경쟁과
 같은 지점(비교 직전)에 파일을 바꿔치기해야 재시도 경로가 실제로 돈다.
+봉합선은 **코어**(`daedalus.cli.core`)다: 재시도 루프가 거기 있으므로 표면
+(CLI·MCP 서버)이 무엇이든 같은 지점에서 경쟁을 재현한다.
 """
 from __future__ import annotations
 
@@ -13,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from daedalus.cli import blackboard
+from daedalus.cli import core
 from daedalus.cli.blackboard import main
 
 SCHEMAS = {
@@ -58,7 +60,7 @@ def _state(workspace: Path) -> dict:
 
 def _interloper(workspace: Path, monkeypatch, times: int):
     """`times`번의 쓰기 시도 직전마다 다른 프로세스가 파일을 고치게 한다."""
-    real = blackboard.write_state_checked
+    real = core.write_state_checked
     calls = {"n": 0}
 
     def _patched(path, obj, expected_raw):
@@ -69,7 +71,7 @@ def _interloper(workspace: Path, monkeypatch, times: int):
             path.write_text(json.dumps(current), encoding="utf-8")
         return real(path, obj, expected_raw)
 
-    monkeypatch.setattr(blackboard, "write_state_checked", _patched)
+    monkeypatch.setattr(core, "write_state_checked", _patched)
     return calls
 
 
@@ -114,19 +116,19 @@ def test_persistent_conflict_fails_without_losing_the_other_write(
 
     code, err = run("write", "Task", "--set", "title=B")
     assert code == 1
-    assert calls["n"] == blackboard._WRITE_MAX_ATTEMPTS
+    assert calls["n"] == core._WRITE_MAX_ATTEMPTS
     assert "다른 프로세스가 계속 고쳤다" in err
 
     state = _state(workspace)
     assert state["title"] == "A"  # 내 갱신은 반영되지 않았다
-    assert state["owner"] == f"other-{blackboard._WRITE_MAX_ATTEMPTS}"
+    assert state["owner"] == f"other-{core._WRITE_MAX_ATTEMPTS}"
 
 
 def test_append_is_reapplied_on_top_of_the_other_write(run, workspace, monkeypatch):
     """`--append`도 새 내용 위에 다시 적용된다 — 원소가 사라지지 않는다."""
     run("write", "Task", "--set", "title=A", "--append", "tags=x")
 
-    real = blackboard.write_state_checked
+    real = core.write_state_checked
     fired = {"done": False}
 
     def _patched(path, obj, expected_raw):
@@ -137,7 +139,7 @@ def test_append_is_reapplied_on_top_of_the_other_write(run, workspace, monkeypat
             path.write_text(json.dumps(current), encoding="utf-8")
         return real(path, obj, expected_raw)
 
-    monkeypatch.setattr(blackboard, "write_state_checked", _patched)
+    monkeypatch.setattr(core, "write_state_checked", _patched)
 
     assert run("write", "Task", "--append", "tags=y")[0] == 0
     assert _state(workspace)["tags"] == ["x", "from-other", "y"]
@@ -161,17 +163,17 @@ def test_write_state_checked_detects_change(tmp_path):
     path = tmp_path / "s.json"
     path.write_text('{"a": 1}', encoding="utf-8")
 
-    assert blackboard.write_state_checked(path, {"a": 2}, '{"a": 9}') is False
+    assert core.write_state_checked(path, {"a": 2}, '{"a": 9}') is False
     assert path.read_text(encoding="utf-8") == '{"a": 1}'
 
-    assert blackboard.write_state_checked(path, {"a": 2}, '{"a": 1}') is True
+    assert core.write_state_checked(path, {"a": 2}, '{"a": 1}') is True
     assert json.loads(path.read_text(encoding="utf-8")) == {"a": 2}
 
 
 def test_write_state_checked_expects_none_for_missing_file(tmp_path):
     """없던 파일은 expected_raw=None — 그 사이에 생겼으면 충돌이다."""
     path = tmp_path / "s.json"
-    assert blackboard.write_state_checked(path, {"a": 1}, None) is True
+    assert core.write_state_checked(path, {"a": 1}, None) is True
 
-    assert blackboard.write_state_checked(path, {"a": 2}, None) is False
+    assert core.write_state_checked(path, {"a": 2}, None) is False
     assert json.loads(path.read_text(encoding="utf-8")) == {"a": 1}

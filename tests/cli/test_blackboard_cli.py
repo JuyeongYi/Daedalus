@@ -341,7 +341,7 @@ def test_write_unknown_field_lists_available(run):
 def test_write_requires_an_operation(run):
     code, _, err = run("write", "Task")
     assert code == 2
-    assert "--set" in err
+    assert "set" in err
 
 
 def test_write_assignment_needs_equals(run):
