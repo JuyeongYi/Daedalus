@@ -351,3 +351,23 @@ def test_an_unregistered_kind_is_refused_loudly():
 
     with pytest.raises(ValueError, match="등록되지 않은 오류 kind"):
         BlackboardError("weird", "…")
+
+
+# ─── 진입점: cp949 콘솔에서도 --help가 죽지 않는다 (2026-09-20 머지 검토) ───
+
+
+def test_main_help_survives_cp949_console(monkeypatch):
+    """Windows 기본 콘솔(cp949)에 한글·em-dash 도움말을 쓰면 옛 CLI는
+    스트림을 UTF-8로 재설정해 살았다 — 새 진입점도 같아야 한다."""
+    import io
+
+    from daedalus.cli.mcp_server import main
+
+    out = io.TextIOWrapper(io.BytesIO(), encoding="cp949")
+    err = io.TextIOWrapper(io.BytesIO(), encoding="cp949")
+    monkeypatch.setattr(sys, "stdout", out)
+    monkeypatch.setattr(sys, "stderr", err)
+    assert main(["--help"]) == 0
+    out.flush()
+    text = out.buffer.getvalue().decode("utf-8")
+    assert "--schemas" in text and "stdio MCP" in text

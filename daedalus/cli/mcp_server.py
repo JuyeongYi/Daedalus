@@ -219,12 +219,24 @@ def tools_from_args(args: argparse.Namespace) -> BlackboardTools:
     )
 
 
+def _reconfigure_std_streams() -> None:
+    """stdout/stderr를 UTF-8로 — Windows 콘솔 기본이 cp949라 한글·`—`가 든
+    argparse 도움말·진단이 `UnicodeEncodeError`로 죽는다(옛 CLI `main()`과
+    같은 처치, 2026-09-20 머지 검토에서 재발 확인). 프로토콜 채널(stdout)도
+    UTF-8이어야 JSON-RPC 본문의 한글이 깨지지 않는다."""
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is not None:
+            reconfigure(encoding="utf-8", errors="replace")
+
+
 def main(argv: list[str] | None = None) -> int:
     """``daedalus-bb`` 진입점 — stdio로 서버를 돌린다.
 
     stdio 전송에서 **stdout은 프로토콜 전용 채널**이다. 코어는 출력 채널이
     없으므로 여기서 아무것도 print하지 않는다 — 진단은 stderr로만 나간다.
     """
+    _reconfigure_std_streams()
     parser = build_parser()
     try:
         args = parser.parse_args(argv)
